@@ -45,14 +45,18 @@
 	}
 	redir /wiki /wiki/ permanent
 
-	# --- /draw → Excalidraw --------------------------------------------------------
-	# Today: the compose stack on :3000. End state per §4: a static build at
-	# /usr/share/hub/apps/excalidraw served by file_server — swap the body for
-	#   root * /usr/share/hub/apps/excalidraw
-	#   file_server { precompressed br gzip }
-	# Either way the app has to be built with base "/draw/" or its asset URLs 404.
+	# --- /draw → Excalidraw, static ------------------------------------------------
+	# The fork built with `vite build --mode hub --base /draw/` (.env.hub in the fork):
+	# storage is the hub's own /api/v2 on this origin, so no NestJS, no Redis, no
+	# container. Packaged as hub-app-excalidraw it moves to /usr/share/hub/apps/excalidraw.
 	handle_path /draw/* {
-		reverse_proxy 127.0.0.1:3000
+		root * /home/user/excalidraw-stack/excalidraw/excalidraw-app/build
+		@immutable path /assets/*
+		@mutable not path /assets/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header @mutable Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
 	}
 	redir /draw /draw/ permanent
 

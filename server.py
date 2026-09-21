@@ -83,7 +83,7 @@ def live_messages(now):
 # apps.d/ manifests in the plan replace this table. `port` is a loopback listener to
 # probe; `static` means Caddy serves files itself, so it is up whenever Caddy is.
 SERVICES = [
-    {"path": "/draw/", "port": 3000},
+    {"path": "/draw/", "static": True},
     {"path": "/serial/", "port": 8080},
     {"path": "/wiki/", "port": 8081},
     {"path": "/mermaid/", "static": True},
