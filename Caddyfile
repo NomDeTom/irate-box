@@ -30,6 +30,7 @@
 			not path /
 		}
 		route {
+			header @asset Cache-Control "no-cache"
 			file_server @asset
 			reverse_proxy 127.0.0.1:8000
 		}
@@ -61,6 +62,12 @@
 	# is needed. Packaged as hub-app-mermaid it moves to /usr/share/hub/apps/mermaid.
 	handle_path /mermaid/* {
 		root * /home/user/mermaid-live-editor/docs
+		# Hashed build output is immutable; everything else (html, manifest, the
+		# service worker) must revalidate, or guests keep an old build after an upgrade.
+		@immutable path /_app/immutable/*
+		@mutable not path /_app/immutable/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header @mutable Cache-Control "no-cache"
 		try_files {path} {path}.html /index.html
 		file_server
 	}
