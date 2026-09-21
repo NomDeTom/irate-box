@@ -168,6 +168,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_empty(self, code):
+        # Under HTTP/1.1 keep-alive every response needs a length, or the client
+        # waits for a body that never comes.
+        self.send_response(code)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _is_captive_probe(self):
         host = self.headers.get("Host", "").split(":")[0]
         path = self.path.split("?")[0]
@@ -224,8 +231,7 @@ class Handler(BaseHTTPRequestHandler):
         file_path = STATIC / path.lstrip("/")
 
         if not file_path.resolve().is_relative_to(STATIC.resolve()):
-            self.send_response(403)
-            self.end_headers()
+            self.send_empty(403)
             return
 
         if file_path.is_file():
@@ -236,8 +242,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
-            self.send_response(404)
-            self.end_headers()
+            self.send_empty(404)
 
     def _read_payload(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -287,28 +292,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(201, result)
             return
 
-        self.send_response(404)
-        self.end_headers()
+        self.send_empty(404)
 
     def do_PUT(self):
         if not store.handle(self, "PUT", self.path.split("?")[0], STORE):
-            self.send_response(404)
-            self.end_headers()
+            self.send_empty(404)
 
     def do_DELETE(self):
         if not store.handle(self, "DELETE", self.path.split("?")[0], STORE):
-            self.send_response(404)
-            self.end_headers()
+            self.send_empty(404)
 
     def do_PATCH(self):
         if not store.handle(self, "PATCH", self.path.split("?")[0], STORE):
-            self.send_response(404)
-            self.end_headers()
+            self.send_empty(404)
 
     def do_OPTIONS(self):
         if not store.handle(self, "OPTIONS", self.path.split("?")[0], STORE):
-            self.send_response(404)
-            self.end_headers()
+            self.send_empty(404)
 
     def _post_message(self, payload):
         name = str(payload.get("name", "")).strip()[:32]
