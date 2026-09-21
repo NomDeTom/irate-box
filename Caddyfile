@@ -11,6 +11,8 @@
 #
 # Run in dev:   caddy run --config Caddyfile        (needs :80, so sudo or setcap)
 #               PORT=8000 python3 server.py
+# Paths are {$ENV:default} placeholders — HUB_STATIC, HUB_MERMAID_ROOT, HUB_DRAW_ROOT —
+# so a different checkout layout is an environment variable, not an edit. See BUILDING.md.
 {
 	auto_https off
 	admin off
@@ -50,7 +52,7 @@
 	# storage is the hub's own /api/v2 on this origin, so no NestJS, no Redis, no
 	# container. Packaged as hub-app-excalidraw it moves to /usr/share/hub/apps/excalidraw.
 	handle_path /draw/* {
-		root * /home/user/excalidraw-stack/excalidraw/excalidraw-app/build
+		root * {$HUB_DRAW_ROOT:/home/user/excalidraw-stack/excalidraw/excalidraw-app/build}
 		@immutable path /assets/*
 		@mutable not path /assets/*
 		header @immutable Cache-Control "public, max-age=31536000, immutable"
@@ -65,7 +67,7 @@
 	# ~/mermaid-live-editor/docs, asset links relative so no MERMAID_BASE_PATH rebuild
 	# is needed. Packaged as hub-app-mermaid it moves to /usr/share/hub/apps/mermaid.
 	handle_path /mermaid/* {
-		root * /home/user/mermaid-live-editor/docs
+		root * {$HUB_MERMAID_ROOT:/home/user/mermaid-live-editor/docs}
 		# Hashed build output is immutable; everything else (html, manifest, the
 		# service worker) must revalidate, or guests keep an old build after an upgrade.
 		@immutable path /_app/immutable/*

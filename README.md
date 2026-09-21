@@ -29,9 +29,8 @@ behind Caddy, so they show as "not running" until you add it:
 caddy run --config Caddyfile        # needs :80 — sudo, setcap, or edit the port
 ```
 
-Then it is <http://localhost/>, with `/mermaid/` live if you have a built
-[mermaid-live-editor](https://github.com/NomDeTom/mermaid-live-editor) checkout beside it
-(`pnpm build:hub` on its `hub` branch; adjust the path in the Caddyfile), and `/draw/`,
+Then it is <http://localhost/>, with `/mermaid/` and `/draw/` live once the two app forks are
+built — **[BUILDING.md](BUILDING.md)** walks through all of it, clone to running — and
 `/wiki/`, `/serial/`, `/term/` waiting for their backends on the ports the Caddyfile names.
 
 ## What is here
