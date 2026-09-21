@@ -21,8 +21,18 @@
 	# Host header passes through untouched, so server.py's probe-host check
 	# (captive.apple.com, connectivitycheck.gstatic.com, …) still fires here.
 	# On the Pi the unit sets HUB_URL=http://192.168.4.1/ (portless) and binds to loopback.
+	# Assets (js, css, board.html…) come straight off disk. `/` itself stays with
+	# the hub so the captive-probe check runs before index.html is served.
 	handle {
-		reverse_proxy 127.0.0.1:8000
+		root * {$HUB_STATIC:/home/user/irate-box/static}
+		@asset {
+			file
+			not path /
+		}
+		route {
+			file_server @asset
+			reverse_proxy 127.0.0.1:8000
+		}
 	}
 
 	# --- /wiki → kiwix-serve ------------------------------------------------------

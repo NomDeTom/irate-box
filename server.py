@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Minimal Irate-Box hub server. Serves static files and a JSON shoutbox."""
+"""Irate-Box hub server: shoutbox, board, blob store, status, captive-portal target.
+
+Serves static/ itself so a bare `python3 server.py` works; behind Caddy the assets are
+served by file_server and only `/` and the API reach this process."""
 
 import json
 import os
@@ -7,7 +10,7 @@ import socket
 import threading
 import time
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import board
@@ -149,6 +152,11 @@ MIME = {
 
 
 class Handler(BaseHTTPRequestHandler):
+    # Socket timeout per request. A phone that stalls mid-upload releases its thread
+    # instead of pinning it; Caddy in front already shields the listener itself.
+    timeout = 30
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, fmt, *args):
         pass  # quiet
 
@@ -330,7 +338,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     CLOCK.start()
-    server = HTTPServer((BIND, PORT), Handler)
+    # One thread per request: a 50 MB paste into the blob store must not freeze
+    # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
+    server = ThreadingHTTPServer((BIND, PORT), Handler)
     print(f"Hub running at http://{BIND}:{PORT}")
     print(f"Uptime clock at {hubclock.format_age(CLOCK.ticks())} cumulative")
     try:
