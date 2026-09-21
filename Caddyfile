@@ -1,0 +1,86 @@
+# Irate-Box front — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
+#
+# Rules from §5 "Two listeners":
+#   - :80 only, always plain. Captive-portal probes are HTTP; an HTTPS listener
+#     appears only when a cert file exists, and never as a redirect target.
+#   - never a blanket HTTP→HTTPS redirect, never HSTS. auto_https off keeps Caddy
+#     from adding either on its own.
+#
+# Every service binds to 127.0.0.1; Caddy is the sole listener on the AP interface.
+# Guests see http://192.168.4.1/… and nothing else — no ports, no pi.local.
+#
+# Run in dev:   caddy run --config Caddyfile        (needs :80, so sudo or setcap)
+#               PORT=8000 python3 server.py
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
+	# Host header passes through untouched, so server.py's probe-host check
+	# (captive.apple.com, connectivitycheck.gstatic.com, …) still fires here.
+	# On the Pi the unit sets HUB_URL=http://192.168.4.1/ (portless) and binds to loopback.
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# --- /wiki → kiwix-serve ------------------------------------------------------
+	# Path is passed through, not stripped: run kiwix-serve with
+	#   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1
+	# so its own links come out under /wiki/ too.
+	handle /wiki/* {
+		reverse_proxy 127.0.0.1:8081
+	}
+	redir /wiki /wiki/ permanent
+
+	# --- /draw → Excalidraw --------------------------------------------------------
+	# Today: the compose stack on :3000. End state per §4: a static build at
+	# /usr/share/hub/apps/excalidraw served by file_server — swap the body for
+	#   root * /usr/share/hub/apps/excalidraw
+	#   file_server { precompressed br gzip }
+	# Either way the app has to be built with base "/draw/" or its asset URLs 404.
+	handle_path /draw/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+	redir /draw /draw/ permanent
+
+	# --- /mermaid → mermaid-live-editor, static ------------------------------------
+	# The §4 end state, live today: SvelteKit adapter-static build in
+	# ~/mermaid-live-editor/docs, asset links relative so no MERMAID_BASE_PATH rebuild
+	# is needed. Packaged as hub-app-mermaid it moves to /usr/share/hub/apps/mermaid.
+	handle_path /mermaid/* {
+		root * /home/user/mermaid-live-editor/docs
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+	redir /mermaid /mermaid/ permanent
+
+	# --- /serial → Meshtastic serial terminal --------------------------------------
+	# Today: whatever is on :8080 (the old "Meshtastic" card). Same static-files
+	# swap as /draw once it is packaged as hub-app-serial.
+	handle_path /serial/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	redir /serial /serial/ permanent
+
+	# --- /term → ttyd (the escape hatch) -------------------------------------------
+	# Shipped disabled: unit off ⇒ this returns 502 and the card is not rendered.
+	# Credential-gated in Caddy as well as ttyd's own -c, so a stray unit start is
+	# not an open root shell. Replace the hash:  caddy hash-password --plaintext …
+	# Path passes through — run ttyd with  --base-path /term  -i 127.0.0.1  -p 7681
+	handle /term/* {
+		basic_auth {
+			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		}
+		reverse_proxy 127.0.0.1:7681
+	}
+	redir /term /term/ permanent
+
+	# Nothing here sets Strict-Transport-Security. Keep it that way (§5).
+	# stderr: journald under systemd, the terminal in dev. No files to rotate.
+	log {
+		output stderr
+		level WARN
+	}
+}

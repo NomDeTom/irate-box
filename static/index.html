@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+  <header>
+    <h1>Hub</h1>
+    <p class="subtitle">You're connected to the local network.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <details class="services" open>
+    <summary><h2>Services</h2></summary>
+    <div class="service-grid">
+      <a class="service-card" href="/draw/" target="_blank">
+        <span class="icon">✏️</span>
+        <span class="name">Excalidraw</span>
+        <span class="desc">Collaborative whiteboard</span>
+      </a>
+      <a class="service-card" href="/serial/" target="_blank">
+        <span class="icon">📡</span>
+        <span class="name">Meshtastic</span>
+        <span class="desc">Mesh radio interface</span>
+      </a>
+      <a class="service-card" href="/wiki/" target="_blank">
+        <span class="icon">📚</span>
+        <span class="name">Kiwix</span>
+        <span class="desc">Offline library</span>
+      </a>
+      <a class="service-card" href="/mermaid/" target="_blank">
+        <span class="icon">📈</span>
+        <span class="name">Mermaid</span>
+        <span class="desc">Diagrams as text</span>
+      </a>
+    </div>
+  </details>
+
+  <nav class="tabs">
+    <a href="/" class="active" aria-current="page">Shoutbox</a>
+    <a href="/board.html">Board</a>
+  </nav>
+
+  <section class="shoutbox">
+    <div id="messages"></div>
+    <form id="shout-form">
+      <span class="name-wrap">
+        <input id="name-input" type="text" placeholder="Name" maxlength="32" required>
+        <button type="button" id="name-roll" title="Roll a random name" aria-label="Roll a random name">🎲</button>
+      </span>
+      <input id="msg-input" data-emoji type="text" placeholder="Say something..." maxlength="200" required>
+      <button type="submit">Send</button>
+    </form>
+  </section>
+
+  <p class="decay-note" id="decay-note"></p>
+
+  <script src="hub.js"></script>
+  <script src="age.js"></script>
+  <script src="emoji.js"></script>
+  <script src="shoutbox.js"></script>
+</body>
+</html>

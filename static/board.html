@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+  <header>
+    <h1>Hub</h1>
+    <p class="subtitle">You're connected to the local network.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <details class="services" open>
+    <summary><h2>Services</h2></summary>
+    <div class="service-grid">
+      <a class="service-card" href="/draw/" target="_blank">
+        <span class="icon">✏️</span>
+        <span class="name">Excalidraw</span>
+        <span class="desc">Collaborative whiteboard</span>
+      </a>
+      <a class="service-card" href="/serial/" target="_blank">
+        <span class="icon">📡</span>
+        <span class="name">Meshtastic</span>
+        <span class="desc">Mesh radio interface</span>
+      </a>
+      <a class="service-card" href="/wiki/" target="_blank">
+        <span class="icon">📚</span>
+        <span class="name">Kiwix</span>
+        <span class="desc">Offline library</span>
+      </a>
+      <a class="service-card" href="/mermaid/" target="_blank">
+        <span class="icon">📈</span>
+        <span class="name">Mermaid</span>
+        <span class="desc">Diagrams as text</span>
+      </a>
+    </div>
+  </details>
+
+  <nav class="tabs">
+    <a href="/">Shoutbox</a>
+    <a href="/board.html" class="active" aria-current="page">Board</a>
+  </nav>
+
+  <section id="list-view">
+    <div id="threads"></div>
+
+    <details id="new-thread">
+      <summary>Start a thread</summary>
+      <form id="thread-form">
+        <input id="t-name" type="text" placeholder="Name" maxlength="32" required>
+        <input id="t-title" type="text" placeholder="Title" maxlength="80" required>
+        <textarea id="t-text" data-emoji placeholder="Say something..." maxlength="1000" rows="4" required></textarea>
+        <button type="submit">Post thread</button>
+      </form>
+    </details>
+  </section>
+
+  <section id="thread-view" hidden>
+    <h2><a class="back" href="#">&larr; All threads</a></h2>
+    <h3 id="thread-title"></h3>
+    <div id="posts"></div>
+    <form id="reply-form">
+      <input id="r-name" type="text" placeholder="Name" maxlength="32" required>
+      <textarea id="r-text" data-emoji placeholder="Reply..." maxlength="1000" rows="3" required></textarea>
+      <button type="submit">Reply</button>
+    </form>
+  </section>
+
+  <p class="decay-note" id="decay-note"></p>
+
+  <script src="hub.js"></script>
+  <script src="age.js"></script>
+  <script src="emoji.js"></script>
+  <script src="board.js"></script>
+</body>
+</html>

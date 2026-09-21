@@ -1,0 +1,14 @@
+[Unit]
+Description=Irate-Box hub
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/irate-box/server.py
+WorkingDirectory=/home/pi/irate-box
+Restart=on-failure
+Environment=PORT=8000
+Environment=HUB_BIND=127.0.0.1
+Environment=HUB_URL=http://192.168.4.1/
+
+[Install]
+WantedBy=multi-user.target
