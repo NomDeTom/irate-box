@@ -168,6 +168,11 @@ h2 {
 }
 
 .service-card.down { opacity: 0.4; pointer-events: none; }
+.qr-card { cursor: default; }
+.qr-card:hover { transform: none; border-color: var(--border); }
+.qr-card .qr { display: block; width: 96px; max-width: 100%; }
+.qr-card .qr svg { display: block; width: 100%; height: auto; background: #fff; border-radius: 6px; padding: 4px; box-sizing: border-box; }
+.qr-card .desc { font-family: ui-monospace, monospace; }
 .services-note { font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem; }
 .service-card .icon { font-size: 1.6rem; }
 .service-card .name { font-weight: 600; }

@@ -46,6 +46,11 @@
         <span class="name">Tools</span>
         <span class="desc">LoRa, Meshtastic &amp; electronics calculators</span>
       </a>
+      <div class="service-card qr-card" id="qr-card">
+        <span class="qr" id="hub-qr" aria-label="QR code for this hub's address"></span>
+        <span class="name">Join</span>
+        <span class="desc" id="hub-qr-url">Scan to open this hub</span>
+      </div>
     </div>
   </details>
 
@@ -81,6 +86,7 @@
 
   <p class="decay-note" id="decay-note"></p>
 
+  <script src="qrcode.js"></script>
   <script src="hub.js"></script>
   <script src="age.js"></script>
   <script src="emoji.js"></script>

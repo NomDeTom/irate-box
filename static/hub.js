@@ -69,3 +69,18 @@ if (grid) {
   refreshStatus();
   setInterval(refreshStatus, 15000);
 }
+
+// Join tile: a QR of the address this page was loaded from -- 192.168.4.1 on the box,
+// whatever it is here -- so the next person joins from the first one's screen.
+const qrEl = document.getElementById('hub-qr');
+if (qrEl && typeof qrcode === 'function') {
+  const url = location.origin + '/';
+  try {
+    const q = qrcode(0, 'M');
+    q.addData(url);
+    q.make();
+    qrEl.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+    const label = document.getElementById('hub-qr-url');
+    if (label) label.textContent = url.replace(/^http:\/\//, '');
+  } catch (_) {}
+}
