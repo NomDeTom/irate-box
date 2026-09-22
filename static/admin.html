@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hub admin</title>
+  <link rel="stylesheet" href="style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+  <header>
+    <h1>Admin</h1>
+    <p class="subtitle">Options for whoever owns the box.</p>
+  </header>
+
+  <nav class="tabs">
+    <a href="/">&larr; Back to the hub</a>
+  </nav>
+
+  <h2>Landing page</h2>
+  <div class="settings">
+    <label class="setting">
+      <input type="checkbox" id="show_term_card">
+      <span>
+        <span class="setting-name">Show the Terminal card</span>
+        <span class="setting-desc">
+          The shell is greyed out while its unit is off, the same as any other service.
+          Turn this off to leave it off the page entirely — the route still works for
+          anyone who knows the address and has the password.
+        </span>
+      </span>
+    </label>
+  </div>
+
+  <p class="settings-note" id="save-note" hidden></p>
+
+  <script src="admin.js"></script>
+</body>
+</html>

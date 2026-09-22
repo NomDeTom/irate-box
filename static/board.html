@@ -46,6 +46,16 @@
         <span class="name">Tools</span>
         <span class="desc">LoRa, Meshtastic &amp; electronics calculators</span>
       </a>
+      <a class="service-card" id="term-card" href="/term/" target="_blank">
+        <span class="icon">⌨️</span>
+        <span class="name">Terminal</span>
+        <span class="desc">Shell on the box — admin, password-gated</span>
+      </a>
+      <div class="service-card people-card" id="people-card">
+        <span class="icon">👥</span>
+        <span class="name" id="people-count">—</span>
+        <span class="desc" id="people-desc">Users online</span>
+      </div>
       <div class="service-card qr-card" id="qr-card">
         <span class="qr" id="hub-qr" aria-label="QR code for this hub's address"></span>
         <span class="name">Join</span>
@@ -65,7 +75,10 @@
     <details id="new-thread">
       <summary>Start a thread</summary>
       <form id="thread-form">
-        <input id="t-name" type="text" placeholder="Name" maxlength="32" required>
+        <span class="name-wrap">
+          <input id="t-name" type="text" placeholder="Name" maxlength="32" required>
+          <button type="button" id="t-hue" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+        </span>
         <input id="t-title" type="text" placeholder="Title" maxlength="80" required>
         <textarea id="t-text" data-emoji placeholder="Say something..." maxlength="1000" rows="4" required></textarea>
         <button type="submit">Post thread</button>
@@ -78,7 +91,10 @@
     <h3 id="thread-title"></h3>
     <div id="posts"></div>
     <form id="reply-form">
-      <input id="r-name" type="text" placeholder="Name" maxlength="32" required>
+      <span class="name-wrap">
+        <input id="r-name" type="text" placeholder="Name" maxlength="32" required>
+        <button type="button" id="r-hue" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+      </span>
       <textarea id="r-text" data-emoji placeholder="Reply..." maxlength="1000" rows="3" required></textarea>
       <button type="submit">Reply</button>
     </form>
@@ -86,9 +102,14 @@
 
   <p class="decay-note" id="decay-note"></p>
 
+  <footer class="site-footer">
+    <a href="/admin/">Admin</a>
+  </footer>
+
   <script src="qrcode.js"></script>
   <script src="hub.js"></script>
   <script src="age.js"></script>
+  <script src="ident.js"></script>
   <script src="emoji.js"></script>
   <script src="board.js"></script>
 </body>

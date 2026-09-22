@@ -66,9 +66,10 @@ function renderMessages(data) {
     const div = document.createElement('div');
     div.className = 'msg';
     // Ages come from the uptime clock, never `new Date()` -- see age.js.
+    const hue = hueOf(m, 'name');
     div.innerHTML =
-      `<span class="author">${esc(m.name)}</span>` +
-      `<span class="text">${esc(m.text)}</span>` +
+      `<span class="author" style="--author-hue:${hue}">${esc(m.name)}</span>` +
+      `<span class="text">${mdInline(m.text)}</span>` +
       `<span class="time">${formatAge(data.now - m.created)} ago</span>`;
     messagesEl.appendChild(div);
     shown.push(div.querySelector('.time'));
@@ -93,7 +94,7 @@ form.addEventListener('submit', async (e) => {
     await fetch('/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, text }),
+      body: JSON.stringify(withHue({ name, text })),
     });
     msgInput.value = '';
     await poll();
@@ -107,8 +108,11 @@ nameInput.addEventListener('input', () => localStorage.setItem('shout-name', nam
 nameRoll.addEventListener('click', () => {
   nameInput.value = randomName();
   localStorage.setItem('shout-name', nameInput.value);
+  nameInput.dispatchEvent(new Event('input'));   // re-colour the swatch on auto
   msgInput.focus();
 });
+
+attachHuePicker(document.getElementById('hue-swatch'), nameInput);
 
 poll();
 setInterval(poll, POLL_MS);

@@ -50,6 +50,27 @@ if (grid) {
       if (!r.ok) return;
       data = await r.json();
     } catch (_) { return; }
+    // Presence. The count is whoever has a page open; `joined` (dnsmasq leases) only
+    // exists on the box, so it is shown as a second line when the hub can see it.
+    const count = document.getElementById('people-count');
+    if (count && typeof data.online === 'number') {
+      count.textContent = data.online;
+      const desc = document.getElementById('people-desc');
+      desc.textContent = data.online === 1 ? 'user online' : 'users online';
+      if (typeof data.joined === 'number') {
+        desc.textContent += ` \u00b7 ${data.joined} on the WiFi`;
+      }
+    }
+
+    // The escape hatch is an ordinary card -- greyed while its unit is off -- unless
+    // the operator has hidden it in the admin options. A missing `settings` (an older
+    // hub, or a /status that failed) leaves it visible, which is the safe default: a
+    // greyed card tells the truth, where a silently missing one does not.
+    const termCard = grid.querySelector('#term-card');
+    if (termCard) {
+      termCard.hidden = !!(data.settings && data.settings.show_term_card === false);
+    }
+
     const byPath = new Map(data.services.map((s) => [s.path, s.up]));
     grid.querySelectorAll('.service-card').forEach((card) => {
       const up = byPath.get(card.getAttribute('href'));
@@ -59,7 +80,9 @@ if (grid) {
     if (!data.proxied) {
       note.textContent = 'Served without Caddy in front — the hub works, the apps are not reachable.';
       note.hidden = false;
-    } else if (data.services.some((s) => !s.up)) {
+    } else if (grid.querySelector('.service-card.down:not([hidden])')) {
+      // Read back from the grid, not from the service list: only a tile that is
+      // actually greyed should make the note claim there is one.
       note.textContent = 'Greyed-out services are not running.';
       note.hidden = false;
     } else {

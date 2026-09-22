@@ -97,6 +97,19 @@
 	}
 	redir /serial /serial/ permanent
 
+	# --- /admin → the hub's own operator options ------------------------------------
+	# Same credential gate as /term, and for the same reason: these change what every
+	# guest sees. The hub does no auth of its own, so running it bare (no Caddy) leaves
+	# /admin/settings as open as every other hub API -- fine in dev, never on the box.
+	# Replace the hash:  caddy hash-password --plaintext …
+	handle /admin/* {
+		basic_auth {
+			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		}
+		reverse_proxy 127.0.0.1:8000
+	}
+	redir /admin /admin/ permanent
+
 	# --- /term → ttyd (the escape hatch) -------------------------------------------
 	# Shipped disabled: unit off ⇒ this returns 502 and the card is not rendered.
 	# Credential-gated in Caddy as well as ttyd's own -c, so a stray unit start is

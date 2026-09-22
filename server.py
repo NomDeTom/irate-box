@@ -93,6 +93,96 @@ SERVICES = [
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
 _status_cache = {"at": 0.0, "ports": {}}
 
+# --- who is here -------------------------------------------------------------
+# "Online" is distinct client addresses seen in the last ONLINE_WINDOW seconds of
+# powered-on time. Every open page already polls /status and /messages, so this needs
+# no heartbeat of its own -- ordinary traffic is the signal. Addresses are held in
+# memory only: never written to disk, never served individually, and gone on restart.
+# The page is only ever told how many.
+ONLINE_WINDOW = 90
+# Optional second number: devices that joined the WiFi at all, whether or not anyone
+# opened the page. That is the PirateBox station counter, and dnsmasq already keeps it.
+LEASES = Path(os.environ.get("HUB_LEASES", "/var/lib/misc/dnsmasq.leases"))
+_seen = {}
+_seen_lock = threading.Lock()
+
+
+def note_client(handler):
+    """Record that this address is around. Behind Caddy every request arrives from
+    loopback, so the forwarded address is what distinguishes one guest from another."""
+    fwd = handler.headers.get("X-Forwarded-For", "")
+    addr = fwd.split(",")[0].strip() if fwd.strip() else handler.client_address[0]
+    if not addr:
+        return
+    with _seen_lock:
+        _seen[addr] = CLOCK.ticks()
+
+
+# --- operator settings -------------------------------------------------------
+# Options the person who owns the box sets, not the guests. Only booleans listed in
+# DEFAULTS are accepted, so a malformed or hand-edited file cannot introduce keys.
+# The gate is Caddy's basic_auth on /admin/*, the same treatment /term/ gets -- run
+# the hub bare, with no Caddy in front, and these are as open as every other hub API.
+SETTINGS_FILE = STATE_DIR / "settings.json"
+DEFAULT_SETTINGS = {
+    # The ttyd card is shown like any other service -- greyed while its unit is off --
+    # unless the operator would rather guests were not shown the escape hatch at all.
+    "show_term_card": True,
+}
+_settings_lock = threading.Lock()
+
+
+def load_settings():
+    data = dict(DEFAULT_SETTINGS)
+    try:
+        with open(SETTINGS_FILE) as fh:
+            stored = json.load(fh)
+    except (OSError, ValueError):
+        return data
+    if isinstance(stored, dict):
+        for key in DEFAULT_SETTINGS:
+            if isinstance(stored.get(key), bool):
+                data[key] = stored[key]
+    return data
+
+
+def save_settings(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS_FILE.parent / (SETTINGS_FILE.name + ".tmp")
+    with open(tmp, "w") as fh:
+        json.dump(data, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, SETTINGS_FILE)
+
+
+# Held in memory so a page full of /status pollers costs no disk reads.
+_settings = load_settings()
+
+
+def settings_snapshot():
+    with _settings_lock:
+        return dict(_settings)
+
+
+def online_count(now):
+    with _seen_lock:
+        for addr, seen in list(_seen.items()):
+            if now - seen > ONLINE_WINDOW:
+                del _seen[addr]
+        return len(_seen)
+
+
+def joined_count():
+    """Devices with a DHCP lease, or None where there is no dnsmasq (i.e. in dev).
+    Lease expiry is a wall-clock timestamp, which is fiction on a board with no RTC,
+    so the lines are counted rather than filtered -- dnsmasq prunes the file itself."""
+    try:
+        with open(LEASES) as fh:
+            return sum(1 for line in fh if line.strip())
+    except OSError:
+        return None
+
 
 def port_listening(port):
     try:
@@ -188,6 +278,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        note_client(self)
         if self._is_captive_probe():
             self._redirect_to_hub()
             return
@@ -208,14 +299,28 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, BOARD.list_threads())
             return
 
+        if path == "/admin/settings":
+            self.send_json(200, settings_snapshot())
+            return
+
+        if path in ("/admin", "/admin/"):
+            path = "/admin.html"
+
         if path == "/status":
             # Caddy's reverse_proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
-            self.send_json(200, {
+            now = CLOCK.ticks()
+            payload = {
                 "proxied": proxied,
                 "services": service_status(proxied),
-                "uptime": CLOCK.ticks(),
-            })
+                "uptime": now,
+                "online": online_count(now),
+                "settings": settings_snapshot(),
+            }
+            joined = joined_count()
+            if joined is not None:
+                payload["joined"] = joined
+            self.send_json(200, payload)
             return
 
         tid = thread_id(path)
@@ -253,6 +358,7 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
     def do_POST(self):
+        note_client(self)
         path = self.path.split("?")[0]
 
         # Delegated before the body is read: the store takes raw bytes, and the
@@ -265,6 +371,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "bad request"})
             return
 
+        if path == "/admin/settings":
+            with _settings_lock:
+                for key in DEFAULT_SETTINGS:
+                    if isinstance(payload.get(key), bool):
+                        _settings[key] = payload[key]
+                current = dict(_settings)
+                save_settings(current)
+            self.send_json(200, current)
+            return
+
         if path == "/messages":
             self._post_message(payload)
             return
@@ -273,7 +389,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 result = BOARD.create_thread(payload.get("name"),
                                              payload.get("title"),
-                                             payload.get("text"))
+                                             payload.get("text"),
+                                             payload.get("hue"))
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -283,7 +400,8 @@ class Handler(BaseHTTPRequestHandler):
         tid = thread_id(path)
         if tid is not None:
             try:
-                result = BOARD.reply(tid, payload.get("name"), payload.get("text"))
+                result = BOARD.reply(tid, payload.get("name"), payload.get("text"),
+                                     payload.get("hue"))
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -318,6 +436,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "name and text required"})
             return
 
+        # Optional author colour, stored as a hue only (0-359) -- the client's palette
+        # picks saturation and lightness. Absent means "derive it from the name", so a
+        # guest who renames re-colours instead of carrying a stale hue around.
+        hue = payload.get("hue")
+        if hue is not None:
+            try:
+                hue = int(hue) % 360
+            except (TypeError, ValueError):
+                hue = None
+
         now = CLOCK.ticks()
         entry = {
             "name": name,
@@ -327,6 +455,8 @@ class Handler(BaseHTTPRequestHandler):
             # reads it, and nothing should.
             "time": datetime.now(timezone.utc).isoformat(),
         }
+        if hue is not None:
+            entry["hue"] = hue
         with lock:
             msgs = live_messages(now)
             msgs.append(entry)

@@ -33,8 +33,27 @@ MAX_TITLE = 80
 MAX_TEXT = 1000
 
 
+def _clean_hue(value):
+    """Optional author colour, stored as a hue only (0-359) -- the client's palette
+    picks saturation and lightness. None means "derive it from the name", so a guest
+    who renames re-colours instead of carrying a stale hue around."""
+    if value is None:
+        return None
+    try:
+        return int(value) % 360
+    except (TypeError, ValueError):
+        return None
+
+
 def _clean(value, limit):
     return str(value or "").strip()[:limit]
+
+
+def _post(author, text, now, hue):
+    post = {"author": author, "text": text, "created": now}
+    if hue is not None:
+        post["hue"] = hue
+    return post
 
 
 class Board:
@@ -104,6 +123,7 @@ class Board:
                 "active": t["active"],
                 "replies": max(0, len(t["posts"]) - 1),
                 "excerpt": t["posts"][0]["text"][:140] if t["posts"] else "",
+                "hue": t["posts"][0].get("hue") if t["posts"] else None,
             }
             for t in self._visible(state, now)
         ]
@@ -119,10 +139,11 @@ class Board:
 
     # --- writes ------------------------------------------------------------
 
-    def create_thread(self, author, title, text):
+    def create_thread(self, author, title, text, hue=None):
         author, title, text = (_clean(author, MAX_AUTHOR),
                                _clean(title, MAX_TITLE),
                                _clean(text, MAX_TEXT))
+        hue = _clean_hue(hue)
         if not author or not title or not text:
             raise ValueError("author, title and text are required")
 
@@ -135,7 +156,7 @@ class Board:
                 "author": author,
                 "created": now,
                 "active": now,
-                "posts": [{"author": author, "text": text, "created": now}],
+                "posts": [_post(author, text, now, hue)],
             }
             state["next_id"] += 1
             state["threads"].append(thread)
@@ -143,8 +164,9 @@ class Board:
             self._save(state)
             return {"now": now, "thread": thread}
 
-    def reply(self, tid, author, text):
+    def reply(self, tid, author, text, hue=None):
         author, text = _clean(author, MAX_AUTHOR), _clean(text, MAX_TEXT)
+        hue = _clean_hue(hue)
         if not author or not text:
             raise ValueError("author and text are required")
 
@@ -154,7 +176,7 @@ class Board:
             for t in state["threads"]:
                 if t["id"] != tid or now - t.get("active", 0) > self.ttl:
                     continue
-                post = {"author": author, "text": text, "created": now}
+                post = _post(author, text, now, hue)
                 t["posts"].append(post)
                 # Oldest replies fall off, but never the opening post -- losing it
                 # would leave a thread with a title and no subject.

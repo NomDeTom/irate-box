@@ -30,11 +30,11 @@ function renderThreads(data) {
     return;
   }
   threadsEl.innerHTML = data.threads.map((t) => `
-    <a class="thread-row" href="#t${t.id}">
+    <a class="thread-row" href="#t${t.id}" style="--author-hue:${hueOf(t, 'author')}">
       <span class="t-title">${esc(t.title)}</span>
-      <span class="t-excerpt">${esc(t.excerpt)}</span>
+      <span class="t-excerpt">${mdInline(t.excerpt)}</span>
       <span class="t-meta">
-        ${esc(t.author)} &middot; ${t.replies} ${t.replies === 1 ? 'reply' : 'replies'}
+        <span class="author">${esc(t.author)}</span> &middot; ${t.replies} ${t.replies === 1 ? 'reply' : 'replies'}
         &middot; active ${formatAge(data.now - t.active)} ago
       </span>
     </a>`).join('');
@@ -45,10 +45,10 @@ function renderThread(data) {
   const t = data.thread;
   titleEl.textContent = t.title;
   postsEl.innerHTML = t.posts.map((p, i) => `
-    <div class="post${i === 0 ? ' op' : ''}">
+    <div class="post${i === 0 ? ' op' : ''}" style="--author-hue:${hueOf(p, 'author')}">
       <span class="author">${esc(p.author)}</span>
       <span class="time">${formatAge(data.now - p.created)} ago</span>
-      <div class="text">${esc(p.text)}</div>
+      <div class="text">${mdInline(p.text)}</div>
     </div>`).join('');
 }
 
@@ -75,11 +75,11 @@ async function refresh() {
 
 threadForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const body = {
+  const body = withHue({
     name: document.getElementById('t-name').value.trim(),
     title: document.getElementById('t-title').value.trim(),
     text: document.getElementById('t-text').value.trim(),
-  };
+  });
   if (!body.name || !body.title || !body.text) return;
   try {
     const r = await fetch('/board/threads', {
@@ -107,7 +107,7 @@ replyForm.addEventListener('submit', async (e) => {
     await fetch(`/board/thread/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, text }),
+      body: JSON.stringify(withHue({ name, text })),
     });
     document.getElementById('r-text').value = '';
     await refresh();
@@ -115,9 +115,11 @@ replyForm.addEventListener('submit', async (e) => {
 });
 
 // Persist the name across both forms and refreshes, same key as the shoutbox.
-for (const el of [document.getElementById('t-name'), document.getElementById('r-name')]) {
+for (const [el, swatch] of [['t-name', 't-hue'], ['r-name', 'r-hue']].map(
+       ([a, b]) => [document.getElementById(a), document.getElementById(b)])) {
   el.value = localStorage.getItem('shout-name') || '';
   el.addEventListener('input', () => localStorage.setItem('shout-name', el.value));
+  attachHuePicker(swatch, el);
 }
 
 window.addEventListener('hashchange', refresh);

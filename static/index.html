@@ -46,6 +46,16 @@
         <span class="name">Tools</span>
         <span class="desc">LoRa, Meshtastic &amp; electronics calculators</span>
       </a>
+      <a class="service-card" id="term-card" href="/term/" target="_blank">
+        <span class="icon">⌨️</span>
+        <span class="name">Terminal</span>
+        <span class="desc">Shell on the box — admin, password-gated</span>
+      </a>
+      <div class="service-card people-card" id="people-card">
+        <span class="icon">👥</span>
+        <span class="name" id="people-count">—</span>
+        <span class="desc" id="people-desc">Users online</span>
+      </div>
       <div class="service-card qr-card" id="qr-card">
         <span class="qr" id="hub-qr" aria-label="QR code for this hub's address"></span>
         <span class="name">Join</span>
@@ -64,6 +74,7 @@
     <form id="shout-form">
       <span class="name-wrap">
         <input id="name-input" type="text" placeholder="Name" maxlength="32" required>
+        <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
         <button type="button" id="name-roll" title="Roll a random name" aria-label="Roll a random name">🎲</button>
       </span>
       <input id="msg-input" data-emoji type="text" placeholder="Say something..." maxlength="200" required>
@@ -73,9 +84,14 @@
 
   <p class="decay-note" id="decay-note"></p>
 
+  <footer class="site-footer">
+    <a href="/admin/">Admin</a>
+  </footer>
+
   <script src="qrcode.js"></script>
   <script src="hub.js"></script>
   <script src="age.js"></script>
+  <script src="ident.js"></script>
   <script src="emoji.js"></script>
   <script src="shoutbox.js"></script>
 </body>

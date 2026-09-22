@@ -6,6 +6,13 @@
   --surface: #1a1d27;
   --border: #2a2d3a;
   --accent: #7c6af7;
+  /* Text drawn on top of --accent. Every palette sets its own; white only
+     works while the accent is dark enough to carry it. */
+  --accent-ink: #fff;
+  /* Author colours carry only a hue (see shoutbox.js); each palette supplies the
+     saturation and lightness that stay legible on its own surface. */
+  --author-s: 70%;
+  --author-l: 72%;
   --text: #e2e4ef;
   --muted: #6b6f8a;
   --shadow: rgba(0, 0, 0, 0.4);
@@ -21,6 +28,9 @@
     --surface: #ffffff;
     --border: #d9dbe6;
     --accent: #5b4bd6;
+    --accent-ink: #fff;
+    --author-s: 55%;
+    --author-l: 38%;
     --text: #1b1d27;
     --muted: #6b6f8a;
     --shadow: rgba(20, 20, 40, 0.15);
@@ -32,6 +42,9 @@
   --surface: #ffffff;
   --border: #d9dbe6;
   --accent: #5b4bd6;
+  --accent-ink: #fff;
+  --author-s: 55%;
+  --author-l: 38%;
   --text: #1b1d27;
   --muted: #6b6f8a;
   --shadow: rgba(20, 20, 40, 0.15);
@@ -87,7 +100,7 @@ header .subtitle {
 }
 .theme-picker button[aria-pressed="true"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 
 h2 {
@@ -168,6 +181,18 @@ h2 {
 }
 
 .service-card.down { opacity: 0.4; pointer-events: none; }
+/* .service-card sets display:flex, which outranks the UA rule for [hidden] -- without
+   this, a hidden card stays on screen. */
+.service-card[hidden] { display: none; }
+/* Presence tile: a readout, not a link, so it does not lift on hover. */
+.people-card { cursor: default; }
+.people-card:hover { transform: none; border-color: var(--border); }
+.people-card .name {
+  font-size: 1.6rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
 .qr-card { cursor: default; }
 .qr-card:hover { transform: none; border-color: var(--border); }
 .qr-card .qr { display: block; width: 96px; max-width: 100%; }
@@ -200,9 +225,24 @@ h2 {
 
 .msg .author {
   font-weight: 600;
-  color: var(--accent);
+  color: hsl(var(--author-hue, 250) var(--author-s) var(--author-l));
   margin-right: 0.4rem;
 }
+
+/* Inline markdown rendered by mdInline() in ident.js. */
+.msg .text code,
+.post .text code,
+.thread-row .t-excerpt code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+}
+.msg .text a, .post .text a { color: var(--accent); }
+.msg .text del, .post .text del { opacity: 0.7; }
+.post .text code { font-size: 0.85em; }
 
 .msg .time {
   font-size: 0.72rem;
@@ -243,12 +283,87 @@ h2 {
   cursor: pointer;
 }
 #shout-form #name-roll:hover { border-color: var(--accent); opacity: 1; }
+
+#shout-form .hue-swatch,
+#thread-form .hue-swatch,
+#reply-form .hue-swatch {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 0;
+  padding: 0.6rem 0.5rem;
+  cursor: pointer;
+}
+#shout-form .hue-swatch:hover,
+#thread-form .hue-swatch:hover,
+#reply-form .hue-swatch:hover { border-color: var(--accent); }
+
+/* On the board the swatch is the last control in the row, so it carries the right
+   corner the die carries in the shoutbox. */
+#thread-form .name-wrap > input,
+#reply-form .name-wrap > input {
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  border-right: 0;
+}
+#thread-form .hue-swatch,
+#reply-form .hue-swatch {
+  border-right: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.hue-swatch .dot {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: hsl(var(--author-hue, 250) var(--author-s) var(--author-l));
+}
+
+/* --- Hue picker (shoutbox.js), same popover shape as the emoji panel --- */
+.hue-panel {
+  position: absolute;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.hue-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.35rem; }
+.hue-grid button {
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: hsl(var(--author-hue, 250) var(--author-s) var(--author-l));
+}
+.hue-grid button[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 1px; }
+.hue-auto {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.hue-auto[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 #msg-input { flex: 1; min-width: 0; }
 
 #shout-form button {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -285,6 +400,10 @@ h2 {
   white-space: nowrap;
 }
 .thread-row .t-meta { font-size: 0.72rem; color: var(--muted); }
+.thread-row .author {
+  font-weight: 600;
+  color: hsl(var(--author-hue, 250) var(--author-s) var(--author-l));
+}
 
 #thread-title { font-size: 1.3rem; margin-bottom: 1rem; }
 
@@ -298,8 +417,8 @@ h2 {
   font-size: 0.9rem;
 }
 
-.post.op { border-left: 3px solid var(--accent); }
-.post .author { font-weight: 600; color: var(--accent); }
+.post.op { border-left: 3px solid hsl(var(--author-hue, 250) var(--author-s) var(--author-l)); }
+.post .author { font-weight: 600; color: hsl(var(--author-hue, 250) var(--author-s) var(--author-l)); }
 .post .time { font-size: 0.72rem; color: var(--muted); margin-left: 0.5rem; }
 .post .text { margin-top: 0.4rem; line-height: 1.5; white-space: pre-wrap; }
 
@@ -327,11 +446,54 @@ h2 {
 #thread-form button, #reply-form button {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   font-weight: 600;
   cursor: pointer;
   align-self: flex-start;
 }
+
+/* --- Footer --- */
+.site-footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 0.75rem;
+}
+.site-footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.site-footer a:hover { color: var(--accent); }
+
+/* --- Admin options (admin.html) --- */
+.settings { display: flex; flex-direction: column; gap: 0.75rem; }
+.setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.setting:hover { border-color: var(--accent); }
+.setting input[type="checkbox"] { margin-top: 0.15rem; accent-color: var(--accent); }
+.setting-name { display: block; font-weight: 600; }
+.setting-desc {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.settings-note {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.settings-note.bad { color: #e5484d; }
 
 .decay-note {
   margin-top: 2.5rem;
