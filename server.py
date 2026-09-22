@@ -87,6 +87,7 @@ SERVICES = [
     {"path": "/serial/", "port": 8080},
     {"path": "/wiki/", "port": 8081},
     {"path": "/mermaid/", "static": True},
+    {"path": "/tools/", "static": True},
     {"path": "/term/", "port": 7681},
 ]
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client

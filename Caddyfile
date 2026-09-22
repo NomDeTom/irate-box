@@ -79,6 +79,16 @@
 	}
 	redir /mermaid /mermaid/ permanent
 
+	# --- /tools → nomdetom.github.io, the calculators --------------------------------
+	# Single-file HTML tools (LoRa airtime, Meshtastic node ID / URL / packet layout,
+	# solar, battery, Ohm's law…). Self-contained, relative links, nothing fetched.
+	handle_path /tools/* {
+		root * {$HUB_TOOLS_ROOT:/home/user/nomdetom.github.io}
+		header Cache-Control "no-cache"
+		file_server
+	}
+	redir /tools /tools/ permanent
+
 	# --- /serial → Meshtastic serial terminal --------------------------------------
 	# Today: whatever is on :8080 (the old "Meshtastic" card). Same static-files
 	# swap as /draw once it is packaged as hub-app-serial.
