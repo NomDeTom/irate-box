@@ -100,4 +100,7 @@ offline build with the Mermaid Chart promotion and external services removed).
 
 ## License
 
-Not chosen yet.
+The core of this repo (`server.py`, `store.py`, `board.py`, `hubclock.py`, and the
+`static/` assets) is released into the public domain under the [Unlicense](LICENSE).
+`static/qrcode.js` is vendored third-party code (MIT, Kazuhiko Arase) and keeps its own
+license, noted in its header.
