@@ -165,6 +165,50 @@ is offline, so none of them can reach anything). Keep local discovery. Share `~/
 so the notebook syncs to your own machines while they are on the box's WiFi. Syncthing's own
 listeners (`:22000` tcp/udp, `:21027/udp`) do not go through Caddy.
 
+## 4b. Installing on a board: `install.sh`
+
+For an Armbian board, or mPWRD-OS (an Armbian build), there is one script, instead of steps 1, 4 and
+4a by hand. Tested on a Luckfox Lyra Zero W (mPWRD-OS 26.05, trixie, armv7l).
+
+```sh
+git clone https://github.com/NomDeTom/irate-box && cd irate-box
+sudo ./install.sh --with-notes --with-sync --apps ~/hub-apps
+```
+
+It installs Caddy from Caddy's own apt repository. Distro packages lag behind: Debian
+trixie ships 2.6, and the Caddyfile is written for 2.8+. ARMv6 is the exception, because
+that repository's armhf build targets ARMv7 and would crash on a Zero W. There the script
+uses the distro's genuine ARMv6 build and rewrites `basic_auth` to the 2.6 spelling,
+`basicauth`. It also sets up a `hub` system user and `irate-box.service` on loopback. The
+code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. The
+generated Caddyfile replaces `/etc/caddy/Caddyfile`, and the original is kept as
+`Caddyfile.pre-irate-box`. `--with-notes` and `--with-sync` add SilverBullet and
+`syncthing@hub`. Syncthing is set up for an offline box as described in 4a, with the same
+admin login as Caddy's gate, and shares `/var/lib/hub/notes` as the folder `hub-notes`.
+
+The apps are not built on the board. `--apps DIR` copies prebuilt `DIR/mermaid`,
+`DIR/draw`, `DIR/tools` and `DIR/serial` into `/usr/share/hub/apps/`. `serial` is the
+`npm run build` output of `nomdetom/serial-terminal`. `--tools` clones the calculators
+instead.
+
+`--zim FILE|URL`, which can be repeated, installs `kiwix-serve` at `/wiki/`. It copies the
+file, or downloads the URL on the box, into `/var/lib/hub/zim` and registers it in
+`library.xml`. A Docusaurus ZIM from docusaurus2zim must be built with
+`--base-url /wiki/content/<name>/`, because Kiwix is mounted at `/wiki`. With the default
+`/content/<name>/`, the page shows "did not load properly".
+
+ttyd is always installed at `/term/`: the upstream static binary, checked against its
+published SHA256SUMS. It only runs with `--with-term`, and stays on for later runs once
+enabled. The admin login gets you past Caddy, and after that `/bin/login` asks for a real
+account on the box.
+
+Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe,
+because they cannot load `hub-return.js` themselves. The address keeps the app's own path
+(`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. The admin password is generated on the first run and printed; it is kept in
+`/etc/hub/admin-password`. Run the script again to upgrade. State and the password
+survive. It does not touch the network: there is no AP, no dnsmasq and no captive portal
+yet. The hub is at `http://<the board's address>/` on whatever network the board is on.
+
 ## 5. Rebuilding after a change
 
 - Hub page or server: nothing to build. Caddy reads `static/` off disk; restart
