@@ -43,6 +43,14 @@
 	#   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1
 	# so its own links come out under /wiki/ too.
 	handle /wiki/* {
+		# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM stays hidden behind
+		# the old copy for an hour. Its ETag carries the book UUID, which a rebuild
+		# changes, so always revalidating is cheap (a 304) and never stale.
+		# (header_down takes no matcher; a deferred header runs after the proxy's own.)
+		@content path /wiki/content/*
+		header @content Cache-Control "no-cache" {
+			defer
+		}
 		reverse_proxy 127.0.0.1:8081
 	}
 	redir /wiki /wiki/ permanent
@@ -89,11 +97,17 @@
 	}
 	redir /tools /tools/ permanent
 
-	# --- /serial → Meshtastic serial terminal --------------------------------------
-	# Today: whatever is on :8080 (the old "Meshtastic" card). Same static-files
-	# swap as /draw once it is packaged as hub-app-serial.
+	# --- /serial → Meshtastic serial terminal / log analyser, static -----------------
+	# `npm run build` of nomdetom/serial-terminal (base './', so no path rebuild).
+	# Log files open fine over plain HTTP; the live serial connection needs a secure
+	# context, which this origin is not (plan §4) -- the single-file download fixes that.
 	handle_path /serial/* {
-		reverse_proxy 127.0.0.1:8080
+		root * {$HUB_SERIAL_ROOT:/home/user/serial-terminal/dist}
+		@immutable path /assets/*
+		@mutable not path /assets/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header @mutable Cache-Control "no-cache"
+		file_server
 	}
 	redir /serial /serial/ permanent
 

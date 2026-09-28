@@ -84,7 +84,7 @@ def live_messages(now):
 # probe; `static` means Caddy serves files itself, so it is up whenever Caddy is.
 SERVICES = [
     {"path": "/draw/", "static": True},
-    {"path": "/serial/", "port": 8080},
+    {"path": "/serial/", "static": True},
     {"path": "/wiki/", "port": 8081},
     {"path": "/mermaid/", "static": True},
     {"path": "/tools/", "static": True},
