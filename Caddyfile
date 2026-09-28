@@ -134,6 +134,13 @@
 	}
 	redir /sync /sync/ permanent
 
+	# --- /mqtt → mosquitto's WebSocket listener (optional add-on) --------------------
+	# For pages on this origin. Nodes use the native listener on :1883 directly, since
+	# raw MQTT is not HTTP. reverse_proxy carries the WebSocket upgrade as it is.
+	handle /mqtt {
+		reverse_proxy 127.0.0.1:9001
+	}
+
 	# --- /admin → the hub's own operator options ------------------------------------
 	# Same credential gate as /term, and for the same reason: these change what every
 	# guest sees. The hub does no auth of its own, so running it bare (no Caddy) leaves

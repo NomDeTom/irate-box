@@ -97,6 +97,7 @@ SERVICES = [
     # Optional add-ons: absent on a box without them, which reads as greyed.
     {"path": "/notes/", "name": "Notes (SilverBullet)", "port": 3000, "unit": "silverbullet.service"},
     {"path": "/sync/", "name": "Syncthing", "port": 8384, "unit": "syncthing@hub.service"},
+    {"path": "/mqtt", "name": "MQTT broker (mosquitto)", "port": 1883, "unit": "mosquitto.service"},
     {"path": None, "name": "Web server (Caddy)", "unit": "caddy.service", "proxy": True},
     {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
 ]

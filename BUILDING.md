@@ -197,6 +197,14 @@ file, or downloads the URL on the box, into `/var/lib/hub/zim` and registers it 
 `--base-url /wiki/content/<name>/`, because Kiwix is mounted at `/wiki`. With the default
 `/content/<name>/`, the page shows "did not load properly".
 
+`--with-mqtt` installs the mosquitto broker. Nodes, and the phone app's MQTT Client Proxy,
+connect to port 1883. Pages connect with WebSockets at `/mqtt`, which Caddy passes to a
+listener on loopback. Clients are anonymous, and an ACL limits them to `msh/#`. Messages
+are capped at 4 kB, connections at 64 per listener, and nothing is persisted, so retained
+messages are gone after a restart. Port 1883 listens on every interface for now; once the
+access point exists it should listen on the AP address only. `mosquitto_sub -t 'msh/#' -v`
+on the box shows traffic.
+
 ttyd is always installed at `/term/`: the upstream static binary, checked against its
 published SHA256SUMS. It only runs with `--with-term`, and stays on for later runs once
 enabled. The admin login gets you past Caddy, and after that `/bin/login` asks for a real
