@@ -38,8 +38,57 @@ function kiwixPage(pathname) {
   };
 }
 
+// --- the bar slides away while the app scrolls down, and back on any scroll up -----
+// Scroll events do not bubble, but a capturing listener on a document sees every
+// scroll inside it: the window and inner panels alike (SilverBullet scrolls a div).
+// Actual scroll positions, not wheel or touch gestures, so zooming Excalidraw's
+// canvas, which never scrolls, leaves the bar alone.
+const bar = document.getElementById('app-bar');
+const HIDE_AFTER = 30;  // px of downward travel before the bar goes
+const SHOW_AFTER = 10;  // px of upward travel before it comes back
+const SETTLE_MS = 400;  // hiding resizes the frame, which moves scroll positions: ignore those
+const watched = new WeakSet();
+const lastY = new WeakMap();
+let travel = 0;
+let quietUntil = 0;
+
+function setHidden(hide) {
+  if (bar.classList.contains('hidden') === hide) return;
+  bar.classList.toggle('hidden', hide);
+  travel = 0;
+  quietUntil = Date.now() + SETTLE_MS;
+}
+
+function onScroll(e) {
+  const el = e.target.scrollingElement || e.target;  // a document scrolls its root
+  const y = el.scrollTop;
+  if (typeof y !== 'number') return;
+  const prev = lastY.get(el);
+  lastY.set(el, y);
+  if (prev === undefined || Date.now() < quietUntil) return;
+  if (y <= 0) { setHidden(false); return; }
+  const dy = y - prev;
+  travel = Math.sign(dy) === Math.sign(travel) ? travel + dy : dy;
+  if (travel > HIDE_AFTER) setHidden(true);
+  else if (travel < -SHOW_AFTER) setHidden(false);
+}
+
+// Every same-origin document in the frame, nested ones included (Kiwix's viewer holds
+// the book in a frame of its own). New pages are new documents, so this re-runs.
+function watch(doc, depth = 0) {
+  try {
+    if (!doc) return;
+    if (!watched.has(doc)) {
+      watched.add(doc);
+      doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    }
+    if (depth < 2) doc.querySelectorAll('iframe').forEach((f) => watch(f.contentDocument, depth + 1));
+  } catch (_) {}  // a cross-origin frame: nothing to watch
+}
+
 let shown = null;
 function sync() {
+  try { watch(frame.contentDocument); } catch (_) {}
   const cur = inner();
   if (!cur || cur.path === 'blank') return;
   // Navigating back to the hub itself inside the frame: drop the frame instead.
@@ -55,7 +104,7 @@ function sync() {
 
 // Loads catch ordinary links; the interval catches single-page apps (SilverBullet,
 // Kiwix's viewer), which change page with pushState and fire no event out here.
-frame.addEventListener('load', sync);
+frame.addEventListener('load', () => { setHidden(false); sync(); });
 setInterval(sync, 1000);
 
 // An edited address or a pasted link: point the frame at the new fragment.

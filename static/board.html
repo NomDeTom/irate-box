@@ -21,10 +21,9 @@
   <details class="services" open>
     <summary><h2>Services</h2></summary>
     <div class="service-grid">
-      <!-- Keep in step with the same grid in index.html / board.html. Apps that carry
-           /hub-return.js open directly; the rest open inside app.html's hub bar, and
-           data-service is the path /status reports them under. -->
-      <a class="service-card" href="/draw/" target="_blank">
+      <!-- Keep in step with the same grid in index.html / board.html. Every app opens
+           inside app.html's hub bar; data-service is the path /status reports it under. -->
+      <a class="service-card" href="/app.html#/draw/" data-service="/draw/" target="_blank">
         <span class="icon">✏️</span>
         <span class="name">Excalidraw</span>
         <span class="desc">Collaborative whiteboard</span>
@@ -39,7 +38,7 @@
         <span class="name">Kiwix</span>
         <span class="desc">Offline library</span>
       </a>
-      <a class="service-card" href="/mermaid/" target="_blank">
+      <a class="service-card" href="/app.html#/mermaid/" data-service="/mermaid/" target="_blank">
         <span class="icon">📈</span>
         <span class="name">Mermaid</span>
         <span class="desc">Diagrams as text</span>
@@ -54,7 +53,7 @@
         <span class="name">Notes</span>
         <span class="desc">Shared Markdown notebook</span>
       </a>
-      <a class="service-card" id="term-card" href="/term/" target="_blank">
+      <a class="service-card" id="term-card" href="/app.html#/term/" data-service="/term/" target="_blank">
         <span class="icon">⌨️</span>
         <span class="name">Terminal</span>
         <span class="desc">Shell on the box — admin, password-gated</span>

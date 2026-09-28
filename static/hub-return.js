@@ -1,7 +1,10 @@
 // "Back to the hub" pill for apps served under the hub's origin. Each app's hub build
 // includes <script src="/hub-return.js"> and nothing else; the pill is a plain link.
+// Inside app.html the hub bar already does this job, so the pill only appears when an
+// app is opened on its own.
 (function () {
   if (document.getElementById('hub-return')) return;
+  try { if (window.parent !== window && window.parent.document.body.classList.contains('app-frame')) return; } catch (_) {}
   var a = document.createElement('a');
   a.id = 'hub-return';
   a.href = '/';

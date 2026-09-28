@@ -569,7 +569,11 @@ form .emoji-toggle:hover, #shout-form .emoji-toggle:hover { border-color: var(--
 /* --- app.html: hub bar around a framed app ---------------------------------- */
 body.app-frame { margin: 0; padding: 0; max-width: none; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .app-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0 0.75rem; height: 2.25rem; flex: none;
-  background: var(--surface); border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+  background: var(--surface); border-bottom: 1px solid var(--border); font-size: 0.875rem;
+  transition: margin-top 0.2s ease; }
+/* Scrolled away (app.js). A negative margin, not a transform, so the frame grows into the room. */
+.app-bar.hidden { margin-top: -2.25rem; }
+@media (prefers-reduced-motion: reduce) { .app-bar { transition: none; } }
 .app-bar a { color: var(--text); text-decoration: none; }
 .app-home { font-weight: 600; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--accent); color: var(--accent-ink) !important; }
 .app-title { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

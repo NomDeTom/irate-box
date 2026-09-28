@@ -8,14 +8,16 @@
   <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body class="app-frame">
-  <!-- Hub banner around an app that cannot load /hub-return.js itself (SilverBullet,
-       Kiwix, the calculators). The app's path is the fragment: /app.html#/wiki/… -->
-  <nav class="app-bar">
+  <!-- Hub bar around every app on the hub. The app's path is the fragment:
+       /app.html#/wiki/… The bar slides away while the app scrolls down (app.js). -->
+  <nav class="app-bar" id="app-bar">
     <a href="/" class="app-home" target="_top">⌂ Hub</a>
     <span class="app-title" id="app-title"></span>
     <a class="app-out" id="app-out" href="/" target="_top" title="Open without the hub bar">↗</a>
   </nav>
-  <iframe id="app" title="App"></iframe>
+  <!-- Same origin, so storage and cookies are the app's own. What a frame loses by
+       default is fullscreen and the async clipboard, which Excalidraw uses. -->
+  <iframe id="app" title="App" allow="fullscreen; clipboard-read; clipboard-write"></iframe>
   <script src="app.js"></script>
 </body>
 </html>
