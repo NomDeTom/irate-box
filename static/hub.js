@@ -73,7 +73,7 @@ if (grid) {
 
     const byPath = new Map(data.services.map((s) => [s.path, s.up]));
     grid.querySelectorAll('.service-card').forEach((card) => {
-      const up = byPath.get(card.getAttribute('href'));
+      const up = byPath.get(card.dataset.service || card.getAttribute('href'));
       card.classList.toggle('down', up === false);
       card.title = up === false ? 'Not running' : '';
     });

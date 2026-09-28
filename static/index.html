@@ -21,17 +21,20 @@
   <details class="services" open>
     <summary><h2>Services</h2></summary>
     <div class="service-grid">
+      <!-- Keep in step with the same grid in index.html / board.html. Apps that carry
+           /hub-return.js open directly; the rest open inside app.html's hub bar, and
+           data-service is the path /status reports them under. -->
       <a class="service-card" href="/draw/" target="_blank">
         <span class="icon">✏️</span>
         <span class="name">Excalidraw</span>
         <span class="desc">Collaborative whiteboard</span>
       </a>
-      <a class="service-card" href="/serial/" target="_blank">
+      <a class="service-card" href="/app.html#/serial/" data-service="/serial/" target="_blank">
         <span class="icon">📡</span>
         <span class="name">Meshtastic</span>
-        <span class="desc">Mesh radio interface</span>
+        <span class="desc">Log analyser — drop in a saved log</span>
       </a>
-      <a class="service-card" href="/wiki/" target="_blank">
+      <a class="service-card" href="/app.html#/wiki/" data-service="/wiki/" target="_blank">
         <span class="icon">📚</span>
         <span class="name">Kiwix</span>
         <span class="desc">Offline library</span>
@@ -41,12 +44,12 @@
         <span class="name">Mermaid</span>
         <span class="desc">Diagrams as text</span>
       </a>
-      <a class="service-card" href="/tools/" target="_blank">
+      <a class="service-card" href="/app.html#/tools/" data-service="/tools/" target="_blank">
         <span class="icon">🧮</span>
         <span class="name">Tools</span>
         <span class="desc">LoRa, Meshtastic &amp; electronics calculators</span>
       </a>
-      <a class="service-card" href="/notes/" target="_blank">
+      <a class="service-card" href="/app.html#/notes/" data-service="/notes/" target="_blank">
         <span class="icon">📝</span>
         <span class="name">Notes</span>
         <span class="desc">Shared Markdown notebook</span>

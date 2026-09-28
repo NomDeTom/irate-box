@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body class="app-frame">
+  <!-- Hub banner around an app that cannot load /hub-return.js itself (SilverBullet,
+       Kiwix, the calculators). The app's path is the fragment: /app.html#/wiki/… -->
+  <nav class="app-bar">
+    <a href="/" class="app-home" target="_top">⌂ Hub</a>
+    <span class="app-title" id="app-title"></span>
+    <a class="app-out" id="app-out" href="/" target="_top" title="Open without the hub bar">↗</a>
+  </nav>
+  <iframe id="app" title="App"></iframe>
+  <script src="app.js"></script>
+</body>
+</html>
