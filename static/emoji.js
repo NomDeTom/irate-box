@@ -69,10 +69,21 @@ function insert(field, ch) {
 function position() {
   const r = toggle.getBoundingClientRect();
   const w = panel.offsetWidth;
-  let left = r.right + window.scrollX - w;
-  if (left < 8) left = 8;
-  panel.style.left = `${left}px`;
-  panel.style.top = `${r.bottom + window.scrollY + 6}px`;
+  const h = panel.offsetHeight;
+  // Right-aligned to the toggle when it is at a field's right edge (shoutbox);
+  // left-aligned when that would run off the left (the board's toggle beside Send).
+  let left = r.right - w;
+  if (left < 8) left = r.left;
+  left = Math.max(8, Math.min(left, document.documentElement.clientWidth - w - 8));
+  panel.style.left = `${left + window.scrollX}px`;
+  // The send rows sit at the foot of the page, so opening downward usually runs off
+  // the bottom of the screen. Open upward when there is not room below and there is
+  // more above; either way, keep the whole panel inside the viewport.
+  const below = window.innerHeight - r.bottom - 6;
+  const above = r.top - 6;
+  let top = below < h && above > below ? r.top - 6 - h : r.bottom + 6;
+  top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+  panel.style.top = `${top + window.scrollY}px`;
 }
 
 function open(field, btn) {

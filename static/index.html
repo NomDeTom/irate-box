@@ -23,7 +23,7 @@
     <div class="service-grid">
       <!-- Keep in step with the same grid in index.html / board.html. Apps open inside
            app.html's hub bar in a new tab; data-service is the path /status reports
-           them under. Meshtastic and Tools are menus, so they open here. -->
+           them under. Meshtastic and the three tool lists are menus, so they open here. -->
       <a class="service-card" href="/app.html#/draw/" data-service="/draw/" target="_blank">
         <span class="icon">✏️</span>
         <span class="name">Excalidraw</span>
@@ -44,10 +44,20 @@
         <span class="name">Mermaid</span>
         <span class="desc">Diagrams as text</span>
       </a>
-      <a class="service-card" href="/tools.html">
+      <a class="service-card" href="/tools-rf.html">
+        <span class="icon">🛠️</span>
+        <span class="name">RF &amp; LoRa</span>
+        <span class="desc">Radio calculators &amp; Meshtastic tools</span>
+      </a>
+      <a class="service-card" href="/tools-general.html">
         <span class="icon">🧮</span>
-        <span class="name">Tools</span>
-        <span class="desc">RF, general &amp; electronics calculators</span>
+        <span class="name">Calculators</span>
+        <span class="desc">Converters &amp; computing</span>
+      </a>
+      <a class="service-card" href="/tools-electronics.html">
+        <span class="icon">⚡</span>
+        <span class="name">Electronics</span>
+        <span class="desc">Circuit &amp; component calculators</span>
       </a>
       <a class="service-card" href="/app.html#/notes/" data-service="/notes/" target="_blank">
         <span class="icon">📝</span>
@@ -73,12 +83,12 @@
         <span class="desc" id="hub-qr-url">Scan to open this hub</span>
       </div>
       <div class="service-card system-card" id="system-card">
-        <span class="icon">💾</span>
+        <span class="icon">💽</span>
         <span class="meter" id="mem-meter" hidden><span class="meter-label">Memory <b id="mem-text"></b></span><span class="bar"><span id="mem-bar"></span></span></span>
         <span class="meter" id="disk-meter" hidden><span class="meter-label">Disk <b id="disk-text"></b></span><span class="bar"><span id="disk-bar"></span></span></span>
       </div>
       <a class="service-card" href="/services.html">
-        <span class="icon">🩺</span>
+        <span class="icon">🚥</span>
         <span class="name">Services</span>
         <span class="desc">What is running on the box</span>
       </a>

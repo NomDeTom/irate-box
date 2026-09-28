@@ -4,6 +4,39 @@ const frame = document.getElementById('app');
 const title = document.getElementById('app-title');
 const out = document.getElementById('app-out');
 
+// --- one theme for every app -------------------------------------------------------
+// The bar's picker (hub.js) sets the hub's own "theme" key, which Docusaurus books in
+// Kiwix read too. The other apps keep their own setting, and Chrome does not pass the
+// frame's color-scheme through to prefers-color-scheme inside it, so write each one
+// to match: before the app first reads it, and again, with a reload, on every change.
+// SilverBullet keeps its choice in its own client state, so it only follows on Auto;
+// Wikipedia pages, the serial terminal and ttyd have no theme to set.
+const APP_THEME_KEYS = [
+  ['excalidraw-theme', { light: 'light', dark: 'dark', auto: 'system' }],   // Excalidraw
+  ['mode-watcher-mode', { light: 'light', dark: 'dark', auto: 'system' }],  // Mermaid
+  ['nomdetom-theme-mode', { light: 'light', dark: 'dark', auto: 'auto' }],  // calculators
+];
+
+function hubTheme() {
+  try {
+    const t = localStorage.getItem('theme');
+    return t === 'light' || t === 'dark' ? t : 'auto';
+  } catch (_) { return 'auto'; }
+}
+
+function pushTheme() {
+  const t = hubTheme();
+  for (const [key, values] of APP_THEME_KEYS) {
+    try { localStorage.setItem(key, values[t]); } catch (_) {}
+  }
+}
+
+pushTheme();
+document.addEventListener('hub-theme', () => {
+  pushTheme();
+  try { frame.contentWindow.location.reload(); } catch (_) { frame.src = target(); }
+});
+
 // Same-origin paths only: "/wiki/…" yes, "//elsewhere" or "https://…" no.
 function target() {
   const p = decodeURIComponent(location.hash.slice(1));

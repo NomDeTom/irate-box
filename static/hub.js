@@ -30,6 +30,8 @@ if (picker) {
       if (t === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', t);
     } catch (_) {}
     showTheme();
+    // app.html carries this choice into the framed app (app.js).
+    document.dispatchEvent(new CustomEvent('hub-theme', { detail: t }));
   });
   showTheme();
 }

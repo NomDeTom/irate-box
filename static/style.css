@@ -607,7 +607,7 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .meter .bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
 .meter .bar > span.high { background: var(--warn); }
 
-/* --- Sub-pages: tools.html, meshtastic.html, services.html ------------------ */
+/* --- Sub-pages: tools-*.html, meshtastic.html, services.html ---------------- */
 .sub-header { margin-bottom: 1.5rem; }
 .sub-header .back { display: inline-block; margin-bottom: 0.75rem; color: var(--muted); text-decoration: none; font-size: 0.9rem; }
 .sub-header .back:hover { color: var(--accent); }
@@ -630,3 +630,6 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .state-running { color: var(--ok); }
 .state-stopped { color: var(--warn); }
 .state-missing { color: var(--muted); }
+/* The same picker as the home page header, sitting in the hub bar instead. */
+.app-bar .theme-picker { position: static; padding: 1px; }
+.app-bar .theme-picker button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }

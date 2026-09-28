@@ -13,11 +13,19 @@
   <nav class="app-bar" id="app-bar">
     <a href="/" class="app-home" target="_top">⌂ Hub</a>
     <span class="app-title" id="app-title"></span>
+    <!-- One theme for the hub and every app in it: app.js writes each app's own
+         setting to match, so the choice here wins over one made inside an app. -->
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
     <a class="app-out" id="app-out" href="/" target="_top" title="Open without the hub bar">↗</a>
   </nav>
   <!-- Same origin, so storage and cookies are the app's own. What a frame loses by
        default is fullscreen and the async clipboard, which Excalidraw uses. -->
   <iframe id="app" title="App" allow="fullscreen; clipboard-read; clipboard-write"></iframe>
+  <script src="hub.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
