@@ -97,6 +97,29 @@
 	}
 	redir /serial /serial/ permanent
 
+	# --- /notes → SilverBullet (optional add-on) ------------------------------------
+	# Markdown notes in a plain folder. Not in any profile: 502 and a greyed card until
+	# installed. Official builds are ARMv7/ARM64 only, so never on the Zero W.
+	# Path passes through — run it with  SB_URL_PREFIX=/notes  SB_PORT=3000  (binds 127.0.0.1)
+	handle /notes/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+	redir /notes /notes/ permanent
+
+	# --- /sync → Syncthing web GUI (optional add-on, operator only) -------------------
+	# Same gate as /admin. The GUI's own host check rejects anything but a loopback
+	# Host header, hence header_up. The sync protocol (:22000) and local discovery
+	# (:21027/udp) do not go through Caddy; the sole-listener rule has this one exception.
+	handle_path /sync/* {
+		basic_auth {
+			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		}
+		reverse_proxy 127.0.0.1:8384 {
+			header_up Host {upstream_hostport}
+		}
+	}
+	redir /sync /sync/ permanent
+
 	# --- /admin → the hub's own operator options ------------------------------------
 	# Same credential gate as /term, and for the same reason: these change what every
 	# guest sees. The hub does no auth of its own, so running it bare (no Caddy) leaves

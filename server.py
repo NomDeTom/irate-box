@@ -89,6 +89,8 @@ SERVICES = [
     {"path": "/mermaid/", "static": True},
     {"path": "/tools/", "static": True},
     {"path": "/term/", "port": 7681},
+    # Optional add-on: absent on a box without it, which reads as greyed.
+    {"path": "/notes/", "port": 3000},
 ]
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
 _status_cache = {"at": 0.0, "ports": {}}

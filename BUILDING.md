@@ -123,7 +123,7 @@ Now everything is on one origin:
 | `/messages`, `/board/*`, `/api/*`, `/status` | `server.py` |
 | `/mermaid/` | `~/mermaid-live-editor/docs` |
 | `/draw/` | `~/excalidraw-stack/excalidraw/excalidraw-app/build` |
-| `/wiki/`, `/serial/`, `/term/` | reverse-proxied to loopback ports; 502 until something listens |
+| `/wiki/`, `/serial/`, `/term/`, `/notes/`, `/sync/` | reverse-proxied to loopback ports; 502 until something listens |
 
 If your checkouts are elsewhere, the roots are environment placeholders, not edits:
 
@@ -134,6 +134,36 @@ HUB_MERMAID_ROOT=/srv/mermaid HUB_DRAW_ROOT=/srv/draw HUB_STATIC=/srv/hub caddy 
 The landing page asks `/status` every 15 s and greys out any tile whose backend is not
 there. Served without Caddy at all (plain `:8000`), every tile is greyed and the page says
 so — that is the expected look of step 1 on its own.
+
+## 4a. Optional add-ons: SilverBullet and Syncthing
+
+Neither is built from source; both are single upstream binaries. Neither is part of any
+profile. Without them, the Notes card is greyed out and `/sync/` returns 502.
+
+**SilverBullet** (`/notes/`, a Markdown notebook over a plain folder). Take the
+`silverbullet-server-linux-<arch>.zip` from its GitHub releases. Only x86_64, armv7 and
+aarch64 builds exist, so this runs on the Lyra but not on the Zero W.
+
+```sh
+mkdir -p ~/hub-notes
+SB_URL_PREFIX=/notes SB_PORT=3000 SB_FOLDER=~/hub-notes ./silverbullet
+```
+
+It binds `127.0.0.1` by default. Keep `SB_URL_PREFIX` in step with the Caddy route, which
+passes the path through unstripped. Guests can edit by default. To stop that, set `SB_USER=user:pass`
+or `SB_READ_ONLY=true`.
+
+**Syncthing** (`/sync/`, operator only, behind the same password as `/admin`). `apt install
+syncthing`. It runs on every board, including the ARMv6 Zero W.
+
+```sh
+syncthing serve --no-browser --gui-address=127.0.0.1:8384
+```
+
+Then in its GUI: turn off global discovery, relays, NAT traversal and usage reporting (the box
+is offline, so none of them can reach anything). Keep local discovery. Share `~/hub-notes`
+so the notebook syncs to your own machines while they are on the box's WiFi. Syncthing's own
+listeners (`:22000` tcp/udp, `:21027/udp`) do not go through Caddy.
 
 ## 5. Rebuilding after a change
 
