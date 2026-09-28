@@ -7,6 +7,7 @@ served by file_server and only `/` and the API reach this process."""
 import json
 import os
 import socket
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
@@ -80,20 +81,27 @@ def live_messages(now):
 
 
 # What sits behind Caddy, keyed by the path the tile links to. Interim until the
-# apps.d/ manifests in the plan replace this table. `port` is a loopback listener to
-# probe; `static` means Caddy serves files itself, so it is up whenever Caddy is.
+# apps.d/ manifests in the plan replace this table.
+#   port   a loopback listener to probe: that is what "running" means to a guest
+#   unit   its systemd unit, which says whether it is installed at all
+#   root   (static apps) the env var naming the directory Caddy serves, the same
+#          variable the Caddyfile reads. Unset -- a dev checkout -- counts as installed.
+# path None: on the service dashboard only, with no tile of its own.
 SERVICES = [
-    {"path": "/draw/", "static": True},
-    {"path": "/serial/", "static": True},
-    {"path": "/wiki/", "port": 8081},
-    {"path": "/mermaid/", "static": True},
-    {"path": "/tools/", "static": True},
-    {"path": "/term/", "port": 7681},
-    # Optional add-on: absent on a box without it, which reads as greyed.
-    {"path": "/notes/", "port": 3000},
+    {"path": "/draw/", "name": "Excalidraw", "root": "HUB_DRAW_ROOT"},
+    {"path": "/serial/", "name": "Serial terminal", "root": "HUB_SERIAL_ROOT"},
+    {"path": "/wiki/", "name": "Kiwix", "port": 8081, "unit": "kiwix.service"},
+    {"path": "/mermaid/", "name": "Mermaid", "root": "HUB_MERMAID_ROOT"},
+    {"path": "/tools/", "name": "Calculators", "root": "HUB_TOOLS_ROOT"},
+    {"path": "/term/", "name": "Terminal (ttyd)", "port": 7681, "unit": "ttyd.service"},
+    # Optional add-ons: absent on a box without them, which reads as greyed.
+    {"path": "/notes/", "name": "Notes (SilverBullet)", "port": 3000, "unit": "silverbullet.service"},
+    {"path": "/sync/", "name": "Syncthing", "port": 8384, "unit": "syncthing@hub.service"},
+    {"path": None, "name": "Web server (Caddy)", "unit": "caddy.service", "proxy": True},
+    {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
 ]
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
-_status_cache = {"at": 0.0, "ports": {}}
+_status_cache = {"at": 0.0, "ports": {}, "units": {}}
 
 # --- who is here -------------------------------------------------------------
 # "Online" is distinct client addresses seen in the last ONLINE_WINDOW seconds of
@@ -194,22 +202,71 @@ def port_listening(port):
         return False
 
 
+def unit_load_states(units):
+    """{unit: installed?} from one `systemctl show`, or {} where there is no systemd
+    to ask (a dev machine): the caller then treats every unit as installed."""
+    try:
+        out = subprocess.run(
+            ["systemctl", "show", "--property=Id,LoadState", *units],
+            capture_output=True, text=True, timeout=2,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    states = {}
+    for block in out.strip().split("\n\n"):
+        fields = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+        if "Id" in fields:
+            states[fields["Id"]] = fields.get("LoadState") not in ("not-found", "")
+    # A missing unit still gets a block, under the name it was asked for.
+    return states
+
+
 def service_status(proxied):
-    """Per-service up/down. Port probes are cached so a page full of pollers costs
-    one sweep per STATUS_CACHE_S, not one per request."""
+    """Per-service state: "running", "stopped" (installed, not answering) or "missing".
+    `up` stays for the tiles: running, and reachable because Caddy is in front. Probes
+    are cached so a page full of pollers costs one sweep per STATUS_CACHE_S."""
     now = time.monotonic()
     if now - _status_cache["at"] > STATUS_CACHE_S:
         _status_cache["ports"] = {
             svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
         }
+        _status_cache["units"] = unit_load_states([s["unit"] for s in SERVICES if "unit" in s])
         _status_cache["at"] = now
+    units = _status_cache["units"]
     out = []
     for svc in SERVICES:
-        if svc.get("static"):
-            up = proxied
+        installed = units.get(svc["unit"], True) if "unit" in svc else True
+        if "root" in svc:
+            root = os.environ.get(svc["root"])
+            installed = root is None or Path(root).is_dir()
+            running = installed and proxied
+        elif svc.get("self"):
+            running = True  # it is answering this request
+        elif svc.get("proxy"):
+            running = proxied
         else:
-            up = proxied and _status_cache["ports"].get(svc["port"], False)
-        out.append({"path": svc["path"], "up": up})
+            running = _status_cache["ports"].get(svc["port"], False)
+        state = "running" if running else "stopped" if installed else "missing"
+        out.append({"path": svc["path"], "name": svc["name"], "state": state,
+                    "up": proxied and running})
+    return out
+
+
+def system_status():
+    """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
+    cache Kiwix leans on counts as available, and is the first thing to go (plan §2)."""
+    out = {}
+    try:
+        with open("/proc/meminfo") as fh:
+            mem = {k: int(v.split()[0]) * 1024 for k, v in (l.split(":", 1) for l in fh)}
+        out["mem_total"], out["mem_available"] = mem["MemTotal"], mem["MemAvailable"]
+    except (OSError, KeyError, ValueError):
+        pass
+    try:
+        st = os.statvfs(STATE_DIR)
+        out["disk_total"], out["disk_free"] = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+    except OSError:
+        pass
     return out
 
 
@@ -315,6 +372,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = {
                 "proxied": proxied,
                 "services": service_status(proxied),
+                "system": system_status(),
                 "uptime": now,
                 "online": online_count(now),
                 "settings": settings_snapshot(),

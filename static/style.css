@@ -16,6 +16,9 @@
   --text: #e2e4ef;
   --muted: #6b6f8a;
   --shadow: rgba(0, 0, 0, 0.4);
+  /* Service states (services.html) and the memory/disk bars. */
+  --ok: #4ade80;
+  --warn: #fbbf24;
   --radius: 10px;
 }
 
@@ -34,6 +37,8 @@
     --text: #1b1d27;
     --muted: #6b6f8a;
     --shadow: rgba(20, 20, 40, 0.15);
+    --ok: #15803d;
+    --warn: #b45309;
   }
 }
 :root[data-theme="light"] {
@@ -48,6 +53,8 @@
   --text: #1b1d27;
   --muted: #6b6f8a;
   --shadow: rgba(20, 20, 40, 0.15);
+  --ok: #15803d;
+  --warn: #b45309;
 }
 
 body {
@@ -526,7 +533,8 @@ h2 {
   cursor: pointer;
 }
 /* Beat the per-form `button` rules that paint submit buttons in the accent colour. */
-form .emoji-toggle, #shout-form .emoji-toggle {
+form .emoji-toggle, #shout-form .emoji-toggle,
+#thread-form .emoji-toggle, #reply-form .emoji-toggle {
   background: var(--surface);
   border-color: var(--border);
   border-radius: 0 var(--radius) var(--radius) 0;
@@ -534,7 +542,14 @@ form .emoji-toggle, #shout-form .emoji-toggle {
   font-weight: normal;
   opacity: 1;
 }
-form .emoji-toggle:hover, #shout-form .emoji-toggle:hover { border-color: var(--accent); }
+form .emoji-toggle:hover, #shout-form .emoji-toggle:hover,
+#thread-form .emoji-toggle:hover, #reply-form .emoji-toggle:hover { border-color: var(--accent); }
+/* data-emoji="#send": a button of its own beside Send, not fused to the field. */
+form .emoji-toggle.standalone, #thread-form .emoji-toggle.standalone, #reply-form .emoji-toggle.standalone {
+  border-radius: var(--radius);
+  align-self: stretch;
+}
+.form-actions { display: flex; align-items: stretch; gap: 0.5rem; }
 .emoji-panel {
   position: absolute;
   z-index: 10;
@@ -579,3 +594,39 @@ body.app-frame { margin: 0; padding: 0; max-width: none; height: 100dvh; display
 .app-title { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-out { color: var(--muted) !important; padding: 0 0.25rem; }
 body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+
+/* --- Home: the box's own tiles, on a row below the apps --------------------- */
+.box-grid { margin-top: 1rem; }
+.system-card { cursor: default; justify-content: center; gap: 0.55rem; }
+.system-card:hover { transform: none; border-color: var(--border); }
+.meter { display: flex; flex-direction: column; gap: 0.25rem; }
+.meter[hidden] { display: none; }
+.meter-label { font-size: 0.8rem; color: var(--muted); }
+.meter-label b { color: var(--text); font-weight: 600; }
+.meter .bar { display: block; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.meter .bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+.meter .bar > span.high { background: var(--warn); }
+
+/* --- Sub-pages: tools.html, meshtastic.html, services.html ------------------ */
+.sub-header { margin-bottom: 1.5rem; }
+.sub-header .back { display: inline-block; margin-bottom: 0.75rem; color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+.sub-header .back:hover { color: var(--accent); }
+.sub-header h1 { font-size: 1.8rem; color: var(--accent); }
+.sub-header .subtitle { color: var(--muted); margin-top: 0.25rem; }
+.item-section { margin-bottom: 1.75rem; }
+.item-section h2 { margin-bottom: 0.6rem; }
+.item-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+.item-list a, .service-row {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.75rem;
+  padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); text-decoration: none;
+}
+.item-list a:hover { border-color: var(--accent); }
+.item-list a.down { opacity: 0.4; pointer-events: none; }
+.item-list .name { font-weight: 600; }
+.item-list .desc { font-size: 0.8rem; color: var(--muted); }
+.service-row .desc { font-family: ui-monospace, monospace; flex: 1; }
+.state { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid currentColor; }
+.state-running { color: var(--ok); }
+.state-stopped { color: var(--warn); }
+.state-missing { color: var(--muted); }

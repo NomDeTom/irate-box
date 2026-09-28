@@ -35,13 +35,31 @@ if (picker) {
 }
 
 // Service status: /status says whether Caddy is in front and which backends are
-// listening. Tiles for anything down are dimmed rather than left as dead links.
+// listening. Anything carrying data-service -- the home tiles, the sub-page lists --
+// is dimmed while its service is down, rather than left as a dead link.
 const grid = document.querySelector('.service-grid');
-if (grid) {
+if (grid || document.querySelector('[data-service]')) {
   const note = document.createElement('p');
   note.className = 'services-note';
   note.hidden = true;
-  grid.parentNode.appendChild(note);
+  if (grid) grid.parentNode.appendChild(note);
+
+  const fmt = (bytes) => {
+    const gb = bytes / 2 ** 30;
+    return gb >= 1 ? `${gb.toFixed(gb >= 10 ? 0 : 1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`;
+  };
+  // One meter: the bar is how much is used, the text how much is left.
+  function meter(name, free, total) {
+    const el = document.getElementById(`${name}-meter`);
+    if (!el || !(total > 0)) return;
+    const used = 1 - free / total;
+    document.getElementById(`${name}-text`).textContent = `${fmt(free)} free`;
+    const bar = document.getElementById(`${name}-bar`);
+    bar.style.width = `${Math.round(used * 100)}%`;
+    bar.classList.toggle('high', used > 0.9);
+    el.title = `${fmt(total - free)} of ${fmt(total)} used`;
+    el.hidden = false;
+  }
 
   async function refreshStatus() {
     let data;
@@ -66,17 +84,24 @@ if (grid) {
     // the operator has hidden it in the admin options. A missing `settings` (an older
     // hub, or a /status that failed) leaves it visible, which is the safe default: a
     // greyed card tells the truth, where a silently missing one does not.
-    const termCard = grid.querySelector('#term-card');
+    const termCard = document.getElementById('term-card');
     if (termCard) {
       termCard.hidden = !!(data.settings && data.settings.show_term_card === false);
     }
 
-    const byPath = new Map(data.services.map((s) => [s.path, s.up]));
-    grid.querySelectorAll('.service-card').forEach((card) => {
-      const up = byPath.get(card.dataset.service || card.getAttribute('href'));
-      card.classList.toggle('down', up === false);
-      card.title = up === false ? 'Not running' : '';
+    if (data.system) {
+      meter('mem', data.system.mem_available, data.system.mem_total);
+      meter('disk', data.system.disk_free, data.system.disk_total);
+    }
+
+    const byPath = new Map(data.services.map((s) => [s.path, s]));
+    document.querySelectorAll('[data-service]').forEach((el) => {
+      const svc = byPath.get(el.dataset.service);
+      const down = !!svc && !svc.up;
+      el.classList.toggle('down', down);
+      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : 'Not running';
     });
+    if (!grid) return;
     if (!data.proxied) {
       note.textContent = 'Served without Caddy in front — the hub works, the apps are not reachable.';
       note.hidden = false;

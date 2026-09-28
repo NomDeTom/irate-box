@@ -194,6 +194,12 @@ PORT=8000
 HUB_BIND=127.0.0.1
 HUB_STATE_DIR=$STATE
 HUB_URL=$HUB_URL
+# The same roots Caddy serves (its drop-in below), so /status can tell a static app
+# that is not installed from one that is.
+HUB_DRAW_ROOT=$APPS/draw
+HUB_MERMAID_ROOT=$APPS/mermaid
+HUB_TOOLS_ROOT=$APPS/tools
+HUB_SERIAL_ROOT=$APPS/serial
 EOF
 
 if [ -n "$ADMIN_PW" ]; then

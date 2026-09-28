@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Services · Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+  <!-- Read-only and public: the same facts /status gives every page. Starting and
+       stopping stays with ttyd and hubctl, behind the admin login. -->
+  <header class="sub-header">
+    <a href="/" class="back">&larr; Hub</a>
+    <h1>Services</h1>
+    <p class="subtitle">What is on the box, and what is running.</p>
+  </header>
+
+  <section class="item-section">
+    <ul class="item-list service-list" id="service-list">
+      <li class="services-note">Asking the box…</li>
+    </ul>
+    <p class="services-note" id="services-note" hidden></p>
+  </section>
+
+  <section class="item-section" id="system-section" hidden>
+    <h2>Box</h2>
+    <ul class="item-list" id="system-list"></ul>
+  </section>
+
+  <script src="services.js"></script>
+</body>
+</html>

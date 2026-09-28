@@ -89,10 +89,6 @@ function close() {
 }
 
 function attach(field) {
-  const wrap = document.createElement('span');
-  wrap.className = 'emoji-wrap';
-  field.parentNode.insertBefore(wrap, field);
-  wrap.appendChild(field);
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'emoji-toggle';
@@ -103,6 +99,19 @@ function attach(field) {
     e.stopPropagation();
     if (!panel.hidden && target === field) close(); else open(field, btn);
   });
+  // data-emoji="#send": the toggle stands on its own just before that element (the
+  // form's Send button) and the field keeps its full width. A bare data-emoji fuses
+  // the toggle to the field's right edge, as the one-line shoutbox wants.
+  const beside = field.dataset.emoji && document.querySelector(field.dataset.emoji);
+  if (beside) {
+    btn.classList.add('standalone');
+    beside.parentNode.insertBefore(btn, beside);
+    return;
+  }
+  const wrap = document.createElement('span');
+  wrap.className = 'emoji-wrap';
+  field.parentNode.insertBefore(wrap, field);
+  wrap.appendChild(field);
   wrap.appendChild(btn);
 }
 
