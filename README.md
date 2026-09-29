@@ -145,7 +145,8 @@ lives in a separate notes vault, not in this repo. The related repositories:
 - [nomdetom.github.io](https://github.com/nomdetom/nomdetom.github.io): the calculators
   served at `/tools/`.
 - [docusaurus2zim](https://github.com/NomDeTom/docusaurus2zim): turns a Docusaurus site into
-  a ZIM for Kiwix. A book for the hub must be built with `--base-url /wiki/content/<name>/`.
+  a ZIM for Kiwix. Its books are relative by default, so they work under the hub's `/wiki`
+  and anywhere else.
 
 ## License
 

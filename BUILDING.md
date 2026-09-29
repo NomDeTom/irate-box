@@ -193,9 +193,10 @@ instead.
 
 `--zim FILE|URL`, which can be repeated, installs `kiwix-serve` at `/wiki/`. It copies the
 file, or downloads the URL on the box, into `/var/lib/hub/zim` and registers it in
-`library.xml`. A Docusaurus ZIM from docusaurus2zim must be built with
-`--base-url /wiki/content/<name>/`, because Kiwix is mounted at `/wiki`. With the default
-`/content/<name>/`, the page shows "did not load properly".
+`library.xml`. Kiwix is mounted at `/wiki`, so a book must not depend on where it is
+mounted. openZIM books, and docusaurus2zim's by default, use relative paths and work as
+they are. A book built for one prefix (docusaurus2zim `--base-url`) works only there; one
+built for `/content/<name>/` shows "did not load properly" on the hub.
 
 `--with-mqtt` installs the mosquitto broker. Nodes, and the phone app's MQTT Client Proxy,
 connect to port 1883. Pages connect with WebSockets at `/mqtt`, which Caddy passes to a
