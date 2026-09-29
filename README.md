@@ -7,12 +7,45 @@ internet involved at any point. Spiritually a [PirateBox](https://github.com/Pir
 successor (the name is PirateBox with the P knocked off), but Pi-first, HTTPS-free by design,
 and built from maintained, packaged components rather than a 2013 shell-script pile.
 
-**Status: early.** The hub server, its page, the blob store and the Caddy front all work and
-are what you see here. The access-point layer, packaging and most of the apps are still a
-plan. Target hardware is a Raspberry Pi Zero W or similar 512 MB board, and that ceiling
-drives every design decision: static assets plus a handful of small native daemons.
+**Status: installs and runs on a real board; no access point yet.** `install.sh` puts the
+whole hub on an Armbian or mPWRD-OS board in one command. It has been tested end to end on a
+Luckfox Lyra Zero W (mPWRD-OS 26.05, armv7l, 512 MB). With everything running, the board
+still has about 320 MB of memory free. The hub is served on whatever network the board is
+already on: the access point, dnsmasq and the captive portal are not installed yet, and
+neither are the `.deb` packages. Target hardware is a Raspberry Pi Zero W or a similar 512 MB
+board, and that ceiling drives every design decision: static assets plus a handful of small
+native daemons.
 
-## Try it
+| | State |
+|---|---|
+| Landing page, shoutbox, board, blob store, `/status` | working |
+| Excalidraw, Mermaid (static builds of the two forks) | working |
+| Kiwix offline library (`--zim`), library rebuilt from the ZIM folder on every install | working |
+| Calculators, in three lists: RF & LoRa, general, electronics | working |
+| Meshtastic log analyser (serial-terminal build) | working with saved logs; live serial needs HTTPS, which the hub does not have |
+| SilverBullet notes, Syncthing (`--with-notes`, `--with-sync`) | working |
+| ttyd terminal (`--with-term`) | working, off by default |
+| MQTT broker for Meshtastic (`--with-mqtt`) | broker working; decoder, traffic page and map not started |
+| Service dashboard, memory and disk tile | working |
+| Access point, dnsmasq, captive portal | not in the installer yet |
+| `.deb` packages, manifest-driven tiles | not started |
+
+## Install on a board
+
+On Armbian, or mPWRD-OS, which is an Armbian build:
+
+```sh
+git clone https://github.com/NomDeTom/irate-box && cd irate-box
+sudo ./install.sh --with-notes --with-sync --with-mqtt --zim wikipedia_en_top_mini.zim
+```
+
+The script sets up Caddy on `:80` and the hub on loopback. The code goes in
+`/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. It prints the admin
+password on the first run, and running it again upgrades in place. The Excalidraw, Mermaid
+and serial-terminal builds are made on a desktop and handed over with `--apps DIR`; nothing is
+compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
+
+## Try it without a board
 
 Needs only Python 3.
 
@@ -29,37 +62,45 @@ behind Caddy, so they show as "not running" until you add it:
 caddy run --config Caddyfile        # needs :80 — sudo, setcap, or edit the port
 ```
 
-Then it is <http://localhost/>, with `/mermaid/` and `/draw/` live once the two app forks are
-built — **[BUILDING.md](BUILDING.md)** walks through all of it, clone to running — and
-`/wiki/`, `/serial/`, `/term/` waiting for their backends on the ports the Caddyfile names.
+Then it is <http://localhost/>. `/mermaid/`, `/draw/` and `/serial/` go live once their builds
+exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the
+Caddyfile names. **[BUILDING.md](BUILDING.md)** walks through all of it, clone to running.
 
 ## What is here
 
 | File | Role |
 |---|---|
-| `server.py` | The hub: landing page, shoutbox, board, blob store, `/status`, captive-portal target. Stdlib only, threaded. |
+| `install.sh` | One-command install on Armbian / mPWRD-OS: packages, the `hub` user, Caddy config, systemd units, and each optional service. Rerunnable. |
+| `server.py` | The hub: landing page, shoutbox, board, blob store, captive-portal target, and `/status`, which reports each service as running, not running or not installed, plus memory and disk. Stdlib only, threaded. |
 | `board.py` | Threaded message board: 50 threads, 200 posts each, threads fade seven days of powered-on time after their last reply. |
 | `store.py` | Blob store. Reimplements `excalidraw-storage-backend`'s `/api/v2` over a directory (no NestJS, no Redis) and adds `/api/saves`, a named-save gallery with client-rendered thumbnails. Runs standalone on `:8090` for testing. |
 | `hubclock.py` | The clock. The boards have no RTC, so everything ages by *cumulative powered-on seconds*, never the wall clock. Messages posted an hour before the box is switched off are still an hour old when it comes back. |
-| `static/` | The page. No framework, no build step, no network fetches. Shoutbox and board as two tabs, collapsible service tiles, emoji picker, light/dark/auto theme. |
-| `Caddyfile` | One origin, path-routed: `/` → hub, `/mermaid/` static, `/wiki/` `/draw/` `/serial/` `/term/` reverse-proxied to loopback ports. Plain HTTP only — see below. |
-| `irate-box.service` | systemd unit for the hub on the Pi. |
+| `static/` | The pages. No framework, no build step, no network fetches. The home page has the shoutbox and board as two tabs, a row of app tiles and a row for the box itself: users online, a QR code to join, memory and disk, and services. There are list pages for the tools, Meshtastic and the service dashboard. `app.html` is the hub bar: every app opens under it, it slides away on scroll-down, and its theme picker sets light or dark for every app. |
+| `Caddyfile` | One origin, path-routed: `/` to the hub; static app builds at `/draw/`, `/mermaid/`, `/tools/` and `/serial/`; `/wiki/`, `/notes/`, `/mqtt`, `/sync/` and `/term/` passed to loopback ports. Plain HTTP only; see below. |
+| `irate-box.service` | A hand-install systemd unit for the hub (paths under `/home/pi`). `install.sh` writes its own. |
 | `dnsmasq-hotspot.conf` | DHCP + the `address=/#/192.168.4.1` hijack that makes every name resolve to the box. |
 
 ## How it hangs together
 
 ```
-phone / laptop ──▶ Caddy :80 ─┬─ /            → server.py :8000  (page, shoutbox, board, /api/*, /status)
-                              ├─ /mermaid/*   → static files
-                              ├─ /wiki/*      → kiwix-serve :8081
-                              ├─ /draw/*      → excalidraw :3000
-                              ├─ /serial/*    → serial terminal :8080
-                              └─ /term/*      → ttyd :7681  (basic-auth, shipped disabled)
+phone / laptop ──▶ Caddy :80 ─┬─ /              → server.py :8000  (pages, shoutbox, board, /api/*, /status)
+                              ├─ /app.html      → the hub bar; every app opens inside it
+                              ├─ /draw/*  /mermaid/*  /tools/*  /serial/*   → static builds on disk
+                              ├─ /wiki/*        → kiwix-serve :8081
+                              ├─ /notes/*       → SilverBullet :3000         (add-on)
+                              ├─ /mqtt          → mosquitto WebSockets :9001 (add-on)
+                              ├─ /sync/*        → Syncthing GUI :8384        (add-on, admin login)
+                              ├─ /admin/*       → server.py                  (admin login)
+                              └─ /term/*        → ttyd :7681                 (admin login, off by default)
+
+Meshtastic node / phone app ──▶ mosquitto :1883  (add-on; raw MQTT, not through Caddy)
 ```
 
-Everything a guest touches is one origin — no ports to type, no mDNS to fail on Android, and
-a captive portal that can hand out a working URL. Services bind to loopback; Caddy is the sole
-listener on the AP interface.
+Everything a guest's browser touches is one origin: no ports to type, no mDNS to fail on
+Android, and a captive portal that can hand out a working URL. Services bind to loopback, and
+Caddy is the only listener on the network with two exceptions, both for things that are not
+browsers. Syncthing's sync ports are one; mosquitto's `:1883` for Meshtastic nodes is the
+other.
 
 **Why plain HTTP.** Captive-portal probes are HTTP; intercepting HTTPS produces a certificate
 error instead of a sign-in sheet. So `:80` is always up and always plain, there is never a
@@ -84,19 +125,27 @@ All by environment variable; the unit file sets the Pi values.
 | `HUB_STORE_MAX_BODY` | 50 MB | largest single blob |
 | `HUB_STORE_MAX_TOTAL` | 64 MB | store quota; oldest evicted first |
 | `HUB_STORE_SAVE_TTL` | `0` (never) | gallery-save expiry, in clock ticks |
+| `HUB_DRAW_ROOT`, `HUB_MERMAID_ROOT`, `HUB_TOOLS_ROOT`, `HUB_SERIAL_ROOT` | unset | where each static app lives. Caddy serves from these, and `/status` reports an app whose directory is missing as not installed. Unset (a dev checkout) counts as installed. |
 
 Shoutbox messages last 24 hours of powered-on time, capped at 200. The `/status` endpoint
-reports whether Caddy is in front and which backends are listening; the page greys out tiles
-accordingly.
+reports whether Caddy is in front, the state of each service, and memory and disk. The pages
+grey out anything that is down.
 
 ## Not here
 
 The plan — hardware notes, component roles, `.deb` packaging, lightweighting tiers, phasing —
-lives in a separate notes vault, not in this repo. The related app forks are
-[excalidraw-stack](https://github.com/nomdetom/excalidraw-stack) (with a `hub` storage mode
-that points at `store.py`) and
-[mermaid-live-editor](https://github.com/NomDeTom/mermaid-live-editor) (`hub` branch:
-offline build with the Mermaid Chart promotion and external services removed).
+lives in a separate notes vault, not in this repo. The related repositories:
+
+- [excalidraw-stack](https://github.com/nomdetom/excalidraw-stack): Excalidraw fork, with a
+  `hub` build that stores into `store.py` and runs inside the hub bar.
+- [mermaid-live-editor](https://github.com/NomDeTom/mermaid-live-editor): `hub` branch, an
+  offline build with the Mermaid Chart promotion and external services removed.
+- [serial-terminal](https://github.com/nomdetom/serial-terminal): the Meshtastic log
+  analyser served at `/serial/`.
+- [nomdetom.github.io](https://github.com/nomdetom/nomdetom.github.io): the calculators
+  served at `/tools/`.
+- [docusaurus2zim](https://github.com/NomDeTom/docusaurus2zim): turns a Docusaurus site into
+  a ZIM for Kiwix. A book for the hub must be built with `--base-url /wiki/content/<name>/`.
 
 ## License
 
