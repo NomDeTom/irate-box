@@ -80,9 +80,12 @@ yarn
 yarn build:hub
 ```
 
-(Only the `excalidraw` submodule is needed. `excalidraw-room` and
-`excalidraw-storage-backend` are for the Docker stack's `full` and `sqlite` modes, which the
-hub does not use — see `excalidraw.sh --mode` in the stack's README.)
+(Only the `excalidraw` submodule is needed for drawing and saving. `excalidraw-room` is the
+optional live-collaboration relay, built in §3a. `excalidraw-storage-backend` is for the
+Docker stack's legacy `full` and `sqlite` modes, which the hub does not use.)
+
+The build checks nothing in parallel (see the last two lines of `.env.hub`): run
+`yarn test:typecheck` on its own. Together they peak near 3 GB.
 
 `build:hub` is `vite build --mode hub --base /draw/` with
 [`.env.hub`](../excalidraw-stack/excalidraw/.env.hub):
@@ -92,13 +95,31 @@ hub does not use — see `excalidraw.sh --mode` in the stack's README.)
 | `--base /draw/` | asset URLs are rooted at `/draw/`, so the app can live under that path on the hub's origin |
 | `VITE_APP_STORAGE_BACKEND=http`, `VITE_APP_HTTP_STORAGE_BACKEND_URL=/api/v2` | shareable links, collaboration rooms and pasted images go to the hub's `store.py`, on the same origin — no NestJS, no Redis, no CORS |
 | `VITE_APP_BACKEND_V2_GET_URL` / `_POST_URL` `=/api/v2/scenes/` | "Export → shareable link" uses the same store |
-| `VITE_APP_WS_SERVER_URL=''` | live collaboration is off (it needs the room server; not part of the hub today) |
+| `VITE_APP_WS_SERVER_URL=''` | empty means "this origin": live collaboration connects to `/socket.io/`. At load the app probes that path, and shows collaboration only if a room relay answers (§3a) |
+| `VITE_APP_OFFLINE=true` | hides Excalidraw+ promos and sign-up, AI, social links, library browsing and the analytics loader; fonts load from `/draw/` only; adds "Save to / Open from hub gallery" to the menu (`/api/saves`, with a thumbnail) |
 | Firebase, libraries, Sentry, tracking | all blanked |
 | `sourcemap: mode !== "hub"` (in `vite.config.mts`) | no `.map` files: halves the output |
 | hub-only Vite plugin | injects `<script src="/hub-return.js">` for the "⌂ Hub" link |
 
 Output is `excalidraw-app/build/` (gitignored), ~24 MB on disk, ~3 MB gzipped, of which
 half is fonts loaded on demand.
+
+## 3a. Excalidraw live collaboration (optional)
+
+```sh
+cd ~/excalidraw-stack && git submodule update --init excalidraw-room
+cd excalidraw-room && yarn && yarn build                     # → dist/index.js
+mkdir -p ~/hub-apps/room && cp -r dist ~/hub-apps/room/
+cd ~/hub-apps/room && npm init -y >/dev/null &&
+  npm install --omit=dev debug@4.3.1 dotenv@10 express@4.17.1 socket.io@4.6.1
+```
+
+That is the relay plus its four runtime dependencies (~8 MB, all plain JS, so it runs on any
+architecture). `install.sh --with-collab --apps ~/hub-apps` copies it to
+`/usr/share/hub/room` and runs it with Debian's `nodejs` as `excalidraw-room.service`, bound to
+`127.0.0.1:3002` (`HOST`, in the fork). Caddy routes `/socket.io/*` to it. Measured on the Lyra:
+~8 MB anon idle, ~19 MB and about one core with twelve busy clients, and Kiwix search latency
+barely moved (see `plans/offline-storage-plan.md` in the notes).
 
 ## 4. Caddy in front
 
@@ -205,6 +226,14 @@ are capped at 4 kB, connections at 64 per listener, and nothing is persisted, so
 messages are gone after a restart. Port 1883 listens on every interface for now; once the
 access point exists it should listen on the AP address only. `mosquitto_sub -t 'msh/#' -v`
 on the box shows traffic.
+
+`--with-collab` adds live collaboration to `/draw/`: Debian's `nodejs` and the room relay from
+`--apps DIR/room` (§3a). ARMv7 and up; Node has no ARMv6 build.
+
+If Tailscale is already on the board, the script puts it under a switch on `/admin`
+(off / on / on for N hours) instead of running it at every boot. `tailscale-apply.sh`, run
+as root by a path unit, does the starting and stopping. The script never changes Tailscale's
+current state, so it is safe to run over Tailscale.
 
 ttyd is always installed at `/term/`: the upstream static binary, checked against its
 published SHA256SUMS. It only runs with `--with-term`, and stays on for later runs once

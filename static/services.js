@@ -46,7 +46,8 @@ async function refresh() {
   }
   const services = [...data.services].sort(
     (a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
-  list.replaceChildren(...services.map((s) => row(s.name, s.path || 'part of the box', s.state)));
+  list.replaceChildren(...services.map(
+    (s) => row(s.name, s.path || s.note || 'part of the box', s.state)));
   note.textContent = data.proxied ? ''
     : 'Served without Caddy in front: the apps are unreachable whatever their state.';
   note.hidden = data.proxied;

@@ -41,3 +41,63 @@ async function save(box) {
 
 boxes.forEach((b) => b.addEventListener('change', () => save(b)));
 load();
+
+// --- remote access --------------------------------------------------------------
+// The hub only records the choice; a root path unit acts on it a moment later, so the
+// state line is re-read a few times after each change rather than assumed.
+const remote = document.getElementById('remote-section');
+const radios = remote.querySelectorAll('input[name="remote"]');
+const hours = document.getElementById('remote-hours');
+const remoteState = document.getElementById('remote-state');
+const STATE_TEXT = {
+  running: 'Tailscale is running.',
+  stopped: 'Tailscale is not running.',
+};
+
+function showRemote(data) {
+  remote.hidden = data.state === 'missing';
+  if (remote.hidden) return;
+  radios.forEach((r) => { r.checked = r.value === data.want.mode; });
+  if (data.want.mode === 'timed') hours.value = data.want.hours;
+  hours.max = data.max_hours;
+  remoteState.textContent = STATE_TEXT[data.state] || '';
+}
+
+async function loadRemote() {
+  try {
+    const r = await fetch('/admin/tailscale');
+    if (!r.ok) throw new Error(r.status);
+    showRemote(await r.json());
+  } catch (_) {
+    remote.hidden = true;
+  }
+}
+
+async function saveRemote() {
+  const mode = [...radios].find((r) => r.checked)?.value;
+  if (!mode) return;
+  const body = { mode };
+  if (mode === 'timed') body.hours = Number(hours.value);
+  try {
+    const r = await fetch('/admin/tailscale', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(r.status);
+    showRemote(await r.json());
+    say('Saved. Tailscale follows within a few seconds.', true);
+    [2000, 5000, 10000].forEach((ms) => setTimeout(loadRemote, ms));
+  } catch (_) {
+    say('Could not change remote access.', false);
+    loadRemote();
+  }
+}
+
+radios.forEach((r) => r.addEventListener('change', saveRemote));
+hours.addEventListener('change', () => {
+  const timed = [...radios].find((r) => r.value === 'timed');
+  timed.checked = true;
+  saveRemote();
+});
+loadRemote();

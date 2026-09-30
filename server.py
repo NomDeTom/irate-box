@@ -84,9 +84,12 @@ def live_messages(now):
 # apps.d/ manifests in the plan replace this table.
 #   port   a loopback listener to probe: that is what "running" means to a guest
 #   unit   its systemd unit, which says whether it is installed at all
+#   active running means the unit is active, for a daemon with no loopback port to probe
 #   root   (static apps) the env var naming the directory Caddy serves, the same
 #          variable the Caddyfile reads. Unset -- a dev checkout -- counts as installed.
+#   note   what the dashboard says in place of a path
 # path None: on the service dashboard only, with no tile of its own.
+TAILSCALE_NAME = "Remote access (Tailscale)"
 SERVICES = [
     {"path": "/draw/", "name": "Excalidraw", "root": "HUB_DRAW_ROOT"},
     {"path": "/serial/", "name": "Serial terminal", "root": "HUB_SERIAL_ROOT"},
@@ -98,6 +101,10 @@ SERVICES = [
     {"path": "/notes/", "name": "Notes (SilverBullet)", "port": 3000, "unit": "silverbullet.service"},
     {"path": "/sync/", "name": "Syncthing", "port": 8384, "unit": "syncthing@hub.service"},
     {"path": "/mqtt", "name": "MQTT broker (mosquitto)", "port": 1883, "unit": "mosquitto.service"},
+    {"path": None, "name": "Whiteboard collaboration (room)", "port": 3002,
+     "unit": "excalidraw-room.service", "note": "live sessions in /draw/"},
+    {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
+     "active": True, "note": "switched on and off from /admin"},
     {"path": None, "name": "Web server (Caddy)", "unit": "caddy.service", "proxy": True},
     {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
 ]
@@ -203,12 +210,12 @@ def port_listening(port):
         return False
 
 
-def unit_load_states(units):
-    """{unit: installed?} from one `systemctl show`, or {} where there is no systemd
-    to ask (a dev machine): the caller then treats every unit as installed."""
+def unit_states(units):
+    """{unit: (installed?, active?)} from one `systemctl show`, or {} where there is no
+    systemd to ask (a dev machine): the caller then treats every unit as installed."""
     try:
         out = subprocess.run(
-            ["systemctl", "show", "--property=Id,LoadState", *units],
+            ["systemctl", "show", "--property=Id,LoadState,ActiveState", *units],
             capture_output=True, text=True, timeout=2,
         ).stdout
     except (OSError, subprocess.SubprocessError):
@@ -217,7 +224,8 @@ def unit_load_states(units):
     for block in out.strip().split("\n\n"):
         fields = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
         if "Id" in fields:
-            states[fields["Id"]] = fields.get("LoadState") not in ("not-found", "")
+            states[fields["Id"]] = (fields.get("LoadState") not in ("not-found", ""),
+                                    fields.get("ActiveState") == "active")
     # A missing unit still gets a block, under the name it was asked for.
     return states
 
@@ -231,12 +239,12 @@ def service_status(proxied):
         _status_cache["ports"] = {
             svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
         }
-        _status_cache["units"] = unit_load_states([s["unit"] for s in SERVICES if "unit" in s])
+        _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
         _status_cache["at"] = now
     units = _status_cache["units"]
     out = []
     for svc in SERVICES:
-        installed = units.get(svc["unit"], True) if "unit" in svc else True
+        installed, active = units.get(svc["unit"], (True, False)) if "unit" in svc else (True, False)
         if "root" in svc:
             root = os.environ.get(svc["root"])
             installed = root is None or Path(root).is_dir()
@@ -245,12 +253,51 @@ def service_status(proxied):
             running = True  # it is answering this request
         elif svc.get("proxy"):
             running = proxied
+        elif svc.get("active"):
+            running = installed and active
         else:
             running = _status_cache["ports"].get(svc["port"], False)
         state = "running" if running else "stopped" if installed else "missing"
-        out.append({"path": svc["path"], "name": svc["name"], "state": state,
-                    "up": proxied and running})
+        entry = {"path": svc["path"], "name": svc["name"], "state": state,
+                 "up": proxied and running}
+        if "note" in svc:
+            entry["note"] = svc["note"]
+        out.append(entry)
     return out
+
+
+# --- remote access -------------------------------------------------------------
+# The hub runs unprivileged, so it cannot start tailscaled itself. It records what the
+# operator asked for in TAILSCALE_WANT, and a root path unit (irate-box-tailscale.path,
+# set up by install.sh) applies it with tailscale-apply.sh. One line:
+#   off | on | on <seconds>   -- a timed session ends by itself, and at the next boot.
+TAILSCALE_WANT = STATE_DIR / "tailscale.want"
+TAILSCALE_MAX_HOURS = 72
+
+
+def read_tailscale_want():
+    try:
+        parts = TAILSCALE_WANT.read_text().split()
+    except OSError:
+        parts = []
+    if parts[:1] == ["on"]:
+        if len(parts) == 2 and parts[1].isdigit():
+            return {"mode": "timed", "hours": int(parts[1]) // 3600}
+        return {"mode": "on"}
+    return {"mode": "off"}
+
+
+def write_tailscale_want(mode, hours=None):
+    line = {"off": "off", "on": "on"}.get(mode)
+    if mode == "timed":
+        line = f"on {hours * 3600}"
+    tmp = TAILSCALE_WANT.parent / (TAILSCALE_WANT.name + ".tmp")
+    with open(tmp, "w") as fh:
+        fh.write(line + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, TAILSCALE_WANT)
+    _status_cache["at"] = 0.0  # the next /status should show the change, not a cached sweep
 
 
 def system_status():
@@ -319,6 +366,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_tailscale(self):
+        """What the operator asked for, and what the unit is doing. They differ for the
+        second or two the path unit takes to act, and permanently if it is not set up."""
+        proxied = "X-Forwarded-For" in self.headers
+        state = next((s["state"] for s in service_status(proxied)
+                      if s["name"] == TAILSCALE_NAME), "missing")
+        self.send_json(200, {"want": read_tailscale_want(), "state": state,
+                             "max_hours": TAILSCALE_MAX_HOURS})
+
     def send_empty(self, code):
         # Under HTTP/1.1 keep-alive every response needs a length, or the client
         # waits for a body that never comes.
@@ -361,6 +417,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/settings":
             self.send_json(200, settings_snapshot())
+            return
+
+        if path == "/admin/tailscale":
+            self._send_tailscale()
             return
 
         if path in ("/admin", "/admin/"):
@@ -440,6 +500,16 @@ class Handler(BaseHTTPRequestHandler):
                 current = dict(_settings)
                 save_settings(current)
             self.send_json(200, current)
+            return
+
+        if path == "/admin/tailscale":
+            mode, hours = payload.get("mode"), payload.get("hours")
+            if mode not in ("off", "on", "timed") or (mode == "timed" and not (
+                    type(hours) is int and 1 <= hours <= TAILSCALE_MAX_HOURS)):  # not bool
+                self.send_json(400, {"error": f"mode off, on, or timed with hours 1-{TAILSCALE_MAX_HOURS}"})
+                return
+            write_tailscale_want(mode, hours)
+            self._send_tailscale()
             return
 
         if path == "/messages":

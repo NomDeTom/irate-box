@@ -15,6 +15,8 @@
 #   kiwix.service             --zim: kiwix-serve on 127.0.0.1:8081 under /wiki/
 #   ttyd.service              ttyd on 127.0.0.1:7681 under /term/; enabled by --with-term only
 #   mosquitto.service         --with-mqtt: MQTT on :1883, and WebSockets on 127.0.0.1:9001 at /mqtt
+#   excalidraw-room.service   --with-collab: live Excalidraw sessions on 127.0.0.1:3002 (/socket.io/)
+#   irate-box-tailscale.path  if Tailscale is installed: its on/off switch on /admin
 #
 # It does not set up the access point, dnsmasq or the captive portal. The box keeps
 # whatever network it already has, and the hub is served at http://<its address>/.
@@ -38,6 +40,8 @@ Usage: sudo ./install.sh [options]
                         downloaded on the box). Installs kiwix-serve.
   --with-mqtt           install the mosquitto MQTT broker: :1883 for nodes and the phone
                         app, and WebSockets at /mqtt for pages. Anonymous, limited to msh/#.
+  --with-collab         live collaboration in /draw/: Debian's nodejs plus the room relay
+                        from --apps DIR/room, built on a desktop (ARMv7 and up)
   --with-term           turn on the ttyd terminal at /term/. It is always installed, but
                         stays off without this: it is a root login prompt on the network.
   --admin-password PW   password for /admin, /sync and /term, user "admin" (default: keep
@@ -48,7 +52,7 @@ EOF
 }
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC=""
-WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--src) SRC="$2"; shift 2 ;;
@@ -61,6 +65,7 @@ while [ $# -gt 0 ]; do
 	--zim) ZIMS+=("$2"); shift 2 ;;
 	--with-term) WITH_TERM=1; shift ;;
 	--with-mqtt) WITH_MQTT=1; shift ;;
+	--with-collab) WITH_COLLAB=1; shift ;;
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
 	--hub-url) HUB_URL="$2"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
@@ -72,6 +77,7 @@ HUB_USER=hub
 CODE=/opt/irate-box
 STATE=/var/lib/hub
 APPS=/usr/share/hub/apps
+ROOM=/usr/share/hub/room
 ETC=/etc/hub
 SB_VERSION=2.11.1
 TTYD_VERSION=1.7.7
@@ -96,6 +102,12 @@ if [ "$WITH_NOTES" = 1 ]; then
 	armv7l | armv8l) SB_ARCH=armv7 ;;
 	*) die "--with-notes: SilverBullet has no build for $ARCH (ARMv6 boards such as the Pi Zero W cannot run it)" ;;
 	esac
+fi
+
+if [ "$WITH_COLLAB" = 1 ]; then
+	[ "$ARCH" != armv6l ] || die "--with-collab: Node.js has no ARMv6 build (the Pi Zero W cannot run it)"
+	[ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ] || [ -f "$ROOM/dist/index.js" ] ||
+		die "--with-collab needs --apps DIR with a prebuilt DIR/room (see BUILDING.md)"
 fi
 
 case "$ARCH" in
@@ -125,6 +137,7 @@ pkgs=(python3 curl ca-certificates git unzip)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
 [ ${#ZIMS[@]} -gt 0 ] && pkgs+=(kiwix-tools)
+[ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
 apt-get install -y -q --no-install-recommends "${pkgs[@]}"
 
 # Caddy: from Caddy's own apt repo, which is current (distros lag: Debian trixie ships
@@ -161,7 +174,8 @@ if [ -n "$SRC" ]; then
 	tar -C "$SRC" -cf - \
 		--exclude=./.git --exclude=./.notes --exclude=__pycache__ --exclude=./store-state \
 		--exclude=./store --exclude=./messages.json --exclude=./board.json \
-		--exclude=./clock.json --exclude=./settings.json . | tar -C "$CODE" -xf -
+		--exclude=./clock.json --exclude=./settings.json --exclude='./tailscale.want*' . |
+		tar -C "$CODE" -xf -
 	chown -R root:root "$CODE"
 elif [ -d "$CODE/.git" ]; then
 	say "Updating $CODE"
@@ -359,7 +373,12 @@ User=$HUB_USER
 Group=$HUB_USER
 # --urlRootLocation must match the Caddy route, which passes /wiki through unstripped.
 # --monitorLibrary picks up books added later with kiwix-manage, without a restart.
-ExecStart=/usr/bin/kiwix-serve --library --monitorLibrary --blockexternal --nodatealiases --address 127.0.0.1 --port 8081 --urlRootLocation /wiki $STATE/zim/library.xml
+# Memory: libzim keeps decompressed clusters per worker thread. Measured on the Lyra
+# (2026-09-30, top-mini Wikipedia): defaults grow to ~104 MB anon after searching;
+# 2 threads + 4 cached clusters hold ~22 MB with no loss in search latency.
+# ZIM_CLUSTERCACHE is a cluster *count*, not bytes - a large value OOMs the box.
+Environment=ZIM_CLUSTERCACHE=4
+ExecStart=/usr/bin/kiwix-serve --threads 2 --library --monitorLibrary --blockexternal --nodatealiases --address 127.0.0.1 --port 8081 --urlRootLocation /wiki $STATE/zim/library.xml
 Restart=on-failure
 
 [Install]
@@ -425,6 +444,43 @@ EOF
 	chmod 640 /etc/mosquitto/irate-box.acl
 fi
 
+# --- Excalidraw live collaboration ---------------------------------------------------
+# excalidraw-room is a socket.io relay: no database, rooms in memory, and scenes and
+# pasted files persisted through store.py like everything else. Built on a desktop
+# (dist/ plus production node_modules/, all plain JS) and copied in; nothing compiles
+# here. Measured on the Lyra: ~8 MB anon idle, ~19 MB with twelve busy clients.
+if [ "$WITH_COLLAB" = 1 ]; then
+	if [ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ]; then
+		say "Installing the collaboration relay from $APPS_SRC/room"
+		rm -rf "${ROOM:?}"
+		install -d -m 755 "$(dirname "$ROOM")"
+		cp -a "$APPS_SRC/room" "$ROOM"
+		rm -rf "$ROOM/.git"
+		chown -R root:root "$ROOM"
+	fi
+	cat >/etc/systemd/system/excalidraw-room.service <<EOF
+[Unit]
+Description=Excalidraw collaboration relay for Irate-Box (/socket.io/ for /draw/)
+After=network.target
+
+[Service]
+DynamicUser=yes
+Environment=NODE_ENV=production PORT=3002 HOST=127.0.0.1
+WorkingDirectory=$ROOM
+# Heap capped well below the cgroup limit, so V8 collects before systemd has to act.
+ExecStart=/usr/bin/node --max-old-space-size=48 $ROOM/dist/index.js
+Restart=on-failure
+MemoryHigh=80M
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
 # --- ttyd --------------------------------------------------------------------------
 if ! /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
 	say "Downloading ttyd $TTYD_VERSION ($TTYD_ARCH)"
@@ -454,6 +510,62 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
+# --- Tailscale remote access -------------------------------------------------------
+# Not installed by this script. Where it is already present, it stops being a boot
+# service and comes under the switch on /admin: the hub records the choice in
+# $STATE/tailscale.want, and the path unit applies it as root (tailscale-apply.sh).
+# Its current state is never changed here -- this may be running over Tailscale.
+WITH_TAILSCALE=0
+if systemctl cat tailscaled.service >/dev/null 2>&1; then
+	WITH_TAILSCALE=1
+	say "Putting Tailscale under the remote-access switch on /admin"
+	if [ ! -f "$STATE/tailscale.want" ]; then
+		if systemctl is-active --quiet tailscaled; then echo on; else echo off; fi \
+			>"$STATE/tailscale.want"
+		chown "$HUB_USER:$HUB_USER" "$STATE/tailscale.want"
+	fi
+	install -d /etc/systemd/system/tailscaled.service.d
+	cat >/etc/systemd/system/tailscaled.service.d/irate-box.conf <<'EOF'
+[Service]
+# Same as tailscaled --no-logs-no-support: an offline box should not keep trying to
+# upload logs. Takes effect the next time tailscaled starts.
+Environment=TS_NO_LOGS_NO_SUPPORT=true
+EOF
+	cat >/etc/systemd/system/irate-box-tailscale.service <<EOF
+[Unit]
+Description=Irate-Box: apply the remote-access switch ($STATE/tailscale.want)
+
+[Service]
+Type=oneshot
+Environment=HUB_STATE_DIR=$STATE
+ExecStart=$CODE/tailscale-apply.sh
+EOF
+	cat >/etc/systemd/system/irate-box-tailscale.path <<EOF
+[Unit]
+Description=Irate-Box: watch the remote-access switch
+
+[Path]
+PathChanged=$STATE/tailscale.want
+Unit=irate-box-tailscale.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	cat >/etc/systemd/system/irate-box-tailscale-boot.service <<EOF
+[Unit]
+Description=Irate-Box: remote access at boot (on stays on; a timed session ends)
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HUB_STATE_DIR=$STATE
+ExecStart=$CODE/tailscale-apply.sh --boot
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
 # --- start -----------------------------------------------------------------------
 say "Starting services"
 systemctl daemon-reload
@@ -463,6 +575,7 @@ units=(irate-box caddy)
 [ ${#ZIMS[@]} -gt 0 ] && units+=(kiwix)
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
 [ "$WITH_MQTT" = 1 ] && units+=(mosquitto)
+[ "$WITH_COLLAB" = 1 ] && units+=(excalidraw-room)
 systemctl enable --quiet "${units[@]}"
 systemctl restart "${units[@]}"
 # Turned on by an earlier run: keep it on, with the current credential.
@@ -470,6 +583,12 @@ systemctl restart "${units[@]}"
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ ${#ZIMS[@]} -gt 0 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
+if [ "$WITH_TAILSCALE" = 1 ]; then
+	# The boot unit decides from now on. Not started here: its state is left as found.
+	systemctl disable --quiet tailscaled
+	systemctl enable --quiet irate-box-tailscale-boot.service
+	systemctl enable --quiet --now irate-box-tailscale.path
+fi
 
 if [ "$WITH_SYNC" = 1 ]; then
 	say "Configuring Syncthing for an offline box"
@@ -509,4 +628,6 @@ echo "    admin login: admin / $([ "${NEW_PW:-0}" = 1 ] && echo "$ADMIN_PW" || e
 [ -f /etc/mosquitto/conf.d/irate-box.conf ] && echo "    mqtt:  :1883 for nodes, /mqtt for pages (anonymous, msh/# only)"
 echo "    term:  /term/   ($(systemctl is-enabled ttyd 2>/dev/null || echo disabled); admin login, then an account on the box)"
 [ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the admin login; folder \"hub-notes\" shared if notes are installed)"
+[ "$WITH_COLLAB" = 1 ] && echo "    collab: live sessions in /draw/ (relay on 127.0.0.1:3002, via /socket.io/)"
+[ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
 exit $fail

@@ -486,7 +486,18 @@ h2 {
   cursor: pointer;
 }
 .setting:hover { border-color: var(--accent); }
-.setting input[type="checkbox"] { margin-top: 0.15rem; accent-color: var(--accent); }
+.setting input[type="checkbox"],
+.setting input[type="radio"] { margin-top: 0.15rem; accent-color: var(--accent); }
+.remote-choices { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
+.remote-choices input[type="number"] {
+  width: 3.5em;
+  padding: 0.1rem 0.3rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
 .setting-name { display: block; font-weight: 600; }
 .setting-desc {
   display: block;

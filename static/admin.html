@@ -34,6 +34,36 @@
 
   <p class="settings-note" id="save-note" hidden></p>
 
+  <section id="remote-section" hidden>
+    <h2>Remote access</h2>
+    <p class="setting-desc">
+      Tailscale lets you reach the box from anywhere. While it is off, it can only be
+      switched back on from here — so from the hub's own WiFi or LAN, not remotely.
+    </p>
+    <div class="remote-choices">
+      <label class="setting">
+        <input type="radio" name="remote" value="off">
+        <span><span class="setting-name">Off</span></span>
+      </label>
+      <label class="setting">
+        <input type="radio" name="remote" value="on">
+        <span>
+          <span class="setting-name">On</span>
+          <span class="setting-desc">Stays on, including after a reboot.</span>
+        </span>
+      </label>
+      <label class="setting">
+        <input type="radio" name="remote" value="timed">
+        <span>
+          <span class="setting-name">On for
+            <input type="number" id="remote-hours" min="1" max="72" value="2"> hours</span>
+          <span class="setting-desc">Then off by itself. A reboot also ends it.</span>
+        </span>
+      </label>
+    </div>
+    <p class="setting-desc" id="remote-state"></p>
+  </section>
+
   <h2>Sync</h2>
   <p class="setting-desc">
     <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and

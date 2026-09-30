@@ -141,6 +141,13 @@
 		reverse_proxy 127.0.0.1:9001
 	}
 
+	# --- /socket.io → excalidraw-room, live collaboration for /draw/ (optional add-on)
+	# The hub build of Excalidraw connects to its own origin and probes this path at load:
+	# no room installed means the proxy fails, and the app simply hides collaboration.
+	handle /socket.io/* {
+		reverse_proxy 127.0.0.1:3002
+	}
+
 	# --- /admin → the hub's own operator options ------------------------------------
 	# Same credential gate as /term, and for the same reason: these change what every
 	# guest sees. The hub does no auth of its own, so running it bare (no Caddy) leaves
