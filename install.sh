@@ -363,6 +363,11 @@ if [ ${#ZIMS[@]} -gt 0 ]; then
 		esac
 		chown "$HUB_USER:$HUB_USER" "$f"
 	done
+fi
+
+# Written whenever Kiwix is in use, not only when --zim adds a book, so a rerun brings an
+# existing box's unit up to date (the memory settings below arrived after first installs).
+if [ ${#ZIMS[@]} -gt 0 ] || [ -f /etc/systemd/system/kiwix.service ]; then
 	cat >/etc/systemd/system/kiwix.service <<EOF
 [Unit]
 Description=Kiwix offline library for Irate-Box (/wiki/)
