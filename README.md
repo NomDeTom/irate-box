@@ -1,20 +1,8 @@
 # Irate-Box
 
-A self-contained offline hub for a small board. It runs a WiFi access point; anything that
-joins gets a captive portal that opens a landing page, and from that page you reach a
-whiteboard, a diagram editor, an offline encyclopedia, a serial console and a shell — with no
-internet involved at any point. Spiritually a [PirateBox](https://github.com/PirateBox-Dev)
-successor (the name is PirateBox with the P knocked off), but Pi-first, HTTPS-free by design,
-and built from maintained, packaged components rather than a 2013 shell-script pile.
+A self-contained offline hub for a small board. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page, and from that page you reach a whiteboard, a diagram editor, an offline encyclopedia, a serial console and a shell — with no internet involved at any point. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, HTTPS-free by design, and built from maintained, packaged components rather than a 2013 shell-script pile.
 
-**Status: installs and runs on a real board; no access point yet.** `install.sh` puts the
-whole hub on an Armbian or mPWRD-OS board in one command. It has been tested end to end on a
-Luckfox Lyra Zero W (mPWRD-OS 26.05, armv7l, 512 MB). With everything running, the board
-still has about 320 MB of memory free. The hub is served on whatever network the board is
-already on: the access point, dnsmasq and the captive portal are not installed yet, and
-neither are the `.deb` packages. Target hardware is a Raspberry Pi Zero W or a similar 512 MB
-board, and that ceiling drives every design decision: static assets plus a handful of small
-native daemons.
+**Status: installs and runs on a real board; no access point yet.** `install.sh` puts the whole hub on an Armbian or mPWRD-OS board in one command. It has been tested end to end on a Luckfox Lyra Zero W (mPWRD-OS 26.05, armv7l, 512 MB). With everything running, the board still has about 320 MB of memory free. The hub is served on whatever network the board is already on: the access point, dnsmasq and the captive portal are not installed yet, and neither are the `.deb` packages. Target hardware is a Raspberry Pi Zero W or a similar 512 MB board, and that ceiling drives every design decision: static assets plus a handful of small native daemons.
 
 | | State |
 |---|---|
@@ -49,13 +37,7 @@ git clone https://github.com/NomDeTom/irate-box && cd irate-box
 sudo ./install.sh --with-notes --with-sync --with-mqtt --zim wikipedia_en_top_mini.zim
 ```
 
-The script sets up Caddy on `:80` and the hub on loopback. The code goes in
-`/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. It prints the admin
-password is chosen on first use: open `http://<the box>/admin/` straight after installing
-(until then, anyone on the network could), or pass `--admin-password`. Running it again
-upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal
-builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing
-is compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
+The script sets up Caddy on `:80` and the hub on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. It prints the admin password is chosen on first use: open `http://<the box>/admin/` straight after installing (until then, anyone on the network could), or pass `--admin-password`. Running it again upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing is compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
 
 ## Try it without a board
 
@@ -66,17 +48,13 @@ git clone <this repo> irate-box && cd irate-box
 python3 server.py
 ```
 
-Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** and the
-**board** — the parts that need nothing else. The service tiles link to paths that only exist
-behind Caddy, so they show as "not running" until you add it:
+Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** and the **board** — the parts that need nothing else. The service tiles link to paths that only exist behind Caddy, so they show as "not running" until you add it:
 
 ```sh
 caddy run --config Caddyfile        # needs :80 — sudo, setcap, or edit the port
 ```
 
-Then it is <http://localhost/>. `/mermaid/`, `/draw/` and `/serial/` go live once their builds
-exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the
-Caddyfile names. **[BUILDING.md](BUILDING.md)** walks through all of it, clone to running.
+Then it is <http://localhost/>. `/mermaid/`, `/draw/` and `/serial/` go live once their builds exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the Caddyfile names. **[BUILDING.md](BUILDING.md)** walks through all of it, clone to running.
 
 ## What is here
 
@@ -112,21 +90,11 @@ phone / laptop ──▶ Caddy :80 ─┬─ /              → server.py :8000 
 Meshtastic node / phone app ──▶ mosquitto :1883  (add-on; raw MQTT, not through Caddy)
 ```
 
-Everything a guest's browser touches is one origin: no ports to type, no mDNS to fail on
-Android, and a captive portal that can hand out a working URL. Services bind to loopback, and
-Caddy is the only listener on the network with two exceptions, both for things that are not
-browsers. Syncthing's sync ports are one; mosquitto's `:1883` for Meshtastic nodes is the
-other.
+Everything a guest's browser touches is one origin: no ports to type, no mDNS to fail on Android, and a captive portal that can hand out a working URL. Services bind to loopback, and Caddy is the only listener on the network with two exceptions, both for things that are not browsers. Syncthing's sync ports are one; mosquitto's `:1883` for Meshtastic nodes is the other.
 
-**Why plain HTTP.** Captive-portal probes are HTTP; intercepting HTTPS produces a certificate
-error instead of a sign-in sheet. So `:80` is always up and always plain, there is never a
-blanket HTTP→HTTPS redirect, and never HSTS — once sent, a browser refuses plain HTTP for that
-host, which is exactly the offline mode. It tests fine at home and fails in a field six weeks
-later.
+**Why plain HTTP.** Captive-portal probes are HTTP; intercepting HTTPS produces a certificate error instead of a sign-in sheet. So `:80` is always up and always plain, there is never a blanket HTTP→HTTPS redirect, and never HSTS — once sent, a browser refuses plain HTTP for that host, which is exactly the offline mode. It tests fine at home and fails in a field six weeks later.
 
-**Captive portal.** dnsmasq resolves every name to the box; the OS's connectivity probe
-(`captive.apple.com`, `connectivitycheck.gstatic.com`, …) hits `server.py`, gets a 302 to the
-hub, and the phone pops its sign-in sheet on the landing page.
+**Captive portal.** dnsmasq resolves every name to the box; the OS's connectivity probe (`captive.apple.com`, `connectivitycheck.gstatic.com`, …) hits `server.py`, gets a 302 to the hub, and the phone pops its sign-in sheet on the landing page.
 
 ## Configuration
 
@@ -143,30 +111,18 @@ All by environment variable; the unit file sets the Pi values.
 | `HUB_STORE_SAVE_TTL` | `0` (never) | gallery-save expiry, in clock ticks |
 | `HUB_DRAW_ROOT`, `HUB_MERMAID_ROOT`, `HUB_TOOLS_ROOT`, `HUB_SERIAL_ROOT` | unset | where each static app lives. Caddy serves from these, and `/status` reports an app whose directory is missing as not installed. Unset (a dev checkout) counts as installed. |
 
-Shoutbox messages last 24 hours of powered-on time, capped at 200. The `/status` endpoint
-reports whether Caddy is in front, the state of each service, and memory and disk. The pages
-grey out anything that is down.
+Shoutbox messages last 24 hours of powered-on time, capped at 200. The `/status` endpoint reports whether Caddy is in front, the state of each service, and memory and disk. The pages grey out anything that is down.
 
 ## Not here
 
-The plan — hardware notes, component roles, `.deb` packaging, lightweighting tiers, phasing —
-lives in a separate notes vault, not in this repo. The related repositories:
+The plan — hardware notes, component roles, `.deb` packaging, lightweighting tiers, phasing — lives in a separate notes vault, not in this repo. The related repositories:
 
-- [excalidraw-stack](https://github.com/nomdetom/excalidraw-stack): Excalidraw fork, with a
-  `hub` build that stores into `store.py` and runs inside the hub bar.
-- [mermaid-live-editor](https://github.com/NomDeTom/mermaid-live-editor): `hub` branch, an
-  offline build with the Mermaid Chart promotion and external services removed.
-- [serial-terminal](https://github.com/nomdetom/serial-terminal): the Meshtastic log
-  analyser served at `/serial/`.
-- [nomdetom.github.io](https://github.com/nomdetom/nomdetom.github.io): the calculators
-  served at `/tools/`.
-- [docusaurus2zim](https://github.com/NomDeTom/docusaurus2zim): turns a Docusaurus site into
-  a ZIM for Kiwix. Its books are relative by default, so they work under the hub's `/wiki`
-  and anywhere else.
+- [excalidraw-stack](https://github.com/nomdetom/excalidraw-stack): Excalidraw fork, with a `hub` build that stores into `store.py` and runs inside the hub bar.
+- [mermaid-live-editor](https://github.com/NomDeTom/mermaid-live-editor): `hub` branch, an offline build with the Mermaid Chart promotion and external services removed.
+- [serial-terminal](https://github.com/nomdetom/serial-terminal): the Meshtastic log analyser served at `/serial/`.
+- [nomdetom.github.io](https://github.com/nomdetom/nomdetom.github.io): the calculators served at `/tools/`.
+- [docusaurus2zim](https://github.com/NomDeTom/docusaurus2zim): turns a Docusaurus site into a ZIM for Kiwix. Its books are relative by default, so they work under the hub's `/wiki` and anywhere else.
 
 ## License
 
-The core of this repo (`server.py`, `store.py`, `board.py`, `hubclock.py`, and the
-`static/` assets) is released into the public domain under the [Unlicense](LICENSE).
-`static/qrcode.js` is vendored third-party code (MIT, Kazuhiko Arase) and keeps its own
-license, noted in its header.
+The core of this repo (`server.py`, `store.py`, `board.py`, `hubclock.py`, and the `static/` assets) is released into the public domain under the [Unlicense](LICENSE). `static/qrcode.js` is vendored third-party code (MIT, Kazuhiko Arase) and keeps its own license, noted in its header.
