@@ -5,6 +5,7 @@ Serves static/ itself so a bare `python3 server.py` works; behind Caddy the asse
 served by file_server and only `/` and the API reach this process."""
 
 import io
+import ipaddress
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 import html
 import board
@@ -41,6 +43,15 @@ BIND = os.environ.get("HUB_BIND", "0.0.0.0")  # 127.0.0.1 when Caddy is in front
 # resolves to the hub anyway. The Pi's unit sets the real origin, http://192.168.4.1/,
 # so the sign-in sheet shows an address a guest can type again later.
 HUB_URL = os.environ.get("HUB_URL", "/")
+# The hotspot's own subnet (the AP add-on sets it). A guest from it who arrives under any other
+# name -- a site they typed, which every name resolves to there -- is sent to HUB_URL too, so
+# the address bar shows the hub's address and the browser keeps one site's storage (names,
+# theme) rather than one per name typed. Guests on the owner's LAN are never redirected.
+try:
+    AP_NET = ipaddress.ip_network(os.environ["HUB_AP_NET"]) if os.environ.get("HUB_AP_NET") else None
+except ValueError:
+    AP_NET = None
+HUB_HOST = urlparse(HUB_URL).hostname if HUB_URL.startswith(("http://", "https://")) else None
 
 CLOCK = hubclock.HubClock(STATE_DIR / "clock.json")
 BOARD = board.Board(STATE_DIR / "board.json", CLOCK)
@@ -56,6 +67,7 @@ CAPTIVE_HOSTS = {
     "www.apple.com",
     "connectivitycheck.gstatic.com",
     "clients3.google.com",
+    "connectivitycheck.android.com",
     "www.msftconnecttest.com",
     "www.msftncsi.com",
     "detectportal.firefox.com",
@@ -66,6 +78,7 @@ CAPTIVE_PATHS = {
     "/hotspot-detect.html",       # iOS / macOS
     "/library/test/success.html", # older iOS
     "/generate_204",              # Android
+    "/gen_204",                   # Android's fallback probe (www.google.com); a 404 there reads as "no internet"
     "/connecttest.txt",           # Windows
     "/ncsi.txt",                  # Windows (legacy)
     "/canonical.html",            # Firefox
@@ -966,10 +979,21 @@ class Handler(BaseHTTPRequestHandler):
         return host in CAPTIVE_HOSTS or path in CAPTIVE_PATHS
 
     def _redirect_to_hub(self):
+        # A redirect, and a page as well: some phones act only on a 3xx, others only on a
+        # 200 with content where they expected an empty 204, so the probe gets both -- a 302
+        # whose body is a page that goes to the hub by itself.
+        url = html.escape(HUB_URL, quote=True)
+        body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>Irate-Box</title>'
+                f'<meta http-equiv="refresh" content="0; url={url}"></head>'
+                f'<body><p><a href="{url}">Open the hub</a></p></body></html>').encode()
         self.send_response(302)
         self.send_header("Location", HUB_URL)
-        self.send_header("Content-Length", "0")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _admin_locked(self, path):
         """On an unclaimed box, every admin path but the setup page answers 403."""
@@ -978,9 +1002,20 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _off_hub_name(self):
+        """A hotspot guest asking under a name that is not the hub's own (see AP_NET)."""
+        if not (AP_NET and HUB_HOST) or self.headers.get("Host", "").split(":")[0] == HUB_HOST:
+            return False
+        fwd = self.headers.get("X-Forwarded-For", "")
+        addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
+        try:
+            return ipaddress.ip_address(addr) in AP_NET
+        except ValueError:
+            return False
+
     def do_GET(self):
         note_client(self)
-        if self._is_captive_probe():
+        if self._is_captive_probe() or self._off_hub_name():
             self._redirect_to_hub()
             return
 
