@@ -79,6 +79,13 @@ CADDYFILE = Path(os.environ.get("HUB_CADDYFILE", "/etc/caddy/Caddyfile"))
 # Present while no admin password has been chosen (install.sh creates it). Caddy then lets
 # /admin through without a login, and the hub serves only the set-the-password page.
 UNCLAIMED = CADDYFILE.parent / "irate-box-unclaimed"
+# On a box whose Caddy is the owner's, the hub's site (and so its login) is this file, imported
+# by their Caddyfile (install.sh); otherwise the Caddyfile is wholly the hub's.
+CADDY_SITE = CADDYFILE.parent / "irate-box.caddy"
+
+
+def _login_file():
+    return CADDY_SITE if CADDY_SITE.exists() else CADDYFILE
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 UPDATE_STATE = CONTROL / "update.json"
@@ -162,17 +169,22 @@ def set_login(pw, keep=True):
     if hashed.returncode != 0:
         raise ValueError("caddy hash-password failed")
     new_hash = hashed.stdout.strip()
-    text = CADDYFILE.read_text()
+    target = _login_file()
+    text = target.read_text()
     updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
     if not count:
-        raise ValueError("no admin login found in /etc/caddy/Caddyfile")
-    candidate = CADDYFILE.with_suffix(".new")
+        raise ValueError(f"no admin login found in {target}")
+    candidate = target.with_name(target.name + ".new")
     candidate.write_text(updated)
     check = run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate))
     if check.returncode != 0:
         candidate.unlink(missing_ok=True)
         raise ValueError("the new Caddy config did not validate; nothing was changed")
-    os.replace(candidate, CADDYFILE)
+    os.replace(candidate, target)
+    # The hub's site inside the owner's config: the whole of it must still validate.
+    if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
+        target.write_text(text)
+        raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
     subprocess.Popen(["systemd-run", "--on-active=1", "systemctl", "restart", "caddy"])
 
@@ -452,7 +464,7 @@ def verify_update(src, installed, opts, progress=None):
     caddyfile = src / "Caddyfile"
     if caddyfile.exists():
         # As install.sh will write it: the box's current login hash in place of the marker.
-        current = CADDYFILE.read_text() if CADDYFILE.exists() else ""
+        current = _login_file().read_text() if _login_file().exists() else ""
         m = HASH_LINE.search(current)
         text = caddyfile.read_text()
         if m:
