@@ -57,6 +57,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import manifests
+
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 HUB_USER = os.environ.get("HUB_USER", "hub")
@@ -77,16 +79,11 @@ DOWNLOADS = Path(os.environ.get("HUB_DOWNLOAD_CACHE", "/var/cache/irate-box/down
 INSTALL_TIMEOUT = 45 * 60
 
 OPS_ALL = ("start", "stop", "restart", "enable", "disable")
-UNITS = {
-    "kiwix.service": OPS_ALL,
-    "silverbullet.service": OPS_ALL,
-    f"syncthing@{HUB_USER}.service": OPS_ALL,
-    "mosquitto.service": OPS_ALL,
-    "ttyd.service": OPS_ALL,
-    "excalidraw-room.service": OPS_ALL,
-    "caddy.service": ("restart",),
-    "irate-box.service": ("restart",),
-}
+# The units each app's manifest offers for control (apps.d/, beside this file and as
+# root-owned as it), and the two that may only be restarted.
+MANIFESTS = manifests.load()
+UNITS = {unit.replace("@hub.", f"@{HUB_USER}."): OPS_ALL for unit in manifests.controllable_units(MANIFESTS)}
+UNITS.update({"caddy.service": ("restart",), "irate-box.service": ("restart",)})
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
 MIN_PASSWORD = 8
@@ -661,23 +658,27 @@ def update_clear_cache(req):
 # --- app bundles -------------------------------------------------------------------
 # The librarian (as the hub user) downloads a bundle into $STATE/library/apps/ and checks it;
 # this checks it again -- the hub wrote that file -- and swaps it in, keeping the previous
-# copy as .<app>.prev for app-rollback. Static apps live in APPS_DIR/<app>; the collaboration
-# relay in ROOM_DIR, and is restarted after.
+# copy as .<app>.prev for app-rollback. Where each app goes, what proves a bundle whole and
+# which unit to restart after come from its manifest (apps.d/, "install").
 
-APPS_DIR = Path(os.environ.get("HUB_APPS_DIR", "/usr/share/hub/apps"))
-ROOM_DIR = Path(os.environ.get("HUB_ROOM_DIR", "/usr/share/hub/room"))
 APP_STAGING = STATE / "library" / "apps"
-APP_NEEDS = {"draw": "index.html", "mermaid": "index.html", "serial": "index.html", "room": "dist/index.js"}
 APP_MAX_BYTES = 400 << 20
+APPS = manifests.installable(MANIFESTS)
 
 
 def _app_dir(app):
-    return ROOM_DIR if app == "room" else APPS_DIR / app
+    return manifests.install_dir(APPS[app])
+
+
+def _has_needed(names, pattern):
+    """The manifest's "needs": a file, or a glob such as *.html, present at the top level."""
+    import fnmatch
+    return any(fnmatch.fnmatchcase(n, pattern) for n in names) if any(c in pattern for c in "*?[") else pattern in names
 
 
 def _checked_bundle(app, zip_path):
     """The bundle's metadata, or ValueError: the same rules as librarian.check_bundle."""
-    if app not in APP_NEEDS:
+    if app not in APPS:
         raise ValueError(f"{app} is not an app the hub installs")
     path = Path(zip_path)
     staging = APP_STAGING.resolve()
@@ -697,7 +698,7 @@ def _checked_bundle(app, zip_path):
             if total > APP_MAX_BYTES:
                 raise ValueError("the bundle is too large")
             meta = json.loads(zf.read("irate-box-bundle.json"))
-            if meta.get("app") != app or APP_NEEDS[app] not in names:
+            if meta.get("app") != app or not _has_needed(names, APPS[app]["install"]["needs"]):
                 raise ValueError(f"not a bundle of {app}")
             return meta
     except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as exc:
@@ -733,8 +734,8 @@ def install_app(app, zip_path):
     finally:
         shutil.rmtree(new, ignore_errors=True)
     Path(zip_path).unlink(missing_ok=True)
-    if app == "room":
-        run("systemctl", "try-restart", "excalidraw-room")
+    if APPS[app]["install"].get("restart"):
+        run("systemctl", "try-restart", APPS[app]["install"]["restart"])
     return f"{app}: installed {str(meta.get('commit', ''))[:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
 
 
@@ -744,7 +745,7 @@ def app_install(req):
 
 def app_rollback(req):
     app = str(req.get("app", ""))
-    if app not in APP_NEEDS:
+    if app not in APPS:
         raise ValueError(f"{app} is not an app the hub installs")
     target = _app_dir(app)
     prev = target.parent / f".{target.name}.prev"
@@ -757,8 +758,8 @@ def app_rollback(req):
     os.rename(prev, target)
     if swap.exists():
         os.rename(swap, prev)  # so a second roll back goes forward again
-    if app == "room":
-        run("systemctl", "try-restart", "excalidraw-room")
+    if APPS[app]["install"].get("restart"):
+        run("systemctl", "try-restart", APPS[app]["install"]["restart"])
     meta = json.loads((target / "irate-box-bundle.json").read_text()) if (target / "irate-box-bundle.json").exists() else {}
     return f"{app}: rolled back to {str(meta.get('commit', 'the previous build'))[:7]}"
 

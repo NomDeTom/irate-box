@@ -1,0 +1,22 @@
+{
+  "id": "serial",
+  "order": 15,
+  "status": {
+    "path": "/serial/",
+    "name": "Serial terminal",
+    "root_env": "HUB_SERIAL_ROOT"
+  },
+  "install": {
+    "dir": "apps/serial",
+    "needs": "index.html",
+    "title": "Serial terminal"
+  },
+  "source": {
+    "type": "bundle",
+    "repo": "NomDeTom/serial-terminal",
+    "branch": "main",
+    "workflow": "irate-box-bundle.yml",
+    "pattern": "irate-box-serial-*"
+  },
+  "core": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "mqtt",
+  "order": 85,
+  "status": {
+    "path": "/mqtt",
+    "name": "MQTT broker (mosquitto)",
+    "port": 1883,
+    "unit": "mosquitto.service",
+    "control": true
+  }
+}

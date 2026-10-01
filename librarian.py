@@ -14,8 +14,8 @@ A source says where new versions of one book come from:
   url           a plain URL to a .zim (or a .zip holding one), versioned by its ETag or
                 Last-Modified.
 
-It also keeps the hub's prebuilt web apps current (kind "app": draw, mermaid, serial, room),
-from the forks' irate-box-bundle.yml artifacts -- see "app bundles" below.
+It also keeps the hub's web apps current (kind "app": the apps with a "source" in apps.d/),
+from the forks' irate-box-bundle.yml artifacts or a git repository -- see "app bundles" below.
 
 Each book keeps its file name, <name>.zim, across versions, so /wiki/content/<name>/ links
 never change. A new version is downloaded beside the old one, checked (free space, the ZIM
@@ -61,6 +61,8 @@ import urllib.request
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+import manifests
 
 STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", Path(__file__).parent))
 ZIM_DIR = STATE_DIR / "zim"
@@ -188,11 +190,22 @@ def validate_source(src):
     """Normalise and check a source definition; raises LibrarianError on anything wrong."""
     out = {"name": str(src.get("name", "")).strip(), "type": str(src.get("type", "")).strip()}
     if src.get("kind") == "app":
-        if out["name"] not in APPS:
-            raise LibrarianError(f"app must be one of {', '.join(APPS)}")
-        if out["type"] not in ("actions", "nightly-link"):
-            raise LibrarianError("an app comes from actions or nightly-link")
+        if out["name"] not in APPS or not APPS[out["name"]].get("source"):
+            raise LibrarianError(f"app must be one of {', '.join(n for n in APPS if APPS[n].get('source'))}")
         out["kind"] = "app"
+        if APPS[out["name"]]["source"]["type"] == "git":
+            # A git app comes from the repository its manifest names, and nowhere else: the
+            # adapt script runs on whatever is cloned.
+            if out["type"] != "git":
+                raise LibrarianError(f"{out['name']} comes from git")
+            spec = APPS[out["name"]]["source"]
+            branch = str(src.get("branch") or spec.get("branch", "main")).strip()
+            if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
+                raise LibrarianError("branch: a branch name")
+            out.update(repo=spec["repo"], branch=branch, enabled=bool(src.get("enabled", True)))
+            return out
+        if out["type"] not in ("actions", "nightly-link"):
+            raise LibrarianError("an app bundle comes from actions or nightly-link")
     if not NAME_RE.match(out["name"]) or out["name"] == "library":
         raise LibrarianError("name: letters, digits, '.', '_' and '-' only (it becomes <name>.zim)")
     if out["type"] not in TYPES:
@@ -224,39 +237,33 @@ def validate_source(src):
 
 
 # --- app bundles -------------------------------------------------------------
-# The prebuilt web apps come the same way as books: from the forks' Actions artifacts
-# (irate-box-bundle.yml in each), through nightly.link or with a token. The librarian
-# downloads and checks a bundle as the hub user; installing it under /usr/share/hub needs
-# root, so it hands the checked zip to hub_control.py (app-install), which checks it again
-# and swaps it in with the previous copy kept for a roll back.
-#
-# A source with "kind": "app" is one of APPS, by name. Each bundle carries
-# irate-box-bundle.json: {"app", "repository", "ref", "commit", "built", "run"}.
+# The prebuilt web apps are kept current like books. Which apps there are, where each comes
+# from and what proves a bundle whole are in its manifest (apps.d/, manifests.py):
+#   bundle  a fork's irate-box-bundle.yml artifact, through nightly.link or with a token;
+#   git     a repository, cloned, run through the manifest's adapt script (adapt_tools.py
+#           for the calculators), and packed the same way.
+# The librarian fetches and checks a bundle as the hub user; installing it under
+# /usr/share/hub needs root, so it hands the checked zip to hub_control.py (app-install),
+# which checks it again and swaps it in, keeping the previous copy for a roll back.
+# Each bundle carries irate-box-bundle.json: {"app", "repository", "ref", "commit", "built", "run"?}.
 
-APPS_DIR = Path(os.environ.get("HUB_APPS_DIR", "/usr/share/hub/apps"))
-ROOM_DIR = Path(os.environ.get("HUB_ROOM_DIR", "/usr/share/hub/room"))
+CODE_DIR = Path(__file__).parent
 APP_STAGING = LIB_DIR / "apps"
 APP_MAX_BYTES = 400 << 20  # unpacked; the largest bundle (draw) is ~25 MB
-APPS = {
-    "draw": {"repo": "NomDeTom/excalidraw", "branch": "main", "title": "Excalidraw", "needs": "index.html"},
-    "mermaid": {"repo": "NomDeTom/mermaid-live-editor", "branch": "develop", "title": "Mermaid editor",
-                "needs": "index.html"},
-    "serial": {"repo": "NomDeTom/serial-terminal", "branch": "main", "title": "Serial terminal",
-               "needs": "index.html"},
-    "room": {"repo": "NomDeTom/excalidraw-room", "branch": "main", "title": "Collaboration relay",
-             "needs": "dist/index.js"},
-}
+APPS = manifests.installable()
 BUNDLE_JSON = "irate-box-bundle.json"
 
 
 def app_dir(name):
-    return ROOM_DIR if name == "room" else APPS_DIR / name
+    return manifests.install_dir(APPS[name])
 
 
 def default_app_source(name, via="nightly-link"):
-    spec = APPS[name]
-    return {"name": name, "kind": "app", "type": via, "repo": spec["repo"], "workflow": "irate-box-bundle.yml",
-            "branch": spec["branch"], "pattern": f"irate-box-{name}-*"}
+    spec = APPS[name]["source"]
+    if spec["type"] == "git":
+        return {"name": name, "kind": "app", "type": "git", "repo": spec["repo"], "branch": spec.get("branch", "main")}
+    return {"name": name, "kind": "app", "type": via, "repo": spec["repo"], "workflow": spec["workflow"],
+            "branch": spec.get("branch", ""), "pattern": spec.get("pattern", f"irate-box-{name}-*")}
 
 
 def installed_app(name):
@@ -269,9 +276,15 @@ def installed_app(name):
     return meta
 
 
+def _has_needed(names, pattern):
+    if any(c in pattern for c in "*?["):
+        return any(fnmatch.fnmatchcase(n, pattern) for n in names)
+    return pattern in names
+
+
 def check_bundle(zip_path, name):
     """Raise unless zip_path is a bundle of app `name` that is safe to unpack: no absolute
-    paths, no '..', no symlinks, a sane size, its marker file and its entry point present.
+    paths, no '..', no symlinks, a sane size, its marker file and what its manifest needs.
     hub_control.py runs the same check again as root before unpacking."""
     try:
         with zipfile.ZipFile(zip_path) as zf:
@@ -292,8 +305,9 @@ def check_bundle(zip_path, name):
             meta = json.loads(zf.read(BUNDLE_JSON))
             if meta.get("app") != name:
                 raise LibrarianError(f"this is a bundle of {meta.get('app')!r}, not {name}")
-            if APPS[name]["needs"] not in names:
-                raise LibrarianError(f"the bundle has no {APPS[name]['needs']}")
+            needs = APPS[name]["install"]["needs"]
+            if not _has_needed(names, needs):
+                raise LibrarianError(f"the bundle has no {needs}")
             return meta
     except zipfile.BadZipFile:
         raise LibrarianError("the download is not a valid zip")
@@ -314,17 +328,65 @@ def _queue_root(req):
     return rid
 
 
+def _git(*args, timeout=300):
+    out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=timeout)
+    if out.returncode != 0:
+        lines = (out.stderr or out.stdout).strip().splitlines()
+        raise LibrarianError(f"git {args[0]}: {lines[-1] if lines else 'failed'}")
+    return out.stdout
+
+
+def _resolve_git(src, auth):
+    """The branch head of a git source, without cloning."""
+    branch = src.get("branch", "main")
+    head = _git("ls-remote", src["repo"], f"refs/heads/{branch}", timeout=60).split()
+    if not head:
+        raise LibrarianError(f"{src['repo']} has no branch {branch}")
+    sha = head[0]
+    return {"version": f"git-{sha}", "url": src["repo"], "size": 0, "zip": False, "commit": sha,
+            "label": f"{branch} at {sha[:7]}", "auth": None}
+
+
+def _pack_git(src, cand, part):
+    """Clone, adapt, and zip a git source as a bundle at `part`."""
+    name = src["name"]
+    work = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=APP_STAGING))
+    try:
+        tree = work / "tree"
+        _git("clone", "-q", "--depth", "1", "--branch", src.get("branch", "main"), src["repo"], str(tree))
+        commit = _git("-C", str(tree), "rev-parse", "HEAD").strip()
+        shutil.rmtree(tree / ".git")
+        adapt = APPS[name]["source"].get("adapt")
+        if adapt:
+            out = subprocess.run([sys.executable, str(CODE_DIR / adapt), str(tree), str(CODE_DIR / "static")],
+                                 capture_output=True, text=True, timeout=300)
+            if out.returncode != 0:
+                raise LibrarianError(f"{adapt} failed: {(out.stderr or out.stdout).strip()[-300:]}")
+        (tree / BUNDLE_JSON).write_text(json.dumps({
+            "app": name, "repository": src["repo"], "ref": src.get("branch", "main"),
+            "commit": commit, "built": now_iso(), "source": "git"}))
+        with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path in sorted(tree.rglob("*")):
+                if path.is_file() and not path.is_symlink():
+                    zf.write(path, path.relative_to(tree).as_posix())
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def fetch_app(src, cand):
-    """Download and check a bundle into APP_STAGING; returns (path, bundle meta)."""
+    """Download (or clone and pack) and check a bundle into APP_STAGING; (path, meta)."""
     name = src["name"]
     APP_STAGING.mkdir(parents=True, exist_ok=True)
     need = cand["size"] * 3 + 64 * 2**20
-    if cand["size"] and _free_bytes(APP_STAGING) < need:
+    if _free_bytes(APP_STAGING) < need:
         raise LibrarianError(f"not enough space for the {name} bundle")
     dest = APP_STAGING / f"{name}.zip"
     part = APP_STAGING / f"{name}.zip.download"
     try:
-        _download(cand["url"], part, cand["auth"], name, cand["size"])
+        if src["type"] == "git":
+            _pack_git(src, cand, part)
+        else:
+            _download(cand["url"], part, cand["auth"], name, cand["size"])
         meta = check_bundle(part, name)
         os.replace(part, dest)
     finally:
@@ -332,27 +394,41 @@ def fetch_app(src, cand):
     return dest, meta
 
 
-def update_app(src, cand, entry, download):
-    """One app source's part of update(): compare runs, and fetch and queue if newer."""
-    installed = installed_app(src["name"]) or {}
+def _same_build(installed, cand):
+    if cand.get("commit"):  # git: the commit is the version
+        return installed.get("commit") == cand["commit"]
     run_id = cand["version"].split("/")[0].removeprefix("run-")
-    entry["current"] = {"version": f"run-{installed['run']}" if installed.get("run") else None,
-                        "label": (f"{installed.get('commit', '')[:7]} ({installed.get('ref')}, built "
-                                  f"{str(installed.get('built', ''))[:10]})") if installed.get("commit") else
-                                 ("a build copied in by hand" if installed is not None and src["name"] in APPS
-                                  and app_dir(src["name"]).is_dir() else "not installed")}
-    if str(installed.get("run")) == run_id:
+    return str(installed.get("run")) == run_id
+
+
+def update_app(src, cand, entry, download):
+    """One app source's part of update(): compare builds, and fetch and queue if newer."""
+    installed = installed_app(src["name"])
+    meta = installed or {}
+    entry["current"] = {
+        "version": f"run-{meta['run']}" if meta.get("run") else (f"git-{meta['commit']}" if meta.get("commit") else None),
+        "label": (f"{meta['commit'][:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
+                  if meta.get("commit") else "a build copied in by hand" if installed is not None else "not installed")}
+    if _same_build(meta, cand):
         return f"up to date: {cand['label']}"
     if not download:
         return f"newer available: {cand['label']}"
-    path, meta = fetch_app(src, cand)
+    path, bundle = fetch_app(src, cand)
     rid = _queue_root({"action": "app-install", "app": src["name"], "zip": str(path)})
     entry["pending"] = rid
-    return f"downloaded {meta.get('commit', '')[:7]} ({cand['label']}); installing"
+    entry.pop("install_result", None)
+    return f"fetched {bundle.get('commit', '')[:7]} ({cand['label']}); installing"
+
+
+def default_apps():
+    """Apps kept current by "Keep all apps current": the core ones, and any already installed."""
+    return [n for n, m in APPS.items() if m.get("source") and (m.get("core") or app_dir(n).is_dir())]
 
 
 def apps_snapshot():
-    return {name: {"title": spec["title"], "installed": installed_app(name)} for name, spec in APPS.items()}
+    return {name: {"title": m["install"].get("title", name), "installed": installed_app(name),
+                   "source_type": m.get("source", {}).get("type")}
+            for name, m in APPS.items() if m.get("source")}
 
 
 def add_source(src):
@@ -501,7 +577,7 @@ def _resolve_url(src, auth):
 
 
 RESOLVERS = {"release": _resolve_release, "actions": _resolve_actions,
-             "nightly-link": _resolve_nightly, "url": _resolve_url}
+             "nightly-link": _resolve_nightly, "url": _resolve_url, "git": _resolve_git}
 
 
 def resolve(src):
@@ -803,7 +879,7 @@ def main(argv=None):
             print("token " + ("set" if args.value else "cleared"))
         elif args.cmd == "add-apps":
             have = {s["name"] for s in load_config()["sources"]}
-            for app in args.apps or list(APPS):
+            for app in args.apps or default_apps():
                 if app not in have:
                     add_source(default_app_source(app))
                     print(f"added {app}")

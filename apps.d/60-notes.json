@@ -1,0 +1,18 @@
+{
+  "id": "notes",
+  "order": 60,
+  "tile": {
+    "icon": "📝",
+    "name": "Notes",
+    "desc": "Shared Markdown notebook",
+    "href": "/app.html#/notes/",
+    "new_tab": true
+  },
+  "status": {
+    "path": "/notes/",
+    "name": "Notes (SilverBullet)",
+    "port": 3000,
+    "unit": "silverbullet.service",
+    "control": true
+  }
+}

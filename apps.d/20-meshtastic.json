@@ -1,0 +1,10 @@
+{
+  "id": "meshtastic",
+  "order": 20,
+  "tile": {
+    "icon": "📡",
+    "name": "Meshtastic",
+    "desc": "Log analyser, docs & tools",
+    "href": "/meshtastic.html"
+  }
+}

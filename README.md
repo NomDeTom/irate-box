@@ -33,7 +33,8 @@ native daemons.
 | Quick help (`/help.html`, 🛟 in page headers, the hub bar and standalone apps) | working (installed 2026-10-01) |
 | Updates from `/admin`: fetch into a root-owned cache, then rerun `install.sh` with the options recorded at install time | working (installed 2026-10-01) |
 | Update verification (fast-forward, scripts parse, Python compiles, Caddyfile validates, release downloads prefetched and checksummed) before Install is offered; the update doctor | written and tested off the box; not yet installed |
-| Apps from the forks' Actions builds: `install.sh --apps-from-actions`, then kept current from `/admin` (Apps) | written and tested off the box; not yet installed |
+| Apps from the forks' Actions builds: `install.sh --apps-from-actions`, then kept current from `/admin` (Apps) | working (installed 2026-10-01) |
+| App manifests (`apps.d/`): tiles, `/status`, installs and update sources from one file per app; the calculators tracked from git like the other apps | written and tested off the box; not yet installed |
 | Excalidraw live collaboration (`--with-collab`), hub gallery saves from Excalidraw | working (installed 2026-10-01) |
 | Service dashboard, memory and disk tile | working |
 | Access point, dnsmasq, captive portal | not in the installer yet |
@@ -86,6 +87,7 @@ Caddyfile names. **[BUILDING.md](BUILDING.md)** walks through all of it, clone t
 | `board.py` | Threaded message board: 50 threads, 200 posts each, threads fade seven days of powered-on time after their last reply. |
 | `store.py` | Blob store. Reimplements `excalidraw-storage-backend`'s `/api/v2` over a directory (no NestJS, no Redis) and adds `/api/saves`, a named-save gallery with client-rendered thumbnails. Runs standalone on `:8090` for testing. |
 | `tailscale-apply.sh` | Run as root by a systemd path unit: starts or stops `tailscaled` to match `$STATE/tailscale.want`, which the hub writes from the `/admin` switch (off, on, or on for N hours). The hub itself never gets root. |
+| `apps.d/`, `manifests.py` | One manifest per app: its home-page tile, how `/status` sees it, where it installs, and where updates come from (a fork's Actions bundle, or a git repository plus an adapt script). `server.py` renders the tiles and `/status` from them, the librarian and the root helper install from them. Adding an app is adding a file. |
 | `librarian.py` | Keeps ZIM books in the Kiwix library current. Each source is GitHub releases, a workflow's Actions artifacts (with a token, or through nightly.link without one), or a URL. A new version is checked and swapped in under the same file name, so `/wiki/content/<name>/` links never change, and kiwix-serve picks it up without a restart. Old versions are archived or deleted per policy, with rollback. Run hourly by `irate-box-librarian.timer` (each source only when due) and on demand from `/admin`. Stdlib only. |
 | `hub_control.py` | Root helper for `/admin`, run by `irate-box-control.path` when the hub queues a request in `$STATE/control/requests/`. Starts, stops and enables only the services on its allow-list (Caddy and the hub: restart only), and changes the admin password everywhere it is used (Caddy's `basic_auth`, ttyd, Syncthing, `/etc/hub/admin-password`). The hub itself never gets root. |
 | `hubclock.py` | The clock. The boards have no RTC, so everything ages by *cumulative powered-on seconds*, never the wall clock. Messages posted an hour before the box is switched off are still an hour old when it comes back. |

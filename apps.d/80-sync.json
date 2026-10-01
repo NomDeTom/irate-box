@@ -1,0 +1,11 @@
+{
+  "id": "sync",
+  "order": 80,
+  "status": {
+    "path": "/sync/",
+    "name": "Syncthing",
+    "port": 8384,
+    "unit": "syncthing@hub.service",
+    "control": true
+  }
+}

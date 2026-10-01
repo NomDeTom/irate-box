@@ -1,0 +1,25 @@
+{
+  "id": "room",
+  "order": 90,
+  "status": {
+    "path": null,
+    "name": "Whiteboard collaboration (room)",
+    "port": 3002,
+    "unit": "excalidraw-room.service",
+    "control": true,
+    "note": "live sessions in /draw/"
+  },
+  "install": {
+    "dir": "room",
+    "needs": "dist/index.js",
+    "title": "Collaboration relay",
+    "restart": "excalidraw-room.service"
+  },
+  "source": {
+    "type": "bundle",
+    "repo": "NomDeTom/excalidraw-room",
+    "branch": "main",
+    "workflow": "irate-box-bundle.yml",
+    "pattern": "irate-box-room-*"
+  }
+}

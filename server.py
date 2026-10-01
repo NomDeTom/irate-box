@@ -17,9 +17,11 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import html
 import board
 import hubclock
 import librarian
+import manifests
 import store
 
 STATIC = Path(__file__).parent / "static"
@@ -84,8 +86,8 @@ def live_messages(now):
     return [m for m in load_messages() if now - m.get("created", now) <= SHOUT_TTL]
 
 
-# What sits behind Caddy, keyed by the path the tile links to. Interim until the
-# apps.d/ manifests in the plan replace this table.
+# What sits behind Caddy: each app's "status" part in apps.d/ (manifests.py), then the box's
+# own pieces, which are not apps. Keyed by the path the tile links to.
 #   port   a loopback listener to probe: that is what "running" means to a guest
 #   unit   its systemd unit, which says whether it is installed at all
 #   active running means the unit is active, for a daemon with no loopback port to probe
@@ -94,24 +96,64 @@ def live_messages(now):
 #   note   what the dashboard says in place of a path
 # path None: on the service dashboard only, with no tile of its own.
 TAILSCALE_NAME = "Remote access (Tailscale)"
-SERVICES = [
-    {"path": "/draw/", "name": "Excalidraw", "root": "HUB_DRAW_ROOT"},
-    {"path": "/serial/", "name": "Serial terminal", "root": "HUB_SERIAL_ROOT"},
-    {"path": "/wiki/", "name": "Kiwix", "port": 8081, "unit": "kiwix.service"},
-    {"path": "/mermaid/", "name": "Mermaid", "root": "HUB_MERMAID_ROOT"},
-    {"path": "/tools/", "name": "Calculators", "root": "HUB_TOOLS_ROOT"},
-    {"path": "/term/", "name": "Terminal (ttyd)", "port": 7681, "unit": "ttyd.service"},
-    # Optional add-ons: absent on a box without them, which reads as greyed.
-    {"path": "/notes/", "name": "Notes (SilverBullet)", "port": 3000, "unit": "silverbullet.service"},
-    {"path": "/sync/", "name": "Syncthing", "port": 8384, "unit": "syncthing@hub.service"},
-    {"path": "/mqtt", "name": "MQTT broker (mosquitto)", "port": 1883, "unit": "mosquitto.service"},
-    {"path": None, "name": "Whiteboard collaboration (room)", "port": 3002,
-     "unit": "excalidraw-room.service", "note": "live sessions in /draw/"},
+MANIFESTS = manifests.load()
+
+
+def _service_entry(status):
+    entry = {"path": status.get("path"), "name": status["name"]}
+    if "root_env" in status:
+        entry["root"] = status["root_env"]
+    for key in ("port", "unit", "note"):
+        if key in status:
+            entry[key] = status[key]
+    return entry
+
+
+SERVICES = [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
     {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
      "active": True, "note": "switched on and off from /admin"},
     {"path": None, "name": "Web server (Caddy)", "unit": "caddy.service", "proxy": True},
     {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
 ]
+
+
+def render_tiles():
+    """The home page's app tiles, from the manifests' "tile" parts. Rendered here rather than
+    in the browser, so the page arrives whole."""
+    out = []
+    for m in MANIFESTS:
+        tile = m.get("tile")
+        if not tile:
+            continue
+        attrs = [f'class="service-card"']
+        if tile.get("element_id"):
+            attrs.append(f'id="{html.escape(tile["element_id"])}"')
+        attrs.append(f'href="{html.escape(tile["href"])}"')
+        path = m.get("status", {}).get("path")
+        if path:
+            attrs.append(f'data-service="{html.escape(path)}"')
+        if tile.get("new_tab"):
+            attrs.append('target="_blank"')
+        out.append(f'      <a {" ".join(attrs)}>\n'
+                   f'        <span class="icon">{html.escape(tile["icon"])}</span>\n'
+                   f'        <span class="name">{html.escape(tile["name"])}</span>\n'
+                   f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
+                   f'      </a>')
+    return "\n".join(out)
+
+
+TILES_MARK = "<!-- apps.d tiles -->"
+_home_page = {"mtime": None, "body": b""}
+
+
+def home_page():
+    """index.html with the tiles in place, re-read when the file changes."""
+    path = STATIC / "index.html"
+    mtime = path.stat().st_mtime
+    if _home_page["mtime"] != mtime:
+        _home_page["body"] = path.read_text(encoding="utf-8").replace(TILES_MARK, render_tiles()).encode()
+        _home_page["mtime"] = mtime
+    return _home_page["body"]
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
 _status_cache = {"at": 0.0, "ports": {}, "units": {}}
 
@@ -380,7 +422,7 @@ def library_action(payload):
             librarian.set_token(str(payload.get("value") or ""))
         elif action == "add-apps":
             have = {s["name"] for s in librarian.load_config()["sources"]}
-            for app in librarian.APPS:
+            for app in librarian.default_apps():
                 if app not in have:
                     librarian.add_source(librarian.default_app_source(app))
         elif action in ("check", "update"):
@@ -408,12 +450,8 @@ CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
 VERSION_FILE = Path(__file__).parent / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
-CONTROL_OPS = {
-    "kiwix.service": _ALL_OPS, "silverbullet.service": _ALL_OPS,
-    "syncthing@hub.service": _ALL_OPS, "mosquitto.service": _ALL_OPS,
-    "ttyd.service": _ALL_OPS, "excalidraw-room.service": _ALL_OPS,
-    "caddy.service": ["restart"], "irate-box.service": ["restart"],
-}
+CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
+CONTROL_OPS.update({"caddy.service": ["restart"], "irate-box.service": ["restart"]})
 MIN_PASSWORD = 8
 # First use (hub_control.py, the Caddyfile): while this root-owned file exists no admin
 # password has been chosen, Caddy lets /admin through with no login, and the hub serves
@@ -804,8 +842,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, result)
             return
 
-        if path == "/":
-            path = "/index.html"
+        if path in ("/", "/index.html"):
+            body = home_page()
+            self.send_response(200)
+            self.send_header("Content-Type", MIME[".html"])
+            self.send_header("Content-Length", len(body))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         file_path = STATIC / path.lstrip("/")
 
         if not file_path.resolve().is_relative_to(STATIC.resolve()):

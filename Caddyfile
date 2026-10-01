@@ -27,9 +27,10 @@
 	# the hub so the captive-probe check runs before index.html is served.
 	handle {
 		root * {$HUB_STATIC:/home/user/irate-box/static}
+		# / and /index.html go to the hub, which fills in the tiles from apps.d/.
 		@asset {
 			file
-			not path /
+			not path / /index.html
 		}
 		route {
 			header @asset Cache-Control "no-cache"

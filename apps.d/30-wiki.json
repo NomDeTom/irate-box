@@ -1,0 +1,18 @@
+{
+  "id": "wiki",
+  "order": 30,
+  "tile": {
+    "icon": "📚",
+    "name": "Kiwix",
+    "desc": "Offline library",
+    "href": "/app.html#/wiki/",
+    "new_tab": true
+  },
+  "status": {
+    "path": "/wiki/",
+    "name": "Kiwix",
+    "port": 8081,
+    "unit": "kiwix.service",
+    "control": true
+  }
+}

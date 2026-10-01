@@ -1,0 +1,10 @@
+{
+  "id": "tools-general",
+  "order": 51,
+  "tile": {
+    "icon": "🧮",
+    "name": "Calculators",
+    "desc": "Converters & computing",
+    "href": "/tools-general.html"
+  }
+}

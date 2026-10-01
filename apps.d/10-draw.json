@@ -1,0 +1,29 @@
+{
+  "id": "draw",
+  "order": 10,
+  "tile": {
+    "icon": "✏️",
+    "name": "Excalidraw",
+    "desc": "Collaborative whiteboard",
+    "href": "/app.html#/draw/",
+    "new_tab": true
+  },
+  "status": {
+    "path": "/draw/",
+    "name": "Excalidraw",
+    "root_env": "HUB_DRAW_ROOT"
+  },
+  "install": {
+    "dir": "apps/draw",
+    "needs": "index.html",
+    "title": "Excalidraw"
+  },
+  "source": {
+    "type": "bundle",
+    "repo": "NomDeTom/excalidraw",
+    "branch": "main",
+    "workflow": "irate-box-bundle.yml",
+    "pattern": "irate-box-draw-*"
+  },
+  "core": true
+}

@@ -1,0 +1,29 @@
+{
+  "id": "mermaid",
+  "order": 40,
+  "tile": {
+    "icon": "📈",
+    "name": "Mermaid",
+    "desc": "Diagrams as text",
+    "href": "/app.html#/mermaid/",
+    "new_tab": true
+  },
+  "status": {
+    "path": "/mermaid/",
+    "name": "Mermaid",
+    "root_env": "HUB_MERMAID_ROOT"
+  },
+  "install": {
+    "dir": "apps/mermaid",
+    "needs": "index.html",
+    "title": "Mermaid editor"
+  },
+  "source": {
+    "type": "bundle",
+    "repo": "NomDeTom/mermaid-live-editor",
+    "branch": "develop",
+    "workflow": "irate-box-bundle.yml",
+    "pattern": "irate-box-mermaid-*"
+  },
+  "core": true
+}

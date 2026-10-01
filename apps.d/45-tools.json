@@ -1,0 +1,21 @@
+{
+  "id": "tools",
+  "order": 45,
+  "status": {
+    "path": "/tools/",
+    "name": "Calculators",
+    "root_env": "HUB_TOOLS_ROOT"
+  },
+  "install": {
+    "dir": "apps/tools",
+    "needs": "*.html",
+    "title": "Calculators"
+  },
+  "source": {
+    "type": "git",
+    "repo": "https://github.com/nomdetom/nomdetom.github.io",
+    "branch": "main",
+    "adapt": "adapt_tools.py"
+  },
+  "core": true
+}

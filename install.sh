@@ -36,7 +36,8 @@ Usage: sudo ./install.sh [options]
   --apps-from-actions   fetch the newest prebuilt draw, mermaid and serial (and room, with
                         --with-collab) from the forks' Actions builds via nightly.link: no
                         desktop build and no token. They are then kept current from /admin.
-  --tools               clone the calculators (nomdetom.github.io) into apps/tools
+  --tools               the calculators (nomdetom.github.io), cloned and adapted for the hub,
+                        then kept current from /admin like the other apps
   --with-notes          install SilverBullet at /notes/ (armv7, aarch64, x86_64 only)
   --with-sync           install Syncthing at /sync/ (behind the admin password)
   --zim FILE|URL        add a ZIM to the Kiwix library at /wiki/ (repeatable; a URL is
@@ -334,12 +335,18 @@ fi
 # Prebuilt apps from the forks' irate-box-bundle.yml artifacts. The librarian downloads and
 # checks each as the hub user; hub_control.py checks it again and unpacks it as root -- the
 # same path /admin's Apps section uses later, which also keeps them current.
+# Where each app comes from is in its manifest (apps.d/): a fork's Actions build, or for the
+# calculators a git repository, cloned and adapted.
+fetch_apps=()
 if [ "$APPS_FROM_ACTIONS" = 1 ]; then
-	install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/library"
-	fetch_apps=(draw mermaid serial)
+	fetch_apps+=(draw mermaid serial)
 	[ "$WITH_COLLAB" = 1 ] && fetch_apps+=(room)
+fi
+[ "$WITH_TOOLS" = 1 ] && fetch_apps+=(tools)
+if [ ${#fetch_apps[@]} -gt 0 ]; then
+	install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/library"
 	for app in "${fetch_apps[@]}"; do
-		say "Fetching the $app app from its fork's Actions build"
+		say "Fetching the $app app"
 		if zip="$(runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" python3 "$CODE/librarian.py" app-fetch "$app")"; then
 			HUB_STATE_DIR="$STATE" python3 "$CODE/hub_control.py" install-app "$app" "$zip"
 		else
@@ -348,15 +355,9 @@ if [ "$APPS_FROM_ACTIONS" = 1 ]; then
 	done
 	runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" python3 "$CODE/librarian.py" add-apps "${fetch_apps[@]}" >/dev/null
 fi
-if [ "$WITH_TOOLS" = 1 ]; then
-	say "Cloning the calculators into $APPS/tools"
-	rm -rf "${APPS:?}/tools"
-	git clone -q --depth 1 https://github.com/nomdetom/nomdetom.github.io "$APPS/tools"
-	rm -rf "$APPS/tools/.git"
-fi
-# However they arrived (--tools or --apps), the calculators get the hub's palette and back
-# links, and lose the ASCII Reference page. Idempotent: a page already adapted is skipped.
-if [ -d "$APPS/tools" ]; then
+# Calculators copied in by --apps are adapted here (fetched ones already were). Idempotent:
+# a page already adapted is skipped.
+if [ -d "$APPS/tools" ] && [ ! -f "$APPS/tools/irate-box-bundle.json" ]; then
 	python3 "$CODE/adapt_tools.py" "$APPS/tools" "$CODE/static"
 fi
 for app in mermaid draw tools serial; do

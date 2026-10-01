@@ -196,7 +196,8 @@ function renderApps(snap, busy) {
       inst === null ? 'Not installed.' : inst.commit
         ? `Installed: ${inst.commit.slice(0, 7)} from ${inst.repository} (${inst.ref}), built ${String(inst.built).slice(0, 10)}.`
         : 'Installed by hand (no bundle record): the first update replaces it.',
-      src ? `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.` : 'No source: not kept current.',
+      src ? (src.type === 'git' ? `Source: git, ${src.repo} @ ${src.branch}, adapted for the hub.`
+        : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.`) : 'No source: not kept current.',
       st.last_check ? `Checked ${st.last_check}: ${st.outcome || ''}` : null,
       res ? `${res.ok ? 'Installed' : 'Install failed'}: ${res.message}` : null,
       st.error || null,

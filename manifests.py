@@ -1,0 +1,119 @@
+"""The hub's app manifests: one JSON file per app in apps.d/, read by server.py (tiles and
+/status), librarian.py (where updates come from) and hub_control.py (where an app installs,
+and which units the admin page may control). Adding an app is adding a file here.
+
+apps.d/ ships with the code (/opt/irate-box/apps.d, root-owned), so the root helper can act
+on it. Every part but "id" and "order" is optional:
+
+  {
+    "id": "draw",                     letters, digits, '-'; unique
+    "order": 10,                      tiles and /status are sorted by this
+    "tile":    {"icon", "name", "desc", "href", "new_tab": bool, "element_id": str},
+                                      a tile on the home page
+    "status":  {"path", "name", "port" | "root_env", "unit", "control": bool, "note"},
+                                      how /status and /admin see it: a loopback port to probe,
+                                      or the environment variable naming the folder Caddy
+                                      serves it from; "control" offers start/stop/boot on /admin
+    "install": {"dir", "needs", "title", "restart"},
+                                      where its bundle goes, under /usr/share/hub ("apps/draw");
+                                      the file (or glob) that proves a bundle is whole; a unit
+                                      to restart after installing
+    "source":  {"type": "bundle", "repo", "branch", "workflow", "pattern"}
+             | {"type": "git", "repo", "branch", "adapt"},
+                                      where the librarian finds updates: a fork's Actions
+                                      artifact, or a git repository (cloned, then run through
+                                      the "adapt" script from the hub's code)
+    "core": true                      kept current by default ("Keep all apps current")
+  }
+
+Stdlib only.
+"""
+
+import json
+import os
+import re
+from pathlib import Path
+
+APPS_D = Path(os.environ.get("HUB_APPS_D", Path(__file__).parent / "apps.d"))
+SHARE = Path(os.environ.get("HUB_SHARE_DIR", "/usr/share/hub"))
+
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_.-]+\.service$")
+DIR_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$")
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
+
+
+class ManifestError(ValueError):
+    pass
+
+
+def _check(m, where):
+    def need(cond, what):
+        if not cond:
+            raise ManifestError(f"{where}: {what}")
+
+    need(isinstance(m, dict), "not a JSON object")
+    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: lower-case letters, digits, '-'")
+    need(type(m.get("order")) is int, "order: an integer")
+    tile = m.get("tile")
+    if tile is not None:
+        for k in ("icon", "name", "desc", "href"):
+            need(isinstance(tile.get(k), str), f"tile.{k}: a string")
+        need(tile["href"].startswith("/"), "tile.href: a path on this hub")
+    status = m.get("status")
+    if status is not None:
+        need(isinstance(status.get("name"), str), "status.name: a string")
+        need(status.get("path") is None or isinstance(status["path"], str), "status.path: a string or null")
+        need(("port" in status) != ("root_env" in status), "status: either port or root_env")
+        need("port" not in status or type(status["port"]) is int, "status.port: an integer")
+        need("unit" not in status or UNIT_RE.match(str(status["unit"])), "status.unit: a .service name")
+        need(not status.get("control") or "unit" in status, "status.control needs a unit")
+    inst = m.get("install")
+    if inst is not None:
+        need(isinstance(inst.get("dir"), str) and DIR_RE.match(inst["dir"]), "install.dir: e.g. apps/draw")
+        need(isinstance(inst.get("needs"), str) and ".." not in inst["needs"]
+             and not inst["needs"].startswith("/"), "install.needs: a relative file or glob")
+        need("restart" not in inst or UNIT_RE.match(str(inst["restart"])), "install.restart: a .service name")
+    src = m.get("source")
+    if src is not None:
+        need(inst is not None, "a source needs an install")
+        need(src.get("type") in ("bundle", "git"), "source.type: bundle or git")
+        if src["type"] == "bundle":
+            need(REPO_RE.match(str(src.get("repo", ""))), "source.repo: OWNER/REPO")
+            need(re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", str(src.get("workflow", ""))), "source.workflow: a file name")
+        else:
+            need(GIT_URL_RE.match(str(src.get("repo", ""))), "source.repo: an https:// git URL")
+            need("adapt" not in src or re.match(r"^[a-z_]+\.py$", str(src["adapt"])), "source.adapt: a script in the hub's code")
+
+
+def load(folder=None):
+    """Every manifest, sorted by order. A broken file raises: better a loud failure at start
+    than an app that silently vanishes."""
+    folder = Path(folder or APPS_D)
+    out, seen = [], set()
+    for path in sorted(folder.glob("*.json")):
+        try:
+            m = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise ManifestError(f"{path.name}: {exc}")
+        _check(m, path.name)
+        if m["id"] in seen:
+            raise ManifestError(f"{path.name}: id {m['id']} is used twice")
+        seen.add(m["id"])
+        out.append(m)
+    return sorted(out, key=lambda m: (m["order"], m["id"]))
+
+
+def installable(manifests=None):
+    """{id: manifest} for apps the librarian and the root helper install."""
+    return {m["id"]: m for m in (manifests or load()) if m.get("install")}
+
+
+def install_dir(m):
+    return SHARE / m["install"]["dir"]
+
+
+def controllable_units(manifests=None):
+    return [m["status"]["unit"] for m in (manifests or load())
+            if m.get("status", {}).get("control")]

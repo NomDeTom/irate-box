@@ -1,0 +1,10 @@
+{
+  "id": "tools-rf",
+  "order": 50,
+  "tile": {
+    "icon": "🛠️",
+    "name": "RF & LoRa",
+    "desc": "Radio calculators & Meshtastic tools",
+    "href": "/tools-rf.html"
+  }
+}
