@@ -97,7 +97,11 @@
     for (const f of files) await upload(f);
   }
 
-  picker.addEventListener('change', () => { uploadAll([...picker.files]); picker.value = ''; });
+  // The photo and voice buttons are the same upload; on a phone, capture opens the camera
+  // or the recorder instead of the file picker (a desktop browser just picks a file).
+  for (const input of [picker, document.getElementById('drop-photo'), document.getElementById('drop-voice')]) {
+    input.addEventListener('change', () => { uploadAll([...input.files]); input.value = ''; });
+  }
   ['dragenter', 'dragover'].forEach((t) => zone.addEventListener(t, (e) => { e.preventDefault(); zone.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((t) => zone.addEventListener(t, () => zone.classList.remove('over')));
   zone.addEventListener('drop', (e) => { e.preventDefault(); uploadAll([...e.dataTransfer.files]); });

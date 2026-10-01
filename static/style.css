@@ -867,3 +867,10 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .drop-item a { color: var(--accent); font-weight: 600; }
 .usb-book { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
 .usb-book .action-note { flex-basis: 100%; }
+.drop-capture { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.drop-capture-btn {
+  position: relative; padding: 0.45rem 0.9rem; font-size: 0.9rem; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+}
+.drop-capture-btn:hover, .drop-capture-btn:focus-within { border-color: var(--accent); }
+.drop-capture-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; }

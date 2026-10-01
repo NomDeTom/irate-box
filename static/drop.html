@@ -26,6 +26,10 @@
       <input type="file" id="drop-files" multiple>
       <span><strong>Choose files</strong>, or drop them here.</span>
     </label>
+    <div class="drop-capture">
+      <label class="drop-capture-btn">📷 Take a photo <input type="file" id="drop-photo" accept="image/*" capture="environment"></label>
+      <label class="drop-capture-btn">🎙️ Record a voice note <input type="file" id="drop-voice" accept="audio/*" capture></label>
+    </div>
     <ul class="drop-uploads" id="drop-uploads"></ul>
   </section>
 
