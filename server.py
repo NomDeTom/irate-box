@@ -712,6 +712,35 @@ def security_snapshot():
             "results": control_results(5)}
 
 
+# install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
+# by the hub); for showing what is added only.
+INSTALL_OPTIONS = STATE_DIR / "install-options"
+ADDON_ID_RE = re.compile(r"^[a-z0-9-]{1,40}$")
+
+
+def addons_snapshot():
+    """The Add-ons page: each add-on from apps.d, whether install.sh has it (its option in
+    install-options, which is root-owned and world-readable), and its service's state; plus the
+    installer run in flight, which is the same as an update's."""
+    try:
+        opts = INSTALL_OPTIONS.read_text().split()
+    except OSError:
+        opts = None  # a dev checkout, or a box installed before install-options existed
+    specs = manifests.addons(MANIFESTS)
+    units = [m["status"]["unit"].replace("@hub.", f"@{os.environ.get('HUB_USER', 'hub')}.")
+             for m in specs.values() if m.get("status", {}).get("unit")]
+    states = unit_states(units) if units else {}
+    out = []
+    for aid, m in specs.items():
+        unit = m.get("status", {}).get("unit", "").replace("@hub.", f"@{os.environ.get('HUB_USER', 'hub')}.")
+        _, active, _ = states.get(unit, (False, False, False))
+        out.append({"id": aid, **{k: m["addon"].get(k) for k in ("title", "summary", "consent", "needs")},
+                    "added": None if opts is None else m["addon"]["option"] in opts, "active": active})
+    snap = update_snapshot()
+    return {"addons": out, "known": opts is not None, "progress": snap["progress"], "log": snap["log"],
+            "pending": _pending_actions("addon"), "results": control_results(5)}
+
+
 def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
@@ -974,6 +1003,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, security_snapshot())
             return
 
+        if path == "/admin/addons":
+            self.send_json(200, addons_snapshot())
+            return
+
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
 
@@ -1125,6 +1158,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/store":
             self.send_json(*store_action(payload))
+            return
+
+        if path == "/admin/addons":
+            aid = str(payload.get("addon", ""))
+            if not ADDON_ID_RE.match(aid) or aid not in manifests.addons(MANIFESTS) or type(payload.get("on")) is not bool:
+                self.send_json(400, {"error": "addon must name an add-on, and on be true or false"})
+            else:
+                self.send_json(202, {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})})
             return
 
         if path == "/admin/security":

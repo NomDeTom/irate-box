@@ -55,6 +55,10 @@ Usage: sudo ./install.sh [options]
   --port N              the port the hub is served on (default: 80). If something else
                         already serves :80, the hub is put on a free port (8080 first) and
                         says so; the other service is left as it is.
+  --remove NAME         take an add-on off again: notes, sync, mqtt, term or collab
+                        (repeatable). Its service stops and its unit and config go; its
+                        data (the notes folder, Syncthing's state) and packages stay. This
+                        is what /admin's Add-ons page runs.
   --take-port-80        when something else serves :80, stop and disable it so the hub can
                         have the port (the captive portal needs it). Recorded, so /admin's
                         Security page can undo it and uninstall.sh starts it again.
@@ -68,7 +72,7 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
-HUB_PORT="" TAKE_PORT_80=0
+HUB_PORT="" TAKE_PORT_80=0 REMOVE=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--src) SRC="$2"; shift 2 ;;
@@ -87,9 +91,19 @@ while [ $# -gt 0 ]; do
 	--hub-url) HUB_URL="$2"; shift 2 ;;
 	--port) HUB_PORT="$2"; shift 2 ;;
 	--take-port-80) TAKE_PORT_80=1; shift ;;
+	--remove)
+		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
+		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+	esac
+done
+
+# An add-on being removed is not installed by this run, whatever else asks for it.
+for r in "${REMOVE[@]}"; do
+	case "$r" in
+	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;;
 	esac
 done
 
@@ -355,9 +369,16 @@ else
 	git clone --depth 1 -b "$BRANCH" "$REPO" "$CODE"
 fi
 
-# What /admin reports as the installed version: the commit, and when it was installed.
-ver="$(git -C "${SRC:-$CODE}" describe --always --dirty --tags 2>/dev/null || echo unknown)"
-printf '%s (installed %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
+# What /admin reports as the installed version: the commit, and when it was installed. A
+# source with no git history but a VERSION (a copy of the installed code, as the Add-ons page
+# uses) keeps the version it already had.
+if ver="$(git -C "${SRC:-$CODE}" describe --always --dirty --tags 2>/dev/null)"; then
+	printf '%s (installed %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
+elif [ -n "$SRC" ] && [ -f "$SRC/VERSION" ]; then
+	cp "$SRC/VERSION" "$CODE/VERSION"
+else
+	printf 'unknown (installed %s)\n' "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
+fi
 
 # How this box was installed, for /admin's "Install update", which reruns this script the
 # same way (hub_control.py). One argument per line. Root-owned, so the unprivileged hub
@@ -382,6 +403,9 @@ fi
 	true
 } >"$ETC/install-options"
 chmod 644 "$ETC/install-options"
+# A copy the hub can read ($ETC is 750: it holds the admin password), for /admin's Add-ons
+# page to show what is added. Display only: updates and add-ons run from the root-owned one.
+install -m 644 "$ETC/install-options" "$STATE/install-options"
 
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
@@ -515,6 +539,7 @@ if [ "$CADDY_MODE" = owner ]; then
 			notice "The existing Caddy config already serves :80, so the hub is on :$HUB_PORT instead. The hotspot's sign-in sheet needs :80, so it will not pop up."
 			sed -i '/^--port$/,+1d' "$ETC/install-options"
 			printf '%s\n' --port "$HUB_PORT" >>"$ETC/install-options"
+			install -m 644 "$ETC/install-options" "$STATE/install-options"
 		fi
 	fi
 	if [ "$ok" = 0 ]; then
@@ -971,6 +996,35 @@ if [ "$WITH_SYNC" = 1 ]; then
 		st config folders add --id hub-notes --label "Hub notes" --path "$STATE/notes"
 	fi
 fi
+
+# --- add-ons taken off ------------------------------------------------------------
+# --remove: the service stops and its unit and config go. Data and packages stay, so adding
+# it back finds the notes, Syncthing's identity and so on where they were.
+for r in "${REMOVE[@]}"; do
+	case "$r" in
+	notes)
+		say "Removing the notes add-on (SilverBullet); $STATE/notes stays"
+		systemctl disable --now silverbullet >/dev/null 2>&1 || true
+		rm -f /etc/systemd/system/silverbullet.service /usr/local/bin/silverbullet ;;
+	sync)
+		say "Removing the sync add-on (Syncthing); its state in $STATE stays"
+		systemctl disable --now "syncthing@$HUB_USER" >/dev/null 2>&1 || true
+		rm -f "/etc/systemd/system/syncthing@$HUB_USER.service.d/irate-box.conf"
+		rmdir "/etc/systemd/system/syncthing@$HUB_USER.service.d" 2>/dev/null || true ;;
+	mqtt)
+		say "Removing the MQTT add-on (mosquitto's irate-box config)"
+		systemctl disable --now mosquitto >/dev/null 2>&1 || true
+		rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl ;;
+	term)
+		say "Turning the terminal off (ttyd stays installed, off)"
+		systemctl disable --now ttyd >/dev/null 2>&1 || true ;;
+	collab)
+		say "Removing the collaboration add-on (the relay's service; Node.js stays)"
+		systemctl disable --now excalidraw-room >/dev/null 2>&1 || true
+		rm -f /etc/systemd/system/excalidraw-room.service ;;
+	esac
+done
+[ ${#REMOVE[@]} -eq 0 ] || systemctl daemon-reload
 
 # --- check -----------------------------------------------------------------------
 sleep 2

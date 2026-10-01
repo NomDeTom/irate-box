@@ -27,6 +27,7 @@
       <div class="admin-side-list" id="admin-side-list">
         <p class="admin-side-group">Box</p>
         <a href="#overview">Overview</a>
+        <a href="#addons">Add-ons</a>
         <a href="#access">Access</a>
         <p class="admin-side-group">Library</p>
         <a href="#apps">Apps</a>
@@ -57,6 +58,25 @@
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
         <div id="control-results"></div>
+      </section>
+
+      <section class="admin-pane" id="addons" aria-labelledby="addons-title">
+        <h2 id="addons-title">Add-ons</h2>
+        <p class="setting-desc">
+          The hub works without any of these. Adding one installs it and starts it; removing one
+          stops it and takes its service away, and keeps its data, so adding it back finds
+          everything where it was. Each runs the installer, which takes a few minutes on this
+          board and restarts the hub part-way through.
+        </p>
+        <div id="addons-list"></div>
+        <div class="admin-progress" id="addons-progress" hidden>
+          <progress class="admin-bar" id="addons-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="addons-step"></p>
+        </div>
+        <details class="admin-output" id="addons-output" hidden>
+          <summary>Installer output</summary>
+          <pre class="admin-log" id="addons-log"></pre>
+        </details>
       </section>
 
       <section class="admin-pane" id="access" aria-labelledby="access-title">

@@ -658,7 +658,7 @@ const checkItem = (status, title, detail, fix) => el('li', { className: `check c
   el('span', { textContent: `${MARK[status]} ` }), el('strong', { textContent: title }),
   detail ? el('span', { textContent: ` — ${detail}` }) : null,
   fix ? el('span', { className: 'setting-desc', textContent: fix }) : null);
-const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update', install: 'Installing the update' };
+const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update', install: 'Installing the update', addon: 'Changing an add-on' };
 let updWaiting = null; // { id, action }
 let updPoll = null;
 
@@ -861,3 +861,83 @@ function secFix(fid, action) {
 
 sec.scan.addEventListener('click', () => secRequest({ action: 'scan' }, 'scan'));
 loadSecurity();
+
+// --- add-ons ---------------------------------------------------------------------------
+// Each add-on from apps.d: Add (after its consent text) or Remove, through the root helper,
+// which reruns install.sh. The run's bar and output are the update's own (one installer at a
+// time), so the Updates pane shows it too.
+const ado = {
+  list: document.getElementById('addons-list'),
+  progress: document.getElementById('addons-progress'),
+  bar: document.getElementById('addons-bar'),
+  step: document.getElementById('addons-step'),
+  output: document.getElementById('addons-output'),
+  log: document.getElementById('addons-log'),
+};
+let adoWaiting = null; // { id, addon }
+let adoNote = null; // { addon, text, ok }
+let adoPoll = null;
+
+function renderAddons(data) {
+  const p = data.progress;
+  const busy = data.pending > 0 || !!adoWaiting || !!p;
+  if (adoWaiting) {
+    const done = (data.results || []).find((r) => r.id === adoWaiting.id);
+    if (done) {
+      adoNote = { addon: adoWaiting.addon, text: done.message, ok: done.ok };
+      adoWaiting = null;
+      return renderAddons(data);
+    }
+  }
+  ado.list.replaceChildren(...data.addons.map((a) => {
+    const state = a.added === null ? 'Unknown: this box records no install options.'
+      : a.added ? (a.active ? 'Added, and running.' : 'Added, but not running (see Overview).') : 'Not added.';
+    const note = adoNote && adoNote.addon === a.id
+      ? el('span', { className: `setting-desc action-note${adoNote.ok ? '' : ' bad'}`, role: 'status', textContent: adoNote.text }) : null;
+    return el('div', { className: 'setting library-source' }, el('span', {},
+      el('span', { className: 'setting-name', textContent: a.title }),
+      el('span', { className: 'setting-desc', textContent: a.summary }),
+      el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
+      !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,
+      a.added === null ? null : el('span', { className: 'library-buttons' }, el('button', {
+        type: 'button', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
+        onclick: () => addonSet(a, !a.added),
+      })),
+      note));
+  }));
+  // The run in flight: the same bar as Updates, for an add-on's run or an update's.
+  ado.progress.hidden = !p;
+  if (p) {
+    const steps = Math.max(p.steps, p.step, 1);
+    ado.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
+    ado.step.textContent = `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}` +
+      (p.label ? ` — ${p.label}` : '') + '.';
+  }
+  ado.output.hidden = !(data.log.length && (busy || adoNote));
+  ado.log.textContent = data.log.join('\n');
+  ado.log.scrollTop = ado.log.scrollHeight;
+  if (p && p.action === 'addon') ado.output.open = true;
+  badge('addons', p && p.action === 'addon' ? 'working' : '');
+  clearTimeout(adoPoll);
+  if (busy) adoPoll = setTimeout(loadAddons, 1500);
+}
+
+async function loadAddons() {
+  try { renderAddons(await getJSON('/admin/addons')); } catch (_) {
+    clearTimeout(adoPoll);
+    if (adoWaiting) adoPoll = setTimeout(loadAddons, 3000); // the hub restarts during the run
+  }
+}
+
+async function addonSet(a, on) {
+  const ask = on ? (a.consent || `Add ${a.title}? The installer runs for a few minutes.`)
+    : `Remove ${a.title}? Its service stops; its data stays, so adding it back finds it.`;
+  if (!confirm(ask)) return;
+  try {
+    adoWaiting = { id: (await postJSON('/admin/addons', { addon: a.id, on })).id, addon: a.id };
+    adoNote = { addon: a.id, text: on ? `Adding ${a.title}…` : `Removing ${a.title}…`, ok: true };
+    loadAddons();
+  } catch (err) { adoNote = { addon: a.id, text: err.message, ok: false }; loadAddons(); }
+}
+
+loadAddons();

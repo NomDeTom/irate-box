@@ -7,5 +7,11 @@
     "port": 1883,
     "unit": "mosquitto.service",
     "control": true
+  },
+  "addon": {
+    "option": "--with-mqtt",
+    "title": "MQTT broker for Meshtastic",
+    "summary": "mosquitto, for Meshtastic nodes and the phone app to publish to (:1883), and pages to read (/mqtt).",
+    "consent": "The broker answers anyone on the box's network on port 1883, with no login (limited to msh/#). Add it?"
   }
 }

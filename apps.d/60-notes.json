@@ -14,5 +14,11 @@
     "port": 3000,
     "unit": "silverbullet.service",
     "control": true
+  },
+  "addon": {
+    "option": "--with-notes",
+    "title": "Notes (SilverBullet)",
+    "summary": "A shared Markdown notebook at /notes/, for everyone on the box's network. About 40 MB of memory.",
+    "consent": "Anyone on the box's network can read and change the notes unless you set a login in /etc/hub/silverbullet.env. Add it?"
   }
 }

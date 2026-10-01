@@ -111,6 +111,14 @@ def _check(m, where):
         need(isinstance(inst.get("needs"), str) and ".." not in inst["needs"]
              and not inst["needs"].startswith("/"), "install.needs: a relative file or glob")
         need("restart" not in inst or UNIT_RE.match(str(inst["restart"])), "install.restart: a .service name")
+    addon = m.get("addon")
+    if addon is not None:
+        need(re.match(r"^--with-(notes|sync|mqtt|term|collab)$", str(addon.get("option", ""))),
+             "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-term, --with-collab")
+        for k in ("title", "summary"):
+            need(isinstance(addon.get(k), str), f"addon.{k}: a string")
+        need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")
+        need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
     src = m.get("source")
     if src is not None:
         need(inst is not None, "a source needs an install")
@@ -175,6 +183,11 @@ def entries_for(menu_id, manifests):
                             {"name": str(item.get("title") or item["page"])[:120], "desc": "", "href": href},
                             status_path))
     return sorted(out, key=lambda x: x[0])
+
+
+def addons(manifests=None):
+    """{id: manifest} for the add-ons /admin can add and remove (those with an "addon" part)."""
+    return {m["id"]: m for m in (manifests if manifests is not None else load()) if m.get("addon")}
 
 
 def installable(manifests=None):

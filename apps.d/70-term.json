@@ -15,5 +15,11 @@
     "port": 7681,
     "unit": "ttyd.service",
     "control": true
+  },
+  "addon": {
+    "option": "--with-term",
+    "title": "Terminal (ttyd)",
+    "summary": "A shell on the box in the browser at /term/, behind the admin login, then an account on the box.",
+    "consent": "This puts a login prompt for the box's own accounts on the network, behind the admin password (sent as plain HTTP). Only turn it on if you need it. Turn it on?"
   }
 }

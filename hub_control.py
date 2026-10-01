@@ -31,6 +31,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
+  {"id": ..., "action": "addon", "addon": "<an apps.d add-on>", "on": true|false}
+      Rerun install.sh from a copy of the installed code with that add-on's --with-* option
+      added, or taken out with --remove; output and progress as for update-install.
   {"id": ..., "action": "security-scan"}
       What the box exposes and how it is set up (security.py): to control/security.json.
   {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
@@ -604,28 +607,66 @@ def update_install(req):
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
     if state.get("verified") != head:
         raise ValueError("the fetched version has not passed verification: fetch the update again")
-    opts = _install_options()
-    cmd = ["bash", str(UPDATE_SRC / "install.sh"), "--src", str(UPDATE_SRC), *opts]
-    if "--download-cache" in (UPDATE_SRC / "install.sh").read_text():
-        cmd += ["--download-cache", str(DOWNLOADS)]
-    # As many steps as the last install here printed; a guess until one has.
-    steps = state.get("install_steps")
-    with Progress("install", steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
-            open(UPDATE_LOG, "w") as log:
-        _for_hub(UPDATE_LOG)
-        log.write("$ " + " ".join(cmd) + "\n\n")
-        log.flush()
-        # systemd gives the helper no HOME, and Caddy warns about it on every validate.
-        env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
-        code, seen = _follow_install(proc, progress)
-    if code != 0:
-        raise ValueError(f"install.sh exited with {code}; see update.log")
+    seen = _run_install(UPDATE_SRC, _install_options(), "install", state.get("install_steps"))
     state = _read_update_state()
     if state:
         state.update(installed=_installed_commit(), up_to_date=True, changes=[], install_steps=seen)
         _write_update_state(state)
     return f"updated to {_installed_commit() or 'the fetched version'}"
+
+
+def _run_install(src, args, action, steps=None):
+    """Run src's install.sh with args, its output in control/update.log and its "==> " steps in
+    update-progress.json. steps: what the last install here printed (a guess until one has).
+    Returns the steps it printed; raises ValueError if it fails."""
+    cmd = ["bash", str(src / "install.sh"), "--src", str(src), *args]
+    if "--download-cache" in (src / "install.sh").read_text():
+        cmd += ["--download-cache", str(DOWNLOADS)]
+    # systemd gives the helper no HOME, and Caddy warns about it on every validate.
+    env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
+    with Progress(action, steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
+            open(UPDATE_LOG, "w") as log:
+        _for_hub(UPDATE_LOG)
+        log.write("$ " + " ".join(cmd) + "\n\n")
+        log.flush()
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+        code, seen = _follow_install(proc, progress)
+    if code != 0:
+        raise ValueError(f"install.sh exited with {code}; see the installer output")
+    return seen
+
+
+# --- add-ons ---------------------------------------------------------------------------
+# /admin's Add-ons page: install.sh again, from a copy of the installed code (never the code
+# it is about to replace), with one --with-* option added or taken out (--remove). install.sh
+# then records the new set in install-options, so updates keep it.
+
+ADDON_SRC = UPDATE_SRC.parent / "addon-src"
+
+
+def addon(req):
+    aid = str(req.get("addon", ""))
+    spec = manifests.addons(MANIFESTS).get(aid)
+    if not spec:
+        raise ValueError(f"{aid} is not an add-on")
+    on = req.get("on") is True
+    option = spec["addon"]["option"]
+    opts = _install_options()
+    if (option in opts) == on:
+        raise ValueError(f"{spec['addon']['title']} is already {'added' if on else 'removed'}")
+    args = [o for o in opts if o != option] + ([option] if on else ["--remove", option.removeprefix("--with-")])
+    shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(CODE, ADDON_SRC, symlinks=True)
+    state = _read_update_state()
+    try:
+        seen = _run_install(ADDON_SRC, args, "addon", state.get("install_steps"))
+    finally:
+        shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    if state:  # the next run's step count: the same script, near enough the same steps
+        state["install_steps"] = seen
+        _write_update_state(state)
+    return f"{spec['addon']['title']}: {'added' if on else 'removed'}"
 
 
 # --- the update doctor ---------------------------------------------------------------
@@ -964,7 +1005,7 @@ def app_rollback(req):
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
-           "security-scan": security_scan, "security-fix": security_fix,
+           "security-scan": security_scan, "security-fix": security_fix, "addon": addon,
            "app-install": app_install, "app-rollback": app_rollback}
 
 
