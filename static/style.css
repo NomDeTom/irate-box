@@ -865,3 +865,5 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .drop-upload .setting-name { display: block; }
 .drop-upload .setting-desc.bad { color: #e5484d; }
 .drop-item a { color: var(--accent); font-weight: 600; }
+.usb-book { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
+.usb-book .action-note { flex-basis: 100%; }

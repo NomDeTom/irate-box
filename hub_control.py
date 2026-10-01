@@ -34,6 +34,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "addon", "addon": "<an apps.d add-on>", "on": true|false}
       Rerun install.sh from a copy of the installed code with that add-on's --with-* option
       added, or taken out with --remove; output and progress as for update-install.
+  {"id": ..., "action": "usb-scan"} / "usb-import" (device, file) / "usb-export" (device, book)
+      Books to and from a USB stick (usbstick.py): what is on each stick to control/usb.json;
+      a book copied in (then the library rebuilt) or out, with progress in usb-progress.json.
   {"id": ..., "action": "security-scan"}
       What the box exposes and how it is set up (security.py): to control/security.json.
   {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
@@ -71,6 +74,7 @@ from pathlib import Path
 
 import manifests
 import security
+import usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -96,6 +100,9 @@ UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
 SECURITY_STATE = CONTROL / "security.json"
+USB_STATE = CONTROL / "usb.json"
+USB_PROGRESS = CONTROL / "usb-progress.json"
+ZIM_DIR = STATE / "zim"
 SECURITY_LOG = CONTROL / security.UPDATES_LOG_NAME
 # Release downloads install.sh would otherwise make itself (install.sh --download-cache).
 DOWNLOADS = Path(os.environ.get("HUB_DOWNLOAD_CACHE", "/var/cache/irate-box/downloads"))
@@ -259,14 +266,15 @@ def _read_update_state():
 
 
 class Progress:
-    """control/update-progress.json while a check, fetch or install runs: step `step` of
+    """control/update-progress.json (or `path`) while a check, fetch or install runs: step `step` of
     `steps` (`estimate` when the count is a guess), what it is doing, and the bytes of a
     download in flight. The hub only reads it, and ignores it once `pid` has gone; it is
     removed when the action ends, however it ends."""
 
-    def __init__(self, action, steps, estimate=False):
+    def __init__(self, action, steps, estimate=False, path=None):
         self.data = {"action": action, "pid": os.getpid(), "step": 0, "steps": steps,
                      "estimate": estimate, "label": "", "done": 0, "total": 0}
+        self.path = path or UPDATE_PROGRESS
         self._last = 0.0
 
     def __enter__(self):
@@ -274,7 +282,7 @@ class Progress:
         return self
 
     def __exit__(self, *exc):
-        UPDATE_PROGRESS.unlink(missing_ok=True)
+        self.path.unlink(missing_ok=True)
 
     def add_steps(self, n):
         self.data["steps"] += n
@@ -293,10 +301,10 @@ class Progress:
 
     def _write(self):
         self._last = time.monotonic()
-        tmp = UPDATE_PROGRESS.with_name(UPDATE_PROGRESS.name + ".tmp")
+        tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(json.dumps(self.data))
         _for_hub(tmp)
-        os.replace(tmp, UPDATE_PROGRESS)
+        os.replace(tmp, self.path)
 
 
 # --- verifying a fetched update -------------------------------------------------------
@@ -893,6 +901,50 @@ def security_fix(req):
     return msg
 
 
+# --- books on a USB stick -----------------------------------------------------------------
+
+def _write_usb(data):
+    USB_STATE.write_text(json.dumps(data, indent=2))
+    _for_hub(USB_STATE)
+
+
+def usb_scan(req):
+    data = usbstick.scan()
+    _write_usb(data)
+    books = sum(len(d["zims"]) for d in data["devices"])
+    return (f"{len(data['devices'])} stick{'s' if len(data['devices']) != 1 else ''}, "
+            f"{books} book{'s' if books != 1 else ''}") if data["devices"] else "no USB stick found"
+
+
+def _min_free():
+    try:
+        policy = json.loads((STATE / "library" / "sources.json").read_text()).get("policy", {})
+        return int(policy.get("min_free_mb", 512)) << 20
+    except (OSError, ValueError, TypeError):
+        return 512 << 20
+
+
+def usb_import(req):
+    device, file = str(req.get("device", "")), str(req.get("file", ""))
+    with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
+        progress.step(f"Copying {Path(file).name} from the stick")
+        name = usbstick.import_zim(device, file, ZIM_DIR, HUB_USER, _min_free(),
+                                   ["python3", str(CODE / "librarian.py")], STATE, progress.bytes)
+    return f"{name}: added to the library"
+
+
+def usb_export(req):
+    device, book = str(req.get("device", "")), str(req.get("book", ""))
+    with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
+        progress.step(f"Copying {book} to the stick")
+        where = usbstick.export_zim(device, book, ZIM_DIR, progress.bytes)
+    try:
+        _write_usb(usbstick.scan())
+    except (ValueError, OSError):
+        pass
+    return f"{book}: copied to the stick as {where}; it is safe to unplug"
+
+
 # --- app bundles -------------------------------------------------------------------
 # The librarian (as the hub user) downloads a bundle into $STATE/library/apps/ and checks it;
 # this checks it again -- the hub wrote that file -- and swaps it in, keeping the previous
@@ -1006,6 +1058,7 @@ ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-fix": security_fix, "addon": addon,
+           "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "app-install": app_install, "app-rollback": app_rollback}
 
 

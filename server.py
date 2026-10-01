@@ -755,6 +755,30 @@ def addons_snapshot():
             "pending": _pending_actions("addon"), "results": control_results(5)}
 
 
+USB_STATE = CONTROL_DIR / "usb.json"
+USB_PROGRESS = CONTROL_DIR / "usb-progress.json"
+USB_DEVICE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+
+def usb_snapshot():
+    """Books on USB sticks: the root helper's last scan, the copy in flight, the hub's books."""
+    try:
+        scan = json.loads(USB_STATE.read_text())
+    except (OSError, ValueError):
+        scan = None
+    progress = None
+    try:
+        progress = json.loads(USB_PROGRESS.read_text())
+        os.kill(int(progress["pid"]), 0)
+    except PermissionError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError):
+        progress = None
+    books = sorted(p.stem for p in (STATE_DIR / "zim").glob("*.zim")) if (STATE_DIR / "zim").is_dir() else []
+    return {"scan": scan, "progress": progress, "books": books,
+            "pending": _pending_actions("usb-"), "results": control_results(5)}
+
+
 def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
@@ -1023,6 +1047,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, addons_snapshot())
             return
 
+        if path == "/admin/usb":
+            self.send_json(200, usb_snapshot())
+            return
+
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
 
@@ -1174,6 +1202,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/store":
             self.send_json(*store_action(payload))
+            return
+
+        if path == "/admin/usb":
+            action, device = payload.get("action"), str(payload.get("device", ""))
+            if action == "scan":
+                self.send_json(202, {"id": control_request({"action": "usb-scan"})})
+            elif action == "import" and USB_DEVICE_RE.match(device) and isinstance(payload.get("file"), str):
+                self.send_json(202, {"id": control_request({"action": "usb-import", "device": device,
+                                                            "file": payload["file"][:512]})})
+            elif action == "export" and USB_DEVICE_RE.match(device) and isinstance(payload.get("book"), str):
+                self.send_json(202, {"id": control_request({"action": "usb-export", "device": device,
+                                                            "book": payload["book"][:64]})})
+            else:
+                self.send_json(400, {"error": "action must be scan, import (device, file) or export (device, book)"})
             return
 
         if path == "/admin/addons":

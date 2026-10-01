@@ -31,6 +31,7 @@ policy.keep_old), github-token (optional, for actions), lock.
     librarian.py update [NAME ...]        check sources and install anything newer
     librarian.py update --scheduled       the timer: only sources whose check is due
     librarian.py check [NAME ...]         report the newest version without downloading
+    librarian.py rebuild-library          library.xml again from the .zim files present (a book added by hand)
     librarian.py fetch [NAME ...]         download and check anything newer, ready to update
     librarian.py add --name N --type T [--repo R] [--workflow W] [--branch B]
                      [--pattern P] [--url U] [--prerelease]
@@ -901,6 +902,7 @@ def main(argv=None):
     t.add_argument("value", nargs="?", default="")
     aa = sub.add_parser("add-apps")
     aa.add_argument("apps", nargs="*")
+    sub.add_parser("rebuild-library")
     af = sub.add_parser("app-fetch")
     af.add_argument("app")
     args = p.parse_args(argv)
@@ -938,6 +940,9 @@ def main(argv=None):
                 if app not in have:
                     add_source(default_app_source(app))
                     print(f"added {app}")
+        elif args.cmd == "rebuild-library":
+            with Lock():
+                rebuild_library()
         elif args.cmd == "app-fetch":
             if args.app not in APPS:
                 raise LibrarianError(f"app must be one of {', '.join(APPS)}")

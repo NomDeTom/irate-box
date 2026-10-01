@@ -1005,3 +1005,81 @@ async function setSetupDone(done) {
 })();
 document.getElementById('setup-finish').addEventListener('click', () => setSetupDone(true));
 document.getElementById('setup-again').addEventListener('click', (e) => { e.preventDefault(); setSetupDone(false); });
+
+// --- books on a USB stick ---------------------------------------------------------------
+// The root helper mounts a stick only for a scan or a copy (usbstick.py); this lists what the
+// last scan found, offers Import for each book and Export of the hub's books, and shows the
+// copy's bar.
+const usb = {
+  scan: document.getElementById('usb-scan'),
+  note: document.getElementById('usb-note'),
+  progress: document.getElementById('usb-progress'),
+  bar: document.getElementById('usb-bar'),
+  step: document.getElementById('usb-step'),
+  devices: document.getElementById('usb-devices'),
+};
+let usbWaiting = null; // { id, at }
+let usbNote = null; // { at, text, ok }
+let usbPoll = null;
+
+function renderUsb(data) {
+  const p = data.progress;
+  const busy = data.pending > 0 || !!usbWaiting || !!p;
+  if (usbWaiting) {
+    const done = (data.results || []).find((r) => r.id === usbWaiting.id);
+    if (done) {
+      usbNote = { at: usbWaiting.at, text: done.message, ok: done.ok };
+      usbWaiting = null;
+      if (done.ok) loadLibrary();
+      return renderUsb(data);
+    }
+  }
+  const noteAt = (at) => (usbNote && usbNote.at === at
+    ? el('span', { className: `setting-desc action-note${usbNote.ok ? '' : ' bad'}`, role: 'status', textContent: usbNote.text }) : null);
+  say(usbNote && usbNote.at === 'scan' ? usbNote.text : '', usbNote ? usbNote.ok : true, usb.note);
+  usb.scan.disabled = busy;
+  const devs = (data.scan && data.scan.devices) || [];
+  usb.devices.replaceChildren(...devs.map((d) => {
+    const pick = el('select', { disabled: busy || !data.books.length },
+      ...data.books.map((b) => el('option', { value: b, textContent: `${b}.zim` })));
+    return el('div', { className: 'setting library-source' }, el('span', {},
+      el('span', { className: 'setting-name', textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }),
+      d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
+      ...(d.zims.length ? d.zims.map((z) => el('span', { className: 'usb-book' },
+        el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ' · not a ZIM file'}` }),
+        z.zim ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
+          onclick: () => usbRequest({ action: 'import', device: d.name, file: z.file }, `${d.name}:${z.file}`,
+            `Copy ${z.file} into the library (${size(z.size)})?`) }) : null,
+        noteAt(`${d.name}:${z.file}`)))
+        : [el('span', { className: 'setting-desc', textContent: d.error ? '' : 'No books on this stick.' })]),
+      data.books.length ? el('span', { className: 'library-buttons' }, pick,
+        el('button', { type: 'button', textContent: 'Export to this stick', disabled: busy,
+          onclick: () => usbRequest({ action: 'export', device: d.name, book: pick.value }, `export:${d.name}`,
+            `Copy ${pick.value}.zim onto ${d.label || d.name}?`) })) : null,
+      noteAt(`export:${d.name}`)));
+  }));
+  if (data.scan && !devs.length) usb.devices.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No USB stick found. Plug one into the box and scan again.' }));
+  usb.progress.hidden = !p;
+  if (p) {
+    usb.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
+    usb.step.textContent = `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
+  }
+  clearTimeout(usbPoll);
+  if (busy) usbPoll = setTimeout(loadUsb, 1000);
+}
+
+async function loadUsb() {
+  try { renderUsb(await getJSON('/admin/usb')); } catch (_) { /* shown on the next poll */ }
+}
+
+async function usbRequest(body, at, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try {
+    usbWaiting = { id: (await postJSON('/admin/usb', body)).id, at };
+    usbNote = null;
+    loadUsb();
+  } catch (err) { usbNote = { at, text: err.message, ok: false }; loadUsb(); }
+}
+
+usb.scan.addEventListener('click', () => usbRequest({ action: 'scan' }, 'scan'));
+loadUsb();

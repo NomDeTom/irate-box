@@ -225,6 +225,20 @@
           <button type="submit">Add source</button>
         </form>
         <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
+
+        <h3>From or to a USB stick</h3>
+        <p class="setting-desc">
+          Plug a stick into the box, then scan. Books on it can be copied into the library, and the
+          hub's books copied onto it to carry to another box. The stick is only mounted for the
+          scan or the copy, read-only unless something is being copied to it.
+        </p>
+        <div class="library-buttons"><button type="button" id="usb-scan">Scan for USB sticks</button></div>
+        <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
+        <div class="admin-progress" id="usb-progress" hidden>
+          <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="usb-step"></p>
+        </div>
+        <div id="usb-devices"></div>
       </section>
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
