@@ -865,7 +865,8 @@ function renderSecurity(data) {
 }
 
 async function loadSecurity() {
-  try { renderSecurity(await getJSON('/admin/security')); } catch (_) {
+  try { renderSecurity(await getJSON('/admin/security')); } catch (err) {
+    console.error('security pane:', err);
     sec.when.textContent = 'Could not read the security report.';
   }
 }
