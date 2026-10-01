@@ -651,7 +651,6 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .app-bar .theme-picker button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }
 
 /* Library (admin): sources, the add form and the policy. */
-#library-section h3 { margin: 1.5rem 0 0.5rem; font-size: 1rem; }
 #library-sources { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .library-source { cursor: default; }
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
@@ -667,20 +666,10 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
   border: 1px solid var(--border);
   border-radius: 4px;
 }
-#library-section button {
-  align-self: flex-start;
-  padding: 0.3rem 0.8rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: inherit;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-#library-section button:hover:not(:disabled) { border-color: var(--accent); }
-#library-section button:disabled { opacity: 0.5; cursor: default; }
-#library-section button.link-button {
+/* A form's buttons keep their own width, in a row when there are several. */
+.library-form > button, .library-form > .library-buttons { align-self: flex-start; }
+.library-form > .library-buttons { margin-top: 0; }
+body.admin button.link-button {
   padding: 0;
   color: var(--accent);
   background: none;
@@ -690,16 +679,48 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .setting-desc.bad { color: #e5484d; }
 
 
-/* Admin: a sticky section bar, and a status note that stays in view. */
-body.admin section { scroll-margin-top: 4rem; margin-bottom: 2.5rem; }
-body.admin h3 { margin: 1.5rem 0 0.5rem; font-size: 1rem; }
-.admin-nav {
-  position: sticky; top: 0; z-index: 5; flex-wrap: wrap;
-  background: var(--bg); padding-top: 0.5rem; padding-bottom: 0.25rem;
+/* Admin: a sidebar of pages beside one pane at a time (PatternFly's vertical navigation,
+   as in Cockpit). Below 760px the sidebar folds into a menu button above the pane. */
+.admin-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 2rem; align-items: start; }
+.admin-side { position: sticky; top: 1rem; }
+.admin-menu { display: none; }
+.admin-side-list { display: flex; flex-direction: column; gap: 0.1rem; }
+.admin-side-group {
+  margin: 1rem 0 0.25rem; padding: 0 0.75rem; font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
 }
+.admin-side-group:first-child { margin-top: 0; }
+.admin-side-list a {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; border-radius: 6px;
+  border-left: 3px solid transparent; color: var(--text); text-decoration: none; font-size: 0.92rem;
+}
+.admin-side-list a:hover { background: var(--surface); }
+.admin-side-list a[aria-current="page"] { background: var(--surface); border-left-color: var(--accent); color: var(--accent); font-weight: 600; }
+.admin-side-list a[data-badge]::after {
+  content: attr(data-badge); margin-left: auto; padding: 0 0.45rem; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 600; color: var(--accent-ink); background: var(--accent);
+}
+.admin-main { min-width: 0; }
+.admin-pane > h2 {
+  margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;
+  text-transform: none; color: var(--text);
+}
+body.admin h3 { margin: 1.75rem 0 0.5rem; font-size: 1rem; }
+@media (max-width: 760px) {
+  .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .admin-side { position: relative; top: 0; }
+  .admin-menu {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.55rem 0.8rem;
+    font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer;
+  }
+  .admin-side-list { display: none; margin-top: 0.5rem; padding: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+  .admin-side.open .admin-side-list { display: flex; }
+}
+/* The first-use page's status line (admin-setup.html). */
 .admin-note {
-  position: sticky; top: 3.2rem; z-index: 4; margin: 0 0 1rem;
-  padding: 0.5rem 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  margin: 0 0 1rem; padding: 0.5rem 0.75rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
 }
 .admin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
 .admin-tile {
@@ -794,6 +815,8 @@ progress.admin-bar:indeterminate::-moz-progress-bar { background: transparent; }
 .action-note { display: block; margin-top: 0.4rem; }
 .action-note.busy { color: var(--warn); }
 
+.admin-output { margin: 0.75rem 0; }
+.admin-output summary { cursor: pointer; font-size: 0.88rem; color: var(--muted); }
 .admin-log {
   max-height: 16rem; overflow: auto; margin: 0.5rem 0; padding: 0.6rem 0.8rem; white-space: pre-wrap;
   font-size: 0.75rem; line-height: 1.4; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;

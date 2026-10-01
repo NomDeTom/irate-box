@@ -504,13 +504,15 @@ def library_action(payload):
         elif action == "token":
             librarian.set_token(str(payload.get("value") or ""))
         elif action == "add-apps":
+            # The named apps (an app row's "Keep current"), or every default one.
             have = {s["name"] for s in librarian.load_config()["sources"]}
-            for app in librarian.default_apps():
+            for app in names or librarian.default_apps():
+                if not librarian.APPS.get(app, {}).get("source"):
+                    raise librarian.LibrarianError(f"{app} is not an app the hub keeps current")
                 if app not in have:
                     librarian.add_source(librarian.default_app_source(app))
-        elif action in ("check", "update"):
-            download = action == "update"
-            if not library_start(action, lambda: librarian.update(names or None, download=download, **quiet)):
+        elif action in ("check", "fetch", "update"):
+            if not library_start(action, lambda: librarian.update(names or None, mode=action, **quiet)):
                 return 409, {"error": "the librarian is already running"}
         elif action == "rollback":
             name, version = str(payload.get("name", "")), payload.get("version") or None
@@ -653,7 +655,13 @@ def update_snapshot():
         doctor = json.loads(DOCTOR_STATE.read_text())
     except (OSError, ValueError):
         doctor = None
-    pending = len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0
+    # Only update requests: a queued app install or service change is not the update's.
+    pending = 0
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            pending += str(json.loads(path.read_text()).get("action", "")).startswith("update-")
+        except (OSError, ValueError, AttributeError):
+            pass  # answered and removed while we looked, or not ours to judge
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
             "progress": update_progress(), "doctor": doctor, "results": control_results(5)}
 

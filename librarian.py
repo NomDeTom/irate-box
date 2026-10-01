@@ -31,6 +31,7 @@ policy.keep_old), github-token (optional, for actions), lock.
     librarian.py update [NAME ...]        check sources and install anything newer
     librarian.py update --scheduled       the timer: only sources whose check is due
     librarian.py check [NAME ...]         report the newest version without downloading
+    librarian.py fetch [NAME ...]         download and check anything newer, ready to update
     librarian.py add --name N --type T [--repo R] [--workflow W] [--branch B]
                      [--pattern P] [--url U] [--prerelease]
     librarian.py remove NAME [--delete-book]
@@ -401,23 +402,34 @@ def _same_build(installed, cand):
     return str(installed.get("run")) == run_id
 
 
-def update_app(src, cand, entry, download):
-    """One app source's part of update(): compare builds, and fetch and queue if newer."""
+def update_app(src, cand, entry, mode):
+    """One app source's part of update(): compare builds; for "fetch", download and check
+    the bundle into APP_STAGING; for "update", also queue it for the root helper (using the
+    fetched one when it is still the newest)."""
     installed = installed_app(src["name"])
     meta = installed or {}
     entry["current"] = {
         "version": f"run-{meta['run']}" if meta.get("run") else (f"git-{meta['commit']}" if meta.get("commit") else None),
         "label": (f"{meta['commit'][:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
                   if meta.get("commit") else "a build copied in by hand" if installed is not None else "not installed")}
+    staged = APP_STAGING / f"{src['name']}.zip"
     if _same_build(meta, cand):
+        entry.pop("fetched", None)
         return f"up to date: {cand['label']}"
-    if not download:
-        return f"newer available: {cand['label']}"
-    path, bundle = fetch_app(src, cand)
-    rid = _queue_root({"action": "app-install", "app": src["name"], "zip": str(path)})
+    fetched = entry.get("fetched") or {}
+    if not (fetched.get("version") == cand["version"] and staged.exists()):
+        if mode == "check":
+            return f"newer available: {cand['label']}"
+        path, bundle = fetch_app(src, cand)
+        fetched = entry["fetched"] = {"version": cand["version"], "label": cand["label"],
+                                      "commit": str(bundle.get("commit", ""))[:7]}
+    if mode != "update":
+        return f"fetched {fetched['commit']} ({cand['label']}); ready to update"
+    rid = _queue_root({"action": "app-install", "app": src["name"], "zip": str(staged)})
     entry["pending"] = rid
     entry.pop("install_result", None)
-    return f"fetched {bundle.get('commit', '')[:7]} ({cand['label']}); installing"
+    entry.pop("fetched", None)
+    return f"installing {fetched['commit']} ({cand['label']})"
 
 
 def default_apps():
@@ -448,6 +460,8 @@ def remove_source(name, delete_book=False):
     status = load_status()
     status.pop(name, None)
     save_status(status)
+    staged_book(name).unlink(missing_ok=True)
+    (APP_STAGING / f"{name}.zip").unlink(missing_ok=True)
     if delete_book and name not in APPS:
         with Lock():
             (ZIM_DIR / f"{name}.zim").unlink(missing_ok=True)
@@ -671,8 +685,14 @@ def _prune_archive(name, keep):
     return [p.stem for p in old[:keep]]
 
 
-def install(src, cand, policy, status_entry):
-    """Download cand, check it, and swap it in as <name>.zim with no gap."""
+def staged_book(name):
+    """A fetched version waiting to be swapped in: beside the book, on the same filesystem
+    for an atomic rename, and not named *.zim, so Kiwix never lists it."""
+    return ZIM_DIR / f".{name}.zim.fetched"
+
+
+def fetch_book(src, cand, policy, status_entry):
+    """Download cand and check it into staged_book(); readers see no change until install."""
     name = src["name"]
     need = cand["size"] * (2 if cand["zip"] else 1) + policy["min_free_mb"] * 2**20
     free = _free_bytes(ZIM_DIR)
@@ -680,8 +700,9 @@ def install(src, cand, policy, status_entry):
         raise LibrarianError(f"not enough space: {free >> 20} MB free, {need >> 20} MB needed")
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
+    ZIM_DIR.mkdir(parents=True, exist_ok=True)
     part = TMP_DIR / f"{name}.download"
-    zim_tmp = ZIM_DIR / f".{name}.zim.new"  # same filesystem as the book, for an atomic rename
+    zim_tmp = ZIM_DIR / f".{name}.zim.new"
     archived = ARCHIVE_DIR / name / f"{_safe(cand['version'])}.zim"
     try:
         if archived.exists():
@@ -695,7 +716,26 @@ def install(src, cand, policy, status_entry):
             _download(cand["url"], part, cand["auth"], name, cand["size"])
             os.replace(part, zim_tmp)
         _check_zim(zim_tmp)
+        os.replace(zim_tmp, staged_book(name))
+    finally:
+        part.unlink(missing_ok=True)
+        zim_tmp.unlink(missing_ok=True)
+    status_entry["fetched"] = {"version": cand["version"], "label": cand["label"],
+                               "size": staged_book(name).stat().st_size}
 
+
+def _fetched(name, cand, entry):
+    return (entry.get("fetched") or {}).get("version") == cand["version"] and staged_book(name).exists()
+
+
+def install(src, cand, policy, status_entry):
+    """Swap cand in as <name>.zim with no gap, fetching it first unless it already is."""
+    name = src["name"]
+    if not _fetched(name, cand, status_entry):
+        fetch_book(src, cand, policy, status_entry)
+    staged = staged_book(name)
+    archived = ARCHIVE_DIR / name / f"{_safe(cand['version'])}.zim"
+    try:
         book = ZIM_DIR / f"{name}.zim"
         current = status_entry.get("current", {}).get("version")
         if book.exists() and policy["keep_old"] > 0:
@@ -705,11 +745,11 @@ def install(src, cand, policy, status_entry):
             target = folder / f"{label}.zim"
             target.unlink(missing_ok=True)
             os.link(book, target)  # a second name for the same data: no copy, no gap
-        os.replace(zim_tmp, book)
+        os.replace(staged, book)
         archived.unlink(missing_ok=True)  # current now, so not an old version
     finally:
-        part.unlink(missing_ok=True)
-        zim_tmp.unlink(missing_ok=True)
+        staged.unlink(missing_ok=True)
+        status_entry.pop("fetched", None)
 
     rebuild_library()
     archived = _prune_archive(name, policy["keep_old"])
@@ -767,9 +807,12 @@ def _due(entry, hours):
     return (datetime.now(timezone.utc) - then).total_seconds() >= hours * 3600 - 300
 
 
-def update(names=None, scheduled=False, download=True, log=print):
-    """Check the chosen sources (all enabled ones by default) and install anything newer.
+def update(names=None, scheduled=False, download=True, log=print, mode=None):
+    """Check the chosen sources (all enabled ones by default) and act on anything newer:
+    mode "check" only records it, "fetch" downloads and checks it without changing what is
+    in use, "update" (the default; download=False means "check") puts it in use too.
     Returns {name: outcome}. One source failing never stops the others."""
+    mode = mode or ("update" if download else "check")
     cfg = load_config()
     policy = cfg["policy"]
     results = {}
@@ -790,11 +833,19 @@ def update(names=None, scheduled=False, download=True, log=print):
                 entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
                 if src.get("kind") == "app":
                     log(f"{name}: checking the app bundle")
-                    outcome = update_app(src, cand, entry, download)
+                    outcome = update_app(src, cand, entry, mode)
                 elif entry.get("current", {}).get("version") == cand["version"] and (ZIM_DIR / f"{name}.zim").exists():
                     outcome = f"up to date: {cand['label']}"
-                elif not download:
+                    entry.pop("fetched", None)
+                    staged_book(name).unlink(missing_ok=True)
+                elif _fetched(name, cand, entry) and mode != "update":
+                    outcome = f"fetched {cand['label']}; ready to update"
+                elif mode == "check":
                     outcome = f"newer available: {cand['label']}"
+                elif mode == "fetch":
+                    log(f"{name}: fetching {cand['label']}")
+                    fetch_book(src, cand, policy, entry)
+                    outcome = f"fetched {cand['label']}; ready to update"
                 else:
                     log(f"{name}: installing {cand['label']}")
                     install(src, cand, policy, entry)
@@ -830,6 +881,8 @@ def main(argv=None):
     u.add_argument("--scheduled", action="store_true")
     c = sub.add_parser("check")
     c.add_argument("names", nargs="*")
+    f = sub.add_parser("fetch")
+    f.add_argument("names", nargs="*")
     a = sub.add_parser("add")
     for opt in ("name", "type", "repo", "workflow", "branch", "pattern", "url"):
         a.add_argument(f"--{opt}")
@@ -862,7 +915,9 @@ def main(argv=None):
             failed = any(v.startswith("error") for v in results.values())
             return 1 if failed and not args.scheduled else 0
         elif args.cmd == "check":
-            update(args.names, download=False)
+            update(args.names, mode="check")
+        elif args.cmd == "fetch":
+            update(args.names, mode="fetch")
         elif args.cmd == "add":
             src = {k: getattr(args, k) for k in ("name", "type", "repo", "workflow", "branch", "pattern", "url")}
             src["prerelease"] = args.prerelease

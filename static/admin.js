@@ -1,14 +1,53 @@
 // Admin options. The gate is Caddy's basic_auth on /admin/* -- by the time this page
 // loads, the operator has already authenticated. Each toggle saves on change; there is
 // no Save button to forget to press.
-const note = document.getElementById('save-note');
-const boxes = document.querySelectorAll('.settings input[type="checkbox"]');
 
-function say(text, ok) {
-  note.textContent = text;
-  note.classList.toggle('bad', !ok);
-  note.hidden = false;
+// --- panes ------------------------------------------------------------------------------
+// One pane at a time, chosen by the sidebar and kept in the address (#updates), so a
+// reload or a bookmark comes back to the same place. Everything keeps loading in the
+// background, so the sidebar's badges stay current whichever pane is open.
+const panes = [...document.querySelectorAll('.admin-pane')];
+const sideLinks = [...document.querySelectorAll('.admin-side-list a')];
+const menu = document.querySelector('.admin-menu');
+const side = document.querySelector('.admin-side');
+
+function showPane() {
+  const pane = panes.find((p) => `#${p.id}` === location.hash) || panes[0];
+  panes.forEach((p) => { p.hidden = p !== pane; });
+  sideLinks.forEach((a) => {
+    if (a.hash === `#${pane.id}`) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+  const title = pane.querySelector('h2').textContent;
+  document.getElementById('admin-current').textContent = title;
+  document.title = `${title} · Hub admin`;
+  side.classList.remove('open');
+  menu.setAttribute('aria-expanded', 'false');
+  window.scrollTo(0, 0);
 }
+window.addEventListener('hashchange', showPane);
+menu.addEventListener('click', () => {
+  const open = side.classList.toggle('open');
+  menu.setAttribute('aria-expanded', String(open));
+});
+showPane();
+
+// A word beside a sidebar entry: "new", "working", ... or nothing.
+function badge(pane, text) {
+  const a = sideLinks.find((l) => l.hash === `#${pane}`);
+  if (a) { if (text) a.dataset.badge = text; else delete a.dataset.badge; }
+}
+
+// Every answer goes in the note right under the control that asked for it.
+const noteEl = (id) => document.getElementById(id);
+function say(text, ok, at) {
+  at.textContent = text;
+  at.classList.toggle('bad', !ok);
+  at.hidden = !text;
+}
+
+const boxes = document.querySelectorAll('.settings input[type="checkbox"]');
+const landingNote = noteEl('landing-note');
 
 async function load() {
   try {
@@ -17,7 +56,7 @@ async function load() {
     const data = await r.json();
     boxes.forEach((b) => { if (typeof data[b.id] === 'boolean') b.checked = data[b.id]; });
   } catch (_) {
-    say('Could not read the current settings.', false);
+    say('Could not read the current settings.', false, landingNote);
   }
 }
 
@@ -32,10 +71,10 @@ async function save(box) {
     const data = await r.json();
     // Show what the hub stored, not what we sent -- they differ if it rejected the value.
     boxes.forEach((b) => { if (typeof data[b.id] === 'boolean') b.checked = data[b.id]; });
-    say('Saved. The landing page picks it up within about 15 seconds.', true);
+    say('Saved. The landing page picks it up within about 15 seconds.', true, landingNote);
   } catch (_) {
     box.checked = !box.checked;
-    say('Could not save — the setting is unchanged.', false);
+    say('Could not save — the setting is unchanged.', false, landingNote);
   }
 }
 
@@ -49,6 +88,7 @@ const remote = document.getElementById('remote-section');
 const radios = remote.querySelectorAll('input[name="remote"]');
 const hours = document.getElementById('remote-hours');
 const remoteState = document.getElementById('remote-state');
+const remoteNote = noteEl('remote-note');
 const STATE_TEXT = {
   running: 'Tailscale is running.',
   stopped: 'Tailscale is not running.',
@@ -86,10 +126,10 @@ async function saveRemote() {
     });
     if (!r.ok) throw new Error(r.status);
     showRemote(await r.json());
-    say('Saved. Tailscale follows within a few seconds.', true);
+    say('Saved. Tailscale follows within a few seconds.', true, remoteNote);
     [2000, 5000, 10000].forEach((ms) => setTimeout(loadRemote, ms));
   } catch (_) {
-    say('Could not change remote access.', false);
+    say('Could not change remote access.', false, remoteNote);
     loadRemote();
   }
 }
@@ -107,8 +147,8 @@ loadRemote();
 // actions. Checks and downloads run in the background on the hub, so while one is going
 // the page re-reads the snapshot every few seconds.
 const lib = {
-  state: document.getElementById('library-state'),
-  bar: document.getElementById('library-bar'),
+  states: document.querySelectorAll('.library-state'),
+  bars: document.querySelectorAll('.library-bar'),
   allNote: document.getElementById('library-all-note'),
   sources: document.getElementById('library-sources'),
   add: document.getElementById('library-add'),
@@ -175,22 +215,30 @@ function sourceRow(src, st, busy) {
   const latest = st.latest || {};
   const archive = st.archive || [];
   const key = `book:${src.name}`;
-  const button = (label, body, confirmText) => el('button', {
-    type: 'button', textContent: label, disabled: busy, onclick: () => libAct(key, body, confirmText),
+  const button = (label, body, confirmText, opts = {}) => el('button', {
+    type: 'button', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
+    onclick: () => libAct(key, body, confirmText),
   });
+  // Check finds a newer version; Fetch downloads and checks it beside the book in use;
+  // Update swaps it in (fetching first if that has not happened).
+  const newer = !!latest.version && latest.version !== cur.version;
+  const fetched = st.fetched && st.fetched.version === latest.version ? st.fetched : null;
   return el('div', { className: 'setting library-source' },
     el('span', {},
       el('span', { className: 'setting-name', textContent: `${src.name}.zim` }),
       el('span', { className: 'setting-desc', textContent: `${src.type}: ${where(src)}` }),
       el('span', { className: 'setting-desc',
         textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : 'Not installed by the librarian yet' }),
-      latest.version && latest.version !== cur.version
-        ? el('span', { className: 'setting-desc', textContent: `Available: ${latest.label} (${mb(latest.size)})` }) : null,
+      newer ? el('span', { className: 'setting-desc', textContent: fetched
+        ? `Fetched: ${fetched.label} (${mb(fetched.size)}), ready to update.`
+        : `Available: ${latest.label} (${mb(latest.size)})` }) : null,
       archive.length ? el('span', { className: 'setting-desc', textContent: `Archived: ${archive.join(', ')}` }) : null,
       st.last_check ? el('span', { className: 'setting-desc', textContent: `Checked ${st.last_check}: ${st.outcome || ''}` }) : null,
       st.error ? el('span', { className: 'setting-desc bad', textContent: st.error }) : null,
       el('span', { className: 'library-buttons' },
         button('Check', { action: 'check', names: [src.name] }),
+        button('Fetch', { action: 'fetch', names: [src.name] }, null, {
+          off: !newer || fetched, title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '' }),
         button('Update', { action: 'update', names: [src.name] }),
         archive.length ? button('Roll back', { action: 'rollback', name: src.name },
           `Put ${archive[0]} back as ${src.name}.zim? The current version is archived.`) : null,
@@ -211,13 +259,16 @@ function renderApps(snap, busy) {
     const src = sources[name];
     const st = snap.status[name] || {};
     const res = st.install_result;
+    const newer = !!(st.latest && st.current) && st.latest.version !== st.current.version;
+    const fetched = newer && st.fetched && st.fetched.version === st.latest.version ? st.fetched : null;
     const lines = [
       inst === null ? 'Not installed.' : inst.commit
         ? `Installed: ${inst.commit.slice(0, 7)} from ${inst.repository} (${inst.ref}), built ${String(inst.built).slice(0, 10)}.`
         : 'Installed by hand (no bundle record): the first update replaces it.',
       src ? (src.type === 'git' ? `Source: git, ${src.repo} @ ${src.branch}, adapted for the hub.`
-        : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.`) : 'No source: not kept current.',
+        : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.`) : 'Not kept current: it has no update source yet.',
       st.last_check ? `Checked ${st.last_check}: ${st.outcome || ''}` : null,
+      fetched ? `Fetched: ${fetched.commit} (${fetched.label}), ready to update.` : null,
       res ? `${res.ok ? 'Installed' : 'Install failed'}: ${res.message}` : null,
       st.error || null,
     ];
@@ -226,15 +277,18 @@ function renderApps(snap, busy) {
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
+        el('button', { type: 'button', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
+          title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
+          onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
         el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
         inst && inst.has_previous ? el('button', { type: 'button', textContent: 'Roll back', disabled: busy,
-          onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null) : null,
+          onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null)
+        : el('span', { className: 'library-buttons' },
+          el('button', { type: 'button', textContent: 'Keep current', disabled: busy,
+            title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
+            onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
   }));
-  const missing = Object.keys(apps).filter((n) => !sources[n]);
-  document.getElementById('apps-actions').replaceChildren(...(missing.length ? [
-    el('button', { type: 'button', textContent: `Keep ${missing.length === Object.keys(apps).length ? 'all apps' : missing.join(', ')} current from the forks`,
-      disabled: busy, onclick: post('apps', { action: 'add-apps' }) }), noteFor('apps')].filter(Boolean) : []));
 }
 
 function renderLibrary(snap) {
@@ -251,14 +305,18 @@ function renderLibrary(snap) {
       (rate ? `, ${Math.round(rate / 1024)} KB/s` : '') + (left !== null ? `, about ${left < 90 ? `${left} s` : `${Math.round(left / 60)} min`} left` : '') + '.');
   } else if (busy) parts.push(`Working (${job.action || 'scheduled check'})…`);
   // The bar: a download's bytes when its size is known, otherwise the indeterminate stripe.
-  lib.bar.hidden = !busy;
-  if (busy && p && p.total) {
-    lib.bar.max = p.total;
-    lib.bar.value = Math.min(p.done, p.total);
-  } else lib.bar.removeAttribute('value');
+  lib.bars.forEach((bar) => {
+    bar.hidden = !busy;
+    if (busy && p && p.total) {
+      bar.max = p.total;
+      bar.value = Math.min(p.done, p.total);
+    } else bar.removeAttribute('value');
+  });
+  badge('apps', busy ? 'working' : '');
+  badge('books', busy ? 'working' : '');
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
-  lib.state.textContent = parts.join(' ');
+  lib.states.forEach((n) => { n.textContent = parts.join(' '); });
 
   const books = snap.sources.filter((s) => s.kind !== 'app');
   lib.sources.replaceChildren(...(books.length
@@ -287,7 +345,7 @@ async function loadLibrary() {
     if (!r.ok) throw new Error(r.status);
     renderLibrary(await r.json());
   } catch (_) {
-    lib.state.textContent = 'Could not read the library settings.';
+    lib.states.forEach((n) => { n.textContent = 'Could not read the library settings.'; });
   }
 }
 
@@ -314,27 +372,29 @@ lib.add.addEventListener('submit', async (e) => {
   }
   try {
     renderLibrary(await libPost({ action: 'add', source }));
-    say(`Added ${source.name}. Use Check or Update to fetch it.`, true);
+    say(`Added ${source.name}. Use Check or Update to fetch it.`, true, noteEl('library-add-note'));
     lib.add.reset();
     showTypeFields();
-  } catch (err) { say(`Could not add the source: ${err.message}`, false); }
+  } catch (err) { say(`Could not add the source: ${err.message}`, false, noteEl('library-add-note')); }
 });
 lib.policy.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = { action: 'policy' };
   for (const k of ['keep_old', 'check_every_hours', 'min_free_mb']) body[k] = Number(lib.policy.elements[k].value);
-  try { renderLibrary(await libPost(body)); say('Saved.', true); } catch (err) { say(err.message, false); }
+  const at = noteEl('library-policy-note');
+  try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
 lib.token.addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
     renderLibrary(await libPost({ action: 'token', value: lib.token.elements.value.value.trim() }));
     lib.token.reset();
-    say('Token saved.', true);
-  } catch (err) { say(err.message, false); }
+    say('Token saved.', true, noteEl('library-token-note'));
+  } catch (err) { say(err.message, false, noteEl('library-token-note')); }
 });
 document.getElementById('library-token-clear').addEventListener('click', async () => {
-  try { renderLibrary(await libPost({ action: 'token', value: '' })); say('Token cleared.', true); } catch (err) { say(err.message, false); }
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'token', value: '' })); say('Token cleared.', true, at); } catch (err) { say(err.message, false, at); }
 });
 document.querySelectorAll('[data-all]').forEach((b) => b.addEventListener('click', () => libAct('all', { action: b.dataset.all })));
 
@@ -375,7 +435,8 @@ const actionButton = (label, onclick, extra = {}) =>
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };
 const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Start at boot', disable: "Don't start at boot" };
 let boxPoll = null;
-let waitingFor = null; // a control request id whose answer we want to announce
+let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
+const controlNote = noteEl('control-note');
 
 function tile(label, value) {
   return el('div', { className: 'admin-tile' },
@@ -414,9 +475,11 @@ function renderBox(data) {
   document.getElementById('control-results').replaceChildren(...results.slice(0, 4).map((r) =>
     el('p', { className: `setting-desc${r.ok ? '' : ' bad'}`, textContent: r.message })));
   if (waitingFor) {
-    const done = results.find((r) => r.id === waitingFor);
+    const done = results.find((r) => r.id === waitingFor.id);
     if (done) {
-      say(done.message, done.ok);
+      // A service's answer is already at the top of the list above; the password's is not.
+      if (waitingFor.at === controlNote) say('', true, controlNote);
+      else say(done.message, done.ok, waitingFor.at);
       waitingFor = null;
     }
   }
@@ -435,10 +498,10 @@ async function control(s, op) {
   if (s.unit === 'irate-box.service' && !confirm('Restart the hub server? This page reconnects by itself.')) return;
   if (op === 'stop' && !confirm(`Stop ${s.name}?`)) return;
   try {
-    waitingFor = (await postJSON('/admin/control', { unit: s.unit, op })).id;
-    say(`${OP_LABEL[op]}: ${s.name}…`, true);
+    waitingFor = { id: (await postJSON('/admin/control', { unit: s.unit, op })).id, at: controlNote };
+    say(`${OP_LABEL[op]}: ${s.name}…`, true, controlNote);
     loadBox();
-  } catch (err) { say(err.message, false); }
+  } catch (err) { say(err.message, false, controlNote); }
 }
 
 // --- moderation ------------------------------------------------------------------
@@ -446,7 +509,7 @@ function renderModeration(data) {
   const now = data.now;
   const del = (body, what) => async () => {
     if (!confirm(`Delete ${what}?`)) return;
-    try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false); }
+    try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
@@ -498,11 +561,11 @@ function renderStore(data) {
   document.getElementById('store-clear').replaceChildren(...['scenes', 'rooms', 'files'].map((ns) =>
     actionButton(`Clear ${NS_LABEL[ns]}`, async () => {
       if (!confirm(`Delete all ${NS_LABEL[ns]}? Links to them stop working.`)) return;
-      try { renderStore(await postJSON('/admin/store', { action: 'clear', namespace: ns })); } catch (err) { say(err.message, false); }
+      try { renderStore(await postJSON('/admin/store', { action: 'clear', namespace: ns })); } catch (err) { say(err.message, false, noteEl('store-note')); }
     }, { disabled: !u.namespaces[ns].files, className: 'small' })));
 
   const act = (body) => async () => {
-    try { renderStore(await postJSON('/admin/store', body)); } catch (err) { say(err.message, false); }
+    try { renderStore(await postJSON('/admin/store', body)); } catch (err) { say(err.message, false, noteEl('store-note')); }
   };
   document.getElementById('store-saves').replaceChildren(...(data.saves.length ? data.saves.map((s) =>
     el('div', { className: 'admin-item admin-save' },
@@ -540,24 +603,25 @@ storeForm.addEventListener('submit', async (e) => {
       store_max_total_mb: Number(storeForm.elements.store_max_total_mb.value),
       store_save_ttl_hours: Number(storeForm.elements.store_save_ttl_hours.value),
     });
-    say('Saved. The new cap applies from the next write to the store.', true);
+    say('Saved. The new cap applies from the next write to the store.', true, noteEl('store-settings-note'));
     loadStoreSettings();
     loadStore();
-  } catch (err) { say(err.message, false); }
+  } catch (err) { say(err.message, false, noteEl('store-settings-note')); }
 });
 
 // --- password -----------------------------------------------------------------------
 const pwForm = document.getElementById('password-form');
+const pwNote = noteEl('password-note');
 pwForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const pw = pwForm.elements.password.value;
-  if (pw !== pwForm.elements.confirm.value) { say('The two passwords differ.', false); return; }
+  if (pw !== pwForm.elements.confirm.value) { say('The two passwords differ.', false, pwNote); return; }
   try {
-    waitingFor = (await postJSON('/admin/password', { password: pw })).id;
+    waitingFor = { id: (await postJSON('/admin/password', { password: pw })).id, at: pwNote };
     pwForm.reset();
-    say('Changing the password… your browser will ask for the new one.', true);
+    say('Changing the password… your browser will ask for the new one.', true, pwNote);
     loadBox();
-  } catch (err) { say(err.message, false); }
+  } catch (err) { say(err.message, false, pwNote); }
 });
 
 loadBox();
@@ -581,6 +645,7 @@ const upd = {
   note: document.getElementById('update-note'),
   changes: document.getElementById('update-changes'),
   checks: document.getElementById('update-checks'),
+  output: document.getElementById('update-output'),
   log: document.getElementById('update-log'),
   doctor: document.getElementById('update-doctor'),
   clear: document.getElementById('update-clear'),
@@ -649,10 +714,12 @@ function renderUpdate(data) {
   }
   upd.changes.replaceChildren(...((found && s.changes) || []).slice(0, 20)
     .map((c) => el('li', { textContent: c })));
-  upd.log.hidden = !data.log.length || (!busy && s && s.up_to_date);
+  upd.output.hidden = !data.log.length || (!busy && s && s.up_to_date);
+  if (p && p.action === 'install') upd.output.open = true;
   upd.log.textContent = data.log.join('\n');
   upd.log.scrollTop = upd.log.scrollHeight;
   renderUpdateProgress(p);
+  badge('updates', p ? 'working' : ready ? 'ready' : found && !fetched ? 'new' : '');
 
   if (updWaiting) {
     const done = (data.results || []).find((r) => r.id === updWaiting.id);
