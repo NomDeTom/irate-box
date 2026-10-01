@@ -14,5 +14,15 @@
     "port": 8081,
     "unit": "kiwix.service",
     "control": true
-  }
+  },
+  "entries": [
+    {
+      "menus": {
+        "meshtastic": 10
+      },
+      "name": "Meshtastic documentation",
+      "desc": "The whole docs site, offline, in Kiwix",
+      "href": "/app.html#/wiki/viewer#meshtastic-docs/"
+    }
+  ]
 }

@@ -1,0 +1,8 @@
+{
+  "id": "box-people",
+  "order": 95,
+  "tile": {
+    "row": "box",
+    "widget": "people"
+  }
+}

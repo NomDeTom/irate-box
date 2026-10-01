@@ -625,7 +625,7 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .meter .bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
 .meter .bar > span.high { background: var(--warn); }
 
-/* --- Sub-pages: tools-*.html, meshtastic.html, services.html ---------------- */
+/* --- Sub-pages: the menu pages server.py renders from apps.d/, and services.html */
 .sub-header { margin-bottom: 1.5rem; }
 .sub-header h1 { font-size: 1.8rem; color: var(--accent); }
 .sub-header .subtitle { color: var(--muted); margin-top: 0.25rem; }

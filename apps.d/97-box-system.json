@@ -1,0 +1,8 @@
+{
+  "id": "box-system",
+  "order": 97,
+  "tile": {
+    "row": "box",
+    "widget": "system"
+  }
+}

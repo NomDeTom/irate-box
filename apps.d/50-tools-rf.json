@@ -6,5 +6,10 @@
     "name": "RF & LoRa",
     "desc": "Radio calculators & Meshtastic tools",
     "href": "/tools-rf.html"
+  },
+  "menu": {
+    "title": "RF & LoRa",
+    "subtitle": "Radio calculators, Meshtastic tools and the serial terminal.",
+    "about": "Radio calculators from nomdetom.github.io, and the serial terminal."
   }
 }

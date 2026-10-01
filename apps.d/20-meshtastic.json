@@ -6,5 +6,10 @@
     "name": "Meshtastic",
     "desc": "Log analyser, docs & tools",
     "href": "/meshtastic.html"
+  },
+  "menu": {
+    "title": "Meshtastic",
+    "subtitle": "Everything on the box for Meshtastic nodes.",
+    "about": "Everything Meshtastic in one list. The flasher joins it when it is packaged."
   }
 }

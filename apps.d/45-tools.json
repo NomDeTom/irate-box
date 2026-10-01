@@ -17,5 +17,206 @@
     "branch": "main",
     "adapt": "adapt_tools.py"
   },
-  "core": true
+  "core": true,
+  "entries": [
+    {
+      "menus": {
+        "tools-rf": 10,
+        "meshtastic": 60
+      },
+      "name": "LoRa Airtime Calculator",
+      "desc": "Time on air for a packet at any SF, bandwidth and coding rate",
+      "href": "/app.html#/tools/lora-airtime-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-rf": 20,
+        "meshtastic": 70
+      },
+      "name": "LoRa Frame Structure Visualiser",
+      "desc": "Chirps, timing and audio of a LoRa frame",
+      "href": "/app.html#/tools/lora-frame-structure-visualiser.html"
+    },
+    {
+      "menus": {
+        "tools-rf": 30,
+        "meshtastic": 30
+      },
+      "name": "Meshtastic Node ID Tool",
+      "desc": "Convert between node numbers, !ids and MAC addresses",
+      "href": "/app.html#/tools/meshtastic-nodeid-tool.html"
+    },
+    {
+      "menus": {
+        "tools-rf": 40,
+        "meshtastic": 40
+      },
+      "name": "Meshtastic URL & QR Tool",
+      "desc": "Decode and build channel URLs and QR codes",
+      "href": "/app.html#/tools/meshtastic-url-tool.html"
+    },
+    {
+      "menus": {
+        "meshtastic": 50
+      },
+      "name": "meshtasticd Pinout Map",
+      "desc": "Which Raspberry Pi header pins a config.d YAML uses",
+      "href": "/app.html#/tools/meshtasticd-pinout-map.html"
+    },
+    {
+      "menus": {
+        "tools-rf": 50
+      },
+      "name": "USB RF Power Meter V3 Reader",
+      "desc": "Read the meter over Web Serial",
+      "href": "/app.html#/tools/rf-power-meter-v3-reader.html"
+    },
+    {
+      "menus": {
+        "tools-general": 10
+      },
+      "name": "Computing Units",
+      "desc": "Bits, bytes and binary prefixes",
+      "href": "/app.html#/tools/computing-units.html"
+    },
+    {
+      "menus": {
+        "tools-general": 20
+      },
+      "name": "Unit Converter and Calculator",
+      "desc": "Convert and calculate across units",
+      "href": "/app.html#/tools/unit-conversion.html"
+    },
+    {
+      "menus": {
+        "tools-general": 30
+      },
+      "name": "Datatype Byte Converter",
+      "desc": "Integers and floats to bytes and back",
+      "href": "/app.html#/tools/datatype-converter.html"
+    },
+    {
+      "menus": {
+        "tools-general": 40
+      },
+      "name": "Integer Arithmetic Calculator",
+      "desc": "Fixed-width maths with overflow shown",
+      "href": "/app.html#/tools/integer-arithmetic-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-general": 50
+      },
+      "name": "Protobuf Encoding Demonstrator",
+      "desc": "How varints and fields land on the wire",
+      "href": "/app.html#/tools/protobuf-encoding-demonstrator.html"
+    },
+    {
+      "menus": {
+        "tools-general": 60
+      },
+      "name": "ASCII and Unicode Converter",
+      "desc": "Text to code points, bytes and escapes",
+      "href": "/app.html#/tools/ascii-unicode-converter.html"
+    },
+    {
+      "menus": {
+        "tools-general": 70
+      },
+      "name": "Unicode Explorer",
+      "desc": "Browse and inspect characters",
+      "href": "/app.html#/tools/unicode-explorer.html"
+    },
+    {
+      "menus": {
+        "tools-general": 80
+      },
+      "name": "Discord Timestamp Generator",
+      "desc": "Timestamps that show in each reader’s time zone",
+      "href": "/app.html#/tools/discord-timestamps.html"
+    },
+    {
+      "menus": {
+        "tools-general": 90
+      },
+      "name": "URL Cleaner",
+      "desc": "Strip tracking from shop links",
+      "href": "/app.html#/tools/url-cleaner.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 10
+      },
+      "name": "Solar Panel Sense Checker",
+      "desc": "Is this panel and battery pairing plausible?",
+      "href": "/app.html#/tools/solar-panel-sense-checker.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 20
+      },
+      "name": "Voltage Divider Calculator",
+      "desc": "Resistor pairs for a target ratio",
+      "href": "/app.html#/tools/voltage-divider-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 30
+      },
+      "name": "Ohm's Law Calculator",
+      "desc": "Any two of V, I, R and P",
+      "href": "/app.html#/tools/ohms-law-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 40
+      },
+      "name": "Capacitor Discharge Calculator",
+      "desc": "RC discharge over time",
+      "href": "/app.html#/tools/capacitor-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 50
+      },
+      "name": "MLCC Derating Lookup",
+      "desc": "Capacitance lost to DC bias",
+      "href": "/app.html#/tools/mlcc-derating-lookup.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 60
+      },
+      "name": "Wire Voltage Drop Calculator",
+      "desc": "Loss along a cable run",
+      "href": "/app.html#/tools/wire-voltage-drop-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 70
+      },
+      "name": "Battery Runtime Calculator",
+      "desc": "How long a cell lasts at a given load",
+      "href": "/app.html#/tools/battery-runtime-calculator.html"
+    },
+    {
+      "menus": {
+        "tools-electronics": 80
+      },
+      "name": "IC Pinout ASCII Generator",
+      "desc": "Draw a chip’s pinout as text",
+      "href": "/app.html#/tools/ic-pinout-generator.html"
+    }
+  ],
+  "discover": {
+    "file": "irate-box-index.json",
+    "href": "/app.html#/tools/{page}",
+    "order": 1000,
+    "groups": {
+      "Power": "tools-electronics",
+      "Data": "tools-general",
+      "RF": "tools-rf",
+      "Tiny Tools": "tools-general"
+    }
+  }
 }

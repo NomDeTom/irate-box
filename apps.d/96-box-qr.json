@@ -1,0 +1,8 @@
+{
+  "id": "box-qr",
+  "order": 96,
+  "tile": {
+    "row": "box",
+    "widget": "qr"
+  }
+}

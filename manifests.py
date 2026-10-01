@@ -8,8 +8,18 @@ on it. Every part but "id" and "order" is optional:
   {
     "id": "draw",                     letters, digits, '-'; unique
     "order": 10,                      tiles and /status are sorted by this
-    "tile":    {"icon", "name", "desc", "href", "new_tab": bool, "element_id": str},
-                                      a tile on the home page
+    "tile":    {"icon", "name", "desc", "href", "new_tab": bool, "element_id": str,
+                "row": "apps" | "box"}  a tile on the home page; or {"widget": "people" | "qr" |
+                                      "system", "row": "box"}, one of the hub's live tiles
+    "menu":    {"title", "subtitle", "about"}
+                                      the tile opens a list page (at its href), which the hub
+                                      renders from every manifest's entries aimed at it
+    "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool}]
+                                      lines on those list pages (greyed with this app's status)
+    "discover": {"file", "href", "order", "groups": {"<group>": "<menu id>"}}
+                                      more entries, from a JSON list [{page, title, group}] the
+                                      app's adapt script leaves in its install folder: whatever
+                                      the entries above do not already name
     "status":  {"path", "name", "port" | "root_env", "unit", "control": bool, "note"},
                                       how /status and /admin see it: a loopback port to probe,
                                       or the environment variable naming the folder Caddy
@@ -44,6 +54,10 @@ REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
 
 
+WIDGETS = ("people", "qr", "system")
+PAGE_RE = re.compile(r"^[A-Za-z0-9_-]+\.html$")
+
+
 class ManifestError(ValueError):
     pass
 
@@ -58,9 +72,31 @@ def _check(m, where):
     need(type(m.get("order")) is int, "order: an integer")
     tile = m.get("tile")
     if tile is not None:
-        for k in ("icon", "name", "desc", "href"):
-            need(isinstance(tile.get(k), str), f"tile.{k}: a string")
-        need(tile["href"].startswith("/"), "tile.href: a path on this hub")
+        need(tile.get("row", "apps") in ("apps", "box"), "tile.row: apps or box")
+        if "widget" in tile:
+            need(tile["widget"] in WIDGETS, f"tile.widget: one of {', '.join(WIDGETS)}")
+        else:
+            for k in ("icon", "name", "desc", "href"):
+                need(isinstance(tile.get(k), str), f"tile.{k}: a string")
+            need(tile["href"].startswith("/"), "tile.href: a path on this hub")
+    menu = m.get("menu")
+    if menu is not None:
+        need(tile is not None and "href" in tile and re.match(r"^/[a-z0-9-]+\.html$", tile["href"]),
+             "a menu needs a tile whose href is its page, /<name>.html")
+        for k in ("title", "subtitle"):
+            need(isinstance(menu.get(k), str), f"menu.{k}: a string")
+    for e in m.get("entries", []):
+        need(isinstance(e, dict) and isinstance(e.get("menus"), dict) and e["menus"], "entries: each with menus")
+        need(all(type(v) is int for v in e["menus"].values()), "entries.menus: menu id -> order")
+        for k in ("name", "href"):
+            need(isinstance(e.get(k), str), f"entries.{k}: a string")
+        need(e["href"].startswith("/"), "entries.href: a path on this hub")
+    disc = m.get("discover")
+    if disc is not None:
+        need(m.get("install") is not None, "discover needs an install")
+        need(re.match(r"^[a-z0-9_.-]+\.json$", str(disc.get("file", ""))), "discover.file: a .json name")
+        need("{page}" in str(disc.get("href", "")), "discover.href: containing {page}")
+        need(isinstance(disc.get("groups"), dict), "discover.groups: group -> menu id")
     status = m.get("status")
     if status is not None:
         need(isinstance(status.get("name"), str), "status.name: a string")
@@ -103,6 +139,42 @@ def load(folder=None):
         seen.add(m["id"])
         out.append(m)
     return sorted(out, key=lambda m: (m["order"], m["id"]))
+
+
+def menus(manifests):
+    """{menu id: manifest} for the list pages."""
+    return {m["id"]: m for m in manifests if m.get("menu")}
+
+
+def entries_for(menu_id, manifests):
+    """The lines of one list page, in order: [(order, entry, status path)]. Entries named in a
+    manifest come first by their order; discovered ones (an app's adapt script found them,
+    e.g. a calculator added to the site's index) fill in what the entries do not name."""
+    out = []
+    for m in manifests:
+        status_path = m.get("status", {}).get("path")
+        named = set()
+        for e in m.get("entries", []):
+            named.add(e["href"])
+            if menu_id in e["menus"]:
+                out.append((e["menus"][menu_id], e, status_path))
+        disc = m.get("discover")
+        if disc:
+            try:
+                found = json.loads((install_dir(m) / disc["file"]).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                found = []
+            for n, item in enumerate(found if isinstance(found, list) else []):
+                if not isinstance(item, dict) or not PAGE_RE.match(str(item.get("page", ""))):
+                    continue
+                href = disc["href"].replace("{page}", item["page"])
+                if href in named or disc["groups"].get(item.get("group")) != menu_id:
+                    continue
+                named.add(href)
+                out.append((disc.get("order", 1000) + n,
+                            {"name": str(item.get("title") or item["page"])[:120], "desc": "", "href": href},
+                            status_path))
+    return sorted(out, key=lambda x: x[0])
 
 
 def installable(manifests=None):

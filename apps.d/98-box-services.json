@@ -1,0 +1,11 @@
+{
+  "id": "box-services",
+  "order": 98,
+  "tile": {
+    "row": "box",
+    "icon": "🚥",
+    "name": "Services",
+    "desc": "What is running on the box",
+    "href": "/services.html"
+  }
+}

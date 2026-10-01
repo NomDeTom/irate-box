@@ -9,8 +9,11 @@ The published site stays as it is; only the hub's copy changes, and only this mu
     maintained page loads after its embedded styles, so the hub's palette (static/tools-hub.css)
     is written there. A page without the hook gets a link to /tools-hub.css instead;
   * navigation: "Back to index" goes to the hub page that lists the calculator (RF & LoRa,
-    Calculators, Electronics, or Meshtastic, read from those pages' own links), in the
-    whole window rather than the hub bar's frame; the hub itself for a page none lists;
+    Calculators, Electronics or Meshtastic, as the manifests in apps.d/ say), in the whole
+    window rather than the hub bar's frame; the hub itself for a page none lists;
+  * the site's index is recorded as irate-box-index.json (page, link text, group heading),
+    so a calculator added to the index appears on the hub page for its group without a
+    manifest entry of its own (manifests.py, "discover");
   * only the calculators the site's own index.html links to are kept; anything else in the
     repo is unlisted on purpose, and goes. index.html itself goes too: the hub's three tools
     pages replace it. So does everything that is not a page a guest opens or a file one of
@@ -25,13 +28,17 @@ note saying what changed, with a link to the original. Running it twice changes 
 Stdlib only.
 """
 
+import json
 import re
 import shutil
 import sys
 from pathlib import Path
 
+import manifests
+
 ORIGIN = "https://nomdetom.github.io/"
-SUBPAGES = ("tools-rf.html", "tools-general.html", "tools-electronics.html", "meshtastic.html")
+INDEX_JSON = "irate-box-index.json"
+ALWAYS_KEEP = (INDEX_JSON, "irate-box-bundle.json")
 DROP = ("ic-pinout-ascii-reference.html",)
 MARK = "irate-box-adapted"
 BACK_LINK = re.compile(r'<a\b([^>]*?)\bhref="(?:\./)?index\.html"([^>]*)>')
@@ -44,16 +51,47 @@ OVERRIDE = "directory-override.css"
 HOOK = re.compile(r'<link\b[^>]*\bhref="(?:\./)?directory-override\.css"')
 
 
-def homes(static):
-    """Which hub page lists each calculator: the first of SUBPAGES that links to it."""
+def homes(index):
+    """Which hub page lists each calculator, from the manifests: the menu of its entry with the
+    lowest order, or for a page only the site's index lists, its group's menu."""
+    ms = manifests.load()
+    menu_href = {mid: m["tile"]["href"] for mid, m in manifests.menus(ms).items()}
     out = {}
-    for sub in SUBPAGES:
-        try:
-            text = (static / sub).read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for name in re.findall(r'href="/app\.html#/tools/([^"#?]+\.html)', text):
-            out.setdefault(name, "/" + sub)
+    for m in ms:
+        for e in m.get("entries", []):
+            page = re.match(r"^/app\.html#/tools/([^/#?]+\.html)$", e["href"])
+            if page and e["menus"]:
+                best = min(e["menus"], key=e["menus"].get)
+                out.setdefault(page.group(1), menu_href.get(best, "/"))
+        groups = (m.get("discover") or {}).get("groups", {})
+        for item in index:
+            menu = groups.get(item["group"])
+            if menu:
+                out.setdefault(item["page"], menu_href.get(menu, "/"))
+    return out
+
+
+HEADING_OR_LINK = re.compile(r'<h([23])\b[^>]*>(.*?)</h\1\s*>|<a\b[^>]*\bhref="(?:\./)?([A-Za-z0-9_-]+\.html)"[^>]*>(.*?)</a\s*>', re.S)
+
+
+def index_groups(tools, keep):
+    """The site's index as [{page, title, group}]: each kept page with its link text and the
+    heading it sits under (an <h3> group inside an <h2> section, or the <h2> itself)."""
+    try:
+        text = (tools / "index.html").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    plain = lambda s: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s)).replace("&amp;", "&").strip()
+    h2 = h3 = ""
+    out, seen = [], set()
+    for m in HEADING_OR_LINK.finditer(text):
+        if m.group(1) == "2":
+            h2, h3 = plain(m.group(2)), ""
+        elif m.group(1) == "3":
+            h3 = plain(m.group(2))
+        elif m.group(3) in keep and m.group(3) not in seen:
+            seen.add(m.group(3))
+            out.append({"page": m.group(3), "title": plain(m.group(4)), "group": h3 or h2})
     return out
 
 
@@ -114,7 +152,7 @@ def loaded_by(tools, pages):
 
 def prune(tools, pages):
     """Remove everything but the kept pages and what they load. Returns what went."""
-    wanted = set(pages) | loaded_by(tools, pages)
+    wanted = set(pages) | loaded_by(tools, pages) | set(ALWAYS_KEEP)
     dirs = {str(Path(w).parent) for w in wanted} - {"."}
     gone = []
     for entry in sorted(tools.iterdir()):
@@ -133,6 +171,11 @@ def main(tools_dir, static_dir):
         keep = {p.name for p in tools.glob("*.html")}
     else:
         print(f"    calculators: keeping the {len(keep)} the site's index links to")
+        (tools / INDEX_JSON).write_text(json.dumps(index_groups(tools, keep), indent=1), encoding="utf-8")
+    try:
+        index = json.loads((tools / INDEX_JSON).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        index = []
     gone = prune(tools, sorted(n for n in keep if (tools / n).is_file()))
     if gone:
         print(f"    calculators: removed {', '.join(gone)}")
@@ -142,7 +185,7 @@ def main(tools_dir, static_dir):
         "/* Written by irate-box's adapt_tools.py: the hub's palette, from static/tools-hub.css,\n"
         "   in place of the site's commented-out template. */\n"
         + (static / "tools-hub.css").read_text(encoding="utf-8"), encoding="utf-8")
-    listed = homes(static)
+    listed = homes(index)
     changed = 0
     for page in sorted(tools.glob("*.html")):
         changed += adapt(page, listed.get(page.name, "/"))

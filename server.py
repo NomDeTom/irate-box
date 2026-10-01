@@ -117,13 +117,36 @@ SERVICES = [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
 ]
 
 
-def render_tiles():
-    """The home page's app tiles, from the manifests' "tile" parts. Rendered here rather than
-    in the browser, so the page arrives whole."""
+# The hub's live tiles (a manifest names one with "widget"); hub.js and home.js fill them in.
+WIDGET_HTML = {
+    "people": """      <div class="service-card people-card" id="people-card">
+        <span class="icon">👥</span>
+        <span class="name" id="people-count">—</span>
+        <span class="desc" id="people-desc">Users online</span>
+      </div>""",
+    "qr": """      <div class="service-card qr-card" id="qr-card">
+        <span class="qr" id="hub-qr" aria-label="QR code for this hub's address"></span>
+        <span class="name">Join</span>
+        <span class="desc" id="hub-qr-url">Scan to open this hub</span>
+      </div>""",
+    "system": """      <div class="service-card system-card" id="system-card">
+        <span class="icon">💽</span>
+        <span class="meter" id="mem-meter" hidden><span class="meter-label">Memory <b id="mem-text"></b></span><span class="bar"><span id="mem-bar"></span></span></span>
+        <span class="meter" id="disk-meter" hidden><span class="meter-label">Disk <b id="disk-text"></b></span><span class="bar"><span id="disk-bar"></span></span></span>
+      </div>""",
+}
+
+
+def render_tiles(row="apps"):
+    """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
+    rather than in the browser, so the page arrives whole."""
     out = []
     for m in MANIFESTS:
         tile = m.get("tile")
-        if not tile:
+        if not tile or tile.get("row", "apps") != row:
+            continue
+        if "widget" in tile:
+            out.append(WIDGET_HTML[tile["widget"]])
             continue
         attrs = [f'class="service-card"']
         if tile.get("element_id"):
@@ -143,6 +166,7 @@ def render_tiles():
 
 
 TILES_MARK = "<!-- apps.d tiles -->"
+BOX_MARK = "<!-- apps.d box tiles -->"
 _home_page = {"mtime": None, "body": b""}
 
 
@@ -151,9 +175,67 @@ def home_page():
     path = STATIC / "index.html"
     mtime = path.stat().st_mtime
     if _home_page["mtime"] != mtime:
-        _home_page["body"] = path.read_text(encoding="utf-8").replace(TILES_MARK, render_tiles()).encode()
+        text = path.read_text(encoding="utf-8")
+        text = text.replace(TILES_MARK, render_tiles("apps")).replace(BOX_MARK, render_tiles("box"))
+        _home_page["body"] = text.encode()
         _home_page["mtime"] = mtime
     return _home_page["body"]
+
+
+# The list pages (a manifest with a "menu"), at their tile's href. Rendered on each request:
+# discovered entries come from the installed apps, which an update changes.
+MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
+MENU_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} · Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <script>try{{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
+</head>
+<body>
+  <!-- {about}
+       Rendered by server.py from the manifests in apps.d/ ("menu", and every manifest's
+       "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
+       out when data-service is down. -->
+  <header class="sub-header">
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <h1>{title}</h1>
+    <p class="subtitle">{subtitle}</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <section class="item-section">
+    <ul class="item-list">
+{items}
+    </ul>
+  </section>
+
+  <script src="hub.js"></script>
+</body>
+</html>
+"""
+
+
+def menu_page(m):
+    items = []
+    for _, e, service in manifests.entries_for(m["id"], MANIFESTS):
+        attrs = f'href="{html.escape(e["href"])}"'
+        if service:
+            attrs += f' data-service="{html.escape(service)}"'
+        if e.get("new_tab", True):
+            attrs += ' target="_blank"'
+        desc = f'<span class="desc">{html.escape(e["desc"])}</span>' if e.get("desc") else ""
+        items.append(f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>')
+    menu = m["menu"]
+    return MENU_TEMPLATE.format(title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
+                                about=html.escape(menu.get("about", "")).replace("--", "-"),
+                                items="\n".join(items)).encode()
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
 _status_cache = {"at": 0.0, "ports": {}, "units": {}}
 
@@ -840,6 +922,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(404, {"error": "no such thread"})
             else:
                 self.send_json(200, result)
+            return
+
+        if path in MENU_PAGES:
+            body = menu_page(MENU_PAGES[path])
+            self.send_response(200)
+            self.send_header("Content-Type", MIME[".html"])
+            self.send_header("Content-Length", len(body))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if path in ("/", "/index.html"):

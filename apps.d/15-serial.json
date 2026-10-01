@@ -18,5 +18,16 @@
     "workflow": "irate-box-bundle.yml",
     "pattern": "irate-box-serial-*"
   },
-  "core": true
+  "core": true,
+  "entries": [
+    {
+      "menus": {
+        "tools-rf": 0,
+        "meshtastic": 0
+      },
+      "name": "Serial terminal & log analyser",
+      "desc": "Meshtastic logs: drop in a saved one, or live serial in Chromium over HTTPS",
+      "href": "/app.html#/serial/"
+    }
+  ]
 }

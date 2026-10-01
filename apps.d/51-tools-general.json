@@ -6,5 +6,10 @@
     "name": "Calculators",
     "desc": "Converters & computing",
     "href": "/tools-general.html"
+  },
+  "menu": {
+    "title": "General calculators",
+    "subtitle": "Converters and computing calculators.",
+    "about": "Converters and computing calculators from nomdetom.github.io."
   }
 }
