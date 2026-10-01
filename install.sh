@@ -131,7 +131,49 @@ fi
 # --- packages --------------------------------------------------------------------
 say "Installing packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
+CADDY_LIST=/etc/apt/sources.list.d/caddy-stable.list
+CADDY_KEY=/usr/share/keyrings/caddy-stable-archive-keyring.gpg
+CADDY_FROM_RELEASE=0
+# Caddy's apt repository is the preferred source. But on 2026-10-01 its index was signed
+# with a subkey that expired in 2024: GnuPG warns and accepts, while Debian trixie's sqv
+# rejects it and fails the whole `apt-get update`. If that happens, the repository is
+# dropped and Caddy comes from its GitHub release instead (install_caddy_release).
+apt_update() {
+	apt-get update -q && return 0
+	[ -f "$CADDY_LIST" ] || return 1
+	echo "    Caddy's apt repository did not verify: dropping it, using Caddy's GitHub release"
+	rm -f "$CADDY_LIST" "$CADDY_KEY"
+	CADDY_FROM_RELEASE=1
+	apt-get update -q
+}
+install_caddy_release() {
+	local a tag ver tmp deb base
+	case "$ARCH" in
+	armv7l | armv8l) a=armv7 ;;
+	aarch64) a=arm64 ;;
+	x86_64) a=amd64 ;;
+	*) die "no Caddy release build for $ARCH" ;;
+	esac
+	tag="$(curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest |
+		grep -m1 '"tag_name"' | cut -d'"' -f4)"
+	[ -n "$tag" ] || die "could not find Caddy's latest release on GitHub"
+	ver="${tag#v}"
+	if [ "$(dpkg-query -W -f='${Version}' caddy 2>/dev/null)" = "$ver" ]; then
+		echo "    Caddy $ver is already installed"
+		return
+	fi
+	say "Installing Caddy $ver from its GitHub release ($a)"
+	tmp="$(mktemp -d)"
+	deb="caddy_${ver}_linux_${a}.deb"
+	base="https://github.com/caddyserver/caddy/releases/download/$tag"
+	curl -fsSL -o "$tmp/$deb" "$base/$deb"
+	curl -fsSL -o "$tmp/checksums.txt" "$base/caddy_${ver}_checksums.txt"
+	(cd "$tmp" && grep " $deb\$" checksums.txt | sha512sum -c --quiet) ||
+		die "$deb does not match its published checksum"
+	apt-get install -y -q --no-install-recommends "$tmp/$deb"
+	rm -rf "$tmp"
+}
+apt_update
 pkgs=(python3 curl ca-certificates git unzip)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
@@ -147,16 +189,19 @@ if [ "$ARCH" = armv6l ]; then
 	caddy_cand="$(apt-cache policy caddy 2>/dev/null | awk '/Candidate:/ {print $2}')"
 	[ -n "$caddy_cand" ] && [ "$caddy_cand" != "(none)" ] ||
 		die "ARMv6 needs the distro's caddy package, and this distro has none"
-elif [ ! -f /etc/apt/sources.list.d/caddy-stable.list ]; then
+elif [ ! -f "$CADDY_LIST" ] && [ "$CADDY_FROM_RELEASE" = 0 ]; then
 	say "Adding Caddy's apt repository"
 	apt-get install -y -q --no-install-recommends gpg
 	curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key |
-		gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-	curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
-		>/etc/apt/sources.list.d/caddy-stable.list
-	apt-get update -q
+		gpg --dearmor --yes -o "$CADDY_KEY"
+	curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt >"$CADDY_LIST"
+	apt_update
 fi
-apt-get install -y -q --no-install-recommends caddy
+if [ "$CADDY_FROM_RELEASE" = 1 ]; then
+	install_caddy_release
+else
+	apt-get install -y -q --no-install-recommends caddy
+fi
 
 # --- user and directories --------------------------------------------------------
 id -u "$HUB_USER" >/dev/null 2>&1 ||
