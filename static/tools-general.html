@@ -13,9 +13,14 @@
        Plain HTML: edit the lists directly. Each entry opens
        under the hub bar in a new tab, and greys out when data-service is down. -->
   <header class="sub-header">
-    <a href="/" class="back">&larr; Hub</a>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
     <h1>General calculators</h1>
     <p class="subtitle">Converters and computing calculators.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
   </header>
 
   <section class="item-section">

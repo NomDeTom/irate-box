@@ -11,7 +11,7 @@
   var home = document.createElement('a');
   home.href = '/';
   home.title = 'Back to the hub';
-  home.textContent = '⌂ Hub';
+  home.textContent = '🏠 Hub';
   var help = document.createElement('button');
   help.type = 'button';
   help.title = 'What is this?';
@@ -24,7 +24,7 @@
     '<p><strong>Don\'t panic.</strong> This is hosted on an Irate-Box: a small computer nearby, ' +
     'serving it over its own network. Nothing here is on the internet, and nothing you do ' +
     'leaves the box.</p>' +
-    '<p>⌂ Hub takes you back to the start. If something here asks for the internet, that part ' +
+    '<p>🏠 Hub takes you back to the start. If something here asks for the internet, that part ' +
     'is switched off on purpose.</p><a href="/help.html">Quick help →</a>';
   wrap.appendChild(home);
   wrap.appendChild(help);
