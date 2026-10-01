@@ -22,7 +22,7 @@
   <details class="services" open>
     <summary><h2>Services</h2></summary>
     <div class="service-grid">
-      <!-- Keep in step with the same grid in index.html / board.html. Apps open inside
+      <!-- The only copy of the tiles: the board is a tab of this page (it used to be a copy, and drifted). Apps open inside
            app.html's hub bar in a new tab; data-service is the path /status reports
            them under. Meshtastic and the three tool lists are menus, so they open here. -->
       <a class="service-card" href="/app.html#/draw/" data-service="/draw/" target="_blank">
@@ -96,25 +96,65 @@
     </div>
   </details>
 
-  <nav class="tabs">
-    <a href="/" class="active" aria-current="page">Shoutbox</a>
-    <a href="/board.html">Board</a>
+  <!-- Shoutbox and board as two tabs of one page, so the header and tiles above exist once.
+       The fragment picks the tab (#board, or a thread as #t12); ?full shows just the open tab
+       as a full page (home.js). board.html redirects here. -->
+  <nav class="tabs home-tabs">
+    <a href="#shout" data-tab="shout">Shoutbox</a>
+    <a href="#board" data-tab="board">Board</a>
+    <button type="button" class="tab-expand" id="tab-expand" title="Full-page view of this tab">⤢ Expand</button>
   </nav>
 
-  <section class="shoutbox">
-    <div id="messages"></div>
-    <form id="shout-form">
-      <span class="name-wrap">
-        <input id="name-input" type="text" placeholder="Name" maxlength="32" required>
-        <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
-        <button type="button" id="name-roll" title="Roll a random name" aria-label="Roll a random name">🎲</button>
-      </span>
-      <input id="msg-input" data-emoji type="text" placeholder="Say something..." maxlength="200" required>
-      <button type="submit">Send</button>
-    </form>
-  </section>
+  <div id="tab-shout">
+    <section class="shoutbox">
+      <div id="messages"></div>
+      <form id="shout-form">
+        <span class="name-wrap">
+          <input id="name-input" type="text" placeholder="Name" maxlength="32" required>
+          <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+          <button type="button" id="name-roll" title="Roll a random name" aria-label="Roll a random name">🎲</button>
+        </span>
+        <input id="msg-input" data-emoji type="text" placeholder="Say something..." maxlength="200" required>
+        <button type="submit">Send</button>
+      </form>
+    </section>
+    <p class="decay-note" id="shout-decay-note"></p>
+  </div>
 
-  <p class="decay-note" id="decay-note"></p>
+  <div id="tab-board" hidden>
+    <section id="list-view">
+      <div id="threads"></div>
+  
+      <details id="new-thread">
+        <summary>Start a thread</summary>
+        <form id="thread-form">
+          <span class="name-wrap">
+            <input id="t-name" type="text" placeholder="Name" maxlength="32" required>
+            <button type="button" id="t-hue" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+          </span>
+          <input id="t-title" type="text" placeholder="Title" maxlength="80" required>
+          <textarea id="t-text" data-emoji="#t-send" placeholder="Say something..." maxlength="1000" rows="4" required></textarea>
+          <div class="form-actions"><button type="submit" id="t-send">Post thread</button></div>
+        </form>
+      </details>
+    </section>
+  
+    <section id="thread-view" hidden>
+      <h2><a class="back" href="#board">&larr; All threads</a></h2>
+      <h3 id="thread-title"></h3>
+      <div id="posts"></div>
+      <form id="reply-form">
+        <span class="name-wrap">
+          <input id="r-name" type="text" placeholder="Name" maxlength="32" required>
+          <button type="button" id="r-hue" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+        </span>
+        <textarea id="r-text" data-emoji="#r-send" placeholder="Reply..." maxlength="1000" rows="3" required></textarea>
+        <div class="form-actions"><button type="submit" id="r-send">Reply</button></div>
+      </form>
+    </section>
+  
+    <p class="decay-note" id="board-decay-note"></p>
+  </div>
 
   <footer class="site-footer">
     <a href="/admin/">Admin</a>
@@ -126,5 +166,7 @@
   <script src="ident.js"></script>
   <script src="emoji.js"></script>
   <script src="shoutbox.js"></script>
+  <script src="board.js"></script>
+  <script src="home.js"></script>
 </body>
 </html>

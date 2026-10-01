@@ -1,0 +1,42 @@
+/* The Irate-Box palette for the nomdetom.github.io calculators, linked into each page by
+   adapt_tools.py at install time, after the page's own styles. The calculators define a
+   light set on :root and a dark set on :root[data-theme="dark"]; the same two selectors
+   here, loaded later, replace their green with the hub's indigo. The theme itself still
+   follows the hub's picker (app.js writes the calculators' nomdetom-theme-mode). */
+:root {
+  --page-bg: #f4f5f9;
+  --panel-bg: #ffffff;
+  --field-bg: #ffffff;
+  --text: #1b1d27;
+  --muted: #5d6178;
+  --border: #d9dbe6;
+  --accent: #5b4bd6;
+  --accent-soft: #ecebfb;
+  --chip-selected-text: #ffffff;
+  --page-glow-a: #e6e4f8;
+  --page-glow-b: #eceef6;
+}
+
+:root[data-theme="dark"] {
+  --page-bg: #0f1117;
+  --panel-bg: #1a1d27;
+  --field-bg: #141720;
+  --text: #e2e4ef;
+  --muted: #9a9eb8;
+  --border: #2a2d3a;
+  --accent: #7c6af7;
+  --accent-soft: #24213f;
+  --chip-selected-text: #ffffff;
+  --page-glow-a: transparent;
+  --page-glow-b: transparent;
+}
+
+.irate-box-adapted {
+  margin: 2rem auto 1rem;
+  max-width: 60rem;
+  padding: 0 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+.irate-box-adapted a { color: var(--accent); }

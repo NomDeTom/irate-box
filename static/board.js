@@ -1,3 +1,5 @@
+// In a scope of its own: the landing page loads shoutbox.js and board.js together.
+(() => {
 const POLL_MS = 8000;
 
 const listView = document.getElementById('list-view');
@@ -5,7 +7,7 @@ const threadView = document.getElementById('thread-view');
 const threadsEl = document.getElementById('threads');
 const postsEl = document.getElementById('posts');
 const titleEl = document.getElementById('thread-title');
-const decayNote = document.getElementById('decay-note');
+const decayNote = document.getElementById('board-decay-note');
 
 const threadForm = document.getElementById('thread-form');
 const replyForm = document.getElementById('reply-form');
@@ -67,7 +69,7 @@ async function refresh() {
         renderThread(await r.json());
       } else {
         // Decayed out from under us while we were reading it.
-        location.hash = '';
+        location.hash = '#board';
       }
     }
   } catch (_) {}
@@ -125,3 +127,4 @@ for (const [el, swatch] of [['t-name', 't-hue'], ['r-name', 'r-hue']].map(
 window.addEventListener('hashchange', refresh);
 refresh();
 setInterval(refresh, POLL_MS);
+})();

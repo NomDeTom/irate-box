@@ -278,6 +278,11 @@ if [ "$WITH_TOOLS" = 1 ]; then
 	git clone -q --depth 1 https://github.com/nomdetom/nomdetom.github.io "$APPS/tools"
 	rm -rf "$APPS/tools/.git"
 fi
+# However they arrived (--tools or --apps), the calculators get the hub's palette and back
+# links, and lose the ASCII Reference page. Idempotent: a page already adapted is skipped.
+if [ -d "$APPS/tools" ]; then
+	python3 "$CODE/adapt_tools.py" "$APPS/tools" "$CODE/static"
+fi
 for app in mermaid draw tools serial; do
 	[ -d "$APPS/$app" ] || echo "    (no $app build installed: its card will lead to an empty page)"
 done

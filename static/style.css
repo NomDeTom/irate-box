@@ -768,3 +768,15 @@ body.admin section button:disabled { opacity: 0.5; cursor: default; }
   max-height: 16rem; overflow: auto; margin: 0.5rem 0; padding: 0.6rem 0.8rem; white-space: pre-wrap;
   font-size: 0.75rem; line-height: 1.4; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
 }
+
+/* Landing page tabs: the expand button sits at the right of the tab bar. In the full-page
+   view only the open tab shows, filling the window. */
+.home-tabs { align-items: center; }
+.tab-expand {
+  margin-left: auto; padding: 0.3rem 0.75rem; font: inherit; font-size: 0.8rem; color: var(--muted);
+  background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+}
+.tab-expand:hover { color: var(--text); border-color: var(--accent); }
+body.full > header, body.full > .services, body.full > .site-footer { display: none; }
+body.home.full { max-width: 960px; padding-top: 1rem; }
+body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }

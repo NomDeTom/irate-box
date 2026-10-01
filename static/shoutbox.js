@@ -1,3 +1,5 @@
+// In a scope of its own: the landing page loads shoutbox.js and board.js together.
+(() => {
 const POLL_MS = 4000;
 const MAX_DISPLAY = 50;
 
@@ -6,7 +8,7 @@ const form = document.getElementById('shout-form');
 const nameInput = document.getElementById('name-input');
 const msgInput = document.getElementById('msg-input');
 const nameRoll = document.getElementById('name-roll');
-const decayNote = document.getElementById('decay-note');
+const decayNote = document.getElementById('shout-decay-note');
 
 // Random handle: adjective + noun, pirate-flavoured to match the box. Longest combo
 // is well inside the input's 32-char limit.
@@ -116,3 +118,4 @@ attachHuePicker(document.getElementById('hue-swatch'), nameInput);
 
 poll();
 setInterval(poll, POLL_MS);
+})();
