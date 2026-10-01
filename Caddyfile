@@ -114,6 +114,11 @@
 	# context, which this origin is not (plan §4) -- the single-file download fixes that.
 	handle_path /serial/* {
 		root * {$HUB_SERIAL_ROOT:/home/user/serial-terminal/dist}
+		# The one-file build, for live USB from a file opened on the guest's own machine (Web
+		# Serial needs a secure context, which file:// is and this plain HTTP is not): saved,
+		# never opened here.
+		@download path /serial-terminal.html
+		header @download Content-Disposition "attachment; filename=\"serial-terminal.html\""
 		@immutable path /assets/*
 		@mutable not path /assets/*
 		header @immutable Cache-Control "public, max-age=31536000, immutable"
