@@ -725,10 +725,10 @@ details.admin-item summary { cursor: pointer; }
 .admin-thumb { width: 72px; height: 54px; object-fit: contain; background: var(--bg); border-radius: 4px; flex: none; }
 .admin-meter { height: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin: 0.4rem 0 0.75rem; }
 .admin-meter > div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
-body.admin button {
+body.admin section button {
   padding: 0.3rem 0.8rem; font: inherit; font-size: 0.85rem; color: inherit;
   background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
 }
-body.admin button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
-body.admin button:hover:not(:disabled) { border-color: var(--accent); }
-body.admin button:disabled { opacity: 0.5; cursor: default; }
+body.admin section button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
+body.admin section button:hover:not(:disabled) { border-color: var(--accent); }
+body.admin section button:disabled { opacity: 0.5; cursor: default; }

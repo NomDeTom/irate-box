@@ -36,6 +36,21 @@ if (picker) {
   showTheme();
 }
 
+// A choice made in another tab arrives as a storage event: follow it live, so an open
+// admin page (or app) does not stay in the old theme until it is reloaded.
+window.addEventListener('storage', (e) => {
+  if (e.key !== 'theme' && e.key !== null) return;
+  let t = 'auto';
+  try { t = localStorage.getItem('theme') || 'auto'; } catch (_) {}
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else { t = 'auto'; delete document.documentElement.dataset.theme; }
+  if (picker) {
+    picker.querySelectorAll('[data-theme-choice]').forEach(
+      (b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === t)));
+  }
+  document.dispatchEvent(new CustomEvent('hub-theme', { detail: t }));
+});
+
 // Service status: /status says whether Caddy is in front and which backends are
 // listening. Anything carrying data-service -- the home tiles, the sub-page lists --
 // is dimmed while its service is down, rather than left as a dead link.
