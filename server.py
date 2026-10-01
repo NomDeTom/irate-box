@@ -1089,6 +1089,19 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
 
+        if path == "/api/captive":
+            # RFC 8908's captive-portal API, named by the hotspot's DHCP (option 114, RFC 8910):
+            # tells a phone outright that this network has a sign-in page and where, so it need
+            # not guess from probes. captive stays true: the box never gives "internet".
+            body = json.dumps({"captive": True, "user-portal-url": HUB_URL if HUB_HOST else "/"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/captive+json")
+            self.send_header("Cache-Control", "private, no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/status":
             # Caddy's reverse_proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
