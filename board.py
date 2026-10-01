@@ -187,3 +187,37 @@ class Board:
                 self._save(state)
                 return {"now": now, "post": post}
             return None
+
+    # -- moderation (admin page) -------------------------------------------------
+
+    def all_threads(self):
+        """Every live thread with its posts, newest activity first."""
+        now = self.clock.ticks()
+        state = self._load()
+        threads = [t for t in state["threads"] if now - t.get("active", 0) <= self.ttl]
+        threads.sort(key=lambda t: (t.get("active", 0), t["id"]), reverse=True)
+        return {"now": now, "ttl": self.ttl, "threads": threads}
+
+    def delete_thread(self, tid):
+        with self._lock:
+            state = self._load()
+            kept = [t for t in state["threads"] if t["id"] != tid]
+            if len(kept) == len(state["threads"]):
+                return False
+            state["threads"] = kept
+            self._save(state)
+            return True
+
+    def delete_post(self, tid, index):
+        """Remove one post. The opening post carries the subject, so removing it removes
+        the thread."""
+        if index == 0:
+            return self.delete_thread(tid)
+        with self._lock:
+            state = self._load()
+            for t in state["threads"]:
+                if t["id"] == tid and 0 < index < len(t["posts"]):
+                    del t["posts"][index]
+                    self._save(state)
+                    return True
+            return False

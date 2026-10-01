@@ -212,6 +212,38 @@ class Store:
 
     # -- quota ----------------------------------------------------------------
 
+    # -- admin -----------------------------------------------------------------
+
+    def usage(self):
+        """Files and bytes per namespace, against the quota. For the admin page."""
+        out = {"max_total": MAX_TOTAL, "save_ttl": SAVE_TTL, "namespaces": {}}
+        total = 0
+        for namespace in BLOB_NAMESPACES + ("saves",):
+            files = size = 0
+            for path in self._dir(namespace).iterdir():
+                if path.is_file() and path.suffix != ".tmp":
+                    try:
+                        size += path.stat().st_size
+                        files += 1
+                    except OSError:
+                        pass
+            out["namespaces"][namespace] = {"files": files, "bytes": size}
+            total += size
+        out["total"] = total
+        return out
+
+    def clear_namespace(self, namespace):
+        """Delete every blob in one of BLOB_NAMESPACES (shared scenes, rooms, files)."""
+        if namespace not in BLOB_NAMESPACES:
+            raise ValueError(f"not a blob namespace: {namespace}")
+        removed = 0
+        with self._lock:
+            for path in self._dir(namespace).iterdir():
+                if path.is_file():
+                    path.unlink(missing_ok=True)
+                    removed += 1
+        return removed
+
     def _enforce_quota(self):
         """Evict oldest-first until the whole store fits in MAX_TOTAL.
 

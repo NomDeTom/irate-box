@@ -234,6 +234,10 @@ else
 	git clone --depth 1 -b "$BRANCH" "$REPO" "$CODE"
 fi
 
+# What /admin reports as the installed version: the commit, and when it was installed.
+ver="$(git -C "${SRC:-$CODE}" describe --always --dirty --tags 2>/dev/null || echo unknown)"
+printf '%s (installed %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
+
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
 	for app in mermaid draw tools serial; do
@@ -563,6 +567,33 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
+# --- admin control (root helper) ---------------------------------------------------
+# /admin starts and stops services and changes the admin password, which need root. The
+# hub only queues a request in $STATE/control/requests/; this path unit runs hub_control.py
+# as root, which acts on its own allow-list only and answers in $STATE/control/results/.
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 700 "$STATE/control" "$STATE/control/requests"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/control/results"
+cat >/etc/systemd/system/irate-box-control.service <<EOF
+[Unit]
+Description=Irate-Box: carry out /admin requests that need root (services, admin password)
+
+[Service]
+Type=oneshot
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_USER=$HUB_USER
+ExecStart=/usr/bin/python3 $CODE/hub_control.py
+EOF
+cat >/etc/systemd/system/irate-box-control.path <<EOF
+[Unit]
+Description=Irate-Box: watch for /admin requests that need root
+
+[Path]
+DirectoryNotEmpty=$STATE/control/requests
+Unit=irate-box-control.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # --- the librarian -----------------------------------------------------------------
 # librarian.py keeps ZIM books current from the sources set on /admin (Library). It runs
 # as the hub user: a new version is swapped in under the same file name and library.xml is
@@ -672,7 +703,7 @@ systemctl restart "${units[@]}"
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ ${#ZIMS[@]} -gt 0 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
-systemctl enable --quiet --now irate-box-librarian.timer
+systemctl enable --quiet --now irate-box-librarian.timer irate-box-control.path
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled

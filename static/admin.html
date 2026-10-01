@@ -7,61 +7,39 @@
   <link rel="stylesheet" href="/style.css">
   <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
-<body>
+<body class="admin">
   <header>
     <h1>Admin</h1>
     <p class="subtitle">Options for whoever owns the box.</p>
   </header>
 
-  <nav class="tabs">
-    <a href="/">&larr; Back to the hub</a>
+  <nav class="tabs admin-nav">
+    <a href="/">&larr; Hub</a>
+    <a href="#box">Box</a>
+    <a href="#library-section">Library</a>
+    <a href="#moderation">Moderation</a>
+    <a href="#saved">Saved work</a>
+    <a href="#remote-section">Remote access</a>
+    <a href="#settings">Settings</a>
+    <a href="#password">Password</a>
+    <a href="#housekeeping">Housekeeping</a>
   </nav>
 
-  <h2>Landing page</h2>
-  <div class="settings">
-    <label class="setting">
-      <input type="checkbox" id="show_term_card">
-      <span>
-        <span class="setting-name">Show the Terminal card</span>
-        <span class="setting-desc">
-          The shell is greyed out while its unit is off, the same as any other service.
-          Turn this off to leave it off the page entirely — the route still works for
-          anyone who knows the address and has the password.
-        </span>
-      </span>
-    </label>
-  </div>
+  <p class="settings-note admin-note" id="save-note" hidden></p>
 
-  <p class="settings-note" id="save-note" hidden></p>
-
-  <section id="remote-section" hidden>
-    <h2>Remote access</h2>
+  <section id="box">
+    <h2>Box and services</h2>
+    <div class="admin-tiles" id="box-tiles"></div>
     <p class="setting-desc">
-      Tailscale lets you reach the box from anywhere. While it is off, it can only be
-      switched back on from here — so from the hub's own WiFi or LAN, not remotely.
+      Optional services can be started, stopped, or set to start at boot. Caddy and the hub
+      can only be restarted. Each change is carried out by a small root helper on the box, so
+      it takes a second or two to show here.
     </p>
-    <div class="remote-choices">
-      <label class="setting">
-        <input type="radio" name="remote" value="off">
-        <span><span class="setting-name">Off</span></span>
-      </label>
-      <label class="setting">
-        <input type="radio" name="remote" value="on">
-        <span>
-          <span class="setting-name">On</span>
-          <span class="setting-desc">Stays on, including after a reboot.</span>
-        </span>
-      </label>
-      <label class="setting">
-        <input type="radio" name="remote" value="timed">
-        <span>
-          <span class="setting-name">On for
-            <input type="number" id="remote-hours" min="1" max="72" value="2"> hours</span>
-          <span class="setting-desc">Then off by itself. A reboot also ends it.</span>
-        </span>
-      </label>
-    </div>
-    <p class="setting-desc" id="remote-state"></p>
+    <table class="admin-table" id="service-table">
+      <thead><tr><th>Service</th><th>State</th><th>At boot</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="control-results"></div>
   </section>
 
   <section id="library-section">
@@ -136,12 +114,113 @@
     </form>
   </section>
 
-  <h2>Sync</h2>
-  <p class="setting-desc">
-    <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and
-    content between the box and your own machines when they share a network. Returns an error
-    page if it is not installed or its unit is off.
-  </p>
+  <section id="moderation">
+    <h2>Moderation</h2>
+    <p class="setting-desc">
+      Everything here also ages out by itself: shoutbox messages after 24 hours, board threads
+      7 days after their last reply (powered-on time). Deleting is immediate and permanent.
+    </p>
+    <h3>Shoutbox</h3>
+    <div id="mod-messages" class="admin-list"></div>
+    <h3>Board</h3>
+    <div id="mod-threads" class="admin-list"></div>
+  </section>
+
+  <section id="saved">
+    <h2>Saved work</h2>
+    <p class="setting-desc" id="store-usage"></p>
+    <div class="admin-meter"><div id="store-meter"></div></div>
+    <p class="setting-desc">
+      Shared Excalidraw drawings, collaboration rooms and pasted images count against the same
+      cap as the gallery; the oldest is evicted first when it is full.
+      <span class="library-buttons" id="store-clear"></span>
+    </p>
+    <h3>Gallery</h3>
+    <div id="store-saves" class="admin-list"></div>
+  </section>
+
+  <section id="remote-section" hidden>
+    <h2>Remote access</h2>
+    <p class="setting-desc">
+      Tailscale lets you reach the box from anywhere. While it is off, it can only be
+      switched back on from here — so from the hub's own WiFi or LAN, not remotely.
+    </p>
+    <div class="remote-choices">
+      <label class="setting">
+        <input type="radio" name="remote" value="off">
+        <span><span class="setting-name">Off</span></span>
+      </label>
+      <label class="setting">
+        <input type="radio" name="remote" value="on">
+        <span>
+          <span class="setting-name">On</span>
+          <span class="setting-desc">Stays on, including after a reboot.</span>
+        </span>
+      </label>
+      <label class="setting">
+        <input type="radio" name="remote" value="timed">
+        <span>
+          <span class="setting-name">On for
+            <input type="number" id="remote-hours" min="1" max="72" value="2"> hours</span>
+          <span class="setting-desc">Then off by itself. A reboot also ends it.</span>
+        </span>
+      </label>
+    </div>
+    <p class="setting-desc" id="remote-state"></p>
+  </section>
+
+  <section id="settings">
+    <h2>Settings</h2>
+    <h3>Landing page</h3>
+    <div class="settings">
+      <label class="setting">
+        <input type="checkbox" id="show_term_card">
+        <span>
+          <span class="setting-name">Show the Terminal card</span>
+          <span class="setting-desc">
+            The shell is greyed out while its unit is off, the same as any other service.
+            Turn this off to leave it off the page entirely — the route still works for
+            anyone who knows the address and has the password.
+          </span>
+        </span>
+      </label>
+    </div>
+    <h3>Saved work</h3>
+    <form id="store-settings" class="library-form">
+      <label>Store size cap (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
+      <label>Gallery saves expire after (hours of powered-on time, 0 = never)
+        <input name="store_save_ttl_hours" type="number" min="0" step="1"></label>
+      <button type="submit">Save</button>
+    </form>
+  </section>
+
+  <section id="password">
+    <h2>Admin password</h2>
+    <p class="setting-desc">
+      The one login for /admin, /sync and /term (user <code>admin</code>), and Syncthing's own.
+      After changing it, the browser asks for the new one.
+    </p>
+    <form id="password-form" class="library-form">
+      <label>New password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+      <label>Again <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+      <button type="submit">Change password</button>
+    </form>
+  </section>
+
+  <section id="housekeeping">
+    <h2>Housekeeping</h2>
+    <p class="setting-desc">Installed: <span id="hub-version">…</span></p>
+    <p class="setting-desc">
+      <a href="/admin/backup" download>Download a backup</a> of the hub's state: notes, saved
+      work, board, shoutbox, settings, the library's sources and the uptime clock. ZIM books
+      and archived versions are left out (they come from their sources), as is the GitHub token.
+    </p>
+    <p class="setting-desc">
+      <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and
+      content between the box and your own machines when they share a network. Returns an error
+      page if it is not installed or its unit is off.
+    </p>
+  </section>
 
   <script src="/admin.js"></script>
 </body>

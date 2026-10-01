@@ -6,8 +6,10 @@ served by file_server and only `/` and the API reach this process."""
 
 import json
 import os
+import secrets
 import socket
 import subprocess
+import tarfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -138,8 +140,9 @@ def note_client(handler):
 
 
 # --- operator settings -------------------------------------------------------
-# Options the person who owns the box sets, not the guests. Only booleans listed in
-# DEFAULTS are accepted, so a malformed or hand-edited file cannot introduce keys.
+# Options the person who owns the box sets, not the guests. Only keys listed in DEFAULTS,
+# with the default's type (and ints not negative), are accepted, so a malformed or
+# hand-edited file cannot introduce keys.
 # The gate is Caddy's basic_auth on /admin/*, the same treatment /term/ gets -- run
 # the hub bare, with no Caddy in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
@@ -147,8 +150,22 @@ DEFAULT_SETTINGS = {
     # The ttyd card is shown like any other service -- greyed while its unit is off --
     # unless the operator would rather guests were not shown the escape hatch at all.
     "show_term_card": True,
+    # The saved-work store (store.py): its size cap, and how long a gallery save lives
+    # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
+    "store_max_total_mb": max(1, store.MAX_TOTAL >> 20),
+    "store_save_ttl_hours": int(store.SAVE_TTL // 3600),
 }
 _settings_lock = threading.Lock()
+
+
+def valid_setting(key, value):
+    want = type(DEFAULT_SETTINGS[key])
+    return type(value) is want and (want is not int or value >= 0)
+
+
+def apply_settings(data):
+    store.MAX_TOTAL = max(1, data["store_max_total_mb"]) << 20
+    store.SAVE_TTL = data["store_save_ttl_hours"] * 3600
 
 
 def load_settings():
@@ -160,7 +177,7 @@ def load_settings():
         return data
     if isinstance(stored, dict):
         for key in DEFAULT_SETTINGS:
-            if isinstance(stored.get(key), bool):
+            if valid_setting(key, stored.get(key)):
                 data[key] = stored[key]
     return data
 
@@ -177,6 +194,7 @@ def save_settings(data):
 
 # Held in memory so a page full of /status pollers costs no disk reads.
 _settings = load_settings()
+apply_settings(_settings)
 
 
 def settings_snapshot():
@@ -212,11 +230,11 @@ def port_listening(port):
 
 
 def unit_states(units):
-    """{unit: (installed?, active?)} from one `systemctl show`, or {} where there is no
-    systemd to ask (a dev machine): the caller then treats every unit as installed."""
+    """{unit: (installed?, active?, enabled?)} from one `systemctl show`, or {} where there
+    is no systemd to ask (a dev machine): the caller then treats every unit as installed."""
     try:
         out = subprocess.run(
-            ["systemctl", "show", "--property=Id,LoadState,ActiveState", *units],
+            ["systemctl", "show", "--property=Id,LoadState,ActiveState,UnitFileState", *units],
             capture_output=True, text=True, timeout=2,
         ).stdout
     except (OSError, subprocess.SubprocessError):
@@ -226,7 +244,8 @@ def unit_states(units):
         fields = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
         if "Id" in fields:
             states[fields["Id"]] = (fields.get("LoadState") not in ("not-found", ""),
-                                    fields.get("ActiveState") == "active")
+                                    fields.get("ActiveState") == "active",
+                                    fields.get("UnitFileState") == "enabled")
     # A missing unit still gets a block, under the name it was asked for.
     return states
 
@@ -245,7 +264,7 @@ def service_status(proxied):
     units = _status_cache["units"]
     out = []
     for svc in SERVICES:
-        installed, active = units.get(svc["unit"], (True, False)) if "unit" in svc else (True, False)
+        installed, active, _ = units.get(svc["unit"], (True, False, False)) if "unit" in svc else (True, False, False)
         if "root" in svc:
             root = os.environ.get(svc["root"])
             installed = root is None or Path(root).is_dir()
@@ -368,6 +387,130 @@ def library_action(payload):
     return 200, library_snapshot()
 
 
+# --- admin: box and services, moderation, saved work, password, backup -----------
+# Starting and stopping services and changing the admin password need root. The hub asks:
+# it drops a request in control/requests/, irate-box-control.path runs hub_control.py as
+# root, which acts only on its own allow-list and answers in control/results/. CONTROL_OPS
+# mirrors that allow-list so the page offers only what will be accepted.
+CONTROL_DIR = STATE_DIR / "control"
+CONTROL_REQUESTS = CONTROL_DIR / "requests"
+CONTROL_RESULTS = CONTROL_DIR / "results"
+VERSION_FILE = Path(__file__).parent / "VERSION"
+_ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
+CONTROL_OPS = {
+    "kiwix.service": _ALL_OPS, "silverbullet.service": _ALL_OPS,
+    "syncthing@hub.service": _ALL_OPS, "mosquitto.service": _ALL_OPS,
+    "ttyd.service": _ALL_OPS, "excalidraw-room.service": _ALL_OPS,
+    "caddy.service": ["restart"], "irate-box.service": ["restart"],
+}
+MIN_PASSWORD = 8
+# Never in a backup: the big or regenerable (ZIMs, archived versions), the transient, and
+# the one secret the page can set (the GitHub token).
+BACKUP_SKIP = ("zim", "control", "library/archive", "library/tmp", "library/github-token",
+               "library/lock")
+
+
+def hub_version():
+    try:
+        return VERSION_FILE.read_text().strip()
+    except OSError:
+        return "a development checkout"
+
+
+def control_request(req):
+    """Queue a request for hub_control.py; returns its id, which its answer will carry."""
+    CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
+    rid = secrets.token_hex(8)
+    tmp = CONTROL_DIR / f".{rid}.tmp"  # written beside, renamed in: never read half-written
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(dict(req, id=rid), fh)
+    os.replace(tmp, CONTROL_REQUESTS / f"{rid}.json")
+    return rid
+
+
+def control_results(limit=10):
+    out = []
+    for path in sorted(CONTROL_RESULTS.glob("*.json"), key=lambda p: p.stat().st_mtime,
+                       reverse=True)[:limit]:
+        try:
+            out.append(json.loads(path.read_text()))
+        except (OSError, ValueError):
+            pass
+    return out
+
+
+def admin_box(proxied):
+    units = [s["unit"] for s in SERVICES if "unit" in s]
+    states = unit_states(units)
+    by_name = {s["name"]: s for s in SERVICES}
+    services = []
+    for entry in service_status(proxied):
+        unit = by_name.get(entry["name"], {}).get("unit")
+        _, active, enabled = states.get(unit, (True, False, False))
+        services.append(dict(entry, unit=unit, active=active, enabled=enabled,
+                             ops=CONTROL_OPS.get(unit, [])))
+    now = CLOCK.ticks()
+    return {"system": system_status(), "uptime": now, "online": online_count(now),
+            "joined": joined_count(), "services": services, "version": hub_version(),
+            "results": control_results(),
+            "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
+
+
+def moderation_snapshot():
+    now = CLOCK.ticks()
+    with lock:
+        msgs = live_messages(now)
+    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads()}
+
+
+def delete_message(created, name):
+    with lock:
+        msgs = load_messages()
+        kept = [m for m in msgs if not (m.get("created") == created and m.get("name") == name)]
+        if len(kept) == len(msgs):
+            return False
+        save_messages(kept)
+        return True
+
+
+def moderation_action(payload):
+    action = payload.get("action")
+    if action == "delete_message":
+        ok = delete_message(payload.get("created"), payload.get("name"))
+    elif action == "delete_thread" and type(payload.get("id")) is int:
+        ok = BOARD.delete_thread(payload["id"])
+    elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
+        ok = BOARD.delete_post(payload["id"], payload["index"])
+    else:
+        return 400, {"error": "unknown action"}
+    return (200 if ok else 404), moderation_snapshot()
+
+
+def store_snapshot():
+    return {"now": CLOCK.ticks(), "saves": STORE.list_saves(), "usage": STORE.usage()}
+
+
+def store_action(payload):
+    action, key = payload.get("action"), str(payload.get("id", ""))
+    if action in ("rename", "delete") and not store.ID_RE.match(key):
+        return 400, {"error": "bad id"}
+    try:
+        if action == "rename":
+            name = str(payload.get("name", "")).strip()[:store.MAX_NAME]
+            if not name or STORE.rename_save(key, name) is None:
+                return 404, {"error": "no such save, or no name"}
+        elif action == "delete":
+            STORE.delete_save(key)
+        elif action == "clear":
+            STORE.clear_namespace(str(payload.get("namespace", "")))
+        else:
+            return 400, {"error": "unknown action"}
+    except ValueError as exc:
+        return 400, {"error": str(exc)}
+    return 200, store_snapshot()
+
+
 def system_status():
     """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
     cache Kiwix leans on counts as available, and is the first thing to go (plan §2)."""
@@ -434,6 +577,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_backup(self):
+        """The hub's state as a .tar.gz, streamed: notes, saves, board, shoutbox, settings,
+        the library's sources and the clock -- everything but BACKUP_SKIP."""
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/gzip")
+        self.send_header("Content-Disposition", f'attachment; filename="irate-box-state-{stamp}.tar.gz"')
+        self.send_header("Connection", "close")  # no length known in advance
+        self.end_headers()
+        self.close_connection = True
+
+        def keep(info):
+            rel = info.name.split("/", 1)[1] if "/" in info.name else ""
+            if any(rel == s or rel.startswith(s + "/") for s in BACKUP_SKIP) or rel.endswith(".tmp"):
+                return None
+            return info
+
+        try:
+            with tarfile.open(fileobj=self.wfile, mode="w|gz") as tar:
+                tar.add(STATE_DIR, arcname="irate-box-state", filter=keep)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _send_tailscale(self):
         """What the operator asked for, and what the unit is doing. They differ for the
         second or two the path unit takes to act, and permanently if it is not set up."""
@@ -493,6 +659,22 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/library":
             self.send_json(200, library_snapshot())
+            return
+
+        if path == "/admin/box":
+            self.send_json(200, admin_box("X-Forwarded-For" in self.headers))
+            return
+
+        if path == "/admin/moderation":
+            self.send_json(200, moderation_snapshot())
+            return
+
+        if path == "/admin/store":
+            self.send_json(200, store_snapshot())
+            return
+
+        if path == "/admin/backup":
+            self._send_backup()
             return
 
         if path in ("/admin", "/admin/"):
@@ -567,10 +749,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/settings":
             with _settings_lock:
                 for key in DEFAULT_SETTINGS:
-                    if isinstance(payload.get(key), bool):
+                    if valid_setting(key, payload.get(key)):
                         _settings[key] = payload[key]
                 current = dict(_settings)
                 save_settings(current)
+                apply_settings(current)
             self.send_json(200, current)
             return
 
@@ -586,6 +769,30 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/library":
             self.send_json(*library_action(payload))
+            return
+
+        if path == "/admin/control":
+            unit, op = payload.get("unit"), payload.get("op")
+            if op not in CONTROL_OPS.get(unit, []):
+                self.send_json(400, {"error": f"{op} is not offered for {unit}"})
+                return
+            self.send_json(202, {"id": control_request({"action": "service", "unit": unit, "op": op})})
+            return
+
+        if path == "/admin/password":
+            pw = payload.get("password")
+            if not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
+                self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
+                return
+            self.send_json(202, {"id": control_request({"action": "password", "password": pw})})
+            return
+
+        if path == "/admin/moderation":
+            self.send_json(*moderation_action(payload))
+            return
+
+        if path == "/admin/store":
+            self.send_json(*store_action(payload))
             return
 
         if path == "/messages":
