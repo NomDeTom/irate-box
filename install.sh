@@ -154,8 +154,11 @@ install_caddy_release() {
 	x86_64) a=amd64 ;;
 	*) die "no Caddy release build for $ARCH" ;;
 	esac
+	# sed, not grep -m1: an early exit closes the pipe on curl (error 23), and with pipefail
+	# that kills the script inside the substitution, before any message.
 	tag="$(curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest |
-		grep -m1 '"tag_name"' | cut -d'"' -f4)"
+		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p')" ||
+		die "could not reach GitHub for Caddy's latest release"
 	[ -n "$tag" ] || die "could not find Caddy's latest release on GitHub"
 	ver="${tag#v}"
 	if [ "$(dpkg-query -W -f='${Version}' caddy 2>/dev/null)" = "$ver" ]; then
