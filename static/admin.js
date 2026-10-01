@@ -108,6 +108,8 @@ loadRemote();
 // the page re-reads the snapshot every few seconds.
 const lib = {
   state: document.getElementById('library-state'),
+  bar: document.getElementById('library-bar'),
+  allNote: document.getElementById('library-all-note'),
   sources: document.getElementById('library-sources'),
   add: document.getElementById('library-add'),
   policy: document.getElementById('library-policy'),
@@ -142,20 +144,39 @@ async function libPost(body) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { status: r.status });
   return data;
+}
+
+// What a library button's action answered goes right under that button, not in the banner
+// at the top. "Already running" (409) stays until the librarian is free, then goes.
+let libNote = null; // { key, text, busy }
+
+async function libAct(key, body, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  libNote = null;
+  try {
+    renderLibrary(await libPost(body));
+  } catch (e) {
+    libNote = e.status === 409
+      ? { key, busy: true, text: 'The librarian is already running. The buttons come back when it is free; try again then.' }
+      : { key, busy: false, text: e.message };
+    loadLibrary();
+  }
+}
+
+function noteFor(key) {
+  if (!libNote || libNote.key !== key) return null;
+  return el('span', { className: `setting-desc action-note ${libNote.busy ? 'busy' : 'bad'}`, role: 'status', textContent: libNote.text });
 }
 
 function sourceRow(src, st, busy) {
   const cur = st.current || {};
   const latest = st.latest || {};
   const archive = st.archive || [];
+  const key = `book:${src.name}`;
   const button = (label, body, confirmText) => el('button', {
-    type: 'button', textContent: label, disabled: busy,
-    onclick: async () => {
-      if (confirmText && !confirm(confirmText)) return;
-      try { renderLibrary(await libPost(body)); } catch (e) { say(e.message, false); }
-    },
+    type: 'button', textContent: label, disabled: busy, onclick: () => libAct(key, body, confirmText),
   });
   return el('div', { className: 'setting library-source' },
     el('span', {},
@@ -176,6 +197,7 @@ function sourceRow(src, st, busy) {
         button('Remove', { action: 'remove', name: src.name },
           `Stop tracking ${src.name}? The book itself stays in the library.`),
       ),
+      noteFor(key),
     ),
   );
 }
@@ -183,10 +205,7 @@ function sourceRow(src, st, busy) {
 function renderApps(snap, busy) {
   const apps = snap.apps || {};
   const sources = Object.fromEntries(snap.sources.filter((s) => s.kind === 'app').map((s) => [s.name, s]));
-  const post = (body, confirmText) => async () => {
-    if (confirmText && !confirm(confirmText)) return;
-    try { renderLibrary(await libPost(body)); } catch (e) { say(e.message, false); }
-  };
+  const post = (key, body, confirmText) => () => libAct(key, body, confirmText);
   document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => {
     const inst = a.installed;
     const src = sources[name];
@@ -206,19 +225,21 @@ function renderApps(snap, busy) {
       el('span', { className: 'setting-name', textContent: a.title }),
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
-        el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post({ action: 'check', names: [name] }) }),
-        el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post({ action: 'update', names: [name] }) }),
+        el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
+        el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
         inst && inst.has_previous ? el('button', { type: 'button', textContent: 'Roll back', disabled: busy,
-          onclick: post({ action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null) : null));
+          onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null) : null,
+      noteFor(`app:${name}`)));
   }));
   const missing = Object.keys(apps).filter((n) => !sources[n]);
   document.getElementById('apps-actions').replaceChildren(...(missing.length ? [
     el('button', { type: 'button', textContent: `Keep ${missing.length === Object.keys(apps).length ? 'all apps' : missing.join(', ')} current from the forks`,
-      disabled: busy, onclick: post({ action: 'add-apps' }) })] : []));
+      disabled: busy, onclick: post('apps', { action: 'add-apps' }) }), noteFor('apps')].filter(Boolean) : []));
 }
 
 function renderLibrary(snap) {
   const busy = snap.running;
+  if (libNote && libNote.busy && !busy) libNote = null;
   renderApps(snap, busy);
   const job = snap.job || {};
   const parts = [];
@@ -229,6 +250,12 @@ function renderLibrary(snap) {
     parts.push(`Downloading ${p.name}: ${mb(p.done) || '0 MB'}${p.total ? ` of ${mb(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : ''}` +
       (rate ? `, ${Math.round(rate / 1024)} KB/s` : '') + (left !== null ? `, about ${left < 90 ? `${left} s` : `${Math.round(left / 60)} min`} left` : '') + '.');
   } else if (busy) parts.push(`Working (${job.action || 'scheduled check'})…`);
+  // The bar: a download's bytes when its size is known, otherwise the indeterminate stripe.
+  lib.bar.hidden = !busy;
+  if (busy && p && p.total) {
+    lib.bar.max = p.total;
+    lib.bar.value = Math.min(p.done, p.total);
+  } else lib.bar.removeAttribute('value');
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
   lib.state.textContent = parts.join(' ');
@@ -238,6 +265,9 @@ function renderLibrary(snap) {
     ? books.map((s) => sourceRow(s, snap.status[s.name] || {}, busy))
     : [el('p', { className: 'setting-desc', textContent: 'No sources yet.' })]));
   document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy || !snap.sources.length; });
+  const allNote = noteFor('all');
+  lib.allNote.hidden = !allNote;
+  if (allNote) { lib.allNote.textContent = allNote.textContent; lib.allNote.className = allNote.className; }
 
   for (const [k, v] of Object.entries(snap.policy)) {
     const field = lib.policy.elements[k];
@@ -306,9 +336,7 @@ lib.token.addEventListener('submit', async (e) => {
 document.getElementById('library-token-clear').addEventListener('click', async () => {
   try { renderLibrary(await libPost({ action: 'token', value: '' })); say('Token cleared.', true); } catch (err) { say(err.message, false); }
 });
-document.querySelectorAll('[data-all]').forEach((b) => b.addEventListener('click', async () => {
-  try { renderLibrary(await libPost({ action: b.dataset.all })); } catch (err) { say(err.message, false); }
-}));
+document.querySelectorAll('[data-all]').forEach((b) => b.addEventListener('click', () => libAct('all', { action: b.dataset.all })));
 
 showTypeFields();
 loadLibrary();
@@ -538,18 +566,25 @@ loadStore();
 loadStoreSettings();
 
 // --- updates ---------------------------------------------------------------------------
-// The root helper does both steps (fetch into a root-owned cache, then rerun install.sh);
-// this only asks, and shows what it reports. The hub restarts during an install, so a
+// The root helper does all three steps (check into a root-owned cache; fetch: verify it and
+// cache its downloads; install: rerun install.sh); this only asks, and shows what it
+// reports, with a bar for the step it is on. The hub restarts during an install, so a
 // failed read while one is running means "keep waiting", not "broken".
 const upd = {
   summary: document.getElementById('update-summary'),
+  check: document.getElementById('update-check'),
   fetch: document.getElementById('update-fetch'),
   install: document.getElementById('update-install'),
+  progress: document.getElementById('update-progress'),
+  bar: document.getElementById('update-bar'),
+  step: document.getElementById('update-step'),
+  note: document.getElementById('update-note'),
   changes: document.getElementById('update-changes'),
   checks: document.getElementById('update-checks'),
   log: document.getElementById('update-log'),
   doctor: document.getElementById('update-doctor'),
   clear: document.getElementById('update-clear'),
+  doctorNote: document.getElementById('doctor-note'),
   doctorWhen: document.getElementById('doctor-when'),
   findings: document.getElementById('doctor-findings'),
 };
@@ -558,12 +593,36 @@ const checkItem = (status, title, detail, fix) => el('li', { className: `check c
   el('span', { textContent: `${MARK[status]} ` }), el('strong', { textContent: title }),
   detail ? el('span', { textContent: ` — ${detail}` }) : null,
   fix ? el('span', { className: 'setting-desc', textContent: fix }) : null);
-let updWaiting = null;
+const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update', install: 'Installing the update' };
+let updWaiting = null; // { id, action }
 let updPoll = null;
+
+// Each answer goes under the buttons that asked: the doctor's and the cache's under theirs.
+function updSay(action, text, ok) {
+  const node = action === 'doctor' || action === 'clear-cache' ? upd.doctorNote : upd.note;
+  node.textContent = text;
+  node.classList.toggle('bad', !ok);
+  node.hidden = !text;
+}
+
+function renderUpdateProgress(p) {
+  upd.progress.hidden = !p;
+  if (!p) return;
+  const steps = Math.max(p.steps, p.step, 1);
+  const part = p.total ? Math.min(p.done / p.total, 1) : 0;
+  upd.bar.value = Math.min((Math.max(p.step - 1, 0) + part) / steps, 1);
+  const bytes = p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round(100 * part)}%)` : p.done ? `: ${size(p.done)}` : '';
+  upd.step.textContent = `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}` +
+    (p.label ? ` — ${p.label}${bytes}` : '') + '.';
+}
 
 function renderUpdate(data) {
   const s = data.state;
-  const busy = data.pending > 0 || !!updWaiting;
+  const p = data.progress;
+  const busy = data.pending > 0 || !!updWaiting || !!p;
+  const found = !!s && !s.up_to_date; // a check found a newer version
+  const fetched = found && !!(s.checks && s.checks.length);
+  const ready = found && s.verified === s.available;
   if (!s) {
     upd.summary.textContent = 'Not checked yet.';
   } else {
@@ -572,10 +631,11 @@ function renderUpdate(data) {
       ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
       : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
         (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
-        `. Checked ${when}. ` + (s.verified === s.available ? 'Verified, and its downloads are cached: ready to install.'
-          : 'It did not pass verification (below), so it cannot be installed.');
+        `. Checked ${when}. ` + (ready ? 'Fetched and verified, and its downloads are cached: ready to install.'
+          : fetched ? 'It did not pass verification (below), so it cannot be installed.'
+          : 'Fetch it to verify it and download what it needs.');
   }
-  const checks = (s && !s.up_to_date && s.checks) || [];
+  const checks = (fetched && s.checks) || [];
   upd.checks.hidden = !checks.length;
   upd.checks.replaceChildren(...checks.map((c) =>
     checkItem(c.ok ? 'ok' : c.warn ? 'warn' : 'problem', c.name, c.detail)));
@@ -587,27 +647,29 @@ function renderUpdate(data) {
       (n ? `${n} problem${n === 1 ? '' : 's'}.` : 'no problems found.');
     upd.findings.replaceChildren(...d.findings.map((f) => checkItem(f.status, f.check, f.detail, f.status === 'ok' ? '' : f.fix)));
   }
-  upd.doctor.disabled = upd.clear.disabled = busy;
-  upd.changes.replaceChildren(...((s && !s.up_to_date && s.changes) || []).slice(0, 20)
+  upd.changes.replaceChildren(...((found && s.changes) || []).slice(0, 20)
     .map((c) => el('li', { textContent: c })));
-  upd.fetch.disabled = busy;
-  upd.install.disabled = busy || !s || s.up_to_date || s.verified !== s.available;
-  upd.log.hidden = !data.log.length || (!busy && s && s.up_to_date && !updWaiting);
+  upd.log.hidden = !data.log.length || (!busy && s && s.up_to_date);
   upd.log.textContent = data.log.join('\n');
   upd.log.scrollTop = upd.log.scrollHeight;
+  renderUpdateProgress(p);
 
   if (updWaiting) {
-    const done = (data.results || []).find((r) => r.id === updWaiting);
+    const done = (data.results || []).find((r) => r.id === updWaiting.id);
     if (done) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
-      say(failed ? `${done.message} — "Run the update doctor" below can say why.` : done.message, !failed);
+      updSay(updWaiting.action, failed && updWaiting.action !== 'doctor'
+        ? `${done.message} — "Run the update doctor" below can say why.` : done.message, !failed);
       updWaiting = null;
-      upd.fetch.disabled = false;
-      upd.install.disabled = !s || s.up_to_date || s.verified !== s.available;
+      renderUpdate(data);
+      return;
     }
   }
+  upd.check.disabled = upd.doctor.disabled = upd.clear.disabled = busy;
+  upd.fetch.disabled = busy || !found || ready;
+  upd.install.disabled = busy || !ready;
   clearTimeout(updPoll);
-  if (data.pending > 0 || updWaiting) updPoll = setTimeout(loadUpdate, 2000);
+  if (busy) updPoll = setTimeout(loadUpdate, p ? 1000 : 2000);
 }
 
 async function loadUpdate() {
@@ -625,15 +687,16 @@ async function loadUpdate() {
 async function requestUpdate(action) {
   if (action === 'install' && !confirm('Install the update now? The hub restarts during the install.')) return;
   try {
-    updWaiting = (await postJSON('/admin/update', { action })).id;
-    upd.fetch.disabled = true;
-    upd.install.disabled = true;
-    say({ fetch: 'Checking for updates, then verifying and caching downloads…', install: 'Installing the update…',
-      doctor: 'Running the update doctor (up to a minute or two)…', 'clear-cache': 'Clearing the update cache…' }[action], true);
+    updWaiting = { id: (await postJSON('/admin/update', { action })).id, action };
+    upd.check.disabled = upd.fetch.disabled = upd.install.disabled = true;
+    updSay(action, { check: 'Checking for updates…', fetch: 'Fetching the update: verifying it and caching its downloads…',
+      install: 'Installing the update…', doctor: 'Running the update doctor (up to a minute or two)…',
+      'clear-cache': 'Clearing the update cache…' }[action], true);
     loadUpdate();
-  } catch (err) { say(err.message, false); }
+  } catch (err) { updSay(action, err.message, false); }
 }
 
+upd.check.addEventListener('click', () => requestUpdate('check'));
 upd.fetch.addEventListener('click', () => requestUpdate('fetch'));
 upd.doctor.addEventListener('click', () => requestUpdate('doctor'));
 upd.clear.addEventListener('click', () => {

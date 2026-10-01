@@ -70,12 +70,14 @@
       <code>install.sh --zim</code>, are left alone unless a source here has the same name.
     </p>
     <p class="setting-desc" id="library-state"></p>
+    <progress class="admin-bar" id="library-bar" hidden></progress>
 
     <div id="library-sources"></div>
     <div class="library-actions">
       <button type="button" data-all="check">Check all</button>
       <button type="button" data-all="update">Update all</button>
     </div>
+    <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
     <h3>Add a source</h3>
     <p class="setting-desc">
@@ -231,15 +233,23 @@
     <p class="setting-desc">Installed: <span id="hub-version">…</span></p>
     <h3>Updates</h3>
     <p class="setting-desc">
-      Checking fetches irate-box from the repository this box was installed from; installing
-      reruns the installer with the same options. Apps, books, data and the password are kept.
-      The hub restarts part-way through, and this page reconnects by itself.
+      Checking asks the repository this box was installed from what is new. Fetching then
+      verifies that version and downloads what its installer will need, so nothing is fetched
+      half-way through an install. Installing reruns the installer with the same options. Apps,
+      books, data and the password are kept. The hub restarts part-way through, and this page
+      reconnects by itself.
     </p>
     <p class="setting-desc" id="update-summary">Not checked yet.</p>
     <div class="library-buttons">
-      <button type="button" id="update-fetch">Check for updates</button>
+      <button type="button" id="update-check">Check for updates</button>
+      <button type="button" id="update-fetch" disabled>Fetch update</button>
       <button type="button" id="update-install" disabled>Install update</button>
     </div>
+    <div class="admin-progress" id="update-progress" hidden>
+      <progress class="admin-bar" id="update-bar" max="1" value="0"></progress>
+      <p class="setting-desc" id="update-step"></p>
+    </div>
+    <p class="setting-desc action-note" id="update-note" role="status" hidden></p>
     <ul class="admin-changes" id="update-changes"></ul>
     <ul class="admin-checks" id="update-checks" hidden></ul>
     <h3>When an update check fails</h3>
@@ -252,6 +262,7 @@
       <button type="button" id="update-doctor">Run the update doctor</button>
       <button type="button" id="update-clear">Clear the update cache</button>
     </div>
+    <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
     <p class="setting-desc" id="doctor-when" hidden></p>
     <ul class="admin-checks" id="doctor-findings" hidden></ul>
     <pre class="admin-log" id="update-log" hidden></pre>

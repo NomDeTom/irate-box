@@ -7,6 +7,7 @@ served by file_server and only `/` and the API reach this process."""
 import io
 import json
 import os
+import re
 import secrets
 import socket
 import subprocess
@@ -611,20 +612,41 @@ def admin_box(proxied):
 
 UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
+UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
-UPDATE_ACTIONS = {"fetch": "update-fetch", "install": "update-install",
+UPDATE_ACTIONS = {"check": "update-check", "fetch": "update-fetch", "install": "update-install",
                   "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
+# Terminal colour codes, in logs written before install.sh stopped sending them to files.
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def update_progress():
+    """The root helper's step and download in flight, or None: nothing running, or a file
+    left behind by a helper that died."""
+    try:
+        data = json.loads(UPDATE_PROGRESS.read_text())
+        pid = int(data["pid"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        pass  # alive, and root's
+    except OSError:
+        return None
+    return data
 
 
 def update_snapshot():
-    """What /admin's update buttons show: the last fetch (from the root helper), the tail
-    of the last install's output, and whether a request is still being worked on."""
+    """What /admin's update buttons show: the last check or fetch (from the root helper),
+    the tail of the last install's output, whether a request is still being worked on, and
+    the step it is on."""
     try:
         state = json.loads(UPDATE_STATE.read_text())
     except (OSError, ValueError):
         state = None
     try:
-        log = UPDATE_LOG.read_text(errors="replace").splitlines()[-40:]
+        log = [ANSI_RE.sub("", line) for line in UPDATE_LOG.read_text(errors="replace").splitlines()[-40:]]
     except OSError:
         log = []
     try:
@@ -633,7 +655,7 @@ def update_snapshot():
         doctor = None
     pending = len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "doctor": doctor, "results": control_results(5)}
+            "progress": update_progress(), "doctor": doctor, "results": control_results(5)}
 
 
 def moderation_snapshot():

@@ -13,15 +13,19 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       credential, Syncthing's GUI login, and /etc/hub/admin-password. With "setup", this is
       the first-use form on an unclaimed box: accepted only while UNCLAIMED exists, which
       it then deletes, so the first password chosen is the only one set this way.
-  {"id": ..., "action": "update-fetch"}
+  {"id": ..., "action": "update-check"}
       Clone or fast-forward irate-box into a root-owned cache, from the repository and branch
-      install.sh recorded in /etc/hub/install-options, then verify it (verify_update) and
-      prefetch the release downloads its install.sh will want into the download cache. The
-      summary, with every check, goes to control/update.json. The hub never writes the code
-      that root will run.
+      install.sh recorded in /etc/hub/install-options, and say what is new. The summary goes
+      to control/update.json. The hub never writes the code that root will run.
+  {"id": ..., "action": "update-fetch"}
+      Check first if the cache does not hold what the last check found, then verify it
+      (verify_update) and prefetch the release downloads its install.sh will want into the
+      download cache. Every check goes into control/update.json.
   {"id": ..., "action": "update-install"}
       Run that checkout's install.sh with the recorded options and the download cache;
       output in control/update.log. Refused unless the fetched commit passed verification.
+  While any of these three runs, control/update-progress.json says which step it is on, of
+  how many, and how far a download has got (Progress), for the bars on /admin.
   {"id": ..., "action": "update-doctor"}
       For when a check fails: look at everything an update needs (doctor) and write a plain
       report, each finding with what to do, to control/doctor.json.
@@ -73,10 +77,13 @@ CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 UPDATE_STATE = CONTROL / "update.json"
 UPDATE_LOG = CONTROL / "update.log"
+UPDATE_PROGRESS = CONTROL / "update-progress.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
 # Release downloads install.sh would otherwise make itself (install.sh --download-cache).
 DOWNLOADS = Path(os.environ.get("HUB_DOWNLOAD_CACHE", "/var/cache/irate-box/downloads"))
 INSTALL_TIMEOUT = 45 * 60
+# How many "==> " steps an install prints, until one has run here and been counted.
+INSTALL_STEPS_GUESS = 12
 
 OPS_ALL = ("start", "stop", "restart", "enable", "disable")
 # The units each app's manifest offers for control (apps.d/, beside this file and as
@@ -221,6 +228,54 @@ def _write_update_state(data):
     _for_hub(UPDATE_STATE)
 
 
+def _read_update_state():
+    try:
+        return json.loads(UPDATE_STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+class Progress:
+    """control/update-progress.json while a check, fetch or install runs: step `step` of
+    `steps` (`estimate` when the count is a guess), what it is doing, and the bytes of a
+    download in flight. The hub only reads it, and ignores it once `pid` has gone; it is
+    removed when the action ends, however it ends."""
+
+    def __init__(self, action, steps, estimate=False):
+        self.data = {"action": action, "pid": os.getpid(), "step": 0, "steps": steps,
+                     "estimate": estimate, "label": "", "done": 0, "total": 0}
+        self._last = 0.0
+
+    def __enter__(self):
+        self._write()
+        return self
+
+    def __exit__(self, *exc):
+        UPDATE_PROGRESS.unlink(missing_ok=True)
+
+    def add_steps(self, n):
+        self.data["steps"] += n
+        self._write()
+
+    def step(self, label):
+        step = self.data["step"] + 1
+        self.data.update(step=step, steps=max(self.data["steps"], step), label=label, done=0, total=0)
+        self._write()
+
+    def bytes(self, done, total):
+        """Written at most once a second, and once more when a download completes."""
+        self.data.update(done=done, total=total)
+        if time.monotonic() - self._last >= 1 or (total and done >= total):
+            self._write()
+
+    def _write(self):
+        self._last = time.monotonic()
+        tmp = UPDATE_PROGRESS.with_name(UPDATE_PROGRESS.name + ".tmp")
+        tmp.write_text(json.dumps(self.data))
+        _for_hub(tmp)
+        os.replace(tmp, UPDATE_PROGRESS)
+
+
 # --- verifying a fetched update -------------------------------------------------------
 # Everything that can be checked before install.sh runs is checked here, so a bad push or a
 # broken download shows up as a red line on /admin rather than as a half-installed box.
@@ -238,12 +293,19 @@ def _arch_names():
             "caddy": {"x86_64": "amd64", "aarch64": "arm64", "armv7l": "armv7", "armv8l": "armv7"}.get(m)}
 
 
-def _fetch(url, dest, timeout=300):
-    """Download url to dest, atomically. Returns dest."""
+def _fetch(url, dest, timeout=300, report=None):
+    """Download url to dest, atomically, calling report(done, total) as bytes arrive (total
+    is 0 when the server does not say). Returns dest."""
     req = urllib.request.Request(url, headers={"User-Agent": "irate-box-update"})
     tmp = dest.with_name(dest.name + ".part")
     with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp, "wb") as out:
-        shutil.copyfileobj(resp, out, 1 << 20)
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        while chunk := resp.read(1 << 16):
+            out.write(chunk)
+            done += len(chunk)
+            if report:
+                report(done, total)
     os.replace(tmp, dest)
     return dest
 
@@ -276,66 +338,85 @@ def _have_version(cmd, version):
         return False
 
 
-def prefetch(src, opts):
+def prefetch(src, opts, progress=None):
     """Download into DOWNLOADS the release files the new install.sh will want and the box
-    does not already have, each checked against its published checksum. Returns checks."""
+    does not already have, each checked against its published checksum. Returns checks.
+    The downloads are listed before any starts, so progress knows how many steps they are."""
     DOWNLOADS.mkdir(parents=True, exist_ok=True)
     script = (src / "install.sh").read_text()
     arch = _arch_names()
-    checks = []
+    report = progress.bytes if progress else None
+    jobs = []  # (step label, function returning a check or None)
 
     ttyd = _var(script, "TTYD_VERSION")
     if ttyd and arch["ttyd"] and not _have_version(("/usr/local/bin/ttyd", "--version"), ttyd):
-        base = f"https://github.com/tsl0922/ttyd/releases/download/{ttyd}"
-        name = f"ttyd.{arch['ttyd']}"
-        try:
-            sums = _fetch(f"{base}/SHA256SUMS", DOWNLOADS / f"ttyd-{ttyd}-SHA256SUMS")
-            binary = _fetch(f"{base}/{name}", DOWNLOADS / f"ttyd-{ttyd}-{name}")
-            ok = _digest(binary, "sha256") == _sum_for(sums, name)
-            checks.append(_check(f"ttyd {ttyd} downloaded", ok, "checksum matches" if ok else "checksum MISMATCH"))
-        except OSError as exc:
-            checks.append(_check(f"ttyd {ttyd} downloaded", False, str(exc)))
+        def get_ttyd():
+            base = f"https://github.com/tsl0922/ttyd/releases/download/{ttyd}"
+            name = f"ttyd.{arch['ttyd']}"
+            try:
+                sums = _fetch(f"{base}/SHA256SUMS", DOWNLOADS / f"ttyd-{ttyd}-SHA256SUMS")
+                binary = _fetch(f"{base}/{name}", DOWNLOADS / f"ttyd-{ttyd}-{name}", report=report)
+                ok = _digest(binary, "sha256") == _sum_for(sums, name)
+                return _check(f"ttyd {ttyd} downloaded", ok, "checksum matches" if ok else "checksum MISMATCH")
+            except OSError as exc:
+                return _check(f"ttyd {ttyd} downloaded", False, str(exc))
+        jobs.append((f"Downloading ttyd {ttyd}", get_ttyd))
 
     sb = _var(script, "SB_VERSION")
     if sb and "--with-notes" in opts and arch["sb"] and \
             not _have_version(("/usr/local/bin/silverbullet", "--version"), sb):
-        name = f"silverbullet-server-linux-{arch['sb']}.zip"
-        try:
-            z = _fetch(f"https://github.com/silverbulletmd/silverbullet/releases/download/{sb}/{name}",
-                       DOWNLOADS / f"silverbullet-{sb}-{name}")
-            # SilverBullet publishes no checksums; at least the zip must be whole.
+        def get_sb():
+            name = f"silverbullet-server-linux-{arch['sb']}.zip"
             try:
-                with zipfile.ZipFile(z) as zf:
-                    ok = zf.testzip() is None
-            except zipfile.BadZipFile:
-                ok = False
-            checks.append(_check(f"SilverBullet {sb} downloaded", ok, "zip is intact" if ok else "zip is damaged"))
-        except OSError as exc:
-            checks.append(_check(f"SilverBullet {sb} downloaded", False, str(exc)))
+                z = _fetch(f"https://github.com/silverbulletmd/silverbullet/releases/download/{sb}/{name}",
+                           DOWNLOADS / f"silverbullet-{sb}-{name}", report=report)
+                # SilverBullet publishes no checksums; at least the zip must be whole.
+                try:
+                    with zipfile.ZipFile(z) as zf:
+                        ok = zf.testzip() is None
+                except zipfile.BadZipFile:
+                    ok = False
+                return _check(f"SilverBullet {sb} downloaded", ok, "zip is intact" if ok else "zip is damaged")
+            except OSError as exc:
+                return _check(f"SilverBullet {sb} downloaded", False, str(exc))
+        jobs.append((f"Downloading SilverBullet {sb}", get_sb))
 
     # Caddy from its GitHub release, on a box whose apt repository failed verification.
     if (ETC / "caddy-from-release").exists() and arch["caddy"]:
-        try:
-            req = urllib.request.Request("https://api.github.com/repos/caddyserver/caddy/releases/latest",
-                                         headers={"User-Agent": "irate-box-update"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                tag = json.load(resp)["tag_name"]
-            ver = tag.lstrip("v")
-            installed = run("dpkg-query", "-W", "-f=${Version}", "caddy").stdout.strip()
-            (DOWNLOADS / "caddy-release-tag").write_text(tag + "\n")
-            if installed != ver:
+        def get_caddy():
+            try:
+                req = urllib.request.Request("https://api.github.com/repos/caddyserver/caddy/releases/latest",
+                                             headers={"User-Agent": "irate-box-update"})
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    tag = json.load(resp)["tag_name"]
+                ver = tag.lstrip("v")
+                installed = run("dpkg-query", "-W", "-f=${Version}", "caddy").stdout.strip()
+                (DOWNLOADS / "caddy-release-tag").write_text(tag + "\n")
+                if installed == ver:
+                    return None
                 deb = f"caddy_{ver}_linux_{arch['caddy']}.deb"
                 base = f"https://github.com/caddyserver/caddy/releases/download/{tag}"
                 sums = _fetch(f"{base}/caddy_{ver}_checksums.txt", DOWNLOADS / f"caddy_{ver}_checksums.txt")
-                pkg = _fetch(f"{base}/{deb}", DOWNLOADS / deb)
+                pkg = _fetch(f"{base}/{deb}", DOWNLOADS / deb, report=report)
                 ok = _digest(pkg, "sha512") == _sum_for(sums, deb)
-                checks.append(_check(f"Caddy {ver} downloaded", ok, "checksum matches" if ok else "checksum MISMATCH"))
-        except (OSError, ValueError, KeyError) as exc:
-            checks.append(_check("Caddy release downloaded", False, str(exc)))
+                return _check(f"Caddy {ver} downloaded", ok, "checksum matches" if ok else "checksum MISMATCH")
+            except (OSError, ValueError, KeyError) as exc:
+                return _check("Caddy release downloaded", False, str(exc))
+        jobs.append(("Downloading Caddy's latest release", get_caddy))
+
+    if progress:
+        progress.add_steps(len(jobs))
+    checks = []
+    for label, job in jobs:
+        if progress:
+            progress.step(label)
+        check = job()
+        if check:
+            checks.append(check)
     return checks
 
 
-def verify_update(src, installed, opts):
+def verify_update(src, installed, opts, progress=None):
     """Checks on a fetched tree; any failure not marked warn blocks the install."""
     checks = []
     if installed:
@@ -378,16 +459,19 @@ def verify_update(src, installed, opts):
             checks.append(_check("The new Caddyfile validates", False, str(exc)))
         finally:
             os.unlink(tmp.name)
-    checks += prefetch(src, opts)
+    checks += prefetch(src, opts, progress)
     return checks
 
 
-def update_fetch(req):
+def _check_for_update(progress):
+    """Bring the cache up to the recorded branch and work out what is new: two steps.
+    Returns (state for update.json, install options)."""
     opts = _install_options()
     repo = _option(opts, "--repo")
     branch = _option(opts, "--branch", "main")
     if not repo:
         raise ValueError("install-options names no repository")
+    progress.step(f"Fetching {branch} from {repo}")
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
         _git("-C", src, "remote", "set-url", "origin", repo)
@@ -399,6 +483,7 @@ def update_fetch(req):
             subprocess.run(["rm", "-rf", src], check=True)
         UPDATE_SRC.parent.mkdir(parents=True, exist_ok=True)
         _git("clone", "--depth", "200", "--branch", branch, repo, src)
+    progress.step("Reading the changes")
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
     installed = _installed_commit()
     known = bool(installed) and run("git", "-C", src, "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
@@ -412,50 +497,114 @@ def update_fetch(req):
         "changes": changes[:50], "changes_known": known, "fetched": time.time(),
         "verified": None, "checks": [],
     }
-    if up_to_date:
-        _write_update_state(state)
-        return f"irate-box is up to date ({head} on {branch})"
-    checks = verify_update(UPDATE_SRC, installed, opts)
+    # The same commit fetched before: its checks and downloads still stand.
+    old = _read_update_state()
+    if not up_to_date and old.get("verified") == head:
+        state.update(verified=head, checks=old.get("checks", []))
+    if old.get("install_steps"):
+        state["install_steps"] = old["install_steps"]
+    return state, opts
+
+
+def _change_count(state):
+    n = len(state["changes"])
+    return f"{n} new commit{'s' if n != 1 else ''}" if state["changes_known"] else "a different version"
+
+
+def update_check(req):
+    with Progress("check", 2) as progress:
+        state, _ = _check_for_update(progress)
+    _write_update_state(state)
+    if state["up_to_date"]:
+        return f"irate-box is up to date ({state['available']} on {state['branch']})"
+    if state["verified"]:
+        return f"update available: {_change_count(state)}, {state['available']} on {state['branch']}, already fetched and verified"
+    return f"update available: {_change_count(state)}, {state['available']} on {state['branch']}; fetch it to verify it"
+
+
+def update_fetch(req):
+    # Steps: the verification, plus the check if one is needed, plus each download
+    # (prefetch adds those once it knows them).
+    with Progress("fetch", 1) as progress:
+        state = _read_update_state()
+        cached = (UPDATE_SRC / ".git").is_dir() and \
+            run("git", "-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD").stdout.strip()
+        if state.get("up_to_date") or not cached or cached != state.get("available"):
+            progress.add_steps(2)
+            state, opts = _check_for_update(progress)
+        else:
+            opts = _install_options()
+        if state["up_to_date"]:
+            _write_update_state(state)
+            return f"irate-box is up to date ({state['available']} on {state['branch']})"
+        progress.step("Checking the new version")
+        checks = verify_update(UPDATE_SRC, state["installed"], opts, progress)
+    head = state["available"]
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
     state.update(checks=checks, verified=None if failed else head)
     _write_update_state(state)
-    count = f"{len(changes)} new commit{'s' if len(changes) != 1 else ''}" if known else "a different version"
     if failed:
         return f"update {head} found but did not pass verification: {failed[0]['name']} ({failed[0]['detail']})"
-    return f"update available: {count}, {head} on {branch}, verified"
+    return f"update fetched: {_change_count(state)}, {head} on {state['branch']}, verified"
+
+
+STEP_LINE = re.compile(rb"==> (.*?)(?:\x1b\[0m)?\s*$")
+
+
+def _follow_install(proc, progress):
+    """Wait for install.sh, making each "==> " heading it prints (its say()) a step.
+    Returns (exit code, steps seen)."""
+    deadline = time.monotonic() + INSTALL_TIMEOUT
+    seen, offset, partial = 0, 0, b""
+    while True:
+        code = proc.poll()
+        with open(UPDATE_LOG, "rb") as fh:
+            fh.seek(offset)
+            new = fh.read()
+            offset = fh.tell()
+        *lines, partial = (partial + new).split(b"\n")
+        for line in lines:
+            m = STEP_LINE.search(line)
+            if m:
+                seen += 1
+                progress.step(m.group(1).decode(errors="replace"))
+        if code is not None:
+            return code, seen
+        if time.monotonic() > deadline:
+            proc.kill()
+            proc.wait()
+            raise ValueError(f"install.sh did not finish within {INSTALL_TIMEOUT // 60} minutes; see update.log")
+        time.sleep(1)
 
 
 def update_install(req):
     if not (UPDATE_SRC / "install.sh").is_file():
         raise ValueError("nothing fetched yet: check for updates first")
-    try:
-        state = json.loads(UPDATE_STATE.read_text())
-    except (OSError, ValueError):
-        state = {}
+    state = _read_update_state()
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
     if state.get("verified") != head:
-        raise ValueError("the fetched version has not passed verification: check for updates again")
+        raise ValueError("the fetched version has not passed verification: fetch the update again")
     opts = _install_options()
     cmd = ["bash", str(UPDATE_SRC / "install.sh"), "--src", str(UPDATE_SRC), *opts]
     if "--download-cache" in (UPDATE_SRC / "install.sh").read_text():
         cmd += ["--download-cache", str(DOWNLOADS)]
-    with open(UPDATE_LOG, "w") as log:
+    # As many steps as the last install here printed; a guess until one has.
+    steps = state.get("install_steps")
+    with Progress("install", steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
+            open(UPDATE_LOG, "w") as log:
         _for_hub(UPDATE_LOG)
         log.write("$ " + " ".join(cmd) + "\n\n")
         log.flush()
-        try:
-            code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                  timeout=INSTALL_TIMEOUT).returncode
-        except subprocess.TimeoutExpired:
-            raise ValueError(f"install.sh did not finish within {INSTALL_TIMEOUT // 60} minutes; see update.log")
+        # systemd gives the helper no HOME, and Caddy warns about it on every validate.
+        env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+        code, seen = _follow_install(proc, progress)
     if code != 0:
         raise ValueError(f"install.sh exited with {code}; see update.log")
-    try:
-        state = json.loads(UPDATE_STATE.read_text())
-        state.update(installed=_installed_commit(), up_to_date=True, changes=[])
+    state = _read_update_state()
+    if state:
+        state.update(installed=_installed_commit(), up_to_date=True, changes=[], install_steps=seen)
         _write_update_state(state)
-    except (OSError, ValueError):
-        pass
     return f"updated to {_installed_commit() or 'the fetched version'}"
 
 
@@ -765,7 +914,7 @@ def app_rollback(req):
 
 
 ACTIONS = {"service": service, "password": password,
-           "update-fetch": update_fetch, "update-install": update_install,
+           "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "app-install": app_install, "app-rollback": app_rollback}
 

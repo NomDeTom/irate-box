@@ -93,7 +93,8 @@ ETC=/etc/hub
 SB_VERSION=2.11.1
 TTYD_VERSION=1.7.7
 
-say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
+# Bold on a terminal only: from /admin the output goes to a log file that a page shows.
+say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 # fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
 # the URL's file name), else from the network. Callers check checksums either way.
