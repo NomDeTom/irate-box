@@ -14,6 +14,9 @@ A source says where new versions of one book come from:
   url           a plain URL to a .zim (or a .zip holding one), versioned by its ETag or
                 Last-Modified.
 
+It also keeps the hub's prebuilt web apps current (kind "app": draw, mermaid, serial, room),
+from the forks' irate-box-bundle.yml artifacts -- see "app bundles" below.
+
 Each book keeps its file name, <name>.zim, across versions, so /wiki/content/<name>/ links
 never change. A new version is downloaded beside the old one, checked (free space, the ZIM
 magic number), and renamed over it; the previous one is hard-linked into the archive first,
@@ -34,6 +37,9 @@ policy.keep_old), github-token (optional, for actions), lock.
     librarian.py rollback NAME [VERSION]  back to an archived version (the newest by default)
     librarian.py policy [--keep-old N] [--check-every-hours H] [--min-free-mb M]
     librarian.py token [TOKEN]            set, or with no argument clear, the GitHub token
+    librarian.py add-apps [APP ...]       add the default nightly.link source for each app
+    librarian.py app-fetch APP            download and check APP's newest bundle; prints the
+                                          zip's path (install.sh then has root unpack it)
 
 Stdlib only: it runs on the board's Python with nothing installed.
 """
@@ -65,6 +71,7 @@ TOKEN_FILE = LIB_DIR / "github-token"
 ARCHIVE_DIR = LIB_DIR / "archive"
 TMP_DIR = LIB_DIR / "tmp"
 LOCK_FILE = LIB_DIR / "lock"
+PROGRESS_FILE = LIB_DIR / "progress.json"  # the download in flight, for /admin
 LIBRARY_XML = ZIM_DIR / "library.xml"
 
 TYPES = ("release", "actions", "nightly-link", "url")
@@ -180,6 +187,12 @@ def is_running():
 def validate_source(src):
     """Normalise and check a source definition; raises LibrarianError on anything wrong."""
     out = {"name": str(src.get("name", "")).strip(), "type": str(src.get("type", "")).strip()}
+    if src.get("kind") == "app":
+        if out["name"] not in APPS:
+            raise LibrarianError(f"app must be one of {', '.join(APPS)}")
+        if out["type"] not in ("actions", "nightly-link"):
+            raise LibrarianError("an app comes from actions or nightly-link")
+        out["kind"] = "app"
     if not NAME_RE.match(out["name"]) or out["name"] == "library":
         raise LibrarianError("name: letters, digits, '.', '_' and '-' only (it becomes <name>.zim)")
     if out["type"] not in TYPES:
@@ -210,6 +223,138 @@ def validate_source(src):
     return out
 
 
+# --- app bundles -------------------------------------------------------------
+# The prebuilt web apps come the same way as books: from the forks' Actions artifacts
+# (irate-box-bundle.yml in each), through nightly.link or with a token. The librarian
+# downloads and checks a bundle as the hub user; installing it under /usr/share/hub needs
+# root, so it hands the checked zip to hub_control.py (app-install), which checks it again
+# and swaps it in with the previous copy kept for a roll back.
+#
+# A source with "kind": "app" is one of APPS, by name. Each bundle carries
+# irate-box-bundle.json: {"app", "repository", "ref", "commit", "built", "run"}.
+
+APPS_DIR = Path(os.environ.get("HUB_APPS_DIR", "/usr/share/hub/apps"))
+ROOM_DIR = Path(os.environ.get("HUB_ROOM_DIR", "/usr/share/hub/room"))
+APP_STAGING = LIB_DIR / "apps"
+APP_MAX_BYTES = 400 << 20  # unpacked; the largest bundle (draw) is ~25 MB
+APPS = {
+    "draw": {"repo": "NomDeTom/excalidraw", "branch": "main", "title": "Excalidraw", "needs": "index.html"},
+    "mermaid": {"repo": "NomDeTom/mermaid-live-editor", "branch": "develop", "title": "Mermaid editor",
+                "needs": "index.html"},
+    "serial": {"repo": "NomDeTom/serial-terminal", "branch": "main", "title": "Serial terminal",
+               "needs": "index.html"},
+    "room": {"repo": "NomDeTom/excalidraw-room", "branch": "main", "title": "Collaboration relay",
+             "needs": "dist/index.js"},
+}
+BUNDLE_JSON = "irate-box-bundle.json"
+
+
+def app_dir(name):
+    return ROOM_DIR if name == "room" else APPS_DIR / name
+
+
+def default_app_source(name, via="nightly-link"):
+    spec = APPS[name]
+    return {"name": name, "kind": "app", "type": via, "repo": spec["repo"], "workflow": "irate-box-bundle.yml",
+            "branch": spec["branch"], "pattern": f"irate-box-{name}-*"}
+
+
+def installed_app(name):
+    """The installed bundle's irate-box-bundle.json, {} for a hand-copied build, None if absent."""
+    folder = app_dir(name)
+    if not folder.is_dir():
+        return None
+    meta = _read_json(folder / BUNDLE_JSON, {})
+    meta["has_previous"] = (folder.parent / f".{folder.name}.prev").is_dir()
+    return meta
+
+
+def check_bundle(zip_path, name):
+    """Raise unless zip_path is a bundle of app `name` that is safe to unpack: no absolute
+    paths, no '..', no symlinks, a sane size, its marker file and its entry point present.
+    hub_control.py runs the same check again as root before unpacking."""
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            total = 0
+            names = set()
+            for info in zf.infolist():
+                parts = Path(info.filename).parts
+                if info.filename.startswith(("/", "\\")) or ".." in parts or ":" in info.filename:
+                    raise LibrarianError(f"unsafe path in the bundle: {info.filename}")
+                if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise LibrarianError(f"symlink in the bundle: {info.filename}")
+                total += info.file_size
+                names.add(info.filename)
+            if total > APP_MAX_BYTES:
+                raise LibrarianError(f"the bundle unpacks to {total >> 20} MB, over the {APP_MAX_BYTES >> 20} MB limit")
+            if BUNDLE_JSON not in names:
+                raise LibrarianError(f"not an Irate-Box bundle: no {BUNDLE_JSON}")
+            meta = json.loads(zf.read(BUNDLE_JSON))
+            if meta.get("app") != name:
+                raise LibrarianError(f"this is a bundle of {meta.get('app')!r}, not {name}")
+            if APPS[name]["needs"] not in names:
+                raise LibrarianError(f"the bundle has no {APPS[name]['needs']}")
+            return meta
+    except zipfile.BadZipFile:
+        raise LibrarianError("the download is not a valid zip")
+    except (ValueError, KeyError) as exc:
+        raise LibrarianError(f"the bundle's {BUNDLE_JSON} is unreadable: {exc}")
+
+
+def _queue_root(req):
+    """Hand a request to hub_control.py (as server.py's control_request does)."""
+    control = STATE_DIR / "control"
+    requests = control / "requests"
+    requests.mkdir(parents=True, exist_ok=True)
+    rid = os.urandom(8).hex()
+    tmp = control / f".{rid}.tmp"
+    with open(tmp, "w") as fh:
+        json.dump(dict(req, id=rid), fh)
+    os.replace(tmp, requests / f"{rid}.json")
+    return rid
+
+
+def fetch_app(src, cand):
+    """Download and check a bundle into APP_STAGING; returns (path, bundle meta)."""
+    name = src["name"]
+    APP_STAGING.mkdir(parents=True, exist_ok=True)
+    need = cand["size"] * 3 + 64 * 2**20
+    if cand["size"] and _free_bytes(APP_STAGING) < need:
+        raise LibrarianError(f"not enough space for the {name} bundle")
+    dest = APP_STAGING / f"{name}.zip"
+    part = APP_STAGING / f"{name}.zip.download"
+    try:
+        _download(cand["url"], part, cand["auth"], name, cand["size"])
+        meta = check_bundle(part, name)
+        os.replace(part, dest)
+    finally:
+        part.unlink(missing_ok=True)
+    return dest, meta
+
+
+def update_app(src, cand, entry, download):
+    """One app source's part of update(): compare runs, and fetch and queue if newer."""
+    installed = installed_app(src["name"]) or {}
+    run_id = cand["version"].split("/")[0].removeprefix("run-")
+    entry["current"] = {"version": f"run-{installed['run']}" if installed.get("run") else None,
+                        "label": (f"{installed.get('commit', '')[:7]} ({installed.get('ref')}, built "
+                                  f"{str(installed.get('built', ''))[:10]})") if installed.get("commit") else
+                                 ("a build copied in by hand" if installed is not None and src["name"] in APPS
+                                  and app_dir(src["name"]).is_dir() else "not installed")}
+    if str(installed.get("run")) == run_id:
+        return f"up to date: {cand['label']}"
+    if not download:
+        return f"newer available: {cand['label']}"
+    path, meta = fetch_app(src, cand)
+    rid = _queue_root({"action": "app-install", "app": src["name"], "zip": str(path)})
+    entry["pending"] = rid
+    return f"downloaded {meta.get('commit', '')[:7]} ({cand['label']}); installing"
+
+
+def apps_snapshot():
+    return {name: {"title": spec["title"], "installed": installed_app(name)} for name, spec in APPS.items()}
+
+
 def add_source(src):
     src = validate_source(src)
     cfg = load_config()
@@ -227,7 +372,7 @@ def remove_source(name, delete_book=False):
     status = load_status()
     status.pop(name, None)
     save_status(status)
-    if delete_book:
+    if delete_book and name not in APPS:
         with Lock():
             (ZIM_DIR / f"{name}.zim").unlink(missing_ok=True)
             shutil.rmtree(ARCHIVE_DIR / name, ignore_errors=True)
@@ -365,13 +510,33 @@ def resolve(src):
 
 # --- installing --------------------------------------------------------------
 
-def _download(url, dest, auth=None):
-    with _open(url, auth, timeout=120) as resp, open(dest, "wb") as out:
-        while True:
-            chunk = resp.read(CHUNK)
-            if not chunk:
-                break
-            out.write(chunk)
+def _download(url, dest, auth=None, name=None, expected=0):
+    """Stream url to dest. While it runs, progress.json says how far it has got (written at
+    most once a second), so /admin can show a 60 MB book arriving at hotspot speed."""
+    started = time.monotonic()
+    done, last = 0, 0.0
+    try:
+        with _open(url, auth, timeout=120) as resp, open(dest, "wb") as out:
+            total = int(resp.headers.get("Content-Length") or 0) or expected
+            while True:
+                chunk = resp.read(CHUNK)
+                if not chunk:
+                    break
+                out.write(chunk)
+                done += len(chunk)
+                now = time.monotonic()
+                if name and now - last >= 1:
+                    last = now
+                    _write_json(PROGRESS_FILE, {"name": name, "done": done, "total": total,
+                                                "seconds": round(now - started, 1)})
+    finally:
+        PROGRESS_FILE.unlink(missing_ok=True)
+
+
+def progress():
+    """The download in flight, or None. A file left by a crashed run is ignored."""
+    data = _read_json(PROGRESS_FILE, {})
+    return data if data and is_running() else None
 
 
 def _extract_zim(zip_path, name, dest):
@@ -447,11 +612,11 @@ def install(src, cand, policy, status_entry):
             # Rolled back earlier, now rolling forward: the version is already on the card.
             shutil.copyfile(archived, zim_tmp)
         elif cand["zip"]:
-            _download(cand["url"], part, cand["auth"])
+            _download(cand["url"], part, cand["auth"], name, cand["size"])
             _extract_zim(part, name, zim_tmp)
             part.unlink(missing_ok=True)
         else:
-            _download(cand["url"], part, cand["auth"])
+            _download(cand["url"], part, cand["auth"], name, cand["size"])
             os.replace(part, zim_tmp)
         _check_zim(zim_tmp)
 
@@ -478,6 +643,11 @@ def install(src, cand, policy, status_entry):
 
 
 def rollback(name, version=None):
+    src = next((s for s in load_config()["sources"] if s["name"] == name), {})
+    if src.get("kind") == "app":
+        if not (installed_app(name) or {}).get("has_previous"):
+            raise LibrarianError(f"no previous {name} bundle to go back to")
+        return "queued: " + _queue_root({"action": "app-rollback", "app": name})
     folder = ARCHIVE_DIR / name
     choices = sorted(folder.glob("*.zim"), key=lambda p: p.stat().st_mtime, reverse=True)
     if version:
@@ -542,7 +712,10 @@ def update(names=None, scheduled=False, download=True, log=print):
             try:
                 cand = resolve(src)
                 entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
-                if entry.get("current", {}).get("version") == cand["version"] and (ZIM_DIR / f"{name}.zim").exists():
+                if src.get("kind") == "app":
+                    log(f"{name}: checking the app bundle")
+                    outcome = update_app(src, cand, entry, download)
+                elif entry.get("current", {}).get("version") == cand["version"] and (ZIM_DIR / f"{name}.zim").exists():
                     outcome = f"up to date: {cand['label']}"
                 elif not download:
                     outcome = f"newer available: {cand['label']}"
@@ -566,6 +739,7 @@ def snapshot():
     cfg = load_config()
     return {"policy": cfg["policy"], "sources": cfg["sources"], "status": load_status(),
             "token_set": bool(token()), "running": is_running(), "types": list(TYPES),
+            "progress": progress(), "apps": apps_snapshot(),
             "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
 
 
@@ -596,6 +770,10 @@ def main(argv=None):
     pol.add_argument("--min-free-mb", type=int)
     t = sub.add_parser("token")
     t.add_argument("value", nargs="?", default="")
+    aa = sub.add_parser("add-apps")
+    aa.add_argument("apps", nargs="*")
+    af = sub.add_parser("app-fetch")
+    af.add_argument("app")
     args = p.parse_args(argv)
 
     try:
@@ -623,6 +801,21 @@ def main(argv=None):
         elif args.cmd == "token":
             set_token(args.value)
             print("token " + ("set" if args.value else "cleared"))
+        elif args.cmd == "add-apps":
+            have = {s["name"] for s in load_config()["sources"]}
+            for app in args.apps or list(APPS):
+                if app not in have:
+                    add_source(default_app_source(app))
+                    print(f"added {app}")
+        elif args.cmd == "app-fetch":
+            if args.app not in APPS:
+                raise LibrarianError(f"app must be one of {', '.join(APPS)}")
+            src = next((s for s in load_config()["sources"] if s["name"] == args.app),
+                       validate_source(default_app_source(args.app)))
+            with Lock():
+                path, meta = fetch_app(src, resolve(src))
+            print(path)
+            print(f"{args.app}: {meta.get('commit', '')[:7]} ({meta.get('ref')}, built {meta.get('built')})", file=sys.stderr)
     except LibrarianError as exc:
         print(f"librarian: {exc}", file=sys.stderr)
         return 1

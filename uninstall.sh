@@ -71,7 +71,7 @@ if [ -f /etc/caddy/Caddyfile.pre-irate-box ]; then
 	mv /etc/caddy/Caddyfile.pre-irate-box /etc/caddy/Caddyfile
 	systemctl try-restart caddy || true
 fi
-rm -f /etc/caddy/Caddyfile.new
+rm -f /etc/caddy/Caddyfile.new /etc/caddy/irate-box-unclaimed
 
 say "Removing code, apps, config and binaries"
 rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box

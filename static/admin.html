@@ -21,6 +21,7 @@
 
   <nav class="tabs admin-nav">
     <a href="#box">Box</a>
+    <a href="#apps-section">Apps</a>
     <a href="#library-section">Library</a>
     <a href="#moderation">Moderation</a>
     <a href="#saved">Saved work</a>
@@ -45,6 +46,18 @@
       <tbody></tbody>
     </table>
     <div id="control-results"></div>
+  </section>
+
+  <section id="apps-section">
+    <h2>Apps</h2>
+    <p class="setting-desc">
+      The whiteboard, the Mermaid editor, the serial terminal and the collaboration relay are
+      prebuilt in GitHub Actions on their forks and kept current here, like books: each update
+      is checked, installed beside the old one, and the previous build kept for a roll back.
+      Checks follow the schedule under Library.
+    </p>
+    <div id="apps-list"></div>
+    <div class="library-actions" id="apps-actions"></div>
   </section>
 
   <section id="library-section">
@@ -227,12 +240,34 @@
       <button type="button" id="update-install" disabled>Install update</button>
     </div>
     <ul class="admin-changes" id="update-changes"></ul>
+    <ul class="admin-checks" id="update-checks" hidden></ul>
+    <h3>When an update check fails</h3>
+    <p class="setting-desc">
+      The update doctor looks at what an update depends on — the network, names, the clock,
+      GitHub, free space, the cached copy, the package sources — and says what is wrong and what
+      to do about it.
+    </p>
+    <div class="library-buttons">
+      <button type="button" id="update-doctor">Run the update doctor</button>
+      <button type="button" id="update-clear">Clear the update cache</button>
+    </div>
+    <p class="setting-desc" id="doctor-when" hidden></p>
+    <ul class="admin-checks" id="doctor-findings" hidden></ul>
     <pre class="admin-log" id="update-log" hidden></pre>
     <h3>Backup and sync</h3>
     <p class="setting-desc">
       <a href="/admin/backup" download>Download a backup</a> of the hub's state: notes, saved
       work, board, shoutbox, settings, the library's sources and the uptime clock. ZIM books
-      and archived versions are left out (they come from their sources), as is the GitHub token.
+      and archived versions are left out (they come from their sources), as is the GitHub token,
+      and so is Syncthing's identity: restored, Syncthing gets a new device ID and its peers
+      pair again.
+    </p>
+    <p class="setting-desc backup-keys">
+      <strong>⚠ Includes Syncthing's private keys:</strong>
+      <a href="/admin/backup?syncthing=1" download id="backup-with-keys">download a backup with
+      Syncthing's identity</a> (<code>key.pem</code>, <code>https-key.pem</code>,
+      <code>config.xml</code>), so a restored box keeps its device ID. Whoever holds that file
+      can pose as this box to its Syncthing peers: keep it like a password.
     </p>
     <p class="setting-desc">
       <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and

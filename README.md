@@ -27,10 +27,13 @@ native daemons.
 | ttyd terminal (`--with-term`) | working, off by default |
 | MQTT broker for Meshtastic (`--with-mqtt`) | broker working; decoder, traffic page and map not started |
 | Tailscale remote-access switch on `/admin` (only if Tailscale is already installed) | working (installed 2026-10-01) |
-| Librarian: keeps ZIM books current from GitHub releases, Actions artifacts (token or nightly.link) or a URL; settings on `/admin` | written and tested on the Lyra; not yet installed |
-| `/admin`: box and services (start, stop, start at boot), moderation (shoutbox, board), saved work (gallery, store quota and expiry), admin password, version, state backup | written and tested on the Lyra (service and password changes against stand-ins); not yet installed |
-| Quick help (`/help.html`, 🛟 in page headers, the hub bar and standalone apps) | written; not yet installed |
-| Updates from `/admin`: fetch into a root-owned cache, then rerun `install.sh` with the options recorded at install time | written and tested on the Lyra (as non-root); not yet installed |
+| Librarian: keeps ZIM books current from GitHub releases, Actions artifacts (token or nightly.link) or a URL; settings on `/admin` | working (installed 2026-10-01; both docs books updated through it) |
+| `/admin`: box and services (start, stop, start at boot), moderation (shoutbox, board), saved work (gallery, store quota and expiry), admin password, version, state backup (Syncthing's keys only on request, flagged) | working (installed 2026-10-01) |
+| Admin password chosen in the browser on first use (`/admin/` until set); `hub_control.py reset-password` from the console | written and tested off the box; not yet installed |
+| Quick help (`/help.html`, 🛟 in page headers, the hub bar and standalone apps) | working (installed 2026-10-01) |
+| Updates from `/admin`: fetch into a root-owned cache, then rerun `install.sh` with the options recorded at install time | working (installed 2026-10-01) |
+| Update verification (fast-forward, scripts parse, Python compiles, Caddyfile validates, release downloads prefetched and checksummed) before Install is offered; the update doctor | written and tested off the box; not yet installed |
+| Apps from the forks' Actions builds: `install.sh --apps-from-actions`, then kept current from `/admin` (Apps) | written and tested off the box; not yet installed |
 | Excalidraw live collaboration (`--with-collab`), hub gallery saves from Excalidraw | working (installed 2026-10-01) |
 | Service dashboard, memory and disk tile | working |
 | Access point, dnsmasq, captive portal | not in the installer yet |
@@ -47,9 +50,11 @@ sudo ./install.sh --with-notes --with-sync --with-mqtt --zim wikipedia_en_top_mi
 
 The script sets up Caddy on `:80` and the hub on loopback. The code goes in
 `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. It prints the admin
-password on the first run, and running it again upgrades in place. The Excalidraw, Mermaid
-and serial-terminal builds are made on a desktop and handed over with `--apps DIR`; nothing is
-compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
+password is chosen on first use: open `http://<the box>/admin/` straight after installing
+(until then, anyone on the network could), or pass `--admin-password`. Running it again
+upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal
+builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing
+is compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
 
 ## Try it without a board
 

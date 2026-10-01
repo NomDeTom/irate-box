@@ -4,6 +4,7 @@
 Serves static/ itself so a bare `python3 server.py` works; behind Caddy the assets are
 served by file_server and only `/` and the API reach this process."""
 
+import io
 import json
 import os
 import secrets
@@ -330,6 +331,11 @@ _library_lock = threading.Lock()
 
 def library_snapshot():
     snap = librarian.snapshot()
+    # An app the librarian handed to the root helper: what became of it.
+    results = {r.get("id"): r for r in control_results(30)}
+    for entry in snap["status"].values():
+        if entry.get("pending"):
+            entry["install_result"] = results.get(entry["pending"])
     with _library_lock:
         thread = _library_job["thread"]
         snap["job"] = {"action": _library_job["action"], "result": _library_job["result"],
@@ -372,6 +378,11 @@ def library_action(payload):
                                     if type(payload.get(k)) is int})
         elif action == "token":
             librarian.set_token(str(payload.get("value") or ""))
+        elif action == "add-apps":
+            have = {s["name"] for s in librarian.load_config()["sources"]}
+            for app in librarian.APPS:
+                if app not in have:
+                    librarian.add_source(librarian.default_app_source(app))
         elif action in ("check", "update"):
             download = action == "update"
             if not library_start(action, lambda: librarian.update(names or None, download=download, **quiet)):
@@ -404,10 +415,31 @@ CONTROL_OPS = {
     "caddy.service": ["restart"], "irate-box.service": ["restart"],
 }
 MIN_PASSWORD = 8
+# First use (hub_control.py, the Caddyfile): while this root-owned file exists no admin
+# password has been chosen, Caddy lets /admin through with no login, and the hub serves
+# only the set-the-password page there.
+UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", "/etc/caddy/irate-box-unclaimed"))
+SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
+
+
+def unclaimed():
+    return UNCLAIMED_FILE.exists()
+
+
+def setup_status(rid):
+    out = {"unclaimed": unclaimed()}
+    if rid:
+        out["result"] = next((r for r in control_results(20) if r.get("id") == rid), None)
+    return out
 # Never in a backup: the big or regenerable (ZIMs, archived versions), the transient, and
 # the one secret the page can set (the GitHub token).
 BACKUP_SKIP = ("zim", "control", "library/archive", "library/tmp", "library/github-token",
-               "library/lock")
+               "library/lock", "library/apps")
+# Syncthing's identity: its private keys (key.pem, https-key.pem) and config.xml (device list,
+# GUI password hash, API key). Restoring them keeps the box's device ID, so peers need no
+# re-pairing -- but whoever holds the file can pose as the box to those peers. Left out
+# unless the backup is asked for with ?syncthing=1, which the page labels as such.
+SYNCTHING_DIRS = (".local/state/syncthing", ".config/syncthing")
 
 
 def hub_version():
@@ -459,6 +491,9 @@ def admin_box(proxied):
 
 UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
+DOCTOR_STATE = CONTROL_DIR / "doctor.json"
+UPDATE_ACTIONS = {"fetch": "update-fetch", "install": "update-install",
+                  "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
 
 
 def update_snapshot():
@@ -472,9 +507,13 @@ def update_snapshot():
         log = UPDATE_LOG.read_text(errors="replace").splitlines()[-40:]
     except OSError:
         log = []
+    try:
+        doctor = json.loads(DOCTOR_STATE.read_text())
+    except (OSError, ValueError):
+        doctor = None
     pending = len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "results": control_results(5)}
+            "doctor": doctor, "results": control_results(5)}
 
 
 def moderation_snapshot():
@@ -597,25 +636,45 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_backup(self):
+    def _send_backup(self, with_syncthing=False):
         """The hub's state as a .tar.gz, streamed: notes, saves, board, shoutbox, settings,
-        the library's sources and the clock -- everything but BACKUP_SKIP."""
+        the library's sources and the clock -- everything but BACKUP_SKIP, and Syncthing's
+        identity only when asked for. BACKUP-CONTENTS.txt at the top says which this is."""
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+        kind = "with-syncthing-keys" if with_syncthing else "state"
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
-        self.send_header("Content-Disposition", f'attachment; filename="irate-box-state-{stamp}.tar.gz"')
+        self.send_header("Content-Disposition", f'attachment; filename="irate-box-{kind}-{stamp}.tar.gz"')
         self.send_header("Connection", "close")  # no length known in advance
         self.end_headers()
         self.close_connection = True
 
+        skip = BACKUP_SKIP if with_syncthing else BACKUP_SKIP + SYNCTHING_DIRS
+
         def keep(info):
             rel = info.name.split("/", 1)[1] if "/" in info.name else ""
-            if any(rel == s or rel.startswith(s + "/") for s in BACKUP_SKIP) or rel.endswith(".tmp"):
+            if any(rel == s or rel.startswith(s + "/") for s in skip) or rel.endswith(".tmp"):
                 return None
             return info
 
+        if with_syncthing:
+            about = ("This backup CONTAINS SYNCTHING'S PRIVATE KEYS AND CONFIG\n"
+                     "(.local/state/syncthing: key.pem, https-key.pem, config.xml).\n"
+                     "Anyone holding this file can pose as this box to its Syncthing peers.\n"
+                     "Keep it as you would a password; delete copies you do not need.\n")
+        else:
+            about = ("Syncthing's identity (private keys, config.xml) is NOT in this backup.\n"
+                     "Restored on a box, Syncthing starts with a new device ID, and its peers\n"
+                     "need to be paired again.\n")
+        about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{about}\n"
+                 "Left out: ZIM books and archived versions (they come from their sources),\n"
+                 "the GitHub token, and transient files.\n")
         try:
             with tarfile.open(fileobj=self.wfile, mode="w|gz") as tar:
+                data = about.encode()
+                info = tarfile.TarInfo("irate-box-state/BACKUP-CONTENTS.txt")
+                info.size, info.mtime, info.mode = len(data), int(time.time()), 0o644
+                tar.addfile(info, io.BytesIO(data))
                 tar.add(STATE_DIR, arcname="irate-box-state", filter=keep)
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -647,6 +706,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _admin_locked(self, path):
+        """On an unclaimed box, every admin path but the setup page answers 403."""
+        if path.startswith("/admin") and unclaimed() and path not in SETUP_PATHS:
+            self.send_json(403, {"error": "no admin password has been chosen yet: open /admin/"})
+            return True
+        return False
+
     def do_GET(self):
         note_client(self)
         if self._is_captive_probe():
@@ -654,6 +720,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         path = self.path.split("?")[0]
+        if self._admin_locked(path):
+            return
+
+        if path == "/admin/setup":
+            query = dict(p.partition("=")[::2] for p in self.path.partition("?")[2].split("&") if p)
+            self.send_json(200, setup_status(query.get("id", "")[:40]))
+            return
 
         if store.handle(self, "GET", path, STORE):
             return
@@ -694,7 +767,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/backup":
-            self._send_backup()
+            self._send_backup(with_syncthing="syncthing=1" in self.path.partition("?")[2].split("&"))
             return
 
         if path == "/admin/update":
@@ -702,7 +775,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/admin", "/admin/"):
-            path = "/admin.html"
+            path = "/admin-setup.html" if unclaimed() else "/admin.html"
 
         if path == "/status":
             # Caddy's reverse_proxy adds X-Forwarded-For; a direct hit has none.
@@ -765,9 +838,21 @@ class Handler(BaseHTTPRequestHandler):
         if store.handle(self, "POST", path, STORE):
             return
 
+        if self._admin_locked(path):
+            return
         payload = self._read_payload()
         if payload is None:
             self.send_json(400, {"error": "bad request"})
+            return
+
+        if path == "/admin/setup":
+            pw = payload.get("password")
+            if not unclaimed():
+                self.send_json(403, {"error": "the admin password has already been set"})
+            elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
+                self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
+            else:
+                self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
             return
 
         if path == "/admin/settings":
@@ -816,9 +901,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/update":
-            action = {"fetch": "update-fetch", "install": "update-install"}.get(payload.get("action"))
+            action = UPDATE_ACTIONS.get(payload.get("action"))
             if not action:
-                self.send_json(400, {"error": "action must be fetch or install"})
+                self.send_json(400, {"error": f"action must be one of {', '.join(UPDATE_ACTIONS)}"})
                 return
             self.send_json(202, {"id": control_request({"action": action})})
             return

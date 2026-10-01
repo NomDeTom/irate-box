@@ -180,17 +180,61 @@ function sourceRow(src, st, busy) {
   );
 }
 
+function renderApps(snap, busy) {
+  const apps = snap.apps || {};
+  const sources = Object.fromEntries(snap.sources.filter((s) => s.kind === 'app').map((s) => [s.name, s]));
+  const post = (body, confirmText) => async () => {
+    if (confirmText && !confirm(confirmText)) return;
+    try { renderLibrary(await libPost(body)); } catch (e) { say(e.message, false); }
+  };
+  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => {
+    const inst = a.installed;
+    const src = sources[name];
+    const st = snap.status[name] || {};
+    const res = st.install_result;
+    const lines = [
+      inst === null ? 'Not installed.' : inst.commit
+        ? `Installed: ${inst.commit.slice(0, 7)} from ${inst.repository} (${inst.ref}), built ${String(inst.built).slice(0, 10)}.`
+        : 'Installed by hand (no bundle record): the first update replaces it.',
+      src ? `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.` : 'No source: not kept current.',
+      st.last_check ? `Checked ${st.last_check}: ${st.outcome || ''}` : null,
+      res ? `${res.ok ? 'Installed' : 'Install failed'}: ${res.message}` : null,
+      st.error || null,
+    ];
+    return el('div', { className: 'setting library-source' }, el('span', {},
+      el('span', { className: 'setting-name', textContent: a.title }),
+      ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
+      src ? el('span', { className: 'library-buttons' },
+        el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post({ action: 'check', names: [name] }) }),
+        el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post({ action: 'update', names: [name] }) }),
+        inst && inst.has_previous ? el('button', { type: 'button', textContent: 'Roll back', disabled: busy,
+          onclick: post({ action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null) : null));
+  }));
+  const missing = Object.keys(apps).filter((n) => !sources[n]);
+  document.getElementById('apps-actions').replaceChildren(...(missing.length ? [
+    el('button', { type: 'button', textContent: `Keep ${missing.length === Object.keys(apps).length ? 'all apps' : missing.join(', ')} current from the forks`,
+      disabled: busy, onclick: post({ action: 'add-apps' }) })] : []));
+}
+
 function renderLibrary(snap) {
   const busy = snap.running;
+  renderApps(snap, busy);
   const job = snap.job || {};
   const parts = [];
-  if (busy) parts.push(`Working (${job.action || 'scheduled check'})…`);
+  const p = snap.progress;
+  if (busy && p) {
+    const rate = p.seconds > 0 ? p.done / p.seconds : 0;
+    const left = rate && p.total > p.done ? Math.round((p.total - p.done) / rate) : null;
+    parts.push(`Downloading ${p.name}: ${mb(p.done) || '0 MB'}${p.total ? ` of ${mb(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : ''}` +
+      (rate ? `, ${Math.round(rate / 1024)} KB/s` : '') + (left !== null ? `, about ${left < 90 ? `${left} s` : `${Math.round(left / 60)} min`} left` : '') + '.');
+  } else if (busy) parts.push(`Working (${job.action || 'scheduled check'})…`);
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
   lib.state.textContent = parts.join(' ');
 
-  lib.sources.replaceChildren(...(snap.sources.length
-    ? snap.sources.map((s) => sourceRow(s, snap.status[s.name] || {}, busy))
+  const books = snap.sources.filter((s) => s.kind !== 'app');
+  lib.sources.replaceChildren(...(books.length
+    ? books.map((s) => sourceRow(s, snap.status[s.name] || {}, busy))
     : [el('p', { className: 'setting-desc', textContent: 'No sources yet.' })]));
   document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy || !snap.sources.length; });
 
@@ -201,7 +245,9 @@ function renderLibrary(snap) {
   lib.tokenState.textContent = snap.token_set ? 'A token is set.' : 'No token is set.';
 
   clearTimeout(libPoll);
-  if (busy) libPoll = setTimeout(loadLibrary, 3000);
+  // Also while an app the librarian fetched is still with the root helper.
+  const installing = Object.values(snap.status).some((e) => e.pending && !e.install_result);
+  if (busy || installing) libPoll = setTimeout(loadLibrary, 3000);
 }
 
 async function loadLibrary() {
@@ -499,8 +545,18 @@ const upd = {
   fetch: document.getElementById('update-fetch'),
   install: document.getElementById('update-install'),
   changes: document.getElementById('update-changes'),
+  checks: document.getElementById('update-checks'),
   log: document.getElementById('update-log'),
+  doctor: document.getElementById('update-doctor'),
+  clear: document.getElementById('update-clear'),
+  doctorWhen: document.getElementById('doctor-when'),
+  findings: document.getElementById('doctor-findings'),
 };
+const MARK = { ok: '✅', warn: '⚠️', problem: '❌' };
+const checkItem = (status, title, detail, fix) => el('li', { className: `check check-${status}` },
+  el('span', { textContent: `${MARK[status]} ` }), el('strong', { textContent: title }),
+  detail ? el('span', { textContent: ` — ${detail}` }) : null,
+  fix ? el('span', { className: 'setting-desc', textContent: fix }) : null);
 let updWaiting = null;
 let updPoll = null;
 
@@ -515,12 +571,26 @@ function renderUpdate(data) {
       ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
       : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
         (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
-        `. Checked ${when}.`;
+        `. Checked ${when}. ` + (s.verified === s.available ? 'Verified, and its downloads are cached: ready to install.'
+          : 'It did not pass verification (below), so it cannot be installed.');
   }
+  const checks = (s && !s.up_to_date && s.checks) || [];
+  upd.checks.hidden = !checks.length;
+  upd.checks.replaceChildren(...checks.map((c) =>
+    checkItem(c.ok ? 'ok' : c.warn ? 'warn' : 'problem', c.name, c.detail)));
+  const d = data.doctor;
+  upd.doctorWhen.hidden = upd.findings.hidden = !d;
+  if (d) {
+    const n = d.findings.filter((f) => f.status === 'problem').length;
+    upd.doctorWhen.textContent = `Last run ${new Date(d.at * 1000).toLocaleString()}: ` +
+      (n ? `${n} problem${n === 1 ? '' : 's'}.` : 'no problems found.');
+    upd.findings.replaceChildren(...d.findings.map((f) => checkItem(f.status, f.check, f.detail, f.status === 'ok' ? '' : f.fix)));
+  }
+  upd.doctor.disabled = upd.clear.disabled = busy;
   upd.changes.replaceChildren(...((s && !s.up_to_date && s.changes) || []).slice(0, 20)
     .map((c) => el('li', { textContent: c })));
   upd.fetch.disabled = busy;
-  upd.install.disabled = busy || !s || s.up_to_date;
+  upd.install.disabled = busy || !s || s.up_to_date || s.verified !== s.available;
   upd.log.hidden = !data.log.length || (!busy && s && s.up_to_date && !updWaiting);
   upd.log.textContent = data.log.join('\n');
   upd.log.scrollTop = upd.log.scrollHeight;
@@ -528,10 +598,11 @@ function renderUpdate(data) {
   if (updWaiting) {
     const done = (data.results || []).find((r) => r.id === updWaiting);
     if (done) {
-      say(done.message, done.ok);
+      const failed = !done.ok || /did not pass verification/.test(done.message);
+      say(failed ? `${done.message} — "Run the update doctor" below can say why.` : done.message, !failed);
       updWaiting = null;
       upd.fetch.disabled = false;
-      upd.install.disabled = !s || s.up_to_date;
+      upd.install.disabled = !s || s.up_to_date || s.verified !== s.available;
     }
   }
   clearTimeout(updPoll);
@@ -556,11 +627,19 @@ async function requestUpdate(action) {
     updWaiting = (await postJSON('/admin/update', { action })).id;
     upd.fetch.disabled = true;
     upd.install.disabled = true;
-    say(action === 'fetch' ? 'Checking for updates…' : 'Installing the update…', true);
+    say({ fetch: 'Checking for updates, then verifying and caching downloads…', install: 'Installing the update…',
+      doctor: 'Running the update doctor (up to a minute or two)…', 'clear-cache': 'Clearing the update cache…' }[action], true);
     loadUpdate();
   } catch (err) { say(err.message, false); }
 }
 
 upd.fetch.addEventListener('click', () => requestUpdate('fetch'));
+upd.doctor.addEventListener('click', () => requestUpdate('doctor'));
+upd.clear.addEventListener('click', () => {
+  if (confirm('Remove the cached copy and downloads? The next check starts afresh.')) requestUpdate('clear-cache');
+});
+document.getElementById('backup-with-keys').addEventListener('click', (e) => {
+  if (!confirm("This backup includes Syncthing's private keys. Anyone with the file can pose as this box to its Syncthing peers. Download it?")) e.preventDefault();
+});
 upd.install.addEventListener('click', () => requestUpdate('install'));
 loadUpdate();

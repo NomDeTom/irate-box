@@ -207,10 +207,13 @@ generated Caddyfile replaces `/etc/caddy/Caddyfile`, and the original is kept as
 `syncthing@hub`. Syncthing is set up for an offline box as described in 4a, with the same
 admin login as Caddy's gate, and shares `/var/lib/hub/notes` as the folder `hub-notes`.
 
-The apps are not built on the board. `--apps DIR` copies prebuilt `DIR/mermaid`,
-`DIR/draw`, `DIR/tools` and `DIR/serial` into `/usr/share/hub/apps/`. `serial` is the
-`npm run build` output of `nomdetom/serial-terminal`. `--tools` clones the calculators
-instead.
+The apps are not built on the board. `--apps-from-actions` fetches the newest bundle of
+`draw`, `mermaid` and `serial` (and `room`, with `--with-collab`) from the forks'
+`irate-box-bundle.yml` artifacts through nightly.link, no token needed, and adds them to
+`/admin`'s Apps section, which keeps them current from then on. Or `--apps DIR` copies your own
+prebuilt `DIR/mermaid`, `DIR/draw`, `DIR/tools` and `DIR/serial` into
+`/usr/share/hub/apps/`. `serial` is the `npm run build` output of `nomdetom/serial-terminal`.
+`--tools` clones the calculators.
 
 `--zim FILE|URL`, which can be repeated, installs `kiwix-serve` at `/wiki/`. It copies the
 file, or downloads the URL on the box, into `/var/lib/hub/zim` and registers it in
@@ -253,9 +256,11 @@ account on the box.
 
 Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe,
 because they cannot load `hub-return.js` themselves. The address keeps the app's own path
-(`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. The admin password is generated on the first run and printed; it is kept in
-`/etc/hub/admin-password`. Run the script again to upgrade. State and the password
-survive. It does not touch the network: there is no AP, no dnsmasq and no captive portal
+(`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. There is no admin password until the owner chooses one: right after a first install,
+`/admin/` is a set-the-password page, open to whoever reaches it first, so open it straight
+away (or pass `--admin-password` for a scripted install). It is then kept in
+`/etc/hub/admin-password`; `sudo python3 /opt/irate-box/hub_control.py reset-password` from
+the console starts over. Run the script again to upgrade. State and the password survive. It does not touch the network: there is no AP, no dnsmasq and no captive portal
 yet. The hub is at `http://<the board's address>/` on whatever network the board is on.
 
 ## 5. Rebuilding after a change

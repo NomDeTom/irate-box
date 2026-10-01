@@ -11,7 +11,9 @@ The published site stays as it is; only the hub's copy changes, and only this mu
     whole window rather than the hub bar's frame; the hub itself for a page none lists;
   * only the calculators the site's own index.html links to are kept; anything else in the
     repo is unlisted on purpose, and goes. index.html itself goes too: the hub's three tools
-    pages replace it;
+    pages replace it. So does everything that is not a page a guest opens or a file one of
+    those pages loads (the repo's README-type files, scripts/, internal/, the Python tool):
+    /tools/ serves the whole folder;
   * the IC Pinout ASCII Reference page, and links to it, are dropped: it documents a
     Python tool that never runs on the box.
 
@@ -22,6 +24,7 @@ Stdlib only.
 """
 
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -87,15 +90,45 @@ def published(tools):
     return set(re.findall(r'href="(?:\./)?([A-Za-z0-9_-]+\.html)"', text)) - set(DROP)
 
 
+ASSET = re.compile(r'\b(?:src|href)="(?:\./)?([A-Za-z0-9_][A-Za-z0-9_./-]*)"')
+
+
+def loaded_by(tools, pages):
+    """Local files the kept pages load (scripts, styles, images), relative to the folder."""
+    out = set()
+    for page in pages:
+        for ref in ASSET.findall((tools / page).read_text(encoding="utf-8")):
+            path = (tools / ref).resolve()
+            # A link to another page is navigation, not something the page needs.
+            if path.suffix != ".html" and path.is_file() and path.is_relative_to(tools.resolve()):
+                out.add(path.relative_to(tools.resolve()).as_posix())
+    return out
+
+
+def prune(tools, pages):
+    """Remove everything but the kept pages and what they load. Returns what went."""
+    wanted = set(pages) | loaded_by(tools, pages)
+    dirs = {str(Path(w).parent) for w in wanted} - {"."}
+    gone = []
+    for entry in sorted(tools.iterdir()):
+        name = entry.name
+        if name in wanted or (entry.is_dir() and any(d == name or d.startswith(name + "/") for d in dirs)):
+            continue
+        shutil.rmtree(entry) if entry.is_dir() and not entry.is_symlink() else entry.unlink()
+        gone.append(name + ("/" if entry.is_dir() else ""))
+    return gone
+
+
 def main(tools_dir, static_dir):
     tools, static = Path(tools_dir), Path(static_dir)
     keep = published(tools)
-    if keep is not None:
-        removed = [p for p in tools.glob("*.html") if p.name not in keep]
-        for page in removed:
-            page.unlink()
-        print(f"    calculators: keeping the {len(keep)} the site's index links to; "
-              f"dropped {', '.join(sorted(p.name for p in removed))}")
+    if keep is None:  # already adapted: the pages still here are the kept ones
+        keep = {p.name for p in tools.glob("*.html")}
+    else:
+        print(f"    calculators: keeping the {len(keep)} the site's index links to")
+    gone = prune(tools, sorted(n for n in keep if (tools / n).is_file()))
+    if gone:
+        print(f"    calculators: removed {', '.join(gone)}")
     listed = homes(static)
     changed = 0
     for page in sorted(tools.glob("*.html")):

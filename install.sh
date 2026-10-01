@@ -33,6 +33,9 @@ Usage: sudo ./install.sh [options]
   --branch NAME         branch to clone (default: main)
   --apps DIR            copy prebuilt static apps from DIR/mermaid, DIR/draw, DIR/tools,
                         DIR/serial
+  --apps-from-actions   fetch the newest prebuilt draw, mermaid and serial (and room, with
+                        --with-collab) from the forks' Actions builds via nightly.link: no
+                        desktop build and no token. They are then kept current from /admin.
   --tools               clone the calculators (nomdetom.github.io) into apps/tools
   --with-notes          install SilverBullet at /notes/ (armv7, aarch64, x86_64 only)
   --with-sync           install Syncthing at /sync/ (behind the admin password)
@@ -45,14 +48,19 @@ Usage: sudo ./install.sh [options]
   --with-term           turn on the ttyd terminal at /term/. It is always installed, but
                         stays off without this: it is a root login prompt on the network.
   --admin-password PW   password for /admin, /sync and /term, user "admin" (default: keep
-                        the existing one, or generate one on first install)
+                        the existing one; on a first install there is none, and the first
+                        visit to /admin/ asks for it)
   --hub-url URL         where captive-portal probes are redirected (default: /)
+  --download-cache DIR  take release downloads (ttyd, SilverBullet, Caddy's .deb) from DIR
+                        when they are there, still checked against their checksums. /admin's
+                        "Check for updates" fills it, so "Install update" needs no network
+                        for anything already installed.
   -h, --help            this text
 EOF
 }
 
-SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC=""
-WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
+APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--src) SRC="$2"; shift 2 ;;
@@ -60,6 +68,7 @@ while [ $# -gt 0 ]; do
 	--branch) BRANCH="$2"; shift 2 ;;
 	--apps) APPS_SRC="$2"; shift 2 ;;
 	--tools) WITH_TOOLS=1; shift ;;
+	--apps-from-actions) APPS_FROM_ACTIONS=1; shift ;;
 	--with-notes) WITH_NOTES=1; shift ;;
 	--with-sync) WITH_SYNC=1; shift ;;
 	--zim) ZIMS+=("$2"); shift 2 ;;
@@ -68,6 +77,7 @@ while [ $# -gt 0 ]; do
 	--with-collab) WITH_COLLAB=1; shift ;;
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
 	--hub-url) HUB_URL="$2"; shift 2 ;;
+	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
@@ -84,6 +94,16 @@ TTYD_VERSION=1.7.7
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
+# fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
+# the URL's file name), else from the network. Callers check checksums either way.
+fetch() {
+	local name="${3:-$(basename "$1")}"
+	if [ -n "$DL_CACHE" ] && [ -s "$DL_CACHE/$name" ]; then
+		cp "$DL_CACHE/$name" "$2"
+	else
+		curl -fsSL -o "$2" "$1"
+	fi
+}
 
 # --- preflight -------------------------------------------------------------------
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh …)"
@@ -106,8 +126,8 @@ fi
 
 if [ "$WITH_COLLAB" = 1 ]; then
 	[ "$ARCH" != armv6l ] || die "--with-collab: Node.js has no ARMv6 build (the Pi Zero W cannot run it)"
-	[ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ] || [ -f "$ROOM/dist/index.js" ] ||
-		die "--with-collab needs --apps DIR with a prebuilt DIR/room (see BUILDING.md)"
+	[ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ] || [ -f "$ROOM/dist/index.js" ] || [ "$APPS_FROM_ACTIONS" = 1 ] ||
+		die "--with-collab needs the relay: --apps-from-actions, or --apps DIR with a prebuilt DIR/room (see BUILDING.md)"
 fi
 
 case "$ARCH" in
@@ -133,18 +153,50 @@ say "Installing packages"
 export DEBIAN_FRONTEND=noninteractive
 CADDY_LIST=/etc/apt/sources.list.d/caddy-stable.list
 CADDY_KEY=/usr/share/keyrings/caddy-stable-archive-keyring.gpg
-CADDY_FROM_RELEASE=0
 # Caddy's apt repository is the preferred source. But on 2026-10-01 its index was signed
 # with a subkey that expired in 2024: GnuPG warns and accepts, while Debian trixie's sqv
 # rejects it and fails the whole `apt-get update`. If that happens, the repository is
-# dropped and Caddy comes from its GitHub release instead (install_caddy_release).
+# dropped and Caddy comes from its GitHub release instead (install_caddy_release), and
+# $ETC/caddy-from-release records it so later runs do not add the repository back to fail
+# again. Delete that file to try the repository once more.
+CADDY_MARK=/etc/hub/caddy-from-release
+CADDY_FROM_RELEASE=0
+[ -f "$CADDY_MARK" ] && CADDY_FROM_RELEASE=1
+pkgs=(python3 curl ca-certificates git unzip)
+[ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
+# mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
+[ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
+[ ${#ZIMS[@]} -gt 0 ] && pkgs+=(kiwix-tools)
+[ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
+all_installed() {
+	local p
+	for p in "$@"; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'ok installed' || return 1; done
+}
 apt_update() {
-	apt-get update -q && return 0
-	[ -f "$CADDY_LIST" ] || return 1
-	echo "    Caddy's apt repository did not verify: dropping it, using Caddy's GitHub release"
-	rm -f "$CADDY_LIST" "$CADDY_KEY"
-	CADDY_FROM_RELEASE=1
-	apt-get update -q
+	local out
+	out="$(apt-get update -q 2>&1)" && { printf '%s\n' "$out"; return 0; }
+	printf '%s\n' "$out"
+	# Whether Caddy's repository is the cause is tested, not guessed from the messages:
+	# set it aside and try again. If that works, it was; if not (offline), it goes back.
+	if [ -f "$CADDY_LIST" ]; then
+		mv "$CADDY_LIST" "$CADDY_LIST.off"
+		if out="$(apt-get update -q 2>&1)"; then
+			printf '%s\n' "$out"
+			echo "    Caddy's apt repository did not verify: dropping it, using Caddy's GitHub release"
+			rm -f "$CADDY_LIST.off" "$CADDY_KEY"
+			CADDY_FROM_RELEASE=1
+			install -d -m 750 "$(dirname "$CADDY_MARK")"
+			echo "apt repository failed verification $(date -u +%Y-%m-%d)" >"$CADDY_MARK"
+			return 0
+		fi
+		mv "$CADDY_LIST.off" "$CADDY_LIST"
+	fi
+	# Offline, or a mirror is down: fine if there is nothing new to install.
+	if all_installed "${pkgs[@]}"; then
+		echo "    apt-get update failed; every package needed is already installed, so carrying on"
+		return 0
+	fi
+	return 1
 }
 install_caddy_release() {
 	local a tag ver tmp deb base
@@ -157,9 +209,14 @@ install_caddy_release() {
 	# sed, not grep -m1: an early exit closes the pipe on curl (error 23), and with pipefail
 	# that kills the script inside the substitution, before any message.
 	tag="$(curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest |
-		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p')" ||
-		die "could not reach GitHub for Caddy's latest release"
-	[ -n "$tag" ] || die "could not find Caddy's latest release on GitHub"
+		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p')" || tag=""
+	# Offline: the tag /admin's update check looked up, else keep what is installed.
+	[ -n "$tag" ] || [ -z "$DL_CACHE" ] || tag="$(cat "$DL_CACHE/caddy-release-tag" 2>/dev/null || true)"
+	if [ -z "$tag" ]; then
+		command -v caddy >/dev/null || die "could not reach GitHub for Caddy's latest release"
+		echo "    could not reach GitHub; keeping the installed $(caddy version | cut -d' ' -f1)"
+		return
+	fi
 	ver="${tag#v}"
 	if [ "$(dpkg-query -W -f='${Version}' caddy 2>/dev/null)" = "$ver" ]; then
 		echo "    Caddy $ver is already installed"
@@ -169,21 +226,15 @@ install_caddy_release() {
 	tmp="$(mktemp -d)"
 	deb="caddy_${ver}_linux_${a}.deb"
 	base="https://github.com/caddyserver/caddy/releases/download/$tag"
-	curl -fsSL -o "$tmp/$deb" "$base/$deb"
-	curl -fsSL -o "$tmp/checksums.txt" "$base/caddy_${ver}_checksums.txt"
+	fetch "$base/$deb" "$tmp/$deb"
+	fetch "$base/caddy_${ver}_checksums.txt" "$tmp/checksums.txt"
 	(cd "$tmp" && grep " $deb\$" checksums.txt | sha512sum -c --quiet) ||
 		die "$deb does not match its published checksum"
 	apt-get install -y -q --no-install-recommends "$tmp/$deb"
 	rm -rf "$tmp"
 }
-apt_update
-pkgs=(python3 curl ca-certificates git unzip)
-[ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
-# mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
-[ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
-[ ${#ZIMS[@]} -gt 0 ] && pkgs+=(kiwix-tools)
-[ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
-apt-get install -y -q --no-install-recommends "${pkgs[@]}"
+apt_update || die "apt-get update failed, and some packages still need installing"
+all_installed "${pkgs[@]}" || apt-get install -y -q --no-install-recommends "${pkgs[@]}"
 
 # Caddy: from Caddy's own apt repo, which is current (distros lag: Debian trixie ships
 # 2.6 from 2022). Except on ARMv6: that repo's armhf build is GOARM=7 and dies with
@@ -194,16 +245,24 @@ if [ "$ARCH" = armv6l ]; then
 		die "ARMv6 needs the distro's caddy package, and this distro has none"
 elif [ ! -f "$CADDY_LIST" ] && [ "$CADDY_FROM_RELEASE" = 0 ]; then
 	say "Adding Caddy's apt repository"
-	apt-get install -y -q --no-install-recommends gpg
-	curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key |
-		gpg --dearmor --yes -o "$CADDY_KEY"
-	curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt >"$CADDY_LIST"
-	apt_update
+	all_installed gpg || apt-get install -y -q --no-install-recommends gpg
+	if curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o "$CADDY_KEY.new" &&
+		curl -fsSL -o "$CADDY_LIST.new" https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt; then
+		mv "$CADDY_KEY.new" "$CADDY_KEY"
+		mv "$CADDY_LIST.new" "$CADDY_LIST"
+		apt_update || die "apt-get update failed after adding Caddy's repository"
+	else
+		rm -f "$CADDY_KEY.new" "$CADDY_LIST.new"
+		command -v caddy >/dev/null || die "could not reach Caddy's apt repository"
+		echo "    could not reach Caddy's apt repository; keeping the installed Caddy"
+	fi
 fi
 if [ "$CADDY_FROM_RELEASE" = 1 ]; then
 	install_caddy_release
-else
-	apt-get install -y -q --no-install-recommends caddy
+elif ! all_installed caddy || [ -f "$CADDY_LIST" ]; then
+	apt-get install -y -q --no-install-recommends caddy ||
+		{ all_installed caddy && echo "    could not upgrade Caddy; keeping the installed one"; } ||
+		die "could not install Caddy"
 fi
 
 # --- user and directories --------------------------------------------------------
@@ -272,6 +331,23 @@ if [ -n "$APPS_SRC" ]; then
 		chown -R root:root "$APPS/$app"
 	done
 fi
+# Prebuilt apps from the forks' irate-box-bundle.yml artifacts. The librarian downloads and
+# checks each as the hub user; hub_control.py checks it again and unpacks it as root -- the
+# same path /admin's Apps section uses later, which also keeps them current.
+if [ "$APPS_FROM_ACTIONS" = 1 ]; then
+	install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/library"
+	fetch_apps=(draw mermaid serial)
+	[ "$WITH_COLLAB" = 1 ] && fetch_apps+=(room)
+	for app in "${fetch_apps[@]}"; do
+		say "Fetching the $app app from its fork's Actions build"
+		if zip="$(runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" python3 "$CODE/librarian.py" app-fetch "$app")"; then
+			HUB_STATE_DIR="$STATE" python3 "$CODE/hub_control.py" install-app "$app" "$zip"
+		else
+			echo "    could not fetch $app; its tile stays empty until it is updated from /admin"
+		fi
+	done
+	runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" python3 "$CODE/librarian.py" add-apps "${fetch_apps[@]}" >/dev/null
+fi
 if [ "$WITH_TOOLS" = 1 ]; then
 	say "Cloning the calculators into $APPS/tools"
 	rm -rf "${APPS:?}/tools"
@@ -302,15 +378,22 @@ HUB_TOOLS_ROOT=$APPS/tools
 HUB_SERIAL_ROOT=$APPS/serial
 EOF
 
+# The admin password is chosen by the owner, in the browser, on first use: until then the
+# logins get a random placeholder nobody knows (so /sync and /term stay shut), and
+# $UNCLAIMED_MARK tells Caddy and the hub to offer /admin/ as the set-the-password page.
+# --admin-password sets it here instead, for scripted installs.
+UNCLAIMED_MARK=/etc/caddy/irate-box-unclaimed
+UNCLAIMED=0
 if [ -n "$ADMIN_PW" ]; then
 	printf '%s\n' "$ADMIN_PW" >"$ETC/admin-password"
-elif [ ! -s "$ETC/admin-password" ]; then
-	head -c 12 /dev/urandom | base64 | tr -d '/+=' | head -c 12 >"$ETC/admin-password"
-	echo >>"$ETC/admin-password"
-	NEW_PW=1
+	chmod 600 "$ETC/admin-password"
+elif [ -s "$ETC/admin-password" ]; then
+	chmod 600 "$ETC/admin-password"
+	ADMIN_PW="$(head -1 "$ETC/admin-password")"
+else
+	UNCLAIMED=1
+	ADMIN_PW="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 fi
-chmod 600 "$ETC/admin-password"
-ADMIN_PW="$(head -1 "$ETC/admin-password")"
 
 # --- Caddy -----------------------------------------------------------------------
 say "Configuring Caddy"
@@ -333,6 +416,12 @@ if ! out="$(caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile.new
 	die "generated Caddyfile does not validate (left at /etc/caddy/Caddyfile.new)"
 fi
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+if [ "$UNCLAIMED" = 1 ]; then
+	echo "no admin password chosen yet (install.sh)" >"$UNCLAIMED_MARK"
+	chmod 644 "$UNCLAIMED_MARK"
+else
+	rm -f "$UNCLAIMED_MARK"
+fi
 
 # The Caddyfile's roots are {$ENV:default} placeholders; point them at this layout.
 install -d /etc/systemd/system/caddy.service.d
@@ -371,8 +460,8 @@ if [ "$WITH_NOTES" = 1 ]; then
 	if ! /usr/local/bin/silverbullet --version 2>/dev/null | grep -q "$SB_VERSION"; then
 		say "Downloading SilverBullet $SB_VERSION ($SB_ARCH)"
 		tmp="$(mktemp -d)"
-		curl -fsSL -o "$tmp/sb.zip" \
-			"https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$SB_ARCH.zip"
+		fetch "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$SB_ARCH.zip" \
+			"$tmp/sb.zip" "silverbullet-$SB_VERSION-silverbullet-server-linux-$SB_ARCH.zip"
 		unzip -q -o "$tmp/sb.zip" -d "$tmp"
 		bin="$(find "$tmp" -type f -name silverbullet | head -1)"
 		[ -n "$bin" ] || die "no silverbullet binary in the release zip"
@@ -571,8 +660,8 @@ if ! /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
 	say "Downloading ttyd $TTYD_VERSION ($TTYD_ARCH)"
 	tmp="$(mktemp -d)"
 	base="https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION"
-	curl -fsSL -o "$tmp/ttyd.$TTYD_ARCH" "$base/ttyd.$TTYD_ARCH"
-	curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
+	fetch "$base/ttyd.$TTYD_ARCH" "$tmp/ttyd.$TTYD_ARCH" "ttyd-$TTYD_VERSION-ttyd.$TTYD_ARCH"
+	fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" "ttyd-$TTYD_VERSION-SHA256SUMS"
 	(cd "$tmp" && grep " ttyd.$TTYD_ARCH\$" SHA256SUMS | sha256sum -c --quiet) ||
 		die "ttyd.$TTYD_ARCH does not match its published checksum"
 	install -m 755 "$tmp/ttyd.$TTYD_ARCH" /usr/local/bin/ttyd
@@ -773,7 +862,12 @@ code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ || true)"
 addr="$(ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' || hostname -I | cut -d' ' -f1)"
 echo
 say "Irate-Box is $([ $fail = 0 ] && echo up || echo 'installed, with problems above') at http://${addr:-<this box>}/"
-echo "    admin login: admin / $([ "${NEW_PW:-0}" = 1 ] && echo "$ADMIN_PW" || echo "(unchanged, in $ETC/admin-password)")"
+if [ "$UNCLAIMED" = 1 ]; then
+	echo "    admin login: not chosen yet. Open http://${addr:-<this box>}/admin/ and set it now:"
+	echo "                 until then, the first person on this network to open that page can."
+else
+	echo "    admin login: admin / (in $ETC/admin-password)"
+fi
 [ "$WITH_NOTES" = 1 ] && echo "    notes: /notes/  (folder $STATE/notes, lock it down in $ETC/silverbullet.env)"
 [ -f "$STATE/zim/library.xml" ] && echo "    wiki:  /wiki/   ($(grep -c '<book ' "$STATE/zim/library.xml") books in $STATE/zim/library.xml)"
 [ -f /etc/mosquitto/conf.d/irate-box.conf ] && echo "    mqtt:  :1883 for nodes, /mqtt for pages (anonymous, msh/# only)"

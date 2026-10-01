@@ -153,11 +153,25 @@
 	# guest sees. The hub does no auth of its own, so running it bare (no Caddy) leaves
 	# /admin/settings as open as every other hub API -- fine in dev, never on the box.
 	# Replace the hash:  caddy hash-password --plaintext …
+	# First use: until the owner chooses a password, install.sh leaves irate-box-unclaimed
+	# beside this file, and /admin is let through with no login -- where the hub serves only
+	# the set-the-password page and refuses everything else. hub_control.py deletes the file
+	# when the password is set; from then on the login applies. Root-owned, so the hub
+	# cannot bring it back.
 	handle /admin/* {
-		basic_auth {
-			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		@unclaimed file {
+			root {$HUB_CADDY_DIR:/etc/caddy}
+			try_files /irate-box-unclaimed
 		}
-		reverse_proxy 127.0.0.1:8000
+		handle @unclaimed {
+			reverse_proxy 127.0.0.1:8000
+		}
+		handle {
+			basic_auth {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			reverse_proxy 127.0.0.1:8000
+		}
 	}
 	redir /admin /admin/ permanent
 
