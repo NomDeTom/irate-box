@@ -86,6 +86,13 @@ class Board:
             os.fsync(fh.fileno())
         os.replace(tmp, self.path)
 
+    def clear(self):
+        """Every thread gone; the id counter carries on, so an old link never names a new thread."""
+        with self._lock:
+            state = self._load()
+            state["threads"] = []
+            self._save(state)
+
     # --- decay -------------------------------------------------------------
 
     def _prune(self, state, now):

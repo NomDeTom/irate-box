@@ -282,6 +282,10 @@ DEFAULT_SETTINGS = {
     "store_save_ttl_hours": int(store.SAVE_TTL // 3600),
     # The setup steps on /admin (Welcome) until the owner says they are done with them.
     "setup_done": False,
+    # An event box starts each day empty: clear the shoutbox / board when the box boots
+    # (a real boot, not the hub restarting for an update; see clear_on_new_boot).
+    "shout_reset_on_boot": False,
+    "board_reset_on_boot": False,
 }
 _settings_lock = threading.Lock()
 
@@ -1265,7 +1269,40 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(201, entry)
 
 
+BOOT_ID_FILE = STATE_DIR / "boot_id"
+
+
+def clear_on_new_boot(boot_id_path=Path("/proc/sys/kernel/random/boot_id")):
+    """Clear what the owner chose to clear at boot, once per boot. A boot is the kernel's
+    boot_id changing from the one stored last time, so an update or a crash that restarts
+    the hub does not wipe the room. Returns what was cleared."""
+    try:
+        current = boot_id_path.read_text().strip()
+    except OSError:
+        return []  # no /proc (a dev machine): never clear
+    try:
+        previous = BOOT_ID_FILE.read_text().strip()
+    except OSError:
+        previous = None
+    if previous == current:
+        return []
+    cleared = []
+    if previous is not None:  # the first start ever is not a reboot
+        settings = settings_snapshot()
+        if settings["shout_reset_on_boot"]:
+            with lock:
+                DATA_FILE.write_text("[]")
+            cleared.append("shoutbox")
+        if settings["board_reset_on_boot"]:
+            BOARD.clear()
+            cleared.append("board")
+    BOOT_ID_FILE.write_text(current + "\n")
+    return cleared
+
+
 if __name__ == "__main__":
+    for what in clear_on_new_boot():
+        print(f"New boot: cleared the {what}, as set on /admin")
     CLOCK.start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.

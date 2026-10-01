@@ -149,7 +149,7 @@
         </div>
 
         <h3>Terminal on the landing page</h3>
-        <div class="settings">
+        <div class="settings" data-note="landing-note">
           <label class="setting">
             <input type="checkbox" id="show_term_card">
             <span>
@@ -292,6 +292,24 @@
           7 days after their last reply (powered-on time). Deleting is immediate and permanent.
         </p>
         <p class="setting-desc action-note" id="mod-note" role="status" hidden></p>
+        <h3>Starting fresh</h3>
+        <div class="settings" data-note="fresh-note">
+          <label class="setting">
+            <input type="checkbox" id="shout_reset_on_boot">
+            <span>
+              <span class="setting-name">Clear the shoutbox when the box starts</span>
+              <span class="setting-desc">For an event box: each day starts empty. Only a real boot clears it, not the hub restarting for an update.</span>
+            </span>
+          </label>
+          <label class="setting">
+            <input type="checkbox" id="board_reset_on_boot">
+            <span>
+              <span class="setting-name">Clear the board when the box starts</span>
+              <span class="setting-desc">Every thread goes at boot, the same way.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="fresh-note" role="status" hidden></p>
         <h3>Shoutbox</h3>
         <div id="mod-messages" class="admin-list"></div>
         <h3>Board</h3>

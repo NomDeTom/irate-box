@@ -48,6 +48,8 @@ function say(text, ok, at) {
 
 const boxes = document.querySelectorAll('.settings input[type="checkbox"]');
 const landingNote = noteEl('landing-note');
+// Each group of checkboxes names the note its answers go in (data-note).
+const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
 
 async function load() {
   try {
@@ -72,10 +74,11 @@ async function save(box) {
     const data = await r.json();
     // Show what the hub stored, not what we sent -- they differ if it rejected the value.
     boxes.forEach((b) => { if (typeof data[b.id] === 'boolean') b.checked = data[b.id]; });
-    say('Saved. The landing page picks it up within about 15 seconds.', true, landingNote);
+    say(box.id === 'show_term_card' ? 'Saved. The landing page picks it up within about 15 seconds.'
+      : 'Saved. It takes effect at the next boot.', true, settingNote(box));
   } catch (_) {
     box.checked = !box.checked;
-    say('Could not save — the setting is unchanged.', false, landingNote);
+    say('Could not save — the setting is unchanged.', false, settingNote(box));
   }
 }
 
