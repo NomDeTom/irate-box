@@ -31,6 +31,11 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
+  {"id": ..., "action": "security-scan"}
+      What the box exposes and how it is set up (security.py): to control/security.json.
+  {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
+      Carry out one fix the Security page offered (security.fix: a drop-in or a unit switched
+      off, each recorded with how to undo it), then scan again.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
@@ -62,6 +67,7 @@ import zipfile
 from pathlib import Path
 
 import manifests
+import security
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -79,6 +85,8 @@ UPDATE_STATE = CONTROL / "update.json"
 UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
+SECURITY_STATE = CONTROL / "security.json"
+SECURITY_LOG = CONTROL / security.UPDATES_LOG_NAME
 # Release downloads install.sh would otherwise make itself (install.sh --download-cache).
 DOWNLOADS = Path(os.environ.get("HUB_DOWNLOAD_CACHE", "/var/cache/irate-box/downloads"))
 INSTALL_TIMEOUT = 45 * 60
@@ -804,6 +812,34 @@ def update_clear_cache(req):
     return "update cache cleared"
 
 
+# --- the security page -----------------------------------------------------------------
+
+def _write_security(data):
+    SECURITY_STATE.write_text(json.dumps(data, indent=2))
+    _for_hub(SECURITY_STATE)
+
+
+def security_scan(req):
+    data = security.scan()
+    _write_security(data)
+    bad = [f for f in data["findings"] if f["status"] == "problem"]
+    return f"security scan: {len(bad)} to fix" if bad else "security scan: nothing to fix"
+
+
+def security_fix(req):
+    choice = str(req.get("choice", ""))
+    if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@._-]+)?", choice):
+        raise ValueError("not a Security page choice")
+    if choice == "security-updates":
+        SECURITY_LOG.touch()
+        _for_hub(SECURITY_LOG)
+    try:
+        msg = security.fix(choice, SECURITY_LOG)
+    finally:
+        _write_security(security.scan())
+    return msg
+
+
 # --- app bundles -------------------------------------------------------------------
 # The librarian (as the hub user) downloads a bundle into $STATE/library/apps/ and checks it;
 # this checks it again -- the hub wrote that file -- and swaps it in, keeping the previous
@@ -916,6 +952,7 @@ def app_rollback(req):
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
+           "security-scan": security_scan, "security-fix": security_fix,
            "app-install": app_install, "app-rollback": app_rollback}
 
 

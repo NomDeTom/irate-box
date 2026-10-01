@@ -639,6 +639,16 @@ def update_progress():
     return data
 
 
+def _pending_actions(prefix):
+    n = 0
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            n += str(json.loads(path.read_text()).get("action", "")).startswith(prefix)
+        except (OSError, ValueError, AttributeError):
+            pass
+    return n
+
+
 def update_snapshot():
     """What /admin's update buttons show: the last check or fetch (from the root helper),
     the tail of the last install's output, whether a request is still being worked on, and
@@ -656,14 +666,50 @@ def update_snapshot():
     except (OSError, ValueError):
         doctor = None
     # Only update requests: a queued app install or service change is not the update's.
-    pending = 0
-    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
-        try:
-            pending += str(json.loads(path.read_text()).get("action", "")).startswith("update-")
-        except (OSError, ValueError, AttributeError):
-            pass  # answered and removed while we looked, or not ours to judge
+    pending = _pending_actions("update-")
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
             "progress": update_progress(), "doctor": doctor, "results": control_results(5)}
+
+
+SECURITY_STATE = CONTROL_DIR / "security.json"
+SECURITY_LOG = CONTROL_DIR / "security-updates.log"
+SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@._-]+)?$")
+
+
+def security_snapshot():
+    """What the Security page shows: the hub's own lines (which only the hub knows), then the
+    root helper's last scan of the box."""
+    hub = [{
+        "id": "admin-password", "title": "Admin password",
+        **({"status": "problem", "detail": "Not chosen yet: anyone on the network can open /admin and choose it.",
+            "fix": "Choose it now, on this page's Access section."} if unclaimed() else
+           {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening "
+            "can read it the first time a browser sends it.",
+            "fix": "Log in to /admin from the LAN or over Tailscale rather than over the hotspot; a safer login is planned."}),
+    }, {
+        "id": "plain-http", "title": "Plain HTTP", "status": "warn",
+        "detail": "The hub has no certificate, so everything a browser and the box say to each other — pages, "
+                  "messages, uploads — can be read by anyone on the same open network, and changed by anyone "
+                  "who sets out to.",
+        "fix": "That is the price of working offline with no setup. Keep secrets off the hub.",
+    }, {
+        "id": "one-origin", "title": "Apps share the admin page's address", "status": "warn",
+        "detail": "Kiwix books, the calculators and the drawing apps run on the same origin as /admin, so a "
+                  "hostile page among them could act with your login while you are logged in.",
+        "fix": "Log out (close the browser) after admin work; giving /admin an address of its own is planned.",
+    }]
+    for f in hub:
+        f.setdefault("actions", [])
+    try:
+        scan = json.loads(SECURITY_STATE.read_text())
+    except (OSError, ValueError):
+        scan = None
+    try:
+        log = [ANSI_RE.sub("", line) for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]]
+    except OSError:
+        log = []
+    return {"hub": hub, "scan": scan, "log": log, "pending": _pending_actions("security-"),
+            "results": control_results(5)}
 
 
 def moderation_snapshot():
@@ -924,6 +970,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, update_snapshot())
             return
 
+        if path == "/admin/security":
+            self.send_json(200, security_snapshot())
+            return
+
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
 
@@ -1075,6 +1125,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/store":
             self.send_json(*store_action(payload))
+            return
+
+        if path == "/admin/security":
+            if payload.get("action") == "scan":
+                self.send_json(202, {"id": control_request({"action": "security-scan"})})
+            elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
+                self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
+            else:
+                self.send_json(400, {"error": "action must be scan, or fix with a choice"})
             return
 
         if path == "/messages":

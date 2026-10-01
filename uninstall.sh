@@ -57,6 +57,13 @@ if systemctl cat tailscaled.service >/dev/null 2>&1; then
 	systemctl enable --quiet tailscaled
 fi
 
+# What the Security page changed on the owner's say-so (Cockpit, SSH, LLMNR, units switched
+# off) goes back as it was found, before the code that knows how is removed.
+if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
+	say "Putting back what the Security page changed"
+	HUB_ETC_DIR="$ETC" python3 "$CODE/security.py" undo-all | sed 's/^/    /' || true
+fi
+
 say "Removing unit files and drop-ins"
 rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room}.service \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \

@@ -774,3 +774,90 @@ document.getElementById('backup-with-keys').addEventListener('click', (e) => {
 });
 upd.install.addEventListener('click', () => requestUpdate('install'));
 loadUpdate();
+
+// --- security --------------------------------------------------------------------------
+// The hub's own lines (password, plain HTTP, one origin) and the root helper's scan of the
+// box (listeners, SSH, security updates). Each offer is a button on its line; its answer goes
+// under it. A scan older than 15 minutes is refreshed when the page opens.
+const sec = {
+  when: document.getElementById('security-when'),
+  scan: document.getElementById('security-scan'),
+  note: document.getElementById('security-note'),
+  findings: document.getElementById('security-findings'),
+  listeners: document.querySelector('#security-listeners tbody'),
+  output: document.getElementById('security-output'),
+  log: document.getElementById('security-log'),
+};
+const RANK = { problem: 0, warn: 1, ok: 2 };
+let secWaiting = null; // { id, fid }: a request, and the line its answer goes under
+let secNote = null; // { fid, text, ok }
+let secPoll = null;
+let secAsked = false;
+
+function renderSecurity(data) {
+  const scan = data.scan;
+  const busy = data.pending > 0 || !!secWaiting;
+  if (secWaiting) {
+    const done = (data.results || []).find((r) => r.id === secWaiting.id);
+    if (done) {
+      secNote = { fid: secWaiting.fid, text: done.message, ok: done.ok };
+      secWaiting = null;
+      return renderSecurity(data);
+    }
+  }
+  const all = [...data.hub, ...(scan ? scan.findings : [])].sort((a, b) => RANK[a.status] - RANK[b.status]);
+  const shown = new Set(all.map((f) => f.id));
+  const noteUnder = (fid) => (secNote && secNote.fid === fid
+    ? el('span', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
+  sec.findings.replaceChildren(...all.map((f) => el('li', { className: `check check-${f.status}` },
+    el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
+    el('span', { textContent: ` — ${f.detail}` }),
+    f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
+    f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
+      type: 'button', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
+    }))) : null,
+    noteUnder(f.id))));
+  // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
+  const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) ? secNote : null;
+  say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
+
+  sec.when.textContent = scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` + (busy ? ' Scanning…' : '')
+    : busy ? 'Scanning…' : 'Not scanned yet.';
+  sec.scan.disabled = busy;
+  sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => el('tr', {},
+    el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
+    el('td', {}, el('span', { className: 'setting-name', textContent: l.name }),
+      el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
+    el('td', { textContent: l.addr }))));
+  sec.output.hidden = !data.log.length;
+  sec.log.textContent = data.log.join('\n');
+  const problems = all.filter((f) => f.status === 'problem').length;
+  badge('security', problems ? String(problems) : '');
+
+  const stale = !scan || Date.now() / 1000 - scan.at > 15 * 60;
+  if (stale && !busy && !secAsked) { secAsked = true; secRequest({ action: 'scan' }, 'scan'); return; }
+  clearTimeout(secPoll);
+  if (busy) secPoll = setTimeout(loadSecurity, 2000);
+}
+
+async function loadSecurity() {
+  try { renderSecurity(await getJSON('/admin/security')); } catch (_) {
+    sec.when.textContent = 'Could not read the security report.';
+  }
+}
+
+async function secRequest(body, fid) {
+  try {
+    secWaiting = { id: (await postJSON('/admin/security', body)).id, fid };
+    secNote = null;
+    loadSecurity();
+  } catch (err) { secNote = { fid, text: err.message, ok: false }; loadSecurity(); }
+}
+
+function secFix(fid, action) {
+  if (action.confirm && !confirm(action.confirm)) return;
+  secRequest({ action: 'fix', choice: action.choice }, fid);
+}
+
+sec.scan.addEventListener('click', () => secRequest({ action: 'scan' }, 'scan'));
+loadSecurity();

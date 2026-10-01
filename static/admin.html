@@ -36,6 +36,7 @@
         <a href="#saved">Saved work</a>
         <a href="#moderation">Moderation</a>
         <p class="admin-side-group">System</p>
+        <a href="#security">Security</a>
         <a href="#updates">Updates</a>
         <a href="#backup">Backup</a>
       </div>
@@ -251,6 +252,31 @@
         <div id="mod-messages" class="admin-list"></div>
         <h3>Board</h3>
         <div id="mod-threads" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="security" aria-labelledby="security-title">
+        <h2 id="security-title">Security</h2>
+        <p class="setting-desc">
+          What a guest on the box's network can reach, and how the box is set up. Nothing here
+          changes until you press its button. Every change can be undone here, and uninstalling
+          irate-box puts back what it found.
+        </p>
+        <p class="setting-desc" id="security-when">Not scanned yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="security-scan">Scan again</button>
+        </div>
+        <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
+        <ul class="admin-checks" id="security-findings"></ul>
+        <h3>Listening on the network</h3>
+        <p class="setting-desc">Everything that answers from outside the box. Services on loopback only are left out.</p>
+        <table class="admin-table" id="security-listeners">
+          <thead><tr><th>Port</th><th>Service</th><th>On</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <details class="admin-output" id="security-output" hidden>
+          <summary>Security update output</summary>
+          <pre class="admin-log" id="security-log"></pre>
+        </details>
       </section>
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
