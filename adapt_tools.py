@@ -5,7 +5,9 @@
 
 The published site stays as it is; only the hub's copy changes, and only this much:
 
-  * the hub's palette: each page links /tools-hub.css after its own styles;
+  * the hub's palette: the site's own hook for this is directory-override.css, which every
+    maintained page loads after its embedded styles, so the hub's palette (static/tools-hub.css)
+    is written there. A page without the hook gets a link to /tools-hub.css instead;
   * navigation: "Back to index" goes to the hub page that lists the calculator (RF & LoRa,
     Calculators, Electronics, or Meshtastic, read from those pages' own links), in the
     whole window rather than the hub bar's frame; the hub itself for a page none lists;
@@ -38,6 +40,8 @@ _DROPPED = r'<a\b[^>]*\bhref="(?:\./)?(?:' + "|".join(re.escape(d) for d in DROP
 DROPPED_ITEM = re.compile(r'<li\b[^>]*>\s*' + _DROPPED + r'\s*</li\s*>', re.S)
 DROPPED_LINK = re.compile(_DROPPED, re.S)
 STYLESHEET = '<link rel="stylesheet" href="/tools-hub.css">'
+OVERRIDE = "directory-override.css"
+HOOK = re.compile(r'<link\b[^>]*\bhref="(?:\./)?directory-override\.css"')
 
 
 def homes(static):
@@ -65,9 +69,12 @@ def adapt(page, back):
 
     html = BACK_LINK.sub(to_hub, html)
     html = DROPPED_LINK.sub("", DROPPED_ITEM.sub("", html))
-    # After the page's own styles, so the hub's palette wins. </head> is optional in HTML,
-    # so fall back to just before <body>, or the very start.
-    if "</head>" in html:
+    # After the page's own styles, so the hub's palette wins -- unless the page has the
+    # site's override hook, which already loads the palette (written by main()).
+    # </head> is optional in HTML, so fall back to just before <body>, or the very start.
+    if HOOK.search(html):
+        pass
+    elif "</head>" in html:
         html = html.replace("</head>", f"  {STYLESHEET}\n</head>", 1)
     elif (body := re.search(r"<body\b", html)):
         html = html[:body.start()] + STYLESHEET + "\n" + html[body.start():]
@@ -129,6 +136,12 @@ def main(tools_dir, static_dir):
     gone = prune(tools, sorted(n for n in keep if (tools / n).is_file()))
     if gone:
         print(f"    calculators: removed {', '.join(gone)}")
+    # The site's own override file is a template, all commented out; the hub's palette
+    # replaces it, so every page with the hook takes the hub's colours.
+    (tools / OVERRIDE).write_text(
+        "/* Written by irate-box's adapt_tools.py: the hub's palette, from static/tools-hub.css,\n"
+        "   in place of the site's commented-out template. */\n"
+        + (static / "tools-hub.css").read_text(encoding="utf-8"), encoding="utf-8")
     listed = homes(static)
     changed = 0
     for page in sorted(tools.glob("*.html")):
