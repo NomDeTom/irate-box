@@ -563,6 +563,42 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
+# --- the librarian -----------------------------------------------------------------
+# librarian.py keeps ZIM books current from the sources set on /admin (Library). It runs
+# as the hub user: a new version is swapped in under the same file name and library.xml is
+# rebuilt, which kiwix-serve's --monitorLibrary picks up. No restart, so no root needed.
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library"
+cat >/etc/systemd/system/irate-box-librarian.service <<EOF
+[Unit]
+Description=Irate-Box librarian: update the ZIM books whose check is due (/admin, Library)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=$HUB_USER
+Group=$HUB_USER
+Environment=HUB_STATE_DIR=$STATE
+ExecStart=/usr/bin/python3 $CODE/librarian.py update --scheduled
+# A download competes with guests for the card and the CPU; let it lose.
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=full
+ReadWritePaths=$STATE
+EOF
+cat >/etc/systemd/system/irate-box-librarian.timer <<EOF
+[Unit]
+Description=Irate-Box librarian, hourly (each source is checked only when its policy says so)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # --- Tailscale remote access -------------------------------------------------------
 # Not installed by this script. Where it is already present, it stops being a boot
 # service and comes under the switch on /admin: the hub records the choice in
@@ -636,6 +672,7 @@ systemctl restart "${units[@]}"
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ ${#ZIMS[@]} -gt 0 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
+systemctl enable --quiet --now irate-box-librarian.timer
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled
@@ -682,5 +719,6 @@ echo "    admin login: admin / $([ "${NEW_PW:-0}" = 1 ] && echo "$ADMIN_PW" || e
 echo "    term:  /term/   ($(systemctl is-enabled ttyd 2>/dev/null || echo disabled); admin login, then an account on the box)"
 [ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the admin login; folder \"hub-notes\" shared if notes are installed)"
 [ "$WITH_COLLAB" = 1 ] && echo "    collab: live sessions in /draw/ (relay on 127.0.0.1:3002, via /socket.io/)"
+[ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
 exit $fail

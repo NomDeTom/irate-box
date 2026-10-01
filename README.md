@@ -26,8 +26,9 @@ native daemons.
 | SilverBullet notes, Syncthing (`--with-notes`, `--with-sync`) | working |
 | ttyd terminal (`--with-term`) | working, off by default |
 | MQTT broker for Meshtastic (`--with-mqtt`) | broker working; decoder, traffic page and map not started |
-| Tailscale remote-access switch on `/admin` (only if Tailscale is already installed) | written, not yet installed on a board |
-| Excalidraw live collaboration (`--with-collab`), hub gallery saves from Excalidraw | written, relay measured on the Lyra; not yet installed on a board |
+| Tailscale remote-access switch on `/admin` (only if Tailscale is already installed) | working (installed 2026-10-01) |
+| Librarian: keeps ZIM books current from GitHub releases, Actions artifacts (token or nightly.link) or a URL; settings on `/admin` | written and tested on the Lyra; not yet installed |
+| Excalidraw live collaboration (`--with-collab`), hub gallery saves from Excalidraw | working (installed 2026-10-01) |
 | Service dashboard, memory and disk tile | working |
 | Access point, dnsmasq, captive portal | not in the installer yet |
 | `.deb` packages, manifest-driven tiles | not started |
@@ -77,6 +78,7 @@ Caddyfile names. **[BUILDING.md](BUILDING.md)** walks through all of it, clone t
 | `board.py` | Threaded message board: 50 threads, 200 posts each, threads fade seven days of powered-on time after their last reply. |
 | `store.py` | Blob store. Reimplements `excalidraw-storage-backend`'s `/api/v2` over a directory (no NestJS, no Redis) and adds `/api/saves`, a named-save gallery with client-rendered thumbnails. Runs standalone on `:8090` for testing. |
 | `tailscale-apply.sh` | Run as root by a systemd path unit: starts or stops `tailscaled` to match `$STATE/tailscale.want`, which the hub writes from the `/admin` switch (off, on, or on for N hours). The hub itself never gets root. |
+| `librarian.py` | Keeps ZIM books in the Kiwix library current. Each source is GitHub releases, a workflow's Actions artifacts (with a token, or through nightly.link without one), or a URL. A new version is checked and swapped in under the same file name, so `/wiki/content/<name>/` links never change, and kiwix-serve picks it up without a restart. Old versions are archived or deleted per policy, with rollback. Run hourly by `irate-box-librarian.timer` (each source only when due) and on demand from `/admin`. Stdlib only. |
 | `hubclock.py` | The clock. The boards have no RTC, so everything ages by *cumulative powered-on seconds*, never the wall clock. Messages posted an hour before the box is switched off are still an hour old when it comes back. |
 | `static/` | The pages. No framework, no build step, no network fetches. The home page has the shoutbox and board as two tabs, a row of app tiles and a row for the box itself: users online, a QR code to join, memory and disk, and services. There are list pages for the tools, Meshtastic and the service dashboard. `app.html` is the hub bar: every app opens under it, it slides away on scroll-down, and its theme picker sets light or dark for every app. |
 | `Caddyfile` | One origin, path-routed: `/` to the hub; static app builds at `/draw/`, `/mermaid/`, `/tools/` and `/serial/`; `/wiki/`, `/notes/`, `/mqtt`, `/sync/` and `/term/` passed to loopback ports. Plain HTTP only; see below. |

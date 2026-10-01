@@ -16,6 +16,7 @@ from pathlib import Path
 
 import board
 import hubclock
+import librarian
 import store
 
 STATIC = Path(__file__).parent / "static"
@@ -300,6 +301,73 @@ def write_tailscale_want(mode, hours=None):
     _status_cache["at"] = 0.0  # the next /status should show the change, not a cached sweep
 
 
+# --- the librarian -------------------------------------------------------------
+# Keeps ZIM books current from their sources (librarian.py). The page reads a snapshot and
+# posts actions; anything that touches the network or the card runs in one background
+# thread, and the librarian's own lock keeps it from overlapping the hourly timer.
+_library_job = {"thread": None, "action": None, "result": None}
+_library_lock = threading.Lock()
+
+
+def library_snapshot():
+    snap = librarian.snapshot()
+    with _library_lock:
+        thread = _library_job["thread"]
+        snap["job"] = {"action": _library_job["action"], "result": _library_job["result"],
+                       "busy": bool(thread and thread.is_alive())}
+    snap["running"] = snap["running"] or snap["job"]["busy"]
+    return snap
+
+
+def library_start(action, fn):
+    """Run fn() in the background unless something is already running; False if busy."""
+    def work():
+        try:
+            result = fn()
+        except librarian.LibrarianError as exc:
+            result = {"error": str(exc)}
+        with _library_lock:
+            _library_job["result"] = result
+    with _library_lock:
+        thread = _library_job["thread"]
+        if (thread and thread.is_alive()) or librarian.is_running():
+            return False
+        _library_job.update(action=action, result=None,
+                            thread=threading.Thread(target=work, daemon=True))
+        _library_job["thread"].start()
+    return True
+
+
+def library_action(payload):
+    """(status code, body) for one POST /admin/library."""
+    action = payload.get("action")
+    names = [n for n in payload.get("names") or [] if isinstance(n, str)]
+    quiet = {"log": lambda *_: None}
+    try:
+        if action == "add":
+            librarian.add_source(payload.get("source") or {})
+        elif action == "remove":
+            librarian.remove_source(str(payload.get("name", "")), bool(payload.get("delete_book")))
+        elif action == "policy":
+            librarian.set_policy(**{k: payload[k] for k in librarian.DEFAULT_POLICY
+                                    if type(payload.get(k)) is int})
+        elif action == "token":
+            librarian.set_token(str(payload.get("value") or ""))
+        elif action in ("check", "update"):
+            download = action == "update"
+            if not library_start(action, lambda: librarian.update(names or None, download=download, **quiet)):
+                return 409, {"error": "the librarian is already running"}
+        elif action == "rollback":
+            name, version = str(payload.get("name", "")), payload.get("version") or None
+            if not library_start(action, lambda: {name: librarian.rollback(name, version)}):
+                return 409, {"error": "the librarian is already running"}
+        else:
+            return 400, {"error": "unknown action"}
+    except librarian.LibrarianError as exc:
+        return 400, {"error": str(exc)}
+    return 200, library_snapshot()
+
+
 def system_status():
     """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
     cache Kiwix leans on counts as available, and is the first thing to go (plan §2)."""
@@ -423,6 +491,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_tailscale()
             return
 
+        if path == "/admin/library":
+            self.send_json(200, library_snapshot())
+            return
+
         if path in ("/admin", "/admin/"):
             path = "/admin.html"
 
@@ -510,6 +582,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             write_tailscale_want(mode, hours)
             self._send_tailscale()
+            return
+
+        if path == "/admin/library":
+            self.send_json(*library_action(payload))
             return
 
         if path == "/messages":

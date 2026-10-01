@@ -235,6 +235,17 @@ If Tailscale is already on the board, the script puts it under a switch on `/adm
 as root by a path unit, does the starting and stopping. The script never changes Tailscale's
 current state, so it is safe to run over Tailscale.
 
+The librarian (`librarian.py`, settings under Library on `/admin`) keeps ZIM books current
+from where they are published: a project's GitHub releases, a fork's Actions artifacts (GitHub
+requires a token to download those, even from public repositories) or the same artifacts
+through nightly.link (no token), or a plain URL. A new version replaces `<name>.zim` in
+place, so links into the book never change, and `library.xml` is rebuilt for kiwix-serve's
+`--monitorLibrary` to pick up: no restart and no root. Old versions are archived under
+`/var/lib/hub/library/archive/` (keep 0–3) and can be rolled back. It runs hourly from
+`irate-box-librarian.timer`, checking each source only when the policy says it is due, at idle
+CPU and I/O priority. The same is available from the command line:
+`sudo -u hub HUB_STATE_DIR=/var/lib/hub python3 /opt/irate-box/librarian.py status`.
+
 ttyd is always installed at `/term/`: the upstream static binary, checked against its
 published SHA256SUMS. It only runs with `--with-term`, and stays on for later runs once
 enabled. The admin login gets you past Caddy, and after that `/bin/login` asks for a real

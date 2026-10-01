@@ -64,6 +64,78 @@
     <p class="setting-desc" id="remote-state"></p>
   </section>
 
+  <section id="library-section">
+    <h2>Library</h2>
+    <p class="setting-desc">
+      The librarian keeps books in <a href="/wiki/">/wiki/</a> up to date from where they are
+      published. Each book keeps its name across versions, so links into it never break; older
+      versions are archived or deleted as set below. Books added by hand, or by
+      <code>install.sh --zim</code>, are left alone unless a source here has the same name.
+    </p>
+    <p class="setting-desc" id="library-state"></p>
+
+    <div id="library-sources"></div>
+    <div class="library-actions">
+      <button type="button" data-all="check">Check all</button>
+      <button type="button" data-all="update">Update all</button>
+    </div>
+
+    <h3>Add a source</h3>
+    <p class="setting-desc">
+      Quick fill:
+      <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
+      <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
+      <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
+    </p>
+    <form id="library-add" class="library-form">
+      <label>Book name <input name="name" required placeholder="mermaid-docs" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*"></label>
+      <label>Source
+        <select name="type">
+          <option value="release">GitHub releases</option>
+          <option value="actions">GitHub Actions artifacts (token)</option>
+          <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
+          <option value="url">A URL</option>
+        </select>
+      </label>
+      <p class="setting-desc" id="library-type-help"></p>
+      <label data-for="release actions nightly-link">Repository <input name="repo" placeholder="owner/repo"></label>
+      <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
+      <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
+      <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
+      <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
+      <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
+      <button type="submit">Add source</button>
+    </form>
+
+    <h3>Versions and schedule</h3>
+    <form id="library-policy" class="library-form">
+      <label>Keep old versions
+        <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+      </label>
+      <label>Check for updates
+        <select name="check_every_hours">
+          <option value="0">only when asked</option><option value="6">every 6 hours</option>
+          <option value="24">daily</option><option value="168">weekly</option>
+        </select>
+      </label>
+      <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
+      <button type="submit">Save</button>
+    </form>
+
+    <h3>GitHub token</h3>
+    <p class="setting-desc">
+      Only for "GitHub Actions artifacts": GitHub requires a login to download those, even from
+      public repositories. A fine-grained token with read-only access to public repositories is
+      enough. Stored on the box, readable only by the hub; never shown again.
+      <span id="library-token-state"></span>
+    </p>
+    <form id="library-token" class="library-form">
+      <label>Token <input name="value" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+      <button type="submit">Save</button>
+      <button type="button" id="library-token-clear">Clear</button>
+    </form>
+  </section>
+
   <h2>Sync</h2>
   <p class="setting-desc">
     <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and

@@ -644,3 +644,42 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 /* The same picker as the home page header, sitting in the hub bar instead. */
 .app-bar .theme-picker { position: static; padding: 1px; }
 .app-bar .theme-picker button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }
+
+/* Library (admin): sources, the add form and the policy. */
+#library-section h3 { margin: 1.5rem 0 0.5rem; font-size: 1rem; }
+#library-sources { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
+.library-source { cursor: default; }
+.library-buttons, .library-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.library-form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 34rem; }
+.library-form label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.library-form label.inline { flex-direction: row; align-items: center; gap: 0.5rem; }
+.library-form label[hidden] { display: none; }
+.library-form input:not([type="checkbox"]), .library-form select {
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+#library-section button {
+  align-self: flex-start;
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+#library-section button:hover:not(:disabled) { border-color: var(--accent); }
+#library-section button:disabled { opacity: 0.5; cursor: default; }
+#library-section button.link-button {
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: none;
+  text-decoration: underline;
+}
+.setting-desc.bad { color: #e5484d; }
