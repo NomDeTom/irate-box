@@ -280,6 +280,8 @@ DEFAULT_SETTINGS = {
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
     "store_max_total_mb": max(1, store.MAX_TOTAL >> 20),
     "store_save_ttl_hours": int(store.SAVE_TTL // 3600),
+    # The setup steps on /admin (Welcome) until the owner says they are done with them.
+    "setup_done": False,
 }
 _settings_lock = threading.Lock()
 

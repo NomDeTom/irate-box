@@ -55,6 +55,7 @@ async function load() {
     if (!r.ok) throw new Error(r.status);
     const data = await r.json();
     boxes.forEach((b) => { if (typeof data[b.id] === 'boolean') b.checked = data[b.id]; });
+    applySetup(data.setup_done === true);
   } catch (_) {
     say('Could not read the current settings.', false, landingNote);
   }
@@ -319,6 +320,8 @@ function renderLibrary(snap) {
   lib.states.forEach((n) => { n.textContent = parts.join(' '); });
 
   const books = snap.sources.filter((s) => s.kind !== 'app');
+  setupStep('books', books.length ? `${books.length} kept current by the librarian.`
+    : 'None kept current yet: Kiwix serves only books copied in by hand.', books.length ? 'ok' : 'warn');
   lib.sources.replaceChildren(...(books.length
     ? books.map((s) => sourceRow(s, snap.status[s.name] || {}, busy))
     : [el('p', { className: 'setting-desc', textContent: 'No sources yet.' })]));
@@ -833,6 +836,7 @@ function renderSecurity(data) {
   sec.log.textContent = data.log.join('\n');
   const problems = all.filter((f) => f.status === 'problem').length;
   badge('security', problems ? String(problems) : '');
+  if (scan) setupStep('security', problems ? `${problems} thing${problems === 1 ? '' : 's'} to fix or leave.` : 'Nothing to fix.', problems ? 'problem' : 'ok');
 
   const stale = !scan || Date.now() / 1000 - scan.at > 15 * 60;
   if (stale && !busy && !secAsked) { secAsked = true; secRequest({ action: 'scan' }, 'scan'); return; }
@@ -918,6 +922,8 @@ function renderAddons(data) {
   ado.log.scrollTop = ado.log.scrollHeight;
   if (p && p.action === 'addon') ado.output.open = true;
   badge('addons', p && p.action === 'addon' ? 'working' : '');
+  const added = data.addons.filter((a) => a.added).map((a) => a.title);
+  setupStep('addons', added.length ? `Added: ${added.join(', ')}.` : 'None added: the hub works without them.', 'ok');
   clearTimeout(adoPoll);
   if (busy) adoPoll = setTimeout(loadAddons, 1500);
 }
@@ -941,3 +947,41 @@ async function addonSet(a, on) {
 }
 
 loadAddons();
+
+// --- setup steps -----------------------------------------------------------------------
+// The rest of the first-use setup (the password is step 1, on admin-setup.html). Each step's
+// line is filled in by the part of this page that already loads its data; the pane shows
+// until the owner finishes it, and Overview's link brings it back.
+const setupList = document.getElementById('setup-steps');
+const welcomeLink = document.getElementById('welcome-link');
+
+function setupStep(step, text, status) {
+  const li = setupList.querySelector(`[data-step="${step}"]`);
+  li.querySelector('span').textContent = text;
+  li.className = `step-${status}`;
+}
+
+function applySetup(done) {
+  welcomeLink.hidden = done;
+  if (!done && !location.hash) location.hash = '#welcome';
+}
+
+async function setSetupDone(done) {
+  try {
+    await postJSON('/admin/settings', { setup_done: done });
+    applySetup(done);
+    location.hash = done ? '#overview' : '#welcome';
+  } catch (err) { say(err.message, false, noteEl('setup-note')); }
+}
+
+// How guests reach the box: what this page was loaded from.
+(() => {
+  const port = location.port && location.port !== '80' ? location.port : '';
+  setupStep('connection', port
+    ? `At http://${location.host}/, on port ${port}: something else has port 80, so a phone joining a hotspot would not get the sign-in sheet. Everything else works.`
+    : `At http://${location.host}/ on the network the box is already on. A hotspot of its own is planned as an add-on.`,
+  port ? 'warn' : 'ok');
+  setupStep('password', 'Set.', 'ok');
+})();
+document.getElementById('setup-finish').addEventListener('click', () => setSetupDone(true));
+document.getElementById('setup-again').addEventListener('click', (e) => { e.preventDefault(); setSetupDone(false); });

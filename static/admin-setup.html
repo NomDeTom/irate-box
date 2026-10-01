@@ -13,7 +13,7 @@
   <header>
     <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
     <h1>Set up</h1>
-    <p class="subtitle">Choose the admin password for this box.</p>
+    <p class="subtitle">Step 1 of 5: choose the admin password for this box.</p>
     <div class="theme-picker" role="group" aria-label="Theme">
       <button type="button" data-theme-choice="light" title="Light">☀️</button>
       <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
@@ -28,6 +28,8 @@
         name <code>admin</code>.</p>
       <p>Anyone on this network can open this page until a password is set, so set it now.
         If you are a guest, not the owner, please leave this alone.</p>
+      <p>After this, the admin page takes you through the rest: how guests reach the box, what
+        it exposes, add-ons and books. Each of those can be skipped and done later.</p>
     </div>
     <p class="settings-note admin-note" id="setup-note" hidden></p>
     <form id="setup-form" class="library-form">
@@ -66,8 +68,8 @@
       else { say('No answer from the box. Reload this page to see whether the password was set.', false); }
     }
     function done() {
-      say('Password set. Opening the admin page: log in as "admin" with the new password.', true);
-      setTimeout(() => { location.href = '/admin/'; }, 2500);
+      say('Password set. Opening the rest of the setup: log in as "admin" with the new password.', true);
+      setTimeout(() => { location.href = '/admin/#welcome'; }, 2500);
     }
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

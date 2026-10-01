@@ -26,6 +26,7 @@
       </button>
       <div class="admin-side-list" id="admin-side-list">
         <p class="admin-side-group">Box</p>
+        <a href="#welcome" id="welcome-link">Setup steps</a>
         <a href="#overview">Overview</a>
         <a href="#addons">Add-ons</a>
         <a href="#access">Access</a>
@@ -58,6 +59,29 @@
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
         <div id="control-results"></div>
+        <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps again</a></p>
+      </section>
+
+      <section class="admin-pane" id="welcome" aria-labelledby="welcome-title">
+        <h2 id="welcome-title">Setup steps</h2>
+        <p class="setting-desc">
+          The password is set; these are the rest of the box's setup. Each step opens its own page,
+          and any can be skipped and come back to later: this page stays in the sidebar until you
+          finish it, and Overview can bring it back.
+        </p>
+        <ol class="setup-steps" id="setup-steps">
+          <li data-step="password"><strong>Admin password</strong> <span>Set.</span>
+            <a href="#access">Change it under Access</a></li>
+          <li data-step="connection"><strong>How guests reach the box</strong> <span></span></li>
+          <li data-step="security"><strong>What the box exposes</strong> <span>Not scanned yet.</span>
+            <a href="#security">Open Security</a></li>
+          <li data-step="addons"><strong>Add-ons</strong> <span></span> <a href="#addons">Choose add-ons</a></li>
+          <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
+        </ol>
+        <div class="library-buttons">
+          <button type="button" id="setup-finish">Finish setup</button>
+        </div>
+        <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
       </section>
 
       <section class="admin-pane" id="addons" aria-labelledby="addons-title">

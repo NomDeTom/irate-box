@@ -813,6 +813,14 @@ progress.admin-bar:indeterminate::-moz-progress-bar { background: transparent; }
 @media (prefers-reduced-motion: reduce) { progress.admin-bar:indeterminate { animation: none; } }
 /* What a button's action answered, right under the button. */
 .action-note { display: block; margin-top: 0.4rem; }
+/* The setup steps on /admin: one line per step, marked by its state. */
+.setup-steps { margin: 1rem 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.7rem; font-size: 0.92rem; }
+.setup-steps li span { color: var(--muted); }
+.setup-steps li a { margin-left: 0.4rem; color: var(--accent); white-space: nowrap; }
+.setup-steps li.step-ok::marker { color: var(--ok); }
+.setup-steps li.step-warn::marker { color: var(--warn); }
+.setup-steps li.step-problem::marker { color: #e5484d; }
+.setup-steps li.step-ok strong::after { content: " ✓"; color: var(--ok); }
 .action-note.busy { color: var(--warn); }
 
 .admin-output { margin: 0.75rem 0; }
