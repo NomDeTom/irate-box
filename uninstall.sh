@@ -30,7 +30,7 @@ SHARE=/usr/share/hub
 ETC=/etc/hub
 UNITDIR=/etc/systemd/system
 
-say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
+say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
 [ "$(id -u)" = 0 ] || { echo "run as root (sudo ./uninstall.sh …)" >&2; exit 1; }
 
 if [ "$YES" != 1 ]; then
@@ -60,6 +60,11 @@ fi
 # What the Security page changed on the owner's say-so (Cockpit, SSH, LLMNR, units switched
 # off) goes back as it was found, before the code that knows how is removed.
 if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
+	# A service install.sh --take-port-80 switched off needs :80 back, so the hub's Caddy
+	# lets go of it first.
+	if grep -q 'take-port-80' "$ETC/security-changes.json"; then
+		systemctl disable --now caddy >/dev/null 2>&1 || true
+	fi
 	say "Putting back what the Security page changed"
 	HUB_ETC_DIR="$ETC" python3 "$CODE/security.py" undo-all | sed 's/^/    /' || true
 fi

@@ -156,7 +156,10 @@ def listener_findings(found, rec):
         key = (f["proto"], f["port"])
         fid = f"port-{f['proto']}-{f['port']}"
         where = f"{f['proto'].upper()} {f['port']} on {f['addr']}" + (f" ({f['unit']})" if f["unit"] else "")
-        if key in OURS:
+        if f["unit"] == "caddy.service" and f["proto"] == "tcp":
+            out.append(_finding(fid, "the hub (Caddy)", "ok",
+                                f"{where}. The hub's own front door; it is meant to be reachable."))
+        elif key in OURS:
             note = {("tcp", 1883): "Meshtastic nodes publish here; anyone on the network can too (anonymous, "
                                    "limited to msh/#)."}.get(key, "The hub's own; it is meant to be reachable.")
             out.append(_finding(fid, f["name"], "warn" if key == ("tcp", 1883) else "ok", f"{where}. {note}"))
@@ -189,7 +192,8 @@ def listener_findings(found, rec):
                                   "confirm": f"Stop {unit} and keep it from starting at boot? Undo starts it again."}]
                                 if stoppable else []))
     for unit, change in rec.get("units", {}).items():
-        out.append(_finding(f"unit-{unit}", unit, "ok", f"Switched off from this page ({change.get('at', '')}).",
+        out.append(_finding(f"unit-{unit}", unit, "ok",
+                            f"Switched off {change.get('reason', 'from this page')} ({change.get('at', '')}).",
                             "", [{"choice": f"unit-undo:{unit}", "label": "Undo"}]))
     if "cockpit" in rec:
         out.append(_finding("cockpit-change", "Cockpit", "ok",
@@ -406,21 +410,30 @@ def _llmnr(rec, on):
     return "LLMNR turned off" if on else "LLMNR: back as it was"
 
 
+def _caddy_on_80():
+    out = run("ss", "-Hltnp", "sport = :80")
+    return '"caddy"' in out.stdout
+
+
 UNIT_RE = re.compile(r"^[A-Za-z0-9@._-]+\.(service|socket)$")
 
 
-def _unit(rec, unit, on):
+def _unit(rec, unit, on, reason="from this page"):
     if not UNIT_RE.match(unit) or PROTECTED.match(unit):
         raise ValueError(f"{unit} is not a unit this page switches off")
     units = rec.setdefault("units", {})
     if on:
         was_enabled = run("systemctl", "is-enabled", unit).stdout.strip() == "enabled"
         _systemctl("disable", "--now", unit)
-        units[unit] = {"was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
+        units[unit] = {"was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d"), "reason": reason}
         return f"{unit}: stopped and disabled"
-    old = units.pop(unit, None)
+    old = units.get(unit)
     if old is None:
         raise ValueError(f"{unit} was not switched off from this page")
+    if "take-port-80" in old.get("reason", "") and _caddy_on_80():
+        raise ValueError(f"{unit} gave port 80 to the hub, which still has it. Move the hub first "
+                         "(rerun install.sh --port 8080), or uninstall, which hands the port back")
+    units.pop(unit)
     _systemctl("enable" if old.get("was_enabled") else "start", *(["--now"] if old.get("was_enabled") else []), unit)
     if not units:
         rec.pop("units")
@@ -488,8 +501,17 @@ if __name__ == "__main__":
         sys.exit("run as root")
     if sys.argv[1:] == ["scan"]:
         print(json.dumps(scan(), indent=2))
+    elif sys.argv[1:] == ["summary"]:
+        # For the end of install.sh: what needs the owner's attention, one line each.
+        for f in scan()["findings"]:
+            if f["status"] != "ok":
+                print(f"{'problem' if f['status'] == 'problem' else 'note   '}  {f['title']}: {f['detail']}")
+    elif len(sys.argv) in (3, 4) and sys.argv[1] == "unit-off":
+        rec = load_record()
+        print(_unit(rec, sys.argv[2], True, *(sys.argv[3:] or ["from this page"])))
+        save_record(rec)
     elif sys.argv[1:] == ["undo-all"]:
         for line in undo_all():
             print(line)
     else:
-        sys.exit("usage: security.py scan | undo-all")
+        sys.exit("usage: security.py scan | summary | undo-all | unit-off UNIT [REASON]")

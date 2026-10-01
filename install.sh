@@ -52,6 +52,12 @@ Usage: sudo ./install.sh [options]
                         the existing one; on a first install there is none, and the first
                         visit to /admin/ asks for it)
   --hub-url URL         where captive-portal probes are redirected (default: /)
+  --port N              the port the hub is served on (default: 80). If something else
+                        already serves :80, the hub is put on a free port (8080 first) and
+                        says so; the other service is left as it is.
+  --take-port-80        when something else serves :80, stop and disable it so the hub can
+                        have the port (the captive portal needs it). Recorded, so /admin's
+                        Security page can undo it and uninstall.sh starts it again.
   --download-cache DIR  take release downloads (ttyd, SilverBullet, Caddy's .deb) from DIR
                         when they are there, still checked against their checksums. /admin's
                         "Check for updates" fills it, so "Install update" needs no network
@@ -62,6 +68,7 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+HUB_PORT="" TAKE_PORT_80=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--src) SRC="$2"; shift 2 ;;
@@ -78,6 +85,8 @@ while [ $# -gt 0 ]; do
 	--with-collab) WITH_COLLAB=1; shift ;;
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
 	--hub-url) HUB_URL="$2"; shift 2 ;;
+	--port) HUB_PORT="$2"; shift 2 ;;
+	--take-port-80) TAKE_PORT_80=1; shift ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -96,6 +105,12 @@ TTYD_VERSION=1.7.7
 # Bold on a terminal only: from /admin the output goes to a log file that a page shows.
 say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
+# Things the owner should know, said where they happen and again at the end of the run.
+NOTICES=()
+notice() {
+	NOTICES+=("$*")
+	if [ -t 1 ]; then printf '\033[1;33m!!  %s\033[0m\n' "$*"; else printf '!!  %s\n' "$*"; fi
+}
 # fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
 # the URL's file name), else from the network. Callers check checksums either way.
 fetch() {
@@ -139,11 +154,41 @@ armv6l) TTYD_ARCH=arm ;;
 *) die "no ttyd build for $ARCH" ;;
 esac
 
-# Something other than our Caddy on :80 would make Caddy fail to start later, and
-# much less legibly.
+# --- the port --------------------------------------------------------------------
+# The hub wants :80: captive-portal probes are plain HTTP on port 80. Something else already
+# serving it is flagged and worked around, never overridden silently: the hub takes a free
+# port instead, or, with --take-port-80, the other service is switched off (recorded, so it
+# can be undone). A port chosen this way is recorded, so updates keep it.
+port_holder() { ss -Hltnp "sport = :$1" 2>/dev/null | grep -o 'users:(("[^"]*' | cut -d'"' -f2 | head -1 || true; }
+port_unit() {
+	local pid
+	pid="$(ss -Hltnp "sport = :$1" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2 || true)"
+	[ -n "$pid" ] && sed -n 's|.*/\([^/]*\.service\)$|\1|p' "/proc/$pid/cgroup" 2>/dev/null | head -1 || true
+}
+port_free() { [ -z "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]; }
+# The port a previous run chose, unless this run asks for :80 back.
+[ -z "$HUB_PORT" ] && [ "$TAKE_PORT_80" = 0 ] && [ -f "$ETC/install-options" ] &&
+	HUB_PORT="$(grep -A1 -x -- --port "$ETC/install-options" | tail -1 || true)"
+[ "${HUB_PORT:-80}" = --port ] && HUB_PORT=""
+HUB_PORT="${HUB_PORT:-80}"
+case "$HUB_PORT" in *[!0-9]* | "") die "--port takes a number" ;; esac
+TAKE_UNIT=""
 if command -v ss >/dev/null; then
-	holder="$(ss -Hltnp 'sport = :80' 2>/dev/null | grep -o 'users:(("[^"]*' | cut -d'"' -f2 | head -1 || true)"
-	[ -z "$holder" ] || [ "$holder" = caddy ] || die "port 80 is already taken by $holder"
+	holder="$(port_holder "$HUB_PORT")"
+	if [ -n "$holder" ] && [ "$holder" != caddy ]; then
+		unit="$(port_unit "$HUB_PORT")"
+		if [ "$HUB_PORT" = 80 ] && [ "$TAKE_PORT_80" = 1 ]; then
+			[ -n "$unit" ] || die "port 80 is held by $holder, which is not a systemd service: stop it yourself, or install without --take-port-80"
+			TAKE_UNIT="$unit"
+			notice "Port 80 is served by $holder ($unit). --take-port-80: it will be stopped and disabled; /admin's Security page or uninstall.sh puts it back."
+		elif [ "$HUB_PORT" = 80 ]; then
+			for p in 8080 8088 8888; do port_free "$p" && { HUB_PORT=$p; break; }; done
+			[ "$HUB_PORT" != 80 ] || die "port 80 is held by $holder, and 8080, 8088 and 8888 are taken too: pass --port N"
+			notice "Port 80 is already served by $holder${unit:+ ($unit)}, so the hub goes on :$HUB_PORT and $holder is left as it is. The hotspot's sign-in sheet needs port 80, so it will not pop up; rerun with --take-port-80 to give the hub port 80 (that stops $holder)."
+		else
+			die "port $HUB_PORT is held by $holder: pass a free one with --port"
+		fi
+	fi
 fi
 
 if [ -z "$SRC" ] && [ -f "$(dirname "$0")/server.py" ]; then
@@ -318,6 +363,7 @@ fi
 	[ "$WITH_TERM" = 1 ] && echo --with-term
 	[ "$WITH_COLLAB" = 1 ] && echo --with-collab
 	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
+	[ "$HUB_PORT" != 80 ] && printf '%s\n' --port "$HUB_PORT"
 	true
 } >"$ETC/install-options"
 chmod 644 "$ETC/install-options"
@@ -407,7 +453,7 @@ CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
 {
 	echo "# Generated by irate-box install.sh from $CODE/Caddyfile. Edits are overwritten on reinstall."
 	# bcrypt output is [./$A-Za-z0-9], so | is a safe sed delimiter.
-	sed "s|\$2a\$14\$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT|$HASH|" "$CODE/Caddyfile"
+	sed -e "s|\$2a\$14\$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT|$HASH|" -e "s|^:80 {|:$HUB_PORT {|" "$CODE/Caddyfile"
 } >/etc/caddy/Caddyfile.new
 # basic_auth is the 2.8+ spelling; older Caddy (Debian trixie ships 2.6) only knows basicauth.
 if [ "$(printf '%s\n' "$CADDY_VER" 2.8 | sort -V | head -1)" != 2.8 ]; then
@@ -418,6 +464,10 @@ if ! out="$(caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile.new
 	die "generated Caddyfile does not validate (left at /etc/caddy/Caddyfile.new)"
 fi
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+if [ -n "$TAKE_UNIT" ]; then
+	say "Taking port 80 from $TAKE_UNIT"
+	python3 "$CODE/security.py" unit-off "$TAKE_UNIT" "install.sh --take-port-80" | sed 's/^/    /'
+fi
 if [ "$UNCLAIMED" = 1 ]; then
 	echo "no admin password chosen yet (install.sh)" >"$UNCLAIMED_MARK"
 	chmod 644 "$UNCLAIMED_MARK"
@@ -858,14 +908,16 @@ fail=0
 for u in "${units[@]}"; do
 	systemctl is-active --quiet "$u" || { echo "    $u is not running: journalctl -u $u"; fail=1; }
 done
-code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ || true)"
-[ "$code" = 200 ] || { echo "    http://127.0.0.1/ answered $code"; fail=1; }
+hostport="127.0.0.1$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://$hostport/" || true)"
+[ "$code" = 200 ] || { echo "    http://$hostport/ answered $code"; fail=1; }
 
 addr="$(ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' || hostname -I | cut -d' ' -f1)"
+where="http://${addr:-<this box>}$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
 echo
-say "Irate-Box is $([ $fail = 0 ] && echo up || echo 'installed, with problems above') at http://${addr:-<this box>}/"
+say "Irate-Box is $([ $fail = 0 ] && echo up || echo 'installed, with problems above') at $where/"
 if [ "$UNCLAIMED" = 1 ]; then
-	echo "    admin login: not chosen yet. Open http://${addr:-<this box>}/admin/ and set it now:"
+	echo "    admin login: not chosen yet. Open $where/admin/ and set it now:"
 	echo "                 until then, the first person on this network to open that page can."
 else
 	echo "    admin login: admin / (in $ETC/admin-password)"
@@ -873,9 +925,23 @@ fi
 [ "$WITH_NOTES" = 1 ] && echo "    notes: /notes/  (folder $STATE/notes, lock it down in $ETC/silverbullet.env)"
 [ -f "$STATE/zim/library.xml" ] && echo "    wiki:  /wiki/   ($(grep -c '<book ' "$STATE/zim/library.xml") books in $STATE/zim/library.xml)"
 [ -f /etc/mosquitto/conf.d/irate-box.conf ] && echo "    mqtt:  :1883 for nodes, /mqtt for pages (anonymous, msh/# only)"
-echo "    term:  /term/   ($(systemctl is-enabled ttyd 2>/dev/null || echo disabled); admin login, then an account on the box)"
+term_state="$(systemctl is-enabled ttyd 2>/dev/null)" || true
+echo "    term:  /term/   (${term_state:-disabled}; admin login, then an account on the box)"
 [ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the admin login; folder \"hub-notes\" shared if notes are installed)"
 [ "$WITH_COLLAB" = 1 ] && echo "    collab: live sessions in /draw/ (relay on 127.0.0.1:3002, via /socket.io/)"
 [ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
+
+# What install.sh found and did not change: said once more here, then the Security page's
+# own report of the box. Nothing below is changed without the owner's say-so (/admin).
+if [ "${#NOTICES[@]}" -gt 0 ]; then
+	echo
+	say "Worth knowing"
+	for n in "${NOTICES[@]}"; do echo "    $n"; done
+fi
+if report="$(timeout 120 python3 "$CODE/security.py" summary 2>/dev/null)" && [ -n "$report" ]; then
+	echo
+	say "Found on this box (fix or leave each on $where/admin/#security)"
+	printf '%s\n' "$report" | sed 's/^/    /'
+fi
 exit $fail
