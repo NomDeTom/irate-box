@@ -841,3 +841,27 @@ progress.admin-bar:indeterminate::-moz-progress-bar { background: transparent; }
 body.full > header, body.full > .services, body.full > .site-footer { display: none; }
 body.home.full { max-width: 960px; padding-top: 1rem; }
 body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
+
+/* --- File drop (drop.html) --- */
+.drop-name { display: flex; flex-direction: column; gap: 0.25rem; margin: 1rem 0; font-size: 0.85rem; max-width: 20rem; }
+.drop-name input {
+  padding: 0.45rem 0.6rem; font: inherit; color: inherit; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.drop-zone {
+  display: flex; align-items: center; justify-content: center; min-height: 7rem; padding: 1rem;
+  border: 2px dashed var(--border); border-radius: var(--radius); background: var(--surface);
+  color: var(--muted); text-align: center; cursor: pointer;
+}
+.drop-zone strong { color: var(--accent); }
+.drop-zone.over, .drop-zone:hover { border-color: var(--accent); }
+.drop-zone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drop-zone input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop-uploads, .drop-list { list-style: none; padding: 0; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.drop-upload, .drop-item {
+  padding: 0.6rem 0.8rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.drop-upload .setting-name { display: block; }
+.drop-upload .setting-desc.bad { color: #e5484d; }
+.drop-item a { color: var(--accent); font-weight: 600; }

@@ -39,6 +39,16 @@
 		}
 	}
 
+	# --- the file drop: the per-file cap, before the body is read ------------------
+	# Caddy refuses a larger upload outright (413), so a guest cannot stream gigabytes at
+	# the hub only for it to be thrown away. store.py checks the same limit (DROP_MAX_FILE).
+	handle /api/drop {
+		request_body {
+			max_size 25MB
+		}
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	# --- /wiki → kiwix-serve ------------------------------------------------------
 	# Path is passed through, not stripped: run kiwix-serve with
 	#   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1

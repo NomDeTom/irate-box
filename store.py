@@ -28,6 +28,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import threading
 from pathlib import Path
 
@@ -46,6 +47,17 @@ MAX_TOTAL = int(os.environ.get("HUB_STORE_MAX_TOTAL", 64 * 1024 * 1024))
 SAVE_TTL = float(os.environ.get("HUB_STORE_SAVE_TTL", 0))
 
 GLOBAL_PREFIX = os.environ.get("HUB_STORE_PREFIX", "/api/v2")
+
+# The file drop (/api/drop): its own folder and budget, apart from the store's, since a few
+# phone videos would otherwise evict everyone's drawings. The per-file cap is Caddy's too
+# (request_body on /api/drop), which refuses a large body before it is read.
+DROP_MAX_FILE = int(os.environ.get("HUB_DROP_MAX_FILE", 25 * 1024 * 1024))
+DROP_MAX_TOTAL = int(os.environ.get("HUB_DROP_MAX_TOTAL", 256 * 1024 * 1024))
+DROP_TTL = float(os.environ.get("HUB_DROP_TTL", 24 * 3600))  # powered-on seconds; 0 = never
+# Room an upload leaves on the card, so a full drop never fills the books' filesystem.
+DROP_MIN_FREE = 64 * 1024 * 1024
+DROP_CHUNK = 64 * 1024
+MAX_FILENAME = 160
 
 # Ids appear in filesystem paths, so they are validated rather than escaped.
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -281,6 +293,187 @@ class Store:
                 pass
 
 
+class Drop:
+    """Files guests leave for each other: <id>.data with a sidecar <id>.meta (name, size, who,
+    created in hubclock ticks). Bodies are streamed to disk, never held whole in memory; the
+    oldest go first when the budget is reached, and each lives DROP_TTL of powered-on time."""
+
+    def __init__(self, root, clock=None):
+        self.dir = Path(root)
+        self.clock = clock or hubclock.get_clock()
+        self._lock = threading.Lock()
+
+    def _metas(self):
+        self.dir.mkdir(parents=True, exist_ok=True)
+        out = []
+        for path in self.dir.glob("*.meta"):
+            try:
+                meta = json.loads(path.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(meta, dict) and ID_RE.match(str(meta.get("id", ""))):
+                out.append(meta)
+        return out
+
+    def _remove(self, key):
+        found = False
+        for suffix in (".data", ".meta"):
+            try:
+                (self.dir / (key + suffix)).unlink()
+                found = True
+            except OSError:
+                pass
+        return found
+
+    def _prune(self, keep=None):
+        """Expired files go; then the oldest, until the rest fit DROP_MAX_TOTAL. Lock held."""
+        now = self.clock.ticks()
+        metas = []
+        for meta in self._metas():
+            if DROP_TTL and now - meta.get("created", now) > DROP_TTL:
+                self._remove(meta["id"])
+            else:
+                metas.append(meta)
+        metas.sort(key=lambda m: m.get("created", 0))
+        total = sum(m.get("size", 0) for m in metas)
+        for meta in metas:
+            if total <= DROP_MAX_TOTAL:
+                break
+            if meta["id"] != keep:
+                self._remove(meta["id"])
+                total -= meta.get("size", 0)
+        return [m for m in metas if (self.dir / (m["id"] + ".meta")).exists()]
+
+    def list(self):
+        with self._lock:
+            metas = self._prune()
+        now = self.clock.ticks()
+        return [dict(m, age=now - m.get("created", now)) for m in sorted(metas, key=lambda m: -m.get("created", 0))]
+
+    def usage(self):
+        metas = self._metas()
+        return {"files": len(metas), "bytes": sum(m.get("size", 0) for m in metas),
+                "max_total": DROP_MAX_TOTAL, "max_file": DROP_MAX_FILE, "ttl": DROP_TTL}
+
+    def receive(self, stream, length, name, by=""):
+        """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
+        ValueError (too large, card too full) or OSError (the body stopped short)."""
+        if length > DROP_MAX_FILE:
+            raise ValueError("too large")
+        self.dir.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(self.dir).free < length + DROP_MIN_FREE:
+            raise ValueError("the card is too full")
+        key = secrets.token_urlsafe(12)
+        tmp = self.dir / (key + ".tmp")
+        try:
+            with open(tmp, "wb") as fh:
+                left = length
+                while left:
+                    chunk = stream.read(min(DROP_CHUNK, left))
+                    if not chunk:
+                        raise OSError("the upload stopped part-way")
+                    fh.write(chunk)
+                    left -= len(chunk)
+                fh.flush()
+                os.fsync(fh.fileno())
+            meta = {"id": key, "name": clean_filename(name), "size": length,
+                    "by": str(by).strip()[:MAX_NAME], "created": self.clock.ticks()}
+            with self._lock:
+                os.replace(tmp, self.dir / (key + ".data"))
+                (self.dir / (key + ".meta")).write_text(json.dumps(meta))
+                self._prune(keep=key)
+            return meta
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def open(self, key):
+        """(meta, open file) or None."""
+        if not ID_RE.match(key):
+            return None
+        try:
+            meta = json.loads((self.dir / (key + ".meta")).read_text())
+            return meta, open(self.dir / (key + ".data"), "rb")
+        except (OSError, ValueError):
+            return None
+
+    def delete(self, key):
+        with self._lock:
+            return ID_RE.match(key) is not None and self._remove(key)
+
+
+def clean_filename(name):
+    """A name to show and to offer when saving: no path, no control characters."""
+    name = str(name).replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(c for c in name if c.isprintable()).strip().lstrip(".")
+    return name[:MAX_FILENAME] or "file"
+
+
+def content_disposition(name):
+    """attachment, with an ASCII fallback and the real name per RFC 6266 / 5987."""
+    from urllib.parse import quote
+    ascii_name = "".join(c if 32 <= ord(c) < 127 and c not in '"\\%' else "_" for c in name)
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name, safe="")}'
+
+
+def _handle_drop(handler, method, path, drop):
+    from urllib.parse import unquote
+    if path == "/api/drop" and method == "GET":
+        _send_json(handler, 200, {"files": [{k: m.get(k) for k in ("id", "name", "size", "by", "age")} for m in drop.list()],
+                                  "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL})
+        return True
+    if path == "/api/drop" and method == "POST":
+        if handler.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            _send_json(handler, 411, {"error": "send the file with a Content-Length"})
+            return True
+        try:
+            length = int(handler.headers.get("Content-Length", ""))
+        except ValueError:
+            _send_json(handler, 411, {"error": "send the file with a Content-Length"})
+            return True
+        if length <= 0:
+            _send_json(handler, 400, {"error": "empty file"})
+            return True
+        if length > DROP_MAX_FILE:
+            handler.close_connection = True  # the body is not read
+            _send_json(handler, 413, {"error": f"too large: the limit is {DROP_MAX_FILE >> 20} MB"})
+            return True
+        name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
+        by = unquote(handler.headers.get("X-Drop-By", "") or "")
+        try:
+            meta = drop.receive(handler.rfile, length, name, by)
+        except ValueError as exc:
+            handler.close_connection = True
+            _send_json(handler, 507 if "full" in str(exc) else 413, {"error": str(exc)})
+            return True
+        except OSError:
+            handler.close_connection = True
+            _send_json(handler, 400, {"error": "the upload stopped part-way"})
+            return True
+        _send_json(handler, 201, {k: meta[k] for k in ("id", "name", "size")})
+        return True
+    if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
+        found = drop.open(path[len("/api/drop/"):])
+        if not found:
+            _send_json(handler, 404, {"error": "not found (it may have expired)"})
+            return True
+        meta, fh = found
+        with fh:
+            size = os.fstat(fh.fileno()).st_size
+            handler.send_response(200)
+            # Whatever the name says, the browser gets bytes to save, never a page to run.
+            handler.send_header("Content-Type", "application/octet-stream")
+            handler.send_header("Content-Length", str(size))
+            handler.send_header("Content-Disposition", content_disposition(meta.get("name", "file")))
+            handler.send_header("X-Content-Type-Options", "nosniff")
+            handler.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
+            handler.end_headers()
+            if method == "GET":
+                shutil.copyfileobj(fh, handler.wfile, DROP_CHUNK)
+        return True
+    _send_json(handler, 405, {"error": "method not allowed"})
+    return True
+
+
 # ---------------------------------------------------------------------------
 # HTTP glue. Kept as a single `handle()` so server.py can delegate in one line
 # and this module stays runnable on its own.
@@ -336,7 +529,7 @@ def _blob_get(handler, store, namespace, key):
     _send(handler, 200, data, "application/octet-stream", {"ETag": tag})
 
 
-def handle(handler, method, path, store):
+def handle(handler, method, path, store, drop=None):
     """Route one request. Returns True if this module owned it.
 
     server.py calls this before its own routing; anything not matching a prefix here
@@ -351,6 +544,9 @@ def handle(handler, method, path, store):
 
     if path == "/api/saves" or path.startswith("/api/saves/"):
         return _handle_saves(handler, method, path, store)
+
+    if drop is not None and (path == "/api/drop" or path.startswith("/api/drop/")):
+        return _handle_drop(handler, method, path, drop)
 
     return False
 

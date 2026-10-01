@@ -46,6 +46,8 @@ CLOCK = hubclock.HubClock(STATE_DIR / "clock.json")
 BOARD = board.Board(STATE_DIR / "board.json", CLOCK)
 # Excalidraw's storage API and the saved-work gallery. See store.py.
 STORE = store.Store(STATE_DIR / "store", CLOCK)
+# The file drop: guests' files for each other, apart from the store's budget. See store.Drop.
+DROP = store.Drop(STATE_DIR / "drop", CLOCK)
 
 # Hosts and paths used by OSes to detect captive portals.
 # We redirect them to the hub, which triggers the "sign in to network" popup.
@@ -280,6 +282,10 @@ DEFAULT_SETTINGS = {
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
     "store_max_total_mb": max(1, store.MAX_TOTAL >> 20),
     "store_save_ttl_hours": int(store.SAVE_TTL // 3600),
+    # The file drop: its own budget, and how long a file lives (powered-on hours; 0 = until
+    # the budget evicts it).
+    "drop_max_total_mb": max(1, store.DROP_MAX_TOTAL >> 20),
+    "drop_ttl_hours": int(store.DROP_TTL // 3600),
     # The setup steps on /admin (Welcome) until the owner says they are done with them.
     "setup_done": False,
     # An event box starts each day empty: clear the shoutbox / board when the box boots
@@ -298,6 +304,8 @@ def valid_setting(key, value):
 def apply_settings(data):
     store.MAX_TOTAL = max(1, data["store_max_total_mb"]) << 20
     store.SAVE_TTL = data["store_save_ttl_hours"] * 3600
+    store.DROP_MAX_TOTAL = max(1, data["drop_max_total_mb"]) << 20
+    store.DROP_TTL = data["drop_ttl_hours"] * 3600
 
 
 def load_settings():
@@ -751,7 +759,7 @@ def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
         msgs = live_messages(now)
-    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads()}
+    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(), "drops": DROP.list()}
 
 
 def delete_message(created, name):
@@ -772,13 +780,15 @@ def moderation_action(payload):
         ok = BOARD.delete_thread(payload["id"])
     elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
         ok = BOARD.delete_post(payload["id"], payload["index"])
+    elif action == "delete_drop" and isinstance(payload.get("id"), str):
+        ok = DROP.delete(payload["id"])
     else:
         return 400, {"error": "unknown action"}
     return (200 if ok else 404), moderation_snapshot()
 
 
 def store_snapshot():
-    return {"now": CLOCK.ticks(), "saves": STORE.list_saves(), "usage": STORE.usage()}
+    return {"now": CLOCK.ticks(), "saves": STORE.list_saves(), "usage": STORE.usage(), "drop": DROP.usage()}
 
 
 def store_action(payload):
@@ -959,7 +969,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, setup_status(query.get("id", "")[:40]))
             return
 
-        if store.handle(self, "GET", path, STORE):
+        if store.handle(self, "GET", path, STORE, DROP):
             return
 
         if path == "/messages":
@@ -1089,7 +1099,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # Delegated before the body is read: the store takes raw bytes, and the
         # Excalidraw frontend sends no Content-Type for JSON to be parsed from.
-        if store.handle(self, "POST", path, STORE):
+        if store.handle(self, "POST", path, STORE, DROP):
             return
 
         if self._admin_locked(path):
@@ -1216,19 +1226,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_empty(404)
 
     def do_PUT(self):
-        if not store.handle(self, "PUT", self.path.split("?")[0], STORE):
+        if not store.handle(self, "PUT", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def do_DELETE(self):
-        if not store.handle(self, "DELETE", self.path.split("?")[0], STORE):
+        if not store.handle(self, "DELETE", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def do_PATCH(self):
-        if not store.handle(self, "PATCH", self.path.split("?")[0], STORE):
+        if not store.handle(self, "PATCH", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def do_OPTIONS(self):
-        if not store.handle(self, "OPTIONS", self.path.split("?")[0], STORE):
+        if not store.handle(self, "OPTIONS", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def _post_message(self, payload):

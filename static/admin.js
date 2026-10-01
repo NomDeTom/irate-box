@@ -524,6 +524,13 @@ function renderModeration(data) {
       actionButton('Delete', del({ action: 'delete_message', created: m.created, name: m.name }), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No messages.' })]));
 
+  document.getElementById('mod-drops').replaceChildren(...((data.drops || []).length ? data.drops.map((d) =>
+    el('div', { className: 'admin-item' },
+      el('span', {}, el('a', { href: `/api/drop/${encodeURIComponent(d.id)}`, textContent: d.name }),
+        ` · ${size(d.size)}${d.by ? ` · ${d.by}` : ''} · ${ago(d.age)}`),
+      actionButton('Delete', del({ action: 'delete_drop', id: d.id }, `"${d.name}"`), { className: 'small' })))
+    : [el('p', { className: 'setting-desc', textContent: 'No files.' })]));
+
   const threads = data.board.threads;
   document.getElementById('mod-threads').replaceChildren(...(threads.length ? threads.map((t) =>
     el('details', { className: 'admin-item' },
@@ -564,6 +571,12 @@ function renderStore(data) {
     `${size(u.total)} of ${size(u.max_total)} used (${pct}%): ` +
     Object.entries(u.namespaces).map(([ns, v]) => `${v.files} ${NS_LABEL[ns] || ns} file${v.files === 1 ? '' : 's'} (${size(v.bytes)})`).join(', ') + '.';
   document.getElementById('store-meter').style.width = `${pct}%`;
+  const dr = data.drop;
+  if (dr) {
+    document.getElementById('drop-usage').textContent = `${dr.files} file${dr.files === 1 ? '' : 's'}, ` +
+      `${size(dr.bytes)} of ${size(dr.max_total)}. Up to ${size(dr.max_file)} a file` +
+      (dr.ttl ? `; each stays ${Math.round(dr.ttl / 3600)} hours of powered-on time.` : '; kept until the cap is reached.');
+  }
   document.getElementById('store-clear').replaceChildren(...['scenes', 'rooms', 'files'].map((ns) =>
     actionButton(`Clear ${NS_LABEL[ns]}`, async () => {
       if (!confirm(`Delete all ${NS_LABEL[ns]}? Links to them stop working.`)) return;
@@ -600,6 +613,8 @@ async function loadStoreSettings() {
     const s = await getJSON('/admin/settings');
     storeForm.elements.store_max_total_mb.value = s.store_max_total_mb;
     storeForm.elements.store_save_ttl_hours.value = s.store_save_ttl_hours;
+    storeForm.elements.drop_max_total_mb.value = s.drop_max_total_mb;
+    storeForm.elements.drop_ttl_hours.value = s.drop_ttl_hours;
   } catch (_) { /* the landing-page block already reports a failed read */ }
 }
 storeForm.addEventListener('submit', async (e) => {
@@ -608,6 +623,8 @@ storeForm.addEventListener('submit', async (e) => {
     await postJSON('/admin/settings', {
       store_max_total_mb: Number(storeForm.elements.store_max_total_mb.value),
       store_save_ttl_hours: Number(storeForm.elements.store_save_ttl_hours.value),
+      drop_max_total_mb: Number(storeForm.elements.drop_max_total_mb.value),
+      drop_ttl_hours: Number(storeForm.elements.drop_ttl_hours.value),
     });
     say('Saved. The new cap applies from the next write to the store.', true, noteEl('store-settings-note'));
     loadStoreSettings();

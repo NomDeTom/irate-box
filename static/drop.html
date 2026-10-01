@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File drop · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body class="drop">
+  <header>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <h1>📥 File drop</h1>
+    <p class="subtitle">Leave files here for the people around you.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <section>
+    <p class="setting-desc" id="drop-limits">Anyone on this network can download what is here.</p>
+    <label class="drop-name">Your name <input id="drop-by" maxlength="64" placeholder="optional"></label>
+    <label class="drop-zone" id="drop-zone">
+      <input type="file" id="drop-files" multiple>
+      <span><strong>Choose files</strong>, or drop them here.</span>
+    </label>
+    <ul class="drop-uploads" id="drop-uploads"></ul>
+  </section>
+
+  <section>
+    <h2>On the box</h2>
+    <ul class="drop-list" id="drop-list"><li class="setting-desc">Loading…</li></ul>
+  </section>
+
+  <script src="/hub.js"></script>
+  <script src="/age.js"></script>
+  <script src="/drop.js"></script>
+</body>
+</html>

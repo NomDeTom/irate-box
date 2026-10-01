@@ -275,11 +275,17 @@
         <p class="setting-desc action-note" id="store-note" role="status" hidden></p>
         <h3>Gallery</h3>
         <div id="store-saves" class="admin-list"></div>
+        <h3>File drop</h3>
+        <p class="setting-desc" id="drop-usage"></p>
         <h3>Cap and expiry</h3>
         <form id="store-settings" class="library-form">
           <label>Store size cap (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
           <label>Gallery saves expire after (hours of powered-on time, 0 = never)
             <input name="store_save_ttl_hours" type="number" min="0" step="1"></label>
+          <label>File drop size cap (MB)
+            <input name="drop_max_total_mb" type="number" min="1" step="1"></label>
+          <label>Dropped files expire after (hours of powered-on time, 0 = only when the cap is reached)
+            <input name="drop_ttl_hours" type="number" min="0" step="1"></label>
           <button type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="store-settings-note" role="status" hidden></p>
@@ -312,6 +318,8 @@
         <p class="setting-desc action-note" id="fresh-note" role="status" hidden></p>
         <h3>Shoutbox</h3>
         <div id="mod-messages" class="admin-list"></div>
+        <h3>File drop</h3>
+        <div id="mod-drops" class="admin-list"></div>
         <h3>Board</h3>
         <div id="mod-threads" class="admin-list"></div>
       </section>

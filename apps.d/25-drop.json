@@ -1,0 +1,10 @@
+{
+  "id": "drop",
+  "order": 25,
+  "tile": {
+    "icon": "📥",
+    "name": "File drop",
+    "desc": "Leave files for each other",
+    "href": "/drop.html"
+  }
+}
