@@ -29,6 +29,8 @@ native daemons.
 | Tailscale remote-access switch on `/admin` (only if Tailscale is already installed) | working (installed 2026-10-01) |
 | Librarian: keeps ZIM books current from GitHub releases, Actions artifacts (token or nightly.link) or a URL; settings on `/admin` | written and tested on the Lyra; not yet installed |
 | `/admin`: box and services (start, stop, start at boot), moderation (shoutbox, board), saved work (gallery, store quota and expiry), admin password, version, state backup | written and tested on the Lyra (service and password changes against stand-ins); not yet installed |
+| Quick help (`/help.html`, 🛟 in page headers, the hub bar and standalone apps) | written; not yet installed |
+| Updates from `/admin`: fetch into a root-owned cache, then rerun `install.sh` with the options recorded at install time | written and tested on the Lyra (as non-root); not yet installed |
 | Excalidraw live collaboration (`--with-collab`), hub gallery saves from Excalidraw | working (installed 2026-10-01) |
 | Service dashboard, memory and disk tile | working |
 | Access point, dnsmasq, captive portal | not in the installer yet |

@@ -9,6 +9,7 @@
 </head>
 <body class="admin">
   <header>
+    <a class="help-link" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a>
     <h1>Admin</h1>
     <p class="subtitle">Options for whoever owns the box.</p>
     <div class="theme-picker" role="group" aria-label="Theme">
@@ -215,6 +216,20 @@
   <section id="housekeeping">
     <h2>Housekeeping</h2>
     <p class="setting-desc">Installed: <span id="hub-version">…</span></p>
+    <h3>Updates</h3>
+    <p class="setting-desc">
+      Checking fetches irate-box from the repository this box was installed from; installing
+      reruns the installer with the same options. Apps, books, data and the password are kept.
+      The hub restarts part-way through, and this page reconnects by itself.
+    </p>
+    <p class="setting-desc" id="update-summary">Not checked yet.</p>
+    <div class="library-buttons">
+      <button type="button" id="update-fetch">Check for updates</button>
+      <button type="button" id="update-install" disabled>Install update</button>
+    </div>
+    <ul class="admin-changes" id="update-changes"></ul>
+    <pre class="admin-log" id="update-log" hidden></pre>
+    <h3>Backup and sync</h3>
     <p class="setting-desc">
       <a href="/admin/backup" download>Download a backup</a> of the hub's state: notes, saved
       work, board, shoutbox, settings, the library's sources and the uptime clock. ZIM books

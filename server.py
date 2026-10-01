@@ -457,6 +457,26 @@ def admin_box(proxied):
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
 
+UPDATE_STATE = CONTROL_DIR / "update.json"
+UPDATE_LOG = CONTROL_DIR / "update.log"
+
+
+def update_snapshot():
+    """What /admin's update buttons show: the last fetch (from the root helper), the tail
+    of the last install's output, and whether a request is still being worked on."""
+    try:
+        state = json.loads(UPDATE_STATE.read_text())
+    except (OSError, ValueError):
+        state = None
+    try:
+        log = UPDATE_LOG.read_text(errors="replace").splitlines()[-40:]
+    except OSError:
+        log = []
+    pending = len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0
+    return {"version": hub_version(), "state": state, "log": log, "pending": pending,
+            "results": control_results(5)}
+
+
 def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
@@ -677,6 +697,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_backup()
             return
 
+        if path == "/admin/update":
+            self.send_json(200, update_snapshot())
+            return
+
         if path in ("/admin", "/admin/"):
             path = "/admin.html"
 
@@ -789,6 +813,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/moderation":
             self.send_json(*moderation_action(payload))
+            return
+
+        if path == "/admin/update":
+            action = {"fetch": "update-fetch", "install": "update-install"}.get(payload.get("action"))
+            if not action:
+                self.send_json(400, {"error": "action must be fetch or install"})
+                return
+            self.send_json(202, {"id": control_request({"action": action})})
             return
 
         if path == "/admin/store":

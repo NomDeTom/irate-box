@@ -489,3 +489,78 @@ loadBox();
 loadModeration();
 loadStore();
 loadStoreSettings();
+
+// --- updates ---------------------------------------------------------------------------
+// The root helper does both steps (fetch into a root-owned cache, then rerun install.sh);
+// this only asks, and shows what it reports. The hub restarts during an install, so a
+// failed read while one is running means "keep waiting", not "broken".
+const upd = {
+  summary: document.getElementById('update-summary'),
+  fetch: document.getElementById('update-fetch'),
+  install: document.getElementById('update-install'),
+  changes: document.getElementById('update-changes'),
+  log: document.getElementById('update-log'),
+};
+let updWaiting = null;
+let updPoll = null;
+
+function renderUpdate(data) {
+  const s = data.state;
+  const busy = data.pending > 0 || !!updWaiting;
+  if (!s) {
+    upd.summary.textContent = 'Not checked yet.';
+  } else {
+    const when = new Date(s.fetched * 1000).toLocaleString();
+    upd.summary.textContent = s.up_to_date
+      ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
+      : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
+        (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
+        `. Checked ${when}.`;
+  }
+  upd.changes.replaceChildren(...((s && !s.up_to_date && s.changes) || []).slice(0, 20)
+    .map((c) => el('li', { textContent: c })));
+  upd.fetch.disabled = busy;
+  upd.install.disabled = busy || !s || s.up_to_date;
+  upd.log.hidden = !data.log.length || (!busy && s && s.up_to_date && !updWaiting);
+  upd.log.textContent = data.log.join('\n');
+  upd.log.scrollTop = upd.log.scrollHeight;
+
+  if (updWaiting) {
+    const done = (data.results || []).find((r) => r.id === updWaiting);
+    if (done) {
+      say(done.message, done.ok);
+      updWaiting = null;
+      upd.fetch.disabled = false;
+      upd.install.disabled = !s || s.up_to_date;
+    }
+  }
+  clearTimeout(updPoll);
+  if (data.pending > 0 || updWaiting) updPoll = setTimeout(loadUpdate, 2000);
+}
+
+async function loadUpdate() {
+  try {
+    renderUpdate(await getJSON('/admin/update'));
+  } catch (_) {
+    clearTimeout(updPoll);
+    if (updWaiting) {
+      upd.summary.textContent = 'Installing… the hub is restarting.';
+      updPoll = setTimeout(loadUpdate, 3000);
+    }
+  }
+}
+
+async function requestUpdate(action) {
+  if (action === 'install' && !confirm('Install the update now? The hub restarts during the install.')) return;
+  try {
+    updWaiting = (await postJSON('/admin/update', { action })).id;
+    upd.fetch.disabled = true;
+    upd.install.disabled = true;
+    say(action === 'fetch' ? 'Checking for updates…' : 'Installing the update…', true);
+    loadUpdate();
+  } catch (err) { say(err.message, false); }
+}
+
+upd.fetch.addEventListener('click', () => requestUpdate('fetch'));
+upd.install.addEventListener('click', () => requestUpdate('install'));
+loadUpdate();

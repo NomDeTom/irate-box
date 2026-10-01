@@ -238,6 +238,29 @@ fi
 ver="$(git -C "${SRC:-$CODE}" describe --always --dirty --tags 2>/dev/null || echo unknown)"
 printf '%s (installed %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
 
+# How this box was installed, for /admin's "Install update", which reruns this script the
+# same way (hub_control.py). One argument per line. Root-owned, so the unprivileged hub
+# can neither choose the repository an update comes from nor add options to it. Paths
+# (--src, --apps, --zim) and the password are not recorded: apps and books stay as they
+# are, and the password file is kept.
+rec_repo="$REPO" rec_branch="$BRANCH"
+if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
+	rec_repo="$(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$REPO")"
+	rec_branch="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH")"
+	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
+fi
+{
+	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch"
+	[ "$WITH_NOTES" = 1 ] && echo --with-notes
+	[ "$WITH_SYNC" = 1 ] && echo --with-sync
+	[ "$WITH_MQTT" = 1 ] && echo --with-mqtt
+	[ "$WITH_TERM" = 1 ] && echo --with-term
+	[ "$WITH_COLLAB" = 1 ] && echo --with-collab
+	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
+	true
+} >"$ETC/install-options"
+chmod 644 "$ETC/install-options"
+
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
 	for app in mermaid draw tools serial; do
@@ -579,8 +602,10 @@ Description=Irate-Box: carry out /admin requests that need root (services, admin
 
 [Service]
 Type=oneshot
-Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_USER=$HUB_USER
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_USER=$HUB_USER HUB_CODE_DIR=$CODE
 ExecStart=/usr/bin/python3 $CODE/hub_control.py
+# "Install update" reruns install.sh from here, which can take a while on a small board.
+TimeoutStartSec=50min
 EOF
 cat >/etc/systemd/system/irate-box-control.path <<EOF
 [Unit]

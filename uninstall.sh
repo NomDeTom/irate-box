@@ -74,7 +74,7 @@ fi
 rm -f /etc/caddy/Caddyfile.new
 
 say "Removing code, apps, config and binaries"
-rm -rf "$CODE" "$SHARE" "$ETC"
+rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box
 rm -f /usr/local/bin/silverbullet /usr/local/bin/ttyd
 
 if [ "$KEEP_STATE" = 1 ]; then

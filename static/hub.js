@@ -149,3 +149,22 @@ if (qrEl && typeof qrcode === 'function') {
     if (label) label.textContent = url.replace(/^http:\/\//, '');
   } catch (_) {}
 }
+
+// The hub bar's 🛟: a short "this is local, don't panic" note over the app. Closes on
+// Escape, a click elsewhere in the bar, or a click into the app -- which, being a frame,
+// shows up here only as this window losing focus.
+const helpButton = document.getElementById('app-help');
+const helpPop = document.getElementById('help-pop');
+if (helpButton && helpPop) {
+  const setHelp = (open) => {
+    helpPop.hidden = !open;
+    helpButton.setAttribute('aria-expanded', String(open));
+  };
+  helpButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setHelp(helpPop.hidden);
+  });
+  document.addEventListener('click', (e) => { if (!helpPop.contains(e.target)) setHelp(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setHelp(false); });
+  window.addEventListener('blur', () => setHelp(false));
+}
