@@ -36,6 +36,11 @@ KNOWN_PORTS = {
 }
 # The hub's own listeners, there on purpose: reported, not offered for closing here.
 OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
+# Units of the hub and its add-ons: whatever they listen on is theirs (Syncthing, for one,
+# also opens random UDP ports for its connections).
+OUR_UNITS = re.compile(r"^(caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$")
+# The box's own network clients: they answer only the network's DHCP server.
+CLIENT_PORTS = {("udp", 68): "DHCP client", ("udp", 546): "DHCPv6 client"}
 # Units the page never offers to stop: the box would be unreachable or the hub would break.
 PROTECTED = re.compile(r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|caddy|"
                        r"irate-box.*|tailscaled|mosquitto|syncthing@.*|kiwix|init)\.(service|socket)$")
@@ -159,6 +164,11 @@ def listener_findings(found, rec):
         if f["unit"] == "caddy.service" and f["proto"] == "tcp":
             out.append(_finding(fid, "the hub (Caddy)", "ok",
                                 f"{where}. The hub's own front door; it is meant to be reachable."))
+        elif key in CLIENT_PORTS:
+            out.append(_finding(fid, CLIENT_PORTS[key], "ok",
+                                f"{where}. The box asking the network for its address; it only answers the network's DHCP server."))
+        elif key not in OURS and f["unit"] and OUR_UNITS.match(f["unit"]):
+            out.append(_finding(fid, f["name"], "ok", f"{where}. Part of the hub's {f['unit'].split('.')[0].split('@')[0]}."))
         elif key in OURS:
             note = {("tcp", 1883): "Meshtastic nodes publish here; anyone on the network can too (anonymous, "
                                    "limited to msh/#)."}.get(key, "The hub's own; it is meant to be reachable.")
