@@ -67,6 +67,8 @@ The script sets up nginx on `:80` (`--web caddy` for Caddy, the fallback) and th
 
 Or as a Debian package: every push to `main` builds `irate-box_<version>_all.deb` (the CI run's artifact; a `v…` tag puts it on that release), or build one with `packaging/deb/build.sh`. `sudo apt install ./irate-box_*.deb` brings in what the installer needs; then `sudo irate-box-setup` (with any of the options above) sets the box up from the packaged code. The package does not set the box up by itself, since the installer asks apt for packages and downloads release files. After installing a newer package, `sudo irate-box-setup` with no options applies it with the box's own options.
 
+**With no internet on the box**, an offline kit carries everything irate-box itself downloads: `./install.sh --make-offline-bundle DIR [--arch aarch64,armv7l] [--apps DIR] [--zim FILE]`, run on any machine with internet (no root), makes DIR hold the code, the apps, ttyd and SilverBullet for each architecture, any books, checksums and `setup.sh`. Copy it to the box and run `sudo ./setup.sh [options]` in it. A box already set up makes the same kit of itself from `/admin` → Backup → "Set up another box", offline too: its code, its apps, the release files it keeps (or its installed ttyd and SilverBullet), and its books if you like, as one download. Debian's own packages still come from the box's apt or its OS image.
+
 ## Try it without a board
 
 Needs only Python 3.

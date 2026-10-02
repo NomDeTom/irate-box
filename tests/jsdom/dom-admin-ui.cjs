@@ -40,6 +40,8 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
+  if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
+    progress: null, pending: 0, books: { count: 2, bytes: 3000000000 }, results: [] }), { status: 200 });
   if (u === '/admin/addons') return new Response(JSON.stringify(addons), { status: 200 });
   return new Response('{}', { status: 404 });
 };
@@ -81,6 +83,8 @@ setTimeout(() => {
   check('  the window shown when installing', !d.getElementById('auto-window').hidden);
   check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
+  check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
+  check('  the books offered with their size', /2, 2\.8 GB|2, 3\.0 GB|2, 2794/.test(t('#kit-books')[0]) || /Include the books \(2,/.test(t('#kit-books')[0]), t('#kit-books'));
   const force = d.getElementById('update-force');
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);

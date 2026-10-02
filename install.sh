@@ -285,6 +285,9 @@ on_exit() {
 }
 # fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
 # the URL's file name), else from the network. Callers check checksums either way.
+# Whatever it gets is kept in the box's own cache too, so an offline kit made from this box later
+# (/admin, Backup) can hand it on.
+OWN_CACHE=/var/cache/irate-box/downloads
 fetch() {
 	local name="${3:-$(basename "$1")}"
 	if [ -n "$DL_CACHE" ] && [ -s "$DL_CACHE/$name" ]; then
@@ -292,14 +295,30 @@ fetch() {
 	else
 		curl -fsSL -o "$2" "$1"
 	fi
+	if [ ! -s "$OWN_CACHE/$name" ] && [ "$(id -u)" = 0 ]; then
+		install -d -m 755 "$OWN_CACHE" && install -m 644 "$2" "$OWN_CACHE/$name" || true
+	fi
 }
 
 # --- an offline kit (--make-offline-bundle), instead of installing -----------------------
 # Everything this script would download, laid out as its own options read it: --src kit/irate-box,
 # --apps kit/apps, --download-cache kit/downloads (the same file names as fetch() caches), and
 # kit/zim for --zim. Each release download is checked against its published checksum here too.
+# get NAME URL: into the kit's downloads, from --download-cache if it holds NAME (a box making a
+# kit of itself has its own), else the network. Returns 1 when neither has it.
+kit_get() {
+	local dest="$KIT_DL/$1"
+	[ -s "$dest" ] && return 0
+	if [ -n "$DL_CACHE" ] && [ -s "$DL_CACHE/$1" ]; then
+		cp "$DL_CACHE/$1" "$dest"
+	else
+		curl -fsSL -o "$dest" "$2" 2>/dev/null || { rm -f "$dest"; return 1; }
+	fi
+}
+own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | armv8l) echo armhf ;; armv6l) echo arm ;; esac; }
+own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac; }
 make_bundle() {
-	local kit here a tmp z ver tag sb_arch ttyd_arch caddy_arch app zip t
+	local kit here a tmp z ver tag sb_arch ttyd_arch caddy_arch app zip t sum
 	kit="$(realpath -m "$1")"
 	here="$(cd "$(dirname "$0")" && pwd)"
 	[ -f "$here/irate_box/hub/server.py" ] || die "--make-offline-bundle runs from an irate-box checkout"
@@ -339,8 +358,13 @@ make_bundle() {
 			echo "    $app: from $APPS_SRC/$app"
 		done
 	fi
+	# A box making a kit of itself: its installed collaboration relay too (it lives apart).
+	if [ ! -f "$kit/apps/room/dist/index.js" ] && [ -f "$ROOM/dist/index.js" ]; then
+		rm -rf "${kit:?}/apps/room"; cp -a "$ROOM" "$kit/apps/room"
+		echo "    room: from $ROOM"
+	fi
 	echo "==> Release downloads for: $BUNDLE_ARCHS"
-	tmp="$kit/downloads"
+	KIT_DL="$kit/downloads"
 	for a in ${BUNDLE_ARCHS//,/ }; do
 		case "$a" in
 		x86_64 | amd64) ttyd_arch=x86_64 sb_arch=x86_64 caddy_arch=amd64 ;;
@@ -349,32 +373,51 @@ make_bundle() {
 		armv6l) ttyd_arch=arm sb_arch="" caddy_arch="" ;;
 		*) die "--arch: $a is not one of aarch64, armv7l, armv6l, x86_64" ;;
 		esac
-		curl -fsSL -o "$tmp/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/ttyd.$ttyd_arch"
-		[ -s "$tmp/ttyd-$TTYD_VERSION-SHA256SUMS" ] ||
-			curl -fsSL -o "$tmp/ttyd-$TTYD_VERSION-SHA256SUMS" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/SHA256SUMS"
-		[ "$(sha256sum <"$tmp/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch" | cut -d' ' -f1)" = \
-			"$(awk -v f="ttyd.$ttyd_arch" '$2 == f || $2 == "*" f {print $1}' "$tmp/ttyd-$TTYD_VERSION-SHA256SUMS")" ] ||
-			die "ttyd.$ttyd_arch does not match its published checksum"
-		echo "    $a: ttyd $TTYD_VERSION"
+		if kit_get "ttyd-$TTYD_VERSION-ttyd.$ttyd_arch" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/ttyd.$ttyd_arch" &&
+			kit_get "ttyd-$TTYD_VERSION-SHA256SUMS" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/SHA256SUMS"; then
+			sum="$(awk -v f="ttyd.$ttyd_arch" '$2 == f || $2 == "*" f {print $1}' "$KIT_DL/ttyd-$TTYD_VERSION-SHA256SUMS")"
+			[ "$(sha256sum <"$KIT_DL/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch" | cut -d' ' -f1)" = "$sum" ] ||
+				die "ttyd.$ttyd_arch does not match its published checksum"
+			echo "    $a: ttyd $TTYD_VERSION"
+		elif [ "$ttyd_arch" = "$(own_ttyd_arch)" ] && /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
+			# This box's installed ttyd, the same version: its sum written here, since the
+			# published SHA256SUMS could not be had.
+			cp /usr/local/bin/ttyd "$KIT_DL/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch"
+			printf '%s  ttyd.%s\n' "$(sha256sum </usr/local/bin/ttyd | cut -d' ' -f1)" "$ttyd_arch" >>"$KIT_DL/ttyd-$TTYD_VERSION-SHA256SUMS"
+			echo "    $a: ttyd $TTYD_VERSION (this box's installed copy; no internet for the published one)"
+		else
+			rm -f "$KIT_DL/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch"
+			echo "    $a: no ttyd (not in the download cache, and no internet): the box fetches it when set up"
+		fi
 		if [ -n "$sb_arch" ]; then
 			z="silverbullet-$SB_VERSION-silverbullet-server-linux-$sb_arch.zip"
-			curl -fsSL -o "$tmp/$z" "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$sb_arch.zip"
-			unzip -tq "$tmp/$z" >/dev/null || die "$z is not a whole zip"
-			echo "    $a: SilverBullet $SB_VERSION"
+			if kit_get "$z" "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$sb_arch.zip"; then
+				unzip -tq "$KIT_DL/$z" >/dev/null || die "$z is not a whole zip"
+				echo "    $a: SilverBullet $SB_VERSION"
+			elif [ "$sb_arch" = "$(own_sb_arch)" ] && /usr/local/bin/silverbullet --version 2>/dev/null | grep -q "$SB_VERSION"; then
+				# This box's installed SilverBullet, the same version, zipped as its release ships it.
+				python3 -c 'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED); z.write("/usr/local/bin/silverbullet", "silverbullet"); z.close()' "$KIT_DL/$z"
+				echo "    $a: SilverBullet $SB_VERSION (this box's installed copy; no internet for the release)"
+			else
+				echo "    $a: no SilverBullet (not in the download cache, and no internet): only needed for notes"
+			fi
 		else
 			echo "    $a: no SilverBullet build (notes need armv7, aarch64 or x86_64)"
 		fi
 		if [ "$WEB" = caddy ] && [ -n "$caddy_arch" ]; then
-			[ -s "$tmp/caddy-release-tag" ] || curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest |
-				sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' >"$tmp/caddy-release-tag"
-			tag="$(cat "$tmp/caddy-release-tag")"
-			[ -n "$tag" ] || die "could not find Caddy's latest release"
+			[ -s "$KIT_DL/caddy-release-tag" ] || kit_get caddy-release-tag /nonexistent ||
+				curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest 2>/dev/null |
+				sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' >"$KIT_DL/caddy-release-tag" || true
+			tag="$(cat "$KIT_DL/caddy-release-tag" 2>/dev/null)"
 			z="caddy_${tag#v}_linux_${caddy_arch}.deb"
-			curl -fsSL -o "$tmp/$z" "https://github.com/caddyserver/caddy/releases/download/$tag/$z"
-			[ -s "$tmp/caddy_${tag#v}_checksums.txt" ] ||
-				curl -fsSL -o "$tmp/caddy_${tag#v}_checksums.txt" "https://github.com/caddyserver/caddy/releases/download/$tag/caddy_${tag#v}_checksums.txt"
-			(cd "$tmp" && grep " $z\$" "caddy_${tag#v}_checksums.txt" | sha512sum -c --quiet) || die "$z does not match its published checksum"
-			echo "    $a: Caddy ${tag#v}"
+			if [ -n "$tag" ] && kit_get "$z" "https://github.com/caddyserver/caddy/releases/download/$tag/$z" &&
+				kit_get "caddy_${tag#v}_checksums.txt" "https://github.com/caddyserver/caddy/releases/download/$tag/caddy_${tag#v}_checksums.txt"; then
+				(cd "$KIT_DL" && grep " $z\$" "caddy_${tag#v}_checksums.txt" | sha512sum -c --quiet) || die "$z does not match its published checksum"
+				echo "    $a: Caddy ${tag#v}"
+			else
+				rm -f "$KIT_DL/caddy-release-tag"
+				echo "    $a: no Caddy .deb (not in the download cache, and no internet)"
+			fi
 		fi
 	done
 	if [ ${#ZIMS[@]} -gt 0 ]; then

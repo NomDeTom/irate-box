@@ -155,6 +155,9 @@ ZIM_DIR = STATE / "zim"
 SECURITY_LOG = CONTROL / security.UPDATES_LOG_NAME
 # Release downloads install.sh would otherwise make itself (install.sh --download-cache).
 DOWNLOADS = Path(os.environ.get("HUB_DOWNLOAD_CACHE", "/var/cache/irate-box/downloads"))
+# The offline kit /admin offers (Backup): root-owned, readable by the hub, which serves it.
+KITS = STATE / "kits"
+KIT_PROGRESS = CONTROL / "kit-progress.json"
 INSTALL_TIMEOUT = 45 * 60
 # How many "==> " steps an install prints, until one has run here and been counted.
 INSTALL_STEPS_GUESS = 12
@@ -309,6 +312,85 @@ def set_login(pw, keep=True):
                  "syncthing", "cli", "config", "gui", "password", "set", pw)
         done.append("Syncthing" if st.returncode == 0 else "Syncthing (failed)")
     return ", ".join(d for d in done if d)
+
+
+# --- an offline kit of this box (/admin, Backup) ------------------------------------------
+
+def _du(*paths):
+    total = 0
+    for p in paths:
+        for root, _, files in os.walk(p):
+            for f in files:
+                try:
+                    total += os.lstat(os.path.join(root, f)).st_size
+                except OSError:
+                    pass
+    return total
+
+
+def offline_kit(req):
+    """A kit that sets up another box with no internet, from what this one has: its code (the
+    installer's --make-offline-bundle, run from the installed copy), its apps, its download
+    cache (anything missing fetched if there is internet), and, if asked, its books. One .tar in
+    $STATE/kits, which replaces the last; the hub offers it as a download."""
+    books = req.get("books") is True
+    zims = sorted(ZIM_DIR.glob("*.zim")) if books else []
+    apps = Path("/usr/share/hub/apps")
+    arch = platform.machine()
+    base = _du(apps, Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
+    need = 2 * base + sum(z.stat().st_size for z in zims) + (64 << 20)
+    KITS.mkdir(mode=0o755, exist_ok=True)
+    os.chown(KITS, 0, 0)
+    os.chmod(KITS, 0o755)
+    free = shutil.disk_usage(KITS).free
+    if free - need < _min_free():
+        raise ValueError(f"not enough space: the kit needs about {need >> 20} MB and {free >> 20} MB is free "
+                         f"(keeping {_min_free() >> 20} MB spare)" + (" — try without the books" if zims else ""))
+    with Progress("kit", 3, path=KIT_PROGRESS) as progress:
+        work = Path(tempfile.mkdtemp(prefix=".kit-", dir=KITS))
+        try:
+            progress.step("Gathering the code, the apps and the downloads")
+            kit = work / "irate-box-kit"
+            args = ["bash", str(CODE / "install.sh"), "--make-offline-bundle", str(kit), "--apps", str(apps),
+                    "--download-cache", str(DOWNLOADS), "--arch", arch]
+            if WEB_SERVER == "caddy":
+                args += ["--web", "caddy"]
+            out = run(*args, timeout=3600, env=dict(os.environ, HOME=str(work)))
+            if out.returncode != 0:
+                raise ValueError("the kit could not be made: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
+            report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
+            if zims:
+                progress.step(f"Checksumming {len(zims)} book{'s' if len(zims) != 1 else ''}")
+                with open(kit / "SHA256SUMS", "a") as fh:
+                    for z in zims:
+                        h = hashlib.sha256()
+                        with open(z, "rb") as zf:
+                            for chunk in iter(lambda: zf.read(1 << 20), b""):
+                                h.update(chunk)
+                        fh.write(f"{h.hexdigest()}  ./zim/{z.name}\n")
+            progress.step("Packing it into one file")
+            ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
+            name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
+            part = KITS / f".{name}.part"
+            tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
+            if tar.returncode == 0 and zims:
+                tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
+                          *[z.name for z in zims], timeout=7200)
+            if tar.returncode != 0:
+                part.unlink(missing_ok=True)
+                raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+            part.chmod(0o644)
+            for old in KITS.glob("irate-box-kit-*.tar"):
+                old.unlink()
+            final = KITS / name
+            os.replace(part, final)
+            meta = {"name": name, "size": final.stat().st_size, "at": time.time(), "arch": arch,
+                    "books": [z.name for z in zims], "contents": report[:40]}
+            (KITS / "kit.json").write_text(json.dumps(meta, indent=2))
+            (KITS / "kit.json").chmod(0o644)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    return f"offline kit ready: {name} ({meta['size'] >> 20} MB)"
 
 
 # --- who may open each app ---------------------------------------------------------
@@ -1456,7 +1538,7 @@ ACTIONS = {"service": service, "password": password,
            "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
+           "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
 
 
 def answer(rid, ok, message):

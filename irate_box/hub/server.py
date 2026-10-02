@@ -12,6 +12,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import tarfile
@@ -638,7 +639,9 @@ def firmware_action(payload):
 CONTROL_DIR = STATE_DIR / "control"
 CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
-ACCESS_STATE = CONTROL_DIR / "access.json"  # the root helper's copy of who may open each app
+ACCESS_STATE = CONTROL_DIR / "access.json"
+KITS_DIR = STATE_DIR / "kits"  # the offline kit the root helper made (/admin, Backup)
+KIT_PROGRESS = CONTROL_DIR / "kit-progress.json"  # the root helper's copy of who may open each app
 VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
 CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
@@ -931,6 +934,26 @@ def addons_snapshot():
             "pending": _pending_actions("addon"), "results": control_results(5)}
 
 
+def kit_snapshot():
+    """/admin's offline kit: the one made last (if its file is still there), the one being made,
+    and how much the books would add."""
+    try:
+        kit = json.loads((KITS_DIR / "kit.json").read_text())
+        if not (KITS_DIR / kit["name"]).is_file():
+            kit = None
+    except (OSError, ValueError, KeyError, TypeError):
+        kit = None
+    try:
+        progress = json.loads(KIT_PROGRESS.read_text())
+        os.kill(int(progress["pid"]), 0)
+    except (OSError, ValueError, KeyError, TypeError):
+        progress = None
+    books = sorted((STATE_DIR / "zim").glob("*.zim")) if (STATE_DIR / "zim").is_dir() else []
+    return {"kit": kit, "progress": progress, "pending": _pending_actions("offline-kit"),
+            "books": {"count": len(books), "bytes": sum(b.stat().st_size for b in books)},
+            "results": control_results(5)}
+
+
 USB_STATE = CONTROL_DIR / "usb.json"
 USB_PROGRESS = CONTROL_DIR / "usb-progress.json"
 USB_DEVICE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -1186,6 +1209,30 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return False
 
+    def _send_kit(self):
+        """The offline kit, streamed (with books it runs to gigabytes)."""
+        try:
+            kit = json.loads((KITS_DIR / "kit.json").read_text())
+            name = kit["name"]
+            if not re.fullmatch(r"irate-box-kit-[A-Za-z0-9._-]{1,120}\.tar", name):
+                raise ValueError(name)
+            fh = open(KITS_DIR / name, "rb")
+        except (OSError, ValueError, KeyError, TypeError):
+            self.send_json(404, {"error": "no offline kit yet: make one first"})
+            return
+        with fh:
+            size = os.fstat(fh.fileno()).st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            try:
+                shutil.copyfileobj(fh, self.wfile, 1 << 20)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
     def _send_source(self):
         """The installed code as a tarball, named after its version (/about.html links it)."""
         try:
@@ -1296,6 +1343,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/addons":
             self.send_json(200, addons_snapshot())
+            return
+
+        if path == "/admin/kit":
+            self.send_json(200, kit_snapshot())
+            return
+
+        if path == "/admin/kit/download":
+            self._send_kit()
             return
 
         if path == "/admin/access":
@@ -1532,6 +1587,13 @@ class Handler(BaseHTTPRequestHandler):
                                                             "book": payload["book"][:64]})})
             else:
                 self.send_json(400, {"error": "action must be scan, import (device, file) or export (device, book)"})
+            return
+
+        if path == "/admin/kit":
+            if payload.get("action") == "make" and type(payload.get("books", False)) is bool:
+                self.send_json(202, {"id": control_request({"action": "offline-kit", "books": payload.get("books", False)})})
+            else:
+                self.send_json(400, {"error": "action must be make (books: true or false)"})
             return
 
         if path == "/admin/access":

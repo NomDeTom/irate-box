@@ -1474,6 +1474,56 @@ hs.save.addEventListener('click', async () => {
 });
 loadHotspot();
 
+// --- an offline kit (Backup) -------------------------------------------------------------
+// The root helper makes it (hub_control.py offline_kit); the hub streams the download.
+const kitEl = { form: document.getElementById('kit-form'), make: document.getElementById('kit-make'),
+  books: document.getElementById('kit-books'), progress: document.getElementById('kit-progress'),
+  bar: document.getElementById('kit-bar'), step: document.getElementById('kit-step'), note: noteEl('kit-note'),
+  state: document.getElementById('kit-state'), details: document.getElementById('kit-details'),
+  contents: document.getElementById('kit-contents') };
+let kitWaiting = null;
+let kitPoll = null;
+function renderKit(d) {
+  if (kitWaiting) {
+    const done = (d.results || []).find((r) => r.id === kitWaiting);
+    if (done) { say(done.message, done.ok, kitEl.note); kitWaiting = null; }
+  }
+  const busy = !!kitWaiting || d.pending > 0 || !!d.progress;
+  kitEl.books.textContent = d.books.count
+    ? `Include the books (${d.books.count}, ${size(d.books.bytes)})` : 'Include the books (this box has none)';
+  kitEl.form.elements.books.disabled = !d.books.count;
+  kitEl.make.disabled = busy;
+  kitEl.progress.hidden = !d.progress;
+  if (d.progress) {
+    const p = d.progress;
+    kitEl.bar.value = Math.min(Math.max(p.step - 1, 0) / Math.max(p.steps, 1), 1);
+    kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${p.label}` : ''}.`;
+  }
+  const k = d.kit;
+  kitEl.state.replaceChildren(...(k ? [
+    el('a', { href: '/admin/kit/download', download: k.name, textContent: `Download ${k.name}` }),
+    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}` +
+      (k.books.length ? `, with ${k.books.length} book${k.books.length === 1 ? '' : 's'}` : ', without books') + '.'),
+  ] : [document.createTextNode(busy ? 'Making the kit…' : 'No kit made yet.')]));
+  kitEl.details.hidden = !(k && k.contents && k.contents.length);
+  if (k) kitEl.contents.replaceChildren(...(k.contents || []).map((t) => el('li', { textContent: t })));
+  clearTimeout(kitPoll);
+  if (busy) kitPoll = setTimeout(loadKit, 2000);
+}
+async function loadKit() {
+  try { renderKit(await getJSON('/admin/kit')); } catch (err) { console.error('kit:', err); }
+}
+kitEl.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    kitWaiting = (await postJSON('/admin/kit', { action: 'make', books: kitEl.form.elements.books.checked })).id;
+    say('Making the kit: a minute or two, longer with books.', true, kitEl.note);
+    loadKit();
+  } catch (err) { say(err.message, false, kitEl.note); }
+});
+window.addEventListener('hashchange', () => { if (location.hash === '#backup') loadKit(); });
+loadKit();
+
 // --- who can open each app --------------------------------------------------------------
 // Public, private or off (access.py): a three-way switch on each app (Apps), each add-on
 // (Add-ons) and the hub's own parts (Apps, Built into the hub). The root helper rewrites the
