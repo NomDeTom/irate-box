@@ -65,6 +65,8 @@ sudo ./install.sh --with-notes --with-sync --with-mqtt --zim wikipedia_en_top_mi
 
 The script sets up nginx on `:80` (`--web caddy` for Caddy, the fallback) and the hub on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. It prints the admin password is chosen on first use: open `http://<the box>/admin/` straight after installing (until then, anyone on the network could), or pass `--admin-password`. Running it again upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing is compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
 
+Or as a Debian package: every push to `main` builds `irate-box_<version>_all.deb` (the CI run's artifact; a `v…` tag puts it on that release), or build one with `packaging/deb/build.sh`. `sudo apt install ./irate-box_*.deb` brings in what the installer needs; then `sudo irate-box-setup` (with any of the options above) sets the box up from the packaged code. The package does not set the box up by itself, since the installer asks apt for packages and downloads release files. After installing a newer package, `sudo irate-box-setup` with no options applies it with the box's own options.
+
 ## Try it without a board
 
 Needs only Python 3.

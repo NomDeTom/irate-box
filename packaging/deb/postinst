@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+set -e
+if [ "$1" = configure ]; then
+	if [ -f /etc/hub/install-options ]; then
+		echo "irate-box: this box is already set up. Apply the new version with: sudo irate-box-setup"
+	else
+		echo "irate-box: installed. Set the box up with: sudo irate-box-setup   (options: sudo irate-box-setup --help)"
+	fi
+fi
+exit 0

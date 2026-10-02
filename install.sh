@@ -504,6 +504,13 @@ all_installed "${pkgs[@]}" || apt-get install -y -q --no-install-recommends "${p
 # If nginx cannot be installed (no candidate, offline), the hub falls back to Caddy.
 if [ "$WEB" = nginx ]; then
 	if all_installed nginx; then
+		# Pulled in by the irate-box package (apt marks it automatic): irate-box's, as if
+		# installed here. Otherwise the owner's, used as it is.
+		if [ ! -f "$NGINX_OURS_MARK" ] && apt-mark showauto 2>/dev/null | grep -qx nginx &&
+			dpkg-query -W -f='${Status}' irate-box 2>/dev/null | grep -q 'ok installed'; then
+			install -d -m 750 /etc/hub
+			echo "nginx installed with the irate-box package $(date -u +%Y-%m-%d); uninstall.sh --purge-packages may remove it" >"$NGINX_OURS_MARK"
+		fi
 		[ -f "$NGINX_OURS_MARK" ] ||
 			notice "nginx was already installed, so irate-box uses it as it is: the hub's site goes in $NGINX_SITE, and the rest of its config stays the owner's."
 	elif apt-get install -y -q --no-install-recommends nginx openssl; then

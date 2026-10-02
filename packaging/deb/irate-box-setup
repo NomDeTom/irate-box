@@ -1,0 +1,14 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# Sets up (or updates) this box from the packaged code: install.sh --src, with the options
+# given, or, with none on a box already set up, the options it was set up with.
+#   sudo irate-box-setup                      apply this version (or set up with the defaults)
+#   sudo irate-box-setup --with-notes ...     install.sh's options: sudo irate-box-setup --help
+src=/usr/share/irate-box/src
+[ "$(id -u)" = 0 ] || { echo "irate-box-setup: run it as root (sudo irate-box-setup)" >&2; exit 1; }
+if [ "$#" = 0 ] && [ -f /etc/hub/install-options ]; then
+	# The recorded options, one per line; --repo and --branch are where /admin's updates come from.
+	set -- $(cat /etc/hub/install-options)
+fi
+exec bash "$src/install.sh" --src "$src" "$@"

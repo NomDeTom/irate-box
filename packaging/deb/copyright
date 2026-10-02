@@ -1,0 +1,10 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: irate-box
+Source: https://github.com/NomDeTom/irate-box
+Comment: Every file names its licence in its first lines (SPDX), or in REUSE.toml; the full
+ texts are in /usr/share/irate-box/src/LICENSES/.
+
+Files: *
+Copyright: 2026 NomDeTom
+License: AGPL-3.0-or-later and GPL-3.0-or-later and MIT and CC-BY-SA-4.0
+ See /usr/share/irate-box/src/LICENSES/ and each file's SPDX lines.

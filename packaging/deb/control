@@ -1,0 +1,18 @@
+Package: irate-box
+Version: @VERSION@
+Architecture: all
+Maintainer: NomDeTom <NomDeTom@users.noreply.github.com>
+Installed-Size: @SIZE@
+Depends: python3 (>= 3.11), curl, ca-certificates, git, unzip, fcgiwrap, cgit, iw, openssl
+Recommends: nginx | caddy, kiwix-tools
+Suggests: syncthing, mosquitto, mosquitto-clients, nodejs
+Section: net
+Priority: optional
+Homepage: https://github.com/NomDeTom/irate-box
+Description: offline hub for a small board, in the spirit of PirateBox
+ A shoutbox, a board, a file drop, drawing and diagram tools, an offline library,
+ git servers and more, served by the box itself to whoever joins its network, with
+ no internet needed. Admin pages run the box: add-ons, who can open each app,
+ updates, and doctors for the services, security and updates.
+ .
+ Installing the package does not set the box up: run sudo irate-box-setup.

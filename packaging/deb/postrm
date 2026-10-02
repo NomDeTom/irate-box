@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+set -e
+# The box itself (its services, /opt/irate-box, /var/lib/hub) is install.sh's, not the
+# package's: removing the package leaves it running. Say how to take it away too.
+if [ "$1" = remove ] && [ -f /etc/hub/install-options ]; then
+	echo "irate-box: the package is gone, the box is still set up. To remove it as well: sudo bash /opt/irate-box/uninstall.sh"
+fi
+exit 0

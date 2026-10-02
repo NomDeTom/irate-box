@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# On every push and pull request: the licences (REUSE) and the tests that need only Python,
+# then the .deb (packaging/deb/build.sh), kept as the run's artifact. A tag v* also puts the
+# .deb on that tag's release.
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Licences (REUSE)
+        run: pipx run reuse lint
+      - name: Tests (tests/run.sh)
+        run: tests/run.sh
+      - name: Shell scripts parse
+        run: for f in install.sh uninstall.sh scripts/*.sh packaging/deb/build.sh tests/run.sh tests/container/*.sh; do bash -n "$f"; done
+  deb:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build the .deb
+        id: build
+        run: echo "deb=$(packaging/deb/build.sh dist)" >> "$GITHUB_OUTPUT"
+      - name: What is in it
+        run: dpkg-deb --info "${{ steps.build.outputs.deb }}" && dpkg-deb --contents "${{ steps.build.outputs.deb }}" | wc -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: irate-box-deb
+          path: dist/*.deb
+      - name: On a tag, attach it to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes; gh release upload "$GITHUB_REF_NAME" dist/*.deb --clobber
