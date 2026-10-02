@@ -596,6 +596,16 @@ def step_code(ctx):
                      f"chown -R root:root {CODE} && chmod -R go-w {CODE}", "F3"))
     else:
         out.append(F("code-owner", "Installed code", "ok", f"Everything under {CODE} is root-owned and not group/world-writable.", ref="F3"))
+    root_dir = CODE / "irate_box" / "root"
+    st = _lstat(str(root_dir))
+    if st and stat.S_ISDIR(st.st_mode):
+        if st.st_mode & 0o077:
+            out.append(F("code-root-dir", "Root-only modules readable by others", "warn",
+                         f"{root_dir} is mode {stat.S_IMODE(st.st_mode):o}: the hub's users can read and run the root helper "
+                         "and the doctors (they would fail without root, but nothing they run needs them).",
+                         f"chmod 700 {root_dir} (install.sh does this)", "F3"))
+        else:
+            out.append(F("code-root-dir", "Root-only modules", "ok", f"{root_dir} is readable by root alone.", ref="F3"))
     health = ctx["src"].get("health.py") or ""
     m = re.search(r"OUR_UNIT\s*=\s*re\.compile\((.*?)\)\s*$", health, re.S | re.M)
     wide = bool(m and re.search(r"syncthing@\[", m.group(1)))

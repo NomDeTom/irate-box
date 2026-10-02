@@ -574,6 +574,10 @@ elif [ -n "$SRC" ] && [ -f "$SRC/VERSION" ]; then
 else
 	printf 'unknown (installed %s)\n' "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
 fi
+# irate_box/root/ (the root helper, the security switches, the doctors) is for root alone:
+# nothing the hub's users run imports from it, so they have no reason to read it, and a hub
+# process that goes wrong cannot run them. Its source is still public (/source, below).
+[ -d "$CODE/irate_box/root" ] && chmod 700 "$CODE/irate_box/root"
 
 # How this box was installed, for /admin's "Install update", which reruns this script the
 # same way (hub_control.py). One argument per line. Root-owned, so the unprivileged hub
