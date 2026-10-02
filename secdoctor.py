@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The security doctor: a passive audit of the box the hub runs on.
 
 security.py looks at what a guest can reach (listeners, SSH, security updates) and offers

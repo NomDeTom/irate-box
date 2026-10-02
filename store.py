@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Shared blob store for the hub: Excalidraw's storage API and a saved-work gallery.
 
 Two HTTP contracts over one directory of files, because they want the same thing.

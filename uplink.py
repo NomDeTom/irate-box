@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Keep the box on its home network: watch the link, and repair it as eagerly as the owner chose.
 
 irate-box-uplink.service runs this as root (`uplink.py run`). Every so often it checks the

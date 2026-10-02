@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Shared page shell: remember whether the services block is collapsed.
 const services = document.querySelector('details.services');
 if (services) {

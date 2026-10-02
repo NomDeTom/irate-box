@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Threaded board — the shoutbox's slower companion.
 
 The shoutbox in server.py is a ring buffer for one-liners: fast, disposable, and it

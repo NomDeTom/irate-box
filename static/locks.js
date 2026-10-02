@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Locks on this device: what this browser holds keys for (lock.js keeps them as
 // "hublock:<kind>:<id>" in localStorage), matched against what is on the hub now. A key can be
 // shown as text and a QR code to carry it to another device, and added from one. Keys are only

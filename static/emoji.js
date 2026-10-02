@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Emoji picker for text inputs. No dependencies -- the hub is offline, so nothing is
 // fetched. Attach with a `data-emoji` attribute on an <input> or <textarea>; a toggle
 // button is added beside it and one shared panel is used for every field on the page.

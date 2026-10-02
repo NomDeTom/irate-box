@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The hub's app manifests: one JSON file per app in apps.d/, read by server.py (tiles and
 /status), librarian.py (where updates come from) and hub_control.py (where an app installs,
 and which units the admin page may control). Adding an app is adding a file here.

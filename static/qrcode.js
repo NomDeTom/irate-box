@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2009 Kazuhiko Arase
 // Vendored from NomDeTom/murltools (which vendors it from qrcode-generator). MIT, Kazuhiko Arase.
 // Used by the hub page for the join-QR tile. Unmodified apart from this header.
 //---------------------------------------------------------------------

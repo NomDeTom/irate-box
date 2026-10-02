@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Building and running the hub, end to end
 
 How the pieces fit together today, and the order to do them in. This is the development setup — one machine, everything under your home directory, Caddy on a high port (the board runs nginx with the same routes; §4b). The `.deb`-packaged install for a Pi is a later phase and not described here.

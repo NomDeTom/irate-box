@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Builds on push: a small CI for the hub's private git repositories.
 
 A push to a private repository (/git-private/, behind the admin login) whose new commit has an

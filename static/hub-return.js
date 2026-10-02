@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // "Back to the hub" pill, and a 🛟 beside it, for apps served under the hub's origin.
 // Each app's hub build includes <script src="/hub-return.js"> and nothing else, so this
 // carries its own styles. Inside app.html the hub bar already does both jobs, so the pill

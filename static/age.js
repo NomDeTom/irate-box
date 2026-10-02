@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Shared age formatting for anything driven by the uptime clock.
 //
 // The server sends a `now` tick count alongside every list, and each item carries the

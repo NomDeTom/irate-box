@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Books to and from a USB stick, for /admin's Books page. Run as root by hub_control.py.
 
 scan()         every removable or USB partition with a filesystem: mounted read-only (nosuid,

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 # Irate-Box installer for Debian-family boards: Armbian, and mPWRD-OS (which is an
 # Armbian build). Plain Debian and Raspberry Pi OS should work too; they are not tested.
 #

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The box doctor: is everything install.sh set up still there and working, and if not, why.
 
 The update doctor (hub_control.py) looks at what an update needs from outside; this looks at

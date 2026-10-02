@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The security page's root side: what the box exposes, and the fixes the owner can choose.
 
 hub_control.py runs this as root for /admin's Security page ("security-scan", "security-fix").

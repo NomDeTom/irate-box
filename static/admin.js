@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Admin options. The gate is the web server's basic auth on /admin/* -- by the time this page
 // loads, the operator has already authenticated. Each toggle saves on change; there is
 // no Save button to forget to press.

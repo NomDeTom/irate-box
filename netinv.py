@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """What the box has for networking: its radios, who runs each one, and what each can do.
 
 Read-only. install.sh runs it once (`netinv.py --write`, then its summary in "Found on this

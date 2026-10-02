@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Irate-Box
 
 A self-contained offline hub for a small board. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page, and from that page you reach a whiteboard, a diagram editor, an offline encyclopedia, a serial console and a shell — with no internet involved at any point. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, HTTPS-free by design, and built from maintained, packaged components rather than a 2013 shell-script pile.

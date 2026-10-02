@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 # Removes what install.sh set up, so the box is as it was before (or ready for a clean
 # reinstall). Tailscale is not irate-box's: it is handed back as an ordinary boot service,
 # in whatever state it is in now.

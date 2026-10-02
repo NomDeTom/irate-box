@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // In a scope of its own: the landing page loads shoutbox.js and board.js together.
 (() => {
 const POLL_MS = 8000;

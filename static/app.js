@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // The hub bar around a framed app. The fragment holds the app's own path, and follows
 // the app as it navigates, so a reload or a shared link lands on the same page.
 const frame = document.getElementById('app');

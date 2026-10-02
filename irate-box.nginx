@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 # Irate-Box front for nginx — one origin, path-routed. The default web server; the Caddyfile
 # beside it is the same routes for Caddy, the fallback (install.sh --web caddy). A route
 # changed here is changed there too.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Service dashboard: every service /status knows about, as running / not running /
 // not installed, refreshed on the same 15 s beat as the home page.
 const list = document.getElementById('service-list');

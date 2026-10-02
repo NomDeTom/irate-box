@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Cumulative uptime clock — a wall-clock-independent time source.
 
 Wall clock time is meaningless on this hardware. The Pi Zero W and Lyra Zero W have no

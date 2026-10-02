@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // Shared identity and text rendering for the shoutbox and the board, so a guest looks
 // the same wherever they post. Loaded after age.js (which provides esc) and before the
 // page script that uses it.

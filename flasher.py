@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The Meshtastic web flasher's side of the hub (plan §5, web-flasher stage 3).
 
 The flasher is a download, not a page served in place: it flashes over Web Serial, which needs a

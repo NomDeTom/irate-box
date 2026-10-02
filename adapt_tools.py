@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Adapt a copy of the nomdetom.github.io calculators for the hub. Run by install.sh.
 
     adapt_tools.py TOOLS_DIR HUB_STATIC_DIR

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // The file drop: upload with a bar per file (XHR, which reports upload progress where fetch
 // does not), and the list of what is on the box. Downloads are plain links: the hub serves
 // every file as an attachment, so nothing here is ever opened as a page.

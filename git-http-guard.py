@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """git http-backend behind Caddy: the request body is taken in full first, as nginx does.
 
 Caddy streams a push to the backend as it arrives, with no length (git sends large pushes

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 # Applies the operator's remote-access choice. The hub runs unprivileged and can only
 # record that choice in $STATE/tailscale.want; this runs as root to act on it.
 #   off           tailscaled stopped

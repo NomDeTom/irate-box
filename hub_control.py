@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Root helper for the admin page: the few things the unprivileged hub cannot do itself.
 
 The hub (server.py, user hub) writes one JSON request per file into

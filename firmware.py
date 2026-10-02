@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Firmware as content: the librarian's mirror of Meshtastic releases for the web flasher, and
 the optional build cache (plan §5, web-flasher stage 2).
 

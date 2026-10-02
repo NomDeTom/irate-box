@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
 // The landing page's two tabs, shoutbox and board, and the expand to a full-page view.
 // The fragment picks the tab: #board or a thread (#t12, which board.js handles), and
 // anything else is the shoutbox. ?full shows only the open tab, filling the window, with

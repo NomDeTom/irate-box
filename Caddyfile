@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 # Irate-Box front for Caddy — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
 #
 # Caddy is the fallback (install.sh --web caddy); nginx, with the same routes in

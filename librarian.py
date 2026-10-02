@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The hub's librarian: keeps ZIM books in the Kiwix library up to date from their sources.
 
 A source says where new versions of one book come from:

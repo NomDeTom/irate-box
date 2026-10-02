@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* SPDX-FileCopyrightText: 2026 NomDeTom */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {

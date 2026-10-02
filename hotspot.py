@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """How the hub's own hotspot is secured: the owner's choice, and what the radios allow.
 
 The Security page's "The hotspot's own WiFi" section. Four modes, from most reachable to most

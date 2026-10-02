@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Is this file a whole, readable ZIM? One answer for everything that puts a book on the box.
 
 A book only replaces a good one after this says yes: the librarian's downloads and rollbacks

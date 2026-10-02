@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The hub's git repositories: what /admin's Git page lists, creates and deletes.
 
 Two areas of bare repositories under $HUB_GIT_ROOT (install.sh: /var/lib/hub/git), both owned

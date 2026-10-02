@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """A clock module on I2C: find it, set it up, and keep the box's time with it.
 
 These boards keep no time while switched off (the Lyra has no RTC at all), so an offline box
