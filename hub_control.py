@@ -7,10 +7,11 @@ and runs this as root, once per batch. Each request is checked against an allow-
 carried out, answered in control/results/<id>.json, and deleted. Nothing else is accepted:
 
   {"id": ..., "action": "service", "unit": "<allowed unit>", "op": "start|stop|restart|enable|disable"}
-      Optional services get every op; caddy and the hub itself only restart.
+      Optional services get every op; the web server and the hub itself only restart.
   {"id": ..., "action": "password", "password": "<new admin password>"[, "setup": true]}
-      The one admin login: Caddy's basic_auth hashes (/admin, /sync, /term), ttyd's
-      credential, Syncthing's GUI login, and /etc/hub/admin-password. With "setup", this is
+      The one admin login: the web server's (nginx's login file, or Caddy's basic_auth
+      hashes; /admin, /sync, /term), ttyd's credential, Syncthing's GUI login, and
+      /etc/hub/admin-password. With "setup", this is
       the first-use form on an unclaimed box: accepted only while UNCLAIMED exists, which
       it then deletes, so the first password chosen is the only one set this way.
   {"id": ..., "action": "update-check"}
@@ -82,13 +83,33 @@ HUB_USER = os.environ.get("HUB_USER", "hub")
 CONTROL = STATE / "control"
 REQUESTS = CONTROL / "requests"
 RESULTS = CONTROL / "results"
+
+
+def _web_server():
+    """The web server in front: nginx, or Caddy, the fallback (install.sh --web). The unit
+    sets it; from a root shell (reset-password) it comes from the recorded install options.
+    A box installed before the choice existed has Caddy."""
+    if os.environ.get("HUB_WEB_SERVER") in ("nginx", "caddy"):
+        return os.environ["HUB_WEB_SERVER"]
+    try:
+        opts = (ETC / "install-options").read_text().split()
+    except OSError:
+        return "caddy"
+    web = opts[opts.index("--web") + 1] if "--web" in opts[:-1] else "caddy"
+    return web if web in ("nginx", "caddy") else "caddy"
+
+
+WEB_SERVER = _web_server()
 CADDYFILE = Path(os.environ.get("HUB_CADDYFILE", "/etc/caddy/Caddyfile"))
-# Present while no admin password has been chosen (install.sh creates it). Caddy then lets
-# /admin through without a login, and the hub serves only the set-the-password page.
-UNCLAIMED = CADDYFILE.parent / "irate-box-unclaimed"
 # On a box whose Caddy is the owner's, the hub's site (and so its login) is this file, imported
 # by their Caddyfile (install.sh); otherwise the Caddyfile is wholly the hub's.
 CADDY_SITE = CADDYFILE.parent / "irate-box.caddy"
+# nginx: the hub's login file (SHA-512-crypt; nginx reads it on every request).
+NGINX_LOGINS = Path(os.environ.get("HUB_NGINX_LOGINS", "/etc/nginx/irate-box.htpasswd"))
+# Present while no admin password has been chosen (install.sh creates it, beside the web
+# server's config). The server then lets /admin through without a login, and the hub serves
+# only the set-the-password page.
+UNCLAIMED = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
 
 
 def _login_file():
@@ -115,10 +136,15 @@ OPS_ALL = ("start", "stop", "restart", "enable", "disable")
 # root-owned as it), and the two that may only be restarted.
 MANIFESTS = manifests.load()
 UNITS = {unit.replace("@hub.", f"@{HUB_USER}."): OPS_ALL for unit in manifests.controllable_units(MANIFESTS)}
-UNITS.update({"caddy.service": ("restart",), "irate-box.service": ("restart",)})
+UNITS.update({f"{WEB_SERVER}.service": ("restart",), "irate-box.service": ("restart",)})
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
 MIN_PASSWORD = 8
+
+
+# systemd-run's timers default to AccuracySec=1min: "--on-active=1" fired 22 s late in a
+# test, and the old Caddy login kept working until then.
+TIMER_EXACT = ("--timer-property=AccuracySec=100ms",)
 
 
 def run(*cmd, timeout=120, **kw):
@@ -141,7 +167,7 @@ def service(req):
     args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(op, (op,))
     if unit == "irate-box.service":
         # Restarting the hub from a request the hub made: answer first, then go.
-        subprocess.Popen(["systemd-run", "--on-active=2", "systemctl", "restart", unit])
+        subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])
         return f"{unit} restarting"
     out = run("systemctl", *args, unit)
     if out.returncode != 0:
@@ -171,10 +197,30 @@ def reset_password():
     return "admin password reset: /admin now asks the next visitor to choose one"
 
 
-def set_login(pw, keep=True):
-    """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
-    out (removed): a random placeholder nobody is meant to know."""
-    # Caddy first: if the new config does not validate, nothing else has changed.
+def _set_nginx_login(pw):
+    """The login file nginx checks. SHA-512-crypt, not bcrypt: nginx checks the hash on every
+    request and caches nothing, and bcrypt at Caddy's cost takes ~5.8 s a check on the Lyra
+    (this: 38 ms). nginx reads the file per request, so nothing needs reloading."""
+    if not NGINX_LOGINS.exists():
+        raise ValueError(f"no admin login file at {NGINX_LOGINS}")
+    out = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=pw + "\n",
+                         capture_output=True, text=True, timeout=30)
+    hashed = out.stdout.strip()
+    if out.returncode != 0 or not hashed.startswith("$6$"):
+        raise ValueError("openssl passwd failed")
+    gid = NGINX_LOGINS.stat().st_gid  # nginx's group, as install.sh set it
+    tmp = NGINX_LOGINS.with_name(NGINX_LOGINS.name + ".new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"admin:{hashed}\n")
+    os.chown(tmp, 0, gid)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, NGINX_LOGINS)
+    return "nginx (1 login)"
+
+
+def _set_caddy_login(pw):
+    """The bcrypt hashes in the hub's Caddy config, validated before they replace it."""
     hashed = run("caddy", "hash-password", "--plaintext", pw)
     if hashed.returncode != 0:
         raise ValueError("caddy hash-password failed")
@@ -196,7 +242,15 @@ def set_login(pw, keep=True):
         target.write_text(text)
         raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
-    subprocess.Popen(["systemd-run", "--on-active=1", "systemctl", "restart", "caddy"])
+    subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+    return f"Caddy ({count} logins)"
+
+
+def set_login(pw, keep=True):
+    """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
+    out (removed): a random placeholder nobody is meant to know."""
+    # The web server first: if its new login cannot be written, nothing else has changed.
+    web = _set_nginx_login(pw) if WEB_SERVER == "nginx" else _set_caddy_login(pw)
 
     secret = ETC / "admin-password"
     if keep:
@@ -211,7 +265,7 @@ def set_login(pw, keep=True):
         ttyd_env.write_text(f"TTYD_CREDENTIAL=admin:{pw}\n")
         ttyd_env.chmod(0o600)
         run("systemctl", "try-restart", "ttyd")
-    done = [f"Caddy ({count} logins)", "ttyd" if ttyd_env.exists() else None]
+    done = [web, "ttyd" if ttyd_env.exists() else None]
     if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode == 0:
         st = run("runuser", "-u", HUB_USER, "--", "env", f"HOME={STATE}",
                  "syncthing", "cli", "config", "gui", "password", "set", pw)
@@ -412,8 +466,9 @@ def prefetch(src, opts, progress=None):
                 return _check(f"SilverBullet {sb} downloaded", False, str(exc))
         jobs.append((f"Downloading SilverBullet {sb}", get_sb))
 
-    # Caddy from its GitHub release, on a box whose apt repository failed verification.
-    if (ETC / "caddy-from-release").exists() and arch["caddy"]:
+    # Caddy from its GitHub release, on a box served by Caddy whose apt repository failed
+    # verification.
+    if WEB_SERVER == "caddy" and (ETC / "caddy-from-release").exists() and arch["caddy"]:
         def get_caddy():
             try:
                 req = urllib.request.Request("https://api.github.com/repos/caddyserver/caddy/releases/latest",
@@ -472,8 +527,10 @@ def verify_update(src, installed, opts, progress=None):
             bad.append(f"{py.name}: {exc}")
     checks.append(_check("Python files compile", not bad, "; ".join(bad) or f"{len(pys)} files"))
 
+    if WEB_SERVER == "nginx":
+        checks.append(_nginx_check(src, opts))
     caddyfile = src / "Caddyfile"
-    if caddyfile.exists():
+    if WEB_SERVER == "caddy" and caddyfile.exists():
         # As install.sh will write it: the box's current login hash in place of the marker.
         current = _login_file().read_text() if _login_file().exists() else ""
         m = HASH_LINE.search(current)
@@ -492,6 +549,30 @@ def verify_update(src, installed, opts, progress=None):
             os.unlink(tmp.name)
     checks += prefetch(src, opts, progress)
     return checks
+
+
+def _nginx_check(src, opts):
+    """The new irate-box.nginx as install.sh will write it, through nginx -t on its own (a
+    minimal main config around it, so the box's live config is not touched)."""
+    name = "The new nginx site passes nginx -t"
+    template = src / "irate-box.nginx"
+    if not template.exists():
+        return _check(name, False, "irate-box.nginx is missing from the update")
+    text = template.read_text()
+    for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "static"),
+                       "@APPS@": "/usr/share/hub/apps", "@HTPASSWD@": str(NGINX_LOGINS),
+                       "@UNCLAIMED@": str(UNCLAIMED)}.items():
+        text = text.replace(key, value)
+    with tempfile.TemporaryDirectory() as tmp:
+        conf = Path(tmp) / "nginx.conf"
+        conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
+                        f"http {{\ninclude /etc/nginx/mime.types;\n{text}\n}}\n")
+        try:
+            out = run("nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
+        except (OSError, subprocess.SubprocessError) as exc:
+            return _check(name, False, str(exc))
+    lines = [l for l in (out.stderr or out.stdout).strip().splitlines() if "[emerg]" in l or "[crit]" in l]
+    return _check(name, out.returncode == 0, "" if out.returncode == 0 else (lines or ["nginx -t failed"])[-1][:300])
 
 
 def _check_for_update(progress):
@@ -630,7 +711,7 @@ def _run_install(src, args, action, steps=None):
     cmd = ["bash", str(src / "install.sh"), "--src", str(src), *args]
     if "--download-cache" in (src / "install.sh").read_text():
         cmd += ["--download-cache", str(DOWNLOADS)]
-    # systemd gives the helper no HOME, and Caddy warns about it on every validate.
+    # systemd gives the helper no HOME, and Caddy (the fallback) warns about it on every validate.
     env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
     with Progress(action, steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
             open(UPDATE_LOG, "w") as log:

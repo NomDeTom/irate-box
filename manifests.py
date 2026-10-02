@@ -22,8 +22,8 @@ on it. Every part but "id" and "order" is optional:
                                       the entries above do not already name
     "status":  {"path", "name", "port" | "root_env", "unit", "control": bool, "note"},
                                       how /status and /admin see it: a loopback port to probe,
-                                      or the environment variable naming the folder Caddy
-                                      serves it from; "control" offers start/stop/boot on /admin
+                                      or the environment variable naming the folder the
+                                      web server serves it from; "control" offers start/stop/boot on /admin
     "install": {"dir", "needs", "title", "restart"},
                                       where its bundle goes, under /usr/share/hub ("apps/draw");
                                       the file (or glob) that proves a bundle is whole; a unit

@@ -75,7 +75,7 @@
       };
       xhr.onload = () => {
         let msg = '';
-        try { msg = JSON.parse(xhr.responseText).error || ''; } catch (_) { /* not JSON: Caddy's 413 */ }
+        try { msg = JSON.parse(xhr.responseText).error || ''; } catch (_) { /* not JSON: the web server's 413 */ }
         if (xhr.status === 201) {
           status.textContent = 'Done.';
           bar.value = bar.max;

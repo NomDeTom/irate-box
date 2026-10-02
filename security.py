@@ -28,7 +28,7 @@ UPDATES_LOG_NAME = "security-updates.log"
 
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
 KNOWN_PORTS = {
-    ("tcp", 22): "SSH", ("tcp", 80): "the hub (Caddy)", ("tcp", 9090): "Cockpit",
+    ("tcp", 22): "SSH", ("tcp", 80): "the hub (web server)", ("tcp", 9090): "Cockpit",
     ("tcp", 1883): "MQTT broker (mosquitto)", ("tcp", 22000): "Syncthing", ("udp", 22000): "Syncthing",
     ("udp", 21027): "Syncthing discovery", ("udp", 5353): "mDNS (Avahi or resolved)",
     ("tcp", 5355): "LLMNR (systemd-resolved)", ("udp", 5355): "LLMNR (systemd-resolved)",
@@ -38,11 +38,13 @@ KNOWN_PORTS = {
 OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
 # Units of the hub and its add-ons: whatever they listen on is theirs (Syncthing, for one,
 # also opens random UDP ports for its connections).
-OUR_UNITS = re.compile(r"^(caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$")
+OUR_UNITS = re.compile(r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$")
+# The hub's front door: nginx, or Caddy, the fallback (install.sh --web).
+WEB_UNITS = {"nginx.service": "nginx", "caddy.service": "Caddy"}
 # The box's own network clients: they answer only the network's DHCP server.
 CLIENT_PORTS = {("udp", 68): "DHCP client", ("udp", 546): "DHCPv6 client"}
 # Units the page never offers to stop: the box would be unreachable or the hub would break.
-PROTECTED = re.compile(r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|caddy|"
+PROTECTED = re.compile(r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|nginx|caddy|"
                        r"irate-box.*|tailscaled|mosquitto|syncthing@.*|kiwix|init)\.(service|socket)$")
 
 
@@ -161,8 +163,8 @@ def listener_findings(found, rec):
         key = (f["proto"], f["port"])
         fid = f"port-{f['proto']}-{f['port']}"
         where = f"{f['proto'].upper()} {f['port']} on {f['addr']}" + (f" ({f['unit']})" if f["unit"] else "")
-        if f["unit"] == "caddy.service" and f["proto"] == "tcp":
-            out.append(_finding(fid, "the hub (Caddy)", "ok",
+        if f["unit"] in WEB_UNITS and f["proto"] == "tcp":
+            out.append(_finding(fid, f"the hub ({WEB_UNITS[f['unit']]})", "ok",
                                 f"{where}. The hub's own front door; it is meant to be reachable."))
         elif key in CLIENT_PORTS:
             out.append(_finding(fid, CLIENT_PORTS[key], "ok",
@@ -420,9 +422,9 @@ def _llmnr(rec, on):
     return "LLMNR turned off" if on else "LLMNR: back as it was"
 
 
-def _caddy_on_80():
+def _hub_on_80():
     out = run("ss", "-Hltnp", "sport = :80")
-    return '"caddy"' in out.stdout
+    return '"nginx"' in out.stdout or '"caddy"' in out.stdout
 
 
 UNIT_RE = re.compile(r"^[A-Za-z0-9@._-]+\.(service|socket)$")
@@ -440,7 +442,7 @@ def _unit(rec, unit, on, reason="from this page"):
     old = units.get(unit)
     if old is None:
         raise ValueError(f"{unit} was not switched off from this page")
-    if "take-port-80" in old.get("reason", "") and _caddy_on_80():
+    if "take-port-80" in old.get("reason", "") and _hub_on_80():
         raise ValueError(f"{unit} gave port 80 to the hub, which still has it. Move the hub first "
                          "(rerun install.sh --port 8080), or uninstall, which hands the port back")
     units.pop(unit)

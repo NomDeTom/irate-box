@@ -50,7 +50,7 @@
     const note = document.getElementById('setup-note');
     const say = (text, ok) => { note.textContent = text; note.classList.toggle('bad', !ok); note.hidden = false; };
     // The root helper takes a second or two. Once it has set the password the box is no longer
-    // unclaimed and Caddy asks for the login, so a 401 here also means "done".
+    // unclaimed and the web server asks for the login, so a 401 here also means "done".
     async function wait(id, tries) {
       try {
         const r = await fetch(`/admin/setup?id=${encodeURIComponent(id)}`);
@@ -63,7 +63,7 @@
           return;
         }
         if (!s.unclaimed) { done(); return; }
-      } catch (_) { /* Caddy restarting */ }
+      } catch (_) { /* the web server restarting */ }
       if (tries > 0) setTimeout(() => wait(id, tries - 1), 1500);
       else { say('No answer from the box. Reload this page to see whether the password was set.', false); }
     }

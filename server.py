@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Irate-Box hub server: shoutbox, board, blob store, status, captive-portal target.
 
-Serves static/ itself so a bare `python3 server.py` works; behind Caddy the assets are
-served by file_server and only `/` and the API reach this process."""
+Serves static/ itself so a bare `python3 server.py` works; behind the web server
+(nginx, or Caddy) the assets come off disk and only `/` and the API reach this process."""
 
 import io
 import ipaddress
@@ -37,7 +37,7 @@ MAX_MESSAGES = 200
 # exist on this hardware. See hubclock.py.
 SHOUT_TTL = 24 * 3600
 PORT = int(os.environ.get("PORT", 8000))
-BIND = os.environ.get("HUB_BIND", "0.0.0.0")  # 127.0.0.1 when Caddy is in front
+BIND = os.environ.get("HUB_BIND", "0.0.0.0")  # 127.0.0.1 behind the web server
 # Where captive-portal probes are sent. Unset, the redirect is relative and lands on
 # whatever address the probe arrived at -- fine on localhost, and on the AP every name
 # resolves to the hub anyway. The Pi's unit sets the real origin, http://192.168.4.1/,
@@ -102,16 +102,19 @@ def live_messages(now):
     return [m for m in load_messages() if now - m.get("created", now) <= SHOUT_TTL]
 
 
-# What sits behind Caddy: each app's "status" part in apps.d/ (manifests.py), then the box's
+# What sits behind the web server: each app's "status" part in apps.d/ (manifests.py), then the box's
 # own pieces, which are not apps. Keyed by the path the tile links to.
 #   port   a loopback listener to probe: that is what "running" means to a guest
 #   unit   its systemd unit, which says whether it is installed at all
 #   active running means the unit is active, for a daemon with no loopback port to probe
-#   root   (static apps) the env var naming the directory Caddy serves, the same
-#          variable the Caddyfile reads. Unset -- a dev checkout -- counts as installed.
+#   root   (static apps) the env var naming the directory the web server serves, as
+#          install.sh writes it into both configs. Unset -- a dev checkout -- counts as installed.
 #   note   what the dashboard says in place of a path
 # path None: on the service dashboard only, with no tile of its own.
 TAILSCALE_NAME = "Remote access (Tailscale)"
+# The web server in front (install.sh --web): nginx, or Caddy, the fallback.
+WEB_SERVER = os.environ.get("HUB_WEB_SERVER", "nginx")
+WEB_SERVER_NAME = {"nginx": "nginx", "caddy": "Caddy"}.get(WEB_SERVER, WEB_SERVER)
 MANIFESTS = manifests.load()
 
 
@@ -128,7 +131,7 @@ def _service_entry(status):
 SERVICES = [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
     {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
      "active": True, "note": "switched on and off from /admin"},
-    {"path": None, "name": "Web server (Caddy)", "unit": "caddy.service", "proxy": True},
+    {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
     {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
 ]
 
@@ -270,7 +273,7 @@ _seen_lock = threading.Lock()
 
 
 def note_client(handler):
-    """Record that this address is around. Behind Caddy every request arrives from
+    """Record that this address is around. Behind the web server every request arrives from
     loopback, so the forwarded address is what distinguishes one guest from another."""
     fwd = handler.headers.get("X-Forwarded-For", "")
     addr = fwd.split(",")[0].strip() if fwd.strip() else handler.client_address[0]
@@ -284,8 +287,8 @@ def note_client(handler):
 # Options the person who owns the box sets, not the guests. Only keys listed in DEFAULTS,
 # with the default's type (and ints not negative), are accepted, so a malformed or
 # hand-edited file cannot introduce keys.
-# The gate is Caddy's basic_auth on /admin/*, the same treatment /term/ gets -- run
-# the hub bare, with no Caddy in front, and these are as open as every other hub API.
+# The gate is the web server's basic auth on /admin/*, the same treatment /term/ gets -- run
+# the hub bare, with no web server in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
 DEFAULT_SETTINGS = {
     # The ttyd card is shown like any other service -- greyed while its unit is off --
@@ -405,7 +408,7 @@ def unit_states(units):
 
 def service_status(proxied):
     """Per-service state: "running", "stopped" (installed, not answering) or "missing".
-    `up` stays for the tiles: running, and reachable because Caddy is in front. Probes
+    `up` stays for the tiles: running, and reachable because the web server is in front. Probes
     are cached so a page full of pollers costs one sweep per STATUS_CACHE_S."""
     now = time.monotonic()
     if now - _status_cache["at"] > STATUS_CACHE_S:
@@ -563,12 +566,12 @@ CONTROL_RESULTS = CONTROL_DIR / "results"
 VERSION_FILE = Path(__file__).parent / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
 CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
-CONTROL_OPS.update({"caddy.service": ["restart"], "irate-box.service": ["restart"]})
+CONTROL_OPS.update({f"{WEB_SERVER}.service": ["restart"], "irate-box.service": ["restart"]})
 MIN_PASSWORD = 8
-# First use (hub_control.py, the Caddyfile): while this root-owned file exists no admin
-# password has been chosen, Caddy lets /admin through with no login, and the hub serves
-# only the set-the-password page there.
-UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", "/etc/caddy/irate-box-unclaimed"))
+# First use (hub_control.py, the web server's config): while this root-owned file exists no
+# admin password has been chosen, the web server lets /admin through with no login, and the
+# hub serves only the set-the-password page there. It sits beside that server's config.
+UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
 SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
 
 
@@ -897,9 +900,16 @@ MIME = {
 }
 
 
+class HubServer(ThreadingHTTPServer):
+    # socketserver listens with a queue of 5. A burst of new connections -- a page load from
+    # several guests, or a proxy that does not reuse them -- overflowed it on the Lyra and
+    # waited out SYN retries: p99 over 2 s (notes: 2026-10-02-caddy-vs-nginx-benchmark).
+    request_queue_size = 64
+
+
 class Handler(BaseHTTPRequestHandler):
     # Socket timeout per request. A phone that stalls mid-upload releases its thread
-    # instead of pinning it; Caddy in front already shields the listener itself.
+    # instead of pinning it; the web server in front already shields the listener itself.
     timeout = 30
     protocol_version = "HTTP/1.1"
 
@@ -1103,7 +1113,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/status":
-            # Caddy's reverse_proxy adds X-Forwarded-For; a direct hit has none.
+            # The web server's proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
             now = CLOCK.ticks()
             payload = {
@@ -1406,7 +1416,7 @@ if __name__ == "__main__":
     CLOCK.start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
-    server = ThreadingHTTPServer((BIND, PORT), Handler)
+    server = HubServer((BIND, PORT), Handler)
     print(f"Hub running at http://{BIND}:{PORT}")
     print(f"Uptime clock at {hubclock.format_age(CLOCK.ticks())} cumulative")
     try:

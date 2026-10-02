@@ -49,8 +49,9 @@ SAVE_TTL = float(os.environ.get("HUB_STORE_SAVE_TTL", 0))
 GLOBAL_PREFIX = os.environ.get("HUB_STORE_PREFIX", "/api/v2")
 
 # The file drop (/api/drop): its own folder and budget, apart from the store's, since a few
-# phone videos would otherwise evict everyone's drawings. The per-file cap is Caddy's too
-# (request_body on /api/drop), which refuses a large body before it is read.
+# phone videos would otherwise evict everyone's drawings. The per-file cap is the web server's
+# too (client_max_body_size, or Caddy's request_body, on /api/drop), which refuses a large
+# body before it is read.
 DROP_MAX_FILE = int(os.environ.get("HUB_DROP_MAX_FILE", 25 * 1024 * 1024))
 DROP_MAX_TOTAL = int(os.environ.get("HUB_DROP_MAX_TOTAL", 256 * 1024 * 1024))
 DROP_TTL = float(os.environ.get("HUB_DROP_TTL", 24 * 3600))  # powered-on seconds; 0 = never

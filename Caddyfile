@@ -1,4 +1,7 @@
-# Irate-Box front — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
+# Irate-Box front for Caddy — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
+#
+# Caddy is the fallback (install.sh --web caddy); nginx, with the same routes in
+# irate-box.nginx, is the default. A route changed here is changed there too.
 #
 # Rules from §5 "Two listeners":
 #   - :80 only, always plain. Captive-portal probes are HTTP; an HTTPS listener

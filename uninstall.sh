@@ -6,7 +6,8 @@
 #   sudo ./uninstall.sh                     units, code, apps, config, state, the hub user
 #   sudo ./uninstall.sh --keep-state        ... but leave /var/lib/hub (notes, saves, ZIMs)
 #   sudo ./uninstall.sh --purge-packages    ... and the apt packages install.sh added:
-#                                           caddy (and its apt repo), kiwix-tools, syncthing,
+#                                           nginx (if irate-box installed it), caddy (and
+#                                           its apt repo), kiwix-tools, syncthing,
 #                                           mosquitto, nodejs
 #
 # State goes too unless --keep-state: back it up first. -y skips the confirmation.
@@ -29,6 +30,9 @@ STATE=/var/lib/hub
 SHARE=/usr/share/hub
 ETC=/etc/hub
 UNITDIR=/etc/systemd/system
+# Read now: $ETC goes before the packages do.
+NGINX_OURS=0
+[ -f "$ETC/nginx-ours" ] && NGINX_OURS=1
 
 say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
 [ "$(id -u)" = 0 ] || { echo "run as root (sudo ./uninstall.sh …)" >&2; exit 1; }
@@ -60,10 +64,11 @@ fi
 # What the Security page changed on the owner's say-so (Cockpit, SSH, LLMNR, units switched
 # off) goes back as it was found, before the code that knows how is removed.
 if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
-	# A service install.sh --take-port-80 switched off needs :80 back, so the hub's Caddy
-	# lets go of it first.
+	# A service install.sh --take-port-80 switched off needs :80 back, so the hub's web
+	# server lets go of it first.
 	if grep -q 'take-port-80' "$ETC/security-changes.json"; then
-		systemctl disable --now caddy >/dev/null 2>&1 || true
+		[ -f /etc/caddy/irate-box.caddy ] || systemctl disable --now caddy >/dev/null 2>&1 || true
+		[ "$NGINX_OURS" = 0 ] || systemctl disable --now nginx >/dev/null 2>&1 || true
 	fi
 	say "Putting back what the Security page changed"
 	HUB_ETC_DIR="$ETC" python3 "$CODE/security.py" undo-all | sed 's/^/    /' || true
@@ -89,7 +94,18 @@ elif [ -f /etc/caddy/Caddyfile.pre-irate-box ]; then
 	mv /etc/caddy/Caddyfile.pre-irate-box /etc/caddy/Caddyfile
 	systemctl try-restart caddy || true
 fi
-rm -f /etc/caddy/Caddyfile.new /etc/caddy/irate-box-unclaimed
+rm -f /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile.irate-box-off /etc/caddy/irate-box-unclaimed
+# nginx: the hub's site, its login file and the first-use mark go; the package's default site
+# comes back if install.sh switched it off. The rest of the config is the owner's, or the
+# package's, and stays.
+if [ -f /etc/nginx/conf.d/irate-box.conf ] || [ -f "$ETC/nginx-default-site-off" ]; then
+	rm -f /etc/nginx/conf.d/irate-box.conf /etc/nginx/conf.d/irate-box.conf.prev \
+		/etc/nginx/irate-box.htpasswd /etc/nginx/irate-box.htpasswd.new /etc/nginx/irate-box-unclaimed
+	if [ -f "$ETC/nginx-default-site-off" ] && [ -f /etc/nginx/sites-available/default ]; then
+		ln -sf ../sites-available/default /etc/nginx/sites-enabled/default
+	fi
+	systemctl try-restart nginx || true
+fi
 
 say "Removing code, apps, config and binaries"
 rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box
@@ -116,6 +132,15 @@ if [ "$PURGE_PKGS" = 1 ]; then
 	for p in caddy kiwix-tools syncthing mosquitto mosquitto-clients nodejs; do
 		dpkg -s "$p" >/dev/null 2>&1 && pkgs+=("$p")
 	done
+	# nginx only if irate-box brought it: an owner's nginx serves their own sites.
+	[ "$NGINX_OURS" = 1 ] && for p in nginx nginx-common; do
+		dpkg -s "$p" >/dev/null 2>&1 && pkgs+=("$p")
+	done
+	# Stopped first, not left to the packages' own scripts: a policy-rc.d (containers, some
+	# images) stops those from stopping anything, and nginx outlived its purge in a test.
+	for p in "${pkgs[@]}"; do
+		case "$p" in nginx | caddy | mosquitto) systemctl disable --now "$p" >/dev/null 2>&1 || true ;; esac
+	done
 	[ ${#pkgs[@]} -eq 0 ] || apt-get purge -y -q "${pkgs[@]}"
 	apt-get autoremove --purge -y -q
 	rm -f /etc/apt/sources.list.d/caddy-stable.list /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -123,6 +148,7 @@ if [ "$PURGE_PKGS" = 1 ]; then
 	# keeps an on-disk copy of /var/log in /var/log.hdd, so both places.
 	for d in /var/log /var/log.hdd; do
 		rm -rf "$d/caddy" "$d/mosquitto"
+		[ "$NGINX_OURS" = 0 ] || rm -rf "$d/nginx"
 	done
 	apt-get update -q
 fi
