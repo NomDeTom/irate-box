@@ -167,4 +167,25 @@ The plan — hardware notes, component roles, `.deb` packaging, lightweighting t
 
 ## License
 
-The core of this repo (`server.py`, `store.py`, `board.py`, `hubclock.py`, and the `static/` assets) is released into the public domain under the [Unlicense](LICENSE). `static/qrcode.js` is vendored third-party code (MIT, Kazuhiko Arase) and keeps its own license, noted in its header.
+Irate-Box follows the original PirateBox, which was free software under the GPL. Every file
+names its licence in its first lines (an SPDX identifier); the full texts are in
+[`LICENSES/`](LICENSES/), and the project is [REUSE](https://reuse.software)-compliant
+(`reuse lint`).
+
+| Licence | What |
+|---|---|
+| [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub: `server.py`, `hub_control.py`, the doctors (`health.py`, `secdoctor.py`, `security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
+| [GPL-3.0-or-later](LICENSES/GPL-3.0-or-later.txt) | `ci.py`, `gitrepos.py`, `usbstick.py` |
+| [MIT](LICENSES/MIT.txt) | small, self-contained pieces: `netinv.py`, `rtc.py`, `hubclock.py`, `zimcheck.py`, `git-http-guard.py`, `adapt_tools.py`, `tailscale-apply.sh`, the git hook, the device locks (`static/lock.js`, also copied into the Excalidraw and Mermaid forks), small page scripts, the web-server and unit configs, and the `apps.d` manifests; `static/qrcode.js` is third-party (Kazuhiko Arase) |
+| [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt) | the documentation: this README, `BUILDING.md`, `static/help.html`, `static/about.html` |
+
+**The source on the box.** The AGPL gives everyone who uses the hub over the network the right
+to its source, and an offline box has to offer that itself. `install.sh` publishes the installed
+code three ways: a tarball at `/source`, a read-only repository on the box's git server
+(`/git/irate-box-source.git`, browse or clone), and a pinned file in the file drop that never
+expires. The About tile (`/about.html`) links all three, and lists the licences of the separate
+programs the box runs (Excalidraw, the Mermaid live editor, the Meshtastic web flasher and
+firmware, Kiwix, the web server, and the add-ons).
+
+Versions published before the change to these licences (October 2026) were released into the
+public domain under the Unlicense, and remain available under it.

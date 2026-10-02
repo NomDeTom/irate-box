@@ -48,8 +48,8 @@
         a.href = `/api/drop/${encodeURIComponent(f.id)}`;
         a.textContent = f.name;
         a.setAttribute('download', f.name);
-        const row = li('drop-item', f.locked ? span('drop-locked', '🔒 ') : '', a,
-          span('setting-desc', ` ${size(f.size)} · ${f.by ? `${f.by} · ` : ''}${formatAge(f.age)}`));
+        const row = li('drop-item', f.pinned ? span('drop-locked', '📌 ') : f.locked ? span('drop-locked', '🔒 ') : '', a,
+          span('setting-desc', ` ${size(f.size)} · ${f.pinned ? 'this box\'s own source, always here (see About)' : `${f.by ? `${f.by} · ` : ''}${formatAge(f.age)}`}`));
         if (f.locked && window.HubLock && HubLock.has('drop', f.id)) {
           const rm = document.createElement('button');
           rm.type = 'button';

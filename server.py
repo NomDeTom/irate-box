@@ -651,6 +651,11 @@ BACKUP_SKIP = ("zim", "control", "library/archive", "library/tmp", "library/gith
 SYNCTHING_DIRS = (".local/state/syncthing", ".config/syncthing")
 
 
+# This box's own source, as installed (install.sh writes it; the AGPL's offer to everyone who
+# uses the hub over the network, which on an offline box has to come from the box itself).
+SOURCE_TARBALL = STATE_DIR / "source" / "irate-box-source.tar.gz"
+
+
 def hub_version():
     try:
         return VERSION_FILE.read_text().strip()
@@ -1155,6 +1160,29 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return False
 
+    def _send_source(self):
+        """The installed code as a tarball, named after its version (/about.html links it)."""
+        try:
+            data = SOURCE_TARBALL.read_bytes()
+        except OSError:
+            self.send_json(404, {"error": "the source tarball is made when irate-box is installed; "
+                                          "this one was not (a development checkout?)"})
+            return
+        try:  # the name install.sh gave it, the same as on the git server and in the drop
+            name = (SOURCE_TARBALL.parent / "name").read_text().strip()
+        except OSError:
+            name = ""
+        if not re.fullmatch(r"irate-box-source-[A-Za-z0-9._-]{1,80}\.tar\.gz", name):
+            ver = re.sub(r"[^A-Za-z0-9._-]", "", hub_version().split(" ")[0]) or "unknown"
+            name = f"irate-box-source-{ver}.tar.gz"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/gzip")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         note_client(self)
         if self._is_captive_probe() or self._off_hub_name():
@@ -1167,6 +1195,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/flasher/") or path == "/flasher":
             self._flasher(path)
+            return
+
+        if path in ("/source", "/source/", "/source/irate-box-source.tar.gz"):
+            self._send_source()
             return
 
         if path == "/admin/setup":
@@ -1307,6 +1339,8 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime": now,
                 "online": online_count(now),
                 "settings": settings_snapshot(),
+                # The About page shows it beside the source offer (the tarball is named after it).
+                "version": hub_version(),
             }
             joined = joined_count()
             if joined is not None:

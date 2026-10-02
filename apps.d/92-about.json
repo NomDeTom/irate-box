@@ -1,0 +1,10 @@
+{
+  "id": "about",
+  "order": 92,
+  "tile": {
+    "icon": "ℹ️",
+    "name": "About",
+    "desc": "Licences, and this box's own source",
+    "href": "/about.html"
+  }
+}

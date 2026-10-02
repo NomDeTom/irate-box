@@ -1330,6 +1330,59 @@ Unit=irate-box-control.service
 WantedBy=multi-user.target
 EOF
 
+# --- this box's own source (the AGPL's offer) -----------------------------------------------
+# The hub is AGPL-3.0-or-later: everyone who uses it over the network may have its source. An
+# offline box has to offer that itself, so the installed code goes out three ways: a tarball at
+# /source (in root-owned $STATE/source: root never writes into a hub-owned folder), a public
+# repository on the box's git server (irate-box-source.git, browse or clone; nobody pushes to
+# it), and a pinned file in the file drop (never expires; guests cannot remove it). The git and
+# drop copies are written as the hub user.
+say "Publishing this box's own source"
+src_ver="$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
+# No git version (installed from a copy without its history): name it after the install date.
+case "$src_ver" in "" | unknown) src_ver="local-$(date -u +%Y%m%d)" ;; esac
+install -d -o root -g root -m 755 "$STATE/source"
+src_tar="$STATE/source/irate-box-source.tar.gz"
+src_tmp="$(mktemp "$STATE/source/.irate-box-source.XXXXXX")"
+if tar -C "$(dirname "$CODE")" --exclude=__pycache__ --exclude='*.pyc' \
+	--transform "s,^$(basename "$CODE"),irate-box-$src_ver," -czf "$src_tmp" "$(basename "$CODE")"; then
+	chmod 644 "$src_tmp"
+	mv -f "$src_tmp" "$src_tar"
+	# The name the download is offered under, the same in all three places.
+	printf 'irate-box-source-%s.tar.gz\n' "$src_ver" >"$STATE/source/name"
+	chmod 644 "$STATE/source/name"
+	echo "    /source: irate-box-$src_ver ($(du -h "$src_tar" | cut -f1))"
+else
+	rm -f "$src_tmp"
+	problem "could not make the source tarball for /source"
+fi
+src_repo="$STATE/git/public/irate-box-source.git"
+if [ -f "$src_tar" ] && runuser -u "$HUB_USER" -- sh -c '
+	set -e
+	repo="$1" code="$2" ver="$3"
+	[ -d "$repo" ] || git init -q --bare -b main "$repo"
+	git -C "$repo" config http.receivepack false
+	printf "This box'"'"'s own source: irate-box %s, as installed (AGPL-3.0-or-later; see LICENSES/)\n" "$ver" >"$repo/description"
+	scratch="$(mktemp -d)"
+	export GIT_DIR="$repo" GIT_WORK_TREE="$code" GIT_INDEX_FILE="$scratch/index"
+	export GIT_AUTHOR_NAME="irate-box" GIT_AUTHOR_EMAIL="hub@irate-box.local" GIT_COMMITTER_NAME="irate-box" GIT_COMMITTER_EMAIL="hub@irate-box.local"
+	git add -A -- . ":(exclude)*__pycache__*" ":(exclude)*.pyc"
+	tree="$(git write-tree)"; rm -rf "$scratch"
+	parent="$(git rev-parse -q --verify refs/heads/main || true)"
+	if [ "$tree" != "$(git rev-parse -q --verify "refs/heads/main^{tree}" || true)" ]; then
+		commit="$(git commit-tree "$tree" ${parent:+-p "$parent"} -m "irate-box $ver, as installed on this box")"
+		git update-ref refs/heads/main "$commit"
+	fi
+' sh "$src_repo" "$CODE" "$src_ver"; then
+	echo "    /git/irate-box-source.git: browse or clone it"
+else
+	problem "could not put the source on the git server (/git/irate-box-source.git)"
+fi
+if [ -f "$src_tar" ]; then
+	runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" python3 "$CODE/store.py" pin-drop "$STATE" "$src_tar" \
+		"irate-box-source-$src_ver.tar.gz" | sed 's/^/    /' || problem "could not pin the source in the file drop"
+fi
+
 # --- the network: inventory and the uplink watchdog ---------------------------------------
 # netinv.py looks at the radios and the stack that runs them (read-only); uplink.py watches
 # the link and repairs it as eagerly as chosen. Settings in $ETC/uplink.json: written here

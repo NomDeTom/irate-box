@@ -91,9 +91,11 @@ _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 class LockError(Exception):
     """A change to a locked item without a valid proof."""
 
-    def __init__(self, lock):
-        super().__init__("locked: only the device that locked it can change it")
+    def __init__(self, lock, pinned=False):
+        super().__init__("this file is the box's own; only the admin can remove it" if pinned
+                         else "locked: only the device that locked it can change it")
         self.lock = lock
+        self.pinned = pinned
 
 
 def parse_lock(value):
@@ -411,11 +413,12 @@ class Drop:
         return found
 
     def _prune(self, keep=None):
-        """Expired files go; then the oldest, until the rest fit DROP_MAX_TOTAL. Lock held."""
+        """Expired files go; then the oldest, until the rest fit DROP_MAX_TOTAL. Lock held.
+        Pinned files (the box's own source, put there by install.sh) never expire or go."""
         now = self.clock.ticks()
         metas = []
         for meta in self._metas():
-            if DROP_TTL and now - meta.get("created", now) > DROP_TTL:
+            if not meta.get("pinned") and DROP_TTL and now - meta.get("created", now) > DROP_TTL:
                 self._remove(meta["id"])
             else:
                 metas.append(meta)
@@ -424,10 +427,26 @@ class Drop:
         for meta in metas:
             if total <= DROP_MAX_TOTAL:
                 break
-            if meta["id"] != keep:
+            if meta["id"] != keep and not meta.get("pinned"):
                 self._remove(meta["id"])
                 total -= meta.get("size", 0)
         return [m for m in metas if (self.dir / (m["id"] + ".meta")).exists()]
+
+    def pin(self, src, key, name, by=""):
+        """A fixed file in the drop: copied from src under id `key`, replacing an earlier pin of
+        the same id; it never expires, is never evicted, and guests cannot remove it (the
+        admin can). install.sh pins the box's own source this way (the AGPL's offer)."""
+        if not ID_RE.match(key):
+            raise ValueError("bad id")
+        self.dir.mkdir(parents=True, exist_ok=True)
+        tmp = self.dir / (key + ".tmp")
+        shutil.copyfile(src, tmp)
+        meta = {"id": key, "name": clean_filename(name), "size": tmp.stat().st_size, "by": str(by)[:MAX_NAME],
+                "created": self.clock.ticks(), "pinned": True}
+        with self._lock:
+            os.replace(tmp, self.dir / (key + ".data"))
+            (self.dir / (key + ".meta")).write_text(json.dumps(meta))
+        return meta
 
     def list(self):
         with self._lock:
@@ -494,6 +513,8 @@ class Drop:
             except (OSError, ValueError):
                 return False
             if not force:
+                if meta.get("pinned"):
+                    raise LockError(None, pinned=True)
                 if not meta.get("lock") or advance_lock(meta["lock"], proof) is None:
                     raise LockError(meta.get("lock"))
             return self._remove(key)
@@ -517,6 +538,7 @@ def _handle_drop(handler, method, path, drop):
     from urllib.parse import unquote
     if path == "/api/drop" and method == "GET":
         _send_json(handler, 200, {"files": [{**{k: m.get(k) for k in ("id", "name", "size", "by", "age")}, "locked": bool(m.get("lock")),
+                                             "pinned": bool(m.get("pinned")),
                                              **({"lock_n": m["lock"]["n"]} if m.get("lock") else {})}
                                             for m in drop.list()],
                                   "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL})
@@ -556,7 +578,9 @@ def _handle_drop(handler, method, path, drop):
         try:
             gone = drop.delete(key, proof=handler.headers.get("X-Lock"))
         except LockError as exc:
-            if exc.lock is None:
+            if exc.pinned:
+                _send_json(handler, 403, {"error": str(exc), "pinned": True})
+            elif exc.lock is None:
                 _send_json(handler, 403, {"error": "only the admin can remove a file nobody locked; it goes when it expires",
                                           "locked": False})
             else:
@@ -869,6 +893,15 @@ def _create_save(handler, store):
 
 
 if __name__ == "__main__":
+    import sys
+    if len(sys.argv) == 5 and sys.argv[1] == "pin-drop":
+        # store.py pin-drop STATE_DIR FILE NAME: install.sh, as the hub user, pinning the
+        # box's own source into the file drop.
+        state = Path(sys.argv[2])
+        meta = Drop(state / "drop", hubclock.HubClock(state / "clock.json")).pin(sys.argv[3], "irate-box-source", sys.argv[4],
+                                                                              by="this box")
+        print(f"pinned {meta['name']} ({meta['size']} bytes) in the file drop")
+        sys.exit(0)
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     STATE = Path(os.environ.get("HUB_STORE_DIR", Path(__file__).parent / "store-state"))
