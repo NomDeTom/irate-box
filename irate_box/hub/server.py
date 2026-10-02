@@ -231,7 +231,7 @@ def home_page():
 # discovered entries come from the installed apps, which an update changes.
 MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
 MENU_TEMPLATE = """<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="art-page">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -239,7 +239,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
   <link rel="stylesheet" href="style.css">
   <script>try{{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
 </head>
-<body>
+<body{art_attrs}>
   <!-- {about}
        Rendered by server.py from the manifests in apps.d/ ("menu", and every manifest's
        "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
@@ -262,7 +262,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
     </ul>
   </section>
 
-  <script src="hub.js"></script>
+{art}  <script src="hub.js"></script>
 </body>
 </html>
 """
@@ -279,7 +279,11 @@ def menu_page(m):
         desc = f'<span class="desc">{html.escape(e["desc"])}</span>' if e.get("desc") else ""
         items.append(f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>')
     menu = m["menu"]
-    return MENU_TEMPLATE.format(title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
+    # A krab in the bottom-left corner, if the manifest names one (style.css: data-art).
+    art = menu.get("art")
+    art_attrs = f' data-art="{art}" data-art-side="left"' if art else ""
+    art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
+    return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html,title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
                                 about=html.escape(menu.get("about", "")).replace("--", "-"),
                                 items="\n".join(items)).encode()
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client

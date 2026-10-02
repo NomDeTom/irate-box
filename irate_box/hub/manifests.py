@@ -13,9 +13,10 @@ on it. Every part but "id" and "order" is optional:
     "tile":    {"icon", "name", "desc", "href", "new_tab": bool, "element_id": str,
                 "row": "apps" | "box"}  a tile on the home page; or {"widget": "people" | "qr" |
                                       "system", "row": "box"}, one of the hub's live tiles
-    "menu":    {"title", "subtitle", "about"}
+    "menu":    {"title", "subtitle", "about", "art": "librarian" | "doctor" | "controller"}
                                       the tile opens a list page (at its href), which the hub
-                                      renders from every manifest's entries aimed at it
+                                      renders from every manifest's entries aimed at it; art: a
+                                      krab in its bottom-left corner (web/art/)
     "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool}]
                                       lines on those list pages (greyed with this app's status)
     "discover": {"file", "href", "order", "groups": {"<group>": "<menu id>"}}
@@ -89,6 +90,7 @@ def _check(m, where):
              "a menu needs a tile whose href is its page, /<name>.html")
         for k in ("title", "subtitle"):
             need(isinstance(menu.get(k), str), f"menu.{k}: a string")
+        need(menu.get("art") in (None, "librarian", "doctor", "controller"), "menu.art: librarian, doctor or controller")
     for e in m.get("entries", []):
         need(isinstance(e, dict) and isinstance(e.get("menus"), dict) and e["menus"], "entries: each with menus")
         need(all(type(v) is int for v in e["menus"].values()), "entries.menus: menu id -> order")

@@ -10,6 +10,7 @@
   "menu": {
     "title": "Meshtastic",
     "subtitle": "Everything on the box for Meshtastic nodes.",
-    "about": "Everything Meshtastic in one list. The flasher joins it when it is packaged."
+    "about": "Everything Meshtastic in one list. The flasher joins it when it is packaged.",
+    "art": "librarian"
   }
 }
