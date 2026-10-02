@@ -779,8 +779,12 @@ def update_snapshot():
         doctor = None
     # Only update requests: a queued app install or service change is not the update's.
     pending = _pending_actions("update-")
+    # Automatic updates: the librarian's policy for them, and what its last step did.
+    policy = librarian.load_config()["policy"]
+    auto = {k: policy[k] for k in ("hub_check_every_hours", "hub_auto", "hub_window_start", "hub_window_end")}
+    auto["state"] = librarian._hub_update_state()
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "progress": update_progress(), "doctor": doctor, "results": control_results(5)}
+            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto}
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"

@@ -26,7 +26,9 @@ const update = { state: { up_to_date: false, available: 'a4aad09', available_dat
   changes: ['one'], changes_known: true, verified: null,
   checks: [{ name: 'Python files compile', ok: true, warn: false, detail: '' },
     { name: 'The new nginx site passes nginx -t', ok: false, warn: false, detail: 'irate-box.nginx is missing from the update' }] },
-  progress: null, pending: 0, results: [], log: [], doctor: null };
+  progress: null, pending: 0, results: [], log: [], doctor: null,
+  auto: { hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5,
+    state: { last: { step: 'check', ok: true, message: 'update available: 1 new commit', at: 1790950000 }, note: 'a4aad09 is ready; installs between 02:00 and 05:00' } } };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -74,6 +76,11 @@ setTimeout(() => {
   check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
   check('the desk has its ten lamp groups', d.querySelectorAll('.art-lamps i').length === 10);
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  const af = d.getElementById('auto-form');
+  check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
+  check('  the window shown when installing', !d.getElementById('auto-window').hidden);
+  check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
+  check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
   const force = d.getElementById('update-force');
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);

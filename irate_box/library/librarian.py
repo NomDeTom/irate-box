@@ -39,7 +39,9 @@ policy.keep_old), github-token (optional, for actions), lock.
                      [--pattern P] [--url U] [--prerelease]
     librarian.py remove NAME [--delete-book]
     librarian.py rollback NAME [VERSION]  back to an archived version (the newest by default)
-    librarian.py policy [--keep-old N] [--check-every-hours H] [--min-free-mb M]
+    librarian.py policy [--keep-old N] [--check-every-hours H] [--min-free-mb M] [--auto-install 0-2]
+                     [--hub-check-every-hours H] [--hub-auto 0-2] [--hub-window-start H] [--hub-window-end H]
+    librarian.py hub-update               one step of the hub's own update, as the timer takes (selfupdate.py)
     librarian.py token [TOKEN]            set, or with no argument clear, the GitHub token
     librarian.py add-apps [APP ...]       add the default nightly.link source for each app
     librarian.py app-fetch APP            download and check APP's newest bundle; prints the
@@ -88,7 +90,18 @@ DEFAULT_POLICY = {
     "keep_old": 1,            # archived previous versions per book; 0 deletes them
     "check_every_hours": 24,  # for the timer; 0 means only when asked
     "min_free_mb": 512,       # never let a download leave less than this free
+    # What a scheduled check does with something newer, for books and apps: 0 only notes it,
+    # 1 also downloads and checks it (ready to update), 2 also puts it in use.
+    "auto_install": 2,
+    # The hub's own updates (selfupdate.py): how often to check (0: only when asked on /admin),
+    # and how far to go alone: 0 check only, 1 also fetch and verify, 2 also install, inside
+    # the window (the box's local hours, start to end) with nobody on the hub.
+    "hub_check_every_hours": 24,
+    "hub_auto": 0,
+    "hub_window_start": 2,
+    "hub_window_end": 5,
 }
+POLICY_MAX = {"auto_install": 2, "hub_auto": 2, "hub_window_start": 23, "hub_window_end": 23}
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 API = "https://api.github.com"
@@ -125,7 +138,7 @@ def load_config():
     cfg = _read_json(SOURCES_FILE, {})
     policy = dict(DEFAULT_POLICY)
     for key, value in (cfg.get("policy") or {}).items():
-        if key in DEFAULT_POLICY and isinstance(value, int) and value >= 0:
+        if key in DEFAULT_POLICY and isinstance(value, int) and 0 <= value <= POLICY_MAX.get(key, value):
             policy[key] = value
     sources = [s for s in cfg.get("sources", []) if isinstance(s, dict) and s.get("name")]
     return {"policy": policy, "sources": sources}
@@ -478,7 +491,7 @@ def set_policy(**changes):
     for key, value in changes.items():
         if value is None:
             continue
-        if key not in DEFAULT_POLICY or not isinstance(value, int) or value < 0:
+        if key not in DEFAULT_POLICY or not isinstance(value, int) or not 0 <= value <= POLICY_MAX.get(key, value):
             raise LibrarianError(f"bad policy value: {key}={value!r}")
         cfg["policy"][key] = value
     save_config(cfg)
@@ -822,9 +835,10 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     mode "check" only records it, "fetch" downloads and checks it without changing what is
     in use, "update" (the default; download=False means "check") puts it in use too.
     Returns {name: outcome}. One source failing never stops the others."""
-    mode = mode or ("update" if download else "check")
     cfg = load_config()
     policy = cfg["policy"]
+    # The timer goes as far as the owner chose; asked for by name or from /admin, it does what was asked.
+    mode = mode or (("check", "fetch", "update")[policy["auto_install"]] if scheduled else "update" if download else "check")
     results = {}
     with Lock():
         status = load_status()
@@ -874,7 +888,17 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if firmware.settings()["enabled"] and (not scheduled or firmware.due(policy["check_every_hours"])):
                 results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
                 log(f"firmware: {results['firmware']}")
+        # The hub's own updates (selfupdate.py): one step per run of the timer.
+        if scheduled and not names:
+            from irate_box.library import selfupdate
+            results["hub"] = selfupdate.step(policy, log=log)
+            log(f"hub: {results['hub']}")
     return results
+
+
+def _hub_update_state():
+    from irate_box.library import selfupdate
+    return selfupdate.load_state()
 
 
 def snapshot():
@@ -882,7 +906,7 @@ def snapshot():
     cfg = load_config()
     return {"policy": cfg["policy"], "sources": cfg["sources"], "status": load_status(),
             "token_set": bool(token()), "running": is_running(), "types": list(TYPES),
-            "progress": progress(), "apps": apps_snapshot(),
+            "progress": progress(), "apps": apps_snapshot(), "hub_update": _hub_update_state(),
             "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
 
 
@@ -913,6 +937,9 @@ def main(argv=None):
     pol.add_argument("--keep-old", type=int)
     pol.add_argument("--check-every-hours", type=int)
     pol.add_argument("--min-free-mb", type=int)
+    for k in ("auto-install", "hub-check-every-hours", "hub-auto", "hub-window-start", "hub-window-end"):
+        pol.add_argument(f"--{k}", type=int)
+    sub.add_parser("hub-update")
     t = sub.add_parser("token")
     t.add_argument("value", nargs="?", default="")
     aa = sub.add_parser("add-apps")
@@ -946,8 +973,12 @@ def main(argv=None):
         elif args.cmd == "rollback":
             print(f"{args.name}: now {rollback(args.name, args.version)}")
         elif args.cmd == "policy":
-            print(json.dumps(set_policy(keep_old=args.keep_old, check_every_hours=args.check_every_hours,
-                                        min_free_mb=args.min_free_mb), indent=2))
+            print(json.dumps(set_policy(**{k: getattr(args, k) for k in DEFAULT_POLICY
+                                           if getattr(args, k, None) is not None}), indent=2))
+        elif args.cmd == "hub-update":
+            from irate_box.library import selfupdate
+            with Lock():
+                print(selfupdate.step(load_config()["policy"]))
         elif args.cmd == "token":
             set_token(args.value)
             print("token " + ("set" if args.value else "cleared"))

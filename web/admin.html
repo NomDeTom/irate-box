@@ -320,6 +320,13 @@
               <option value="24">daily</option><option value="168">weekly</option>
             </select>
           </label>
+          <label>When a check finds something newer
+            <select name="auto_install">
+              <option value="0">only note it (update from Apps or Books)</option>
+              <option value="1">download and check it, ready to update</option>
+              <option value="2">put it in use</option>
+            </select>
+          </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
           <button type="submit">Save</button>
         </form>
@@ -583,6 +590,35 @@
         </p>
         <p class="setting-desc" id="update-summary">Not checked yet.</p>
         <p class="setting-desc">When an update fails, the <a href="#updoctor">Updates doctor</a> can say why.</p>
+        <h3>Automatic updates</h3>
+        <p class="setting-desc">
+          The librarian can look for updates by itself, on its hourly round, and take them as far
+          as you choose. An install is only ever of a version that passed verification, inside
+          the hours you set, with nobody on the hub and nothing else running; the hub restarts
+          part-way through. A version that fails verification waits for you here.
+        </p>
+        <form id="auto-form" class="library-form">
+          <label>Look for updates
+            <select name="hub_check_every_hours">
+              <option value="0">only when asked (the button above)</option>
+              <option value="24">daily</option><option value="168">weekly</option>
+            </select>
+          </label>
+          <label>When one is found
+            <select name="hub_auto">
+              <option value="0">show it here, and do nothing else</option>
+              <option value="1">also fetch and verify it, ready to install</option>
+              <option value="2">also install it, at night, with nobody on the hub</option>
+            </select>
+          </label>
+          <label class="inline" id="auto-window">Install between
+            <select name="hub_window_start"></select> and <select name="hub_window_end"></select>
+            <span class="setting-desc">(the box's own clock)</span>
+          </label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="auto-note" role="status" hidden></p>
+        <p class="setting-desc" id="auto-state"></p>
         <div class="library-buttons">
           <button type="button" id="update-check">Check for updates</button>
           <button type="button" id="update-fetch" disabled>Fetch update</button>

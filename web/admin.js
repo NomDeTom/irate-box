@@ -394,7 +394,7 @@ lib.add.addEventListener('submit', async (e) => {
 lib.policy.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = { action: 'policy' };
-  for (const k of ['keep_old', 'check_every_hours', 'min_free_mb']) body[k] = Number(lib.policy.elements[k].value);
+  for (const k of ['keep_old', 'check_every_hours', 'min_free_mb', 'auto_install']) body[k] = Number(lib.policy.elements[k].value);
   const at = noteEl('library-policy-note');
   try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
@@ -757,6 +757,7 @@ function renderUpdate(data) {
   badge('updoctor', doctorProblems ? String(doctorProblems) : failedChecks.length ? '!' : '');
   upd.changes.replaceChildren(...((found && s.changes) || []).slice(0, 20)
     .map((c) => el('li', { textContent: c })));
+  renderAuto(data.auto);
   upd.output.hidden = !data.log.length || (!busy && s && s.up_to_date);
   if (p && p.action === 'install') upd.output.open = true;
   upd.log.textContent = data.log.join('\n');
@@ -819,6 +820,37 @@ document.getElementById('backup-with-keys').addEventListener('click', (e) => {
   if (!confirm("This backup includes Syncthing's private keys. Anyone with the file can pose as this box to its Syncthing peers. Download it?")) e.preventDefault();
 });
 upd.install.addEventListener('click', () => requestUpdate('install'));
+
+// Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
+// and what its last step did. The form is filled from the hub only while nobody is editing it.
+const auto = { form: document.getElementById('auto-form'), state: document.getElementById('auto-state'),
+  note: noteEl('auto-note'), window: document.getElementById('auto-window') };
+for (const name of ['hub_window_start', 'hub_window_end']) {
+  auto.form.elements[name].replaceChildren(...Array.from({ length: 24 }, (_, h) =>
+    el('option', { value: String(h), textContent: `${String(h).padStart(2, '0')}:00` })));
+}
+const AUTO_STEP = { check: 'looked for an update', fetch: 'fetched and verified an update', install: 'installed an update' };
+function renderAuto(a) {
+  if (!a) return;
+  if (!auto.form.contains(document.activeElement)) {
+    for (const k of ['hub_check_every_hours', 'hub_auto', 'hub_window_start', 'hub_window_end']) auto.form.elements[k].value = String(a[k]);
+  }
+  auto.window.hidden = auto.form.elements.hub_auto.value !== '2';
+  const st = a.state || {};
+  const parts = [];
+  if (st.waiting) parts.push(`Working: asked the root helper to ${st.waiting.step} at ${new Date(st.waiting.at * 1000).toLocaleTimeString()}.`);
+  if (st.last) parts.push(`Last automatic step, ${new Date(st.last.at * 1000).toLocaleString()}: ${AUTO_STEP[st.last.step] || st.last.step}: ${st.last.message}`);
+  if (st.note && !st.waiting) parts.push(st.note + '.');
+  auto.state.textContent = parts.join(' ') || (Number(a.hub_check_every_hours) ? 'No automatic step yet: the librarian takes the first on its next round.' : 'Automatic checks are off.');
+}
+auto.form.elements.hub_auto.addEventListener('change', () => { auto.window.hidden = auto.form.elements.hub_auto.value !== '2'; });
+auto.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = { action: 'policy' };
+  for (const k of ['hub_check_every_hours', 'hub_auto', 'hub_window_start', 'hub_window_end']) body[k] = Number(auto.form.elements[k].value);
+  if (body.hub_auto === 2 && body.hub_window_start === body.hub_window_end) { say('The install hours need a start and an end that differ.', false, auto.note); return; }
+  try { await libPost(body); say('Saved. The librarian follows it from its next round (hourly).', true, auto.note); loadUpdate(); } catch (err) { say(err.message, false, auto.note); }
+});
 upd.force.addEventListener('click', () => requestUpdate('force-install'));
 loadUpdate();
 
