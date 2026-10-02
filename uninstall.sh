@@ -112,6 +112,7 @@ elif [ -f /etc/caddy/Caddyfile.pre-irate-box ]; then
 	systemctl try-restart caddy || true
 fi
 rm -f /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile.irate-box-off /etc/caddy/irate-box-unclaimed
+rm -rf /etc/caddy/irate-box-access
 # nginx: the hub's site, its login file and the first-use mark go; the package's default site
 # comes back if install.sh switched it off. The rest of the config is the owner's, or the
 # package's, and stays.

@@ -213,7 +213,7 @@ h2 {
 .qr-card .qr svg { display: block; width: 100%; height: auto; background: #fff; border-radius: 6px; padding: 4px; box-sizing: border-box; }
 .qr-card .desc { font-family: ui-monospace, monospace; }
 .services-note { font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem; }
-.service-card .icon { font-size: 1.6rem; }
+.service-card .icon { font-size: 1.6rem; white-space: nowrap; }
 .service-card .name { font-weight: 600; }
 .service-card .desc { font-size: 0.8rem; color: var(--muted); }
 
@@ -467,18 +467,6 @@ h2 {
 }
 
 /* --- Footer --- */
-.site-footer {
-  margin-top: 2.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  text-align: center;
-  font-size: 0.75rem;
-}
-.site-footer a {
-  color: var(--muted);
-  text-decoration: none;
-}
-.site-footer a:hover { color: var(--accent); }
 
 /* --- Admin options (admin.html) --- */
 .settings { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -767,6 +755,17 @@ body.admin section button:disabled { opacity: 0.5; cursor: default; }
   border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
 }
 .head-btn:hover { border-color: var(--accent); }
+/* A button with its name beside the emoji: Help, Admin. */
+.head-btn.labelled { width: auto; padding: 0 0.75rem 0 0.55rem; gap: 0.35rem; font-family: inherit;
+  font-size: 0.85rem; color: var(--text); }
+.head-emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; font-size: 1.05rem; }
+.theme-label { align-self: center; padding: 0 0.35rem 0 0.6rem; font-size: 0.8rem; color: var(--muted); }
+.app-bar .theme-label { font-size: 0.72rem; padding: 0 0.25rem 0 0.4rem; }
+@media (max-width: 400px) {
+  .head-btn.labelled { padding: 0 0.55rem 0 0.4rem; font-size: 0.78rem; }
+  .theme-label { padding: 0 0.2rem 0 0.4rem; font-size: 0.72rem; }
+  .theme-picker button { padding: 0.3rem 0.4rem; }
+}
 .admin-checks { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
 .admin-checks .setting-desc { display: block; margin-left: 1.6rem; }
 .backup-keys { border-left: 3px solid #e5a000; padding-left: 0.6rem; }
@@ -782,7 +781,8 @@ body.admin section button:disabled { opacity: 0.5; cursor: default; }
 .help-points { margin: 0 0 2rem; padding-left: 1.2rem; line-height: 1.55; font-size: 0.92rem; }
 .help-points li { margin-bottom: 0.45rem; }
 .help-note { margin: 0 0 2rem; line-height: 1.55; font-size: 0.92rem; color: var(--muted); }
-.app-help { border: 0; background: none; padding: 0 0.15rem; font-size: 1rem; line-height: 1; cursor: pointer; }
+.app-help { border: 0; background: none; padding: 0 0.3rem; font-size: 0.78rem; color: var(--muted); line-height: 1; cursor: pointer; white-space: nowrap; }
+.app-help span { font-size: 1rem; vertical-align: -0.1em; }
 .help-pop {
   position: fixed; top: 2.6rem; left: 0.75rem; z-index: 20; max-width: 22rem;
   padding: 0.8rem 1rem; font-size: 0.88rem; line-height: 1.5;
@@ -904,3 +904,10 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* Locks on this device: the key's QR code */
 .locks-qr svg { width: 12rem; height: 12rem; background: #fff; border-radius: 6px; margin: 0.5rem 0; }
+
+/* Who can open an app (admin: Apps, Add-ons): public, private or off. */
+.access { display: flex; flex-direction: column; gap: 0.2rem; margin: 0.35rem 0 0.25rem; }
+.access-toggle { display: inline-flex; align-self: flex-start; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--surface); }
+.access-toggle button { border: 0; background: none; color: var(--muted); border-radius: 999px; padding: 0.3rem 0.7rem; font-size: 0.8rem; cursor: pointer; }
+.access-toggle button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.access-toggle button:disabled { cursor: progress; opacity: 0.7; }

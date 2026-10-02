@@ -49,7 +49,6 @@ function say(text, ok, at) {
 }
 
 const boxes = document.querySelectorAll('.settings input[type="checkbox"]');
-const landingNote = noteEl('landing-note');
 // Each group of checkboxes names the note its answers go in (data-note).
 const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
 
@@ -61,7 +60,7 @@ async function load() {
     boxes.forEach((b) => { if (typeof data[b.id] === 'boolean') b.checked = data[b.id]; });
     applySetup(data.setup_done === true);
   } catch (_) {
-    say('Could not read the current settings.', false, landingNote);
+    if (boxes.length) say('Could not read the current settings.', false, settingNote(boxes[0]));
   }
 }
 
@@ -76,8 +75,7 @@ async function save(box) {
     const data = await r.json();
     // Show what the hub stored, not what we sent -- they differ if it rejected the value.
     boxes.forEach((b) => { if (typeof data[b.id] === 'boolean') b.checked = data[b.id]; });
-    say(box.id === 'show_term_card' ? 'Saved. The landing page picks it up within about 15 seconds.'
-      : 'Saved. It takes effect at the next boot.', true, settingNote(box));
+    say('Saved. It takes effect at the next boot.', true, settingNote(box));
   } catch (_) {
     box.checked = !box.checked;
     say('Could not save — the setting is unchanged.', false, settingNote(box));
@@ -280,6 +278,7 @@ function renderApps(snap, busy) {
     ];
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: a.title }),
+      accessSlot(name),
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
@@ -740,6 +739,7 @@ function renderUpdate(data) {
       (n ? `${n} problem${n === 1 ? '' : 's'}.` : 'no problems found.');
     upd.findings.replaceChildren(...d.findings.map((f) => checkItem(f.status, f.check, f.detail, f.status === 'ok' ? '' : f.fix)));
   }
+  badge('updoctor', d && d.findings.some((f) => f.status === 'problem') ? String(d.findings.filter((f) => f.status === 'problem').length) : '');
   upd.changes.replaceChildren(...((found && s.changes) || []).slice(0, 20)
     .map((c) => el('li', { textContent: c })));
   upd.output.hidden = !data.log.length || (!busy && s && s.up_to_date);
@@ -820,6 +820,7 @@ const sec = {
   auditSteps: document.getElementById('audit-steps'),
   auditScope: document.getElementById('audit-scope'),
   auditNot: document.getElementById('audit-not-covered'),
+  auditNote: document.getElementById('audit-note'),
 };
 const RANK = { problem: 0, warn: 1, ok: 2 };
 let secWaiting = null; // { id, fid }: a request, and the line its answer goes under
@@ -851,8 +852,11 @@ function renderSecurity(data) {
     }))) : null,
     noteUnder(f.id))));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
-  const loose = secNote && (secNote.fid === 'scan' || secNote.fid === 'audit' || !shown.has(secNote.fid)) ? secNote : null;
+  const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
+  // The security doctor is its own pane (Health), with its answer under its button.
+  const auditSaid = secNote && secNote.fid === 'audit' ? secNote : null;
+  say(auditSaid ? auditSaid.text : '', auditSaid ? auditSaid.ok : true, sec.auditNote);
 
   sec.when.textContent = scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` + (busy ? ' Scanning…' : '')
     : busy ? 'Scanning…' : 'Not scanned yet.';
@@ -879,6 +883,7 @@ function renderSecurity(data) {
 // The security doctor's report (secdoctor.py): one block per step, the steps with something to
 // look at open. Read-only, so a line has no buttons, only what to do by hand.
 function renderAudit(audit, busy) {
+  badge('secdoctor', audit && audit.counts.problem ? String(audit.counts.problem) : '');
   if (!audit) {
     sec.auditWhen.textContent = busy ? 'Running…' : 'Not run yet.';
     sec.auditSteps.replaceChildren();
@@ -946,6 +951,10 @@ const hl = {
   install: document.getElementById('health-install'),
   output: document.getElementById('health-output'),
   log: document.getElementById('health-log'),
+  clockWhen: document.getElementById('clock-when'),
+  clockScan: document.getElementById('clock-scan'),
+  clockNote: document.getElementById('clock-note'),
+  clockFindings: document.getElementById('clock-findings'),
   banner: document.getElementById('helper-banner'),
   bannerDetail: document.getElementById('helper-banner-detail'),
   bannerCmds: document.getElementById('helper-banner-cmds'),
@@ -986,19 +995,26 @@ function renderHealth(data) {
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (hlNote && hlNote.fid === fid
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
-  hl.findings.replaceChildren(...all.map((f) => el('li', { className: `check check-${f.status}` },
+  // The clock and its module have their own pane (Box, Clock); the rest is the services doctor.
+  const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
+  const item = (f) => el('li', { className: `check check-${f.status}` },
     el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
       type: 'button', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
     }))) : null,
-    noteUnder(f.id))));
-  const loose = hlNote && (hlNote.fid === 'scan' || !shown.has(hlNote.fid)) ? hlNote : null;
-  say(loose ? loose.text : '', loose ? loose.ok : true, hl.note);
+    noteUnder(f.id));
+  hl.findings.replaceChildren(...all.filter((f) => !isClock(f)).map(item));
+  hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
+  const loose = hlNote && (hlNote.fid === 'scan' || hlNote.fid === 'clock-scan' || !shown.has(hlNote.fid)) ? hlNote : null;
+  const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
+  say(loose && !inClock ? loose.text : '', loose ? loose.ok : true, hl.note);
+  say(inClock ? loose.text : '', loose ? loose.ok : true, hl.clockNote);
   hl.when.textContent = rep ? `Looked ${new Date(rep.at * 1000).toLocaleString()}.` + (busy ? ' Working…' : '')
     : busy ? 'Looking…' : 'Not looked yet.';
-  hl.scan.disabled = busy || h.stuck;
+  hl.clockWhen.textContent = hl.when.textContent;
+  hl.scan.disabled = hl.clockScan.disabled = busy || h.stuck;
   hl.progress.hidden = !p;
   if (p) {
     const steps = Math.max(p.steps, p.step, 1);
@@ -1008,13 +1024,16 @@ function renderHealth(data) {
   hl.install.textContent = installText(data.install);
   hl.log.textContent = (data.log || []).join('\n');
   hl.output.hidden = !(data.log || []).length;
-  const problems = all.filter((f) => f.status === 'problem').length;
+  const problems = all.filter((f) => f.status === 'problem' && !isClock(f)).length;
+  const clockProblems = all.filter((f) => f.status === 'problem' && isClock(f)).length;
   badge('health', h.stuck ? '!' : problems ? String(problems) : '');
+  badge('clock', clockProblems ? String(clockProblems) : '');
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
-  if (stale && !busy && !hlAsked && !h.stuck && location.hash === '#health') { hlAsked = true; hlRequest({ action: 'scan' }, 'scan'); return; }
+  const here = location.hash === '#health' || location.hash === '#clock';
+  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, location.hash === '#clock' ? 'clock-scan' : 'scan'); return; }
   clearTimeout(hlPoll);
-  hlPoll = setTimeout(loadHealth, busy ? 2000 : location.hash === '#health' ? 15000 : 30000);
+  hlPoll = setTimeout(loadHealth, busy ? 2000 : here ? 15000 : 30000);
 }
 
 async function loadHealth() {
@@ -1048,7 +1067,8 @@ function hlFix(fid, action) {
 }
 
 hl.scan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'scan'));
-window.addEventListener('hashchange', () => { if (location.hash === '#health') loadHealth(); });
+hl.clockScan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'clock-scan'));
+window.addEventListener('hashchange', () => { if (location.hash === '#health' || location.hash === '#clock') loadHealth(); });
 loadHealth();
 
 // --- network ---------------------------------------------------------------------------
@@ -1403,6 +1423,82 @@ hs.save.addEventListener('click', async () => {
 });
 loadHotspot();
 
+// --- who can open each app --------------------------------------------------------------
+// Public, private or off (access.py): a three-way switch on each app (Apps), each add-on
+// (Add-ons) and the hub's own parts (Apps, Built into the hub). The root helper rewrites the
+// web server's part and answers; each switch keeps its node, so a list that re-renders moves
+// it rather than losing what it shows.
+const ACCESS_LABEL = { public: '🌐 Public', private: '🔒 Private', off: '⭘ Off' };
+const accessNodes = new Map(); // id -> { node, app }
+let accessWaiting = null; // { id, app }
+let accessNote = null; // { app, text, ok }
+let accessPoll = null;
+
+function accessDesc(a) {
+  if (a.mode === 'public') return a.login ? 'Public: on the home page; it still asks for the admin login.' : 'Public: on the home page, open to everyone on the network.';
+  if (a.mode === 'private') return 'Private: not on the home page; its address asks for the admin login.';
+  return `Off: not on the home page; its address answers "not found"${a.unit ? ', and its service is stopped' : ''}.`;
+}
+
+// A list may render before the choices arrive: its slot is made empty and filled in later.
+function accessSlot(id) {
+  if (!accessNodes.has(id)) accessNodes.set(id, { node: el('span', { className: 'access' }) });
+  return accessNodes.get(id).node;
+}
+
+function accessSet(a, mode) {
+  if (mode === a.mode) return;
+  if (mode === 'off' && a.unit && !confirm(`Turn ${a.title} off? Its service stops until you switch it back on.`)) return;
+  if (mode === 'public' && a.mode !== 'public' && !a.login
+    && !confirm(`Make ${a.title} public? Everyone on the box's network can open it, with no login.`)) return;
+  postJSON('/admin/access', { app: a.id, mode }).then((r) => {
+    accessWaiting = { id: r.id, app: a.id };
+    accessNote = null;
+    loadAccess();
+  }, (err) => { accessNote = { app: a.id, text: err.message, ok: false }; loadAccess(); });
+}
+
+function renderAccess(data) {
+  if (accessWaiting) {
+    const done = (data.results || []).find((r) => r.id === accessWaiting.id);
+    if (done) {
+      accessNote = { app: accessWaiting.app, text: done.message, ok: done.ok };
+      accessWaiting = null;
+      return loadAccess();
+    }
+  }
+  const builtin = [];
+  for (const a of data.apps) {
+    const slot = accessSlot(a.id);
+    const group = el('span', { className: 'access-toggle' },
+      ...['public', 'private', 'off'].map((mode) => {
+        const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(a.mode === mode));
+        return b;
+      }));
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', `Who can open ${a.title}`);
+    const note = accessNote && accessNote.app === a.id
+      ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
+    slot.replaceChildren(group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }), note);
+    if (a.kind === 'builtin') builtin.push(a);
+  }
+  document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
+    el('span', {}, el('span', { className: 'setting-name', textContent: a.title }), accessSlot(a.id)))));
+  clearTimeout(accessPoll);
+  if (accessWaiting) accessPoll = setTimeout(loadAccess, 1000);
+}
+
+async function loadAccess() {
+  try { renderAccess(await getJSON('/admin/access')); } catch (err) {
+    console.error('access:', err);
+    clearTimeout(accessPoll);
+    if (accessWaiting) accessPoll = setTimeout(loadAccess, 3000);
+  }
+}
+loadAccess();
+
 // --- add-ons ---------------------------------------------------------------------------
 // Each add-on from apps.d: Add (after its consent text) or Remove, through the root helper,
 // which reruns install.sh. The run's bar and output are the update's own (one installer at a
@@ -1437,6 +1533,7 @@ function renderAddons(data) {
       ? el('span', { className: `setting-desc action-note${adoNote.ok ? '' : ' bad'}`, role: 'status', textContent: adoNote.text }) : null;
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: a.title }),
+      accessSlot(a.id),
       el('span', { className: 'setting-desc', textContent: a.summary }),
       el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
       !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,

@@ -99,15 +99,6 @@ if (grid || document.querySelector('[data-service]')) {
       }
     }
 
-    // The escape hatch is an ordinary card -- greyed while its unit is off -- unless
-    // the operator has hidden it in the admin options. A missing `settings` (an older
-    // hub, or a /status that failed) leaves it visible, which is the safe default: a
-    // greyed card tells the truth, where a silently missing one does not.
-    const termCard = document.getElementById('term-card');
-    if (termCard) {
-      termCard.hidden = !!(data.settings && data.settings.show_term_card === false);
-    }
-
     if (data.system) {
       meter('mem', data.system.mem_available, data.system.mem_total);
       meter('disk', data.system.disk_free, data.system.disk_total);

@@ -11,10 +11,11 @@
 </head>
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>Admin</h1>
     <p class="subtitle">Options for whoever owns the box.</p>
     <div class="theme-picker" role="group" aria-label="Theme">
+      <span class="theme-label" aria-hidden="true">Theme</span>
       <button type="button" data-theme-choice="light" title="Light">☀️</button>
       <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
       <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
@@ -32,6 +33,7 @@
         <a href="#overview">Overview</a>
         <a href="#addons">Add-ons</a>
         <a href="#access">Access</a>
+        <a href="#clock">Clock</a>
         <p class="admin-side-group">Library</p>
         <a href="#apps">Apps</a>
         <a href="#books">Books</a>
@@ -42,11 +44,14 @@
         <a href="#moderation">Moderation</a>
         <a href="#git">Git</a>
         <p class="admin-side-group">System</p>
-        <a href="#health">Health</a>
         <a href="#network">Network</a>
         <a href="#security">Security</a>
         <a href="#updates">Updates</a>
         <a href="#backup">Backup</a>
+        <p class="admin-side-group">Health</p>
+        <a href="#health">Services doctor</a>
+        <a href="#secdoctor">Security doctor</a>
+        <a href="#updoctor">Updates doctor</a>
       </div>
     </nav>
 
@@ -161,21 +166,23 @@
         <p class="setting-desc action-note" id="remote-note" role="status" hidden></p>
         </div>
 
-        <h3>Terminal on the landing page</h3>
-        <div class="settings" data-note="landing-note">
-          <label class="setting">
-            <input type="checkbox" id="show_term_card">
-            <span>
-              <span class="setting-name">Show the Terminal card</span>
-              <span class="setting-desc">
-                The shell is greyed out while its unit is off, the same as any other service.
-                Turn this off to leave it off the page entirely — the route still works for
-                anyone who knows the address and has the password.
-              </span>
-            </span>
-          </label>
+      </section>
+
+      <section class="admin-pane" id="clock" aria-labelledby="clock-title">
+        <h2 id="clock-title">Clock</h2>
+        <p class="setting-desc">
+          What keeps the box's time, what happened to it at this boot, and a clock module on I2C if
+          there is one. Boards like this one have no clock of their own: without the network or a
+          module, the time comes back wrong after a power cut. Looking for a module only reads the
+          I2C buses; setting one up uses the kernel's driver where there is one, and never switches
+          on charging.
+        </p>
+        <p class="setting-desc" id="clock-when">Not looked yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="clock-scan">Look again</button>
         </div>
-        <p class="setting-desc action-note" id="landing-note" role="status" hidden></p>
+        <p class="setting-desc action-note" id="clock-note" role="status" hidden></p>
+        <ul class="admin-checks" id="clock-findings"></ul>
       </section>
 
       <section class="admin-pane" id="apps" aria-labelledby="apps-title">
@@ -188,6 +195,16 @@
           for the hub. Which apps there are is set by the manifests in apps.d/.
         </p>
         <div id="apps-list"></div>
+        <h3>Built into the hub</h3>
+        <p class="setting-desc">Part of the hub itself, so there is nothing to install or update.</p>
+        <div id="builtin-list"></div>
+        <h3>Who can open each one</h3>
+        <p class="setting-desc">
+          <strong>Public</strong>: on the home page, for everyone on the box's network.
+          <strong>Private</strong>: off the home page, and its address asks for the admin login.
+          <strong>Off</strong>: off the home page, and its address answers "not found"; an add-on's
+          service is stopped too. The same switch is on each add-on, under Add-ons.
+        </p>
       </section>
 
       <section class="admin-pane" id="books" aria-labelledby="books-title">
@@ -421,11 +438,12 @@
       </section>
 
       <section class="admin-pane" id="health" aria-labelledby="health-title">
-        <h2 id="health-title">Health</h2>
+        <h2 id="health-title">Services doctor</h2>
         <p class="setting-desc">
           The box doctor: is everything the installer set up still there and working — the last
           install, the root helper, every service, Kiwix and its books, the uplink watchdog, the web
-          server's configuration. Each problem says what to do; the safe repairs are buttons. The same
+          server's configuration (the clock is on <a href="#clock">Clock</a>). Each problem says what
+          to do; the safe repairs are buttons. The same
           report from a terminal on the box: <code>sudo /opt/irate-box/irate-box health</code>, which
           works even when this page cannot reach the root helper.
         </p>
@@ -548,24 +566,6 @@
           <pre class="admin-log" id="security-log"></pre>
         </details>
 
-        <h3>Security doctor</h3>
-        <p class="setting-desc">
-          A read-only audit of how the system underneath is set up, including what the hub found
-          when it was installed: the notes add-on, the web server's settings, links and root-written
-          files in the hub's folders, unit sandboxing, secrets on command lines and at rest, git
-          pushes, sudo rules, accounts and the kernel's protections. It changes nothing and has no
-          buttons beyond this one; each line says what to do by hand. Also from a shell:
-          <code>sudo /opt/irate-box/irate-box secdoctor</code>.
-        </p>
-        <p class="setting-desc" id="audit-when">Not run yet.</p>
-        <div class="library-buttons">
-          <button type="button" id="audit-run">Run the doctor</button>
-        </div>
-        <div id="audit-steps"></div>
-        <details class="admin-output" id="audit-scope" hidden>
-          <summary>What the doctor cannot see</summary>
-          <ul class="admin-list" id="audit-not-covered"></ul>
-        </details>
       </section>
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
@@ -579,6 +579,7 @@
           reconnects by itself.
         </p>
         <p class="setting-desc" id="update-summary">Not checked yet.</p>
+        <p class="setting-desc">When an update fails, the <a href="#updoctor">Updates doctor</a> can say why.</p>
         <div class="library-buttons">
           <button type="button" id="update-check">Check for updates</button>
           <button type="button" id="update-fetch" disabled>Fetch update</button>
@@ -596,20 +597,6 @@
           <pre class="admin-log" id="update-log"></pre>
         </details>
 
-        <h3>When an update fails</h3>
-        <p class="setting-desc">
-          The update doctor looks at what an update depends on — the network, names, the clock,
-          GitHub, free space, the cached copy, the package sources — and says what is wrong and what
-          to do about it. For the box itself (services, Kiwix, an install that stopped), see
-          <a href="#health">Health</a>.
-        </p>
-        <div class="library-buttons">
-          <button type="button" id="update-doctor">Run the update doctor</button>
-          <button type="button" id="update-clear">Clear the update cache</button>
-        </div>
-        <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
-        <p class="setting-desc" id="doctor-when" hidden></p>
-        <ul class="admin-checks" id="doctor-findings" hidden></ul>
       </section>
 
       <section class="admin-pane" id="backup" aria-labelledby="backup-title">
@@ -633,6 +620,46 @@
           content between the box and your own machines when they share a network. Returns an error
           page if it is not installed or its unit is off.
         </p>
+      </section>
+
+      <section class="admin-pane" id="secdoctor" aria-labelledby="secdoctor-title">
+        <h2 id="secdoctor-title">Security doctor</h2>
+        <p class="setting-desc">
+          A read-only audit of how the system underneath is set up, including what the hub found
+          when it was installed: the notes add-on, the web server's settings, links and root-written
+          files in the hub's folders, unit sandboxing, secrets on command lines and at rest, git
+          pushes, sudo rules, accounts and the kernel's protections. It changes nothing and has no
+          buttons beyond this one; each line says what to do by hand. What a guest can reach, and the
+          fixes you can choose, are on <a href="#security">Security</a>. Also from a shell:
+          <code>sudo /opt/irate-box/irate-box secdoctor</code>.
+        </p>
+        <p class="setting-desc" id="audit-when">Not run yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="audit-run">Run the doctor</button>
+        </div>
+        <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
+        <div id="audit-steps"></div>
+        <details class="admin-output" id="audit-scope" hidden>
+          <summary>What the doctor cannot see</summary>
+          <ul class="admin-list" id="audit-not-covered"></ul>
+        </details>
+      </section>
+
+      <section class="admin-pane" id="updoctor" aria-labelledby="updoctor-title">
+        <h2 id="updoctor-title">Updates doctor</h2>
+        <p class="setting-desc">
+          The update doctor looks at what an update depends on — the network, names, the clock,
+          GitHub, free space, the cached copy, the package sources — and says what is wrong and what
+          to do about it. For the box itself (services, Kiwix, an install that stopped), see the
+          <a href="#health">Services doctor</a>; to check for and install updates, <a href="#updates">Updates</a>.
+        </p>
+        <div class="library-buttons">
+          <button type="button" id="update-doctor">Run the update doctor</button>
+          <button type="button" id="update-clear">Clear the update cache</button>
+        </div>
+        <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
+        <p class="setting-desc" id="doctor-when" hidden></p>
+        <ul class="admin-checks" id="doctor-findings" hidden></ul>
       </section>
 
     </main>

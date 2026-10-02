@@ -718,7 +718,7 @@ def auto():
         f = usable[0]
         return "clock module: " + setup(f["chip"], f["bus"], f["addr"])
     names = ", ".join(f"{f['label']} (bus {f['bus']}, {f['addr']})" for f in found["found"])
-    return f"clock module: found {names}; choose which on /admin → Health"
+    return f"clock module: found {names}; choose which on /admin → Box → Clock"
 
 
 def main(argv):

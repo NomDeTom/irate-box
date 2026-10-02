@@ -24,7 +24,7 @@ asked. Three ways in:
     sudo /opt/irate-box/irate-box health            the report, with what to do
     sudo /opt/irate-box/irate-box health summary    problems only (install.sh's closing lines)
     sudo /opt/irate-box/irate-box health fix CHOICE one repair, as offered in the report
-    /admin → System → Health                         the same, through hub_control.py
+    /admin → Health → Services doctor (the clock: Box → Clock), the same, through hub_control.py
 
 The shell is the way in when /admin itself is stuck (the root helper is what runs this for
 the page). "rerun-install" is the root helper's own (it needs the update machinery). Stdlib only.

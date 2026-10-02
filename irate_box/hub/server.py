@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import html
+from irate_box.hub import access
 from irate_box.hub import board
 from irate_box.hub import ci
 from irate_box.library import firmware
@@ -159,20 +160,30 @@ WIDGET_HTML = {
         <span class="desc" id="hub-qr-url">Scan to open this hub</span>
       </div>""",
     "system": """      <div class="service-card system-card" id="system-card">
-        <span class="icon">💽</span>
+        <span class="icon">💽💾</span>
         <span class="meter" id="mem-meter" hidden><span class="meter-label">Memory <b id="mem-text"></b></span><span class="bar"><span id="mem-bar"></span></span></span>
         <span class="meter" id="disk-meter" hidden><span class="meter-label">Disk <b id="disk-text"></b></span><span class="bar"><span id="disk-bar"></span></span></span>
       </div>""",
 }
 
 
-def render_tiles(row="apps"):
+def hidden_apps():
+    """The apps not on the home page or the list pages: private or off (access.py; the root
+    helper leaves its copy of the choices in the control folder)."""
+    state = access.read(ACCESS_STATE)
+    return {i for i, mode in state.items() if mode != "public"}
+
+
+def render_tiles(row="apps", hidden=frozenset()):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
-    rather than in the browser, so the page arrives whole."""
+    rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
+    list page left with nothing on it."""
     out = []
     for m in MANIFESTS:
         tile = m.get("tile")
-        if not tile or tile.get("row", "apps") != row:
+        if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
+            continue
+        if m.get("menu") and not manifests.entries_for(m["id"], MANIFESTS, hidden):
             continue
         if "widget" in tile:
             out.append(WIDGET_HTML[tile["widget"]])
@@ -200,12 +211,17 @@ _home_page = {"mtime": None, "body": b""}
 
 
 def home_page():
-    """index.html with the tiles in place, re-read when the file changes."""
+    """index.html with the tiles in place, re-read when the file or the access choices change."""
     path = STATIC / "index.html"
-    mtime = path.stat().st_mtime
+    try:
+        chosen = ACCESS_STATE.stat().st_mtime
+    except OSError:
+        chosen = None
+    mtime = (path.stat().st_mtime, chosen)
     if _home_page["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
-        text = text.replace(TILES_MARK, render_tiles("apps")).replace(BOX_MARK, render_tiles("box"))
+        hidden = hidden_apps()
+        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden))
         _home_page["body"] = text.encode()
         _home_page["mtime"] = mtime
     return _home_page["body"]
@@ -229,10 +245,11 @@ MENU_TEMPLATE = """<!DOCTYPE html>
        "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
        out when data-service is down. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>{title}</h1>
     <p class="subtitle">{subtitle}</p>
     <div class="theme-picker" role="group" aria-label="Theme">
+      <span class="theme-label" aria-hidden="true">Theme</span>
       <button type="button" data-theme-choice="light" title="Light">☀️</button>
       <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
       <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
@@ -253,7 +270,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
 
 def menu_page(m):
     items = []
-    for _, e, service in manifests.entries_for(m["id"], MANIFESTS):
+    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps()):
         attrs = f'href="{html.escape(e["href"])}"'
         if service:
             attrs += f' data-service="{html.escape(service)}"'
@@ -301,9 +318,6 @@ def note_client(handler):
 # the hub bare, with no web server in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
 DEFAULT_SETTINGS = {
-    # The ttyd card is shown like any other service -- greyed while its unit is off --
-    # unless the operator would rather guests were not shown the escape hatch at all.
-    "show_term_card": True,
     # The saved-work store (store.py): its size cap, and how long a gallery save lives
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
     "store_max_total_mb": max(1, store.MAX_TOTAL >> 20),
@@ -620,6 +634,7 @@ def firmware_action(payload):
 CONTROL_DIR = STATE_DIR / "control"
 CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
+ACCESS_STATE = CONTROL_DIR / "access.json"  # the root helper's copy of who may open each app
 VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
 CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
@@ -1273,6 +1288,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, addons_snapshot())
             return
 
+        if path == "/admin/access":
+            state = access.read(ACCESS_STATE)
+            self.send_json(200, {"apps": [dict(a, mode=state[a["id"]]) for a in access.apps(MANIFESTS)],
+                                 "results": control_results()})
+            return
+
         if path == "/admin/usb":
             self.send_json(200, usb_snapshot())
             return
@@ -1501,6 +1522,14 @@ class Handler(BaseHTTPRequestHandler):
                                                             "book": payload["book"][:64]})})
             else:
                 self.send_json(400, {"error": "action must be scan, import (device, file) or export (device, book)"})
+            return
+
+        if path == "/admin/access":
+            app, mode = str(payload.get("app", "")), payload.get("mode")
+            if app not in access.ROUTED or mode not in access.MODES:
+                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off"})
+            else:
+                self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
             return
 
         if path == "/admin/addons":

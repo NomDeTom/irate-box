@@ -48,9 +48,22 @@
 	# Caddy refuses a larger upload outright (413), so a guest cannot stream gigabytes at
 	# the hub only for it to be thrown away. store.py checks the same limit (DROP_MAX_FILE).
 	handle /api/drop {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/drop.caddy*
 		request_body {
 			max_size 25MB
 		}
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# The file drop's page and its files, behind the same switch as its upload.
+	handle /drop.html {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/drop.caddy*
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle /api/drop/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/drop.caddy*
 		reverse_proxy 127.0.0.1:8000
 	}
 
@@ -59,6 +72,7 @@
 	#   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1
 	# so its own links come out under /wiki/ too.
 	handle /wiki/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/wiki.caddy*
 		# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM stays hidden behind
 		# the old copy for an hour. Its ETag carries the book UUID, which a rebuild
 		# changes, so always revalidating is cheap (a 304) and never stale.
@@ -71,11 +85,17 @@
 	}
 	redir /wiki /wiki/ permanent
 
+	# Who may open each app (/admin: public, private or off): the root helper writes one
+	# snippet per app into $HUB_ACCESS_DIR from /etc/hub/access.json, imported at the top of
+	# the app's route: nothing, the admin login, or a 404 (<id>-off: only the 404, for the
+	# routes that always ask for the login or must stay open). As a glob (the trailing *), an
+	# import that matches nothing is no error, so a dev checkout with no such folder runs as it is.
 	# --- /draw → Excalidraw, static ------------------------------------------------
 	# The fork built with `vite build --mode hub --base /draw/` (.env.hub in the fork):
 	# storage is the hub's own /api/v2 on this origin, so no NestJS, no Redis, no
 	# container. Packaged as hub-app-excalidraw it moves to /usr/share/hub/apps/excalidraw.
 	handle_path /draw/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/draw.caddy*
 		root * {$HUB_DRAW_ROOT:/home/user/excalidraw-stack/excalidraw/excalidraw-app/build}
 		@immutable path /assets/*
 		@mutable not path /assets/*
@@ -91,6 +111,7 @@
 	# ~/mermaid-live-editor/docs, asset links relative so no MERMAID_BASE_PATH rebuild
 	# is needed. Packaged as hub-app-mermaid it moves to /usr/share/hub/apps/mermaid.
 	handle_path /mermaid/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/mermaid.caddy*
 		root * {$HUB_MERMAID_ROOT:/home/user/mermaid-live-editor/docs}
 		# Hashed build output is immutable; everything else (html, manifest, the
 		# service worker) must revalidate, or guests keep an old build after an upgrade.
@@ -107,6 +128,7 @@
 	# Single-file HTML tools (LoRa airtime, Meshtastic node ID / URL / packet layout,
 	# solar, battery, Ohm's law…). Self-contained, relative links, nothing fetched.
 	handle_path /tools/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/tools.caddy*
 		root * {$HUB_TOOLS_ROOT:/home/user/nomdetom.github.io}
 		header Cache-Control "no-cache"
 		file_server
@@ -118,6 +140,7 @@
 	# Log files open fine over plain HTTP; the live serial connection needs a secure
 	# context, which this origin is not (plan §4) -- the single-file download fixes that.
 	handle_path /serial/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/serial.caddy*
 		root * {$HUB_SERIAL_ROOT:/home/user/serial-terminal/dist}
 		# The one-file build, for live USB from a file opened on the guest's own machine (Web
 		# Serial needs a secure context, which file:// is and this plain HTTP is not): saved,
@@ -137,6 +160,7 @@
 	# installed. Official builds are ARMv7/ARM64 only, so never on the Zero W.
 	# Path passes through — run it with  SB_URL_PREFIX=/notes  SB_PORT=3000  (binds 127.0.0.1)
 	handle /notes/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
 		reverse_proxy 127.0.0.1:3000
 	}
 	redir /notes /notes/ permanent
@@ -146,6 +170,7 @@
 	# Host header, hence header_up. The sync protocol (:22000) and local discovery
 	# (:21027/udp) do not go through Caddy; the sole-listener rule has this one exception.
 	handle_path /sync/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/sync-off.caddy*
 		basic_auth {
 			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
 		}
@@ -159,6 +184,7 @@
 	# For pages on this origin. Nodes use the native listener on :1883 directly, since
 	# raw MQTT is not HTTP. reverse_proxy carries the WebSocket upgrade as it is.
 	handle /mqtt {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/mqtt.caddy*
 		reverse_proxy 127.0.0.1:9001
 	}
 
@@ -179,7 +205,15 @@
 	# hub's, and the page and the API would get the static files' 404.
 	handle /flasher* {
 		route {
-			@flasher_hub path /flasher /flasher/ /flasher/flasher.html /flasher/api/*
+			# Off: everything here answers 404. Private: the login on the page itself; what the
+			# downloaded page fetches cannot send one (it runs from the guest's disk).
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/flasher-off.caddy*
+			@flasher_page path /flasher /flasher/ /flasher/flasher.html
+			handle @flasher_page {
+				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/flasher.caddy*
+				reverse_proxy 127.0.0.1:8000
+			}
+			@flasher_hub path /flasher/api/*
 			reverse_proxy @flasher_hub 127.0.0.1:8000
 			handle_path /flasher/firmware/* {
 				header Access-Control-Allow-Origin "*"
@@ -229,6 +263,7 @@
 	handle_path /git/* {
 		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
 		handle @smart {
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
 			@push {
 				expression {query.service} == "git-receive-pack" || {path}.endsWith("/git-receive-pack")
 				not file {
@@ -254,6 +289,7 @@
 			}
 		}
 		handle {
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
@@ -327,6 +363,7 @@
 	# not an open root shell. Replace the hash:  caddy hash-password --plaintext …
 	# Path passes through — run ttyd with  --base-path /term  -i 127.0.0.1  -p 7681
 	handle /term/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/term-off.caddy*
 		basic_auth {
 			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
 		}

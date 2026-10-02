@@ -35,6 +35,8 @@ on it. Every part but "id" and "order" is optional:
                                       where the librarian finds updates: a fork's Actions
                                       artifact, or a git repository (cloned, then run through
                                       the "adapt" script from the hub's code)
+    "access":  {"title", "note"}       who may open it is set on /admin (public, private, off) for
+                                      the apps access.py names; these word its line there
     "core": true                      kept current by default ("Keep all apps current")
   }
 
@@ -156,12 +158,15 @@ def menus(manifests):
     return {m["id"]: m for m in manifests if m.get("menu")}
 
 
-def entries_for(menu_id, manifests):
+def entries_for(menu_id, manifests, skip=()):
     """The lines of one list page, in order: [(order, entry, status path)]. Entries named in a
     manifest come first by their order; discovered ones (an app's adapt script found them,
-    e.g. a calculator added to the site's index) fill in what the entries do not name."""
+    e.g. a calculator added to the site's index) fill in what the entries do not name. skip:
+    apps whose entries are left out (not public: access.py)."""
     out = []
     for m in manifests:
+        if m["id"] in skip:
+            continue
         status_path = m.get("status", {}).get("path")
         named = set()
         for e in m.get("entries", []):

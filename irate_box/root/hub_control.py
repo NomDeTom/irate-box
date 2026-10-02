@@ -95,6 +95,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from irate_box.hub import access
 from irate_box.root import health
 from irate_box.hub import manifests
 from irate_box.hub import netinv
@@ -164,6 +165,13 @@ OPS_ALL = ("start", "stop", "restart", "enable", "disable")
 MANIFESTS = manifests.load()
 UNITS = {unit.replace("@hub.", f"@{HUB_USER}."): OPS_ALL for unit in manifests.controllable_units(MANIFESTS)}
 UNITS.update({f"{WEB_SERVER}.service": ("restart",), "irate-box.service": ("restart",)})
+# Who may open each app (access.py): root's choice, the web server's snippet made from it,
+# and the copy the hub reads for its tiles.
+ACCESS_FILE = ETC / "access.json"
+ACCESS_STATE = CONTROL / "access.json"
+ACCESS_STOPPED = ETC / "access-stopped.json"  # the services "off" stopped, to start again
+NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"))
+CADDY_ACCESS = Path(os.environ.get("HUB_ACCESS_DIR", "/etc/caddy/irate-box-access"))
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
 MIN_PASSWORD = 8
@@ -264,6 +272,9 @@ def _set_caddy_login(pw):
         candidate.unlink(missing_ok=True)
         raise ValueError("the new Caddy config did not validate; nothing was changed")
     os.replace(candidate, target)
+    # The private apps' snippets carry the hash too.
+    if CADDY_ACCESS.is_dir():
+        _access_files(access.read(ACCESS_FILE))
     # The hub's site inside the owner's config: the whole of it must still validate.
     if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
         target.write_text(text)
@@ -298,6 +309,144 @@ def set_login(pw, keep=True):
                  "syncthing", "cli", "config", "gui", "password", "set", pw)
         done.append("Syncthing" if st.returncode == 0 else "Syncthing (failed)")
     return ", ".join(d for d in done if d)
+
+
+# --- who may open each app ---------------------------------------------------------
+
+def _caddy_hash():
+    m = HASH_LINE.search(_login_file().read_text()) if _login_file().exists() else None
+    return os.environ.get("HUB_CADDY_HASH") or (m.group(0).split()[-1] if m else None)
+
+
+def _caddy_directive():
+    """basic_auth, or basicauth on Caddy older than 2.8 (as install.sh writes it there)."""
+    out = run("caddy", "version")
+    m = re.search(r"v?(\d+)\.(\d+)", out.stdout or "")
+    return "basicauth" if m and (int(m.group(1)), int(m.group(2))) < (2, 8) else "basic_auth"
+
+
+def _write_root_file(path, text, mode=0o644, group=None):
+    tmp = path.with_name(f".{path.name}.new")  # a leading dot: Caddy's <id>.caddy* imports never see it
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+    if group is not None:
+        os.chown(tmp, 0, group)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def _access_files(state):
+    """The web server's part, written; returns what it replaced, to put back on failure."""
+    if WEB_SERVER == "nginx":
+        old = {NGINX_ACCESS: NGINX_ACCESS.read_text() if NGINX_ACCESS.exists() else None}
+        _write_root_file(NGINX_ACCESS, access.nginx_conf(state))
+        return old
+    login = _caddy_hash()
+    if not login:
+        raise ValueError(f"no admin login found in {_login_file()} for the private apps")
+    # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
+    CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
+    old = {}
+    for name, text in access.caddy_snippets(state, login, _caddy_directive()).items():
+        path = CADDY_ACCESS / name
+        old[path] = path.read_text() if path.exists() else None
+        _write_root_file(path, text)
+    return old
+
+
+def _access_record(state):
+    """root's copy, and the hub's (in its control folder: a fresh name, never following a link)."""
+    _write_root_file(ACCESS_FILE, json.dumps(state, indent=2) + "\n", 0o644)
+    tmp = ACCESS_STATE.with_name(f".access.{secrets.token_hex(6)}")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(json.dumps(state))
+    _for_hub(tmp)
+    os.replace(tmp, ACCESS_STATE)
+
+
+def _access_apply(state, reload=True):
+    """Write the web server's part and check it with the rest of its config; on a failed
+    check, put the old files back. reload: make it live (install.sh does that itself)."""
+    old = _access_files(state)
+    check = run("nginx", "-t") if WEB_SERVER == "nginx" else \
+        run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE))
+    if check.returncode != 0:
+        for path, text in old.items():
+            if text is None:
+                path.unlink(missing_ok=True)
+            else:
+                _write_root_file(path, text)
+        raise ValueError("the web server did not accept the change; nothing was changed: "
+                         + ((check.stderr or check.stdout).strip().splitlines() or [""])[-1][:200])
+    _access_record(state)
+    if reload:
+        if WEB_SERVER == "nginx":
+            run("systemctl", "reload", "nginx")
+        else:
+            # The Caddyfile turns Caddy's admin API off, which reload needs.
+            subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+
+
+def _access_unit(app):
+    m = next((m for m in MANIFESTS if m["id"] == app), {})
+    st = m.get("status", {})
+    unit = st.get("unit", "").replace("@hub.", f"@{HUB_USER}.")
+    return unit if st.get("control") and unit and run("systemctl", "cat", unit).returncode == 0 else None
+
+
+def access_set(req):
+    """One app public, private or off. Off also stops (and disables) an add-on's service;
+    leaving off starts it again."""
+    app, mode = str(req.get("app", "")), str(req.get("mode", ""))
+    if app not in access.ROUTED:
+        raise ValueError(f"{app} is not an app whose access can be set")
+    if mode not in access.MODES:
+        raise ValueError("mode: public, private or off")
+    state = access.read(ACCESS_FILE)
+    was = state[app]
+    state[app] = mode
+    _access_apply(state)
+    done = f"{app}: {mode}"
+    unit = _access_unit(app)
+    # Only what "off" stopped is started again: an add-on the owner never switched on stays off.
+    try:
+        stopped = set(json.loads(ACCESS_STOPPED.read_text()))
+    except (OSError, ValueError, TypeError):
+        stopped = set()
+    if unit and mode == "off" and was != "off":
+        if run("systemctl", "is-enabled", "--quiet", unit).returncode == 0 or \
+                run("systemctl", "is-active", "--quiet", unit).returncode == 0:
+            out = run("systemctl", "disable", "--now", unit)
+            if out.returncode == 0:
+                stopped.add(unit)
+                done += f"; {unit} stopped"
+            else:
+                done += f"; {unit} could not be stopped"
+    elif unit and was == "off" and mode != "off" and unit in stopped:
+        out = run("systemctl", "enable", "--now", unit)
+        stopped.discard(unit)
+        done += f"; {unit} started again" if out.returncode == 0 else f"; {unit} could not be started"
+    _write_root_file(ACCESS_STOPPED, json.dumps(sorted(stopped)) + "\n", 0o644)
+    return done
+
+
+def access_install():
+    """For install.sh: the choices so far (or the defaults, or the old "show the Terminal
+    card" setting), written out for the web server it is about to check and start."""
+    if ACCESS_FILE.exists():
+        state = access.read(ACCESS_FILE)
+    else:
+        state = access.defaults()
+        try:
+            if json.loads((STATE / "settings.json").read_text()).get("show_term_card") is False:
+                state["term"] = "private"
+        except (OSError, ValueError):
+            pass
+    _access_files(state)
+    _access_record(state)
+    return ", ".join(f"{k} {v}" for k, v in state.items() if v != "public") or "every app public"
 
 
 # --- updates ---------------------------------------------------------------------
@@ -594,6 +743,9 @@ def _nginx_check(src, opts):
                        "@UNCLAIMED@": str(UNCLAIMED)}.items():
         text = text.replace(key, value)
     with tempfile.TemporaryDirectory() as tmp:
+        # Who may open each app, as this box has it now (install.sh writes it the same way).
+        (Path(tmp) / "access.conf").write_text(access.nginx_conf(access.read(ACCESS_FILE)))
+        text = text.replace("@ACCESS@", f"{tmp}/access.conf")
         conf = Path(tmp) / "nginx.conf"
         conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
                         f"http {{\ninclude /etc/nginx/mime.types;\n{text}\n}}\n")
@@ -1281,7 +1433,7 @@ ACTIONS = {"service": service, "password": password,
            "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
+           "access": access_set, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
 
 
 def answer(rid, ok, message):
@@ -1321,6 +1473,22 @@ if __name__ == "__main__":
         if os.geteuid() != 0:
             sys.exit("run as root: sudo ./irate-box hub_control reset-password")
         print(reset_password())
+        sys.exit(0)
+    if sys.argv[1:] == ["access-off-units"]:
+        # For install.sh: the services of the apps switched off, which it leaves stopped.
+        state = access.read(ACCESS_FILE)
+        for m in MANIFESTS:
+            st = m.get("status", {})
+            if state.get(m["id"]) == "off" and st.get("control") and st.get("unit"):
+                print(st["unit"].replace("@hub.", f"@{HUB_USER}."))
+        sys.exit(0)
+    if sys.argv[1:] == ["access-install"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        try:
+            print(access_install())
+        except (ValueError, OSError) as exc:
+            sys.exit(f"access-install: {exc}")
         sys.exit(0)
     if len(sys.argv) == 4 and sys.argv[1] == "install-app":
         if os.geteuid() != 0:

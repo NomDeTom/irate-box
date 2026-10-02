@@ -21,7 +21,7 @@ A check that cannot read what it needs (not root, no systemd) says so as a warn,
     sudo /opt/irate-box/irate-box secdoctor            step by step, with what to do
     sudo /opt/irate-box/irate-box secdoctor summary    problems and warnings only
     sudo /opt/irate-box/irate-box secdoctor json       the report, as the page reads it
-    /admin → Security → Security doctor                 the same, through hub_control.py
+    /admin → Health → Security doctor                   the same, through hub_control.py
 
 The F2 fix (request bodies drained or the connection closed) declares itself with
 `DRAINS_REQUEST_BODIES = True` at the top level of server.py, which the front step looks for.
