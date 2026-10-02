@@ -26,9 +26,3 @@ path = ["packaging/deb/control", "packaging/deb/copyright"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
-
-[[annotations]]
-path = "irate.code-workspace"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 NomDeTom"
-SPDX-License-Identifier = "MIT"
