@@ -1,4 +1,0 @@
-#!/bin/sh
-# Irate-Box: the hook every private repository uses (core.hooksPath, set by gitrepos.py). It
-# queues a build for each pushed branch whose commit has a .irate-ci.sh; ci.py says how.
-exec /usr/bin/python3 "$(dirname "$0")/../ci.py" enqueue

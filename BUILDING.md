@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Building and running the hub, end to end
 
 How the pieces fit together today, and the order to do them in. This is the development setup — one machine, everything under your home directory, Caddy on a high port (the board runs nginx with the same routes; §4b). The `.deb`-packaged install for a Pi is a later phase and not described here.
@@ -5,7 +7,7 @@ How the pieces fit together today, and the order to do them in. This is the deve
 There are three repositories. The hub itself is tiny and needs nothing built; the two apps are forks with a **hub build mode** each, producing static files the hub's web server serves from disk.
 
 ```
-~/irate-box/                          this repo: server, page, irate-box.nginx, Caddyfile
+~/irate-box/                          this repo: irate_box/ (the Python), web/ (pages), config/ (nginx, Caddy)
 ~/mermaid-live-editor/                fork, branch `hub`      → builds to docs/
 ~/excalidraw-stack/excalidraw/        fork, branch `main`     → builds to excalidraw-app/build/
 ```
@@ -23,12 +25,12 @@ The apps are separate repos on purpose: each tracks its upstream and takes rebas
 ```sh
 git clone https://github.com/NomDeTom/irate-box ~/irate-box
 cd ~/irate-box
-python3 server.py
+./irate-box server
 ```
 
 That already gives you the landing page, shoutbox, board, blob store and `/status` on
 <http://localhost:8000>. State (`messages.json`, `board.json`, `clock.json`, `store/`)
-appears next to `server.py` unless `HUB_STATE_DIR` says otherwise. Leave it running; the apps below are served *around* it, not by it.
+appears in the checkout unless `HUB_STATE_DIR` says otherwise. Leave it running; the apps below are served *around* it, not by it.
 
 ## 2. Mermaid
 
@@ -98,17 +100,17 @@ That is the relay plus its four runtime dependencies (~8 MB, all plain JS, so it
 
 ## 4. Caddy in front (development)
 
-On a board, `install.sh` puts nginx in front, with the same routes from `irate-box.nginx` (§4b). For a dev checkout Caddy is quicker, because its Caddyfile runs as it is:
+On a board, `install.sh` puts nginx in front, with the same routes from `config/irate-box.nginx` (§4b). For a dev checkout Caddy is quicker, because its Caddyfile runs as it is:
 
 ```sh
 cd ~/irate-box
-caddy run --config Caddyfile
+caddy run --config config/Caddyfile
 ```
 
 The Caddyfile listens on `:80`, which needs root or `setcap cap_net_bind_service=+ep` on the binary. For development, copy it and change the one line:
 
 ```sh
-sed 's/^:80 {/:8088 {/' Caddyfile > /tmp/Caddyfile.dev && caddy run --config /tmp/Caddyfile.dev
+sed 's/^:80 {/:8088 {/' config/Caddyfile > /tmp/Caddyfile.dev && caddy run --config /tmp/Caddyfile.dev
 ```
 
 Now everything is on one origin:
@@ -116,7 +118,7 @@ Now everything is on one origin:
 | Path | Comes from |
 |---|---|
 | `/` | `server.py` — page, probe redirects |
-| `/*.js`, `/*.css`, `/board.html`, `/hub-return.js` | `static/` via Caddy's file server |
+| `/*.js`, `/*.css`, `/board.html`, `/hub-return.js` | `web/` via Caddy's file server |
 | `/messages`, `/board/*`, `/api/*`, `/status` | `server.py` |
 | `/mermaid/` | `~/mermaid-live-editor/docs` |
 | `/draw/` | `~/excalidraw-stack/excalidraw/excalidraw-app/build` |
@@ -125,7 +127,7 @@ Now everything is on one origin:
 If your checkouts are elsewhere, the roots are environment placeholders, not edits:
 
 ```sh
-HUB_MERMAID_ROOT=/srv/mermaid HUB_DRAW_ROOT=/srv/draw HUB_STATIC=/srv/hub caddy run --config Caddyfile
+HUB_MERMAID_ROOT=/srv/mermaid HUB_DRAW_ROOT=/srv/draw HUB_STATIC=/srv/hub caddy run --config config/Caddyfile
 ```
 
 The landing page asks `/status` every 15 s and greys out any tile whose backend is not there. Served without a web server at all (plain `:8000`), every tile is greyed and the page says so — that is the expected look of step 1 on its own.
@@ -178,20 +180,20 @@ The apps are not built on the board. `--apps-from-actions` fetches the newest bu
 
 If Tailscale is already on the board, the script puts it under a switch on `/admin` (off / on / on for N hours) instead of running it at every boot. `tailscale-apply.sh`, run as root by a path unit, does the starting and stopping. The script never changes Tailscale's current state, so it is safe to run over Tailscale.
 
-The librarian (`librarian.py`, settings under Library on `/admin`) keeps ZIM books current from where they are published: a project's GitHub releases, a fork's Actions artifacts (GitHub requires a token to download those, even from public repositories) or the same artifacts through nightly.link (no token), or a plain URL. A new version replaces `<name>.zim` in place, so links into the book never change, and `library.xml` is rebuilt for kiwix-serve's `--monitorLibrary` to pick up: no restart and no root. Old versions are archived under `/var/lib/hub/library/archive/` (keep 0–3) and can be rolled back. It runs hourly from `irate-box-librarian.timer`, checking each source only when the policy says it is due, at idle CPU and I/O priority. The same is available from the command line: `sudo -u hub HUB_STATE_DIR=/var/lib/hub python3 /opt/irate-box/librarian.py status`.
+The librarian (`librarian.py`, settings under Library on `/admin`) keeps ZIM books current from where they are published: a project's GitHub releases, a fork's Actions artifacts (GitHub requires a token to download those, even from public repositories) or the same artifacts through nightly.link (no token), or a plain URL. A new version replaces `<name>.zim` in place, so links into the book never change, and `library.xml` is rebuilt for kiwix-serve's `--monitorLibrary` to pick up: no restart and no root. Old versions are archived under `/var/lib/hub/library/archive/` (keep 0–3) and can be rolled back. It runs hourly from `irate-box-librarian.timer`, checking each source only when the policy says it is due, at idle CPU and I/O priority. The same is available from the command line: `sudo -u hub HUB_STATE_DIR=/var/lib/hub /opt/irate-box/irate-box librarian status`.
 
-The script looks at the network once (`netinv.py`: the radios, the stack that runs them, whether each could carry the hub's own hotspot, and what is in the way) and ends with its verdicts; System → Network on `/admin` looks again, for every device or one (a dongle plugged in later). It also starts the uplink watchdog (`uplink.py`, `irate-box-uplink.service`), which keeps the box on its network: `--uplink EAGERNESS[,FORGIVENESS]` sets how hard (eagerness `off`, `patient`, `standard`, `persistent`, `stubborn`; forgiveness `tolerant`, `normal`, `strict`; `patient,normal` the first time if not given; `python3 uplink.py presets` prints what each means in seconds). It goes in `/etc/hub/uplink.json`, not the recorded options, so updates leave the owner's choice on `/admin` alone; the page also has the custom values and a hold. The owner's own WiFi profile is never changed by the script: "Keep retrying" on that page does it, by consent, and `uninstall.sh` puts it back.
+The script looks at the network once (`netinv.py`: the radios, the stack that runs them, whether each could carry the hub's own hotspot, and what is in the way) and ends with its verdicts; System → Network on `/admin` looks again, for every device or one (a dongle plugged in later). It also starts the uplink watchdog (`uplink.py`, `irate-box-uplink.service`), which keeps the box on its network: `--uplink EAGERNESS[,FORGIVENESS]` sets how hard (eagerness `off`, `patient`, `standard`, `persistent`, `stubborn`; forgiveness `tolerant`, `normal`, `strict`; `patient,normal` the first time if not given; `./irate-box uplink presets` prints what each means in seconds). It goes in `/etc/hub/uplink.json`, not the recorded options, so updates leave the owner's choice on `/admin` alone; the page also has the custom values and a hold. The owner's own WiFi profile is never changed by the script: "Keep retrying" on that page does it, by consent, and `uninstall.sh` puts it back.
 
 ttyd is always installed at `/term/`: the upstream static binary, checked against its published SHA256SUMS. It only runs with `--with-term`, and stays on for later runs once enabled. The admin login gets you past the web server, and after that `/bin/login` asks for a real account on the box.
 
-Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe, because they cannot load `hub-return.js` themselves. The address keeps the app's own path (`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. There is no admin password until the owner chooses one: right after a first install, `/admin/` is a set-the-password page, open to whoever reaches it first, so open it straight away (or pass `--admin-password` for a scripted install). It is then kept in `/etc/hub/admin-password`; `sudo python3 /opt/irate-box/hub_control.py reset-password` from the console starts over. Run the script again to upgrade. State and the password survive. It does not touch the network: there is no AP, no dnsmasq and no captive portal yet. The hub is at `http://<the board's address>/` on whatever network the board is on.
+Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe, because they cannot load `hub-return.js` themselves. The address keeps the app's own path (`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. There is no admin password until the owner chooses one: right after a first install, `/admin/` is a set-the-password page, open to whoever reaches it first, so open it straight away (or pass `--admin-password` for a scripted install). It is then kept in `/etc/hub/admin-password`; `sudo /opt/irate-box/irate-box hub_control reset-password` from the console starts over. Run the script again to upgrade. State and the password survive. It does not touch the network: there is no AP, no dnsmasq and no captive portal yet. The hub is at `http://<the board's address>/` on whatever network the board is on.
 
 ## 5. Rebuilding after a change
 
-- Hub page or server: nothing to build. The web server reads `static/` off disk; restart `server.py` for Python changes.
+- Hub page or server: nothing to build. The web server reads `web/` off disk; restart `./irate-box server` for Python changes.
 - Mermaid: `pnpm build:hub` again. The `docs/` tree is replaced wholesale.
 - Excalidraw: `yarn build:hub` again.
-- Caddyfile: `caddy reload --config Caddyfile` (or restart the dev copy).
+- Caddyfile: `caddy reload --config config/Caddyfile` (or restart the dev copy).
 - irate-box.nginx, on a board: rerun `install.sh`, which writes it out and checks it with `nginx -t`.
 
 Guests never see a stale app after a rebuild: hashed chunks are served `immutable`, everything else `no-cache`, so the next page load revalidates.
@@ -210,5 +212,5 @@ Expect the occasional snapshot-test conflict in Excalidraw (regenerate with `npx
 ## What this is not yet
 
 - Not the Pi install. That is `hub-core`/`hub-app-*` `.deb`s with the builds under `/usr/share/hub/apps/`, `systemd` units, and nginx on `:80` with the AP and dnsmasq hijack underneath. The routes already have the shape; the packaging does not exist.
-- Not Kiwix, the serial terminal or ttyd — the routes exist (`irate-box.nginx`, `Caddyfile`), the backends have to be installed separately and are not built from these repos.
+- Not Kiwix, the serial terminal or ttyd — the routes exist (`config/irate-box.nginx`, `config/Caddyfile`), the backends have to be installed separately and are not built from these repos.
 - Not precompressed. `file_server { precompressed br gzip }` plus a compression step in each build is the cheap next win for a single-core board.

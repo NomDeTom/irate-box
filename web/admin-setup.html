@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Set up the hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<!-- Served at /admin/ while no admin password has been chosen (server.py, unclaimed()).
+     Nothing else under /admin answers until one is. -->
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <h1>Set up</h1>
+    <p class="subtitle">Step 1 of 5: choose the admin password for this box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <section>
+    <div class="help-lead">
+      <p><strong>This box has no admin password yet.</strong> Whoever sets it here owns the box:
+        the admin page, the terminal at /term and Syncthing at /sync all use it, with the user
+        name <code>admin</code>.</p>
+      <p>Anyone on this network can open this page until a password is set, so set it now.
+        If you are a guest, not the owner, please leave this alone.</p>
+      <p>After this, the admin page takes you through the rest: how guests reach the box, what
+        it exposes, add-ons and books. Each of those can be skipped and done later.</p>
+    </div>
+    <p class="settings-note admin-note" id="setup-note" hidden></p>
+    <form id="setup-form" class="library-form">
+      <label>Admin password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+      <label>Again <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+      <button type="submit">Set the password</button>
+    </form>
+    <p class="setting-desc">
+      Lost it later? From the box's own console: <code>sudo /opt/irate-box/irate-box hub_control reset-password</code>
+      brings this page back.
+    </p>
+  </section>
+
+  <script src="/hub.js"></script>
+  <script>
+  (function () {
+    const form = document.getElementById('setup-form');
+    const note = document.getElementById('setup-note');
+    const say = (text, ok) => { note.textContent = text; note.classList.toggle('bad', !ok); note.hidden = false; };
+    // The root helper takes a second or two. Once it has set the password the box is no longer
+    // unclaimed and the web server asks for the login, so a 401 here also means "done".
+    async function wait(id, tries) {
+      try {
+        const r = await fetch(`/admin/setup?id=${encodeURIComponent(id)}`);
+        if (r.status === 401) { done(); return; }
+        const s = await r.json();
+        if (s.result) {
+          if (s.result.ok) { done(); return; }
+          say(s.result.message, false);
+          form.querySelector('button').disabled = false;
+          return;
+        }
+        if (!s.unclaimed) { done(); return; }
+      } catch (_) { /* the web server restarting */ }
+      if (tries > 0) setTimeout(() => wait(id, tries - 1), 1500);
+      else { say('No answer from the box. Reload this page to see whether the password was set.', false); }
+    }
+    function done() {
+      say('Password set. Opening the rest of the setup: log in as "admin" with the new password.', true);
+      setTimeout(() => { location.href = '/admin/#welcome'; }, 2500);
+    }
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pw = form.elements.password.value;
+      if (pw !== form.elements.confirm.value) { say('The two passwords differ.', false); return; }
+      form.querySelector('button').disabled = true;
+      try {
+        const r = await fetch('/admin/setup', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        say('Setting the password…', true);
+        wait(data.id, 20);
+      } catch (err) {
+        say(err.message, false);
+        form.querySelector('button').disabled = false;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

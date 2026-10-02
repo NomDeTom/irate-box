@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hub admin</title>
+  <link rel="stylesheet" href="/style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <h1>Admin</h1>
+    <p class="subtitle">Options for whoever owns the box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <div class="admin-layout">
+    <nav class="admin-side" aria-label="Admin pages">
+      <button type="button" class="admin-menu" aria-expanded="false" aria-controls="admin-side-list">
+        <span aria-hidden="true">☰</span> <span id="admin-current">Overview</span>
+      </button>
+      <div class="admin-side-list" id="admin-side-list">
+        <p class="admin-side-group">Box</p>
+        <a href="#welcome" id="welcome-link">Setup steps</a>
+        <a href="#overview">Overview</a>
+        <a href="#addons">Add-ons</a>
+        <a href="#access">Access</a>
+        <p class="admin-side-group">Library</p>
+        <a href="#apps">Apps</a>
+        <a href="#books">Books</a>
+        <a href="#firmware">Firmware</a>
+        <a href="#sources">Schedule and token</a>
+        <p class="admin-side-group">Hub content</p>
+        <a href="#saved">Saved work</a>
+        <a href="#moderation">Moderation</a>
+        <a href="#git">Git</a>
+        <p class="admin-side-group">System</p>
+        <a href="#health">Health</a>
+        <a href="#network">Network</a>
+        <a href="#security">Security</a>
+        <a href="#updates">Updates</a>
+        <a href="#backup">Backup</a>
+      </div>
+    </nav>
+
+    <main class="admin-main">
+      <div class="helper-banner" id="helper-banner" role="alert" hidden>
+        <strong>The box's root helper is not answering.</strong>
+        <span id="helper-banner-detail"></span>
+        Buttons that need root (services, updates, add-ons, the doctor) will wait until it is back.
+        From a terminal on the box (SSH, or Terminal if it is on):
+        <pre class="admin-log" id="helper-banner-cmds"></pre>
+      </div>
+      <section class="admin-pane" id="overview" aria-labelledby="overview-title">
+        <h2 id="overview-title">Overview</h2>
+        <div class="admin-tiles" id="box-tiles"></div>
+        <p class="setting-desc">
+          Optional services can be started, stopped, or set to start at boot. The web server and the hub
+          can only be restarted. Each change is carried out by a small root helper on the box, so
+          it takes a second or two to show here.
+        </p>
+        <table class="admin-table" id="service-table">
+          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
+        <div id="control-results"></div>
+        <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps again</a></p>
+      </section>
+
+      <section class="admin-pane" id="welcome" aria-labelledby="welcome-title">
+        <h2 id="welcome-title">Setup steps</h2>
+        <p class="setting-desc">
+          The password is set; these are the rest of the box's setup. Each step opens its own page,
+          and any can be skipped and come back to later: this page stays in the sidebar until you
+          finish it, and Overview can bring it back.
+        </p>
+        <ol class="setup-steps" id="setup-steps">
+          <li data-step="password"><strong>Admin password</strong> <span>Set.</span>
+            <a href="#access">Change it under Access</a></li>
+          <li data-step="connection"><strong>How guests reach the box</strong> <span></span></li>
+          <li data-step="security"><strong>What the box exposes</strong> <span>Not scanned yet.</span>
+            <a href="#security">Open Security</a></li>
+          <li data-step="addons"><strong>Add-ons</strong> <span></span> <a href="#addons">Choose add-ons</a></li>
+          <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
+        </ol>
+        <div class="library-buttons">
+          <button type="button" id="setup-finish">Finish setup</button>
+        </div>
+        <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
+      </section>
+
+      <section class="admin-pane" id="addons" aria-labelledby="addons-title">
+        <h2 id="addons-title">Add-ons</h2>
+        <p class="setting-desc">
+          The hub works without any of these. Adding one installs it and starts it; removing one
+          stops it and takes its service away, and keeps its data, so adding it back finds
+          everything where it was. Each runs the installer, which takes a few minutes on this
+          board and restarts the hub part-way through.
+        </p>
+        <div id="addons-list"></div>
+        <div class="admin-progress" id="addons-progress" hidden>
+          <progress class="admin-bar" id="addons-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="addons-step"></p>
+        </div>
+        <details class="admin-output" id="addons-output" hidden>
+          <summary>Installer output</summary>
+          <pre class="admin-log" id="addons-log"></pre>
+        </details>
+      </section>
+
+      <section class="admin-pane" id="access" aria-labelledby="access-title">
+        <h2 id="access-title">Access</h2>
+        <h3>Admin password</h3>
+        <p class="setting-desc">
+          The one login for /admin, /sync and /term (user <code>admin</code>), and Syncthing's own.
+          After changing it, the browser asks for the new one.
+        </p>
+        <form id="password-form" class="library-form">
+          <label>New password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+          <label>Again <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+          <button type="submit">Change password</button>
+        </form>
+        <p class="setting-desc action-note" id="password-note" role="status" hidden></p>
+
+        <div id="remote-section" hidden>
+          <h3>Remote access</h3>
+        <p class="setting-desc">
+          Tailscale lets you reach the box from anywhere. While it is off, it can only be
+          switched back on from here — so from the hub's own WiFi or LAN, not remotely.
+        </p>
+        <div class="remote-choices">
+          <label class="setting">
+            <input type="radio" name="remote" value="off">
+            <span><span class="setting-name">Off</span></span>
+          </label>
+          <label class="setting">
+            <input type="radio" name="remote" value="on">
+            <span>
+              <span class="setting-name">On</span>
+              <span class="setting-desc">Stays on, including after a reboot.</span>
+            </span>
+          </label>
+          <label class="setting">
+            <input type="radio" name="remote" value="timed">
+            <span>
+              <span class="setting-name">On for
+                <input type="number" id="remote-hours" min="1" max="72" value="2"> hours</span>
+              <span class="setting-desc">Then off by itself. A reboot also ends it.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc" id="remote-state"></p>
+        <p class="setting-desc action-note" id="remote-note" role="status" hidden></p>
+        </div>
+
+        <h3>Terminal on the landing page</h3>
+        <div class="settings" data-note="landing-note">
+          <label class="setting">
+            <input type="checkbox" id="show_term_card">
+            <span>
+              <span class="setting-name">Show the Terminal card</span>
+              <span class="setting-desc">
+                The shell is greyed out while its unit is off, the same as any other service.
+                Turn this off to leave it off the page entirely — the route still works for
+                anyone who knows the address and has the password.
+              </span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="landing-note" role="status" hidden></p>
+      </section>
+
+      <section class="admin-pane" id="apps" aria-labelledby="apps-title">
+        <h2 id="apps-title">Apps</h2>
+        <p class="setting-desc library-state"></p>
+        <progress class="admin-bar library-bar" hidden></progress>
+        <p class="setting-desc">
+          The whiteboard, the Mermaid editor, the serial terminal and the collaboration relay come
+          from their forks' GitHub Actions builds, and the calculators from their repository, adapted
+          for the hub. Which apps there are is set by the manifests in apps.d/.
+        </p>
+        <div id="apps-list"></div>
+      </section>
+
+      <section class="admin-pane" id="books" aria-labelledby="books-title">
+        <h2 id="books-title">Books</h2>
+        <p class="setting-desc library-state"></p>
+        <progress class="admin-bar library-bar" hidden></progress>
+        <p class="setting-desc">
+          The librarian keeps the books in <a href="/wiki/">/wiki/</a> current from where they are
+          published, on the schedule under Schedule and token.
+        </p>
+        <p class="setting-desc">
+          Each book keeps its name across versions, so links into it never break. Books added by
+          hand, or by <code>install.sh --zim</code>, are left alone unless a source here has the same
+          name.
+        </p>
+        <div id="library-sources"></div>
+        <div class="library-actions">
+          <button type="button" data-all="check">Check all</button>
+          <button type="button" data-all="fetch">Fetch all</button>
+          <button type="button" data-all="update">Update all</button>
+        </div>
+        <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
+
+        <h3>Add a book source</h3>
+        <p class="setting-desc">
+          Quick fill:
+          <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
+          <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
+          <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
+        </p>
+        <form id="library-add" class="library-form">
+          <label>Book name <input name="name" required placeholder="mermaid-docs" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*"></label>
+          <label>Source
+            <select name="type">
+              <option value="release">GitHub releases</option>
+              <option value="actions">GitHub Actions artifacts (token)</option>
+              <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
+              <option value="url">A URL</option>
+            </select>
+          </label>
+          <p class="setting-desc" id="library-type-help"></p>
+          <label data-for="release actions nightly-link">Repository <input name="repo" placeholder="owner/repo"></label>
+          <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
+          <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
+          <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
+          <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
+          <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
+          <button type="submit">Add source</button>
+        </form>
+        <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
+
+        <h3>From or to a USB stick</h3>
+        <p class="setting-desc">
+          Plug a stick into the box, then scan. Books on it can be copied into the library, and the
+          hub's books copied onto it to carry to another box. The stick is only mounted for the
+          scan or the copy, read-only unless something is being copied to it.
+        </p>
+        <div class="library-buttons"><button type="button" id="usb-scan">Scan for USB sticks</button></div>
+        <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
+        <div class="admin-progress" id="usb-progress" hidden>
+          <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="usb-step"></p>
+        </div>
+        <div id="usb-devices"></div>
+      </section>
+
+      <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
+        <h2 id="firmware-title">Firmware</h2>
+        <p class="setting-desc">
+          Meshtastic firmware kept on the box for the web flasher, so a radio can be flashed with no
+          internet. Only the boards you tick are kept (a few MB each, per release); "all boards" is
+          about 600 MB a release. Checked on the library's schedule, whenever the box has internet.
+        </p>
+        <p class="setting-desc" id="fw-status"></p>
+        <form id="fw-form" class="library-form">
+          <label class="inline"><input type="checkbox" name="enabled"> Keep firmware on this box</label>
+          <label>Alphas to keep <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
+          <label>Betas to keep <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
+          <label>Build cache, for building firmware on the box with no internet
+            <select name="cache">
+              <option value="discard">Don't keep it</option>
+              <option value="native">Keep what a headless build needs (~215 MB)</option>
+              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
+            </select></label>
+          <label class="inline"><input type="checkbox" name="all_boards"> All boards</label>
+          <label>Boards <input id="fw-filter" type="search" placeholder="filter: rak, heltec, t-deck…"></label>
+          <div id="fw-boards" class="fw-boards"></div>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="fw-note" role="status" hidden></p>
+        <p class="library-buttons">
+          <button type="button" id="fw-check">Check now</button>
+          <button type="button" id="fw-update">Update now</button>
+        </p>
+        <h3>Kept</h3>
+        <div id="fw-kept" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="sources" aria-labelledby="sources-title">
+        <h2 id="sources-title">Schedule and token</h2>
+        <p class="setting-desc">For apps and books alike: how often the librarian looks for new versions, how many old ones it keeps, and the token some sources need.</p>
+        <h3>Schedule and versions</h3>
+        <form id="library-policy" class="library-form">
+          <label>Keep old versions
+            <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+          </label>
+          <label>Check for updates
+            <select name="check_every_hours">
+              <option value="0">only when asked</option><option value="6">every 6 hours</option>
+              <option value="24">daily</option><option value="168">weekly</option>
+            </select>
+          </label>
+          <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>
+
+        <h3>GitHub token</h3>
+        <p class="setting-desc">
+          Only for "GitHub Actions artifacts": GitHub requires a login to download those, even from
+          public repositories. A fine-grained token with read-only access to public repositories is
+          enough. Stored on the box, readable only by the hub; never shown again.
+          <span id="library-token-state"></span>
+        </p>
+        <form id="library-token" class="library-form">
+          <label>Token <input name="value" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+          <div class="library-buttons">
+            <button type="submit">Save</button>
+            <button type="button" id="library-token-clear">Clear</button>
+          </div>
+        </form>
+        <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
+      </section>
+
+      <section class="admin-pane" id="saved" aria-labelledby="saved-title">
+        <h2 id="saved-title">Saved work</h2>
+        <p class="setting-desc" id="store-usage"></p>
+        <div class="admin-meter"><div id="store-meter"></div></div>
+        <p class="setting-desc">
+          Shared Excalidraw drawings, collaboration rooms and pasted images count against the same
+          cap as the gallery; the oldest is evicted first when it is full.
+          <span class="library-buttons" id="store-clear"></span>
+        </p>
+        <p class="setting-desc action-note" id="store-note" role="status" hidden></p>
+        <h3>Gallery</h3>
+        <div id="store-saves" class="admin-list"></div>
+        <h3>File drop</h3>
+        <p class="setting-desc" id="drop-usage"></p>
+        <h3>Cap and expiry</h3>
+        <form id="store-settings" class="library-form">
+          <label>Store size cap (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
+          <label>Gallery saves expire after (hours of powered-on time, 0 = never)
+            <input name="store_save_ttl_hours" type="number" min="0" step="1"></label>
+          <label>File drop size cap (MB)
+            <input name="drop_max_total_mb" type="number" min="1" step="1"></label>
+          <label>Dropped files expire after (hours of powered-on time, 0 = only when the cap is reached)
+            <input name="drop_ttl_hours" type="number" min="0" step="1"></label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="store-settings-note" role="status" hidden></p>
+      </section>
+
+      <section class="admin-pane" id="moderation" aria-labelledby="moderation-title">
+        <h2 id="moderation-title">Moderation</h2>
+        <p class="setting-desc">
+          Everything here also ages out by itself: shoutbox messages after 24 hours, board threads
+          7 days after their last reply (powered-on time). Deleting is immediate and permanent.
+        </p>
+        <p class="setting-desc action-note" id="mod-note" role="status" hidden></p>
+        <h3>Starting fresh</h3>
+        <div class="settings" data-note="fresh-note">
+          <label class="setting">
+            <input type="checkbox" id="shout_reset_on_boot">
+            <span>
+              <span class="setting-name">Clear the shoutbox when the box starts</span>
+              <span class="setting-desc">For an event box: each day starts empty. Only a real boot clears it, not the hub restarting for an update.</span>
+            </span>
+          </label>
+          <label class="setting">
+            <input type="checkbox" id="board_reset_on_boot">
+            <span>
+              <span class="setting-name">Clear the board when the box starts</span>
+              <span class="setting-desc">Every thread goes at boot, the same way.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="fresh-note" role="status" hidden></p>
+        <h3>Shoutbox</h3>
+        <div id="mod-messages" class="admin-list"></div>
+        <h3>File drop</h3>
+        <div id="mod-drops" class="admin-list"></div>
+        <h3>Board</h3>
+        <div id="mod-threads" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="git" aria-labelledby="git-title">
+        <h2 id="git-title">Git</h2>
+        <p class="setting-desc">
+          Two git servers on this box. <a href="/git/">/git/</a> is public: anyone on the network can
+          browse and clone, and pushing needs the admin login unless guests may push.
+          <a href="/git-private/">/git-private/</a> is behind the admin login for everything.
+          Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git asks for the
+          login when it is needed.
+        </p>
+        <p class="setting-desc" id="git-usage"></p>
+        <!-- Not .settings: this switch has its own endpoint, not /admin/settings. -->
+        <div class="git-settings">
+          <label class="setting">
+            <input type="checkbox" id="git-guest-push">
+            <span><span class="setting-name">Guests may push to the public repositories</span>
+              <span class="setting-desc">Without the admin login. Anyone on the network could then
+                change or overwrite what is there; the private ones stay behind the login.</span></span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="git-note" role="status" hidden></p>
+        <h3>New repository</h3>
+        <form id="git-create" class="library-form">
+          <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
+          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
+          <button type="submit">Create</button>
+        </form>
+        <p class="setting-desc action-note" id="git-create-note" role="status" hidden></p>
+        <h3>Public</h3>
+        <div id="git-public" class="admin-list"></div>
+        <h3>Private</h3>
+        <div id="git-private" class="admin-list"></div>
+        <h3>Builds</h3>
+        <p class="setting-desc" id="ci-about"></p>
+        <div id="ci-runs" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="health" aria-labelledby="health-title">
+        <h2 id="health-title">Health</h2>
+        <p class="setting-desc">
+          The box doctor: is everything the installer set up still there and working — the last
+          install, the root helper, every service, Kiwix and its books, the uplink watchdog, the web
+          server's configuration. Each problem says what to do; the safe repairs are buttons. The same
+          report from a terminal on the box: <code>sudo /opt/irate-box/irate-box health</code>, which
+          works even when this page cannot reach the root helper.
+        </p>
+        <p class="setting-desc" id="health-when">Not looked yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="health-scan">Look again</button>
+        </div>
+        <p class="setting-desc action-note" id="health-note" role="status" hidden></p>
+        <div class="admin-progress" id="health-progress" hidden>
+          <progress class="admin-bar" id="health-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="health-step"></p>
+        </div>
+        <ul class="admin-checks" id="health-findings"></ul>
+        <h3>The last install</h3>
+        <p class="setting-desc" id="health-install">No record yet.</p>
+        <details class="admin-output" id="health-output">
+          <summary>Its output (the end of /var/log/irate-box/install.log)</summary>
+          <pre class="admin-log" id="health-log"></pre>
+        </details>
+      </section>
+
+      <section class="admin-pane" id="network" aria-labelledby="network-title">
+        <h2 id="network-title">Network</h2>
+        <p class="setting-desc">
+          What the box has for networking, and how hard it works to stay on its network when the
+          link is flaky. Nothing about the owner's own connection changes unless you press its button.
+        </p>
+        <h3>What the box has</h3>
+        <p class="setting-desc" id="net-when">Not looked yet.</p>
+        <div class="library-buttons">
+          <label>Device <select id="net-device"><option value="">All</option></select></label>
+          <button type="button" id="net-scan">Look again</button>
+        </div>
+        <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
+        <table class="admin-table" id="net-radios">
+          <thead><tr><th>Device</th><th>Run by</th><th>Its own hotspot</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <ul class="admin-checks" id="net-hazards"></ul>
+
+        <h3>Staying on the network</h3>
+        <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
+        <div class="net-settings">
+          <label class="setting-name" for="up-eager">Eagerness</label>
+          <select id="up-eager"></select>
+          <p class="setting-desc" id="up-eager-desc"></p>
+          <label class="setting-name" for="up-forgive">Forgiveness</label>
+          <select id="up-forgive"></select>
+          <p class="setting-desc" id="up-forgive-desc"></p>
+          <label class="setting-name" for="up-iface">Watch</label>
+          <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+          <details id="up-custom">
+            <summary>Custom values (blank: the level's own)</summary>
+            <div class="net-fields" id="up-fields"></div>
+          </details>
+        </div>
+        <div class="library-buttons">
+          <button type="button" id="up-save">Save</button>
+          <button type="button" id="up-hold">Hold repairs for an hour</button>
+          <button type="button" id="up-unhold" hidden>End the hold</button>
+        </div>
+        <p class="setting-desc action-note" id="up-note" role="status" hidden></p>
+        <div id="up-profile"></div>
+        <h3>Recent</h3>
+        <ul class="admin-list net-events" id="up-events"></ul>
+      </section>
+
+      <section class="admin-pane" id="security" aria-labelledby="security-title">
+        <h2 id="security-title">Security</h2>
+        <p class="setting-desc">
+          What a guest on the box's network can reach, and how the box is set up. Nothing here
+          changes until you press its button. Every change can be undone here, and uninstalling
+          irate-box puts back what it found.
+        </p>
+        <p class="setting-desc" id="security-when">Not scanned yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="security-scan">Scan again</button>
+        </div>
+        <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
+        <ul class="admin-checks" id="security-findings"></ul>
+        <h3>The hotspot's own WiFi</h3>
+        <p class="setting-desc">
+          How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
+          cannot read what guests do. Encryption shuts out older devices, so this is a trade between
+          who can join and what is protected. The hotspot itself is still to come (the hotspot add-on):
+          the choice is kept and applied when it is set up. What the radios here allow comes from
+          <a href="#network">Network</a>.
+        </p>
+        <div class="hs-modes" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
+        <div class="net-settings" id="hs-fields">
+          <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
+          <select id="hs-second">
+            <option value="owe">Enhanced Open (OWE): no password</option>
+            <option value="sae">WPA3 with a published password</option>
+          </select>
+          <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
+          <span class="library-buttons">
+            <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
+            <button type="button" id="hs-generate">Make one</button>
+          </span>
+          <label class="setting" id="hs-wpa2-label">
+            <input type="checkbox" id="hs-wpa2">
+            <span class="setting-desc" id="hs-wpa2-desc"></span>
+          </label>
+        </div>
+        <ul class="admin-checks" id="hs-warnings"></ul>
+        <div class="library-buttons">
+          <button type="button" id="hs-save">Save</button>
+        </div>
+        <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
+
+        <h3>Listening on the network</h3>
+        <p class="setting-desc">Everything that answers from outside the box. Services on loopback only are left out.</p>
+        <table class="admin-table" id="security-listeners">
+          <thead><tr><th>Port</th><th>Service</th><th>On</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <details class="admin-output" id="security-output" hidden>
+          <summary>Security update output</summary>
+          <pre class="admin-log" id="security-log"></pre>
+        </details>
+
+        <h3>Security doctor</h3>
+        <p class="setting-desc">
+          A read-only audit of how the system underneath is set up, including what the hub found
+          when it was installed: the notes add-on, the web server's settings, links and root-written
+          files in the hub's folders, unit sandboxing, secrets on command lines and at rest, git
+          pushes, sudo rules, accounts and the kernel's protections. It changes nothing and has no
+          buttons beyond this one; each line says what to do by hand. Also from a shell:
+          <code>sudo /opt/irate-box/irate-box secdoctor</code>.
+        </p>
+        <p class="setting-desc" id="audit-when">Not run yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="audit-run">Run the doctor</button>
+        </div>
+        <div id="audit-steps"></div>
+        <details class="admin-output" id="audit-scope" hidden>
+          <summary>What the doctor cannot see</summary>
+          <ul class="admin-list" id="audit-not-covered"></ul>
+        </details>
+      </section>
+
+      <section class="admin-pane" id="updates" aria-labelledby="updates-title">
+        <h2 id="updates-title">Updates</h2>
+        <p class="setting-desc">Installed: <span id="hub-version">…</span></p>
+        <p class="setting-desc">
+          Checking asks the repository this box was installed from what is new. Fetching then
+          verifies that version and downloads what its installer will need, so nothing is fetched
+          half-way through an install. Installing reruns the installer with the same options. Apps,
+          books, data and the password are kept. The hub restarts part-way through, and this page
+          reconnects by itself.
+        </p>
+        <p class="setting-desc" id="update-summary">Not checked yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="update-check">Check for updates</button>
+          <button type="button" id="update-fetch" disabled>Fetch update</button>
+          <button type="button" id="update-install" disabled>Install update</button>
+        </div>
+        <div class="admin-progress" id="update-progress" hidden>
+          <progress class="admin-bar" id="update-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="update-step"></p>
+        </div>
+        <p class="setting-desc action-note" id="update-note" role="status" hidden></p>
+        <ul class="admin-changes" id="update-changes"></ul>
+        <ul class="admin-checks" id="update-checks" hidden></ul>
+        <details class="admin-output" id="update-output" hidden>
+          <summary>Installer output</summary>
+          <pre class="admin-log" id="update-log"></pre>
+        </details>
+
+        <h3>When an update fails</h3>
+        <p class="setting-desc">
+          The update doctor looks at what an update depends on — the network, names, the clock,
+          GitHub, free space, the cached copy, the package sources — and says what is wrong and what
+          to do about it. For the box itself (services, Kiwix, an install that stopped), see
+          <a href="#health">Health</a>.
+        </p>
+        <div class="library-buttons">
+          <button type="button" id="update-doctor">Run the update doctor</button>
+          <button type="button" id="update-clear">Clear the update cache</button>
+        </div>
+        <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
+        <p class="setting-desc" id="doctor-when" hidden></p>
+        <ul class="admin-checks" id="doctor-findings" hidden></ul>
+      </section>
+
+      <section class="admin-pane" id="backup" aria-labelledby="backup-title">
+        <h2 id="backup-title">Backup and sync</h2>
+        <p class="setting-desc">
+          <a href="/admin/backup" download>Download a backup</a> of the hub's state: notes, saved
+          work, board, shoutbox, settings, the library's sources and the uptime clock. ZIM books
+          and archived versions are left out (they come from their sources), as is the GitHub token,
+          and so is Syncthing's identity: restored, Syncthing gets a new device ID and its peers
+          pair again.
+        </p>
+        <p class="setting-desc backup-keys">
+          <strong>⚠ Includes Syncthing's private keys:</strong>
+          <a href="/admin/backup?syncthing=1" download id="backup-with-keys">download a backup with
+          Syncthing's identity</a> (<code>key.pem</code>, <code>https-key.pem</code>,
+          <code>config.xml</code>), so a restored box keeps its device ID. Whoever holds that file
+          can pose as this box to its Syncthing peers: keep it like a password.
+        </p>
+        <p class="setting-desc">
+          <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and
+          content between the box and your own machines when they share a network. Returns an error
+          page if it is not installed or its unit is off.
+        </p>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/hub.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# Licences for files that cannot carry a header (REUSE, https://reuse.software).
+version = 1
+
+[[annotations]]
+path = "apps.d/*.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "tests/jsdom/*.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"

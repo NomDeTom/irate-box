@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+[Unit]
+Description=Irate-Box hub
+After=network.target
+
+[Service]
+ExecStart=/home/pi/irate-box/irate-box server
+WorkingDirectory=/home/pi/irate-box
+Restart=on-failure
+Environment=PORT=8000
+Environment=HUB_BIND=127.0.0.1
+Environment=HUB_URL=http://192.168.4.1/
+
+[Install]
+WantedBy=multi-user.target

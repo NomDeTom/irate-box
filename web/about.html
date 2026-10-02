@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body class="drop">
+  <header>
+    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn" href="/help.html" title="Quick help" aria-label="Quick help">🛟</a></nav>
+    <h1>ℹ️ About this box</h1>
+    <p class="subtitle">Irate-Box: an offline hub, in the spirit of PirateBox.</p>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="light" title="Light">☀️</button>
+      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
+      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
+    </div>
+  </header>
+
+  <section>
+    <h2>What it is</h2>
+    <p class="setting-desc">
+      A small board running its own hub: a shoutbox, a board, a file drop, drawing and diagram
+      tools, an offline library and more, for the people around it, with no internet needed.
+      Its version: <span id="about-version">…</span>.
+    </p>
+  </section>
+
+  <section>
+    <h2>Licences</h2>
+    <p class="setting-desc">
+      The original PirateBox was free software under the GPL, and this follows it. Every file
+      says which licence it is under, in its first lines (SPDX); the full texts are in the
+      source's <code>LICENSES/</code> folder.
+    </p>
+    <ul class="drop-list">
+      <li class="drop-item"><span class="setting-name">GNU AGPL-3.0-or-later</span>
+        <span class="setting-desc"> the hub itself: its server, pages, root helper, doctors, librarian and installer. Because you use it over the network, you can have its source: see below.</span></li>
+      <li class="drop-item"><span class="setting-name">GNU GPL-3.0-or-later</span>
+        <span class="setting-desc"> the git servers' page, builds on push, and books from USB sticks.</span></li>
+      <li class="drop-item"><span class="setting-name">MIT</span>
+        <span class="setting-desc"> small, self-contained pieces others may want to reuse (the network inventory, the clock-module driver, the device locks, configuration files and app manifests), and the QR-code library (Kazuhiko Arase).</span></li>
+      <li class="drop-item"><span class="setting-name">CC BY-SA 4.0</span>
+        <span class="setting-desc"> the documentation, including this page and the help page.</span></li>
+    </ul>
+    <p class="setting-desc">Versions published before October 2026 were in the public domain (the Unlicense), and stay so.</p>
+  </section>
+
+  <section>
+    <h2>This box's own source</h2>
+    <p class="setting-desc">Exactly the code running here, three ways, none of which need the internet:</p>
+    <ul class="drop-list">
+      <li class="drop-item"><a href="/source">Download it</a><span class="setting-desc"> as one file (a .tar.gz).</span></li>
+      <li class="drop-item"><a href="/git/irate-box-source.git/">Browse it</a>
+        <span class="setting-desc"> on the box's git server, or clone it:</span>
+        <code id="about-clone">git clone http://…/git/irate-box-source.git</code></li>
+      <li class="drop-item"><a href="/drop.html">The file drop</a><span class="setting-desc"> always holds a copy (📌).</span></li>
+    </ul>
+    <p class="setting-desc">Online, the project lives at <code>github.com/NomDeTom/irate-box</code>.</p>
+  </section>
+
+  <section>
+    <h2>The programs it runs</h2>
+    <p class="setting-desc">
+      These are separate programs with their own licences, run side by side with the hub. Where an
+      app came as a bundle, its list of the licences of everything inside is next to it (its
+      THIRD-PARTY-NOTICES file), and names the exact source it was built from.
+    </p>
+    <ul class="drop-list">
+      <li class="drop-item"><span class="setting-name">Excalidraw</span><span class="setting-desc"> (drawing), MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">Mermaid live editor</span><span class="setting-desc"> (diagrams), MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">Meshtastic web flasher</span><span class="setting-desc"> GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
+      <li class="drop-item"><span class="setting-name">Meshtastic firmware</span><span class="setting-desc"> (in the flasher's mirror), GPL-3.0: source at <code>github.com/meshtastic/firmware</code>, tagged with each version</span></li>
+      <li class="drop-item"><span class="setting-name">Kiwix</span><span class="setting-desc"> (the offline library), GPL-3.0</span></li>
+      <li class="drop-item"><span class="setting-name">nginx</span><span class="setting-desc"> (or Caddy, Apache-2.0), BSD-2-Clause; <span class="setting-name">cgit</span> GPL-2.0; <span class="setting-name">ttyd</span> MIT; <span class="setting-name">SilverBullet</span> MIT; <span class="setting-name">Syncthing</span> MPL-2.0; <span class="setting-name">Mosquitto</span> EPL-2.0 / EDL-1.0</span></li>
+    </ul>
+  </section>
+
+  <script src="/hub.js"></script>
+  <script src="/about.js"></script>
+</body>
+</html>
