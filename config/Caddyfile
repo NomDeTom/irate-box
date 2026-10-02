@@ -215,6 +215,13 @@
 			}
 			@flasher_hub path /flasher/api/*
 			reverse_proxy @flasher_hub 127.0.0.1:8000
+			# The bundle's licence notices (About links them) sit beside public/, not in it.
+			handle /flasher/THIRD-PARTY-NOTICES.txt {
+				root * {$HUB_FLASHER_ROOT:/usr/share/hub/apps/flasher}
+				rewrite * /THIRD-PARTY-NOTICES.txt
+				header Cache-Control "no-cache"
+				file_server
+			}
 			handle_path /flasher/firmware/* {
 				header Access-Control-Allow-Origin "*"
 				header Cache-Control "no-cache"

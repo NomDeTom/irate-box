@@ -246,6 +246,13 @@ server {
 		if ($irate_box_off_flasher) { return 404; }
 		proxy_pass http://irate_box_hub;
 	}
+	# The bundle's licence notices (About links them) sit beside public/, not in it.
+	location = /flasher/THIRD-PARTY-NOTICES.txt {
+		if ($irate_box_off_flasher) { return 404; }
+		alias @APPS@/flasher/THIRD-PARTY-NOTICES.txt;
+		default_type text/plain;
+		add_header Cache-Control "no-cache";
+	}
 	location ^~ /flasher/firmware/ {
 		if ($irate_box_off_flasher) { return 404; }
 		alias @FIRMWARE@/;
