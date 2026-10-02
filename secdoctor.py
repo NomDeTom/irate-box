@@ -683,6 +683,237 @@ def step_units(ctx):
     return out
 
 
+# --- add-ons: one generic check for everything apps.d declares, plus a probe table ----------
+
+MOSQUITTO_DIR = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
+LOOPBACK_WORDS = ("127.0.0.1", "localhost", "::1", "lo")
+WIDE_WORDS = ("0.0.0.0", "::", "*", "[::]")
+
+
+def load_addons():
+    """[{id, title, unit, port, path, option, consent}] for every app in apps.d that names a
+    service (so an add-on added there later is audited with no change here), plus Tailscale,
+    which the OS image ships and no manifest describes."""
+    out = []
+    folder = next((d for d in (CODE / "apps.d", Path(__file__).resolve().parent / "apps.d") if d.is_dir()), None)
+    for f in sorted(folder.glob("*.json")) if folder else ():
+        try:
+            m = json.loads(_read(f) or "")
+        except ValueError:
+            continue
+        st, ad = m.get("status") or {}, m.get("addon") or {}
+        if not st.get("unit"):
+            continue
+        out.append({"id": m.get("id", f.stem), "title": ad.get("title") or st.get("name") or m.get("id", f.stem),
+                    "unit": st["unit"].replace("@hub.", f"@{HUB_USER}."), "port": st.get("port"), "path": st.get("path"),
+                    "option": ad.get("option"), "consent": ad.get("consent")})
+    out.append({"id": "tailscale", "title": "Tailscale", "unit": "tailscaled.service", "port": None, "path": None,
+                "option": None, "consent": None, "root_ok": True})
+    return out
+
+
+def _requested_options():
+    """The --with-* options the install was given, or None when there is no record."""
+    text = _read(ETC / "install-options")
+    if text is None:
+        return None
+    return {l.strip() for l in text.splitlines() if l.strip().startswith("--with-")}
+
+
+def _listening():
+    """{port: [addresses]} of every TCP/UDP listener, loopback included; None if ss is missing."""
+    try:
+        r = subprocess.run(("ss", "-H", "-ltnu"), capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = {}
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 5:
+            addr, _, port = parts[4].rpartition(":")
+            if port.isdigit():
+                found.setdefault(int(port), set()).add(addr.partition("%")[0].strip("[]") or "*")
+    return {k: sorted(v) for k, v in found.items()}
+
+
+def _is_loop(addr):
+    return addr.startswith("127.") or addr == "::1" or addr.startswith("::ffff:127.")
+
+
+def _argv_of(show):
+    m = re.search(r"argv\[\]=(.*?) ; ignore_errors", show.get("ExecStart", ""))
+    return m.group(1).split() if m else []
+
+
+def _env_of(show):
+    env = {}
+    try:
+        for tok in shlex.split(show.get("Environment", "")):
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                env[k] = v
+    except ValueError:
+        pass
+    return env
+
+
+def probe_mosquitto(ctx, a, show):
+    """S9: the broker's own config. Returns [(severity, text, fix)]."""
+    texts = [_read(MOSQUITTO_DIR / "mosquitto.conf") or ""]
+    try:
+        texts += [_read(p) or "" for p in sorted((MOSQUITTO_DIR / "conf.d").glob("*.conf"))]
+    except OSError:
+        pass
+    conf = "\n".join(texts)
+    if not conf.strip():
+        return [("warn", f"could not read its config under {MOSQUITTO_DIR}", "")]
+    anon = re.search(r"(?m)^\s*allow_anonymous\s+true\b", conf)
+    acl = re.search(r"(?m)^\s*acl_file\s+(\S+)", conf)
+    pw = re.search(r"(?m)^\s*password_file\s+\S+", conf)
+    out = []
+    if anon and not acl:
+        out.append(("problem", "anonymous clients are allowed with no ACL: anyone on the network can publish and subscribe to any topic", "acl_file with `topic readwrite msh/#`, or password_file and allow_anonymous false"))
+    elif anon:
+        topics = re.findall(r"(?m)^\s*topic\s+(?:readwrite|write|read)?\s*(\S+)", _read(acl.group(1)) or "")
+        if "#" in topics:
+            out.append(("problem", "the ACL gives anonymous clients every topic (#)", "limit it to msh/#"))
+        else:
+            out.append(("warn", "anonymous clients are allowed" + (f", limited by the ACL to {_list(topics)}" if topics else " (ACL unreadable)") +
+                        (" and a password file exists, so check it is used" if pw else ""), "an access point's address only, and a password file, once the box is an AP"))
+    if not re.search(r"(?m)^\s*message_size_limit\s+[1-9]", conf):
+        out.append(("warn", "no message_size_limit: one client can send messages of any size", "message_size_limit 4096"))
+    if not re.search(r"(?m)^\s*max_connections\s+\d+", conf):
+        out.append(("warn", "no max_connections: one client can open sockets until the box runs out", "max_connections 64 per listener"))
+    return out
+
+
+def probe_syncthing(ctx, a, show):
+    """The GUI is driven through the hub: look at its config, not only its unit."""
+    cfg = next((t for t in (_read(STATE / ".local/state/syncthing/config.xml"), _read(STATE / ".config/syncthing/config.xml")) if t), None)
+    if cfg is None:
+        return [("warn", f"could not read its config.xml under {STATE}", "")]
+    out = []
+    gui = re.search(r"<gui\b.*?</gui>", cfg, re.S)
+    g = gui.group(0) if gui else ""
+    addr = re.search(r"<address>([^<]*)</address>", g)
+    if addr and not _is_loop(addr.group(1).rpartition(":")[0].strip("[]") or "*"):
+        out.append(("problem", f"its GUI listens on {addr.group(1)}, not loopback", "--gui-address=127.0.0.1:8384"))
+    if re.search(r"<insecureAdminAccess>true", g):
+        out.append(("problem", "insecureAdminAccess is on: the GUI accepts non-local requests with no password", ""))
+    if not re.search(r"<password>[^<]+</password>", g):
+        out.append(("warn", "the GUI has no password; the front's /sync/ login is the only gate, and the hub user can drive it directly", "set a GUI password"))
+    for tag, what in (("globalAnnounceEnabled", "global discovery"), ("relaysEnabled", "relay use")):
+        if re.search(rf"<{tag}>true</{tag}>", cfg):
+            out.append(("warn", f"{what} is on: with an uplink this box announces itself to Syncthing's public servers", f"<{tag}>false</{tag}> for a box that only syncs on its own network"))
+    ur = re.search(r"<urAccepted>(-?\d+)</urAccepted>", cfg)
+    if ur and int(ur.group(1)) > 0:
+        out.append(("warn", "usage reporting is on", "<urAccepted>-1</urAccepted>"))
+    return out
+
+
+def probe_kiwix(ctx, a, show):
+    return [] if "--blockexternal" in _argv_of(show) else [("warn", "no --blockexternal: book pages may load content from other sites", "add --blockexternal")]
+
+
+def probe_ttyd(ctx, a, show):
+    argv = _argv_of(show)
+    out = []
+    if argv and os.path.basename(argv[-1]) in ("sh", "bash", "zsh", "dash", "ash"):
+        out.append(("problem", f"it runs a bare shell ({argv[-1]}), so the login is the only barrier to a shell as "
+                    f"{show.get('User') or 'root'}", "run /bin/login, which asks for a real account"))
+    if "--interface" not in argv and "-i" not in argv:
+        out.append(("problem", "no --interface: ttyd listens on every interface", "--interface lo"))
+    return out
+
+
+def probe_tailscale(ctx, a, show):
+    try:
+        r = subprocess.run(("tailscale", "debug", "prefs"), capture_output=True, text=True, timeout=20)
+        prefs = json.loads(r.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return [("warn", "could not read its preferences (tailscale debug prefs)", "")]
+    out = []
+    if prefs.get("RunSSH"):
+        out.append(("warn", "Tailscale SSH is on: tailnet members the ACL allows get a shell on this box", "tailscale set --ssh=false"))
+    routes = prefs.get("AdvertiseRoutes") or []
+    if routes:
+        out.append(("warn", f"it advertises routes ({_list(routes)}): the box forwards tailnet traffic into its own network", "tailscale set --advertise-routes="))
+    if prefs.get("LoggedOut"):
+        out.append(("warn", "logged out: installed but not joined to a tailnet", ""))
+    return out
+
+
+ADDON_PROBES = (("mosquitto", probe_mosquitto), ("syncthing@", probe_syncthing), ("kiwix", probe_kiwix),
+                ("ttyd", probe_ttyd), ("tailscaled", probe_tailscale))
+RANK_STATUS = {"problem": 0, "warn": 1}
+
+
+def step_addons(ctx):
+    """Every add-on and app service apps.d declares, installed or not. The same questions for
+    each: does it run as root, how is it bound, did the owner ask for it, who can reach it
+    through the front; then the probe for that program's own config, if there is one."""
+    addons = ctx["addons"]
+    if not ctx["units"] and not any(ctx["addon_props"].get(a["unit"]) for a in addons):
+        return [_cannot("addons", "Add-ons", "systemctl is not answering", "S1 S9")]
+    requested, listening = ctx["requested"], ctx["listening"]
+    out, absent = [], []
+    for a in addons:
+        show = ctx["addon_props"].get(a["unit"]) or {}
+        if show.get("LoadState") != "loaded":
+            absent.append(a["title"])
+            continue
+        argv, env = _argv_of(show), _env_of(show)
+        active = show.get("ActiveState") == "active"
+        issues = []   # (severity, text, fix)
+        if show.get("User", "") in ("", "root") and show.get("DynamicUser") != "yes" and not a.get("root_ok"):
+            issues.append(("warn", "runs as root: a flaw in it is root", "run it as an unprivileged or dynamic user"))
+        wide = [t for t in argv if t in WIDE_WORDS or re.search(r"(?:^|[=:])(0\.0\.0\.0|\[?::\]?)(?::\d+)?$", t)]
+        wide += [f"{k}={v}" for k, v in env.items() if v in WIDE_WORDS and k.upper() in ("HOST", "HOSTNAME", "BIND", "ADDRESS", "LISTEN", "SB_HOSTNAME")]
+        wide += [t for t in argv if re.search(r"(?:insecure|no-?auth|disable-auth|allow-anonymous)", t)]
+        if wide:
+            issues.append(("problem", f"its start command opens it up ({_list(wide, 3)})", "bind it to 127.0.0.1 behind the front's login"))
+        if a["port"] and listening is not None and active:
+            addrs = listening.get(a["port"], [])
+            open_on = [x for x in addrs if not _is_loop(x)]
+            if open_on:
+                said = f' Its install consent says: "{a["consent"]}"' if a["consent"] else ""
+                issues.append(("warn", f"port {a['port']} answers on {_list(open_on, 3)}, not only on loopback: anyone on the network reaches it directly, not through the front's login.{said}",
+                               "bind to 127.0.0.1 and route it through the front, unless the network-facing port is the point"))
+            elif not addrs:
+                issues.append(("warn", f"active, but nothing listens on port {a['port']}", f"journalctl -u {a['unit']} -n 30"))
+        if a["option"] and requested is not None and a["option"] not in requested and active:
+            issues.append(("warn", f"running, but {a['option']} is not in the install record: it was added or left over from outside irate-box",
+                           f"remove it if unwanted: systemctl disable --now {a['unit']}"))
+        if a["path"] and ctx["front"] is not None:
+            has, gated = front_has(ctx, a["path"]), front_gated(ctx, a["path"])
+            if has and not gated and show.get("User", "") in ("", "root") and show.get("DynamicUser") != "yes":
+                issues.append(("problem", f"a root service open to guests: {a['path']} has no login in the front", "put it behind the admin login"))
+        if a["unit"] not in ctx["units"]:  # sandboxing not covered by the units step
+            weak = [n for n, ok in (("ProtectSystem=strict", show.get("ProtectSystem") == "strict"), ("NoNewPrivileges", show.get("NoNewPrivileges") == "yes"),
+                                   ("PrivateTmp", show.get("PrivateTmp") == "yes"), ("ProtectHome", show.get("ProtectHome") not in ("no", "", None))) if not ok]
+            if len(weak) >= 3:
+                issues.append(("warn", f"little sandboxing ({len(weak)} of 4 missing)", "ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome"))
+        for prefix, probe in ADDON_PROBES:
+            if a["unit"].startswith(prefix):
+                try:
+                    issues += probe(ctx, a, show)
+                except Exception as exc:
+                    issues.append(("warn", f"its probe failed: {type(exc).__name__}: {exc}", ""))
+        worst = min((RANK_STATUS[i[0]] for i in issues), default=2)
+        status = {0: "problem", 1: "warn", 2: "ok"}[worst]
+        state = "running" if active else show.get("ActiveState", "stopped")
+        who = "root" if show.get("User", "") in ("", "root") and show.get("DynamicUser") != "yes" else ("a dynamic user" if show.get("DynamicUser") == "yes" else show.get("User"))
+        if issues:
+            detail = f"{state}, as {who}. " + " ".join(f"{i[1][0].upper()}{i[1][1:]}." if not i[1].endswith(".") else f"{i[1][0].upper()}{i[1][1:]}" for i in issues)
+            fix = "; ".join(i[2] for i in issues if i[2])
+        else:
+            detail, fix = f"{state}, as {who}; no problem found by the generic checks" + (" or its own probe." if any(a["unit"].startswith(p) for p, _ in ADDON_PROBES) else "."), ""
+        out.append(F(f"addon-{a['id']}", a["title"], status, detail, fix, "S1 S9" if a["unit"].startswith("mosquitto") else "F19"))
+    if absent:
+        out.append(F("addons-absent", "Add-ons not installed", "ok", f"{_list(absent, 12)}: nothing to audit.", ref=""))
+    return out
+
+
 SECRET_FLAGS = re.compile(r"^--?(credential|password|passwd|pass|secret|token|plaintext)$", re.I)
 SECRET_KV = re.compile(r"^(?:--?)?[A-Za-z_-]*(pass(word)?|secret|token|credential)[A-Za-z_-]*=\S+", re.I)
 
@@ -951,6 +1182,7 @@ STEPS = [
     ("folders", "Links and root-written files in hub-owned folders", "F3 F4 F5 F13", step_folders),
     ("code", "Installed code and allow-lists", "F3 F6 F20", step_code),
     ("units", "Unit sandboxing and the build unit", "F8 F19", step_units),
+    ("addons", "Add-ons and app services", "S1 S9 S12 F6", step_addons),
     ("cmdlines", "Secrets on command lines, /proc", "F9", step_cmdlines),
     ("secrets", "Secrets at rest", "S13 F30", step_secrets),
     ("git", "Git servers and pushed content", "F17 F18", step_git),
@@ -963,7 +1195,7 @@ NOT_COVERED = [
     "F7 app-install check/extract/delete race, F10 firmware cache paths, F12 kiwix-manage as root, F14 forged-request reach, "
     "F16 gallery ownership, F21 verified flag, F23, F26, F28, F29: flaws inside code paths, not settings (code review and tests).",
     "F11 app bundle source pinning, F22 plain-text transports, F30 checksums and the packaging guard: need the code or the network.",
-    "S2 password in clear, S6/S12 updates and audits, S9 listeners and S5 SSH: covered by the Security page's scan above.",
+    "S2 password in clear, S5 SSH, S6 updates and which ports answer (S9): the Security page's scan above. S12 npm audits: not run (they need the network).",
 ]
 
 
@@ -982,8 +1214,11 @@ def make_context():
         m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
         caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
     units = {u: _show(u, *UNIT_PROPS) for u in _our_units()}
+    addons = load_addons()
+    addon_props = {a["unit"]: _show(a["unit"], *UNIT_PROPS, "ActiveState", "ExecStart", "Environment") for a in addons}
     return {"front": front, "front_kind": kind, "front_note": note, "src": src, "hub_drains_bodies": drains,
-            "hub_caps_json": caps, "units": units}
+            "hub_caps_json": caps, "units": units, "addons": addons, "addon_props": addon_props,
+            "requested": _requested_options(), "listening": _listening()}
 
 
 def run_step(sid, fn, ctx):
@@ -998,7 +1233,8 @@ def audit(progress=None):
     try:
         ctx = make_context()
     except Exception as exc:
-        ctx = {"front": None, "front_kind": None, "front_note": f"setup failed: {exc}", "src": {}, "hub_drains_bodies": None, "hub_caps_json": None, "units": {}}
+        ctx = {"front": None, "front_kind": None, "front_note": f"setup failed: {exc}", "src": {}, "hub_drains_bodies": None, "hub_caps_json": None, "units": {},
+               "addons": [], "addon_props": {}, "requested": None, "listening": None}
     steps = []
     for n, (sid, title, ref, fn) in enumerate(STEPS, 1):
         found = run_step(sid, fn, ctx)
