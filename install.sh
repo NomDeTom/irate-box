@@ -552,7 +552,7 @@ if [ -n "$SRC" ]; then
 	tar -C "$SRC" -cf - \
 		--exclude=./.git --exclude=./.notes --exclude=__pycache__ --exclude=./store-state \
 		--exclude=./store --exclude=./messages.json --exclude=./board.json \
-		--exclude=./clock.json --exclude=./settings.json --exclude='./tailscale.want*' . |
+		--exclude=./clock.json --exclude=./settings.json --exclude='./tailscale.want*' --exclude='./*.code-workspace' . |
 		tar -C "$CODE" -xf -
 	chown -R root:root "$CODE"
 elif [ -d "$CODE/.git" ]; then
@@ -1363,21 +1363,24 @@ fi
 src_repo="$STATE/git/public/irate-box-source.git"
 if [ -f "$src_tar" ] && runuser -u "$HUB_USER" -- sh -c '
 	set -e
-	repo="$1" code="$2" ver="$3"
+	repo="$1" tar="$2" ver="$3"
 	[ -d "$repo" ] || git init -q --bare -b main "$repo"
 	git -C "$repo" config http.receivepack false
 	printf "This box'"'"'s own source: irate-box %s, as installed (AGPL-3.0-or-later; see LICENSES/)\n" "$ver" >"$repo/description"
-	scratch="$(mktemp -d)"
-	export GIT_DIR="$repo" GIT_WORK_TREE="$code" GIT_INDEX_FILE="$scratch/index"
+	scratch="$(mktemp -d)"; trap "rm -rf \"$scratch\"" EXIT
+	# The tarball, unpacked: the same files as /source, root/ included (unreadable in $CODE here).
+	mkdir "$scratch/tree"
+	tar -xzf "$tar" -C "$scratch/tree" --strip-components=1
+	export GIT_DIR="$repo" GIT_WORK_TREE="$scratch/tree" GIT_INDEX_FILE="$scratch/index"
 	export GIT_AUTHOR_NAME="irate-box" GIT_AUTHOR_EMAIL="hub@irate-box.local" GIT_COMMITTER_NAME="irate-box" GIT_COMMITTER_EMAIL="hub@irate-box.local"
-	git add -A -- . ":(exclude)*__pycache__*" ":(exclude)*.pyc"
-	tree="$(git write-tree)"; rm -rf "$scratch"
+	git add -A -f -- . ":(exclude)*__pycache__*" ":(exclude)*.pyc"
+	tree="$(git write-tree)"
 	parent="$(git rev-parse -q --verify refs/heads/main || true)"
 	if [ "$tree" != "$(git rev-parse -q --verify "refs/heads/main^{tree}" || true)" ]; then
 		commit="$(git commit-tree "$tree" ${parent:+-p "$parent"} -m "irate-box $ver, as installed on this box")"
 		git update-ref refs/heads/main "$commit"
 	fi
-' sh "$src_repo" "$CODE" "$src_ver"; then
+' sh "$src_repo" "$src_tar" "$src_ver"; then
 	echo "    /git/irate-box-source.git: browse or clone it"
 else
 	problem "could not put the source on the git server (/git/irate-box-source.git)"
