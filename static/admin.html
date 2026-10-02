@@ -33,12 +33,15 @@
         <p class="admin-side-group">Library</p>
         <a href="#apps">Apps</a>
         <a href="#books">Books</a>
+        <a href="#firmware">Firmware</a>
         <a href="#sources">Schedule and token</a>
         <p class="admin-side-group">Hub content</p>
         <a href="#saved">Saved work</a>
         <a href="#moderation">Moderation</a>
         <a href="#git">Git</a>
         <p class="admin-side-group">System</p>
+        <a href="#health">Health</a>
+        <a href="#network">Network</a>
         <a href="#security">Security</a>
         <a href="#updates">Updates</a>
         <a href="#backup">Backup</a>
@@ -46,6 +49,13 @@
     </nav>
 
     <main class="admin-main">
+      <div class="helper-banner" id="helper-banner" role="alert" hidden>
+        <strong>The box's root helper is not answering.</strong>
+        <span id="helper-banner-detail"></span>
+        Buttons that need root (services, updates, add-ons, the doctor) will wait until it is back.
+        From a terminal on the box (SSH, or Terminal if it is on):
+        <pre class="admin-log" id="helper-banner-cmds"></pre>
+      </div>
       <section class="admin-pane" id="overview" aria-labelledby="overview-title">
         <h2 id="overview-title">Overview</h2>
         <div class="admin-tiles" id="box-tiles"></div>
@@ -242,6 +252,38 @@
         <div id="usb-devices"></div>
       </section>
 
+      <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
+        <h2 id="firmware-title">Firmware</h2>
+        <p class="setting-desc">
+          Meshtastic firmware kept on the box for the web flasher, so a radio can be flashed with no
+          internet. Only the boards you tick are kept (a few MB each, per release); "all boards" is
+          about 600 MB a release. Checked on the library's schedule, whenever the box has internet.
+        </p>
+        <p class="setting-desc" id="fw-status"></p>
+        <form id="fw-form" class="library-form">
+          <label class="inline"><input type="checkbox" name="enabled"> Keep firmware on this box</label>
+          <label>Alphas to keep <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
+          <label>Betas to keep <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
+          <label>Build cache, for building firmware on the box with no internet
+            <select name="cache">
+              <option value="discard">Don't keep it</option>
+              <option value="native">Keep what a headless build needs (~215 MB)</option>
+              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
+            </select></label>
+          <label class="inline"><input type="checkbox" name="all_boards"> All boards</label>
+          <label>Boards <input id="fw-filter" type="search" placeholder="filter: rak, heltec, t-deck…"></label>
+          <div id="fw-boards" class="fw-boards"></div>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="fw-note" role="status" hidden></p>
+        <p class="library-buttons">
+          <button type="button" id="fw-check">Check now</button>
+          <button type="button" id="fw-update">Update now</button>
+        </p>
+        <h3>Kept</h3>
+        <div id="fw-kept" class="admin-list"></div>
+      </section>
+
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
         <h2 id="sources-title">Schedule and token</h2>
         <p class="setting-desc">For apps and books alike: how often the librarian looks for new versions, how many old ones it keeps, and the token some sources need.</p>
@@ -376,6 +418,79 @@
         <div id="ci-runs" class="admin-list"></div>
       </section>
 
+      <section class="admin-pane" id="health" aria-labelledby="health-title">
+        <h2 id="health-title">Health</h2>
+        <p class="setting-desc">
+          The box doctor: is everything the installer set up still there and working — the last
+          install, the root helper, every service, Kiwix and its books, the uplink watchdog, the web
+          server's configuration. Each problem says what to do; the safe repairs are buttons. The same
+          report from a terminal on the box: <code>sudo python3 /opt/irate-box/health.py</code>, which
+          works even when this page cannot reach the root helper.
+        </p>
+        <p class="setting-desc" id="health-when">Not looked yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="health-scan">Look again</button>
+        </div>
+        <p class="setting-desc action-note" id="health-note" role="status" hidden></p>
+        <div class="admin-progress" id="health-progress" hidden>
+          <progress class="admin-bar" id="health-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="health-step"></p>
+        </div>
+        <ul class="admin-checks" id="health-findings"></ul>
+        <h3>The last install</h3>
+        <p class="setting-desc" id="health-install">No record yet.</p>
+        <details class="admin-output" id="health-output">
+          <summary>Its output (the end of /var/log/irate-box/install.log)</summary>
+          <pre class="admin-log" id="health-log"></pre>
+        </details>
+      </section>
+
+      <section class="admin-pane" id="network" aria-labelledby="network-title">
+        <h2 id="network-title">Network</h2>
+        <p class="setting-desc">
+          What the box has for networking, and how hard it works to stay on its network when the
+          link is flaky. Nothing about the owner's own connection changes unless you press its button.
+        </p>
+        <h3>What the box has</h3>
+        <p class="setting-desc" id="net-when">Not looked yet.</p>
+        <div class="library-buttons">
+          <label>Device <select id="net-device"><option value="">All</option></select></label>
+          <button type="button" id="net-scan">Look again</button>
+        </div>
+        <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
+        <table class="admin-table" id="net-radios">
+          <thead><tr><th>Device</th><th>Run by</th><th>Its own hotspot</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <ul class="admin-checks" id="net-hazards"></ul>
+
+        <h3>Staying on the network</h3>
+        <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
+        <div class="net-settings">
+          <label class="setting-name" for="up-eager">Eagerness</label>
+          <select id="up-eager"></select>
+          <p class="setting-desc" id="up-eager-desc"></p>
+          <label class="setting-name" for="up-forgive">Forgiveness</label>
+          <select id="up-forgive"></select>
+          <p class="setting-desc" id="up-forgive-desc"></p>
+          <label class="setting-name" for="up-iface">Watch</label>
+          <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+          <details id="up-custom">
+            <summary>Custom values (blank: the level's own)</summary>
+            <div class="net-fields" id="up-fields"></div>
+          </details>
+        </div>
+        <div class="library-buttons">
+          <button type="button" id="up-save">Save</button>
+          <button type="button" id="up-hold">Hold repairs for an hour</button>
+          <button type="button" id="up-unhold" hidden>End the hold</button>
+        </div>
+        <p class="setting-desc action-note" id="up-note" role="status" hidden></p>
+        <div id="up-profile"></div>
+        <h3>Recent</h3>
+        <ul class="admin-list net-events" id="up-events"></ul>
+      </section>
+
       <section class="admin-pane" id="security" aria-labelledby="security-title">
         <h2 id="security-title">Security</h2>
         <p class="setting-desc">
@@ -433,7 +548,8 @@
         <p class="setting-desc">
           The update doctor looks at what an update depends on — the network, names, the clock,
           GitHub, free space, the cached copy, the package sources — and says what is wrong and what
-          to do about it.
+          to do about it. For the box itself (services, Kiwix, an install that stopped), see
+          <a href="#health">Health</a>.
         </p>
         <div class="library-buttons">
           <button type="button" id="update-doctor">Run the update doctor</button>

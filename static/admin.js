@@ -468,7 +468,8 @@ function renderBox(data) {
           : op === 'disable' ? s.enabled : true));
     return el('tr', {},
       el('td', {}, el('span', { className: 'setting-name', textContent: s.name }),
-        el('span', { className: 'setting-desc', textContent: s.unit || s.note || s.path || '' })),
+        el('span', { className: 'setting-desc', textContent: s.unit || s.note || s.path || '' }),
+        s.why ? el('span', { className: 'setting-desc bad', textContent: s.why }) : null),
       el('td', {}, el('span', { className: `state state-${s.state}`, textContent: STATE_LABEL[s.state] || s.state })),
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
       el('td', {}, el('span', { className: 'library-buttons' },
@@ -681,7 +682,7 @@ const checkItem = (status, title, detail, fix) => el('li', { className: `check c
   el('span', { textContent: `${MARK[status]} ` }), el('strong', { textContent: title }),
   detail ? el('span', { textContent: ` — ${detail}` }) : null,
   fix ? el('span', { className: 'setting-desc', textContent: fix }) : null);
-const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update', install: 'Installing the update', addon: 'Changing an add-on' };
+const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update', install: 'Installing the update', addon: 'Changing an add-on', repair: 'Running the installer again' };
 let updWaiting = null; // { id, action }
 let updPoll = null;
 
@@ -887,6 +888,393 @@ function secFix(fid, action) {
 sec.scan.addEventListener('click', () => secRequest({ action: 'scan' }, 'scan'));
 loadSecurity();
 
+// --- health ----------------------------------------------------------------------------
+// The box doctor (health.py, through the root helper): findings with what to do and the safe
+// repairs as buttons; the last install's record and output, which the hub reads itself. Polled
+// on every pane, slowly, for one more thing the hub can tell on its own: whether the root
+// helper is answering at all. If not, a banner on every pane gives the commands to type, since
+// no button that needs root (the doctor's included) can do anything until it is back.
+const hl = {
+  when: document.getElementById('health-when'),
+  scan: document.getElementById('health-scan'),
+  note: document.getElementById('health-note'),
+  progress: document.getElementById('health-progress'),
+  bar: document.getElementById('health-bar'),
+  step: document.getElementById('health-step'),
+  findings: document.getElementById('health-findings'),
+  install: document.getElementById('health-install'),
+  output: document.getElementById('health-output'),
+  log: document.getElementById('health-log'),
+  banner: document.getElementById('helper-banner'),
+  bannerDetail: document.getElementById('helper-banner-detail'),
+  bannerCmds: document.getElementById('helper-banner-cmds'),
+};
+let hlWaiting = null; // { id, fid }
+let hlNote = null; // { fid, text, ok }
+let hlPoll = null;
+let hlAsked = false;
+
+function installText(st) {
+  if (!st) return 'No record yet: installs from before 2026-10-02 kept none. The next run of the installer keeps one.';
+  const when = new Date(st.started * 1000).toLocaleString();
+  const n = (st.problems || []).length;
+  if (st.running) return `Started ${when}${st.step ? `, at "${st.step}"` : ''}. If nothing is installing now, it was cut off there (the doctor says so too).`;
+  if (st.aborted) return `Started ${when}; stopped during "${st.step}"${st.failed_command ? `: ${st.failed_command} failed (exit ${st.exit})` : ''}. The steps after it were not done.`;
+  return `Started ${when} (${st.args || 'no options'}); finished${n ? ` with ${n} problem${n === 1 ? '' : 's'}: ${st.problems.join('; ')}` : ' with no problems'}.`;
+}
+
+function renderHealth(data) {
+  const h = data.helper || {};
+  hl.banner.hidden = !h.stuck;
+  if (h.stuck) {
+    hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? ' is' : 's are'} waiting, the oldest for ${minutes(h.oldest)}.`;
+    hl.bannerCmds.textContent = h.commands.join('\n');
+  }
+  const p = data.progress && data.progress.action === 'repair' ? data.progress : null;
+  const busy = data.pending > 0 || !!hlWaiting || !!p;
+  if (hlWaiting) {
+    const done = (data.results || []).find((r) => r.id === hlWaiting.id);
+    if (done) {
+      hlNote = { fid: hlWaiting.fid, text: done.message, ok: done.ok };
+      hlWaiting = null;
+      return renderHealth(data);
+    }
+  }
+  const rep = data.report;
+  const all = rep ? [...rep.findings].sort((a, b) => RANK[a.status] - RANK[b.status]) : [];
+  const shown = new Set(all.map((f) => f.id));
+  const noteUnder = (fid) => (hlNote && hlNote.fid === fid
+    ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
+  hl.findings.replaceChildren(...all.map((f) => el('li', { className: `check check-${f.status}` },
+    el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
+    el('span', { textContent: ` — ${f.detail}` }),
+    f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
+    f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
+      type: 'button', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
+    }))) : null,
+    noteUnder(f.id))));
+  const loose = hlNote && (hlNote.fid === 'scan' || !shown.has(hlNote.fid)) ? hlNote : null;
+  say(loose ? loose.text : '', loose ? loose.ok : true, hl.note);
+  hl.when.textContent = rep ? `Looked ${new Date(rep.at * 1000).toLocaleString()}.` + (busy ? ' Working…' : '')
+    : busy ? 'Looking…' : 'Not looked yet.';
+  hl.scan.disabled = busy || h.stuck;
+  hl.progress.hidden = !p;
+  if (p) {
+    const steps = Math.max(p.steps, p.step, 1);
+    hl.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
+    hl.step.textContent = `Running the installer again, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}${p.label ? ` — ${p.label}` : ''}.`;
+  }
+  hl.install.textContent = installText(data.install);
+  hl.log.textContent = (data.log || []).join('\n');
+  hl.output.hidden = !(data.log || []).length;
+  const problems = all.filter((f) => f.status === 'problem').length;
+  badge('health', h.stuck ? '!' : problems ? String(problems) : '');
+
+  const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
+  if (stale && !busy && !hlAsked && !h.stuck && location.hash === '#health') { hlAsked = true; hlRequest({ action: 'scan' }, 'scan'); return; }
+  clearTimeout(hlPoll);
+  hlPoll = setTimeout(loadHealth, busy ? 2000 : location.hash === '#health' ? 15000 : 30000);
+}
+
+async function loadHealth() {
+  try { renderHealth(await getJSON('/admin/health')); } catch (err) {
+    console.error('health pane:', err);
+    hl.when.textContent = 'Could not read the health report.';
+    clearTimeout(hlPoll);
+    hlPoll = setTimeout(loadHealth, 30000);
+  }
+}
+
+async function hlRequest(body, fid) {
+  try {
+    hlWaiting = { id: (await postJSON('/admin/health', body)).id, fid };
+    hlNote = null;
+  } catch (err) { hlNote = { fid, text: err.message, ok: false }; }
+  loadHealth();
+}
+
+function hlFix(fid, action) {
+  let choice = action.choice;
+  let ask = action.confirm;
+  if (choice === 'clock-set') {
+    // This device's clock, read at the moment of the click: the box has none it can trust.
+    const now = new Date();
+    choice = `clock-set:${Math.round(now.getTime() / 1000)}`;
+    ask = `Set the box's clock to ${now.toLocaleString()} (this device's time)? Use it only if this device's clock is right.`;
+  }
+  if (ask && !confirm(ask)) return;
+  hlRequest({ action: 'fix', choice }, fid);
+}
+
+hl.scan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'scan'));
+window.addEventListener('hashchange', () => { if (location.hash === '#health') loadHealth(); });
+loadHealth();
+
+// --- network ---------------------------------------------------------------------------
+// The root helper's inventory of the box's networking (netinv.py), and the uplink watchdog
+// (uplink.py): its report, its two levels and any custom values. Answers go under the button
+// that asked. The form is filled from the watchdog's report only while nobody is editing it.
+const net = {
+  when: document.getElementById('net-when'),
+  device: document.getElementById('net-device'),
+  scan: document.getElementById('net-scan'),
+  scanNote: document.getElementById('net-scan-note'),
+  radios: document.querySelector('#net-radios tbody'),
+  hazards: document.getElementById('net-hazards'),
+  status: document.getElementById('up-status'),
+  eager: document.getElementById('up-eager'),
+  eagerDesc: document.getElementById('up-eager-desc'),
+  forgive: document.getElementById('up-forgive'),
+  forgiveDesc: document.getElementById('up-forgive-desc'),
+  iface: document.getElementById('up-iface'),
+  custom: document.getElementById('up-custom'),
+  fields: document.getElementById('up-fields'),
+  save: document.getElementById('up-save'),
+  hold: document.getElementById('up-hold'),
+  unhold: document.getElementById('up-unhold'),
+  note: document.getElementById('up-note'),
+  profile: document.getElementById('up-profile'),
+  events: document.getElementById('up-events'),
+};
+const UP_FIELDS = [
+  ['check', 'Check every (s)'], ['misses', 'Failed checks before it counts as down'],
+  ['grace', 'Then wait (s) before acting'], ['steps.reconnect', 'Reconnect after (s)'],
+  ['steps.restart', 'Restart the network service after (s)'], ['steps.radio', 'Reset the radio after (s)'],
+  ['steps.reboot', 'Reboot after (s)'], ['repeat', 'Reconnect again every (s)'], ['backoff', '… that gap growing ×'],
+  ['max_repeat', '… up to (s)'], ['flap_count', 'Drops that count as flapping'], ['flap_window', '… within (s)'],
+  ['flap_action', 'A flapping link is'], ['guests', 'Radio reset and reboot with guests on'],
+  ['reboots_per_day', 'Reboots a day, at most'], ['reboot_gap', 'Never reboot within (s) of the last'],
+];
+const UP_WORDS = {
+  flap_action: { note: 'only noted', pin: 'locked to the strongest AP', repair: 'repaired' },
+  guests: { protect: 'held back', ignore: 'go ahead' },
+};
+let netData = null;
+let netWaiting = null; // { id, where: 'scan' | 'up' }
+let netNotes = {};
+let netPoll = null;
+let upDirty = false;
+let netAsked = false;
+
+function upPreset(e, f, levels) {
+  const p = levels.presets;
+  const eff = { ...p.common, ...p.forgiveness[f], ...p.eagerness[e] };
+  eff.steps = { ...p.eagerness[e].steps };
+  return eff;
+}
+const upGet = (obj, key) => key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+
+function buildUpFields(levels) {
+  if (net.fields.childElementCount) return;
+  for (const [key, label] of UP_FIELDS) {
+    let input;
+    if (UP_WORDS[key]) {
+      input = el('select', {}, el('option', { value: '', textContent: "(the level's)" }),
+        ...Object.entries(UP_WORDS[key]).map(([v, t]) => el('option', { value: v, textContent: t })));
+    } else {
+      input = el('input', { type: 'text', inputMode: 'decimal', size: 8 });
+    }
+    input.dataset.key = key;
+    input.addEventListener('input', () => { upDirty = true; });
+    net.fields.append(el('label', {}, el('span', { textContent: label }), input));
+  }
+}
+
+function fillUpForm(chosen, levels) {
+  const sel = (box, names, value) => {
+    if (!box.childElementCount) box.replaceChildren(...names.map((n) => el('option', { value: n, textContent: n[0].toUpperCase() + n.slice(1) })));
+    box.value = value;
+  };
+  sel(net.eager, levels.eagerness, chosen.eagerness);
+  sel(net.forgive, levels.forgiveness, chosen.forgiveness);
+  net.iface.value = [...net.iface.options].some((o) => o.value === chosen.iface) ? chosen.iface : 'auto';
+  const over = chosen.overrides || {};
+  for (const input of net.fields.querySelectorAll('[data-key]')) {
+    const v = upGet(over, input.dataset.key);
+    input.value = v === undefined ? '' : v === null ? 'off' : String(v);
+  }
+  if (Object.keys(over).length) net.custom.open = true;
+  showUpPreset(levels);
+}
+
+function showUpPreset(levels) {
+  const e = net.eager.value, f = net.forgive.value;
+  net.eagerDesc.textContent = levels.describe[e] || '';
+  net.forgiveDesc.textContent = levels.describe[f] || '';
+  const eff = upPreset(e, f, levels);
+  for (const input of net.fields.querySelectorAll('input[data-key]')) {
+    const v = upGet(eff, input.dataset.key);
+    input.placeholder = v === undefined ? 'off' : String(v);
+  }
+  for (const s of net.fields.querySelectorAll('select[data-key]')) {
+    s.options[0].textContent = `(the level's: ${UP_WORDS[s.dataset.key][eff[s.dataset.key]]})`;
+  }
+}
+
+function readUpForm() {
+  const overrides = {};
+  for (const input of net.fields.querySelectorAll('[data-key]')) {
+    const raw = input.value.trim();
+    if (raw === '') continue;
+    const key = input.dataset.key;
+    let v = raw;
+    if (input.tagName === 'INPUT') {
+      if (key.startsWith('steps.') && raw.toLowerCase() === 'off') v = null;
+      else if (Number.isNaN(Number(raw))) throw new Error(`${input.previousSibling.textContent}: a number${key.startsWith('steps.') ? ' or off' : ''}, please`);
+      else v = Number(raw);
+    }
+    if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
+    else overrides[key] = v;
+  }
+  return { eagerness: net.eager.value, forgiveness: net.forgive.value, iface: net.iface.value, overrides };
+}
+
+const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function upStatusText(u) {
+  if (!u) return 'The watchdog has not reported yet (irate-box-uplink starts with the box, or when you save here).';
+  if (u.stale) return `The watchdog has not reported since ${new Date(u.at * 1000).toLocaleString()}: is irate-box-uplink running?`;
+  if (u.state === 'no-link') return 'No link to watch: the box has no route to a network and no WiFi client interface.';
+  if (u.state === 'off') return `${u.iface} was disconnected by hand (nmcli device disconnect), so the watchdog leaves it alone until it is connected again.`;
+  const l = u.link || {};
+  const on = l.ssid ? `${u.iface}: ${l.ssid} via ${l.bssid}, channel ${l.channel}, ${l.signal} dBm` : u.iface;
+  const parts = [];
+  if (u.state === 'up') {
+    parts.push(`Up on ${on}. The gateway (${u.gateway}) answers.`);
+  } else if (u.state === 'checking') {
+    parts.push(`Checking ${u.iface}: the gateway has missed ${u.misses} check${u.misses === 1 ? '' : 's'}.`);
+  } else {
+    const o = u.outage;
+    parts.push(o ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.` : `Down on ${u.iface}.`);
+    if (o && o.done.length) parts.push(`Tried: ${o.done.join(', ')}.`);
+    if (u.next) parts.push(`Next: ${u.next.label} at ${when(u.next.at)}.`);
+  }
+  if (u.pinned) parts.push(`Locked to ${u.pinned.bssid} since ${when(u.pinned.at)}, until the next drop.`);
+  if (u.paused_until && u.paused_until > Date.now() / 1000) parts.push(`No repairs until ${when(u.paused_until)}.`);
+  if (u.drops_in_window) parts.push(`${u.drops_in_window} drop${u.drops_in_window === 1 ? '' : 's'} lately.`);
+  parts.push(`Run by ${u.backend}; repairs possible: ${(u.repairs || []).join(', ') || 'none (watch only)'}.`);
+  if (u.dry_run) parts.push('Dry run: it decides and logs, and does nothing.');
+  return parts.join(' ');
+}
+
+function renderNetwork(data) {
+  netData = data;
+  const busy = data.pending > 0 || !!netWaiting;
+  if (netWaiting) {
+    const done = (data.results || []).find((r) => r.id === netWaiting.id);
+    if (done) {
+      netNotes[netWaiting.where] = { text: done.message, ok: done.ok };
+      if (netWaiting.where === 'up' && done.ok) upDirty = false;
+      netWaiting = null;
+      return renderNetwork(data);
+    }
+  }
+  const inv = data.inventory;
+  const u = data.uplink;
+  const levels = data.levels;
+  // What the box has
+  net.when.textContent = inv ? `Looked ${new Date(inv.at * 1000).toLocaleString()}${inv.focus ? ` at ${inv.focus} only` : ''}.`
+    + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not looked yet.';
+  net.scan.disabled = busy;
+  const devices = inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : [];
+  for (const box of [net.device, net.iface]) {
+    const keep = box.value;
+    const first = box.options[0];
+    box.replaceChildren(first, ...devices.map((d) => el('option', { value: d, textContent: d })));
+    box.value = [...box.options].some((o) => o.value === keep) ? keep : first.value;
+  }
+  const apFor = (r) => (inv.ap || []).find((a) => a.phy === r.phy);
+  net.radios.replaceChildren(...(inv ? inv.radios : []).map((r) => {
+    const a = apFor(r);
+    const ident = [r.driver, r.bus && r.bus.toUpperCase(), r.usb && r.usb.id].filter(Boolean).join(', ');
+    const link = r.link && r.link.ssid ? `${r.link.ssid}, channel ${r.link.channel}, ${r.link.signal} dBm` : r.type;
+    return el('tr', {},
+      el('td', {}, el('span', { className: 'setting-name', textContent: r.iface }), el('span', { className: 'setting-desc', textContent: `${ident} — ${link}` })),
+      el('td', { textContent: r.owner + (r.manager ? ` + ${r.manager}` : '') }),
+      el('td', {}, el('span', { className: 'setting-name', textContent: a ? (a.possible ? `Yes: ${a.mode.replace('-', ' ')}, through ${a.backend}` : 'No') : '—' }),
+        a ? el('span', { className: 'setting-desc', textContent: a.detail }) : null));
+  }), ...(inv ? inv.wired : []).map((w) => el('tr', {},
+    el('td', {}, el('span', { className: 'setting-name', textContent: w.iface }), el('span', { className: 'setting-desc', textContent: `${w.driver || 'wired'} — ${w.carrier ? 'cable in' : 'no cable'}` })),
+    el('td', { textContent: inv.uplink.iface === w.iface ? inv.uplink.backend : '' }), el('td', { textContent: '—' }))));
+  const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
+  net.hazards.replaceChildren(...hz.map((h) => checkItem(h.status, h.title, h.detail, h.fix)));
+  const sn = netNotes.scan;
+  say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
+
+  // Staying on the network
+  buildUpFields(levels);
+  if (!upDirty) fillUpForm((u && u.chosen) || { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} }, levels);
+  net.status.textContent = upStatusText(u);
+  net.save.disabled = busy;
+  const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
+  net.hold.hidden = !!held;
+  net.unhold.hidden = !held;
+  net.hold.disabled = net.unhold.disabled = busy;
+  const un = netNotes.up;
+  say(un ? un.text : '', un ? un.ok : true, net.note);
+
+  const change = u && u.profile_change;
+  const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
+  const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:'));
+  if (change) {
+    net.profile.replaceChildren(el('p', { className: 'setting-desc' },
+      `Keep retrying is on for ${change.name} (since ${new Date(change.at * 1000).toLocaleDateString()}): NetworkManager never stops trying it. `,
+      actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
+  } else if (prof && trap) {
+    net.profile.replaceChildren(el('p', { className: 'setting-desc' },
+      `Your WiFi profile ${prof} stops trying after a few failed handshakes, and then waits for someone to reconnect it by hand — which a box with no screen cannot ask for, and a flaky link can cause. `
+      + 'Keep retrying sets its connection.autoconnect-retries and connection.auth-retries to 0. Undo, here or by uninstalling, puts the old values back. ',
+      actionButton('Keep retrying', () => {
+        if (confirm(`Change two settings of your WiFi profile ${prof}, so it never stops trying? Undo puts them back.`)) netRequest({ action: 'profile', on: true }, 'up');
+      }, { disabled: busy })));
+  } else {
+    net.profile.replaceChildren();
+  }
+  const evs = (u && u.events) || [];
+  net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
+    el('span', { className: 'setting-desc', textContent: `${new Date(e.at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} ` }),
+    el('span', { textContent: e.text }))));
+  const down = u && !u.stale && u.state !== 'up';
+  badge('network', down ? '!' : '');
+
+  const stale = !inv || Date.now() / 1000 - inv.at > 60 * 60;
+  if (stale && !busy && !netAsked && location.hash === '#network') { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
+  clearTimeout(netPoll);
+  netPoll = setTimeout(loadNetwork, busy ? 2000 : location.hash === '#network' ? 10000 : 60000);
+}
+
+async function loadNetwork() {
+  try { renderNetwork(await getJSON('/admin/network')); } catch (err) {
+    console.error('network pane:', err);
+    net.when.textContent = 'Could not read the network report.';
+    clearTimeout(netPoll);
+    netPoll = setTimeout(loadNetwork, 30000);
+  }
+}
+
+async function netRequest(body, where) {
+  try {
+    netWaiting = { id: (await postJSON('/admin/network', body)).id, where };
+    delete netNotes[where];
+  } catch (err) { netNotes[where] = { text: err.message, ok: false }; }
+  loadNetwork();
+}
+
+net.scan.addEventListener('click', () => netRequest({ action: 'scan', iface: net.device.value || null }, 'scan'));
+for (const box of [net.eager, net.forgive, net.iface]) {
+  box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); });
+}
+net.save.addEventListener('click', () => {
+  let settings;
+  try { settings = readUpForm(); } catch (err) { netNotes.up = { text: err.message, ok: false }; renderNetwork(netData); return; }
+  if (settings.eagerness === 'stubborn' && !confirm('Stubborn may reset the radio and reboot the box while guests are on it. Use it?')) return;
+  netRequest({ action: 'settings', settings }, 'up');
+});
+net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
+net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 0 }, 'up'));
+window.addEventListener('hashchange', () => { if (location.hash === '#network') loadNetwork(); });
+loadNetwork();
+
 // --- add-ons ---------------------------------------------------------------------------
 // Each add-on from apps.d: Add (after its consent text) or Remove, through the root helper,
 // which reruns install.sh. The run's bar and output are the update's own (one installer at a
@@ -1047,7 +1435,7 @@ function renderUsb(data) {
       el('span', { className: 'setting-name', textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }),
       d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
       ...(d.zims.length ? d.zims.map((z) => el('span', { className: 'usb-book' },
-        el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ' · not a ZIM file'}` }),
+        el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ` · cannot be imported: ${z.problem || 'not a ZIM file'}`}` }),
         z.zim ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
           onclick: () => usbRequest({ action: 'import', device: d.name, file: z.file }, `${d.name}:${z.file}`,
             `Copy ${z.file} into the library (${size(z.size)})?`) }) : null,
@@ -1194,3 +1582,74 @@ async function loadCi() {
   try { renderCi(await getJSON('/admin/ci')); } catch (_) { ciAbout.textContent = 'Could not read the builds.'; }
 }
 loadCi();
+
+// --- firmware for the web flasher (firmware.py) ---------------------------------------------
+// The board picker lists what the newest kept release offers; until a first check has run,
+// there is nothing to pick yet, and Check now fetches the list.
+const fw = {
+  form: document.getElementById('fw-form'), status: noteEl('fw-status'), note: noteEl('fw-note'),
+  boards: noteEl('fw-boards'), filter: noteEl('fw-filter'), kept: noteEl('fw-kept'),
+};
+let fwPoll = null;
+let fwChosen = new Set();
+
+function renderFirmware(data) {
+  const cfg = data.settings;
+  const st = data.status || {};
+  const f = fw.form.elements;
+  if (!fw.form.contains(document.activeElement)) {
+    f.enabled.checked = cfg.enabled;
+    f.keep_alpha.value = cfg.keep_alpha;
+    f.keep_beta.value = cfg.keep_beta;
+    f.cache.value = cfg.cache;
+    f.all_boards.checked = cfg.boards === 'all';
+    fwChosen = new Set(cfg.boards === 'all' ? [] : cfg.boards);
+  }
+  const running = data.running ? (data.progress
+    ? ` Working: ${data.progress.name} (${size(data.progress.done)}${data.progress.total ? ` of ${size(data.progress.total)}` : ''}).`
+    : ' Working…') : '';
+  fw.status.textContent = (st.last_check ? `Last checked ${st.last_check.replace('T', ' ').replace('Z', ' UTC')}: ${st.outcome || ''}.`
+    : 'Not checked yet.') + (st.error ? ` Error: ${st.error}` : '') + running +
+    (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : '');
+  const q = fw.filter.value.trim().toLowerCase();
+  const targets = (data.targets || []).filter((t) => !q || t.board.includes(q) || t.platform.includes(q));
+  fw.boards.hidden = f.all_boards.checked;
+  fw.boards.replaceChildren(...(data.targets && data.targets.length ? targets.map((t) => el('label', { className: 'inline' },
+    el('input', { type: 'checkbox', checked: fwChosen.has(t.board),
+      onchange: (e) => { if (e.target.checked) fwChosen.add(t.board); else fwChosen.delete(t.board); } }),
+    ` ${t.board} `, el('span', { className: 'setting-desc', textContent: t.platform })))
+    : [el('p', { className: 'setting-desc', textContent: 'No board list yet: switch it on, Save, then Check now.' })]));
+  const versions = Object.entries(st.versions || {});
+  fw.kept.replaceChildren(...(versions.length ? versions.map(([v, info]) => el('div', { className: 'admin-item' },
+    el('span', {}, el('strong', { textContent: `${v} (${info.channel})` }),
+      el('span', { className: 'setting-desc', textContent: `${info.boards.length} board${info.boards.length === 1 ? '' : 's'}, ` +
+        `${info.files} files, ${size(info.bytes)}` + (info.missing && info.missing.length ? `; not in this release: ${info.missing.join(', ')}` : '') +
+        (st.cache && st.cache.version === v ? `; build cache (${st.cache.mode}) ${size(st.cache.bytes)}` : '') }))))
+    : [el('p', { className: 'setting-desc', textContent: 'Nothing kept yet.' })]));
+  clearTimeout(fwPoll);
+  if (data.running) fwPoll = setTimeout(loadFirmware, 2000);
+}
+
+let fwData = null;
+async function loadFirmware() {
+  try { fwData = await getJSON('/admin/firmware'); renderFirmware(fwData); } catch (_) { fw.status.textContent = 'Could not read the firmware settings.'; }
+}
+fw.filter.addEventListener('input', () => fwData && renderFirmware(fwData));
+fw.form.elements.all_boards.addEventListener('change', () => fwData && renderFirmware(fwData));
+fw.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = fw.form.elements;
+  try {
+    fwData = await postJSON('/admin/firmware', { action: 'settings', enabled: f.enabled.checked,
+      keep_alpha: Number(f.keep_alpha.value), keep_beta: Number(f.keep_beta.value), cache: f.cache.value,
+      boards: f.all_boards.checked ? 'all' : [...fwChosen] });
+    renderFirmware(fwData);
+    say('Saved. Update now fetches what is missing; the schedule does the rest.', true, fw.note);
+  } catch (err) { say(err.message, false, fw.note); }
+});
+for (const [id, action] of [['fw-check', 'check'], ['fw-update', 'update']]) {
+  document.getElementById(id).addEventListener('click', async () => {
+    try { fwData = await postJSON('/admin/firmware', { action }); renderFirmware(fwData); say('', true, fw.note); } catch (err) { say(err.message, false, fw.note); }
+  });
+}
+loadFirmware();

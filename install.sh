@@ -23,6 +23,10 @@
 #                             /git-private/ (all behind the login); repos in /var/lib/hub/git
 #   irate-box-ci.path         builds on push to a private repo with a .irate-ci.sh (ci.py), run
 #                             by irate-box-ci.service as the unprivileged hubci user
+#   irate-box-uplink.service  the uplink watchdog (uplink.py, root): keeps the box on its network
+#                             as eagerly as --uplink or /admin's Network page says
+#   /var/lib/hub/control/netinv.json   what the box has for networking (netinv.py), looked
+#                             at once here and again from /admin
 #
 # It does not set up the access point, dnsmasq or the captive portal. The box keeps
 # whatever network it already has, and the hub is served at http://<its address>/.
@@ -74,6 +78,19 @@ Usage: sudo ./install.sh [options]
   --take-port-80        when something else serves :80, stop and disable it so the hub can
                         have the port (the captive portal needs it). Recorded, so /admin's
                         Security page can undo it and uninstall.sh starts it again.
+  --uplink E[,F]        how hard the box works to stay on its network (uplink.py): eagerness
+                        off, patient (default), standard, persistent or stubborn, and
+                        optionally forgiveness tolerant, normal (default) or strict, e.g.
+                        --uplink standard,strict. Kept in /etc/hub/uplink.json, not in the
+                        install options, so an update never undoes a choice made on /admin's
+                        Network page, which also has the custom values. The owner's own WiFi profile is never
+                        changed here: "Keep retrying" on that page does it, by consent.
+  --rtc auto|off        a battery-backed clock module on I2C (DS3231, RV-8803, RX8130, …;
+                        rtc.py). auto (default): look for one, and if exactly one is found set
+                        it up, so the box keeps its time while off (with the kernel's driver
+                        where it has one, otherwise irate-box's own); a module set up earlier
+                        is kept. No device-tree or /boot changes. off: do not look. Health on
+                        /admin looks again, sets one up, or stops using it.
   --download-cache DIR  take release downloads (ttyd, SilverBullet, Caddy's .deb) from DIR
                         when they are there, still checked against their checksums. /admin's
                         "Check for updates" fills it, so "Install update" needs no network
@@ -84,7 +101,15 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
-HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB=""
+HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
+# The arguments as given, for the install record, with the password masked.
+ARGS_SHOWN="" _mask=0
+for _a in "$@"; do
+	if [ "$_mask" = 1 ]; then ARGS_SHOWN+=" ***"; _mask=0; continue; fi
+	ARGS_SHOWN+=" $_a"
+	[ "$_a" = --admin-password ] && _mask=1
+done
+ARGS_SHOWN="${ARGS_SHOWN# }"
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--src) SRC="$2"; shift 2 ;;
@@ -106,6 +131,17 @@ while [ $# -gt 0 ]; do
 		case "$2" in nginx | caddy) WEB="$2" ;; *) echo "--web takes nginx or caddy" >&2; exit 2 ;; esac
 		shift 2 ;;
 	--take-port-80) TAKE_PORT_80=1; shift ;;
+	--rtc)
+		case "$2" in auto | off) RTC="$2" ;; *) echo "--rtc takes auto or off" >&2; exit 2 ;; esac
+		shift 2 ;;
+	--uplink)
+		case "$2" in
+		off | patient | standard | persistent | stubborn | \
+			off,* | patient,* | standard,* | persistent,* | stubborn,*) UPLINK="$2" ;;
+		*) echo "--uplink takes off, patient, standard, persistent or stubborn, optionally ,tolerant ,normal or ,strict" >&2; exit 2 ;;
+		esac
+		case "$UPLINK" in *,*) case "${UPLINK#*,}" in tolerant | normal | strict) ;; *) echo "--uplink: forgiveness is tolerant, normal or strict" >&2; exit 2 ;; esac ;; esac
+		shift 2 ;;
 	--remove)
 		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
 		shift 2 ;;
@@ -132,13 +168,79 @@ SB_VERSION=2.11.1
 TTYD_VERSION=1.7.7
 
 # Bold on a terminal only: from /admin the output goes to a log file that a page shows.
-say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
-die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
+# Decided now, before the output is also copied to the install log (below).
+BOLD=0
+[ -t 1 ] && BOLD=1
+STEP=""
+say() {
+	STEP="$*"
+	if [ "$BOLD" = 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi
+	state_write
+}
+die() {
+	printf 'install.sh: %s\n' "$*" >&2
+	ABORT_CMD="${ABORT_CMD:-install.sh refused: $*}"
+	exit 1
+}
 # Things the owner should know, said where they happen and again at the end of the run.
 NOTICES=()
 notice() {
 	NOTICES+=("$*")
-	if [ -t 1 ]; then printf '\033[1;33m!!  %s\033[0m\n' "$*"; else printf '!!  %s\n' "$*"; fi
+	if [ "$BOLD" = 1 ]; then printf '\033[1;33m!!  %s\033[0m\n' "$*"; else printf '!!  %s\n' "$*"; fi
+}
+# Something did not work, but the install carries on: said now, counted in the closing line,
+# kept in the install record for the doctor (health.py, /admin → System → Health).
+PROBLEMS=()
+problem() {
+	PROBLEMS+=("$*")
+	fail=1
+	if [ "$BOLD" = 1 ]; then printf '\033[1;31m    problem: %s\033[0m\n' "$*"; else printf '    problem: %s\n' "$*"; fi
+	state_write
+}
+fail=0
+
+# --- the install record and log ------------------------------------------------------------
+# /var/log/irate-box/install.log keeps this run's output (the previous run's in .1), and
+# install-state.json how far it got: the step, the problems, and if it stopped early, where.
+# The doctor reads both, so "what happened?" has an answer after the terminal is gone.
+LOGDIR=/var/log/irate-box
+STATE_FILE="$LOGDIR/install-state.json"
+ABORT_LINE="" ABORT_CMD="" RUNNING=false STARTED="$(date +%s)"
+json_str() {
+	local s="$1"
+	s="${s//\\/\\\\}"
+	s="${s//\"/\\\"}"
+	s="${s//$'\t'/ }"
+	s="${s//$'\n'/ }"
+	printf '"%s"' "$s"
+}
+state_write() {
+	[ -d "$LOGDIR" ] || return 0
+	local probs="" p
+	for p in "${PROBLEMS[@]}"; do probs+="${probs:+, }$(json_str "$p")"; done
+	printf '{"started": %s, "pid": %s, "running": %s, "step": %s, "args": %s, "problems": [%s], "exit": %s, "aborted": %s, "failed_line": %s, "failed_command": %s, "at": %s}\n' \
+		"$STARTED" "$$" "$RUNNING" "$(json_str "$STEP")" "$(json_str "${ARGS_SHOWN:-}")" "$probs" "${EXIT_CODE:-null}" \
+		"$([ -n "$ABORT_CMD" ] && echo true || echo false)" "${ABORT_LINE:-null}" "$(json_str "$ABORT_CMD")" "$(date +%s)" \
+		>"$STATE_FILE.tmp" 2>/dev/null && mv -f "$STATE_FILE.tmp" "$STATE_FILE"
+}
+on_err() {
+	# Only the first: the trap runs again in every function the failure passes through.
+	[ -n "$ABORT_CMD" ] || { ABORT_LINE="$1"; ABORT_CMD="$2"; }
+}
+on_exit() {
+	EXIT_CODE=$?
+	RUNNING=false
+	state_write
+	[ "$EXIT_CODE" = 0 ] || [ -z "$ABORT_CMD" ] && return
+	local doctor="$CODE/health.py"
+	[ -f "$doctor" ] || doctor="${SRC:-.}/health.py"
+	printf '\ninstall.sh stopped during "%s"' "${STEP:-the start}"
+	[ -n "$ABORT_LINE" ] && printf ': line %s, `%s` failed (exit %s)' "$ABORT_LINE" "$ABORT_CMD" "$EXIT_CODE"
+	printf '.\n'
+	echo "  Nothing after that step was done; what was set up before it stays as it is."
+	echo "  The full output is in $LOGDIR/install.log."
+	echo "  See what is wrong:  sudo python3 $doctor"
+	echo "  Then fix it and run the installer again: it carries on from what is already there."
 }
 # fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
 # the URL's file name), else from the network. Callers check checksums either way.
@@ -153,6 +255,16 @@ fetch() {
 
 # --- preflight -------------------------------------------------------------------
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh …)"
+install -d -m 755 "$LOGDIR"
+[ -f "$LOGDIR/install.log" ] && mv -f "$LOGDIR/install.log" "$LOGDIR/install.log.1"
+: >"$LOGDIR/install.log"
+chmod 644 "$LOGDIR/install.log"
+exec > >(tee -a "$LOGDIR/install.log") 2>&1
+RUNNING=true
+set -E
+trap 'on_err "$LINENO" "$BASH_COMMAND"' ERR
+trap on_exit EXIT
+state_write
 command -v apt-get >/dev/null || die "needs a Debian-family system with apt"
 command -v systemctl >/dev/null || die "needs systemd"
 . /etc/os-release
@@ -284,11 +396,16 @@ CADDY_FROM_RELEASE=0
 [ -f "$CADDY_MARK" ] && CADDY_FROM_RELEASE=1
 # fcgiwrap and cgit: the git servers (/git/, /git-private/), part of every install: ~2 MB,
 # and nothing runs until someone browses, clones or pushes.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit)
+# iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit iw)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
-[ ${#ZIMS[@]} -gt 0 ] && pkgs+=(kiwix-tools)
+# Kiwix is in use when --zim adds a book, and also when books are already on disk: a reinstall
+# over kept state (uninstall.sh --keep-state, then install.sh) brings /wiki/ back with them.
+KIWIX=0
+{ [ ${#ZIMS[@]} -gt 0 ] || compgen -G "$STATE/zim/*.zim" >/dev/null; } && KIWIX=1
+[ "$KIWIX" = 1 ] && pkgs+=(kiwix-tools)
 [ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
 apt_update() {
 	local out
@@ -562,6 +679,9 @@ HUB_SERIAL_ROOT=$APPS/serial
 # The git repositories (/admin's Git page): public/ and private/, bare, owned by the hub.
 HUB_GIT_ROOT=$STATE/git
 HUB_CI_ROOT=$STATE/ci
+# The web flasher's bundle, and the firmware the librarian keeps for it (/flasher/).
+HUB_FLASHER_ROOT=$APPS/flasher
+HUB_FIRMWARE_ROOT=$STATE/firmware
 EOF
 
 # When :80 is the owner's, the hub takes a port of its own (8080 first); recorded, so
@@ -655,7 +775,7 @@ nginx_serves_port() {
 }
 nginx_config() {
 	echo "# Generated by irate-box install.sh from $CODE/irate-box.nginx. Edits are overwritten on reinstall."
-	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/static|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" \
+	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/static|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" -e "s|@FIRMWARE@|$STATE/firmware|g" \
 		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" "$CODE/irate-box.nginx" |
 		# A kernel without IPv6: the [::] listener would stop nginx from starting at all.
 		if [ -f /proc/net/if_inet6 ]; then cat; else sed '/listen \[::\]:/d'; fi
@@ -781,6 +901,8 @@ if [ "$WEB" = caddy ]; then
 	Environment=HUB_SERIAL_ROOT=$APPS/serial
 	Environment=HUB_GIT_ROOT=$STATE/git
 	Environment=HUB_CODE_DIR=$CODE
+	Environment=HUB_FLASHER_ROOT=$APPS/flasher
+	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi
@@ -917,7 +1039,7 @@ Description=Irate-Box builds on push: run what is queued (ci.py), as hubci
 Type=oneshot
 User=hubci
 Group=hubci
-Environment=HOME=$STATE/ci/home HUB_CI_ROOT=$STATE/ci
+Environment=HOME=$STATE/ci/home HUB_CI_ROOT=$STATE/ci HUB_FIRMWARE_ROOT=$STATE/firmware
 ExecStart=/usr/bin/python3 $CODE/ci.py run
 # Each build has its own limit (ci.py, HUB_CI_TIME_LIMIT: 12 h); this unit runs every queued
 # build in turn, so it gets none of its own.
@@ -1015,7 +1137,7 @@ fi
 
 # Written whenever Kiwix is in use, not only when --zim adds a book, so a rerun brings an
 # existing box's unit up to date (the memory settings below arrived after first installs).
-if [ ${#ZIMS[@]} -gt 0 ] || [ -f /etc/systemd/system/kiwix.service ]; then
+if [ "$KIWIX" = 1 ] || [ -f /etc/systemd/system/kiwix.service ]; then
 	cat >/etc/systemd/system/kiwix.service <<EOF
 [Unit]
 Description=Kiwix offline library for Irate-Box (/wiki/)
@@ -1050,11 +1172,21 @@ if compgen -G "$STATE/zim/*.zim" >/dev/null; then
 	rm -f "$lib.new"
 	for f in "$STATE"/zim/*.zim; do
 		runuser -u "$HUB_USER" -- kiwix-manage "$lib.new" add "$f" ||
-			echo "    skipped $(basename "$f"): kiwix-manage could not read it"
+			problem "skipped $(basename "$f"): kiwix-manage could not read it (health.py says why; it can set it aside)"
 	done
-	[ -f "$lib.new" ] && mv "$lib.new" "$lib"
+	if [ -f "$lib.new" ]; then
+		mv "$lib.new" "$lib"
+	elif [ -f "$lib" ]; then
+		# Not one book could be read: a library from an earlier run would point at them anyway.
+		mv -f "$lib" "$lib.old"
+		echo "    no readable book: the old library is set aside as library.xml.old"
+	fi
 	SWEPT=1
 fi
+# Kiwix starts only with a library that has a book in it: kiwix-serve exits at once without
+# one, and systemd would retry it into its start limit.
+KIWIX_READY=0
+[ -f "$STATE/zim/library.xml" ] && grep -q '<book ' "$STATE/zim/library.xml" && KIWIX_READY=1
 
 # --- MQTT broker -------------------------------------------------------------------
 # Meshtastic nodes speak raw MQTT over TCP, which the web server does not proxy, so :1883
@@ -1172,6 +1304,9 @@ install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/control/results"
 cat >/etc/systemd/system/irate-box-control.service <<EOF
 [Unit]
 Description=Irate-Box: carry out /admin requests that need root (services, admin password)
+# Started by the path unit for every request; quick clicks on /admin must not trip systemd's
+# start limit (5 in 10 s), which would leave every later request unanswered until a reboot.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
@@ -1192,11 +1327,54 @@ Unit=irate-box-control.service
 WantedBy=multi-user.target
 EOF
 
+# --- the network: inventory and the uplink watchdog ---------------------------------------
+# netinv.py looks at the radios and the stack that runs them (read-only); uplink.py watches
+# the link and repairs it as eagerly as chosen. Settings in $ETC/uplink.json: written here
+# only by --uplink (or the first time, as patient,normal), otherwise by /admin's Network page
+# through the root helper, so an update keeps what the owner chose there.
+say "Looking at the network"
+python3 "$CODE/netinv.py" --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
+chown "$HUB_USER:$HUB_USER" "$STATE/control/netinv.json" 2>/dev/null || true
+if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
+	up="${UPLINK:-patient,normal}"
+	if [ "$up" = "${up#*,}" ]; then
+		HUB_ETC_DIR="$ETC" python3 "$CODE/uplink.py" set "$up" >/dev/null
+	else
+		HUB_ETC_DIR="$ETC" python3 "$CODE/uplink.py" set "${up%%,*}" "${up#*,}" >/dev/null
+	fi
+fi
+# A clock module on I2C: found and set up if there is exactly one (rtc.py auto), kept if set up
+# before. Nothing in /boot or the device tree changes.
+if [ "$RTC" = auto ] || [ -f "$ETC/rtc.json" ]; then
+	if out="$(HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" timeout 120 python3 "$CODE/rtc.py" auto 2>&1)"; then
+		echo "    $out"
+		case "$out" in *through* | *choose*) notice "$out" ;; esac
+	else
+		problem "looking for a clock module failed: $out"
+	fi
+fi
+cat >/etc/systemd/system/irate-box-uplink.service <<EOF
+[Unit]
+Description=Irate-Box uplink watchdog: keep the box on its network (uplink.py; /admin, Network)
+After=network.target NetworkManager.service
+
+[Service]
+Type=simple
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 $CODE/uplink.py run
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # --- the librarian -----------------------------------------------------------------
 # librarian.py keeps ZIM books current from the sources set on /admin (Library). It runs
 # as the hub user: a new version is swapped in under the same file name and library.xml is
 # rebuilt, which kiwix-serve's --monitorLibrary picks up. No restart, so no root needed.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library" "$STATE/firmware"
 cat >/etc/systemd/system/irate-box-librarian.service <<EOF
 [Unit]
 Description=Irate-Box librarian: update the ZIM books whose check is due (/admin, Library)
@@ -1290,18 +1468,31 @@ systemctl daemon-reload
 units=(irate-box "$WEB" irate-box-git.socket)
 [ "$WITH_NOTES" = 1 ] && units+=(silverbullet)
 [ "$WITH_SYNC" = 1 ] && units+=("syncthing@$HUB_USER")
-[ ${#ZIMS[@]} -gt 0 ] && units+=(kiwix)
+if [ "$KIWIX" = 1 ] && [ "$KIWIX_READY" = 1 ]; then
+	units+=(kiwix)
+elif [ "$KIWIX" = 1 ]; then
+	systemctl disable --quiet --now kiwix 2>/dev/null || true
+	systemctl reset-failed kiwix 2>/dev/null || true
+	problem "Kiwix not started: none of the books in $STATE/zim can be read. Add one (Library → Books, a USB stick, --zim); health.py says what is wrong with these"
+fi
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
 [ "$WITH_MQTT" = 1 ] && units+=(mosquitto)
 [ "$WITH_COLLAB" = 1 ] && units+=(excalidraw-room)
-systemctl enable --quiet "${units[@]}"
-systemctl restart "${units[@]}"
+# One at a time: a unit that will not start is a problem to report, not a reason to stop.
+for u in "${units[@]}"; do
+	systemctl enable --quiet "$u" || problem "$u could not be enabled: systemctl status $u"
+	systemctl restart "$u" || problem "$u did not start: journalctl -u $u -n 30"
+done
 # Turned on by an earlier run: keep it on, with the current credential.
 [ "$WITH_TERM" = 1 ] || systemctl try-restart ttyd
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
-[ ${#ZIMS[@]} -gt 0 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
-systemctl enable --quiet --now irate-box-librarian.timer irate-box-control.path irate-box-ci.path
+[ "$KIWIX" = 1 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
+for u in irate-box-librarian.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
+	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
+done
+# A running watchdog keeps the old code until restarted.
+systemctl try-restart irate-box-uplink.service || problem "irate-box-uplink did not restart: journalctl -u irate-box-uplink -n 30"
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled
@@ -1360,18 +1551,17 @@ done
 
 # --- check -----------------------------------------------------------------------
 sleep 2
-fail=0
 for u in "${units[@]}"; do
-	systemctl is-active --quiet "$u" || { echo "    $u is not running: journalctl -u $u"; fail=1; }
+	systemctl is-active --quiet "$u" || problem "$u is not running: journalctl -u $u -n 30"
 done
 hostport="127.0.0.1$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
 code="$(curl -s -o /dev/null -w '%{http_code}' "http://$hostport/" || true)"
-[ "$code" = 200 ] || { echo "    http://$hostport/ answered $code"; fail=1; }
+[ "$code" = 200 ] || problem "http://$hostport/ answered $code: journalctl -u irate-box -u $WEB -n 30"
 
 addr="$(ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' || hostname -I | cut -d' ' -f1)"
 where="http://${addr:-<this box>}$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
 echo
-say "Irate-Box is $([ $fail = 0 ] && echo up || echo 'installed, with problems above') at $where/"
+say "Irate-Box is $([ $fail = 0 ] && echo up || echo "installed, with ${#PROBLEMS[@]} problem$([ ${#PROBLEMS[@]} = 1 ] || echo s) (below)") at $where/"
 echo "    web server: $WEB$([ "$WEB" = caddy ] && echo ' (the fallback; --web nginx switches to the default)')"
 if [ "$UNCLAIMED" = 1 ]; then
 	echo "    admin login: not chosen yet. Open $where/admin/ and set it now:"
@@ -1390,6 +1580,9 @@ echo "    git:   /git/ (public: clone for all, push with the admin login) and /g
 [ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
 
+up_now="$(HUB_ETC_DIR="$ETC" python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["eagerness"]+", "+d["forgiveness"]+(" (custom values)" if d.get("overrides") else ""))' "$ETC/uplink.json" 2>/dev/null || echo unknown)"
+echo "    uplink: $up_now — how hard it works to stay on the network; change on $where/admin/#network"
+
 # What install.sh found and did not change: said once more here, then the Security page's
 # own report of the box. Nothing below is changed without the owner's say-so (/admin).
 if [ "${#NOTICES[@]}" -gt 0 ]; then
@@ -1397,9 +1590,25 @@ if [ "${#NOTICES[@]}" -gt 0 ]; then
 	say "Worth knowing"
 	for n in "${NOTICES[@]}"; do echo "    $n"; done
 fi
+if net="$(timeout 60 python3 "$CODE/netinv.py" summary 2>/dev/null)" && [ -n "$net" ]; then
+	echo
+	say "The network (more, and \"look again\" for another device, on $where/admin/#network)"
+	printf '%s\n' "$net" | sed 's/^/    /'
+fi
 if report="$(timeout 120 python3 "$CODE/security.py" summary 2>/dev/null)" && [ -n "$report" ]; then
 	echo
 	say "Found on this box (fix or leave each on $where/admin/#security)"
 	printf '%s\n' "$report" | sed 's/^/    /'
+fi
+# Problems: listed once more, then what the doctor makes of the box now, with what to do.
+if [ "${#PROBLEMS[@]}" -gt 0 ]; then
+	echo
+	say "Problems during this install"
+	for p in "${PROBLEMS[@]}"; do echo "    $p"; done
+	if doc="$(timeout 300 python3 "$CODE/health.py" summary 2>/dev/null)" && [ -n "$doc" ]; then
+		echo
+		say "What the doctor finds (again any time: sudo python3 $CODE/health.py, or $where/admin/#health)"
+		printf '%s\n' "$doc" | sed 's/^/    /'
+	fi
 fi
 exit $fail

@@ -3,7 +3,8 @@
 scan()         every removable or USB partition with a filesystem: mounted read-only (nosuid,
                nodev, noexec) just long enough to list its .zim files, then unmounted.
 import_zim()   one of those books copied into the hub's ZIM folder as the hub user, checked
-               (the ZIM magic), and the Kiwix library rebuilt; refused over an existing
+               (zimcheck: whole, and readable by Kiwix) on the stick and again as copied, and
+               the Kiwix library rebuilt; refused over an existing
                book of the same name, or when it would leave less free than the librarian's
                min_free_mb.
 export_zim()   a book from the hub onto the stick, under irate-box/, mounted read-write only
@@ -20,9 +21,10 @@ import subprocess
 import time
 from pathlib import Path
 
+import zimcheck
+
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
 FILESYSTEMS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "iso9660"}
-ZIM_MAGIC = b"ZIM\x04"
 CHUNK = 1 << 20
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 # For tests only: count loop devices as sticks (a container has no USB to plug in).
@@ -112,9 +114,9 @@ def _zims(root, depth=3):
             if f.lower().endswith(".zim") and not f.startswith("."):
                 p = Path(dirpath) / f
                 try:
-                    with open(p, "rb") as fh:
-                        ok = fh.read(4) == ZIM_MAGIC
-                    found.append({"file": str(rel / f), "size": p.stat().st_size, "zim": ok})
+                    why = zimcheck.header_problem(p)  # 80 bytes: cheap enough for a scan
+                    found.append({"file": str(rel / f), "size": p.stat().st_size, "zim": why is None,
+                                  **({"problem": why} if why else {})})
                 except OSError:
                     continue
     return sorted(found, key=lambda z: z["file"])
@@ -168,9 +170,9 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
         src = root / rel
         if not src.is_file() or src.is_symlink():
             raise ValueError("that book is not on the stick now: scan again")
-        with open(src, "rb") as fh:
-            if fh.read(4) != ZIM_MAGIC:
-                raise ValueError(f"{rel.name} is not a ZIM file")
+        why = zimcheck.header_problem(src)
+        if why:
+            raise ValueError(f"{rel.name} was not copied: it is {why}")
         size = src.stat().st_size
         free = shutil.disk_usage(zim_dir).free
         if free - size < min_free:
@@ -181,9 +183,10 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
             _copy(src, tmp, report)
             shutil.chown(tmp, hub_user, hub_user)
             os.chmod(tmp, 0o644)
-            with open(tmp, "rb") as fh:
-                if fh.read(4) != ZIM_MAGIC:
-                    raise ValueError("the copy is not a ZIM file: the stick may be failing")
+            why = zimcheck.problem(tmp)
+            if why:
+                raise ValueError(f"{rel.name} was not added: the copy is {why}. It looked whole on the stick, "
+                                 "so the stick may be failing, or was pulled out; nothing on the hub changed.")
             os.replace(tmp, dest)
         finally:
             tmp.unlink(missing_ok=True)

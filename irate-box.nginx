@@ -166,6 +166,42 @@ server {
 		proxy_pass http://127.0.0.1:3002;
 	}
 
+	# --- /flasher -> the Meshtastic web flasher, as a download, and what it fetches -------
+	# The page is a download opened from the guest's disk (flasher.py says why), so it fetches
+	# everything below cross-origin: every answer is Access-Control-Allow-Origin: *, and a
+	# preflight gets its answer here. The hub fills its own address into the page and answers
+	# the small API; nginx serves the bundle's files and the librarian's firmware mirror.
+	location = /flasher { proxy_pass http://irate_box_hub; }
+	location = /flasher/ { proxy_pass http://irate_box_hub; }
+	location = /flasher/flasher.html { proxy_pass http://irate_box_hub; }
+	location /flasher/api/ { proxy_pass http://irate_box_hub; }
+	location ^~ /flasher/firmware/ {
+		alias @FIRMWARE@/;
+		add_header Access-Control-Allow-Origin "*" always;
+		add_header Cache-Control "no-cache";
+		if ($request_method = OPTIONS) {
+			add_header Access-Control-Allow-Origin "*";
+			add_header Access-Control-Allow-Methods "GET, OPTIONS";
+			add_header Access-Control-Allow-Headers "*";
+			add_header Access-Control-Allow-Private-Network "true";
+			add_header Access-Control-Max-Age 86400;
+			return 204;
+		}
+	}
+	location ^~ /flasher/ {
+		alias @APPS@/flasher/public/;
+		add_header Access-Control-Allow-Origin "*" always;
+		add_header Cache-Control "no-cache";
+		if ($request_method = OPTIONS) {
+			add_header Access-Control-Allow-Origin "*";
+			add_header Access-Control-Allow-Methods "GET, OPTIONS";
+			add_header Access-Control-Allow-Headers "*";
+			add_header Access-Control-Allow-Private-Network "true";
+			add_header Access-Control-Max-Age 86400;
+			return 204;
+		}
+	}
+
 	# --- /git and /git-private -> git over HTTP, and cgit to browse ---------------------
 	# Bare repositories under @GIT_ROOT@/public and /private, owned by the hub user, who runs
 	# both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP

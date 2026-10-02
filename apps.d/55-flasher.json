@@ -1,0 +1,32 @@
+{
+  "id": "flasher",
+  "order": 55,
+  "status": {
+    "path": "/flasher/",
+    "name": "Web flasher",
+    "root_env": "HUB_FLASHER_ROOT"
+  },
+  "install": {
+    "dir": "apps/flasher",
+    "needs": "flasher.html",
+    "title": "Web flasher"
+  },
+  "source": {
+    "type": "bundle",
+    "repo": "NomDeTom/web-flasher",
+    "branch": "irate-box",
+    "workflow": "irate-box-bundle.yml",
+    "pattern": "irate-box-flasher-*"
+  },
+  "entries": [
+    {
+      "menus": {
+        "meshtastic": 2,
+        "tools-rf": 2
+      },
+      "name": "Web flasher, as a download (to flash a radio over USB)",
+      "desc": "One file: save it, then open it from your downloads in Chrome or Edge and plug the radio in. It finds this hub's firmware by itself, or flashes a release zip you have",
+      "href": "/flasher/flasher.html"
+    }
+  ]
+}

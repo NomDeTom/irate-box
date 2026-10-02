@@ -14,6 +14,8 @@ may be allowed to push there, and a build runs whatever the commit says.
 A build is a fresh clone of the pushed commit and `bash .irate-ci.sh` in it, with
   CI=1  CI_REPO  CI_BRANCH  CI_COMMIT  CI_ARTIFACTS (a folder: what the script leaves there is
   kept)  HOME (persistent, so tool caches such as ~/.platformio survive between builds)
+  CI_PIO_DEPS  (when the librarian carries one: firmware.py) PlatformIO's libdeps/ and packages/
+  for the newest kept Meshtastic release, for a build with no internet
 and a time limit. Its log, status and artifacts go to runs/<repo>/<number>/; the newest
 KEEP_RUNS per repository are kept. /admin's Git page lists them (snapshot()).
 
@@ -74,6 +76,18 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
     return 0
 
 
+def _pio_deps():
+    """The build cache the librarian carries (firmware.py), or None: PlatformIO's libraries and
+    packages for the newest kept Meshtastic release, so a build can run with no internet."""
+    root = Path(os.environ.get("HUB_FIRMWARE_ROOT", "/var/lib/hub/firmware"))
+    try:
+        cache = json.loads((root / "status.json").read_text()).get("cache") or {}
+    except (OSError, ValueError):
+        return None
+    path = root / str(cache.get("version", "")) / "pio-deps"
+    return path if cache.get("version") and path.is_dir() else None
+
+
 def _next_number(repo_runs):
     nums = [int(p.name) for p in repo_runs.iterdir() if p.name.isdigit()] if repo_runs.is_dir() else []
     return max(nums, default=0) + 1
@@ -119,6 +133,10 @@ def build(job):
             say(f"running {SCRIPT} (time limit {TIME_LIMIT // 60} min)")
             env = dict(os.environ, CI="1", CI_REPO=name, CI_BRANCH=job["branch"], CI_COMMIT=job["commit"],
                        CI_ARTIFACTS=str(run / "artifacts"))
+            deps = _pio_deps()
+            if deps:
+                env["CI_PIO_DEPS"] = str(deps)
+                say(f"CI_PIO_DEPS={deps} (the librarian's build cache)")
             proc = subprocess.run(["bash", SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
                                   stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
             state = "passed" if proc.returncode == 0 else "failed"

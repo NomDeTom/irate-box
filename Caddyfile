@@ -167,6 +167,49 @@
 		reverse_proxy 127.0.0.1:3002
 	}
 
+	# --- /flasher → the Meshtastic web flasher, as a download, and what it fetches -------
+	# The page is a download opened from the guest's disk (flasher.py says why), so it fetches
+	# everything below cross-origin: every answer is Access-Control-Allow-Origin: *, and a
+	# preflight gets its answer here. The hub fills its own address into the page and answers
+	# the small API; Caddy serves the bundle's files and the librarian's firmware mirror.
+	# Inside handle /flasher* (sorted ahead of the hub's catch-all handle), a route, so these
+	# run in the order written: Caddy would otherwise sort the handle_path blocks ahead of the
+	# hub's, and the page and the API would get the static files' 404.
+	handle /flasher* {
+		route {
+			@flasher_hub path /flasher /flasher/ /flasher/flasher.html /flasher/api/*
+			reverse_proxy @flasher_hub 127.0.0.1:8000
+			handle_path /flasher/firmware/* {
+				header Access-Control-Allow-Origin "*"
+				header Cache-Control "no-cache"
+				@preflight method OPTIONS
+				handle @preflight {
+					header Access-Control-Allow-Methods "GET, OPTIONS"
+					header Access-Control-Allow-Headers "*"
+					header Access-Control-Allow-Private-Network "true"
+					header Access-Control-Max-Age 86400
+					respond 204
+				}
+				root * {$HUB_FIRMWARE_ROOT:/var/lib/hub/firmware}
+				file_server
+			}
+			handle_path /flasher/* {
+				header Access-Control-Allow-Origin "*"
+				header Cache-Control "no-cache"
+				@preflight method OPTIONS
+				handle @preflight {
+					header Access-Control-Allow-Methods "GET, OPTIONS"
+					header Access-Control-Allow-Headers "*"
+					header Access-Control-Allow-Private-Network "true"
+					header Access-Control-Max-Age 86400
+					respond 204
+				}
+				root * {$HUB_FLASHER_ROOT:/usr/share/hub/apps/flasher}/public
+				file_server
+			}
+		}
+	}
+
 	# --- /git and /git-private → git over HTTP, and cgit to browse ---------------------
 	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
 	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP

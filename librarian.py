@@ -42,6 +42,7 @@ policy.keep_old), github-token (optional, for actions), lock.
     librarian.py add-apps [APP ...]       add the default nightly.link source for each app
     librarian.py app-fetch APP            download and check APP's newest bundle; prints the
                                           zip's path (install.sh then has root unpack it)
+    librarian.py firmware [--check]       the firmware mirror for the web flasher (firmware.py)
 
 Stdlib only: it runs on the board's Python with nothing installed.
 """
@@ -65,6 +66,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import manifests
+import zimcheck
 
 STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", Path(__file__).parent))
 ZIM_DIR = STATE_DIR / "zim"
@@ -86,7 +88,6 @@ DEFAULT_POLICY = {
 }
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-ZIM_MAGIC = b"ZIM\x04"  # 72173914, little-endian, at offset 0 of every ZIM
 API = "https://api.github.com"
 USER_AGENT = "irate-box-librarian"
 CHUNK = 1 << 20
@@ -646,10 +647,11 @@ def _extract_zim(zip_path, name, dest):
         raise LibrarianError("the download is not a valid zip")
 
 
-def _check_zim(path):
-    with open(path, "rb") as fh:
-        if fh.read(4) != ZIM_MAGIC:
-            raise LibrarianError("the download is not a ZIM file")
+def _check_zim(path, what="the download"):
+    """A book replaces the one in use only once it is whole and Kiwix can read it (zimcheck)."""
+    why = zimcheck.problem(path)
+    if why:
+        raise LibrarianError(f"{what} was not put in place: it is {why}. The book in use is unchanged.")
 
 
 def _free_bytes(path):
@@ -783,6 +785,11 @@ def rollback(name, version=None):
             os.link(book, keep)
         tmp = ZIM_DIR / f".{name}.zim.new"
         shutil.copyfile(pick, tmp)
+        try:
+            _check_zim(tmp, f"the archived version {pick.stem}")
+        except LibrarianError:
+            tmp.unlink(missing_ok=True)
+            raise
         os.replace(tmp, book)
         pick.unlink()
         rebuild_library()
@@ -859,6 +866,12 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             results[name] = outcome
             log(f"{name}: {outcome}")
             save_status(status)
+        # The firmware mirror (firmware.py), on the same schedule and under the same lock.
+        if not names or "firmware" in names:
+            import firmware
+            if firmware.settings()["enabled"] and (not scheduled or firmware.due(policy["check_every_hours"])):
+                results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
+                log(f"firmware: {results['firmware']}")
     return results
 
 
@@ -905,6 +918,8 @@ def main(argv=None):
     sub.add_parser("rebuild-library")
     af = sub.add_parser("app-fetch")
     af.add_argument("app")
+    fw = sub.add_parser("firmware")
+    fw.add_argument("--check", action="store_true")
     args = p.parse_args(argv)
 
     try:
@@ -940,6 +955,10 @@ def main(argv=None):
                 if app not in have:
                     add_source(default_app_source(app))
                     print(f"added {app}")
+        elif args.cmd == "firmware":
+            import firmware
+            with Lock():
+                print(firmware.sync(check_only=args.check))
         elif args.cmd == "rebuild-library":
             with Lock():
                 rebuild_library()

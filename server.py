@@ -23,11 +23,15 @@ from urllib.parse import unquote, urlparse
 import html
 import board
 import ci
+import firmware
+import flasher
 import gitrepos
 import hubclock
 import librarian
 import manifests
 import store
+import uplink
+import zimcheck
 
 STATIC = Path(__file__).parent / "static"
 # Mutable state lives outside the code directory so packaging can point it at
@@ -408,6 +412,25 @@ def unit_states(units):
     return states
 
 
+def kiwix_why():
+    """Why /wiki/ is not running, in words a guest or the owner can act on. Cheap enough for
+    /status (cached with it): the ZIM headers only, never kiwix-manage."""
+    books = sorted(librarian.ZIM_DIR.glob("*.zim")) if librarian.ZIM_DIR.is_dir() else []
+    if not books:
+        return "No books yet: add one in Library → Books, or from a USB stick."
+    bad = [b for b in books if zimcheck.header_problem(b)]
+    if len(bad) == len(books):
+        return (f"None of the {len(books)} book{'s' if len(books) != 1 else ''} can be read (damaged or unfinished "
+                "copies). Health says which, and can set them aside.")
+    try:
+        has_books = "<book " in librarian.LIBRARY_XML.read_text(errors="replace")
+    except OSError:
+        has_books = False
+    if not has_books:
+        return "The library is empty, though there are books: Health → Rebuild the library."
+    return "Kiwix is not running. Health says why, and can start it again."
+
+
 def service_status(proxied):
     """Per-service state: "running", "stopped" (installed, not answering) or "missing".
     `up` stays for the tiles: running, and reachable because the web server is in front. Probes
@@ -418,6 +441,7 @@ def service_status(proxied):
             svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
         }
         _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
+        _status_cache["why"] = {}
         _status_cache["at"] = now
     units = _status_cache["units"]
     out = []
@@ -440,6 +464,11 @@ def service_status(proxied):
                  "up": proxied and running}
         if "note" in svc:
             entry["note"] = svc["note"]
+        if state == "stopped" and svc.get("unit") == "kiwix.service":
+            why = _status_cache.setdefault("why", {})
+            if "kiwix" not in why:
+                why["kiwix"] = kiwix_why()
+            entry["why"] = why["kiwix"]
         out.append(entry)
     return out
 
@@ -555,6 +584,28 @@ def library_action(payload):
     except librarian.LibrarianError as exc:
         return 400, {"error": str(exc)}
     return 200, library_snapshot()
+
+
+def firmware_action(payload):
+    """(status, body) for POST /admin/firmware: the settings, or a run (firmware.py)."""
+    action = payload.get("action")
+    try:
+        if action == "settings":
+            firmware.set_settings(**{k: payload[k] for k in ("enabled", "boards", "keep_alpha", "keep_beta", "cache")
+                                     if k in payload})
+        elif action in ("check", "update"):
+            def run():
+                with librarian.Lock():
+                    return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
+            if not library_start(f"firmware-{action}", run):
+                return 409, {"error": "the librarian is already running"}
+        else:
+            return 400, {"error": "action must be settings, check or update"}
+    except librarian.LibrarianError as exc:
+        return 400, {"error": str(exc)}
+    snap = firmware.snapshot()
+    snap.update(running=librarian.is_running(), progress=librarian.progress())
+    return 200, snap
 
 
 # --- admin: box and services, moderation, saved work, password, backup -----------
@@ -705,6 +756,7 @@ def update_snapshot():
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
+IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
 SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@._-]+)?$")
 
 
@@ -742,6 +794,74 @@ def security_snapshot():
         log = []
     return {"hub": hub, "scan": scan, "log": log, "pending": _pending_actions("security-"),
             "results": control_results(5)}
+
+
+HEALTH_STATE = CONTROL_DIR / "health.json"
+INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
+HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
+                              r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
+                              r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
+HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
+
+
+def helper_state():
+    """Is the root helper answering? The hub can see that for itself: its requests wait in a
+    folder it owns. One left for more than 90 s means everything on /admin that needs root
+    goes nowhere, including the doctor, so the page says what to type instead."""
+    oldest = None
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            m = path.stat().st_mtime
+        except OSError:
+            continue
+        oldest = m if oldest is None or m < oldest else oldest
+    age = time.time() - oldest if oldest else 0
+    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER,
+            "commands": ["sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
+                         "sudo systemctl start irate-box-control.path",
+                         "sudo python3 /opt/irate-box/health.py"]}
+
+
+def health_snapshot():
+    """The Health page: the doctor's last report (root helper), the last install's record and
+    the end of its output (both readable by the hub), and whether the helper is answering."""
+    def load(path):
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+    try:
+        log = [ANSI_RE.sub("", line) for line in (INSTALL_LOG_DIR / "install.log").read_text(errors="replace").splitlines()[-80:]]
+    except OSError:
+        log = []
+    return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
+            "helper": helper_state(), "pending": _pending_actions("health-"), "results": control_results(5),
+            "progress": update_progress()}
+
+
+NETINV_STATE = CONTROL_DIR / "netinv.json"
+UPLINK_STATE = CONTROL_DIR / "uplink.json"
+
+
+def network_snapshot():
+    """The Network page: the root helper's last inventory, the watchdog's own report, and the
+    levels it offers (from uplink.py, so the page and the watchdog cannot disagree)."""
+    def load(path):
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+    status = load(UPLINK_STATE)
+    if status:
+        # A report the watchdog stopped writing is old news: say so rather than show it as live.
+        status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
+    return {"inventory": load(NETINV_STATE), "uplink": status,
+            "levels": {"eagerness": list(uplink.EAGERNESS), "forgiveness": list(uplink.FORGIVENESS),
+                       "describe": uplink.DESCRIBE, "presets": {"eagerness": uplink.EAGERNESS,
+                                                                "forgiveness": uplink.FORGIVENESS, "common": uplink.COMMON},
+                       "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}
+                                  for k, v in uplink.FIELDS.items()}},
+            "pending": _pending_actions("net-") + _pending_actions("uplink-"), "results": control_results(5)}
 
 
 # install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
@@ -1035,6 +1155,10 @@ class Handler(BaseHTTPRequestHandler):
         if self._admin_locked(path):
             return
 
+        if path.startswith("/flasher/") or path == "/flasher":
+            self._flasher(path)
+            return
+
         if path == "/admin/setup":
             query = dict(p.partition("=")[::2] for p in self.path.partition("?")[2].split("&") if p)
             self.send_json(200, setup_status(query.get("id", "")[:40]))
@@ -1090,6 +1214,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, security_snapshot())
             return
 
+        if path == "/admin/network":
+            self.send_json(200, network_snapshot())
+            return
+
+        if path == "/admin/health":
+            self.send_json(200, health_snapshot())
+            return
+
         if path == "/admin/addons":
             self.send_json(200, addons_snapshot())
             return
@@ -1104,6 +1236,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/ci":
             self.send_json(200, ci.snapshot())
+            return
+
+        if path == "/admin/firmware":
+            snap = firmware.snapshot()
+            snap.update(running=librarian.is_running(), progress=librarian.progress())
+            self.send_json(200, snap)
             return
 
         if path == "/admin/ci/file":
@@ -1298,6 +1436,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(*gitrepos.action(payload))
             return
 
+        if path == "/admin/firmware":
+            self.send_json(*firmware_action(payload))
+            return
+
         if path == "/admin/usb":
             action, device = payload.get("action"), str(payload.get("device", ""))
             if action == "scan":
@@ -1318,6 +1460,35 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "addon must name an add-on, and on be true or false"})
             else:
                 self.send_json(202, {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})})
+            return
+
+        if path == "/admin/health":
+            if payload.get("action") == "scan":
+                self.send_json(202, {"id": control_request({"action": "health-scan"})})
+            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(str(payload.get("choice", ""))):
+                self.send_json(202, {"id": control_request({"action": "health-fix", "choice": payload["choice"]})})
+            else:
+                self.send_json(400, {"error": "action must be scan, or fix with a choice the doctor offered"})
+            return
+
+        if path == "/admin/network":
+            act = payload.get("action")
+            if act == "scan" and (payload.get("iface") in (None, "") or IFACE_NAME_RE.match(str(payload["iface"]))):
+                self.send_json(202, {"id": control_request({"action": "net-scan", "iface": payload.get("iface") or None})})
+            elif act == "settings":
+                try:
+                    settings = uplink.validate(payload.get("settings"))
+                except (ValueError, TypeError) as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                settings.pop("hold_until", None)
+                self.send_json(202, {"id": control_request({"action": "uplink-set", "settings": settings})})
+            elif act == "hold" and type(payload.get("minutes")) is int and 0 <= payload["minutes"] <= 1440:
+                self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
+            elif act == "profile" and type(payload.get("on")) is bool:
+                self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
+            else:
+                self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
             return
 
         if path == "/admin/security":
@@ -1374,8 +1545,55 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(404)
 
     def do_OPTIONS(self):
-        if not store.handle(self, "OPTIONS", self.path.split("?")[0], STORE, DROP):
+        path = self.path.split("?")[0]
+        if path.startswith("/flasher/api/"):
+            # The flasher's CORS preflight: it runs from the guest's disk (origin null).
+            self.send_response(204)
+            for k, v in flasher.CORS.items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not store.handle(self, "OPTIONS", path, STORE, DROP):
             self.send_empty(404)
+
+    def _flasher(self, path):
+        """The web flasher (flasher.py): the page as a download, with this hub's address in
+        it, and the small API it reads. Its static files come from the web server."""
+        if path in ("/flasher", "/flasher/"):
+            self.send_response(302)
+            self.send_header("Location", "/flasher/flasher.html")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if path == "/flasher/flasher.html":
+            body = flasher.page(self.headers.get("Host", ""))
+            if body is None:
+                self.send_json(404, {"error": "the web flasher is not installed on this hub"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="meshtastic-flasher.html"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return
+        if path.startswith("/flasher/api/"):
+            code, body = flasher.api(path)
+            self.send_response(code)
+            for k, v in flasher.CORS.items():
+                self.send_header(k, v)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return
+        self.send_json(404, {"error": "not found"})
 
     def _post_message(self, payload):
         name = str(payload.get("name", "")).strip()[:32]

@@ -116,7 +116,7 @@ if (grid || document.querySelector('[data-service]')) {
       const svc = byPath.get(el.dataset.service);
       const down = !!svc && !svc.up;
       el.classList.toggle('down', down);
-      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : 'Not running';
+      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : svc.why || 'Not running';
     });
     if (!grid) return;
     if (!data.proxied) {

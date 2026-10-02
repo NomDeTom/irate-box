@@ -43,6 +43,23 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
       Carry out one fix the Security page offered (security.fix: a drop-in or a unit switched
       off, each recorded with how to undo it), then scan again.
+  {"id": ..., "action": "health-scan"}
+      The box doctor (health.py): the last install, the root helper, every unit, Kiwix, the
+      watchdog, the web server's config; to control/health.json.
+  {"id": ..., "action": "health-fix", "choice": "<one of its offers>"}
+      One repair the doctor offered (restart a unit, rebuild or tidy the Kiwix library, …), or
+      "rerun-install": install.sh again from a copy of the installed code, recorded options.
+      Then the doctor looks again.
+  {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
+      What the box has for networking (netinv.py): radios, who runs them, what each can do,
+      what is in the way; to control/netinv.json. With "iface", that device alone.
+  {"id": ..., "action": "uplink-set", "settings": {eagerness, forgiveness, iface, overrides}}
+      How hard the watchdog (uplink.py) works to keep the box on its network: checked by
+      uplink.validate, written to /etc/hub/uplink.json, which irate-box-uplink picks up.
+  {"id": ..., "action": "uplink-hold", "minutes": 0-1440}
+      No repairs for that long (0 ends a hold), for an owner working on the network.
+  {"id": ..., "action": "uplink-profile", "on": true|false}
+      The by-consent change to the owner's WiFi profile (keep retrying), or its undo.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
@@ -73,8 +90,11 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import health
 import manifests
+import netinv
 import security
+import uplink
 import usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -561,6 +581,7 @@ def _nginx_check(src, opts):
     text = template.read_text()
     for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "static"),
                        "@APPS@": "/usr/share/hub/apps", "@GIT_ROOT@": str(STATE / "git"),
+                       "@FIRMWARE@": str(STATE / "firmware"),
                        "@HTPASSWD@": str(NGINX_LOGINS),
                        "@UNCLAIMED@": str(UNCLAIMED)}.items():
         text = text.replace(key, value)
@@ -1136,12 +1157,115 @@ def app_rollback(req):
     return f"{app}: rolled back to {str(meta.get('commit', 'the previous build'))[:7]}"
 
 
+# --- the box doctor ----------------------------------------------------------------------
+
+HEALTH_STATE = CONTROL / "health.json"
+
+
+def _write_health():
+    os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
+    data = health.scan()
+    HEALTH_STATE.write_text(json.dumps(data, indent=2))
+    _for_hub(HEALTH_STATE)
+    return data
+
+
+def health_scan(req):
+    data = _write_health()
+    bad = [f for f in data["findings"] if f["status"] == "problem"]
+    return f"doctor: {len(bad)} problem{'s' if len(bad) != 1 else ''}" if bad else "doctor: nothing wrong found"
+
+
+def rerun_install():
+    """install.sh again, as it was last run, from a copy of the installed code (as addon())."""
+    opts = _install_options()
+    shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(CODE, ADDON_SRC, symlinks=True)
+    state = _read_update_state()
+    try:
+        _run_install(ADDON_SRC, opts, "repair", state.get("install_steps"))
+    finally:
+        shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    return "the installer ran again and finished"
+
+
+def health_fix(req):
+    choice = str(req.get("choice", ""))
+    try:
+        if choice == "rerun-install":
+            msg = rerun_install()
+        elif choice == "net-scan":
+            msg = net_scan({})
+        else:
+            msg = health.fix(choice)
+    finally:
+        try:
+            _write_health()
+        except Exception:  # the repair's own answer matters more than a fresh report
+            pass
+    return msg
+
+
+# --- network: inventory and the uplink watchdog ------------------------------------------
+
+IFACE_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
+
+
+def net_scan(req):
+    iface = req.get("iface") or None
+    if iface is not None and not IFACE_RE.match(str(iface)):
+        raise ValueError("not an interface name")
+    inv = netinv.scan(iface)
+    netinv.write(inv, CONTROL / "netinv.json")
+    radios = len(inv["radios"])
+    return (f"{radios} radio{'s' if radios != 1 else ''}"
+            + (f", link {inv['uplink']['iface']} run by {inv['uplink']['backend']}" if inv["uplink"].get("iface") else ", no link"))
+
+
+def _uplink_running():
+    if run("systemctl", "is-active", "--quiet", "irate-box-uplink.service").returncode:
+        run("systemctl", "enable", "--now", "irate-box-uplink.service")
+
+
+def uplink_set(req):
+    s = uplink.load_settings()
+    new = dict(req.get("settings") or {})
+    new.setdefault("hold_until", s.get("hold_until", 0))
+    s = uplink.save_settings(new)
+    _uplink_running()
+    return (f"Uplink: {s['eagerness']}, {s['forgiveness']}" + (", custom values" if s["overrides"] else "")
+            + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest.")
+
+
+def uplink_hold(req):
+    minutes = req.get("minutes")
+    if type(minutes) is not int or not 0 <= minutes <= 1440:
+        raise ValueError("minutes must be 0 to 1440")
+    s = uplink.load_settings()
+    s["hold_until"] = time.time() + minutes * 60 if minutes else 0
+    uplink.save_settings(s)
+    return f"Repairs held for {minutes} min." if minutes else "Hold ended: repairs as set."
+
+
+def uplink_profile(req):
+    if type(req.get("on")) is not bool:
+        raise ValueError("on must be true or false")
+    msg = uplink.profile(req["on"])
+    try:
+        netinv.write(netinv.scan(), CONTROL / "netinv.json")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return msg
+
+
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
-           "app-install": app_install, "app-rollback": app_rollback}
+           "app-install": app_install, "app-rollback": app_rollback,
+           "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
 
 
 def answer(rid, ok, message):

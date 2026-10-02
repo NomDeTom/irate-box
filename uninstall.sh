@@ -49,7 +49,7 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-git.socket irate-box-git.service irate-box-ci.path irate-box-ci.service \
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service \
-	irate-box-control.path irate-box-control.service; do
+	irate-box-control.path irate-box-control.service irate-box-uplink.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
 # install.sh enables mosquitto only for --with-mqtt; with its config gone it would come
@@ -76,8 +76,20 @@ if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
 	HUB_ETC_DIR="$ETC" python3 "$CODE/security.py" undo-all | sed 's/^/    /' || true
 fi
 
+# "Keep retrying" on /admin's Network page changed two settings of the owner's WiFi profile;
+# put them back (uplink.py recorded the old values).
+if [ -f "$ETC/uplink-changes.json" ] && [ -f "$CODE/uplink.py" ]; then
+	say "Putting the WiFi profile back as it was"
+	HUB_ETC_DIR="$ETC" python3 "$CODE/uplink.py" undo-all | sed 's/^/    /' || true
+fi
+
+# A clock module set up by rtc.py: its units go, and a kernel-declared module is released.
+if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/rtc.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" python3 "$CODE/rtc.py" remove | sed 's/^/    /' || true
+fi
+
 say "Removing unit files and drop-ins"
-rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git}.service \
+rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-control.{path,service} \
@@ -111,7 +123,7 @@ if [ -f /etc/nginx/conf.d/irate-box.conf ] || [ -f "$ETC/nginx-default-site-off"
 fi
 
 say "Removing code, apps, config and binaries"
-rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box
+rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box /var/log/irate-box
 rm -f /usr/local/bin/silverbullet /usr/local/bin/ttyd
 
 if [ "$KEEP_STATE" = 1 ]; then
