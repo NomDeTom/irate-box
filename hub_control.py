@@ -560,7 +560,8 @@ def _nginx_check(src, opts):
         return _check(name, False, "irate-box.nginx is missing from the update")
     text = template.read_text()
     for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "static"),
-                       "@APPS@": "/usr/share/hub/apps", "@HTPASSWD@": str(NGINX_LOGINS),
+                       "@APPS@": "/usr/share/hub/apps", "@GIT_ROOT@": str(STATE / "git"),
+                       "@HTPASSWD@": str(NGINX_LOGINS),
                        "@UNCLAIMED@": str(UNCLAIMED)}.items():
         text = text.replace(key, value)
     with tempfile.TemporaryDirectory() as tmp:

@@ -1,0 +1,16 @@
+{
+  "id": "git",
+  "order": 47,
+  "tile": {
+    "icon": "🔀",
+    "name": "Git",
+    "desc": "Repositories: browse, clone, push",
+    "href": "/app.html#/git/",
+    "new_tab": true
+  },
+  "status": {
+    "path": "/git/",
+    "name": "Git (cgit, git http-backend)",
+    "root_env": "HUB_GIT_ROOT"
+  }
+}

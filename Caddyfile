@@ -167,6 +167,88 @@
 		reverse_proxy 127.0.0.1:3002
 	}
 
+	# --- /git and /git-private → git over HTTP, and cgit to browse ---------------------
+	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
+	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
+	# paths in @smart) goes to git http-backend; every other path is cgit's web view. Public:
+	# anyone may browse and clone, a push needs the admin login unless guest-push exists in
+	# $HUB_GIT_ROOT (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	# Pushes go through git-http-guard.py: Caddy streams the body, and a push it cuts off at
+	# max_size would otherwise leave git waiting forever (the guard says why).
+	redir /git /git/ permanent
+	redir /git-private /git-private/ permanent
+	handle_path /git-static/* {
+		root * /usr/share/cgit
+		file_server
+	}
+	handle_path /git/* {
+		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
+		handle @smart {
+			@push {
+				expression {query.service} == "git-receive-pack" || {path}.endsWith("/git-receive-pack")
+				not file {
+					root {$HUB_GIT_ROOT:/var/lib/hub/git}
+					try_files /guest-push
+				}
+			}
+			basic_auth @push {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_body {
+				max_size 64MB
+			}
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/git-http-guard.py
+					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/public
+					env GIT_HTTP_EXPORT_ALL 1
+					env PATH_INFO /{re.smart.1}
+					env REMOTE_USER {http.auth.user.id}
+					read_timeout 1h
+				}
+			}
+		}
+		handle {
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
+					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-public
+					env PATH_INFO {path}
+				}
+			}
+		}
+	}
+	handle_path /git-private/* {
+		basic_auth {
+			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		}
+		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
+		handle @smart {
+			request_body {
+				max_size 64MB
+			}
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/git-http-guard.py
+					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/private
+					env GIT_HTTP_EXPORT_ALL 1
+					env PATH_INFO /{re.smart.1}
+					env REMOTE_USER {http.auth.user.id}
+					read_timeout 1h
+				}
+			}
+		}
+		handle {
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
+					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-private
+					env PATH_INFO {path}
+				}
+			}
+		}
+	}
+
 	# --- /admin → the hub's own operator options ------------------------------------
 	# Same credential gate as /term, and for the same reason: these change what every
 	# guest sees. The hub does no auth of its own, so running it bare (no Caddy) leaves

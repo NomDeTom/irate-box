@@ -18,10 +18,12 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import html
 import board
+import ci
+import gitrepos
 import hubclock
 import librarian
 import manifests
@@ -1096,6 +1098,36 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, usb_snapshot())
             return
 
+        if path == "/admin/git":
+            self.send_json(200, gitrepos.snapshot())
+            return
+
+        if path == "/admin/ci":
+            self.send_json(200, ci.snapshot())
+            return
+
+        if path == "/admin/ci/file":
+            # A build's log (shown as text) or one of its artifacts (a download, never shown).
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            name = unquote(query.get("name", ""))
+            f = ci.run_file(unquote(query.get("run", "")), name)
+            if not f:
+                self.send_json(404, {"error": "no such build file"})
+                return
+            body = f.read_bytes()
+            self.send_response(200)
+            if name == "log.txt":
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+            else:
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
 
@@ -1260,6 +1292,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/store":
             self.send_json(*store_action(payload))
+            return
+
+        if path == "/admin/git":
+            self.send_json(*gitrepos.action(payload))
             return
 
         if path == "/admin/usb":

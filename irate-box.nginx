@@ -166,6 +166,62 @@ server {
 		proxy_pass http://127.0.0.1:3002;
 	}
 
+	# --- /git and /git-private -> git over HTTP, and cgit to browse ---------------------
+	# Bare repositories under @GIT_ROOT@/public and /private, owned by the hub user, who runs
+	# both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
+	# paths below) goes to git http-backend; every other path is cgit's web view. Public:
+	# anyone may browse and clone, a push needs the admin login unless @GIT_ROOT@/guest-push
+	# exists (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	location = /git { return 301 /git/; }
+	location = /git-private { return 301 /git-private/; }
+	location ^~ /git-static/ { alias /usr/share/cgit/; }
+	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
+		set $irate_box_git_auth off;
+		if ($arg_service = git-receive-pack) { set $irate_box_git_auth "Irate-Box"; }
+		if ($uri ~ /git-receive-pack$) { set $irate_box_git_auth "Irate-Box"; }
+		if (-f @GIT_ROOT@/guest-push) { set $irate_box_git_auth off; }
+		auth_basic $irate_box_git_auth;
+		auth_basic_user_file @HTPASSWD@;
+		client_max_body_size 64m;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+		fastcgi_param GIT_PROJECT_ROOT @GIT_ROOT@/public;
+		fastcgi_param GIT_HTTP_EXPORT_ALL 1;
+		fastcgi_param PATH_INFO /$irate_box_git_path;
+		fastcgi_param REMOTE_USER $remote_user;
+		fastcgi_read_timeout 1h;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git(?<irate_box_cgit_path>/.*)$ {
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
+		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-public;
+		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git-private/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		client_max_body_size 64m;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+		fastcgi_param GIT_PROJECT_ROOT @GIT_ROOT@/private;
+		fastcgi_param GIT_HTTP_EXPORT_ALL 1;
+		fastcgi_param PATH_INFO /$irate_box_git_path;
+		fastcgi_param REMOTE_USER $remote_user;
+		fastcgi_read_timeout 1h;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
+		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-private;
+		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+
 	# --- /admin -> the hub's own operator options ------------------------------------
 	# Same login as /term and /sync. First use: while @UNCLAIMED@ exists no password has
 	# been chosen, and /admin is let through with none, where the hub serves only the

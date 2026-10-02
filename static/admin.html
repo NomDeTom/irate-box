@@ -37,6 +37,7 @@
         <p class="admin-side-group">Hub content</p>
         <a href="#saved">Saved work</a>
         <a href="#moderation">Moderation</a>
+        <a href="#git">Git</a>
         <p class="admin-side-group">System</p>
         <a href="#security">Security</a>
         <a href="#updates">Updates</a>
@@ -336,6 +337,43 @@
         <div id="mod-drops" class="admin-list"></div>
         <h3>Board</h3>
         <div id="mod-threads" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="git" aria-labelledby="git-title">
+        <h2 id="git-title">Git</h2>
+        <p class="setting-desc">
+          Two git servers on this box. <a href="/git/">/git/</a> is public: anyone on the network can
+          browse and clone, and pushing needs the admin login unless guests may push.
+          <a href="/git-private/">/git-private/</a> is behind the admin login for everything.
+          Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git asks for the
+          login when it is needed.
+        </p>
+        <p class="setting-desc" id="git-usage"></p>
+        <!-- Not .settings: this switch has its own endpoint, not /admin/settings. -->
+        <div class="git-settings">
+          <label class="setting">
+            <input type="checkbox" id="git-guest-push">
+            <span><span class="setting-name">Guests may push to the public repositories</span>
+              <span class="setting-desc">Without the admin login. Anyone on the network could then
+                change or overwrite what is there; the private ones stay behind the login.</span></span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="git-note" role="status" hidden></p>
+        <h3>New repository</h3>
+        <form id="git-create" class="library-form">
+          <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
+          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
+          <button type="submit">Create</button>
+        </form>
+        <p class="setting-desc action-note" id="git-create-note" role="status" hidden></p>
+        <h3>Public</h3>
+        <div id="git-public" class="admin-list"></div>
+        <h3>Private</h3>
+        <div id="git-private" class="admin-list"></div>
+        <h3>Builds</h3>
+        <p class="setting-desc" id="ci-about"></p>
+        <div id="ci-runs" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="security" aria-labelledby="security-title">

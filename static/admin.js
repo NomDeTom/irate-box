@@ -1084,3 +1084,113 @@ async function usbRequest(body, at, confirmText) {
 
 usb.scan.addEventListener('click', () => usbRequest({ action: 'scan' }, 'scan'));
 loadUsb();
+
+// --- git: the two servers' repositories (gitrepos.py) ----------------------------------
+// The hub owns the repositories, so these changes need no root helper: each answer is the
+// new list.
+const git = {
+  usage: noteEl('git-usage'), note: noteEl('git-note'), guest: noteEl('git-guest-push'),
+  form: document.getElementById('git-create'), createNote: noteEl('git-create-note'),
+  lists: { public: noteEl('git-public'), private: noteEl('git-private') },
+};
+const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
+
+function renderGit(data) {
+  if (!data.installed) {
+    git.usage.textContent = 'The git servers are not set up on this box: rerun install.sh.';
+    git.form.hidden = true;
+    return;
+  }
+  git.form.hidden = false;
+  const total = data.repos.reduce((n, r) => n + r.size, 0);
+  git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
+    (data.free != null ? `; ${size(data.free)} free on the card` : '') +
+    `. A single push can be up to ${size(data.max_push)}.`;
+  git.guest.checked = data.guest_push;
+  const act = (body, at, confirmText) => async () => {
+    if (confirmText && !confirm(confirmText)) return;
+    try { renderGit(await postJSON('/admin/git', body)); say('', true, at); } catch (err) { say(err.message, false, at); }
+  };
+  for (const area of ['public', 'private']) {
+    const repos = data.repos.filter((r) => r.area === area);
+    git.lists[area].replaceChildren(...(repos.length ? repos.map((r) => el('div', { className: 'admin-item' },
+      el('span', {},
+        el('strong', {}, el('a', { href: r.url, textContent: `${r.name}.git` })),
+        el('span', { className: 'setting-desc', textContent: [r.description,
+          r.last_commit ? `last commit ${commitDate(r.last_commit)}` : 'empty',
+          r.branches > 1 ? `${r.branches} branches` : null, size(r.size)].filter(Boolean).join(' · ') })),
+      el('span', { className: 'library-buttons' },
+        actionButton('Copy clone URL', () => {
+          const url = `${location.origin}${r.url.replace(/\/$/, '')}`;
+          navigator.clipboard?.writeText(url).then(() => say(`Copied ${url}`, true, git.note),
+            () => say(url, true, git.note));
+        }, { className: 'small' }),
+        actionButton('Describe', () => {
+          const d = prompt(`Description for ${r.name}.git`, r.description);
+          if (d !== null) act({ action: 'describe', area, name: r.name, description: d }, git.note)();
+        }, { className: 'small' }),
+        actionButton('Delete', act({ action: 'delete', area, name: r.name }, git.note,
+          `Delete ${r.name}.git and all its history? Clones elsewhere keep theirs; this one cannot be brought back.`),
+        { className: 'small' }))))
+      : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
+  }
+}
+
+async function loadGit() {
+  try { renderGit(await getJSON('/admin/git')); } catch (_) { git.usage.textContent = 'Could not read the repositories.'; }
+}
+
+git.guest.addEventListener('change', async () => {
+  const on = git.guest.checked;
+  if (on && !confirm('Let anyone on the network push to the public repositories, without the login?')) {
+    git.guest.checked = false;
+    return;
+  }
+  try {
+    renderGit(await postJSON('/admin/git', { action: 'guest-push', on }));
+    say(on ? 'Guests can push to /git/ now.' : 'Pushing to /git/ needs the admin login again.', true, git.note);
+  } catch (err) { git.guest.checked = !on; say(err.message, false, git.note); }
+});
+git.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = git.form.elements;
+  try {
+    renderGit(await postJSON('/admin/git', { action: 'create', area: f.area.value, name: f.name.value, description: f.description.value }));
+    say(`Created ${f.name.value.replace(/\.git$/, '')}.git. Push to it with: git push http://${location.host}${f.area.value === 'public' ? '/git/' : '/git-private/'}${f.name.value.replace(/\.git$/, '')}.git main`, true, git.createNote);
+    git.form.reset();
+  } catch (err) { say(err.message, false, git.createNote); }
+});
+loadGit();
+
+// --- builds on push (ci.py): the newest runs, refreshed while one is going -----------------
+const ciAbout = noteEl('ci-about');
+const ciRuns = noteEl('ci-runs');
+let ciPoll = null;
+const STATE_ICON = { passed: '✅', failed: '❌', 'timed out': '⏱', running: '⏳' };
+const minutes = (s) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
+
+function renderCi(data) {
+  if (!data.installed) { ciAbout.textContent = 'Builds are not set up on this box: rerun install.sh.'; return; }
+  ciAbout.textContent = `A push to a private repository whose commit has a ${data.script} at its top builds it here: ` +
+    `a fresh clone, then bash ${data.script}, as a user of its own, at the lowest priority, for up to ` +
+    `${Math.round(data.time_limit / 3600)} hours. Public repositories never build.` +
+    (data.queued ? ` ${data.queued} waiting.` : '');
+  const fileUrl = (r, name) => `/admin/ci/file?run=${encodeURIComponent(r.run)}&name=${encodeURIComponent(name)}`;
+  ciRuns.replaceChildren(...(data.runs.length ? data.runs.map((r) => el('div', { className: 'admin-item' },
+    el('span', {},
+      el('strong', { textContent: `${STATE_ICON[r.state] || ''} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` }),
+      el('span', { className: 'setting-desc', textContent: [r.state,
+        r.duration != null ? minutes(r.duration) : null,
+        r.started ? commitDate(r.started) : null].filter(Boolean).join(' · ') })),
+    el('span', { className: 'library-buttons' },
+      el('a', { href: fileUrl(r, 'log.txt'), textContent: 'Log', target: '_blank', className: 'small' }),
+      ...(r.artifacts || []).map((a) => el('a', { href: fileUrl(r, a), textContent: a, className: 'small' })))))
+    : [el('p', { className: 'setting-desc', textContent: 'No builds yet.' })]));
+  clearTimeout(ciPoll);
+  if (data.queued || data.runs.some((r) => r.state === 'running')) ciPoll = setTimeout(loadCi, 5000);
+}
+
+async function loadCi() {
+  try { renderCi(await getJSON('/admin/ci')); } catch (_) { ciAbout.textContent = 'Could not read the builds.'; }
+}
+loadCi();

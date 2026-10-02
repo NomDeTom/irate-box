@@ -8,9 +8,10 @@
 #   sudo ./uninstall.sh --purge-packages    ... and the apt packages install.sh added:
 #                                           nginx (if irate-box installed it), caddy (and
 #                                           its apt repo), kiwix-tools, syncthing,
-#                                           mosquitto, nodejs
+#                                           mosquitto, nodejs, cgit, fcgiwrap
 #
-# State goes too unless --keep-state: back it up first. -y skips the confirmation.
+# State goes too unless --keep-state (the git repositories are state): back it up
+# first. -y skips the confirmation.
 set -euo pipefail
 
 KEEP_STATE=0 PURGE_PKGS=0 YES=0
@@ -19,7 +20,7 @@ while [ $# -gt 0 ]; do
 	--keep-state) KEEP_STATE=1; shift ;;
 	--purge-packages) PURGE_PKGS=1; shift ;;
 	-y | --yes) YES=1; shift ;;
-	-h | --help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	-h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
 done
@@ -45,6 +46,7 @@ fi
 
 say "Stopping and disabling services"
 for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room \
+	irate-box-git.socket irate-box-git.service irate-box-ci.path irate-box-ci.service \
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service \
 	irate-box-control.path irate-box-control.service; do
@@ -75,7 +77,8 @@ if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
 fi
 
 say "Removing unit files and drop-ins"
-rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room}.service \
+rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git}.service \
+	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-control.{path,service} \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
@@ -124,12 +127,20 @@ if id -u "$HUB_USER" >/dev/null 2>&1; then
 	userdel "$HUB_USER" 2>/dev/null || true
 	getent group "$HUB_USER" >/dev/null && groupdel "$HUB_USER" 2>/dev/null || true
 fi
+# The builds' user (ci.py): it owns nothing outside $STATE/ci.
+if id -u hubci >/dev/null 2>&1; then
+	say "Removing the hubci user"
+	pkill -u hubci 2>/dev/null || true
+	sleep 1
+	userdel hubci 2>/dev/null || true
+	getent group hubci >/dev/null && groupdel hubci 2>/dev/null || true
+fi
 
 if [ "$PURGE_PKGS" = 1 ]; then
 	say "Purging packages"
 	export DEBIAN_FRONTEND=noninteractive
 	pkgs=()
-	for p in caddy kiwix-tools syncthing mosquitto mosquitto-clients nodejs; do
+	for p in caddy kiwix-tools syncthing mosquitto mosquitto-clients nodejs cgit fcgiwrap; do
 		dpkg -s "$p" >/dev/null 2>&1 && pkgs+=("$p")
 	done
 	# nginx only if irate-box brought it: an owner's nginx serves their own sites.
