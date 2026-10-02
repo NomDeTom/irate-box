@@ -72,7 +72,7 @@ setTimeout(() => {
   check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
-  check('the desk has its lamps', d.querySelectorAll('.art-lamps i').length === 12);
+  check('the desk has its ten lamp groups', d.querySelectorAll('.art-lamps i').length === 10);
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const force = d.getElementById('update-force');
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));

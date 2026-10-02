@@ -704,25 +704,39 @@ body[data-art] > header, body[data-art] > section { position: relative; z-index:
   display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;
   width: min(30vw, 22rem); aspect-ratio: 520 / 539; background: no-repeat center / contain; opacity: 0.16;
 }
-[data-art="doctor"] .admin-art { display: block; background-image: url("/art/krab-doctor.webp"); }
-[data-art="librarian"] .admin-art { display: block; background-image: url("/art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
-[data-art="electronics"] .admin-art { display: block; background-image: url("/art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
-[data-art="controller"] .admin-art { display: block; background-image: url("/art/krab-controller.webp");
+[data-art="doctor"] .admin-art { display: block; background-image: url("art/krab-doctor.webp"); }
+[data-art="librarian"] .admin-art { display: block; background-image: url("art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
+[data-art="electronics"] .admin-art { display: block; background-image: url("art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
+[data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp");
   width: min(46vw, 34rem); aspect-ratio: 900 / 309; opacity: 0.22; }
-/* The desk's lamps: each over one of its yellow lights, dark when off, glowing when on, each
-   at its own pace (--t) and starting point (--d). */
+/* The desk's lights: the picture has them all off (krab-controller.webp); each of ten groups,
+   lit, is one band of krab-controller-lamps.webp, laid exactly over it (--g picks the band).
+   Groups 0-5 are the yellow lights, which blink: some mostly on with a flicker off, some half
+   and half, some mostly off with a flash. Groups 6-9 are the blue buttons and screens, which
+   glow up and down. Made from Tom's marked copy of the picture (pink and green). */
 .art-lamps { display: none; position: absolute; inset: 0; }
 [data-art="controller"] .art-lamps { display: block; }
 .art-lamps i {
-  position: absolute; left: calc(var(--x) - var(--w) / 2 - 1px); top: calc(var(--y) - var(--h) / 2 - 1px);
-  width: calc(var(--w) + 2px); height: calc(var(--h) + 2px); border-radius: 2px;
-  animation: art-lamp var(--t) steps(1, end) var(--d) infinite;
+  position: absolute; inset: 0; will-change: opacity;
+  background: url("art/krab-controller-lamps.webp") no-repeat 0 calc(var(--g) * 100% / 9) / 100% 1000%;
 }
-@keyframes art-lamp {
-  0% { background: #26353d; box-shadow: none; }
-  45% { background: #fff1a8; box-shadow: 0 0 6px 2px rgba(255, 205, 70, 0.9); }
-}
-@media (prefers-reduced-motion: reduce) { .art-lamps i { animation: none; } }
+.art-lamps i:nth-child(-n+6) { filter: drop-shadow(0 0 2px rgba(255, 190, 70, 0.85)); }
+.art-lamps i:nth-child(1) { animation: lamp-flick 3.1s steps(1, end) infinite; }
+.art-lamps i:nth-child(2) { animation: lamp-half 1.7s steps(1, end) -0.4s infinite; }
+.art-lamps i:nth-child(3) { animation: lamp-flash 2.6s steps(1, end) -1.1s infinite; }
+.art-lamps i:nth-child(4) { animation: lamp-flick 4.3s steps(1, end) -1.2s infinite; }
+.art-lamps i:nth-child(5) { animation: lamp-half 2.9s steps(1, end) -0.7s infinite; }
+.art-lamps i:nth-child(6) { animation: lamp-flash 1.9s steps(1, end) -1.5s infinite; }
+.art-lamps i:nth-child(7) { animation: lamp-glow 3.5s ease-in-out infinite; }
+.art-lamps i:nth-child(8) { animation: lamp-glow 5s ease-in-out -2s infinite; }
+.art-lamps i:nth-child(9) { animation: lamp-glow 6.5s ease-in-out -4s infinite; }
+.art-lamps i:nth-child(10) { animation: lamp-glow 4.2s ease-in-out -1s infinite; }
+@keyframes lamp-flick { 0% { opacity: 1; } 88% { opacity: 0; } }
+@keyframes lamp-half { 0% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes lamp-flash { 0% { opacity: 0; } 78% { opacity: 1; } }
+@keyframes lamp-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+/* No motion asked for: every light on, as in the picture. */
+@media (prefers-reduced-motion: reduce) { .art-lamps i { animation: none; opacity: 1; } }
 @media (max-width: 760px) {
   .admin-art { width: 45vw; opacity: 0.12; }
   [data-art="controller"] .admin-art { width: 70vw; opacity: 0.16; }
