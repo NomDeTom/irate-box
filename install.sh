@@ -170,6 +170,30 @@ ETC=/etc/hub
 SB_VERSION=2.11.1
 TTYD_VERSION=1.7.7
 
+# Add-ons already on this box stay added on a rerun that does not name them (an update, the
+# doctor's "run the installer again", or a run by hand): from the last record, or, for a box
+# set up before records kept them, from irate-box's own service for it being enabled (or
+# stopped by /admin's "off" switch). Only --remove takes one away. Said, not silent.
+KEPT=()
+addon_present() { # $1 add-on, $2 irate-box's marker file, $3 its unit
+	grep -qx -- "--with-$1" "$ETC/install-options" 2>/dev/null && return 0
+	[ -e "$2" ] || return 1
+	systemctl is-enabled --quiet "$3" 2>/dev/null && return 0
+	grep -qs "\"$3.service\"" "$ETC/access-stopped.json"
+}
+keep_addon() { # $1 add-on, $2 its WITH_ variable, $3 marker, $4 unit
+	[ "${!2}" = 1 ] && return 0
+	printf '%s\n' "${REMOVE[@]}" | grep -qx "$1" && return 0
+	addon_present "$1" "$3" "$4" || return 0
+	printf -v "$2" 1
+	KEPT+=("$1")
+}
+keep_addon notes WITH_NOTES /etc/systemd/system/silverbullet.service silverbullet
+keep_addon sync WITH_SYNC "/etc/systemd/system/syncthing@$HUB_USER.service.d/irate-box.conf" "syncthing@$HUB_USER"
+keep_addon mqtt WITH_MQTT /etc/mosquitto/conf.d/irate-box.conf mosquitto
+keep_addon term WITH_TERM /etc/systemd/system/ttyd.service ttyd
+keep_addon collab WITH_COLLAB /etc/systemd/system/excalidraw-room.service excalidraw-room
+
 # Bold on a terminal only: from /admin the output goes to a log file that a page shows.
 # Decided now, before the output is also copied to the install log (below).
 BOLD=0
@@ -275,6 +299,7 @@ DISTRO="${PRETTY_NAME:-$ID}"
 [ -f /etc/armbian-release ] && DISTRO="$DISTRO (Armbian $(. /etc/armbian-release; echo "${BOARD_NAME:-$BOARD}"))"
 ARCH="$(uname -m)"
 say "Installing on $DISTRO, $ARCH"
+[ "${#KEPT[@]}" -eq 0 ] || notice "Keeping the add-ons already on this box: ${KEPT[*]} (they were not named this time; --remove NAME takes one away)."
 
 if [ "$WITH_NOTES" = 1 ]; then
 	case "$ARCH" in
