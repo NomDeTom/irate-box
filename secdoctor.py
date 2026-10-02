@@ -1221,7 +1221,7 @@ STEPS = [
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
 NOT_COVERED = [
     "F7 app-install check/extract/delete race, F10 firmware cache paths, F12 kiwix-manage as root, F14 forged-request reach, "
-    "F16 gallery ownership, F21 verified flag, F23, F25 app.html framing, F26, F28, F29: flaws inside code paths, not settings "
+    "F16 gallery ownership (device locks exist since 2026-10-02; unlocked saves stay open to every guest), F21 verified flag, F23, F25 app.html framing, F26, F28, F29: flaws inside code paths, not settings "
     "(code review and tests).",
     "F11 app bundle source pinning, F22 plain-text transports, F30 checksums and the packaging guard: need the code or the network.",
     "S2 password in clear, S5 SSH, S6 updates and which ports answer (S9): the Security page's scan above. S12 npm audits: not run (they need the network).",

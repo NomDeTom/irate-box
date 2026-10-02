@@ -527,8 +527,9 @@ function renderModeration(data) {
 
   document.getElementById('mod-drops').replaceChildren(...((data.drops || []).length ? data.drops.map((d) =>
     el('div', { className: 'admin-item' },
-      el('span', {}, el('a', { href: `/api/drop/${encodeURIComponent(d.id)}`, textContent: d.name }),
-        ` · ${size(d.size)}${d.by ? ` · ${d.by}` : ''} · ${ago(d.age)}`),
+      el('span', {}, d.locked ? el('span', { title: 'Locked by a guest\'s device: only it, or you here, can remove it', textContent: '🔒 ' }) : null,
+        el('a', { href: `/api/drop/${encodeURIComponent(d.id)}`, textContent: d.name }),
+        ` · ${size(d.size)}${d.by ? ` · ${d.by}` : ''} · ${ago(d.age)}${d.locked ? ' · locked' : ''}`),
       actionButton('Delete', del({ action: 'delete_drop', id: d.id }, `"${d.name}"`), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No files.' })]));
 
@@ -590,8 +591,9 @@ function renderStore(data) {
   document.getElementById('store-saves').replaceChildren(...(data.saves.length ? data.saves.map((s) =>
     el('div', { className: 'admin-item admin-save' },
       s.thumb ? thumbFor(s.id) : el('span', { className: 'admin-thumb' }),
-      el('span', {}, el('strong', { textContent: s.name }),
-        el('span', { className: 'setting-desc', textContent: `${s.kind} · ${size(s.size)} · ${ago(data.now - s.created)}` })),
+      el('span', {}, el('strong', { textContent: `${s.locked ? '🔒 ' : ''}${s.name}` }),
+        el('span', { className: 'setting-desc', textContent: `${s.kind} · ${size(s.size)} · ${ago(data.now - s.created)}` +
+          (s.locked ? ' · locked by a guest\'s device: only it can change it, but you can still rename or delete it here' : '') })),
       el('span', { className: 'library-buttons' },
         actionButton('Rename', () => {
           const name = prompt('New name', s.name);
