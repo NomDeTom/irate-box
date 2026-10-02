@@ -878,12 +878,34 @@ def update_install(req):
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
     if state.get("verified") != head:
         raise ValueError("the fetched version has not passed verification: fetch the update again")
+    return _install_fetched(state)
+
+
+def _install_fetched(state):
     seen = _run_install(UPDATE_SRC, _install_options(), "install", state.get("install_steps"))
     state = _read_update_state()
     if state:
         state.update(installed=_installed_commit(), up_to_date=True, changes=[], install_steps=seen)
         _write_update_state(state)
     return f"updated to {_installed_commit() or 'the fetched version'}"
+
+
+def update_force_install(req):
+    """The fetched version, installed although it failed verification (the Updates doctor's
+    "Install anyway"): for when the check is what is wrong, as when an update changes the
+    code's layout and this box's check cannot read it. Still only the version that was fetched
+    and checked, and only if its installer parses; the installer stops on its own errors."""
+    if not (UPDATE_SRC / "install.sh").is_file():
+        raise ValueError("nothing fetched yet: check for updates and fetch first")
+    state = _read_update_state()
+    head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
+    if state.get("available") != head or not state.get("checks"):
+        raise ValueError("fetch the update first: only a version that was fetched and checked can be installed anyway")
+    if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
+        raise ValueError("the fetched install.sh does not parse, so not even a forced install can run it")
+    failed = [c["name"] for c in state["checks"] if not c["ok"] and not c["warn"]]
+    done = _install_fetched(state)
+    return f"{done} (installed anyway, past: {'; '.join(failed)})" if failed else done
 
 
 def _run_install(src, args, action, steps=None):
@@ -1429,6 +1451,7 @@ def uplink_profile(req):
 
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
+           "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,

@@ -679,6 +679,9 @@ const upd = {
   doctorNote: document.getElementById('doctor-note'),
   doctorWhen: document.getElementById('doctor-when'),
   findings: document.getElementById('doctor-findings'),
+  force: document.getElementById('update-force'),
+  forceFailed: document.getElementById('force-failed'),
+  forceNote: document.getElementById('force-note'),
 };
 const MARK = { ok: '✅', warn: '⚠️', problem: '❌' };
 const checkItem = (status, title, detail, fix) => el('li', { className: `check check-${status}` },
@@ -691,7 +694,8 @@ let updPoll = null;
 
 // Each answer goes under the buttons that asked: the doctor's and the cache's under theirs.
 function updSay(action, text, ok) {
-  const node = action === 'doctor' || action === 'clear-cache' ? upd.doctorNote : upd.note;
+  const node = action === 'force-install' ? upd.forceNote
+    : action === 'doctor' || action === 'clear-cache' ? upd.doctorNote : upd.note;
   node.textContent = text;
   node.classList.toggle('bad', !ok);
   node.hidden = !text;
@@ -728,6 +732,9 @@ function renderUpdate(data) {
           : 'Fetch it to verify it and download what it needs.');
   }
   const checks = (fetched && s.checks) || [];
+  const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
+  upd.forceFailed.hidden = !failedChecks.length;
+  upd.forceFailed.replaceChildren(...failedChecks.map((c) => checkItem('problem', c.name, c.detail)));
   upd.checks.hidden = !checks.length;
   upd.checks.replaceChildren(...checks.map((c) =>
     checkItem(c.ok ? 'ok' : c.warn ? 'warn' : 'problem', c.name, c.detail)));
@@ -739,7 +746,8 @@ function renderUpdate(data) {
       (n ? `${n} problem${n === 1 ? '' : 's'}.` : 'no problems found.');
     upd.findings.replaceChildren(...d.findings.map((f) => checkItem(f.status, f.check, f.detail, f.status === 'ok' ? '' : f.fix)));
   }
-  badge('updoctor', d && d.findings.some((f) => f.status === 'problem') ? String(d.findings.filter((f) => f.status === 'problem').length) : '');
+  const doctorProblems = d ? d.findings.filter((f) => f.status === 'problem').length : 0;
+  badge('updoctor', doctorProblems ? String(doctorProblems) : failedChecks.length ? '!' : '');
   upd.changes.replaceChildren(...((found && s.changes) || []).slice(0, 20)
     .map((c) => el('li', { textContent: c })));
   upd.output.hidden = !data.log.length || (!busy && s && s.up_to_date);
@@ -754,7 +762,7 @@ function renderUpdate(data) {
     if (done) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
       updSay(updWaiting.action, failed && updWaiting.action !== 'doctor'
-        ? `${done.message} — "Run the update doctor" below can say why.` : done.message, !failed);
+        ? `${done.message} — the Updates doctor (under Health) can say why.` : done.message, !failed);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -763,6 +771,8 @@ function renderUpdate(data) {
   upd.check.disabled = upd.doctor.disabled = upd.clear.disabled = busy;
   upd.fetch.disabled = busy || !found || ready;
   upd.install.disabled = busy || !ready;
+  upd.force.disabled = busy || !failedChecks.length;
+  upd.force.dataset.failed = failedChecks.map((c) => c.name).join('\n');
   clearTimeout(updPoll);
   if (busy) updPoll = setTimeout(loadUpdate, p ? 1000 : 2000);
 }
@@ -781,11 +791,12 @@ async function loadUpdate() {
 
 async function requestUpdate(action) {
   if (action === 'install' && !confirm('Install the update now? The hub restarts during the install.')) return;
+  if (action === 'force-install' && !confirm(`Install the fetched version although it failed these checks?\n\n${upd.force.dataset.failed}\n\nThe installer still stops on its own errors. The hub restarts during the install.`)) return;
   try {
     updWaiting = { id: (await postJSON('/admin/update', { action })).id, action };
-    upd.check.disabled = upd.fetch.disabled = upd.install.disabled = true;
+    upd.check.disabled = upd.fetch.disabled = upd.install.disabled = upd.force.disabled = true;
     updSay(action, { check: 'Checking for updates…', fetch: 'Fetching the update: verifying it and caching its downloads…',
-      install: 'Installing the update…', doctor: 'Running the update doctor (up to a minute or two)…',
+      install: 'Installing the update…', 'force-install': 'Installing the fetched version anyway…', doctor: 'Running the update doctor (up to a minute or two)…',
       'clear-cache': 'Clearing the update cache…' }[action], true);
     loadUpdate();
   } catch (err) { updSay(action, err.message, false); }
@@ -801,6 +812,7 @@ document.getElementById('backup-with-keys').addEventListener('click', (e) => {
   if (!confirm("This backup includes Syncthing's private keys. Anyone with the file can pose as this box to its Syncthing peers. Download it?")) e.preventDefault();
 });
 upd.install.addEventListener('click', () => requestUpdate('install'));
+upd.force.addEventListener('click', () => requestUpdate('force-install'));
 loadUpdate();
 
 // --- security --------------------------------------------------------------------------

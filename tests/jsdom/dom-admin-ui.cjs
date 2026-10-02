@@ -22,6 +22,11 @@ const accessData = { apps: [
 ], results: [] };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
   { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true }], progress: null, pending: 0, results: [], log: [] };
+const update = { state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
+  changes: ['one'], changes_known: true, verified: null,
+  checks: [{ name: 'Python files compile', ok: true, warn: false, detail: '' },
+    { name: 'The new nginx site passes nginx -t', ok: false, warn: false, detail: 'irate-box.nginx is missing from the update' }] },
+  progress: null, pending: 0, results: [], log: [], doctor: null };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -32,6 +37,7 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST') { posted.push([u, JSON.parse(opts.body)]); return new Response('{"id":"x"}', { status: 202 }); }
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
+  if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
   if (u === '/admin/addons') return new Response(JSON.stringify(addons), { status: 200 });
   return new Response('{}', { status: 404 });
 };
@@ -60,9 +66,15 @@ setTimeout(() => {
   check('the Notes add-on carries its switch, set to off', notes && notes.querySelector('.access-toggle [aria-checked="true"]').textContent.includes('Off'));
   const term = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Terminal'));
   check('Terminal public still says it asks for the login', term && term.textContent.includes('still asks for the admin login'));
+  const force = d.getElementById('update-force');
+  check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
+  check('Install as usual: not offered', d.getElementById('update-install').disabled);
+  check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
+  force.click();
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
   [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
   setTimeout(() => {
+    check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('no page errors', !errors.length, errors);
     console.log('\nfailures:', fails);

@@ -724,6 +724,7 @@ UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
 UPDATE_ACTIONS = {"check": "update-check", "fetch": "update-fetch", "install": "update-install",
+                  "force-install": "update-force-install",
                   "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
 # Terminal colour codes, in logs written before install.sh stopped sending them to files.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")

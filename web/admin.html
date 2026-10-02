@@ -660,6 +660,20 @@
         <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
         <p class="setting-desc" id="doctor-when" hidden></p>
         <ul class="admin-checks" id="doctor-findings" hidden></ul>
+
+        <h3>Install anyway</h3>
+        <p class="setting-desc">
+          When the fetched version did not pass verification and you know why — the check itself
+          can be what is wrong, as when an update changes how the code is laid out — it can be
+          installed regardless. The installer runs as it always does and stops on its own errors;
+          the checks that failed are skipped. Only for a version you trust: the one fetched from
+          the repository this box was installed from.
+        </p>
+        <ul class="admin-checks" id="force-failed" hidden></ul>
+        <div class="library-buttons">
+          <button type="button" id="update-force" disabled>Install the fetched version anyway</button>
+        </div>
+        <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
       </section>
 
     </main>
