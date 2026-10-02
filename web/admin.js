@@ -1875,6 +1875,7 @@ function renderFirmware(data) {
   const f = fw.form.elements;
   if (!fw.form.contains(document.activeElement)) {
     f.enabled.checked = cfg.enabled;
+    f.configs.checked = cfg.configs !== false;
     f.keep_alpha.value = cfg.keep_alpha;
     f.keep_beta.value = cfg.keep_beta;
     f.cache.value = cfg.cache;
@@ -1916,7 +1917,7 @@ fw.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = fw.form.elements;
   try {
-    fwData = await postJSON('/admin/firmware', { action: 'settings', enabled: f.enabled.checked,
+    fwData = await postJSON('/admin/firmware', { action: 'settings', enabled: f.enabled.checked, configs: f.configs.checked,
       keep_alpha: Number(f.keep_alpha.value), keep_beta: Number(f.keep_beta.value), cache: f.cache.value,
       boards: f.all_boards.checked ? 'all' : [...fwChosen] });
     renderFirmware(fwData);

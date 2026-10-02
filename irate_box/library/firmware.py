@@ -11,6 +11,9 @@ layout so the flasher (flasher.py, /flasher/firmware/) reads it unchanged:
   <version>/<the files it names>                   minus the .elf (debug only, ~50 MB a board)
   <version>/pio-deps/                              the build cache, when carried (below)
   index.json                                       the flasher's firmware list (FirmwareReleases)
+  config.d.json                                    meshtasticd's bin/config.d at the newest kept
+                                                   release, every file's text: what the
+                                                   calculators' pinout map lists offline
   status.json                                      what is kept, when it was checked, errors
 
 Measured 2026-10-02: a whole GitHub release is 1.8-2.9 GB, the firmware zips 260-315 MB, but one
@@ -21,6 +24,8 @@ Settings ($HUB_STATE_DIR/library/firmware.json, /admin's Firmware page):
   enabled      off by default
   boards       a list of PlatformIO targets ("rak4631"), or "all"
   keep_alpha   alphas kept (2) ;  keep_beta  betas kept (1)
+  configs      on by default: keep config.d.json (above), mirror or not; a sparse git fetch of
+               that one folder at the release's tag, a few hundred KB
   cache        "discard" (default) | "native" | "whole": the newest kept release's
                platformio-deps zip (484 MB, for native-tft), kept so builds on push (ci.py,
                CI_PIO_DEPS) need no internet. "native" keeps what a headless meshtasticd uses
@@ -49,7 +54,9 @@ STATUS = ROOT / "status.json"
 INDEX = ROOT / "index.json"
 REPO = "meshtastic/firmware"
 RELEASE_BASE = "https://release.meshtastic.org"
-DEFAULTS = {"enabled": False, "boards": [], "keep_alpha": 2, "keep_beta": 1, "cache": "discard"}
+DEFAULTS = {"enabled": False, "boards": [], "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True}
+CONFIGS = ROOT / "config.d.json"
+CONFIGS_MAX = 4 << 20  # the whole folder's text; a few hundred KB in 2026
 CACHES = ("discard", "native", "whole")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,}$")
 BOARD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -75,6 +82,8 @@ def set_settings(**changes):
     cfg = settings()
     if "enabled" in changes:
         cfg["enabled"] = bool(changes["enabled"])
+    if "configs" in changes:
+        cfg["configs"] = bool(changes["configs"])
     if "boards" in changes:
         b = changes["boards"]
         if b != "all" and not (isinstance(b, list) and all(isinstance(x, str) and BOARD_RE.match(x) for x in b)):
@@ -262,6 +271,37 @@ def _write_index(kept, st):
     _publish(INDEX, out)
 
 
+def sync_configs(rel, log=print):
+    """meshtasticd's bin/config.d at the release's tag, into config.d.json: a sparse, shallow git
+    fetch of that folder only. Kept until a newer release's replaces it. Returns an outcome."""
+    have = librarian._read_json(CONFIGS, {})
+    if have.get("tag") == rel["tag"]:
+        return f"configs: {rel['tag']} already held ({len(have.get('files', []))} files)"
+    work = Path(librarian.tempfile.mkdtemp(prefix="config.d-", dir=librarian.LIB_DIR))
+    try:
+        log(f"firmware configs: bin/config.d at {rel['tag']}")
+        librarian._git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", rel["tag"],
+                       f"https://github.com/{REPO}.git", str(work / "repo"))
+        librarian._git("-C", str(work / "repo"), "sparse-checkout", "set", "bin/config.d")
+        top = work / "repo" / "bin" / "config.d"
+        files, total = [], 0
+        for f in sorted(top.rglob("*")):
+            if f.is_file() and f.suffix in (".yaml", ".yml") and not f.is_symlink():
+                text = f.read_text(encoding="utf-8", errors="replace")
+                total += len(text)
+                if total > CONFIGS_MAX:
+                    raise LibrarianError("bin/config.d is larger than expected; not kept")
+                files.append({"path": f.relative_to(top).as_posix(), "text": text})
+        if not files:
+            raise LibrarianError(f"no configs in bin/config.d at {rel['tag']}")
+        ROOT.mkdir(parents=True, exist_ok=True)
+        _publish(CONFIGS, {"repo": REPO, "tag": rel["tag"], "version": rel["version"],
+                           "fetched": librarian.now_iso(), "files": files})
+        return f"configs: {len(files)} from {rel['tag']}"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def sync(check_only=False, log=print):
     """Bring the mirror in line with the settings. Returns a one-line outcome."""
     cfg = settings()
@@ -275,6 +315,17 @@ def sync(check_only=False, log=print):
             _save_status(st)
             return "newest: " + ", ".join(f"{r['version']} ({r['channel']})" for r in kept)
         policy = librarian.load_config()["policy"]
+        configs = None
+        if cfg["configs"] and kept:
+            try:
+                configs = sync_configs(kept[0], log)
+            except LibrarianError as exc:
+                configs = f"configs: {exc}"
+            st["configs"] = configs
+        if not cfg["enabled"]:
+            st.pop("error", None)
+            _save_status(st)
+            return configs or "mirror off"
         versions = {}
         for rel in kept:
             log(f"firmware {rel['version']}: {len(cfg['boards']) if cfg['boards'] != 'all' else 'all'} boards")
@@ -288,7 +339,8 @@ def sync(check_only=False, log=print):
         _write_index(kept, st)
         st.pop("error", None)
         outcome = f"{len(versions)} releases, {sum(v['bytes'] for v in versions.values()) >> 20} MB" + \
-                  (f"; build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else "")
+                  (f"; build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else "") + \
+                  (f"; {configs}" if configs else "")
     except (LibrarianError, OSError, ValueError, KeyError) as exc:
         st["error"] = str(exc)
         outcome = f"error: {exc}"

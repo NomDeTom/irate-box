@@ -284,6 +284,7 @@
         <p class="setting-desc" id="fw-status"></p>
         <form id="fw-form" class="library-form">
           <label class="inline"><input type="checkbox" name="enabled"> Keep firmware on this box</label>
+          <label class="inline"><input type="checkbox" name="configs"> Keep meshtasticd's board configs (<code>bin/config.d</code>, a few hundred KB), so the calculators' pinout map lists them with no internet — even with no firmware kept</label>
           <label>Alphas to keep <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
           <label>Betas to keep <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
           <label>Build cache, for building firmware on the box with no internet

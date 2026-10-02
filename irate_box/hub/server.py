@@ -613,7 +613,7 @@ def firmware_action(payload):
     action = payload.get("action")
     try:
         if action == "settings":
-            firmware.set_settings(**{k: payload[k] for k in ("enabled", "boards", "keep_alpha", "keep_beta", "cache")
+            firmware.set_settings(**{k: payload[k] for k in ("enabled", "configs", "boards", "keep_alpha", "keep_beta", "cache")
                                      if k in payload})
         elif action in ("check", "update"):
             def run():

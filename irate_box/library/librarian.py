@@ -885,7 +885,8 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         # The firmware mirror (firmware.py), on the same schedule and under the same lock.
         if not names or "firmware" in names:
             from irate_box.library import firmware
-            if firmware.settings()["enabled"] and (not scheduled or firmware.due(policy["check_every_hours"])):
+            fw = firmware.settings()
+            if (fw["enabled"] or fw["configs"]) and (not scheduled or firmware.due(policy["check_every_hours"])):
                 results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
                 log(f"firmware: {results['firmware']}")
         # The hub's own updates (selfupdate.py): one step per run of the timer.
