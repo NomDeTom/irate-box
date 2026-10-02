@@ -98,11 +98,23 @@ Usage: sudo ./install.sh [options]
                         when they are there, still checked against their checksums. /admin's
                         "Check for updates" fills it, so "Install update" needs no network
                         for anything already installed.
+  --make-offline-bundle DIR
+                        do not install: make DIR a kit that sets up a box with no internet.
+                        It holds this code, the apps (the forks' builds and the calculators,
+                        fetched and checked as the librarian does; with --apps DIR, those too,
+                        e.g. a flasher you built), ttyd and SilverBullet for each --arch,
+                        Caddy's .deb with --web caddy, any --zim, checksums, and setup.sh, which
+                        runs this installer from the kit (sudo DIR/setup.sh [options]). No root
+                        needed, nothing on this machine changes. Debian's own packages (nginx,
+                        cgit, ...) still come from the box's apt.
+  --arch LIST           with --make-offline-bundle: the boxes' architectures, comma-separated
+                        (aarch64, armv7l, armv6l, x86_64; default aarch64,armv7l)
   -h, --help            this text
 EOF
 }
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
+MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
 # The arguments as given, for the install record, with the password masked.
@@ -149,6 +161,8 @@ while [ $# -gt 0 ]; do
 		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
 		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
+	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
+	--arch) BUNDLE_ARCHS="$2"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
@@ -279,6 +293,120 @@ fetch() {
 		curl -fsSL -o "$2" "$1"
 	fi
 }
+
+# --- an offline kit (--make-offline-bundle), instead of installing -----------------------
+# Everything this script would download, laid out as its own options read it: --src kit/irate-box,
+# --apps kit/apps, --download-cache kit/downloads (the same file names as fetch() caches), and
+# kit/zim for --zim. Each release download is checked against its published checksum here too.
+make_bundle() {
+	local kit here a tmp z ver tag sb_arch ttyd_arch caddy_arch app zip t
+	kit="$(realpath -m "$1")"
+	here="$(cd "$(dirname "$0")" && pwd)"
+	[ -f "$here/irate_box/hub/server.py" ] || die "--make-offline-bundle runs from an irate-box checkout"
+	for t in curl git python3 unzip sha256sum; do command -v "$t" >/dev/null || die "--make-offline-bundle needs $t"; done
+	[ ! -e "$kit" ] || [ -z "$(ls -A "$kit" 2>/dev/null)" ] || die "$kit is not empty"
+	install -d "$kit/irate-box" "$kit/apps" "$kit/downloads" "$kit/zim"
+	echo "==> The code"
+	if git -C "$here" rev-parse >/dev/null 2>&1; then
+		git -C "$here" archive --format=tar HEAD | tar -x -C "$kit/irate-box"
+		ver="$(git -C "$here" describe --always --tags HEAD 2>/dev/null || echo unknown)"
+	else
+		tar -C "$here" -cf - --exclude=./.git --exclude=__pycache__ --exclude=./store-state --exclude='./*.code-workspace' . |
+			tar -C "$kit/irate-box" -xf -
+		ver="$(cut -d' ' -f1 "$here/VERSION" 2>/dev/null || echo unknown)"
+	fi
+	printf '%s (offline kit, made %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$kit/irate-box/VERSION"
+	echo "    irate-box $ver"
+	echo "==> The apps (fetched and checked as the librarian does)"
+	tmp="$(mktemp -d)"; install -d "$tmp/library"
+	for app in draw mermaid serial tools room flasher; do
+		if zip="$(HUB_STATE_DIR="$tmp" "$here/irate-box" librarian app-fetch "$app" 2>"$tmp/err")"; then
+			install -d "$kit/apps/$app"
+			unzip -q -o "$zip" -d "$kit/apps/$app"
+			echo "    $(tail -1 "$tmp/err")"
+			rm -f "$zip"
+		else
+			echo "    $app: not fetched ($(tail -1 "$tmp/err" | sed 's/^librarian: //'))"
+		fi
+	done
+	rm -rf "$tmp"
+	if [ -n "$APPS_SRC" ]; then
+		for app in mermaid draw tools serial flasher room; do
+			[ -d "$APPS_SRC/$app" ] || continue
+			rm -rf "${kit:?}/apps/$app"
+			cp -a "$APPS_SRC/$app" "$kit/apps/$app"
+			rm -rf "$kit/apps/$app/.git"
+			echo "    $app: from $APPS_SRC/$app"
+		done
+	fi
+	echo "==> Release downloads for: $BUNDLE_ARCHS"
+	tmp="$kit/downloads"
+	for a in ${BUNDLE_ARCHS//,/ }; do
+		case "$a" in
+		x86_64 | amd64) ttyd_arch=x86_64 sb_arch=x86_64 caddy_arch=amd64 ;;
+		aarch64 | arm64) ttyd_arch=aarch64 sb_arch=aarch64 caddy_arch=arm64 ;;
+		armv7l | armv8l | armhf) ttyd_arch=armhf sb_arch=armv7 caddy_arch=armv7 ;;
+		armv6l) ttyd_arch=arm sb_arch="" caddy_arch="" ;;
+		*) die "--arch: $a is not one of aarch64, armv7l, armv6l, x86_64" ;;
+		esac
+		curl -fsSL -o "$tmp/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/ttyd.$ttyd_arch"
+		[ -s "$tmp/ttyd-$TTYD_VERSION-SHA256SUMS" ] ||
+			curl -fsSL -o "$tmp/ttyd-$TTYD_VERSION-SHA256SUMS" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/SHA256SUMS"
+		[ "$(sha256sum <"$tmp/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch" | cut -d' ' -f1)" = \
+			"$(awk -v f="ttyd.$ttyd_arch" '$2 == f || $2 == "*" f {print $1}' "$tmp/ttyd-$TTYD_VERSION-SHA256SUMS")" ] ||
+			die "ttyd.$ttyd_arch does not match its published checksum"
+		echo "    $a: ttyd $TTYD_VERSION"
+		if [ -n "$sb_arch" ]; then
+			z="silverbullet-$SB_VERSION-silverbullet-server-linux-$sb_arch.zip"
+			curl -fsSL -o "$tmp/$z" "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$sb_arch.zip"
+			unzip -tq "$tmp/$z" >/dev/null || die "$z is not a whole zip"
+			echo "    $a: SilverBullet $SB_VERSION"
+		else
+			echo "    $a: no SilverBullet build (notes need armv7, aarch64 or x86_64)"
+		fi
+		if [ "$WEB" = caddy ] && [ -n "$caddy_arch" ]; then
+			[ -s "$tmp/caddy-release-tag" ] || curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest |
+				sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' >"$tmp/caddy-release-tag"
+			tag="$(cat "$tmp/caddy-release-tag")"
+			[ -n "$tag" ] || die "could not find Caddy's latest release"
+			z="caddy_${tag#v}_linux_${caddy_arch}.deb"
+			curl -fsSL -o "$tmp/$z" "https://github.com/caddyserver/caddy/releases/download/$tag/$z"
+			[ -s "$tmp/caddy_${tag#v}_checksums.txt" ] ||
+				curl -fsSL -o "$tmp/caddy_${tag#v}_checksums.txt" "https://github.com/caddyserver/caddy/releases/download/$tag/caddy_${tag#v}_checksums.txt"
+			(cd "$tmp" && grep " $z\$" "caddy_${tag#v}_checksums.txt" | sha512sum -c --quiet) || die "$z does not match its published checksum"
+			echo "    $a: Caddy ${tag#v}"
+		fi
+	done
+	if [ ${#ZIMS[@]} -gt 0 ]; then
+		echo "==> Books"
+		for z in "${ZIMS[@]}"; do
+			case "$z" in
+			http://* | https://*) curl -fL --progress-bar -o "$kit/zim/$(basename "${z%%\?*}")" "$z" ;;
+			*) [ -f "$z" ] || die "--zim $z: no such file"; cp "$z" "$kit/zim/" ;;
+			esac
+			echo "    $(basename "${z%%\?*}")"
+		done
+	fi
+	cat >"$kit/setup.sh" <<-'SETUP'
+	#!/bin/sh
+	# Sets up a box from this offline kit: the installer from the kit, with the kit's apps,
+	# release downloads and books. Any installer option may follow (--with-notes, --web caddy, ...);
+	# see irate-box/install.sh --help. Debian's own packages still come from the box's apt.
+	here="$(cd "$(dirname "$0")" && pwd)"
+	set -- --src "$here/irate-box" --apps "$here/apps" --download-cache "$here/downloads" "$@"
+	for z in "$here"/zim/*.zim; do [ -f "$z" ] && set -- "$@" --zim "$z"; done
+	exec bash "$here/irate-box/install.sh" "$@"
+	SETUP
+	chmod 755 "$kit/setup.sh"
+	(cd "$kit" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)
+	echo
+	echo "==> Offline kit in $kit ($(du -sh "$kit" | cut -f1)). Copy it to the box (a USB stick will do), then:"
+	echo "    cd <the kit> && sha256sum -c --quiet SHA256SUMS && sudo ./setup.sh [options]"
+}
+if [ -n "$MAKE_BUNDLE" ]; then
+	make_bundle "$MAKE_BUNDLE"
+	exit 0
+fi
 
 # --- preflight -------------------------------------------------------------------
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh …)"
