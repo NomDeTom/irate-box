@@ -49,7 +49,7 @@ async function refresh() {
   list.replaceChildren(...services.map(
     (s) => row(s.name, s.path || s.note || 'part of the box', s.state)));
   note.textContent = data.proxied ? ''
-    : 'Served without Caddy in front: the apps are unreachable whatever their state.';
+    : 'Served without the web server in front: the apps are unreachable whatever their state.';
   note.hidden = data.proxied;
 
   const sys = data.system || {};

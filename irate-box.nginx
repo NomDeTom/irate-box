@@ -1,0 +1,286 @@
+# Irate-Box front for nginx — one origin, path-routed. The default web server; the Caddyfile
+# beside it is the same routes for Caddy, the fallback (install.sh --web caddy). A route
+# changed here is changed there too.
+#
+# install.sh fills in the @...@ placeholders and writes the result to
+# /etc/nginx/conf.d/irate-box.conf, which nginx includes inside its http {} block. Names at
+# that level (the map variable, the upstream) carry an irate_box_ prefix so they cannot meet
+# an owner's own config.
+#
+# Rules from §5 "Two listeners", as for Caddy:
+#   - one plain-HTTP port, never a redirect to HTTPS, never HSTS. Captive-portal probes are
+#     plain HTTP on :80.
+#   - every service binds to 127.0.0.1; nginx is the sole listener on the AP interface.
+#
+# Measured against Caddy on the Lyra (notes: 2026-10-02-caddy-vs-nginx-benchmark): ~40 MB less
+# RAM and 5-10x less CPU per request.
+
+# WebSocket upgrades pass through; a plain request sends no Connection header, so the
+# keep-alive pool to the hub is reused.
+map $http_upgrade $irate_box_connection {
+	default upgrade;
+	''      "";
+}
+
+# The hub keeps HTTP/1.1 connections open. Reusing them matters: one new connection per
+# request is what filled the hub's listen queue in the benchmark.
+upstream irate_box_hub {
+	server 127.0.0.1:8000;
+	keepalive 8;
+}
+
+server {
+	listen @PORT@ default_server;
+	listen [::]:@PORT@ default_server;
+	server_name _;
+
+	# Caddy logged warnings only and compressed nothing on the fly; the same here. Uploads
+	# are unlimited except the file drop (below); nginx's own default is 1 MB.
+	access_log off;
+	gzip off;
+	client_max_body_size 0;
+	# Redirects stay relative, so /draw -> /draw/ keeps whatever host and port the guest used.
+	absolute_redirect off;
+
+	# Every proxied location inherits these. A proxy_set_header inside a location would drop
+	# the lot, so the ones that differ (/sync) repeat them in full.
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Forwarded-Host $http_host;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection $irate_box_connection;
+
+	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
+	# The Host header passes through untouched, so server.py's probe-host check
+	# (captive.apple.com, connectivitycheck.gstatic.com, ...) still fires. / and /index.html
+	# go to the hub, which fills in the tiles; other files under static/ come off disk.
+	root @STATIC@;
+	location = / { proxy_pass http://irate_box_hub; }
+	location = /index.html { proxy_pass http://irate_box_hub; }
+	location / {
+		try_files $uri @irate_box_hub;
+		add_header Cache-Control "no-cache";
+	}
+	location @irate_box_hub { proxy_pass http://irate_box_hub; }
+
+	# --- the file drop: the per-file cap, before the body is read ------------------
+	# nginx refuses a larger upload outright (413). Same limit as store.py's DROP_MAX_FILE.
+	location = /api/drop {
+		client_max_body_size 25m;
+		proxy_pass http://irate_box_hub;
+	}
+
+	# --- /wiki -> kiwix-serve, path passed through (--urlRootLocation /wiki) --------
+	location = /wiki { return 301 /wiki/; }
+	location /wiki/ { proxy_pass http://127.0.0.1:8081; }
+	# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM would hide behind the old
+	# copy for an hour. Its ETag carries the book UUID, so always revalidating is a cheap 304.
+	location /wiki/content/ {
+		proxy_hide_header Cache-Control;
+		add_header Cache-Control "no-cache" always;
+		proxy_pass http://127.0.0.1:8081;
+	}
+
+	# --- /draw -> Excalidraw, static, with the SPA fallback --------------------------
+	# Hashed build output is immutable; everything else must revalidate, or guests keep an
+	# old build after an upgrade. The same split for /mermaid and /serial.
+	location = /draw { return 301 /draw/; }
+	location ^~ /draw/ {
+		alias @APPS@/draw/;
+		try_files $uri /draw/index.html;
+		add_header Cache-Control "no-cache";
+		location ^~ /draw/assets/ {
+			try_files $uri /draw/index.html;
+			add_header Cache-Control "public, max-age=31536000, immutable";
+		}
+	}
+
+	# --- /mermaid -> mermaid-live-editor, static ------------------------------------
+	location = /mermaid { return 301 /mermaid/; }
+	location ^~ /mermaid/ {
+		alias @APPS@/mermaid/;
+		try_files $uri $uri.html /mermaid/index.html;
+		add_header Cache-Control "no-cache";
+		location ^~ /mermaid/_app/immutable/ {
+			try_files $uri $uri.html /mermaid/index.html;
+			add_header Cache-Control "public, max-age=31536000, immutable";
+		}
+	}
+
+	# --- /tools -> the calculators, single-file pages --------------------------------
+	location = /tools { return 301 /tools/; }
+	location ^~ /tools/ {
+		alias @APPS@/tools/;
+		try_files $uri $uri/index.html =404;
+		add_header Cache-Control "no-cache";
+	}
+
+	# --- /serial -> Meshtastic serial terminal / log analyser, static ----------------
+	location = /serial { return 301 /serial/; }
+	location ^~ /serial/ {
+		alias @APPS@/serial/;
+		add_header Cache-Control "no-cache";
+		# The one-file build, for live USB from a file opened on the guest's own machine (Web
+		# Serial needs a secure context, which this plain HTTP is not): saved, never opened here.
+		location = /serial/serial-terminal.html {
+			add_header Cache-Control "no-cache";
+			add_header Content-Disposition 'attachment; filename="serial-terminal.html"';
+		}
+		location ^~ /serial/assets/ {
+			add_header Cache-Control "public, max-age=31536000, immutable";
+		}
+	}
+
+	# --- /notes -> SilverBullet (add-on), path passed through (SB_URL_PREFIX=/notes) --
+	location = /notes { return 301 /notes/; }
+	location /notes/ {
+		proxy_read_timeout 1h;
+		proxy_pass http://127.0.0.1:3000;
+	}
+
+	# --- /sync -> Syncthing web GUI (add-on, operator only) -------------------------
+	# Prefix stripped. The GUI's own host check rejects anything but a loopback Host header.
+	location = /sync { return 301 /sync/; }
+	location /sync/ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		proxy_set_header Host 127.0.0.1:8384;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $irate_box_connection;
+		proxy_pass http://127.0.0.1:8384/;
+	}
+
+	# --- WebSockets: mosquitto (/mqtt) and excalidraw-room (/socket.io/), add-ons ------
+	# nginx closes a proxied connection after 60 s of silence by default; these stay up.
+	location = /mqtt {
+		proxy_read_timeout 1h;
+		proxy_pass http://127.0.0.1:9001;
+	}
+	location /socket.io/ {
+		proxy_read_timeout 1h;
+		proxy_pass http://127.0.0.1:3002;
+	}
+
+	# --- /flasher -> the Meshtastic web flasher, as a download, and what it fetches -------
+	# The page is a download opened from the guest's disk (flasher.py says why), so it fetches
+	# everything below cross-origin: every answer is Access-Control-Allow-Origin: *, and a
+	# preflight gets its answer here. The hub fills its own address into the page and answers
+	# the small API; nginx serves the bundle's files and the librarian's firmware mirror.
+	location = /flasher { proxy_pass http://irate_box_hub; }
+	location = /flasher/ { proxy_pass http://irate_box_hub; }
+	location = /flasher/flasher.html { proxy_pass http://irate_box_hub; }
+	location /flasher/api/ { proxy_pass http://irate_box_hub; }
+	location ^~ /flasher/firmware/ {
+		alias @FIRMWARE@/;
+		add_header Access-Control-Allow-Origin "*" always;
+		add_header Cache-Control "no-cache";
+		if ($request_method = OPTIONS) {
+			add_header Access-Control-Allow-Origin "*";
+			add_header Access-Control-Allow-Methods "GET, OPTIONS";
+			add_header Access-Control-Allow-Headers "*";
+			add_header Access-Control-Allow-Private-Network "true";
+			add_header Access-Control-Max-Age 86400;
+			return 204;
+		}
+	}
+	location ^~ /flasher/ {
+		alias @APPS@/flasher/public/;
+		add_header Access-Control-Allow-Origin "*" always;
+		add_header Cache-Control "no-cache";
+		if ($request_method = OPTIONS) {
+			add_header Access-Control-Allow-Origin "*";
+			add_header Access-Control-Allow-Methods "GET, OPTIONS";
+			add_header Access-Control-Allow-Headers "*";
+			add_header Access-Control-Allow-Private-Network "true";
+			add_header Access-Control-Max-Age 86400;
+			return 204;
+		}
+	}
+
+	# --- /git and /git-private -> git over HTTP, and cgit to browse ---------------------
+	# Bare repositories under @GIT_ROOT@/public and /private, owned by the hub user, who runs
+	# both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
+	# paths below) goes to git http-backend; every other path is cgit's web view. Public:
+	# anyone may browse and clone, a push needs the admin login unless @GIT_ROOT@/guest-push
+	# exists (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	location = /git { return 301 /git/; }
+	location = /git-private { return 301 /git-private/; }
+	location ^~ /git-static/ { alias /usr/share/cgit/; }
+	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
+		set $irate_box_git_auth off;
+		if ($arg_service = git-receive-pack) { set $irate_box_git_auth "Irate-Box"; }
+		if ($uri ~ /git-receive-pack$) { set $irate_box_git_auth "Irate-Box"; }
+		if (-f @GIT_ROOT@/guest-push) { set $irate_box_git_auth off; }
+		auth_basic $irate_box_git_auth;
+		auth_basic_user_file @HTPASSWD@;
+		client_max_body_size 64m;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+		fastcgi_param GIT_PROJECT_ROOT @GIT_ROOT@/public;
+		fastcgi_param GIT_HTTP_EXPORT_ALL 1;
+		fastcgi_param PATH_INFO /$irate_box_git_path;
+		fastcgi_param REMOTE_USER $remote_user;
+		fastcgi_read_timeout 1h;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git(?<irate_box_cgit_path>/.*)$ {
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
+		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-public;
+		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git-private/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		client_max_body_size 64m;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+		fastcgi_param GIT_PROJECT_ROOT @GIT_ROOT@/private;
+		fastcgi_param GIT_HTTP_EXPORT_ALL 1;
+		fastcgi_param PATH_INFO /$irate_box_git_path;
+		fastcgi_param REMOTE_USER $remote_user;
+		fastcgi_read_timeout 1h;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
+		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-private;
+		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+
+	# --- /admin -> the hub's own operator options ------------------------------------
+	# Same login as /term and /sync. First use: while @UNCLAIMED@ exists no password has
+	# been chosen, and /admin is let through with none, where the hub serves only the
+	# set-the-password page. hub_control.py deletes the file when the password is set.
+	location = /admin { return 301 /admin/; }
+	location /admin/ {
+		set $irate_box_admin_auth "Irate-Box";
+		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
+		auth_basic $irate_box_admin_auth;
+		auth_basic_user_file @HTPASSWD@;
+		proxy_pass http://irate_box_hub;
+	}
+
+	# --- /term -> ttyd (the escape hatch), path passed through (--base-path /term) ----
+	# Gated here as well as by ttyd's own credential, so a stray unit start is not an open
+	# root shell.
+	location = /term { return 301 /term/; }
+	location /term/ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		proxy_read_timeout 1h;
+		proxy_pass http://127.0.0.1:7681;
+	}
+
+	# Nothing here sets Strict-Transport-Security. Keep it that way (§5).
+}

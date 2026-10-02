@@ -7,10 +7,11 @@ and runs this as root, once per batch. Each request is checked against an allow-
 carried out, answered in control/results/<id>.json, and deleted. Nothing else is accepted:
 
   {"id": ..., "action": "service", "unit": "<allowed unit>", "op": "start|stop|restart|enable|disable"}
-      Optional services get every op; caddy and the hub itself only restart.
+      Optional services get every op; the web server and the hub itself only restart.
   {"id": ..., "action": "password", "password": "<new admin password>"[, "setup": true]}
-      The one admin login: Caddy's basic_auth hashes (/admin, /sync, /term), ttyd's
-      credential, Syncthing's GUI login, and /etc/hub/admin-password. With "setup", this is
+      The one admin login: the web server's (nginx's login file, or Caddy's basic_auth
+      hashes; /admin, /sync, /term), ttyd's credential, Syncthing's GUI login, and
+      /etc/hub/admin-password. With "setup", this is
       the first-use form on an unclaimed box: accepted only while UNCLAIMED exists, which
       it then deletes, so the first password chosen is the only one set this way.
   {"id": ..., "action": "update-check"}
@@ -39,9 +40,29 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       a book copied in (then the library rebuilt) or out, with progress in usb-progress.json.
   {"id": ..., "action": "security-scan"}
       What the box exposes and how it is set up (security.py): to control/security.json.
+  {"id": ..., "action": "security-audit"}
+      The security doctor (secdoctor.py): a read-only audit of how the system is set up, to
+      control/security-audit.json. Changes nothing but that file.
   {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
       Carry out one fix the Security page offered (security.fix: a drop-in or a unit switched
       off, each recorded with how to undo it), then scan again.
+  {"id": ..., "action": "health-scan"}
+      The box doctor (health.py): the last install, the root helper, every unit, Kiwix, the
+      watchdog, the web server's config; to control/health.json.
+  {"id": ..., "action": "health-fix", "choice": "<one of its offers>"}
+      One repair the doctor offered (restart a unit, rebuild or tidy the Kiwix library, …), or
+      "rerun-install": install.sh again from a copy of the installed code, recorded options.
+      Then the doctor looks again.
+  {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
+      What the box has for networking (netinv.py): radios, who runs them, what each can do,
+      what is in the way; to control/netinv.json. With "iface", that device alone.
+  {"id": ..., "action": "uplink-set", "settings": {eagerness, forgiveness, iface, overrides}}
+      How hard the watchdog (uplink.py) works to keep the box on its network: checked by
+      uplink.validate, written to /etc/hub/uplink.json, which irate-box-uplink picks up.
+  {"id": ..., "action": "uplink-hold", "minutes": 0-1440}
+      No repairs for that long (0 ends a hold), for an owner working on the network.
+  {"id": ..., "action": "uplink-profile", "on": true|false}
+      The by-consent change to the owner's WiFi profile (keep retrying), or its undo.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
@@ -72,8 +93,12 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import health
 import manifests
+import netinv
+import secdoctor
 import security
+import uplink
 import usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -82,13 +107,33 @@ HUB_USER = os.environ.get("HUB_USER", "hub")
 CONTROL = STATE / "control"
 REQUESTS = CONTROL / "requests"
 RESULTS = CONTROL / "results"
+
+
+def _web_server():
+    """The web server in front: nginx, or Caddy, the fallback (install.sh --web). The unit
+    sets it; from a root shell (reset-password) it comes from the recorded install options.
+    A box installed before the choice existed has Caddy."""
+    if os.environ.get("HUB_WEB_SERVER") in ("nginx", "caddy"):
+        return os.environ["HUB_WEB_SERVER"]
+    try:
+        opts = (ETC / "install-options").read_text().split()
+    except OSError:
+        return "caddy"
+    web = opts[opts.index("--web") + 1] if "--web" in opts[:-1] else "caddy"
+    return web if web in ("nginx", "caddy") else "caddy"
+
+
+WEB_SERVER = _web_server()
 CADDYFILE = Path(os.environ.get("HUB_CADDYFILE", "/etc/caddy/Caddyfile"))
-# Present while no admin password has been chosen (install.sh creates it). Caddy then lets
-# /admin through without a login, and the hub serves only the set-the-password page.
-UNCLAIMED = CADDYFILE.parent / "irate-box-unclaimed"
 # On a box whose Caddy is the owner's, the hub's site (and so its login) is this file, imported
 # by their Caddyfile (install.sh); otherwise the Caddyfile is wholly the hub's.
 CADDY_SITE = CADDYFILE.parent / "irate-box.caddy"
+# nginx: the hub's login file (SHA-512-crypt; nginx reads it on every request).
+NGINX_LOGINS = Path(os.environ.get("HUB_NGINX_LOGINS", "/etc/nginx/irate-box.htpasswd"))
+# Present while no admin password has been chosen (install.sh creates it, beside the web
+# server's config). The server then lets /admin through without a login, and the hub serves
+# only the set-the-password page.
+UNCLAIMED = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
 
 
 def _login_file():
@@ -100,6 +145,7 @@ UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
 SECURITY_STATE = CONTROL / "security.json"
+AUDIT_STATE = CONTROL / "security-audit.json"
 USB_STATE = CONTROL / "usb.json"
 USB_PROGRESS = CONTROL / "usb-progress.json"
 ZIM_DIR = STATE / "zim"
@@ -115,10 +161,15 @@ OPS_ALL = ("start", "stop", "restart", "enable", "disable")
 # root-owned as it), and the two that may only be restarted.
 MANIFESTS = manifests.load()
 UNITS = {unit.replace("@hub.", f"@{HUB_USER}."): OPS_ALL for unit in manifests.controllable_units(MANIFESTS)}
-UNITS.update({"caddy.service": ("restart",), "irate-box.service": ("restart",)})
+UNITS.update({f"{WEB_SERVER}.service": ("restart",), "irate-box.service": ("restart",)})
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
 MIN_PASSWORD = 8
+
+
+# systemd-run's timers default to AccuracySec=1min: "--on-active=1" fired 22 s late in a
+# test, and the old Caddy login kept working until then.
+TIMER_EXACT = ("--timer-property=AccuracySec=100ms",)
 
 
 def run(*cmd, timeout=120, **kw):
@@ -141,7 +192,7 @@ def service(req):
     args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(op, (op,))
     if unit == "irate-box.service":
         # Restarting the hub from a request the hub made: answer first, then go.
-        subprocess.Popen(["systemd-run", "--on-active=2", "systemctl", "restart", unit])
+        subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])
         return f"{unit} restarting"
     out = run("systemctl", *args, unit)
     if out.returncode != 0:
@@ -171,10 +222,30 @@ def reset_password():
     return "admin password reset: /admin now asks the next visitor to choose one"
 
 
-def set_login(pw, keep=True):
-    """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
-    out (removed): a random placeholder nobody is meant to know."""
-    # Caddy first: if the new config does not validate, nothing else has changed.
+def _set_nginx_login(pw):
+    """The login file nginx checks. SHA-512-crypt, not bcrypt: nginx checks the hash on every
+    request and caches nothing, and bcrypt at Caddy's cost takes ~5.8 s a check on the Lyra
+    (this: 38 ms). nginx reads the file per request, so nothing needs reloading."""
+    if not NGINX_LOGINS.exists():
+        raise ValueError(f"no admin login file at {NGINX_LOGINS}")
+    out = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=pw + "\n",
+                         capture_output=True, text=True, timeout=30)
+    hashed = out.stdout.strip()
+    if out.returncode != 0 or not hashed.startswith("$6$"):
+        raise ValueError("openssl passwd failed")
+    gid = NGINX_LOGINS.stat().st_gid  # nginx's group, as install.sh set it
+    tmp = NGINX_LOGINS.with_name(NGINX_LOGINS.name + ".new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"admin:{hashed}\n")
+    os.chown(tmp, 0, gid)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, NGINX_LOGINS)
+    return "nginx (1 login)"
+
+
+def _set_caddy_login(pw):
+    """The bcrypt hashes in the hub's Caddy config, validated before they replace it."""
     hashed = run("caddy", "hash-password", "--plaintext", pw)
     if hashed.returncode != 0:
         raise ValueError("caddy hash-password failed")
@@ -196,7 +267,15 @@ def set_login(pw, keep=True):
         target.write_text(text)
         raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
-    subprocess.Popen(["systemd-run", "--on-active=1", "systemctl", "restart", "caddy"])
+    subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+    return f"Caddy ({count} logins)"
+
+
+def set_login(pw, keep=True):
+    """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
+    out (removed): a random placeholder nobody is meant to know."""
+    # The web server first: if its new login cannot be written, nothing else has changed.
+    web = _set_nginx_login(pw) if WEB_SERVER == "nginx" else _set_caddy_login(pw)
 
     secret = ETC / "admin-password"
     if keep:
@@ -211,7 +290,7 @@ def set_login(pw, keep=True):
         ttyd_env.write_text(f"TTYD_CREDENTIAL=admin:{pw}\n")
         ttyd_env.chmod(0o600)
         run("systemctl", "try-restart", "ttyd")
-    done = [f"Caddy ({count} logins)", "ttyd" if ttyd_env.exists() else None]
+    done = [web, "ttyd" if ttyd_env.exists() else None]
     if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode == 0:
         st = run("runuser", "-u", HUB_USER, "--", "env", f"HOME={STATE}",
                  "syncthing", "cli", "config", "gui", "password", "set", pw)
@@ -412,8 +491,9 @@ def prefetch(src, opts, progress=None):
                 return _check(f"SilverBullet {sb} downloaded", False, str(exc))
         jobs.append((f"Downloading SilverBullet {sb}", get_sb))
 
-    # Caddy from its GitHub release, on a box whose apt repository failed verification.
-    if (ETC / "caddy-from-release").exists() and arch["caddy"]:
+    # Caddy from its GitHub release, on a box served by Caddy whose apt repository failed
+    # verification.
+    if WEB_SERVER == "caddy" and (ETC / "caddy-from-release").exists() and arch["caddy"]:
         def get_caddy():
             try:
                 req = urllib.request.Request("https://api.github.com/repos/caddyserver/caddy/releases/latest",
@@ -472,8 +552,10 @@ def verify_update(src, installed, opts, progress=None):
             bad.append(f"{py.name}: {exc}")
     checks.append(_check("Python files compile", not bad, "; ".join(bad) or f"{len(pys)} files"))
 
+    if WEB_SERVER == "nginx":
+        checks.append(_nginx_check(src, opts))
     caddyfile = src / "Caddyfile"
-    if caddyfile.exists():
+    if WEB_SERVER == "caddy" and caddyfile.exists():
         # As install.sh will write it: the box's current login hash in place of the marker.
         current = _login_file().read_text() if _login_file().exists() else ""
         m = HASH_LINE.search(current)
@@ -492,6 +574,32 @@ def verify_update(src, installed, opts, progress=None):
             os.unlink(tmp.name)
     checks += prefetch(src, opts, progress)
     return checks
+
+
+def _nginx_check(src, opts):
+    """The new irate-box.nginx as install.sh will write it, through nginx -t on its own (a
+    minimal main config around it, so the box's live config is not touched)."""
+    name = "The new nginx site passes nginx -t"
+    template = src / "irate-box.nginx"
+    if not template.exists():
+        return _check(name, False, "irate-box.nginx is missing from the update")
+    text = template.read_text()
+    for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "static"),
+                       "@APPS@": "/usr/share/hub/apps", "@GIT_ROOT@": str(STATE / "git"),
+                       "@FIRMWARE@": str(STATE / "firmware"),
+                       "@HTPASSWD@": str(NGINX_LOGINS),
+                       "@UNCLAIMED@": str(UNCLAIMED)}.items():
+        text = text.replace(key, value)
+    with tempfile.TemporaryDirectory() as tmp:
+        conf = Path(tmp) / "nginx.conf"
+        conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
+                        f"http {{\ninclude /etc/nginx/mime.types;\n{text}\n}}\n")
+        try:
+            out = run("nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
+        except (OSError, subprocess.SubprocessError) as exc:
+            return _check(name, False, str(exc))
+    lines = [l for l in (out.stderr or out.stdout).strip().splitlines() if "[emerg]" in l or "[crit]" in l]
+    return _check(name, out.returncode == 0, "" if out.returncode == 0 else (lines or ["nginx -t failed"])[-1][:300])
 
 
 def _check_for_update(progress):
@@ -630,7 +738,7 @@ def _run_install(src, args, action, steps=None):
     cmd = ["bash", str(src / "install.sh"), "--src", str(src), *args]
     if "--download-cache" in (src / "install.sh").read_text():
         cmd += ["--download-cache", str(DOWNLOADS)]
-    # systemd gives the helper no HOME, and Caddy warns about it on every validate.
+    # systemd gives the helper no HOME, and Caddy (the fallback) warns about it on every validate.
     env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
     with Progress(action, steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
             open(UPDATE_LOG, "w") as log:
@@ -887,6 +995,14 @@ def security_scan(req):
     return f"security scan: {len(bad)} to fix" if bad else "security scan: nothing to fix"
 
 
+def security_audit(req):
+    hub = pwd.getpwnam(HUB_USER)
+    report = secdoctor.audit()
+    secdoctor.write_report(report, AUDIT_STATE, (hub.pw_uid, hub.pw_gid))
+    c = report["counts"]
+    return f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)"
+
+
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@._-]+)?", choice):
@@ -1054,12 +1170,115 @@ def app_rollback(req):
     return f"{app}: rolled back to {str(meta.get('commit', 'the previous build'))[:7]}"
 
 
+# --- the box doctor ----------------------------------------------------------------------
+
+HEALTH_STATE = CONTROL / "health.json"
+
+
+def _write_health():
+    os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
+    data = health.scan()
+    HEALTH_STATE.write_text(json.dumps(data, indent=2))
+    _for_hub(HEALTH_STATE)
+    return data
+
+
+def health_scan(req):
+    data = _write_health()
+    bad = [f for f in data["findings"] if f["status"] == "problem"]
+    return f"doctor: {len(bad)} problem{'s' if len(bad) != 1 else ''}" if bad else "doctor: nothing wrong found"
+
+
+def rerun_install():
+    """install.sh again, as it was last run, from a copy of the installed code (as addon())."""
+    opts = _install_options()
+    shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(CODE, ADDON_SRC, symlinks=True)
+    state = _read_update_state()
+    try:
+        _run_install(ADDON_SRC, opts, "repair", state.get("install_steps"))
+    finally:
+        shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    return "the installer ran again and finished"
+
+
+def health_fix(req):
+    choice = str(req.get("choice", ""))
+    try:
+        if choice == "rerun-install":
+            msg = rerun_install()
+        elif choice == "net-scan":
+            msg = net_scan({})
+        else:
+            msg = health.fix(choice)
+    finally:
+        try:
+            _write_health()
+        except Exception:  # the repair's own answer matters more than a fresh report
+            pass
+    return msg
+
+
+# --- network: inventory and the uplink watchdog ------------------------------------------
+
+IFACE_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
+
+
+def net_scan(req):
+    iface = req.get("iface") or None
+    if iface is not None and not IFACE_RE.match(str(iface)):
+        raise ValueError("not an interface name")
+    inv = netinv.scan(iface)
+    netinv.write(inv, CONTROL / "netinv.json")
+    radios = len(inv["radios"])
+    return (f"{radios} radio{'s' if radios != 1 else ''}"
+            + (f", link {inv['uplink']['iface']} run by {inv['uplink']['backend']}" if inv["uplink"].get("iface") else ", no link"))
+
+
+def _uplink_running():
+    if run("systemctl", "is-active", "--quiet", "irate-box-uplink.service").returncode:
+        run("systemctl", "enable", "--now", "irate-box-uplink.service")
+
+
+def uplink_set(req):
+    s = uplink.load_settings()
+    new = dict(req.get("settings") or {})
+    new.setdefault("hold_until", s.get("hold_until", 0))
+    s = uplink.save_settings(new)
+    _uplink_running()
+    return (f"Uplink: {s['eagerness']}, {s['forgiveness']}" + (", custom values" if s["overrides"] else "")
+            + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest.")
+
+
+def uplink_hold(req):
+    minutes = req.get("minutes")
+    if type(minutes) is not int or not 0 <= minutes <= 1440:
+        raise ValueError("minutes must be 0 to 1440")
+    s = uplink.load_settings()
+    s["hold_until"] = time.time() + minutes * 60 if minutes else 0
+    uplink.save_settings(s)
+    return f"Repairs held for {minutes} min." if minutes else "Hold ended: repairs as set."
+
+
+def uplink_profile(req):
+    if type(req.get("on")) is not bool:
+        raise ValueError("on must be true or false")
+    msg = uplink.profile(req["on"])
+    try:
+        netinv.write(netinv.scan(), CONTROL / "netinv.json")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return msg
+
+
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
-           "security-scan": security_scan, "security-fix": security_fix, "addon": addon,
+           "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
-           "app-install": app_install, "app-rollback": app_rollback}
+           "app-install": app_install, "app-rollback": app_rollback,
+           "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
 
 
 def answer(rid, ok, message):

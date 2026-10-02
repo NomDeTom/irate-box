@@ -8,7 +8,8 @@
 #   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, tools/, serial/ (optional)
 #   /var/lib/hub/zim/         --zim: ZIM files and the Kiwix library.xml
 #   /etc/hub/                 hub.env, admin-password
-#   /etc/caddy/Caddyfile      generated from the repo's Caddyfile, Caddy on :80
+#   /etc/nginx/conf.d/irate-box.conf   the front on :80, from the repo's irate-box.nginx
+#                             (--web caddy: /etc/caddy/Caddyfile from the repo's Caddyfile)
 #   irate-box.service         server.py on 127.0.0.1:8000 as the `hub` user
 #   silverbullet.service      --with-notes: SilverBullet on 127.0.0.1:3000 under /notes/
 #   syncthing@hub.service     --with-sync: Syncthing GUI on 127.0.0.1:8384 under /sync/
@@ -17,6 +18,15 @@
 #   mosquitto.service         --with-mqtt: MQTT on :1883, and WebSockets on 127.0.0.1:9001 at /mqtt
 #   excalidraw-room.service   --with-collab: live Excalidraw sessions on 127.0.0.1:3002 (/socket.io/)
 #   irate-box-tailscale.path  if Tailscale is installed: its on/off switch on /admin
+#   irate-box-git.socket      git http-backend and cgit as the hub user, for /git/ (public:
+#                             browse and clone for all, push with the admin login) and
+#                             /git-private/ (all behind the login); repos in /var/lib/hub/git
+#   irate-box-ci.path         builds on push to a private repo with a .irate-ci.sh (ci.py), run
+#                             by irate-box-ci.service as the unprivileged hubci user
+#   irate-box-uplink.service  the uplink watchdog (uplink.py, root): keeps the box on its network
+#                             as eagerly as --uplink or /admin's Network page says
+#   /var/lib/hub/control/netinv.json   what the box has for networking (netinv.py), looked
+#                             at once here and again from /admin
 #
 # It does not set up the access point, dnsmasq or the captive portal. The box keeps
 # whatever network it already has, and the hub is served at http://<its address>/.
@@ -32,7 +42,8 @@ Usage: sudo ./install.sh [options]
   --repo URL            repository to clone (default: https://github.com/NomDeTom/irate-box)
   --branch NAME         branch to clone (default: main)
   --apps DIR            copy prebuilt static apps from DIR/mermaid, DIR/draw, DIR/tools,
-                        DIR/serial
+                        DIR/serial, DIR/flasher (the web flasher, from the fork's
+                        .github/irate-box/package.sh)
   --apps-from-actions   fetch the newest prebuilt draw, mermaid and serial (and room, with
                         --with-collab) from the forks' Actions builds via nightly.link: no
                         desktop build and no token. They are then kept current from /admin.
@@ -52,6 +63,12 @@ Usage: sudo ./install.sh [options]
                         the existing one; on a first install there is none, and the first
                         visit to /admin/ asks for it)
   --hub-url URL         where captive-portal probes are redirected (default: /)
+  --web nginx|caddy     the web server in front of everything (default: nginx). Caddy is
+                        the fallback: used when asked for, when the box already runs the
+                        owner's Caddy and no nginx, when irate-box set this box up with
+                        Caddy before nginx became the default, and when nginx cannot be
+                        installed. Recorded, so updates keep it; naming the other one
+                        switches over and turns irate-box's copy of the first one off.
   --port N              the port the hub is served on (default: 80). If something else
                         already serves :80, the hub is put on a free port (8080 first) and
                         says so; the other service is left as it is.
@@ -62,6 +79,19 @@ Usage: sudo ./install.sh [options]
   --take-port-80        when something else serves :80, stop and disable it so the hub can
                         have the port (the captive portal needs it). Recorded, so /admin's
                         Security page can undo it and uninstall.sh starts it again.
+  --uplink E[,F]        how hard the box works to stay on its network (uplink.py): eagerness
+                        off, patient (default), standard, persistent or stubborn, and
+                        optionally forgiveness tolerant, normal (default) or strict, e.g.
+                        --uplink standard,strict. Kept in /etc/hub/uplink.json, not in the
+                        install options, so an update never undoes a choice made on /admin's
+                        Network page, which also has the custom values. The owner's own WiFi profile is never
+                        changed here: "Keep retrying" on that page does it, by consent.
+  --rtc auto|off        a battery-backed clock module on I2C (DS3231, RV-8803, RX8130, …;
+                        rtc.py). auto (default): look for one, and if exactly one is found set
+                        it up, so the box keeps its time while off (with the kernel's driver
+                        where it has one, otherwise irate-box's own); a module set up earlier
+                        is kept. No device-tree or /boot changes. off: do not look. Health on
+                        /admin looks again, sets one up, or stops using it.
   --download-cache DIR  take release downloads (ttyd, SilverBullet, Caddy's .deb) from DIR
                         when they are there, still checked against their checksums. /admin's
                         "Check for updates" fills it, so "Install update" needs no network
@@ -72,7 +102,15 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
-HUB_PORT="" TAKE_PORT_80=0 REMOVE=()
+HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
+# The arguments as given, for the install record, with the password masked.
+ARGS_SHOWN="" _mask=0
+for _a in "$@"; do
+	if [ "$_mask" = 1 ]; then ARGS_SHOWN+=" ***"; _mask=0; continue; fi
+	ARGS_SHOWN+=" $_a"
+	[ "$_a" = --admin-password ] && _mask=1
+done
+ARGS_SHOWN="${ARGS_SHOWN# }"
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--src) SRC="$2"; shift 2 ;;
@@ -90,7 +128,21 @@ while [ $# -gt 0 ]; do
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
 	--hub-url) HUB_URL="$2"; shift 2 ;;
 	--port) HUB_PORT="$2"; shift 2 ;;
+	--web)
+		case "$2" in nginx | caddy) WEB="$2" ;; *) echo "--web takes nginx or caddy" >&2; exit 2 ;; esac
+		shift 2 ;;
 	--take-port-80) TAKE_PORT_80=1; shift ;;
+	--rtc)
+		case "$2" in auto | off) RTC="$2" ;; *) echo "--rtc takes auto or off" >&2; exit 2 ;; esac
+		shift 2 ;;
+	--uplink)
+		case "$2" in
+		off | patient | standard | persistent | stubborn | \
+			off,* | patient,* | standard,* | persistent,* | stubborn,*) UPLINK="$2" ;;
+		*) echo "--uplink takes off, patient, standard, persistent or stubborn, optionally ,tolerant ,normal or ,strict" >&2; exit 2 ;;
+		esac
+		case "$UPLINK" in *,*) case "${UPLINK#*,}" in tolerant | normal | strict) ;; *) echo "--uplink: forgiveness is tolerant, normal or strict" >&2; exit 2 ;; esac ;; esac
+		shift 2 ;;
 	--remove)
 		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
 		shift 2 ;;
@@ -117,13 +169,79 @@ SB_VERSION=2.11.1
 TTYD_VERSION=1.7.7
 
 # Bold on a terminal only: from /admin the output goes to a log file that a page shows.
-say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
-die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
+# Decided now, before the output is also copied to the install log (below).
+BOLD=0
+[ -t 1 ] && BOLD=1
+STEP=""
+say() {
+	STEP="$*"
+	if [ "$BOLD" = 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi
+	state_write
+}
+die() {
+	printf 'install.sh: %s\n' "$*" >&2
+	ABORT_CMD="${ABORT_CMD:-install.sh refused: $*}"
+	exit 1
+}
 # Things the owner should know, said where they happen and again at the end of the run.
 NOTICES=()
 notice() {
 	NOTICES+=("$*")
-	if [ -t 1 ]; then printf '\033[1;33m!!  %s\033[0m\n' "$*"; else printf '!!  %s\n' "$*"; fi
+	if [ "$BOLD" = 1 ]; then printf '\033[1;33m!!  %s\033[0m\n' "$*"; else printf '!!  %s\n' "$*"; fi
+}
+# Something did not work, but the install carries on: said now, counted in the closing line,
+# kept in the install record for the doctor (health.py, /admin → System → Health).
+PROBLEMS=()
+problem() {
+	PROBLEMS+=("$*")
+	fail=1
+	if [ "$BOLD" = 1 ]; then printf '\033[1;31m    problem: %s\033[0m\n' "$*"; else printf '    problem: %s\n' "$*"; fi
+	state_write
+}
+fail=0
+
+# --- the install record and log ------------------------------------------------------------
+# /var/log/irate-box/install.log keeps this run's output (the previous run's in .1), and
+# install-state.json how far it got: the step, the problems, and if it stopped early, where.
+# The doctor reads both, so "what happened?" has an answer after the terminal is gone.
+LOGDIR=/var/log/irate-box
+STATE_FILE="$LOGDIR/install-state.json"
+ABORT_LINE="" ABORT_CMD="" RUNNING=false STARTED="$(date +%s)"
+json_str() {
+	local s="$1"
+	s="${s//\\/\\\\}"
+	s="${s//\"/\\\"}"
+	s="${s//$'\t'/ }"
+	s="${s//$'\n'/ }"
+	printf '"%s"' "$s"
+}
+state_write() {
+	[ -d "$LOGDIR" ] || return 0
+	local probs="" p
+	for p in "${PROBLEMS[@]}"; do probs+="${probs:+, }$(json_str "$p")"; done
+	printf '{"started": %s, "pid": %s, "running": %s, "step": %s, "args": %s, "problems": [%s], "exit": %s, "aborted": %s, "failed_line": %s, "failed_command": %s, "at": %s}\n' \
+		"$STARTED" "$$" "$RUNNING" "$(json_str "$STEP")" "$(json_str "${ARGS_SHOWN:-}")" "$probs" "${EXIT_CODE:-null}" \
+		"$([ -n "$ABORT_CMD" ] && echo true || echo false)" "${ABORT_LINE:-null}" "$(json_str "$ABORT_CMD")" "$(date +%s)" \
+		>"$STATE_FILE.tmp" 2>/dev/null && mv -f "$STATE_FILE.tmp" "$STATE_FILE"
+}
+on_err() {
+	# Only the first: the trap runs again in every function the failure passes through.
+	[ -n "$ABORT_CMD" ] || { ABORT_LINE="$1"; ABORT_CMD="$2"; }
+}
+on_exit() {
+	EXIT_CODE=$?
+	RUNNING=false
+	state_write
+	[ "$EXIT_CODE" = 0 ] || [ -z "$ABORT_CMD" ] && return
+	local doctor="$CODE/health.py"
+	[ -f "$doctor" ] || doctor="${SRC:-.}/health.py"
+	printf '\ninstall.sh stopped during "%s"' "${STEP:-the start}"
+	[ -n "$ABORT_LINE" ] && printf ': line %s, `%s` failed (exit %s)' "$ABORT_LINE" "$ABORT_CMD" "$EXIT_CODE"
+	printf '.\n'
+	echo "  Nothing after that step was done; what was set up before it stays as it is."
+	echo "  The full output is in $LOGDIR/install.log."
+	echo "  See what is wrong:  sudo python3 $doctor"
+	echo "  Then fix it and run the installer again: it carries on from what is already there."
 }
 # fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
 # the URL's file name), else from the network. Callers check checksums either way.
@@ -138,6 +256,16 @@ fetch() {
 
 # --- preflight -------------------------------------------------------------------
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh …)"
+install -d -m 755 "$LOGDIR"
+[ -f "$LOGDIR/install.log" ] && mv -f "$LOGDIR/install.log" "$LOGDIR/install.log.1"
+: >"$LOGDIR/install.log"
+chmod 644 "$LOGDIR/install.log"
+exec > >(tee -a "$LOGDIR/install.log") 2>&1
+RUNNING=true
+set -E
+trap 'on_err "$LINENO" "$BASH_COMMAND"' ERR
+trap on_exit EXIT
+state_write
 command -v apt-get >/dev/null || die "needs a Debian-family system with apt"
 command -v systemctl >/dev/null || die "needs systemd"
 . /etc/os-release
@@ -168,6 +296,46 @@ armv6l) TTYD_ARCH=arm ;;
 *) die "no ttyd build for $ARCH" ;;
 esac
 
+all_installed() {
+	local p
+	for p in "$@"; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'ok installed' || return 1; done
+}
+
+# --- the web server --------------------------------------------------------------
+# nginx is the front: measured on the Lyra (2026-10-02) at ~40 MB less RAM than Caddy and a
+# fraction of the CPU per request. Caddy is the fallback, with the same routes. The choice is
+# recorded in install-options, so an update keeps it; otherwise, in order: a box irate-box
+# already serves through Caddy stays on it (switching is offered, not imposed), an owner's
+# own web server is the one the hub fits into, and a bare box gets nginx.
+NGINX_SITE=/etc/nginx/conf.d/irate-box.conf
+NGINX_LOGINS=/etc/nginx/irate-box.htpasswd
+# irate-box installed the package (so uninstall.sh --purge-packages may remove it), and it
+# turned off the package's default site (so uninstall.sh turns it back on).
+NGINX_OURS_MARK=/etc/hub/nginx-ours
+NGINX_DEFAULT_MARK=/etc/hub/nginx-default-site-off
+CADDY_OURS_MARK=/etc/hub/caddy-ours
+# Is irate-box's site set up in this server now?
+hub_site_in() {
+	case "$1" in
+	nginx) [ -f "$NGINX_SITE" ] ;;
+	caddy) [ -f /etc/caddy/irate-box.caddy ] || grep -qs '^# Generated by irate-box' /etc/caddy/Caddyfile ;;
+	esac
+}
+[ -z "$WEB" ] && [ -f "$ETC/install-options" ] &&
+	WEB="$(grep -A1 -x -- --web "$ETC/install-options" | tail -1 || true)"
+case "$WEB" in nginx | caddy) ;; *) WEB="" ;; esac
+if [ -z "$WEB" ]; then
+	holder80="$(ss -Hltnp 'sport = :80' 2>/dev/null | grep -o 'users:(("[^"]*' | cut -d'"' -f2 | head -1 || true)"
+	if hub_site_in caddy; then
+		WEB=caddy
+		notice "This hub is served by Caddy, as irate-box set boxes up before nginx became the default. It stays on Caddy; rerun with --web nginx to switch, for about 40 MB less RAM."
+	elif [ "$holder80" = caddy ] || { all_installed caddy && ! all_installed nginx; }; then
+		WEB=caddy
+	else
+		WEB=nginx
+	fi
+fi
+
 # --- the port --------------------------------------------------------------------
 # The hub wants :80: captive-portal probes are plain HTTP on port 80. Something else already
 # serving it is flagged and worked around, never overridden silently: the hub takes a free
@@ -189,7 +357,11 @@ case "$HUB_PORT" in *[!0-9]* | "") die "--port takes a number" ;; esac
 TAKE_UNIT=""
 if command -v ss >/dev/null; then
 	holder="$(port_holder "$HUB_PORT")"
-	if [ -n "$holder" ] && [ "$holder" != caddy ]; then
+	# The chosen server on the port is the one the hub goes into (its own config is checked
+	# below). The other one serving the hub now is switched off below; if it is the owner's and
+	# keeps the port, the hub moves then.
+	case "$holder" in nginx | caddy) { [ "$holder" = "$WEB" ] || hub_site_in "$holder"; } && holder="" ;; esac
+	if [ -n "$holder" ]; then
 		unit="$(port_unit "$HUB_PORT")"
 		if [ "$HUB_PORT" = 80 ] && [ "$TAKE_PORT_80" = 1 ]; then
 			[ -n "$unit" ] || die "port 80 is held by $holder, which is not a systemd service: stop it yourself, or install without --take-port-80"
@@ -223,16 +395,19 @@ CADDY_KEY=/usr/share/keyrings/caddy-stable-archive-keyring.gpg
 CADDY_MARK=/etc/hub/caddy-from-release
 CADDY_FROM_RELEASE=0
 [ -f "$CADDY_MARK" ] && CADDY_FROM_RELEASE=1
-pkgs=(python3 curl ca-certificates git unzip)
+# fcgiwrap and cgit: the git servers (/git/, /git-private/), part of every install: ~2 MB,
+# and nothing runs until someone browses, clones or pushes.
+# iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit iw)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
-[ ${#ZIMS[@]} -gt 0 ] && pkgs+=(kiwix-tools)
+# Kiwix is in use when --zim adds a book, and also when books are already on disk: a reinstall
+# over kept state (uninstall.sh --keep-state, then install.sh) brings /wiki/ back with them.
+KIWIX=0
+{ [ ${#ZIMS[@]} -gt 0 ] || compgen -G "$STATE/zim/*.zim" >/dev/null; } && KIWIX=1
+[ "$KIWIX" = 1 ] && pkgs+=(kiwix-tools)
 [ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
-all_installed() {
-	local p
-	for p in "$@"; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'ok installed' || return 1; done
-}
 apt_update() {
 	local out
 	out="$(apt-get update -q 2>&1)" && { printf '%s\n' "$out"; return 0; }
@@ -297,48 +472,66 @@ install_caddy_release() {
 apt_update || die "apt-get update failed, and some packages still need installing"
 all_installed "${pkgs[@]}" || apt-get install -y -q --no-install-recommends "${pkgs[@]}"
 
-# Caddy: from Caddy's own apt repo, which is current (distros lag: Debian trixie ships
-# 2.6 from 2022). Except on ARMv6: that repo's armhf build is GOARM=7 and dies with
-# SIGILL on a Pi Zero W, while Debian/Raspbian's armhf caddy is a real ARMv6 build.
-# A Caddy the owner installed themselves is used as it is: no repository added, no upgrade.
-# ($ETC/caddy-ours marks one irate-box installed; a box set up before the marker existed has
-# Caddy's repository list or the release mark instead.)
-CADDY_OURS_MARK=/etc/hub/caddy-ours
-OWNER_CADDY=0
-all_installed caddy && [ ! -f "$CADDY_OURS_MARK" ] && [ ! -f "$CADDY_LIST" ] && [ "$CADDY_FROM_RELEASE" = 0 ] &&
-	OWNER_CADDY=1
-if [ "$OWNER_CADDY" = 1 ]; then
-	notice "Caddy $(caddy version 2>/dev/null | cut -d' ' -f1) was already installed, so irate-box uses it as it is: no Caddy repository added, no upgrade."
-elif [ "$ARCH" = armv6l ]; then
-	caddy_cand="$(apt-cache policy caddy 2>/dev/null | awk '/Candidate:/ {print $2}')"
-	[ -n "$caddy_cand" ] && [ "$caddy_cand" != "(none)" ] ||
-		die "ARMv6 needs the distro's caddy package, and this distro has none"
-elif [ ! -f "$CADDY_LIST" ] && [ "$CADDY_FROM_RELEASE" = 0 ]; then
-	say "Adding Caddy's apt repository"
-	all_installed gpg || apt-get install -y -q --no-install-recommends gpg
-	if curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o "$CADDY_KEY.new" &&
-		curl -fsSL -o "$CADDY_LIST.new" https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt; then
-		mv "$CADDY_KEY.new" "$CADDY_KEY"
-		mv "$CADDY_LIST.new" "$CADDY_LIST"
-		apt_update || die "apt-get update failed after adding Caddy's repository"
+# nginx: Debian's own package, ARMv6 included. An nginx the owner installed is used as it is.
+# Openssl hashes the admin login for it (SHA-512-crypt; see "the web server" below).
+# If nginx cannot be installed (no candidate, offline), the hub falls back to Caddy.
+if [ "$WEB" = nginx ]; then
+	if all_installed nginx; then
+		[ -f "$NGINX_OURS_MARK" ] ||
+			notice "nginx was already installed, so irate-box uses it as it is: the hub's site goes in $NGINX_SITE, and the rest of its config stays the owner's."
+	elif apt-get install -y -q --no-install-recommends nginx openssl; then
+		install -d -m 750 /etc/hub
+		echo "nginx installed by irate-box $(date -u +%Y-%m-%d); uninstall.sh --purge-packages may remove it" >"$NGINX_OURS_MARK"
 	else
-		rm -f "$CADDY_KEY.new" "$CADDY_LIST.new"
-		command -v caddy >/dev/null || die "could not reach Caddy's apt repository"
-		echo "    could not reach Caddy's apt repository; keeping the installed Caddy"
+		notice "nginx could not be installed, so the hub is served by Caddy, the fallback. Rerun with --web nginx once the package is reachable."
+		WEB=caddy
 	fi
+	all_installed openssl || apt-get install -y -q --no-install-recommends openssl
 fi
-if [ "$OWNER_CADDY" = 1 ]; then
-	:
-elif [ "$CADDY_FROM_RELEASE" = 1 ]; then
-	install_caddy_release
-elif ! all_installed caddy || [ -f "$CADDY_LIST" ]; then
-	apt-get install -y -q --no-install-recommends caddy ||
-		{ all_installed caddy && echo "    could not upgrade Caddy; keeping the installed one"; } ||
-		die "could not install Caddy"
-fi
-if [ "$OWNER_CADDY" = 0 ]; then
-	install -d -m 750 /etc/hub
-	echo "Caddy installed by irate-box $(date -u +%Y-%m-%d); uninstall.sh --purge-packages may remove it" >"$CADDY_OURS_MARK"
+
+if [ "$WEB" = caddy ]; then
+	# Caddy: from Caddy's own apt repo, which is current (distros lag: Debian trixie ships
+	# 2.6 from 2022). Except on ARMv6: that repo's armhf build is GOARM=7 and dies with
+	# SIGILL on a Pi Zero W, while Debian/Raspbian's armhf caddy is a real ARMv6 build.
+	# A Caddy the owner installed themselves is used as it is: no repository added, no upgrade.
+	# ($ETC/caddy-ours marks one irate-box installed; a box set up before the marker existed has
+	# Caddy's repository list or the release mark instead.)
+	OWNER_CADDY=0
+	all_installed caddy && [ ! -f "$CADDY_OURS_MARK" ] && [ ! -f "$CADDY_LIST" ] && [ "$CADDY_FROM_RELEASE" = 0 ] &&
+		OWNER_CADDY=1
+	if [ "$OWNER_CADDY" = 1 ]; then
+		notice "Caddy $(caddy version 2>/dev/null | cut -d' ' -f1) was already installed, so irate-box uses it as it is: no Caddy repository added, no upgrade."
+	elif [ "$ARCH" = armv6l ]; then
+		caddy_cand="$(apt-cache policy caddy 2>/dev/null | awk '/Candidate:/ {print $2}')"
+		[ -n "$caddy_cand" ] && [ "$caddy_cand" != "(none)" ] ||
+			die "ARMv6 needs the distro's caddy package, and this distro has none"
+	elif [ ! -f "$CADDY_LIST" ] && [ "$CADDY_FROM_RELEASE" = 0 ]; then
+		say "Adding Caddy's apt repository"
+		all_installed gpg || apt-get install -y -q --no-install-recommends gpg
+		if curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o "$CADDY_KEY.new" &&
+			curl -fsSL -o "$CADDY_LIST.new" https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt; then
+			mv "$CADDY_KEY.new" "$CADDY_KEY"
+			mv "$CADDY_LIST.new" "$CADDY_LIST"
+			apt_update || die "apt-get update failed after adding Caddy's repository"
+		else
+			rm -f "$CADDY_KEY.new" "$CADDY_LIST.new"
+			command -v caddy >/dev/null || die "could not reach Caddy's apt repository"
+			echo "    could not reach Caddy's apt repository; keeping the installed Caddy"
+		fi
+	fi
+	if [ "$OWNER_CADDY" = 1 ]; then
+		:
+	elif [ "$CADDY_FROM_RELEASE" = 1 ]; then
+		install_caddy_release
+	elif ! all_installed caddy || [ -f "$CADDY_LIST" ]; then
+		apt-get install -y -q --no-install-recommends caddy ||
+			{ all_installed caddy && echo "    could not upgrade Caddy; keeping the installed one"; } ||
+			die "could not install Caddy"
+	fi
+	if [ "$OWNER_CADDY" = 0 ]; then
+		install -d -m 750 /etc/hub
+		echo "Caddy installed by irate-box $(date -u +%Y-%m-%d); uninstall.sh --purge-packages may remove it" >"$CADDY_OURS_MARK"
+	fi
 fi
 
 # --- user and directories --------------------------------------------------------
@@ -392,7 +585,7 @@ if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
 fi
 {
-	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch"
+	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch" --web "$WEB"
 	[ "$WITH_NOTES" = 1 ] && echo --with-notes
 	[ "$WITH_SYNC" = 1 ] && echo --with-sync
 	[ "$WITH_MQTT" = 1 ] && echo --with-mqtt
@@ -409,7 +602,7 @@ install -m 644 "$ETC/install-options" "$STATE/install-options"
 
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
-	for app in mermaid draw tools serial; do
+	for app in mermaid draw tools serial flasher; do
 		[ -d "$APPS_SRC/$app" ] || continue
 		say "Installing $app from $APPS_SRC/$app"
 		rm -rf "${APPS:?}/$app"
@@ -451,25 +644,12 @@ for app in mermaid draw tools serial; do
 done
 
 # --- config ----------------------------------------------------------------------
-cat >"$ETC/hub.env" <<EOF
-# Read by irate-box.service. Changes take effect on: systemctl restart irate-box
-PORT=8000
-HUB_BIND=127.0.0.1
-HUB_STATE_DIR=$STATE
-HUB_URL=$HUB_URL
-# The same roots Caddy serves (its drop-in below), so /status can tell a static app
-# that is not installed from one that is.
-HUB_DRAW_ROOT=$APPS/draw
-HUB_MERMAID_ROOT=$APPS/mermaid
-HUB_TOOLS_ROOT=$APPS/tools
-HUB_SERIAL_ROOT=$APPS/serial
-EOF
-
 # The admin password is chosen by the owner, in the browser, on first use: until then the
 # logins get a random placeholder nobody knows (so /sync and /term stay shut), and
-# $UNCLAIMED_MARK tells Caddy and the hub to offer /admin/ as the set-the-password page.
-# --admin-password sets it here instead, for scripted installs.
-UNCLAIMED_MARK=/etc/caddy/irate-box-unclaimed
+# $UNCLAIMED_MARK tells the web server and the hub to offer /admin/ as the set-the-password
+# page. It sits beside the web server's config, where its workers can see it (/etc/hub cannot
+# be read by them). --admin-password sets the password here instead, for scripted installs.
+UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
 UNCLAIMED=0
 if [ -n "$ADMIN_PW" ]; then
 	printf '%s\n' "$ADMIN_PW" >"$ETC/admin-password"
@@ -482,82 +662,250 @@ else
 	ADMIN_PW="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 fi
 
-# --- Caddy -----------------------------------------------------------------------
-say "Configuring Caddy"
-HASH="$(caddy hash-password --plaintext "$ADMIN_PW")"
-CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
-CADDY_SITE=/etc/caddy/irate-box.caddy
-IMPORT_LINE="import $CADDY_SITE"
-# Whose Caddyfile is it? Ours (a previous run wrote it) or the package's untouched default:
-# ours to write. Anything else is the owner's, and stays theirs: the hub's site goes in its
-# own file, pulled in by one import line that uninstall.sh takes out again.
-caddyfile_owner() {
-	local f=/etc/caddy/Caddyfile shipped
-	[ -f "$f" ] || { echo default; return; }
-	grep -q '^# Generated by irate-box' "$f" && { echo ours; return; }
-	grep -qxF "$IMPORT_LINE" "$f" && { echo owner; return; }
-	shipped="$(dpkg-query -W -f='${Conffiles}\n' caddy 2>/dev/null | awk '$1 == "/etc/caddy/Caddyfile" {print $2}')"
-	[ -n "$shipped" ] && [ "$(md5sum <"$f" | cut -d' ' -f1)" = "$shipped" ] && { echo default; return; }
-	echo owner
+cat >"$ETC/hub.env" <<EOF
+# Read by irate-box.service. Changes take effect on: systemctl restart irate-box
+PORT=8000
+HUB_BIND=127.0.0.1
+HUB_STATE_DIR=$STATE
+HUB_URL=$HUB_URL
+# The web server in front (install.sh --web) and its first-use mark, for /status and /admin.
+HUB_WEB_SERVER=$WEB
+HUB_UNCLAIMED_FILE=$UNCLAIMED_MARK
+# The same roots the web server serves, so /status can tell a static app that is not
+# installed from one that is.
+HUB_DRAW_ROOT=$APPS/draw
+HUB_MERMAID_ROOT=$APPS/mermaid
+HUB_TOOLS_ROOT=$APPS/tools
+HUB_SERIAL_ROOT=$APPS/serial
+# The git repositories (/admin's Git page): public/ and private/, bare, owned by the hub.
+HUB_GIT_ROOT=$STATE/git
+HUB_CI_ROOT=$STATE/ci
+# The web flasher's bundle, and the firmware the librarian keeps for it (/flasher/).
+HUB_FLASHER_ROOT=$APPS/flasher
+HUB_FIRMWARE_ROOT=$STATE/firmware
+EOF
+
+# When :80 is the owner's, the hub takes a port of its own (8080 first); recorded, so
+# updates keep it.
+pick_own_port() {
+	local p
+	for p in 8080 8088 8888; do port_free "$p" && { HUB_PORT=$p; return 0; }; done
+	return 1
 }
-# The repo's Caddyfile with this box's login hash and port; with "site", the site block alone
-# (global options are the owner's business in their own Caddyfile).
-caddy_config() {
-	local part="$1" port="$2"
-	if [ "$part" = site ]; then
-		echo "# Generated by irate-box install.sh from $CODE/Caddyfile and imported by /etc/caddy/Caddyfile. Edits are overwritten on reinstall."
-		sed -n '/^:80 {/,$p' "$CODE/Caddyfile"
+record_port() {
+	sed -i '/^--port$/,+1d' "$ETC/install-options"
+	printf '%s\n' --port "$HUB_PORT" >>"$ETC/install-options"
+	install -m 644 "$ETC/install-options" "$STATE/install-options"
+}
+
+# --- moving between web servers ----------------------------------------------------
+# The hub set up in the other server (--web named the other one, or this box predates nginx
+# as the default) comes out of it first, so the two never both claim the port. Irate-box's
+# own copy is stopped and disabled but stays installed, as the fallback: --web with its name
+# brings it back. An owner's own server only loses the hub's file and carries on.
+OTHER=caddy
+[ "$WEB" = caddy ] && OTHER=nginx
+if hub_site_in "$OTHER"; then
+	say "Moving the hub from $OTHER to $WEB"
+	if [ "$OTHER" = caddy ]; then
+		if [ -f /etc/caddy/irate-box.caddy ]; then
+			sed -i '/^# irate-box: the hub, on its own port/d; \|^import /etc/caddy/irate-box.caddy$|d' /etc/caddy/Caddyfile
+			rm -f /etc/caddy/irate-box.caddy /etc/caddy/irate-box.caddy.prev
+			systemctl try-restart caddy || true
+			notice "The hub's site is out of the owner's Caddy (/etc/caddy/irate-box.caddy and its import line); Caddy carries on with the rest of its config."
+		else
+			systemctl disable --now caddy >/dev/null 2>&1 || true
+			# The owner's Caddyfile back; failing that ours is set aside, so this box no longer
+			# counts as served by Caddy (--web caddy writes a fresh one).
+			if [ -f /etc/caddy/Caddyfile.pre-irate-box ]; then
+				mv /etc/caddy/Caddyfile.pre-irate-box /etc/caddy/Caddyfile
+			elif [ -f /etc/caddy/Caddyfile ]; then
+				mv /etc/caddy/Caddyfile /etc/caddy/Caddyfile.irate-box-off
+			fi
+			notice "Caddy, which served the hub until now, is stopped and disabled. It stays installed as the fallback: rerun with --web caddy to go back to it."
+		fi
+		rm -f /etc/caddy/irate-box-unclaimed /etc/systemd/system/caddy.service.d/irate-box.conf
+		rmdir /etc/systemd/system/caddy.service.d 2>/dev/null || true
 	else
-		echo "# Generated by irate-box install.sh from $CODE/Caddyfile. Edits are overwritten on reinstall."
-		cat "$CODE/Caddyfile"
-	fi | sed -e "s|\$2a\$14\$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT|$HASH|" -e "s|^:80 {|:$port {|" |
-		# basic_auth is the 2.8+ spelling; older Caddy (Debian trixie ships 2.6) only knows basicauth.
-		if [ "$(printf '%s\n' "$CADDY_VER" 2.8 | sort -V | head -1)" != 2.8 ]; then sed 's/\bbasic_auth\b/basicauth/'; else cat; fi
+		rm -f "$NGINX_SITE" "$NGINX_SITE.prev" "$NGINX_LOGINS" /etc/nginx/irate-box-unclaimed
+		if [ -f "$NGINX_DEFAULT_MARK" ]; then
+			ln -sf ../sites-available/default /etc/nginx/sites-enabled/default
+			rm -f "$NGINX_DEFAULT_MARK"
+		fi
+		if [ -f "$NGINX_OURS_MARK" ]; then
+			systemctl disable --now nginx >/dev/null 2>&1 || true
+			notice "nginx, which served the hub until now, is stopped and disabled. It stays installed: rerun with --web nginx to go back to it."
+		else
+			systemctl try-reload-or-restart nginx || true
+			notice "The hub's site is out of the owner's nginx ($NGINX_SITE); nginx carries on with the rest of its config."
+		fi
+	fi
+	# An owner's server may keep :80 for its own sites; then the hub moves.
+	h="$(port_holder "$HUB_PORT")"
+	if [ "$HUB_PORT" = 80 ] && [ -n "$h" ] && [ "$h" != "$WEB" ]; then
+		pick_own_port || die "port 80 stays with $h, and 8080, 8088 and 8888 are taken too: pass --port N"
+		record_port
+		notice "Port 80 stays with $h, so the hub is on :$HUB_PORT. The hotspot's sign-in sheet needs :80, so it will not pop up."
+	fi
+fi
+
+# --- the web server: nginx ---------------------------------------------------------
+# The site goes in conf.d/, which every nginx layout (Debian's, nginx.org's) includes inside
+# http {}; the rest of the config is left as it is.
+#
+# Logins: SHA-512-crypt, checked by the system's crypt(3). Not the bcrypt Caddy gets: nginx
+# checks the hash on every request and keeps no cache, and bcrypt at cost 14 takes ~5.8 s of
+# CPU per check on the Lyra, against 38 ms for this. The file is read on every request too,
+# so a new password needs no reload.
+NGINX_DEFAULT=/etc/nginx/sites-enabled/default
+# The package's default site, enabled and untouched: it holds :80, so it is switched off
+# (recorded, and put back by uninstall.sh). Edited, it is the owner's and stays.
+nginx_default_untouched() {
+	local f=/etc/nginx/sites-available/default shipped
+	[ -L "$NGINX_DEFAULT" ] && [ "$(readlink -f "$NGINX_DEFAULT")" = "$f" ] || return 1
+	shipped="$(dpkg-query -W -f='${Conffiles}\n' nginx-common nginx 2>/dev/null | awk -v f="$f" '$1 == f {print $2}' | head -1)"
+	[ -n "$shipped" ] && [ "$(md5sum <"$f" | cut -d' ' -f1)" = "$shipped" ]
 }
-caddy_check() { caddy validate --adapter caddyfile --config "$1" 2>&1; }
-CADDY_MODE="$(caddyfile_owner)"
-if [ "$CADDY_MODE" = owner ]; then
-	notice "Caddy is already set up here (/etc/caddy/Caddyfile is not irate-box's). It stays as it is: the hub's site goes in $CADDY_SITE, added with one line ($IMPORT_LINE), and uninstall.sh takes both out. Caddy restarts once, so its sites blink."
-	[ -f "$CADDY_SITE" ] && cp "$CADDY_SITE" "$CADDY_SITE.prev"
-	added_import=0
-	if ! grep -qxF "$IMPORT_LINE" /etc/caddy/Caddyfile; then
-		[ -z "$(tail -c1 /etc/caddy/Caddyfile)" ] || echo >>/etc/caddy/Caddyfile
-		printf '# irate-box: the hub, on its own port or :80 (uninstall.sh removes these two lines)\n%s\n' "$IMPORT_LINE" >>/etc/caddy/Caddyfile
-		added_import=1
+# Does any nginx config but the hub's listen on port $1? (A second default_server on a port
+# fails nginx -t, but a plain listen would quietly hand the hub the owner's unmatched hosts.)
+nginx_serves_port() {
+	nginx -T 2>/dev/null | awk -v ours="$NGINX_SITE" -v p="$1" '
+		/^# configuration file / { f = $4; sub(/:$/, "", f); next }
+		f != ours && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
+		END { exit !found }'
+}
+nginx_config() {
+	echo "# Generated by irate-box install.sh from $CODE/irate-box.nginx. Edits are overwritten on reinstall."
+	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/static|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" -e "s|@FIRMWARE@|$STATE/firmware|g" \
+		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" "$CODE/irate-box.nginx" |
+		# A kernel without IPv6: the [::] listener would stop nginx from starting at all.
+		if [ -f /proc/net/if_inet6 ]; then cat; else sed '/listen \[::\]:/d'; fi
+}
+if [ "$WEB" = nginx ]; then
+	say "Configuring nginx"
+	ngx_user="$(sed -n 's/^[[:space:]]*user[[:space:]]\{1,\}\([^[:space:];]\{1,\}\).*/\1/p' /etc/nginx/nginx.conf 2>/dev/null | head -1)"
+	ngx_group="$(id -gn "${ngx_user:-www-data}" 2>/dev/null || echo root)"
+	hash="$(printf '%s\n' "$ADMIN_PW" | openssl passwd -6 -stdin)"
+	( umask 077; printf 'admin:%s\n' "$hash" >"$NGINX_LOGINS.new" )
+	chown "root:$ngx_group" "$NGINX_LOGINS.new"
+	chmod 640 "$NGINX_LOGINS.new"
+	mv "$NGINX_LOGINS.new" "$NGINX_LOGINS"
+	removed_default=0
+	if [ -e "$NGINX_DEFAULT" ] && nginx_default_untouched; then
+		rm -f "$NGINX_DEFAULT"
+		echo "the nginx package's default site, switched off by irate-box $(date -u +%Y-%m-%d); uninstall.sh turns it back on" >"$NGINX_DEFAULT_MARK"
+		removed_default=1
 	fi
-	caddy_config site "$HUB_PORT" >"$CADDY_SITE"
-	ok=0
-	out="$(caddy_check /etc/caddy/Caddyfile)" && ok=1
-	if [ "$ok" = 0 ] && [ "$HUB_PORT" = 80 ]; then
-		# Most often the owner's config serves :80 itself; the hub then takes a port of its own.
-		for p in 8080 8088 8888; do port_free "$p" && { HUB_PORT=$p; break; }; done
-		if [ "$HUB_PORT" != 80 ]; then
-			caddy_config site "$HUB_PORT" >"$CADDY_SITE"
-			out="$(caddy_check /etc/caddy/Caddyfile)" && ok=1
-		fi
-		if [ "$ok" = 1 ]; then
-			notice "The existing Caddy config already serves :80, so the hub is on :$HUB_PORT instead. The hotspot's sign-in sheet needs :80, so it will not pop up."
-			sed -i '/^--port$/,+1d' "$ETC/install-options"
-			printf '%s\n' --port "$HUB_PORT" >>"$ETC/install-options"
-			install -m 644 "$ETC/install-options" "$STATE/install-options"
-		fi
+	if [ "$HUB_PORT" = 80 ] && nginx_serves_port 80; then
+		pick_own_port || die "the existing nginx config serves :80, and 8080, 8088 and 8888 are taken too: pass --port N"
+		record_port
+		notice "The existing nginx config already serves :80, so the hub is on :$HUB_PORT instead. The hotspot's sign-in sheet needs :80, so it will not pop up."
 	fi
-	if [ "$ok" = 0 ]; then
+	[ -f "$NGINX_SITE" ] && cp "$NGINX_SITE" "$NGINX_SITE.prev"
+	nginx_config "$HUB_PORT" >"$NGINX_SITE"
+	if ! out="$(nginx -t 2>&1)"; then
 		printf '%s\n' "$out" | tail -3 >&2
-		if [ -f "$CADDY_SITE.prev" ]; then mv "$CADDY_SITE.prev" "$CADDY_SITE"; else rm -f "$CADDY_SITE"; fi
-		[ "$added_import" = 1 ] && sed -i '/^# irate-box: the hub, on its own port/d; \|^import /etc/caddy/irate-box.caddy$|d' /etc/caddy/Caddyfile
-		die "the hub's Caddy site does not fit the existing Caddy config, which is left as it was"
+		if [ -f "$NGINX_SITE.prev" ]; then mv "$NGINX_SITE.prev" "$NGINX_SITE"; else rm -f "$NGINX_SITE"; fi
+		if [ "$removed_default" = 1 ]; then
+			ln -sf ../sites-available/default "$NGINX_DEFAULT"
+			rm -f "$NGINX_DEFAULT_MARK"
+		fi
+		die "the hub's nginx site does not pass nginx -t with the rest of the config, which is left as it was"
 	fi
-	rm -f "$CADDY_SITE.prev"
-else
-	[ -f /etc/caddy/Caddyfile ] && [ ! -f /etc/caddy/Caddyfile.pre-irate-box ] && [ "$CADDY_MODE" = default ] &&
-		cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-irate-box
-	caddy_config all "$HUB_PORT" >/etc/caddy/Caddyfile.new
-	if ! out="$(caddy_check /etc/caddy/Caddyfile.new)"; then
-		printf '%s\n' "$out" | tail -3 >&2
-		die "generated Caddyfile does not validate (left at /etc/caddy/Caddyfile.new)"
+	rm -f "$NGINX_SITE.prev"
+fi
+
+# --- the web server: Caddy (the fallback) ----------------------------------------------
+if [ "$WEB" = caddy ]; then
+	say "Configuring Caddy"
+	HASH="$(caddy hash-password --plaintext "$ADMIN_PW")"
+	CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+	CADDY_SITE=/etc/caddy/irate-box.caddy
+	IMPORT_LINE="import $CADDY_SITE"
+	# Whose Caddyfile is it? Ours (a previous run wrote it) or the package's untouched default:
+	# ours to write. Anything else is the owner's, and stays theirs: the hub's site goes in its
+	# own file, pulled in by one import line that uninstall.sh takes out again.
+	caddyfile_owner() {
+		local f=/etc/caddy/Caddyfile shipped
+		[ -f "$f" ] || { echo default; return; }
+		grep -q '^# Generated by irate-box' "$f" && { echo ours; return; }
+		grep -qxF "$IMPORT_LINE" "$f" && { echo owner; return; }
+		shipped="$(dpkg-query -W -f='${Conffiles}\n' caddy 2>/dev/null | awk '$1 == "/etc/caddy/Caddyfile" {print $2}')"
+		[ -n "$shipped" ] && [ "$(md5sum <"$f" | cut -d' ' -f1)" = "$shipped" ] && { echo default; return; }
+		echo owner
+	}
+	# The repo's Caddyfile with this box's login hash and port; with "site", the site block alone
+	# (global options are the owner's business in their own Caddyfile).
+	caddy_config() {
+		local part="$1" port="$2"
+		if [ "$part" = site ]; then
+			echo "# Generated by irate-box install.sh from $CODE/Caddyfile and imported by /etc/caddy/Caddyfile. Edits are overwritten on reinstall."
+			sed -n '/^:80 {/,$p' "$CODE/Caddyfile"
+		else
+			echo "# Generated by irate-box install.sh from $CODE/Caddyfile. Edits are overwritten on reinstall."
+			cat "$CODE/Caddyfile"
+		fi | sed -e "s|\$2a\$14\$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT|$HASH|" -e "s|^:80 {|:$port {|" |
+			# basic_auth is the 2.8+ spelling; older Caddy (Debian trixie ships 2.6) only knows basicauth.
+			if [ "$(printf '%s\n' "$CADDY_VER" 2.8 | sort -V | head -1)" != 2.8 ]; then sed 's/\bbasic_auth\b/basicauth/'; else cat; fi
+	}
+	caddy_check() { caddy validate --adapter caddyfile --config "$1" 2>&1; }
+	CADDY_MODE="$(caddyfile_owner)"
+	if [ "$CADDY_MODE" = owner ]; then
+		notice "Caddy is already set up here (/etc/caddy/Caddyfile is not irate-box's). It stays as it is: the hub's site goes in $CADDY_SITE, added with one line ($IMPORT_LINE), and uninstall.sh takes both out. Caddy restarts once, so its sites blink."
+		[ -f "$CADDY_SITE" ] && cp "$CADDY_SITE" "$CADDY_SITE.prev"
+		added_import=0
+		if ! grep -qxF "$IMPORT_LINE" /etc/caddy/Caddyfile; then
+			[ -z "$(tail -c1 /etc/caddy/Caddyfile)" ] || echo >>/etc/caddy/Caddyfile
+			printf '# irate-box: the hub, on its own port or :80 (uninstall.sh removes these two lines)\n%s\n' "$IMPORT_LINE" >>/etc/caddy/Caddyfile
+			added_import=1
+		fi
+		caddy_config site "$HUB_PORT" >"$CADDY_SITE"
+		ok=0
+		out="$(caddy_check /etc/caddy/Caddyfile)" && ok=1
+		if [ "$ok" = 0 ] && [ "$HUB_PORT" = 80 ]; then
+			# Most often the owner's config serves :80 itself; the hub then takes a port of its own.
+			if pick_own_port; then
+				caddy_config site "$HUB_PORT" >"$CADDY_SITE"
+				out="$(caddy_check /etc/caddy/Caddyfile)" && ok=1
+			fi
+			if [ "$ok" = 1 ]; then
+				notice "The existing Caddy config already serves :80, so the hub is on :$HUB_PORT instead. The hotspot's sign-in sheet needs :80, so it will not pop up."
+				record_port
+			fi
+		fi
+		if [ "$ok" = 0 ]; then
+			printf '%s\n' "$out" | tail -3 >&2
+			if [ -f "$CADDY_SITE.prev" ]; then mv "$CADDY_SITE.prev" "$CADDY_SITE"; else rm -f "$CADDY_SITE"; fi
+			[ "$added_import" = 1 ] && sed -i '/^# irate-box: the hub, on its own port/d; \|^import /etc/caddy/irate-box.caddy$|d' /etc/caddy/Caddyfile
+			die "the hub's Caddy site does not fit the existing Caddy config, which is left as it was"
+		fi
+		rm -f "$CADDY_SITE.prev"
+	else
+		[ -f /etc/caddy/Caddyfile ] && [ ! -f /etc/caddy/Caddyfile.pre-irate-box ] && [ "$CADDY_MODE" = default ] &&
+			cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-irate-box
+		caddy_config all "$HUB_PORT" >/etc/caddy/Caddyfile.new
+		if ! out="$(caddy_check /etc/caddy/Caddyfile.new)"; then
+			printf '%s\n' "$out" | tail -3 >&2
+			die "generated Caddyfile does not validate (left at /etc/caddy/Caddyfile.new)"
+		fi
+		mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 	fi
-	mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+
+	# The Caddyfile's roots are {$ENV:default} placeholders; point them at this layout.
+	install -d /etc/systemd/system/caddy.service.d
+	cat >/etc/systemd/system/caddy.service.d/irate-box.conf <<-EOF
+	[Service]
+	Environment=HUB_STATIC=$CODE/static
+	Environment=HUB_MERMAID_ROOT=$APPS/mermaid
+	Environment=HUB_DRAW_ROOT=$APPS/draw
+	Environment=HUB_TOOLS_ROOT=$APPS/tools
+	Environment=HUB_SERIAL_ROOT=$APPS/serial
+	Environment=HUB_GIT_ROOT=$STATE/git
+	Environment=HUB_CODE_DIR=$CODE
+	Environment=HUB_FLASHER_ROOT=$APPS/flasher
+	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
+	EOF
+	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi
 if [ -n "$TAKE_UNIT" ]; then
 	say "Taking port 80 from $TAKE_UNIT"
@@ -570,17 +918,6 @@ else
 	rm -f "$UNCLAIMED_MARK"
 fi
 
-# The Caddyfile's roots are {$ENV:default} placeholders; point them at this layout.
-install -d /etc/systemd/system/caddy.service.d
-cat >/etc/systemd/system/caddy.service.d/irate-box.conf <<EOF
-[Service]
-Environment=HUB_STATIC=$CODE/static
-Environment=HUB_MERMAID_ROOT=$APPS/mermaid
-Environment=HUB_DRAW_ROOT=$APPS/draw
-Environment=HUB_TOOLS_ROOT=$APPS/tools
-Environment=HUB_SERIAL_ROOT=$APPS/serial
-EOF
-# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 
 # --- hub service -----------------------------------------------------------------
 cat >/etc/systemd/system/irate-box.service <<EOF
@@ -600,6 +937,124 @@ ReadWritePaths=$STATE
 
 [Install]
 WantedBy=multi-user.target
+EOF
+
+# --- git servers -------------------------------------------------------------------
+# git http-backend (clone, fetch, push) and cgit (the web view) are CGIs, run by an fcgiwrap
+# of the hub's own, as the hub user, who owns the repositories; the hub creates and deletes
+# them from /admin with no root. The socket is the web server's group only. Who may push is
+# the web server's call (irate-box.nginx, the Caddyfile), so repos take every push it passes.
+say "Setting up the git servers"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/git" "$STATE/git/public" "$STATE/git/private"
+web_group=caddy
+[ "$WEB" = nginx ] && web_group="$ngx_group"
+for area in public private; do
+	if [ "$area" = public ]; then
+		desc="Public repositories: browse here and clone over HTTP. Pushing needs the admin login unless guests may push (/admin, Git)."
+		url=/git/
+	else
+		desc="Private repositories, behind the admin login."
+		url=/git-private/
+	fi
+	cat >"$STATE/git/cgitrc-$area" <<EOF
+# Generated by irate-box install.sh. Edits are overwritten on reinstall.
+css=/git-static/cgit.css
+logo=/git-static/cgit.png
+root-title=Irate-Box git ($area)
+root-desc=$desc
+virtual-root=$url
+clone-url=http://\$HTTP_HOST$url\$CGIT_REPO_URL
+enable-http-clone=0
+enable-index-owner=0
+enable-commit-graph=1
+enable-log-filecount=1
+snapshots=tar.gz zip
+cache-size=0
+robots=noindex, nofollow
+remove-suffix=0
+# Last: the settings above apply to every repository it finds.
+scan-path=$STATE/git/$area
+EOF
+	chmod 644 "$STATE/git/cgitrc-$area"
+done
+cat >/etc/systemd/system/irate-box-git.socket <<EOF
+[Unit]
+Description=Irate-Box git servers: the socket the web server passes /git/ and /git-private/ to
+
+[Socket]
+ListenStream=/run/irate-box-git.sock
+SocketUser=root
+SocketGroup=$web_group
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
+EOF
+cat >/etc/systemd/system/irate-box-git.service <<EOF
+[Unit]
+Description=Irate-Box git servers: git http-backend and cgit (fcgiwrap, as $HUB_USER)
+Requires=irate-box-git.socket
+
+[Service]
+User=$HUB_USER
+Group=$HUB_USER
+Environment=HOME=$STATE
+ExecStart=/usr/sbin/fcgiwrap -c 2
+ProtectSystem=full
+# The post-receive hook of a private repository queues builds there (ci.py).
+ReadWritePaths=$STATE/git $STATE/ci/queue
+EOF
+
+# --- builds on push ------------------------------------------------------------------
+# A push to a private repository whose commit has a .irate-ci.sh queues a build (ci.py; the
+# hook is git-hooks/post-receive, set on private repositories as core.hooksPath). Builds run
+# as hubci, a user of their own that owns nothing else here and can only write under ci/, at
+# idle priority, capped below the box's memory so a runaway build is stopped, not the box.
+# Public repositories never build: guests may be allowed to push there.
+say "Setting up builds on push"
+id -u hubci >/dev/null 2>&1 ||
+	useradd --system --home-dir "$STATE/ci/home" --shell /usr/sbin/nologin hubci
+install -d -o hubci -g hubci -m 755 "$STATE/ci" "$STATE/ci/runs" "$STATE/ci/work" "$STATE/ci/home"
+# Written by the hub (the hook), read and emptied by hubci: shared through the group.
+install -d -o "$HUB_USER" -g hubci -m 2770 "$STATE/ci/queue"
+for repo in "$STATE"/git/private/*.git; do
+	[ -d "$repo" ] && runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/git-hooks"
+done
+cat >/etc/systemd/system/irate-box-ci.path <<EOF
+[Unit]
+Description=Irate-Box builds on push: watch the queue ($STATE/ci/queue)
+
+[Path]
+DirectoryNotEmpty=$STATE/ci/queue
+Unit=irate-box-ci.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+cat >/etc/systemd/system/irate-box-ci.service <<EOF
+[Unit]
+Description=Irate-Box builds on push: run what is queued (ci.py), as hubci
+
+[Service]
+Type=oneshot
+User=hubci
+Group=hubci
+Environment=HOME=$STATE/ci/home HUB_CI_ROOT=$STATE/ci HUB_FIRMWARE_ROOT=$STATE/firmware
+ExecStart=/usr/bin/python3 $CODE/ci.py run
+# Each build has its own limit (ci.py, HUB_CI_TIME_LIMIT: 12 h); this unit runs every queued
+# build in turn, so it gets none of its own.
+TimeoutStartSec=infinity
+Nice=19
+CPUWeight=10
+IOSchedulingClass=idle
+MemoryHigh=50%
+MemoryMax=65%
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=$STATE/ci
 EOF
 
 # --- SilverBullet ----------------------------------------------------------------
@@ -629,7 +1084,7 @@ After=network.target
 [Service]
 User=$HUB_USER
 Group=$HUB_USER
-# Must match the Caddy route, which passes /notes through unstripped.
+# Must match the web server's route, which passes /notes through unstripped.
 Environment=SB_URL_PREFIX=/notes
 Environment=SB_HOSTNAME=127.0.0.1
 Environment=SB_PORT=3000
@@ -683,7 +1138,7 @@ fi
 
 # Written whenever Kiwix is in use, not only when --zim adds a book, so a rerun brings an
 # existing box's unit up to date (the memory settings below arrived after first installs).
-if [ ${#ZIMS[@]} -gt 0 ] || [ -f /etc/systemd/system/kiwix.service ]; then
+if [ "$KIWIX" = 1 ] || [ -f /etc/systemd/system/kiwix.service ]; then
 	cat >/etc/systemd/system/kiwix.service <<EOF
 [Unit]
 Description=Kiwix offline library for Irate-Box (/wiki/)
@@ -692,7 +1147,7 @@ After=network.target
 [Service]
 User=$HUB_USER
 Group=$HUB_USER
-# --urlRootLocation must match the Caddy route, which passes /wiki through unstripped.
+# --urlRootLocation must match the web server's route, which passes /wiki through unstripped.
 # --monitorLibrary picks up books added later with kiwix-manage, without a restart.
 # Memory: libzim keeps decompressed clusters per worker thread. Measured on the Lyra
 # (2026-09-30, top-mini Wikipedia): defaults grow to ~104 MB anon after searching;
@@ -718,17 +1173,27 @@ if compgen -G "$STATE/zim/*.zim" >/dev/null; then
 	rm -f "$lib.new"
 	for f in "$STATE"/zim/*.zim; do
 		runuser -u "$HUB_USER" -- kiwix-manage "$lib.new" add "$f" ||
-			echo "    skipped $(basename "$f"): kiwix-manage could not read it"
+			problem "skipped $(basename "$f"): kiwix-manage could not read it (health.py says why; it can set it aside)"
 	done
-	[ -f "$lib.new" ] && mv "$lib.new" "$lib"
+	if [ -f "$lib.new" ]; then
+		mv "$lib.new" "$lib"
+	elif [ -f "$lib" ]; then
+		# Not one book could be read: a library from an earlier run would point at them anyway.
+		mv -f "$lib" "$lib.old"
+		echo "    no readable book: the old library is set aside as library.xml.old"
+	fi
 	SWEPT=1
 fi
+# Kiwix starts only with a library that has a book in it: kiwix-serve exits at once without
+# one, and systemd would retry it into its start limit.
+KIWIX_READY=0
+[ -f "$STATE/zim/library.xml" ] && grep -q '<book ' "$STATE/zim/library.xml" && KIWIX_READY=1
 
 # --- MQTT broker -------------------------------------------------------------------
-# Meshtastic nodes speak raw MQTT over TCP, which Caddy cannot proxy without a plugin,
-# so :1883 is a second listener on the network: with Syncthing's ports, the exception to
-# Caddy being the only one. Browsers never see it; they use WebSockets on loopback,
-# which Caddy serves at /mqtt on the one origin. There is nobody to authenticate on an
+# Meshtastic nodes speak raw MQTT over TCP, which the web server does not proxy, so :1883
+# is a second listener on the network: with Syncthing's ports, the exception to the web
+# server being the only one. Browsers never see it; they use WebSockets on loopback,
+# which the web server serves at /mqtt on the one origin. There is nobody to authenticate on an
 # open network, so the limits below are the abuse control (plan, mqtt-and-node-red):
 # anonymous clients reach msh/# and nothing else, messages are small, and nothing is
 # persisted to the SD card. Debian's mosquitto.conf reads conf.d/ after its own
@@ -750,7 +1215,7 @@ max_inflight_messages 20
 listener 1883
 max_connections 64
 
-# Pages, through Caddy at /mqtt.
+# Pages, through the web server at /mqtt.
 listener 9001 127.0.0.1
 protocol websockets
 max_connections 64
@@ -814,8 +1279,8 @@ if ! /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
 	install -m 755 "$tmp/ttyd.$TTYD_ARCH" /usr/local/bin/ttyd
 	rm -rf "$tmp"
 fi
-# Same credential as Caddy's gate, so the Basic-auth header Caddy passes on satisfies
-# ttyd too; the terminal itself is /bin/login, so a real account is still needed.
+# Same credential as the web server's gate, so the Basic-auth header it passes on
+# satisfies ttyd too; the terminal itself is /bin/login, so a real account is still needed.
 ( umask 077; printf 'TTYD_CREDENTIAL=admin:%s\n' "$ADMIN_PW" >"$ETC/ttyd.env" )
 cat >/etc/systemd/system/ttyd.service <<EOF
 [Unit]
@@ -840,10 +1305,13 @@ install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/control/results"
 cat >/etc/systemd/system/irate-box-control.service <<EOF
 [Unit]
 Description=Irate-Box: carry out /admin requests that need root (services, admin password)
+# Started by the path unit for every request; quick clicks on /admin must not trip systemd's
+# start limit (5 in 10 s), which would leave every later request unanswered until a reboot.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
-Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_USER=$HUB_USER HUB_CODE_DIR=$CODE
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_USER=$HUB_USER HUB_CODE_DIR=$CODE HUB_WEB_SERVER=$WEB HUB_UNCLAIMED_FILE=$UNCLAIMED_MARK
 ExecStart=/usr/bin/python3 $CODE/hub_control.py
 # "Install update" reruns install.sh from here, which can take a while on a small board.
 TimeoutStartSec=50min
@@ -860,11 +1328,54 @@ Unit=irate-box-control.service
 WantedBy=multi-user.target
 EOF
 
+# --- the network: inventory and the uplink watchdog ---------------------------------------
+# netinv.py looks at the radios and the stack that runs them (read-only); uplink.py watches
+# the link and repairs it as eagerly as chosen. Settings in $ETC/uplink.json: written here
+# only by --uplink (or the first time, as patient,normal), otherwise by /admin's Network page
+# through the root helper, so an update keeps what the owner chose there.
+say "Looking at the network"
+python3 "$CODE/netinv.py" --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
+chown "$HUB_USER:$HUB_USER" "$STATE/control/netinv.json" 2>/dev/null || true
+if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
+	up="${UPLINK:-patient,normal}"
+	if [ "$up" = "${up#*,}" ]; then
+		HUB_ETC_DIR="$ETC" python3 "$CODE/uplink.py" set "$up" >/dev/null
+	else
+		HUB_ETC_DIR="$ETC" python3 "$CODE/uplink.py" set "${up%%,*}" "${up#*,}" >/dev/null
+	fi
+fi
+# A clock module on I2C: found and set up if there is exactly one (rtc.py auto), kept if set up
+# before. Nothing in /boot or the device tree changes.
+if [ "$RTC" = auto ] || [ -f "$ETC/rtc.json" ]; then
+	if out="$(HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" timeout 120 python3 "$CODE/rtc.py" auto 2>&1)"; then
+		echo "    $out"
+		case "$out" in *through* | *choose*) notice "$out" ;; esac
+	else
+		problem "looking for a clock module failed: $out"
+	fi
+fi
+cat >/etc/systemd/system/irate-box-uplink.service <<EOF
+[Unit]
+Description=Irate-Box uplink watchdog: keep the box on its network (uplink.py; /admin, Network)
+After=network.target NetworkManager.service
+
+[Service]
+Type=simple
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 $CODE/uplink.py run
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # --- the librarian -----------------------------------------------------------------
 # librarian.py keeps ZIM books current from the sources set on /admin (Library). It runs
 # as the hub user: a new version is swapped in under the same file name and library.xml is
 # rebuilt, which kiwix-serve's --monitorLibrary picks up. No restart, so no root needed.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library" "$STATE/firmware"
 cat >/etc/systemd/system/irate-box-librarian.service <<EOF
 [Unit]
 Description=Irate-Box librarian: update the ZIM books whose check is due (/admin, Library)
@@ -955,21 +1466,34 @@ fi
 # --- start -----------------------------------------------------------------------
 say "Starting services"
 systemctl daemon-reload
-units=(irate-box caddy)
+units=(irate-box "$WEB" irate-box-git.socket)
 [ "$WITH_NOTES" = 1 ] && units+=(silverbullet)
 [ "$WITH_SYNC" = 1 ] && units+=("syncthing@$HUB_USER")
-[ ${#ZIMS[@]} -gt 0 ] && units+=(kiwix)
+if [ "$KIWIX" = 1 ] && [ "$KIWIX_READY" = 1 ]; then
+	units+=(kiwix)
+elif [ "$KIWIX" = 1 ]; then
+	systemctl disable --quiet --now kiwix 2>/dev/null || true
+	systemctl reset-failed kiwix 2>/dev/null || true
+	problem "Kiwix not started: none of the books in $STATE/zim can be read. Add one (Library → Books, a USB stick, --zim); health.py says what is wrong with these"
+fi
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
 [ "$WITH_MQTT" = 1 ] && units+=(mosquitto)
 [ "$WITH_COLLAB" = 1 ] && units+=(excalidraw-room)
-systemctl enable --quiet "${units[@]}"
-systemctl restart "${units[@]}"
+# One at a time: a unit that will not start is a problem to report, not a reason to stop.
+for u in "${units[@]}"; do
+	systemctl enable --quiet "$u" || problem "$u could not be enabled: systemctl status $u"
+	systemctl restart "$u" || problem "$u did not start: journalctl -u $u -n 30"
+done
 # Turned on by an earlier run: keep it on, with the current credential.
 [ "$WITH_TERM" = 1 ] || systemctl try-restart ttyd
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
-[ ${#ZIMS[@]} -gt 0 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
-systemctl enable --quiet --now irate-box-librarian.timer irate-box-control.path
+[ "$KIWIX" = 1 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
+for u in irate-box-librarian.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
+	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
+done
+# A running watchdog keeps the old code until restarted.
+systemctl try-restart irate-box-uplink.service || problem "irate-box-uplink did not restart: journalctl -u irate-box-uplink -n 30"
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled
@@ -989,7 +1513,7 @@ if [ "$WITH_SYNC" = 1 ]; then
 	st config options uraccepted set -- -1
 	st config options set-low-priority set true
 	st config options raw-max-folder-concurrency set 1
-	# Same credentials as Caddy's gate, so the one Basic-auth prompt satisfies both.
+	# Same credentials as the web server's gate, so the one Basic-auth prompt satisfies both.
 	st config gui user set admin
 	st config gui password set "$ADMIN_PW"
 	if [ "$WITH_NOTES" = 1 ] && ! st config folders list | grep -qx hub-notes; then
@@ -1028,18 +1552,18 @@ done
 
 # --- check -----------------------------------------------------------------------
 sleep 2
-fail=0
 for u in "${units[@]}"; do
-	systemctl is-active --quiet "$u" || { echo "    $u is not running: journalctl -u $u"; fail=1; }
+	systemctl is-active --quiet "$u" || problem "$u is not running: journalctl -u $u -n 30"
 done
 hostport="127.0.0.1$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
 code="$(curl -s -o /dev/null -w '%{http_code}' "http://$hostport/" || true)"
-[ "$code" = 200 ] || { echo "    http://$hostport/ answered $code"; fail=1; }
+[ "$code" = 200 ] || problem "http://$hostport/ answered $code: journalctl -u irate-box -u $WEB -n 30"
 
 addr="$(ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' || hostname -I | cut -d' ' -f1)"
 where="http://${addr:-<this box>}$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
 echo
-say "Irate-Box is $([ $fail = 0 ] && echo up || echo 'installed, with problems above') at $where/"
+say "Irate-Box is $([ $fail = 0 ] && echo up || echo "installed, with ${#PROBLEMS[@]} problem$([ ${#PROBLEMS[@]} = 1 ] || echo s) (below)") at $where/"
+echo "    web server: $WEB$([ "$WEB" = caddy ] && echo ' (the fallback; --web nginx switches to the default)')"
 if [ "$UNCLAIMED" = 1 ]; then
 	echo "    admin login: not chosen yet. Open $where/admin/ and set it now:"
 	echo "                 until then, the first person on this network to open that page can."
@@ -1052,9 +1576,13 @@ fi
 term_state="$(systemctl is-enabled ttyd 2>/dev/null)" || true
 echo "    term:  /term/   (${term_state:-disabled}; admin login, then an account on the box)"
 [ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the admin login; folder \"hub-notes\" shared if notes are installed)"
+echo "    git:   /git/ (public: clone for all, push with the admin login) and /git-private/ (admin login); repositories made on /admin"
 [ "$WITH_COLLAB" = 1 ] && echo "    collab: live sessions in /draw/ (relay on 127.0.0.1:3002, via /socket.io/)"
 [ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
+
+up_now="$(HUB_ETC_DIR="$ETC" python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["eagerness"]+", "+d["forgiveness"]+(" (custom values)" if d.get("overrides") else ""))' "$ETC/uplink.json" 2>/dev/null || echo unknown)"
+echo "    uplink: $up_now — how hard it works to stay on the network; change on $where/admin/#network"
 
 # What install.sh found and did not change: said once more here, then the Security page's
 # own report of the box. Nothing below is changed without the owner's say-so (/admin).
@@ -1063,9 +1591,25 @@ if [ "${#NOTICES[@]}" -gt 0 ]; then
 	say "Worth knowing"
 	for n in "${NOTICES[@]}"; do echo "    $n"; done
 fi
+if net="$(timeout 60 python3 "$CODE/netinv.py" summary 2>/dev/null)" && [ -n "$net" ]; then
+	echo
+	say "The network (more, and \"look again\" for another device, on $where/admin/#network)"
+	printf '%s\n' "$net" | sed 's/^/    /'
+fi
 if report="$(timeout 120 python3 "$CODE/security.py" summary 2>/dev/null)" && [ -n "$report" ]; then
 	echo
 	say "Found on this box (fix or leave each on $where/admin/#security)"
 	printf '%s\n' "$report" | sed 's/^/    /'
+fi
+# Problems: listed once more, then what the doctor makes of the box now, with what to do.
+if [ "${#PROBLEMS[@]}" -gt 0 ]; then
+	echo
+	say "Problems during this install"
+	for p in "${PROBLEMS[@]}"; do echo "    $p"; done
+	if doc="$(timeout 300 python3 "$CODE/health.py" summary 2>/dev/null)" && [ -n "$doc" ]; then
+		echo
+		say "What the doctor finds (again any time: sudo python3 $CODE/health.py, or $where/admin/#health)"
+		printf '%s\n' "$doc" | sed 's/^/    /'
+	fi
 fi
 exit $fail

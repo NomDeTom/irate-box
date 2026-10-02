@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Irate-Box hub server: shoutbox, board, blob store, status, captive-portal target.
 
-Serves static/ itself so a bare `python3 server.py` works; behind Caddy the assets are
-served by file_server and only `/` and the API reach this process."""
+Serves static/ itself so a bare `python3 server.py` works; behind the web server
+(nginx, or Caddy) the assets come off disk and only `/` and the API reach this process."""
 
 import io
 import ipaddress
@@ -18,14 +18,21 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import html
 import board
+import ci
+import firmware
+import flasher
+import gitrepos
+import hotspot
 import hubclock
 import librarian
 import manifests
 import store
+import uplink
+import zimcheck
 
 STATIC = Path(__file__).parent / "static"
 # Mutable state lives outside the code directory so packaging can point it at
@@ -37,7 +44,7 @@ MAX_MESSAGES = 200
 # exist on this hardware. See hubclock.py.
 SHOUT_TTL = 24 * 3600
 PORT = int(os.environ.get("PORT", 8000))
-BIND = os.environ.get("HUB_BIND", "0.0.0.0")  # 127.0.0.1 when Caddy is in front
+BIND = os.environ.get("HUB_BIND", "0.0.0.0")  # 127.0.0.1 behind the web server
 # Where captive-portal probes are sent. Unset, the redirect is relative and lands on
 # whatever address the probe arrived at -- fine on localhost, and on the AP every name
 # resolves to the hub anyway. The Pi's unit sets the real origin, http://192.168.4.1/,
@@ -102,16 +109,19 @@ def live_messages(now):
     return [m for m in load_messages() if now - m.get("created", now) <= SHOUT_TTL]
 
 
-# What sits behind Caddy: each app's "status" part in apps.d/ (manifests.py), then the box's
+# What sits behind the web server: each app's "status" part in apps.d/ (manifests.py), then the box's
 # own pieces, which are not apps. Keyed by the path the tile links to.
 #   port   a loopback listener to probe: that is what "running" means to a guest
 #   unit   its systemd unit, which says whether it is installed at all
 #   active running means the unit is active, for a daemon with no loopback port to probe
-#   root   (static apps) the env var naming the directory Caddy serves, the same
-#          variable the Caddyfile reads. Unset -- a dev checkout -- counts as installed.
+#   root   (static apps) the env var naming the directory the web server serves, as
+#          install.sh writes it into both configs. Unset -- a dev checkout -- counts as installed.
 #   note   what the dashboard says in place of a path
 # path None: on the service dashboard only, with no tile of its own.
 TAILSCALE_NAME = "Remote access (Tailscale)"
+# The web server in front (install.sh --web): nginx, or Caddy, the fallback.
+WEB_SERVER = os.environ.get("HUB_WEB_SERVER", "nginx")
+WEB_SERVER_NAME = {"nginx": "nginx", "caddy": "Caddy"}.get(WEB_SERVER, WEB_SERVER)
 MANIFESTS = manifests.load()
 
 
@@ -128,7 +138,7 @@ def _service_entry(status):
 SERVICES = [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
     {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
      "active": True, "note": "switched on and off from /admin"},
-    {"path": None, "name": "Web server (Caddy)", "unit": "caddy.service", "proxy": True},
+    {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
     {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
 ]
 
@@ -270,7 +280,7 @@ _seen_lock = threading.Lock()
 
 
 def note_client(handler):
-    """Record that this address is around. Behind Caddy every request arrives from
+    """Record that this address is around. Behind the web server every request arrives from
     loopback, so the forwarded address is what distinguishes one guest from another."""
     fwd = handler.headers.get("X-Forwarded-For", "")
     addr = fwd.split(",")[0].strip() if fwd.strip() else handler.client_address[0]
@@ -284,8 +294,8 @@ def note_client(handler):
 # Options the person who owns the box sets, not the guests. Only keys listed in DEFAULTS,
 # with the default's type (and ints not negative), are accepted, so a malformed or
 # hand-edited file cannot introduce keys.
-# The gate is Caddy's basic_auth on /admin/*, the same treatment /term/ gets -- run
-# the hub bare, with no Caddy in front, and these are as open as every other hub API.
+# The gate is the web server's basic auth on /admin/*, the same treatment /term/ gets -- run
+# the hub bare, with no web server in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
 DEFAULT_SETTINGS = {
     # The ttyd card is shown like any other service -- greyed while its unit is off --
@@ -403,9 +413,28 @@ def unit_states(units):
     return states
 
 
+def kiwix_why():
+    """Why /wiki/ is not running, in words a guest or the owner can act on. Cheap enough for
+    /status (cached with it): the ZIM headers only, never kiwix-manage."""
+    books = sorted(librarian.ZIM_DIR.glob("*.zim")) if librarian.ZIM_DIR.is_dir() else []
+    if not books:
+        return "No books yet: add one in Library → Books, or from a USB stick."
+    bad = [b for b in books if zimcheck.header_problem(b)]
+    if len(bad) == len(books):
+        return (f"None of the {len(books)} book{'s' if len(books) != 1 else ''} can be read (damaged or unfinished "
+                "copies). Health says which, and can set them aside.")
+    try:
+        has_books = "<book " in librarian.LIBRARY_XML.read_text(errors="replace")
+    except OSError:
+        has_books = False
+    if not has_books:
+        return "The library is empty, though there are books: Health → Rebuild the library."
+    return "Kiwix is not running. Health says why, and can start it again."
+
+
 def service_status(proxied):
     """Per-service state: "running", "stopped" (installed, not answering) or "missing".
-    `up` stays for the tiles: running, and reachable because Caddy is in front. Probes
+    `up` stays for the tiles: running, and reachable because the web server is in front. Probes
     are cached so a page full of pollers costs one sweep per STATUS_CACHE_S."""
     now = time.monotonic()
     if now - _status_cache["at"] > STATUS_CACHE_S:
@@ -413,6 +442,7 @@ def service_status(proxied):
             svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
         }
         _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
+        _status_cache["why"] = {}
         _status_cache["at"] = now
     units = _status_cache["units"]
     out = []
@@ -435,6 +465,11 @@ def service_status(proxied):
                  "up": proxied and running}
         if "note" in svc:
             entry["note"] = svc["note"]
+        if state == "stopped" and svc.get("unit") == "kiwix.service":
+            why = _status_cache.setdefault("why", {})
+            if "kiwix" not in why:
+                why["kiwix"] = kiwix_why()
+            entry["why"] = why["kiwix"]
         out.append(entry)
     return out
 
@@ -552,6 +587,28 @@ def library_action(payload):
     return 200, library_snapshot()
 
 
+def firmware_action(payload):
+    """(status, body) for POST /admin/firmware: the settings, or a run (firmware.py)."""
+    action = payload.get("action")
+    try:
+        if action == "settings":
+            firmware.set_settings(**{k: payload[k] for k in ("enabled", "boards", "keep_alpha", "keep_beta", "cache")
+                                     if k in payload})
+        elif action in ("check", "update"):
+            def run():
+                with librarian.Lock():
+                    return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
+            if not library_start(f"firmware-{action}", run):
+                return 409, {"error": "the librarian is already running"}
+        else:
+            return 400, {"error": "action must be settings, check or update"}
+    except librarian.LibrarianError as exc:
+        return 400, {"error": str(exc)}
+    snap = firmware.snapshot()
+    snap.update(running=librarian.is_running(), progress=librarian.progress())
+    return 200, snap
+
+
 # --- admin: box and services, moderation, saved work, password, backup -----------
 # Starting and stopping services and changing the admin password need root. The hub asks:
 # it drops a request in control/requests/, irate-box-control.path runs hub_control.py as
@@ -563,12 +620,12 @@ CONTROL_RESULTS = CONTROL_DIR / "results"
 VERSION_FILE = Path(__file__).parent / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
 CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
-CONTROL_OPS.update({"caddy.service": ["restart"], "irate-box.service": ["restart"]})
+CONTROL_OPS.update({f"{WEB_SERVER}.service": ["restart"], "irate-box.service": ["restart"]})
 MIN_PASSWORD = 8
-# First use (hub_control.py, the Caddyfile): while this root-owned file exists no admin
-# password has been chosen, Caddy lets /admin through with no login, and the hub serves
-# only the set-the-password page there.
-UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", "/etc/caddy/irate-box-unclaimed"))
+# First use (hub_control.py, the web server's config): while this root-owned file exists no
+# admin password has been chosen, the web server lets /admin through with no login, and the
+# hub serves only the set-the-password page there. It sits beside that server's config.
+UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
 SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
 
 
@@ -699,7 +756,9 @@ def update_snapshot():
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
+AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
+IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
 SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@._-]+)?$")
 
 
@@ -732,11 +791,83 @@ def security_snapshot():
     except (OSError, ValueError):
         scan = None
     try:
+        audit = json.loads(AUDIT_STATE.read_text())
+    except (OSError, ValueError):
+        audit = None
+    try:
         log = [ANSI_RE.sub("", line) for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]]
     except OSError:
         log = []
-    return {"hub": hub, "scan": scan, "log": log, "pending": _pending_actions("security-"),
+    return {"hub": hub, "scan": scan, "audit": audit, "log": log, "pending": _pending_actions("security-"),
             "results": control_results(5)}
+
+
+HEALTH_STATE = CONTROL_DIR / "health.json"
+INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
+HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
+                              r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
+                              r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
+HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
+
+
+def helper_state():
+    """Is the root helper answering? The hub can see that for itself: its requests wait in a
+    folder it owns. One left for more than 90 s means everything on /admin that needs root
+    goes nowhere, including the doctor, so the page says what to type instead."""
+    oldest = None
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            m = path.stat().st_mtime
+        except OSError:
+            continue
+        oldest = m if oldest is None or m < oldest else oldest
+    age = time.time() - oldest if oldest else 0
+    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER,
+            "commands": ["sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
+                         "sudo systemctl start irate-box-control.path",
+                         "sudo python3 /opt/irate-box/health.py"]}
+
+
+def health_snapshot():
+    """The Health page: the doctor's last report (root helper), the last install's record and
+    the end of its output (both readable by the hub), and whether the helper is answering."""
+    def load(path):
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+    try:
+        log = [ANSI_RE.sub("", line) for line in (INSTALL_LOG_DIR / "install.log").read_text(errors="replace").splitlines()[-80:]]
+    except OSError:
+        log = []
+    return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
+            "helper": helper_state(), "pending": _pending_actions("health-"), "results": control_results(5),
+            "progress": update_progress()}
+
+
+NETINV_STATE = CONTROL_DIR / "netinv.json"
+UPLINK_STATE = CONTROL_DIR / "uplink.json"
+
+
+def network_snapshot():
+    """The Network page: the root helper's last inventory, the watchdog's own report, and the
+    levels it offers (from uplink.py, so the page and the watchdog cannot disagree)."""
+    def load(path):
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+    status = load(UPLINK_STATE)
+    if status:
+        # A report the watchdog stopped writing is old news: say so rather than show it as live.
+        status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
+    return {"inventory": load(NETINV_STATE), "uplink": status,
+            "levels": {"eagerness": list(uplink.EAGERNESS), "forgiveness": list(uplink.FORGIVENESS),
+                       "describe": uplink.DESCRIBE, "presets": {"eagerness": uplink.EAGERNESS,
+                                                                "forgiveness": uplink.FORGIVENESS, "common": uplink.COMMON},
+                       "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}
+                                  for k, v in uplink.FIELDS.items()}},
+            "pending": _pending_actions("net-") + _pending_actions("uplink-"), "results": control_results(5)}
 
 
 # install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
@@ -796,7 +927,8 @@ def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
         msgs = live_messages(now)
-    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(), "drops": DROP.list()}
+    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(),
+            "drops": [store.public_meta(m) for m in DROP.list()]}
 
 
 def delete_message(created, name):
@@ -818,14 +950,15 @@ def moderation_action(payload):
     elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
         ok = BOARD.delete_post(payload["id"], payload["index"])
     elif action == "delete_drop" and isinstance(payload.get("id"), str):
-        ok = DROP.delete(payload["id"])
+        ok = DROP.delete(payload["id"], force=True)  # moderation removes locked files too
     else:
         return 400, {"error": "unknown action"}
     return (200 if ok else 404), moderation_snapshot()
 
 
 def store_snapshot():
-    return {"now": CLOCK.ticks(), "saves": STORE.list_saves(), "usage": STORE.usage(), "drop": DROP.usage()}
+    return {"now": CLOCK.ticks(), "saves": [store.public_meta(m) for m in STORE.list_saves()], "usage": STORE.usage(),
+            "drop": DROP.usage()}
 
 
 def store_action(payload):
@@ -835,10 +968,10 @@ def store_action(payload):
     try:
         if action == "rename":
             name = str(payload.get("name", "")).strip()[:store.MAX_NAME]
-            if not name or STORE.rename_save(key, name) is None:
+            if not name or STORE.rename_save(key, name, force=True) is None:
                 return 404, {"error": "no such save, or no name"}
         elif action == "delete":
-            STORE.delete_save(key)
+            STORE.delete_save(key, force=True)
         elif action == "clear":
             STORE.clear_namespace(str(payload.get("namespace", "")))
         else:
@@ -897,9 +1030,16 @@ MIME = {
 }
 
 
+class HubServer(ThreadingHTTPServer):
+    # socketserver listens with a queue of 5. A burst of new connections -- a page load from
+    # several guests, or a proxy that does not reuse them -- overflowed it on the Lyra and
+    # waited out SYN retries: p99 over 2 s (notes: 2026-10-02-caddy-vs-nginx-benchmark).
+    request_queue_size = 64
+
+
 class Handler(BaseHTTPRequestHandler):
     # Socket timeout per request. A phone that stalls mid-upload releases its thread
-    # instead of pinning it; Caddy in front already shields the listener itself.
+    # instead of pinning it; the web server in front already shields the listener itself.
     timeout = 30
     protocol_version = "HTTP/1.1"
 
@@ -1023,6 +1163,10 @@ class Handler(BaseHTTPRequestHandler):
         if self._admin_locked(path):
             return
 
+        if path.startswith("/flasher/") or path == "/flasher":
+            self._flasher(path)
+            return
+
         if path == "/admin/setup":
             query = dict(p.partition("=")[::2] for p in self.path.partition("?")[2].split("&") if p)
             self.send_json(200, setup_status(query.get("id", "")[:40]))
@@ -1078,12 +1222,60 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, security_snapshot())
             return
 
+        if path == "/admin/hotspot":
+            self.send_json(200, hotspot.snapshot())
+            return
+
+        if path == "/admin/network":
+            self.send_json(200, network_snapshot())
+            return
+
+        if path == "/admin/health":
+            self.send_json(200, health_snapshot())
+            return
+
         if path == "/admin/addons":
             self.send_json(200, addons_snapshot())
             return
 
         if path == "/admin/usb":
             self.send_json(200, usb_snapshot())
+            return
+
+        if path == "/admin/git":
+            self.send_json(200, gitrepos.snapshot())
+            return
+
+        if path == "/admin/ci":
+            self.send_json(200, ci.snapshot())
+            return
+
+        if path == "/admin/firmware":
+            snap = firmware.snapshot()
+            snap.update(running=librarian.is_running(), progress=librarian.progress())
+            self.send_json(200, snap)
+            return
+
+        if path == "/admin/ci/file":
+            # A build's log (shown as text) or one of its artifacts (a download, never shown).
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            name = unquote(query.get("name", ""))
+            f = ci.run_file(unquote(query.get("run", "")), name)
+            if not f:
+                self.send_json(404, {"error": "no such build file"})
+                return
+            body = f.read_bytes()
+            self.send_response(200)
+            if name == "log.txt":
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+            else:
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if path in ("/admin", "/admin/"):
@@ -1103,7 +1295,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/status":
-            # Caddy's reverse_proxy adds X-Forwarded-For; a direct hit has none.
+            # The web server's proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
             now = CLOCK.ticks()
             payload = {
@@ -1252,6 +1444,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(*store_action(payload))
             return
 
+        if path == "/admin/git":
+            self.send_json(*gitrepos.action(payload))
+            return
+
+        if path == "/admin/firmware":
+            self.send_json(*firmware_action(payload))
+            return
+
         if path == "/admin/usb":
             action, device = payload.get("action"), str(payload.get("device", ""))
             if action == "scan":
@@ -1274,13 +1474,54 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})})
             return
 
+        if path == "/admin/health":
+            if payload.get("action") == "scan":
+                self.send_json(202, {"id": control_request({"action": "health-scan"})})
+            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(str(payload.get("choice", ""))):
+                self.send_json(202, {"id": control_request({"action": "health-fix", "choice": payload["choice"]})})
+            else:
+                self.send_json(400, {"error": "action must be scan, or fix with a choice the doctor offered"})
+            return
+
+        if path == "/admin/network":
+            act = payload.get("action")
+            if act == "scan" and (payload.get("iface") in (None, "") or IFACE_NAME_RE.match(str(payload["iface"]))):
+                self.send_json(202, {"id": control_request({"action": "net-scan", "iface": payload.get("iface") or None})})
+            elif act == "settings":
+                try:
+                    settings = uplink.validate(payload.get("settings"))
+                except (ValueError, TypeError) as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                settings.pop("hold_until", None)
+                self.send_json(202, {"id": control_request({"action": "uplink-set", "settings": settings})})
+            elif act == "hold" and type(payload.get("minutes")) is int and 0 <= payload["minutes"] <= 1440:
+                self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
+            elif act == "profile" and type(payload.get("on")) is bool:
+                self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
+            else:
+                self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
+            return
+
+        if path == "/admin/hotspot":
+            try:
+                saved = hotspot.save(payload.get("settings"))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
+                                 "It takes effect when the hotspot add-on is set up."})
+            return
+
         if path == "/admin/security":
             if payload.get("action") == "scan":
                 self.send_json(202, {"id": control_request({"action": "security-scan"})})
+            elif payload.get("action") == "audit":
+                self.send_json(202, {"id": control_request({"action": "security-audit"})})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, or fix with a choice"})
+                self.send_json(400, {"error": "action must be scan, audit, or fix with a choice"})
             return
 
         if path == "/messages":
@@ -1328,8 +1569,55 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(404)
 
     def do_OPTIONS(self):
-        if not store.handle(self, "OPTIONS", self.path.split("?")[0], STORE, DROP):
+        path = self.path.split("?")[0]
+        if path.startswith("/flasher/api/"):
+            # The flasher's CORS preflight: it runs from the guest's disk (origin null).
+            self.send_response(204)
+            for k, v in flasher.CORS.items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not store.handle(self, "OPTIONS", path, STORE, DROP):
             self.send_empty(404)
+
+    def _flasher(self, path):
+        """The web flasher (flasher.py): the page as a download, with this hub's address in
+        it, and the small API it reads. Its static files come from the web server."""
+        if path in ("/flasher", "/flasher/"):
+            self.send_response(302)
+            self.send_header("Location", "/flasher/flasher.html")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if path == "/flasher/flasher.html":
+            body = flasher.page(self.headers.get("Host", ""))
+            if body is None:
+                self.send_json(404, {"error": "the web flasher is not installed on this hub"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="meshtastic-flasher.html"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return
+        if path.startswith("/flasher/api/"):
+            code, body = flasher.api(path)
+            self.send_response(code)
+            for k, v in flasher.CORS.items():
+                self.send_header(k, v)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return
+        self.send_json(404, {"error": "not found"})
 
     def _post_message(self, payload):
         name = str(payload.get("name", "")).strip()[:32]
@@ -1406,7 +1694,7 @@ if __name__ == "__main__":
     CLOCK.start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
-    server = ThreadingHTTPServer((BIND, PORT), Handler)
+    server = HubServer((BIND, PORT), Handler)
     print(f"Hub running at http://{BIND}:{PORT}")
     print(f"Uptime clock at {hubclock.format_age(CLOCK.ticks())} cumulative")
     try:

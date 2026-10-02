@@ -1,4 +1,7 @@
-# Irate-Box front — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
+# Irate-Box front for Caddy — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
+#
+# Caddy is the fallback (install.sh --web caddy); nginx, with the same routes in
+# irate-box.nginx, is the default. A route changed here is changed there too.
 #
 # Rules from §5 "Two listeners":
 #   - :80 only, always plain. Captive-portal probes are HTTP; an HTTPS listener
@@ -162,6 +165,131 @@
 	# no room installed means the proxy fails, and the app simply hides collaboration.
 	handle /socket.io/* {
 		reverse_proxy 127.0.0.1:3002
+	}
+
+	# --- /flasher → the Meshtastic web flasher, as a download, and what it fetches -------
+	# The page is a download opened from the guest's disk (flasher.py says why), so it fetches
+	# everything below cross-origin: every answer is Access-Control-Allow-Origin: *, and a
+	# preflight gets its answer here. The hub fills its own address into the page and answers
+	# the small API; Caddy serves the bundle's files and the librarian's firmware mirror.
+	# Inside handle /flasher* (sorted ahead of the hub's catch-all handle), a route, so these
+	# run in the order written: Caddy would otherwise sort the handle_path blocks ahead of the
+	# hub's, and the page and the API would get the static files' 404.
+	handle /flasher* {
+		route {
+			@flasher_hub path /flasher /flasher/ /flasher/flasher.html /flasher/api/*
+			reverse_proxy @flasher_hub 127.0.0.1:8000
+			handle_path /flasher/firmware/* {
+				header Access-Control-Allow-Origin "*"
+				header Cache-Control "no-cache"
+				@preflight method OPTIONS
+				handle @preflight {
+					header Access-Control-Allow-Methods "GET, OPTIONS"
+					header Access-Control-Allow-Headers "*"
+					header Access-Control-Allow-Private-Network "true"
+					header Access-Control-Max-Age 86400
+					respond 204
+				}
+				root * {$HUB_FIRMWARE_ROOT:/var/lib/hub/firmware}
+				file_server
+			}
+			handle_path /flasher/* {
+				header Access-Control-Allow-Origin "*"
+				header Cache-Control "no-cache"
+				@preflight method OPTIONS
+				handle @preflight {
+					header Access-Control-Allow-Methods "GET, OPTIONS"
+					header Access-Control-Allow-Headers "*"
+					header Access-Control-Allow-Private-Network "true"
+					header Access-Control-Max-Age 86400
+					respond 204
+				}
+				root * {$HUB_FLASHER_ROOT:/usr/share/hub/apps/flasher}/public
+				file_server
+			}
+		}
+	}
+
+	# --- /git and /git-private → git over HTTP, and cgit to browse ---------------------
+	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
+	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
+	# paths in @smart) goes to git http-backend; every other path is cgit's web view. Public:
+	# anyone may browse and clone, a push needs the admin login unless guest-push exists in
+	# $HUB_GIT_ROOT (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	# Pushes go through git-http-guard.py: Caddy streams the body, and a push it cuts off at
+	# max_size would otherwise leave git waiting forever (the guard says why).
+	redir /git /git/ permanent
+	redir /git-private /git-private/ permanent
+	handle_path /git-static/* {
+		root * /usr/share/cgit
+		file_server
+	}
+	handle_path /git/* {
+		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
+		handle @smart {
+			@push {
+				expression {query.service} == "git-receive-pack" || {path}.endsWith("/git-receive-pack")
+				not file {
+					root {$HUB_GIT_ROOT:/var/lib/hub/git}
+					try_files /guest-push
+				}
+			}
+			basic_auth @push {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_body {
+				max_size 64MB
+			}
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/git-http-guard.py
+					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/public
+					env GIT_HTTP_EXPORT_ALL 1
+					env PATH_INFO /{re.smart.1}
+					env REMOTE_USER {http.auth.user.id}
+					read_timeout 1h
+				}
+			}
+		}
+		handle {
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
+					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-public
+					env PATH_INFO {path}
+				}
+			}
+		}
+	}
+	handle_path /git-private/* {
+		basic_auth {
+			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		}
+		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
+		handle @smart {
+			request_body {
+				max_size 64MB
+			}
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/git-http-guard.py
+					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/private
+					env GIT_HTTP_EXPORT_ALL 1
+					env PATH_INFO /{re.smart.1}
+					env REMOTE_USER {http.auth.user.id}
+					read_timeout 1h
+				}
+			}
+		}
+		handle {
+			reverse_proxy unix//run/irate-box-git.sock {
+				transport fastcgi {
+					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
+					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-private
+					env PATH_INFO {path}
+				}
+			}
+		}
 	}
 
 	# --- /admin → the hub's own operator options ------------------------------------

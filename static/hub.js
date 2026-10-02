@@ -51,7 +51,7 @@ window.addEventListener('storage', (e) => {
   document.dispatchEvent(new CustomEvent('hub-theme', { detail: t }));
 });
 
-// Service status: /status says whether Caddy is in front and which backends are
+// Service status: /status says whether the web server is in front and which backends are
 // listening. Anything carrying data-service -- the home tiles, the sub-page lists --
 // is dimmed while its service is down, rather than left as a dead link.
 const grid = document.querySelector('.service-grid');
@@ -116,11 +116,11 @@ if (grid || document.querySelector('[data-service]')) {
       const svc = byPath.get(el.dataset.service);
       const down = !!svc && !svc.up;
       el.classList.toggle('down', down);
-      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : 'Not running';
+      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : svc.why || 'Not running';
     });
     if (!grid) return;
     if (!data.proxied) {
-      note.textContent = 'Served without Caddy in front — the hub works, the apps are not reachable.';
+      note.textContent = 'Served without the web server in front — the hub works, the apps are not reachable.';
       note.hidden = false;
     } else if (grid.querySelector('.service-card.down:not([hidden])')) {
       // Read back from the grid, not from the service list: only a tile that is
