@@ -3,4 +3,5 @@
 .notes
 __pycache__/
 store-state/
-irate.code-workspacedist/
+irate.code-workspace
+dist/
