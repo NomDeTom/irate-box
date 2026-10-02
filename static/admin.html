@@ -504,6 +504,37 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <ul class="admin-checks" id="security-findings"></ul>
+        <h3>The hotspot's own WiFi</h3>
+        <p class="setting-desc">
+          How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
+          cannot read what guests do. Encryption shuts out older devices, so this is a trade between
+          who can join and what is protected. The hotspot itself is still to come (the hotspot add-on):
+          the choice is kept and applied when it is set up. What the radios here allow comes from
+          <a href="#network">Network</a>.
+        </p>
+        <div class="hs-modes" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
+        <div class="net-settings" id="hs-fields">
+          <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
+          <select id="hs-second">
+            <option value="owe">Enhanced Open (OWE): no password</option>
+            <option value="sae">WPA3 with a published password</option>
+          </select>
+          <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
+          <span class="library-buttons">
+            <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
+            <button type="button" id="hs-generate">Make one</button>
+          </span>
+          <label class="setting" id="hs-wpa2-label">
+            <input type="checkbox" id="hs-wpa2">
+            <span class="setting-desc" id="hs-wpa2-desc"></span>
+          </label>
+        </div>
+        <ul class="admin-checks" id="hs-warnings"></ul>
+        <div class="library-buttons">
+          <button type="button" id="hs-save">Save</button>
+        </div>
+        <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
+
         <h3>Listening on the network</h3>
         <p class="setting-desc">Everything that answers from outside the box. Services on loopback only are left out.</p>
         <table class="admin-table" id="security-listeners">

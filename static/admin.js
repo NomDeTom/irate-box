@@ -1312,6 +1312,93 @@ net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes:
 window.addEventListener('hashchange', () => { if (location.hash === '#network') loadNetwork(); });
 loadNetwork();
 
+// --- the hotspot's own WiFi ----------------------------------------------------------------
+// A choice kept in the hub's state (hotspot.py) for the hotspot add-on to apply: open, OWE,
+// WPA3 with a published password, or two networks. Modes the radios cannot do are shown, greyed,
+// with the reason; the chosen mode's warnings are listed under the choices.
+const hs = {
+  modes: document.getElementById('hs-modes'),
+  fields: document.getElementById('hs-fields'),
+  second: document.getElementById('hs-second'),
+  secondLabel: document.getElementById('hs-second-label'),
+  password: document.getElementById('hs-password'),
+  passwordLabel: document.getElementById('hs-password-label'),
+  generate: document.getElementById('hs-generate'),
+  wpa2: document.getElementById('hs-wpa2'),
+  wpa2Label: document.getElementById('hs-wpa2-label'),
+  wpa2Desc: document.getElementById('hs-wpa2-desc'),
+  warnings: document.getElementById('hs-warnings'),
+  save: document.getElementById('hs-save'),
+  note: document.getElementById('hs-note'),
+};
+let hsData = null;
+
+function hsChosen() {
+  const r = hs.modes.querySelector('input[name="hs-mode"]:checked');
+  return r ? r.value : 'open';
+}
+
+function hsShowFields() {
+  if (!hsData) return;
+  const mode = hsChosen();
+  const needsPw = mode === 'sae' || (mode === 'two' && hs.second.value === 'sae');
+  hs.second.hidden = hs.secondLabel.hidden = mode !== 'two';
+  hs.password.parentElement.hidden = hs.passwordLabel.hidden = !needsPw;
+  hs.wpa2Label.hidden = !needsPw;
+  hs.fields.hidden = mode !== 'two' && !needsPw;
+  const warn = [...(hsData.warnings[mode] || [])];
+  if (mode === 'two') warn.push(...(hsData.warnings[hs.second.value] || []).filter((w) => !/^Someone can still|^Anyone who knows/.test(w)));
+  if (needsPw && hs.wpa2.checked) warn.push(hsData.wpa2_warning);
+  hs.warnings.replaceChildren(...warn.map((w) => checkItem('warn', w, '', '')),
+    checkItem('warn', hsData.always, '', ''));
+}
+
+function renderHotspot(data) {
+  hsData = data;
+  const s = data.settings;
+  hs.modes.replaceChildren(...data.modes.map((m) => {
+    const why = data.available[m];
+    const input = el('input', { type: 'radio', name: 'hs-mode', value: m, checked: s.mode === m, disabled: !!why && s.mode !== m });
+    input.addEventListener('change', hsShowFields);
+    return el('label', { className: `hs-mode${why ? ' unavailable' : ''}` }, input,
+      el('span', {}, el('span', { className: 'setting-name', textContent: data.label[m] }),
+        el('span', { className: 'setting-desc', textContent: data.what[m] }),
+        why ? el('span', { className: 'setting-desc bad', textContent: `Not available here: ${why}.` }) : null));
+  }));
+  hs.second.value = s.second;
+  hs.password.value = s.password || '';
+  hs.wpa2.checked = !!s.allow_wpa2;
+  hs.wpa2Desc.textContent = 'Let older WPA2 devices join too (WPA3 transition mode).';
+  hsShowFields();
+}
+
+async function loadHotspot() {
+  try { renderHotspot(await getJSON('/admin/hotspot')); } catch (err) {
+    console.error('hotspot section:', err);
+    say('Could not read the hotspot settings.', false, hs.note);
+  }
+}
+
+hs.second.addEventListener('change', hsShowFields);
+hs.wpa2.addEventListener('change', hsShowFields);
+hs.generate.addEventListener('click', () => {
+  // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const n = crypto.getRandomValues(new Uint32Array(12));
+  const chars = [...n].map((v) => abc[v % abc.length]);
+  hs.password.value = [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
+});
+hs.save.addEventListener('click', async () => {
+  const mode = hsChosen();
+  if (mode !== 'open' && !confirm(`Use "${hsData.label[mode]}" for the hotspot? Read the warnings under the choices first.`)) return;
+  try {
+    const r = await postJSON('/admin/hotspot', { settings: { mode, second: hs.second.value, password: hs.password.value, allow_wpa2: hs.wpa2.checked } });
+    say(r.message, true, hs.note);
+    loadHotspot();
+  } catch (err) { say(err.message, false, hs.note); }
+});
+loadHotspot();
+
 // --- add-ons ---------------------------------------------------------------------------
 // Each add-on from apps.d: Add (after its consent text) or Remove, through the root helper,
 // which reruns install.sh. The run's bar and output are the update's own (one installer at a

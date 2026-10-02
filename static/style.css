@@ -892,3 +892,10 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .helper-banner { border: 2px solid #e5484d; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; line-height: 1.5; }
 .helper-banner pre { margin: 0.5rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 #health-findings .setting-desc code, #health-findings code { overflow-wrap: anywhere; }
+
+/* Security: the hotspot's own WiFi, one card per mode */
+.hs-modes { display: grid; gap: 0.5rem; margin: 0.5rem 0; }
+.hs-mode { display: flex; gap: 0.6rem; align-items: flex-start; border: 1px solid var(--border, #8884); border-radius: 8px; padding: 0.6rem 0.75rem; }
+.hs-mode.unavailable { opacity: 0.6; }
+.hs-mode input { margin-top: 0.25rem; }
+.hs-mode .setting-desc { display: block; }

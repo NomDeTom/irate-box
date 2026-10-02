@@ -26,6 +26,7 @@ import ci
 import firmware
 import flasher
 import gitrepos
+import hotspot
 import hubclock
 import librarian
 import manifests
@@ -1219,6 +1220,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, security_snapshot())
             return
 
+        if path == "/admin/hotspot":
+            self.send_json(200, hotspot.snapshot())
+            return
+
         if path == "/admin/network":
             self.send_json(200, network_snapshot())
             return
@@ -1494,6 +1499,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
             else:
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
+            return
+
+        if path == "/admin/hotspot":
+            try:
+                saved = hotspot.save(payload.get("settings"))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
+                                 "It takes effect when the hotspot add-on is set up."})
             return
 
         if path == "/admin/security":
