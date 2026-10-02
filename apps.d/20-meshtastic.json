@@ -2,7 +2,7 @@
   "id": "meshtastic",
   "order": 20,
   "tile": {
-    "icon": "📡",
+    "icon": "📡📻",
     "name": "Meshtastic",
     "desc": "Log analyser, docs & tools",
     "href": "/meshtastic.html"

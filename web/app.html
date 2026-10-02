@@ -14,11 +14,12 @@
        /app.html#/wiki/… The bar slides away while the app scrolls down (app.js). -->
   <nav class="app-bar" id="app-bar">
     <a href="/" class="app-home" target="_top">🏠 Hub</a>
-    <button type="button" class="app-help" id="app-help" aria-expanded="false" aria-controls="help-pop" title="What is this?">🛟</button>
+    <button type="button" class="app-help" id="app-help" aria-expanded="false" aria-controls="help-pop" title="What is this?"><span aria-hidden="true">🛟</span> Help</button>
     <span class="app-title" id="app-title"></span>
     <!-- One theme for the hub and every app in it: app.js writes each app's own
          setting to match, so the choice here wins over one made inside an app. -->
     <div class="theme-picker" role="group" aria-label="Theme">
+      <span class="theme-label" aria-hidden="true">Theme</span>
       <button type="button" data-theme-choice="light" title="Light">☀️</button>
       <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
       <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>

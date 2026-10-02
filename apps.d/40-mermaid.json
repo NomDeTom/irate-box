@@ -2,7 +2,7 @@
   "id": "mermaid",
   "order": 40,
   "tile": {
-    "icon": "📈",
+    "icon": "📈🧜",
     "name": "Mermaid",
     "desc": "Diagrams as text",
     "href": "/app.html#/mermaid/",

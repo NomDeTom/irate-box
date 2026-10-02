@@ -2,7 +2,7 @@
   "id": "tools-general",
   "order": 51,
   "tile": {
-    "icon": "🧮",
+    "icon": "🧮📏",
     "name": "Calculators",
     "desc": "Converters & computing",
     "href": "/tools-general.html"

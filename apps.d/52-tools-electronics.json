@@ -2,7 +2,7 @@
   "id": "tools-electronics",
   "order": 52,
   "tile": {
-    "icon": "⚡",
+    "icon": "⚡🔌",
     "name": "Electronics",
     "desc": "Circuit & component calculators",
     "href": "/tools-electronics.html"

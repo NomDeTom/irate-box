@@ -2,7 +2,7 @@
   "id": "term",
   "order": 70,
   "tile": {
-    "icon": "⌨️",
+    "icon": "⌨️🖥️",
     "name": "Terminal",
     "desc": "Shell on the box — admin, password-gated",
     "href": "/app.html#/term/",
