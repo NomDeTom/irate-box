@@ -21,6 +21,9 @@ A check that cannot read what it needs (not root, no systemd) says so as a warn,
     sudo python3 /opt/irate-box/secdoctor.py json       the report, as the page reads it
     /admin → Security → Security doctor                 the same, through hub_control.py
 
+The F2 fix (request bodies drained or the connection closed) declares itself with
+`DRAINS_REQUEST_BODIES = True` at the top level of server.py, which the front step looks for.
+
 Secrets are never printed: a password on a command line is reported by process and flag,
 a world-readable file by name. Stdlib only.
 """
@@ -28,6 +31,7 @@ a world-readable file by name. Stdlib only.
 import json
 import os
 import re
+import secrets
 import shlex
 import stat
 import subprocess
@@ -757,14 +761,30 @@ def _env_of(show):
     return env
 
 
-def probe_mosquitto(ctx, a, show):
-    """S9: the broker's own config. Returns [(severity, text, fix)]."""
+def _mosquitto_conf():
     texts = [_read(MOSQUITTO_DIR / "mosquitto.conf") or ""]
     try:
         texts += [_read(p) or "" for p in sorted((MOSQUITTO_DIR / "conf.d").glob("*.conf"))]
     except OSError:
         pass
-    conf = "\n".join(texts)
+    return "\n".join(texts)
+
+
+def _runs_as(a, show):
+    """The user the add-on's process ends up as. Mosquitto started as root drops to its `user`
+    setting, "mosquitto" unless the config says otherwise."""
+    if show.get("DynamicUser") == "yes":
+        return "a dynamic user"
+    user = show.get("User", "") or "root"
+    if user == "root" and a["unit"].startswith("mosquitto"):
+        m = re.findall(r"(?m)^\s*user\s+(\S+)", _mosquitto_conf())
+        return m[-1] if m else "mosquitto"
+    return user
+
+
+def probe_mosquitto(ctx, a, show):
+    """S9: the broker's own config. Returns [(severity, text, fix)]."""
+    conf = _mosquitto_conf()
     if not conf.strip():
         return [("warn", f"could not read its config under {MOSQUITTO_DIR}", "")]
     anon = re.search(r"(?m)^\s*allow_anonymous\s+true\b", conf)
@@ -864,8 +884,10 @@ def step_addons(ctx):
             continue
         argv, env = _argv_of(show), _env_of(show)
         active = show.get("ActiveState") == "active"
+        enabled = show.get("UnitFileState") in ("enabled", "enabled-runtime", "static", "indirect", "generated", "alias")
+        as_root = _runs_as(a, show) == "root"
         issues = []   # (severity, text, fix)
-        if show.get("User", "") in ("", "root") and show.get("DynamicUser") != "yes" and not a.get("root_ok"):
+        if as_root and not a.get("root_ok"):
             issues.append(("warn", "runs as root: a flaw in it is root", "run it as an unprivileged or dynamic user"))
         wide = [t for t in argv if t in WIDE_WORDS or re.search(r"(?:^|[=:])(0\.0\.0\.0|\[?::\]?)(?::\d+)?$", t)]
         wide += [f"{k}={v}" for k, v in env.items() if v in WIDE_WORDS and k.upper() in ("HOST", "HOSTNAME", "BIND", "ADDRESS", "LISTEN", "SB_HOSTNAME")]
@@ -886,7 +908,7 @@ def step_addons(ctx):
                            f"remove it if unwanted: systemctl disable --now {a['unit']}"))
         if a["path"] and ctx["front"] is not None:
             has, gated = front_has(ctx, a["path"]), front_gated(ctx, a["path"])
-            if has and not gated and show.get("User", "") in ("", "root") and show.get("DynamicUser") != "yes":
+            if has and not gated and as_root:
                 issues.append(("problem", f"a root service open to guests: {a['path']} has no login in the front", "put it behind the admin login"))
         if a["unit"] not in ctx["units"]:  # sandboxing not covered by the units step
             weak = [n for n, ok in (("ProtectSystem=strict", show.get("ProtectSystem") == "strict"), ("NoNewPrivileges", show.get("NoNewPrivileges") == "yes"),
@@ -900,9 +922,13 @@ def step_addons(ctx):
                 except Exception as exc:
                     issues.append(("warn", f"its probe failed: {type(exc).__name__}: {exc}", ""))
         worst = min((RANK_STATUS[i[0]] for i in issues), default=2)
+        if not active and not enabled and worst == 0:
+            # Installed but neither running nor started at boot: a risk only once it is started.
+            worst = 1
+            issues.insert(0, ("warn", "installed but not running or started at boot, so these apply once it is started", ""))
         status = {0: "problem", 1: "warn", 2: "ok"}[worst]
         state = "running" if active else show.get("ActiveState", "stopped")
-        who = "root" if show.get("User", "") in ("", "root") and show.get("DynamicUser") != "yes" else ("a dynamic user" if show.get("DynamicUser") == "yes" else show.get("User"))
+        who = _runs_as(a, show)
         if issues:
             detail = f"{state}, as {who}. " + " ".join(f"{i[1][0].upper()}{i[1][1:]}." if not i[1].endswith(".") else f"{i[1][0].upper()}{i[1][1:]}" for i in issues)
             fix = "; ".join(i[2] for i in issues if i[2])
@@ -1080,7 +1106,9 @@ def step_accounts(ctx):
     """Passwordless sudo, accounts with no password, a second root, the hub users' shells."""
     out = []
     rules = _sudo_lines()
-    if rules is None:
+    if rules is None and not os.path.lexists(SUDOERS) and not os.path.lexists(str(SUDOERS) + ".d"):
+        out.append(F("acct-sudo", "sudo rules", "ok", "sudo is not installed: there are no sudo rules to check.", ref=""))
+    elif rules is None:
         out.append(_cannot("acct-sudo", "sudo rules", f"{SUDOERS} is not readable"))
     else:
         nopass = [(f, s) for f, s in rules if "NOPASSWD" in s]
@@ -1193,7 +1221,8 @@ STEPS = [
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
 NOT_COVERED = [
     "F7 app-install check/extract/delete race, F10 firmware cache paths, F12 kiwix-manage as root, F14 forged-request reach, "
-    "F16 gallery ownership, F21 verified flag, F23, F26, F28, F29: flaws inside code paths, not settings (code review and tests).",
+    "F16 gallery ownership, F21 verified flag, F23, F25 app.html framing, F26, F28, F29: flaws inside code paths, not settings "
+    "(code review and tests).",
     "F11 app bundle source pinning, F22 plain-text transports, F30 checksums and the packaging guard: need the code or the network.",
     "S2 password in clear, S5 SSH, S6 updates and which ports answer (S9): the Security page's scan above. S12 npm audits: not run (they need the network).",
 ]
@@ -1210,12 +1239,16 @@ def make_context():
     drains = None
     caps = None
     if server:
-        drains = bool(re.search(r"def _drain|_discard_body|drain_body|def _read_body", server))
+        # The F2 fix declares itself (DRAINS_REQUEST_BODIES = True in server.py); the function names
+        # are a fallback for a fix written without the marker.
+        drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server)
+                      or re.search(r"def _drain|_discard_body|drain_body|def _read_body", server))
         m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
         caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
     units = {u: _show(u, *UNIT_PROPS) for u in _our_units()}
     addons = load_addons()
-    addon_props = {a["unit"]: _show(a["unit"], *UNIT_PROPS, "ActiveState", "ExecStart", "Environment") for a in addons}
+    addon_props = {a["unit"]: _show(a["unit"], *UNIT_PROPS, "ActiveState", "UnitFileState", "ExecStart", "Environment")
+                   for a in addons}
     return {"front": front, "front_kind": kind, "front_note": note, "src": src, "hub_drains_bodies": drains,
             "hub_caps_json": caps, "units": units, "addons": addons, "addon_props": addon_props,
             "requested": _requested_options(), "listening": _listening()}
@@ -1253,7 +1286,8 @@ def write_report(report, path=REPORT, owner=None):
     fresh name, then rename over the old one, so a link planted at `path` is replaced, never
     written through (the hub owns the folder this goes in)."""
     path = Path(path)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    # A random name: one the hub cannot guess and create first to block the report.
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
     try:
         os.write(fd, json.dumps(report, indent=2).encode())
