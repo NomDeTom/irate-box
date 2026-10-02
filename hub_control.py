@@ -40,6 +40,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       a book copied in (then the library rebuilt) or out, with progress in usb-progress.json.
   {"id": ..., "action": "security-scan"}
       What the box exposes and how it is set up (security.py): to control/security.json.
+  {"id": ..., "action": "security-audit"}
+      The security doctor (secdoctor.py): a read-only audit of how the system is set up, to
+      control/security-audit.json. Changes nothing but that file.
   {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
       Carry out one fix the Security page offered (security.fix: a drop-in or a unit switched
       off, each recorded with how to undo it), then scan again.
@@ -93,6 +96,7 @@ from pathlib import Path
 import health
 import manifests
 import netinv
+import secdoctor
 import security
 import uplink
 import usbstick
@@ -141,6 +145,7 @@ UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
 SECURITY_STATE = CONTROL / "security.json"
+AUDIT_STATE = CONTROL / "security-audit.json"
 USB_STATE = CONTROL / "usb.json"
 USB_PROGRESS = CONTROL / "usb-progress.json"
 ZIM_DIR = STATE / "zim"
@@ -990,6 +995,14 @@ def security_scan(req):
     return f"security scan: {len(bad)} to fix" if bad else "security scan: nothing to fix"
 
 
+def security_audit(req):
+    hub = pwd.getpwnam(HUB_USER)
+    report = secdoctor.audit()
+    secdoctor.write_report(report, AUDIT_STATE, (hub.pw_uid, hub.pw_gid))
+    c = report["counts"]
+    return f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)"
+
+
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@._-]+)?", choice):
@@ -1262,7 +1275,7 @@ def uplink_profile(req):
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
-           "security-scan": security_scan, "security-fix": security_fix, "addon": addon,
+           "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}

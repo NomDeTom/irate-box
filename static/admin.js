@@ -811,6 +811,11 @@ const sec = {
   listeners: document.querySelector('#security-listeners tbody'),
   output: document.getElementById('security-output'),
   log: document.getElementById('security-log'),
+  auditWhen: document.getElementById('audit-when'),
+  auditRun: document.getElementById('audit-run'),
+  auditSteps: document.getElementById('audit-steps'),
+  auditScope: document.getElementById('audit-scope'),
+  auditNot: document.getElementById('audit-not-covered'),
 };
 const RANK = { problem: 0, warn: 1, ok: 2 };
 let secWaiting = null; // { id, fid }: a request, and the line its answer goes under
@@ -842,12 +847,14 @@ function renderSecurity(data) {
     }))) : null,
     noteUnder(f.id))));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
-  const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) ? secNote : null;
+  const loose = secNote && (secNote.fid === 'scan' || secNote.fid === 'audit' || !shown.has(secNote.fid)) ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
 
   sec.when.textContent = scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` + (busy ? ' Scanning…' : '')
     : busy ? 'Scanning…' : 'Not scanned yet.';
   sec.scan.disabled = busy;
+  sec.auditRun.disabled = busy;
+  renderAudit(data.audit, busy);
   sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => el('tr', {},
     el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
     el('td', {}, el('span', { className: 'setting-name', textContent: l.name }),
@@ -863,6 +870,35 @@ function renderSecurity(data) {
   if (stale && !busy && !secAsked) { secAsked = true; secRequest({ action: 'scan' }, 'scan'); return; }
   clearTimeout(secPoll);
   if (busy) secPoll = setTimeout(loadSecurity, 2000);
+}
+
+// The security doctor's report (secdoctor.py): one block per step, the steps with something to
+// look at open. Read-only, so a line has no buttons, only what to do by hand.
+function renderAudit(audit, busy) {
+  if (!audit) {
+    sec.auditWhen.textContent = busy ? 'Running…' : 'Not run yet.';
+    sec.auditSteps.replaceChildren();
+    sec.auditScope.hidden = true;
+    return;
+  }
+  const c = audit.counts;
+  sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}: ${c.problem} to fix, ${c.warn} to look at, ${c.ok} fine`
+    + (audit.root ? '.' : ' (not run as root: some checks could not read what they need).') + (busy ? ' Running…' : '');
+  sec.auditSteps.replaceChildren(...audit.steps.map((st) => {
+    const worst = st.findings.some((f) => f.status === 'problem') ? 'problem' : st.findings.some((f) => f.status === 'warn') ? 'warn' : 'ok';
+    const lines = [...st.findings].sort((a, b) => RANK[a.status] - RANK[b.status]);
+    const det = el('details', { className: 'admin-output' },
+      el('summary', { textContent: `${MARK[worst]} ${st.title}${st.ref ? ` (${st.ref})` : ''}` }),
+      el('ul', { className: 'admin-checks' }, ...lines.map((f) => el('li', { className: `check check-${f.status}` },
+        el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
+        f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
+        el('span', { textContent: ` — ${f.detail}` }),
+        f.fix ? el('span', { className: 'setting-desc', textContent: `To do: ${f.fix}` }) : null))));
+    det.open = worst !== 'ok';
+    return det;
+  }));
+  sec.auditScope.hidden = !(audit.not_covered || []).length;
+  sec.auditNot.replaceChildren(...(audit.not_covered || []).map((t) => el('li', { textContent: t })));
 }
 
 async function loadSecurity() {
@@ -886,6 +922,7 @@ function secFix(fid, action) {
 }
 
 sec.scan.addEventListener('click', () => secRequest({ action: 'scan' }, 'scan'));
+sec.auditRun.addEventListener('click', () => secRequest({ action: 'audit' }, 'audit'));
 loadSecurity();
 
 // --- health ----------------------------------------------------------------------------

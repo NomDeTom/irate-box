@@ -42,7 +42,8 @@ Usage: sudo ./install.sh [options]
   --repo URL            repository to clone (default: https://github.com/NomDeTom/irate-box)
   --branch NAME         branch to clone (default: main)
   --apps DIR            copy prebuilt static apps from DIR/mermaid, DIR/draw, DIR/tools,
-                        DIR/serial
+                        DIR/serial, DIR/flasher (the web flasher, from the fork's
+                        .github/irate-box/package.sh)
   --apps-from-actions   fetch the newest prebuilt draw, mermaid and serial (and room, with
                         --with-collab) from the forks' Actions builds via nightly.link: no
                         desktop build and no token. They are then kept current from /admin.
@@ -601,7 +602,7 @@ install -m 644 "$ETC/install-options" "$STATE/install-options"
 
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
-	for app in mermaid draw tools serial; do
+	for app in mermaid draw tools serial flasher; do
 		[ -d "$APPS_SRC/$app" ] || continue
 		say "Installing $app from $APPS_SRC/$app"
 		rm -rf "${APPS:?}/$app"

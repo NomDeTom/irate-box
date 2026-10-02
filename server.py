@@ -755,6 +755,7 @@ def update_snapshot():
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
+AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
 SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@._-]+)?$")
@@ -789,10 +790,14 @@ def security_snapshot():
     except (OSError, ValueError):
         scan = None
     try:
+        audit = json.loads(AUDIT_STATE.read_text())
+    except (OSError, ValueError):
+        audit = None
+    try:
         log = [ANSI_RE.sub("", line) for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]]
     except OSError:
         log = []
-    return {"hub": hub, "scan": scan, "log": log, "pending": _pending_actions("security-"),
+    return {"hub": hub, "scan": scan, "audit": audit, "log": log, "pending": _pending_actions("security-"),
             "results": control_results(5)}
 
 
@@ -1494,10 +1499,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/security":
             if payload.get("action") == "scan":
                 self.send_json(202, {"id": control_request({"action": "security-scan"})})
+            elif payload.get("action") == "audit":
+                self.send_json(202, {"id": control_request({"action": "security-audit"})})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, or fix with a choice"})
+                self.send_json(400, {"error": "action must be scan, audit, or fix with a choice"})
             return
 
         if path == "/messages":

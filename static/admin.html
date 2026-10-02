@@ -514,6 +514,25 @@
           <summary>Security update output</summary>
           <pre class="admin-log" id="security-log"></pre>
         </details>
+
+        <h3>Security doctor</h3>
+        <p class="setting-desc">
+          A read-only audit of how the system underneath is set up, including what the hub found
+          when it was installed: the notes add-on, the web server's settings, links and root-written
+          files in the hub's folders, unit sandboxing, secrets on command lines and at rest, git
+          pushes, sudo rules, accounts and the kernel's protections. It changes nothing and has no
+          buttons beyond this one; each line says what to do by hand. Also from a shell:
+          <code>sudo python3 /opt/irate-box/secdoctor.py</code>.
+        </p>
+        <p class="setting-desc" id="audit-when">Not run yet.</p>
+        <div class="library-buttons">
+          <button type="button" id="audit-run">Run the doctor</button>
+        </div>
+        <div id="audit-steps"></div>
+        <details class="admin-output" id="audit-scope" hidden>
+          <summary>What the doctor cannot see</summary>
+          <ul class="admin-list" id="audit-not-covered"></ul>
+        </details>
       </section>
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
