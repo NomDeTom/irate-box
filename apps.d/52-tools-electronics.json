@@ -10,6 +10,7 @@
   "menu": {
     "title": "Electronics",
     "subtitle": "Circuit, power and component calculators.",
-    "about": "Circuit, power and component calculators from nomdetom.github.io."
+    "about": "Circuit, power and component calculators from nomdetom.github.io.",
+    "art": "electronics"
   }
 }

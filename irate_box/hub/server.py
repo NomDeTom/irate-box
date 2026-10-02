@@ -1053,6 +1053,7 @@ MIME = {
     ".css": "text/css",
     ".js": "application/javascript",
     ".ico": "image/x-icon",
+    ".webp": "image/webp",
     ".png": "image/png",
     ".svg": "image/svg+xml",
 }

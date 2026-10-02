@@ -706,6 +706,7 @@ body[data-art] > header, body[data-art] > section { position: relative; z-index:
 }
 [data-art="doctor"] .admin-art { display: block; background-image: url("/art/krab-doctor.webp"); }
 [data-art="librarian"] .admin-art { display: block; background-image: url("/art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
+[data-art="electronics"] .admin-art { display: block; background-image: url("/art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
 [data-art="controller"] .admin-art { display: block; background-image: url("/art/krab-controller.webp");
   width: min(46vw, 34rem); aspect-ratio: 900 / 309; opacity: 0.22; }
 /* The desk's lamps: each over one of its yellow lights, dark when off, glowing when on, each
