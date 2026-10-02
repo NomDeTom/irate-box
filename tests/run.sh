@@ -20,6 +20,7 @@ run() {
 run sim_uplink.py
 run sim_rtc.py
 run sim_selfupdate.py
+run sim_configs.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

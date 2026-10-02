@@ -24,8 +24,11 @@ Settings ($HUB_STATE_DIR/library/firmware.json, /admin's Firmware page):
   enabled      off by default
   boards       a list of PlatformIO targets ("rak4631"), or "all"
   keep_alpha   alphas kept (2) ;  keep_beta  betas kept (1)
-  configs      on by default: keep config.d.json (above), mirror or not; a sparse git fetch of
-               that one folder at the release's tag, a few hundred KB
+  configs      on by default: keep config.d.json (above), mirror or not. From, in order: the
+               release's own source package (meshtasticd-*-src.zip) if the box holds it; a
+               sparse git fetch of that one folder at the release's tag (a few hundred KB); or
+               that source package streamed from the release, stopping once the folder has
+               gone past (it comes 0.3 MB into the 465 MB at 2.8.1)
   cache        "discard" (default) | "native" | "whole": the newest kept release's
                platformio-deps zip (484 MB, for native-tft), kept so builds on push (ci.py,
                CI_PIO_DEPS) need no internet. "native" keeps what a headless meshtasticd uses
@@ -37,12 +40,18 @@ Stdlib only.
 """
 
 import hashlib
+import io
 import json
+import lzma
 import os
 import re
 import shutil
+import struct
+import tarfile
 import time
+import urllib.request
 import zipfile
+import zlib
 from pathlib import Path
 
 from irate_box.library import librarian
@@ -130,9 +139,11 @@ def _releases(cfg):
         if not VERSION_RE.match(version) or f"firmware-{version}.json" not in names:
             continue
         deps = next((a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None)
+        source = next((a for n, a in names.items() if n.startswith("meshtasticd-") and n.endswith("-src.zip")), None)
         item = {"version": version, "tag": rel["tag_name"], "published": rel.get("published_at"),
                 "notes": rel.get("body") or "", "deps": deps and {"url": deps["browser_download_url"],
-                                                                     "size": deps["size"], "name": deps["name"]}}
+                                                                     "size": deps["size"], "name": deps["name"]},
+                "source": source and {"url": source["browser_download_url"], "size": source["size"], "name": source["name"]}}
         (alphas if rel.get("prerelease") else betas).append(item)
     keep = [dict(r, channel="alpha") for r in alphas[:cfg["keep_alpha"]]] + \
            [dict(r, channel="beta") for r in betas[:cfg["keep_beta"]]]
@@ -271,35 +282,123 @@ def _write_index(kept, st):
     _publish(INDEX, out)
 
 
+class _Inflate(io.RawIOBase):
+    """A zip member's bytes (deflated or stored) as a stream, from a file or a ranged download,
+    decompressed as read: no seeking, so a .tar.xz inside can be read from the start only."""
+    def __init__(self, raw, method):
+        self.raw, self.z = raw, zlib.decompressobj(-15) if method == 8 else None
+        self.buf, self.x = b"", lzma.LZMADecompressor()
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        while len(self.buf) < len(b) and not self.x.eof:
+            chunk = self.raw.read(1 << 16)
+            if not chunk:
+                break
+            self.buf += self.x.decompress(self.z.decompress(chunk) if self.z else chunk)
+        n = min(len(b), len(self.buf))
+        b[:n], self.buf = self.buf[:n], self.buf[n:]
+        return n
+
+
+def _configs_from_package(open_at):
+    """bin/config.d out of a Debian source package zip (meshtasticd-*-src.zip): its first
+    member is the .tar.xz; read until the folder has gone past. open_at(offset) gives the zip's
+    bytes from there (a file, or a ranged request)."""
+    head = open_at(0).read(30)
+    if head[:4] != b"PK\x03\x04":
+        raise LibrarianError("the source package is not a zip")
+    method = struct.unpack("<H", head[8:10])[0]
+    n, m = struct.unpack("<HH", head[26:30])
+    if method not in (0, 8):
+        raise LibrarianError("the source package uses a compression this does not read")
+    files, inside, total = [], False, 0
+    with tarfile.open(fileobj=io.BufferedReader(_Inflate(open_at(30 + n + m), method), 1 << 16), mode="r|") as tf:
+        for ti in tf:
+            rel = ti.name.split("/", 1)[-1]
+            if rel.startswith("bin/config.d/") or rel == "bin/config.d":
+                inside = True
+                if ti.isfile() and ti.name.endswith((".yaml", ".yml")):
+                    text = tf.extractfile(ti).read().decode("utf-8", "replace")
+                    total += len(text)
+                    if total > CONFIGS_MAX:
+                        raise LibrarianError("bin/config.d is larger than expected; not kept")
+                    files.append({"path": rel[len("bin/config.d/"):], "text": text})
+            elif inside:
+                break
+    return sorted(files, key=lambda f: f["path"])
+
+
+def _configs_from_git(rel, work):
+    librarian._git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", rel["tag"],
+                   f"https://github.com/{REPO}.git", str(work / "repo"))
+    librarian._git("-C", str(work / "repo"), "sparse-checkout", "set", "bin/config.d")
+    top = work / "repo" / "bin" / "config.d"
+    files, total = [], 0
+    for f in sorted(top.rglob("*")):
+        if f.is_file() and f.suffix in (".yaml", ".yml") and not f.is_symlink():
+            text = f.read_text(encoding="utf-8", errors="replace")
+            total += len(text)
+            if total > CONFIGS_MAX:
+                raise LibrarianError("bin/config.d is larger than expected; not kept")
+            files.append({"path": f.relative_to(top).as_posix(), "text": text})
+    return files
+
+
+def _ranged(url):
+    real = urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": librarian.USER_AGENT}),
+                                  timeout=60).url
+    return lambda off: urllib.request.urlopen(urllib.request.Request(
+        real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}), timeout=120)
+
+
 def sync_configs(rel, log=print):
-    """meshtasticd's bin/config.d at the release's tag, into config.d.json: a sparse, shallow git
-    fetch of that folder only. Kept until a newer release's replaces it. Returns an outcome."""
+    """meshtasticd's bin/config.d at the release, into config.d.json; kept until a newer
+    release's replaces it. Tries the source package held here, then git at the tag, then the
+    source package from the release. Returns an outcome."""
     have = librarian._read_json(CONFIGS, {})
     if have.get("tag") == rel["tag"]:
         return f"configs: {rel['tag']} already held ({len(have.get('files', []))} files)"
-    work = Path(librarian.tempfile.mkdtemp(prefix="config.d-", dir=librarian.LIB_DIR))
-    try:
-        log(f"firmware configs: bin/config.d at {rel['tag']}")
-        librarian._git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", rel["tag"],
-                       f"https://github.com/{REPO}.git", str(work / "repo"))
-        librarian._git("-C", str(work / "repo"), "sparse-checkout", "set", "bin/config.d")
-        top = work / "repo" / "bin" / "config.d"
-        files, total = [], 0
-        for f in sorted(top.rglob("*")):
-            if f.is_file() and f.suffix in (".yaml", ".yml") and not f.is_symlink():
-                text = f.read_text(encoding="utf-8", errors="replace")
-                total += len(text)
-                if total > CONFIGS_MAX:
-                    raise LibrarianError("bin/config.d is larger than expected; not kept")
-                files.append({"path": f.relative_to(top).as_posix(), "text": text})
-        if not files:
-            raise LibrarianError(f"no configs in bin/config.d at {rel['tag']}")
-        ROOT.mkdir(parents=True, exist_ok=True)
-        _publish(CONFIGS, {"repo": REPO, "tag": rel["tag"], "version": rel["version"],
-                           "fetched": librarian.now_iso(), "files": files})
-        return f"configs: {len(files)} from {rel['tag']}"
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    src = rel.get("source")
+    held = ROOT / rel["version"] / src["name"] if src else None
+    tried = []
+    files, method = None, None
+    if held and held.is_file():
+        try:
+            files = _configs_from_package(lambda off: _seek(open(held, "rb"), off))
+            method = "the release's source package, held on this box"
+        except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
+            tried.append(f"the held source package: {exc}")
+    if not files:
+        work = Path(librarian.tempfile.mkdtemp(prefix="config.d-", dir=librarian.LIB_DIR))
+        try:
+            log(f"firmware configs: bin/config.d at {rel['tag']} (git)")
+            files = _configs_from_git(rel, work)
+            method = f"git, at the tag {rel['tag']}"
+        except (LibrarianError, OSError) as exc:
+            tried.append(f"git: {exc}")
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    if not files and src:
+        try:
+            log(f"firmware configs: bin/config.d from {src['name']} (streamed)")
+            files = _configs_from_package(_ranged(src["url"]))
+            method = "the release's source package, streamed"
+        except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
+            tried.append(f"the release's source package: {exc}")
+    if not files:
+        raise LibrarianError("no configs: " + ("; ".join(tried) or f"none in bin/config.d at {rel['tag']}"))
+    ROOT.mkdir(parents=True, exist_ok=True)
+    _publish(CONFIGS, {"repo": REPO, "tag": rel["tag"], "version": rel["version"], "from": method,
+                       "fetched": librarian.now_iso(), "files": files})
+    return f"configs: {len(files)} from {rel['tag']} ({method})"
+
+
+def _seek(fh, off):
+    fh.seek(off)
+    return fh
 
 
 def sync(check_only=False, log=print):
