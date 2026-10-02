@@ -899,3 +899,6 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .hs-mode.unavailable { opacity: 0.6; }
 .hs-mode input { margin-top: 0.25rem; }
 .hs-mode .setting-desc { display: block; }
+
+/* Locks on this device: the key's QR code */
+.locks-qr svg { width: 12rem; height: 12rem; background: #fff; border-radius: 6px; margin: 0.5rem 0; }

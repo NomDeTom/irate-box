@@ -159,3 +159,65 @@ def snapshot():
     return {"settings": load(), "capabilities": caps, "available": available(caps), "modes": list(MODES),
             "label": LABEL, "what": WHAT, "warnings": WARNINGS, "wpa2_warning": WPA2_WARNING, "always": ALWAYS,
             "hotspot_exists": False}
+
+
+# --- what the hotspot add-on applies -------------------------------------------------------
+# The choice above as settings for the two AP backends (plan §3): NetworkManager (`nmcli con
+# add/modify` properties) and hostapd (config lines). Built here so the add-on only has to apply
+# them; it checks the choice again against the radios first (validate). Not yet tried on a radio:
+# OWE on the AIC8800 is the first test once AP mode exists.
+
+def _ssid_ok(ssid):
+    if not ssid or len(ssid.encode()) > 32 or any(c in ssid for c in "\n\r\0"):
+        raise ValueError("an SSID is 1 to 32 bytes, on one line")
+    return ssid
+
+
+def _with_suffix(ssid, suffix=" (safe)"):
+    """ssid plus suffix in at most 32 bytes, trimming whole characters off the end of ssid."""
+    room = 32 - len(suffix.encode())
+    while len(ssid.encode()) > room:
+        ssid = ssid[:-1]
+    return ssid.rstrip() + suffix
+
+
+def networks(settings, ssid, second_ssid=None):
+    """[(role, security)] for the networks the choice means: one, or two for "two"."""
+    mode = settings["mode"]
+    if mode == "two":
+        return [("open", {"ssid": _ssid_ok(ssid), "kind": "open"}),
+                ("encrypted", {"ssid": _ssid_ok(second_ssid or _with_suffix(ssid)), "kind": settings["second"]})]
+    return [("only", {"ssid": _ssid_ok(ssid), "kind": mode})]
+
+
+def nm_properties(settings, kind):
+    """NetworkManager connection properties for one network's security (kind: open|owe|sae)."""
+    if kind == "open":
+        return {}
+    if kind == "owe":
+        return {"802-11-wireless-security.key-mgmt": "owe", "802-11-wireless-security.pmf": "3"}
+    if kind == "sae":
+        if settings.get("allow_wpa2"):
+            # NetworkManager has no WPA2/WPA3 transition mode for an access point.
+            raise ValueError("WPA2 devices alongside WPA3 (transition mode) needs the hostapd backend")
+        return {"802-11-wireless-security.key-mgmt": "sae", "802-11-wireless-security.psk": settings["password"],
+                "802-11-wireless-security.pmf": "3"}
+    raise ValueError(f"unknown security {kind}")
+
+
+def hostapd_lines(settings, kind, ssid):
+    """hostapd.conf lines for one network (the add-on adds interface, channel and the rest)."""
+    lines = [f"ssid2={ssid.encode().hex()}"]  # hex form: any byte in the name is safe
+    if kind == "open":
+        return lines
+    lines += ["wpa=2", "rsn_pairwise=CCMP"]
+    if kind == "owe":
+        return lines + ["wpa_key_mgmt=OWE", "ieee80211w=2"]
+    if kind == "sae":
+        pw = settings["password"]
+        if not PASSWORD_RE.match(pw):
+            raise ValueError("the WPA3 password is 8 to 63 ordinary characters")
+        if settings.get("allow_wpa2"):
+            return lines + ["wpa_key_mgmt=WPA-PSK SAE", f"wpa_passphrase={pw}", f"sae_password={pw}", "ieee80211w=1"]
+        return lines + ["wpa_key_mgmt=SAE", f"sae_password={pw}", "ieee80211w=2", "sae_require_mfp=1"]
+    raise ValueError(f"unknown security {kind}")
