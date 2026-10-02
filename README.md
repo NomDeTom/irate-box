@@ -217,6 +217,3 @@ code three ways: a tarball at `/source`, a read-only repository on the box's git
 expires. The About tile (`/about.html`) links all three, and lists the licences of the separate
 programs the box runs (Excalidraw, the Mermaid live editor, the Meshtastic web flasher and
 firmware, Kiwix, the web server, and the add-ons).
-
-Versions published before the change to these licences (October 2026) were released into the
-public domain under the Unlicense, and remain available under it.
