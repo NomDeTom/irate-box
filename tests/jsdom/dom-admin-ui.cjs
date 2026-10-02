@@ -66,6 +66,14 @@ setTimeout(() => {
   check('the Notes add-on carries its switch, set to off', notes && notes.querySelector('.access-toggle [aria-checked="true"]').textContent.includes('Off'));
   const term = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Terminal'));
   check('Terminal public still says it asks for the login', term && term.textContent.includes('still asks for the admin login'));
+  const main = d.querySelector('.admin-main');
+  check('background art: the controller for Box (Clock)', main.dataset.art === 'controller', main.dataset.art);
+  w.location.hash = '#secdoctor'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
+  w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
+  check('the desk has its lamps', d.querySelectorAll('.art-lamps i').length === 12);
+  w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const force = d.getElementById('update-force');
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);

@@ -20,6 +20,13 @@ function showPane() {
     if (a.hash === `#${pane.id}`) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
+  // Background art by side-bar group (style.css, web/art/): the controller for Box and System,
+  // the librarian for Library and Hub content, the doctor for Health.
+  const link = sideLinks.find((l) => l.hash === `#${pane.id}`);
+  let group = link && link.previousElementSibling;
+  while (group && !group.classList.contains('admin-side-group')) group = group.previousElementSibling;
+  const ART = { Box: 'controller', System: 'controller', Library: 'librarian', 'Hub content': 'librarian', Health: 'doctor' };
+  document.querySelector('.admin-main').dataset.art = (group && ART[group.textContent.trim()]) || '';
   const title = pane.querySelector('h2').textContent;
   document.getElementById('admin-current').textContent = title;
   document.title = `${title} · Hub admin`;

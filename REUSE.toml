@@ -14,3 +14,9 @@ path = "tests/jsdom/*.json"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "web/art/*.webp"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "CC-BY-SA-4.0"

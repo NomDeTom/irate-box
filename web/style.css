@@ -690,7 +690,37 @@ body.admin button.link-button {
   content: attr(data-badge); margin-left: auto; padding: 0 0.45rem; border-radius: 999px;
   font-size: 0.7rem; font-weight: 600; color: var(--accent-ink); background: var(--accent);
 }
-.admin-main { min-width: 0; }
+.admin-main { min-width: 0; position: relative; }
+/* Background art by side-bar group (admin.js sets data-art): faint, in the corner of the window,
+   behind the pane's text and never in the way of a click. */
+.admin-main > .admin-pane { position: relative; z-index: 1; }
+.admin-art {
+  display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;
+  width: min(30vw, 22rem); aspect-ratio: 520 / 539; background: no-repeat center / contain; opacity: 0.16;
+}
+.admin-main[data-art="doctor"] .admin-art { display: block; background-image: url("/art/krab-doctor.webp"); }
+.admin-main[data-art="librarian"] .admin-art { display: block; background-image: url("/art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
+.admin-main[data-art="controller"] .admin-art { display: block; background-image: url("/art/krab-controller.webp");
+  width: min(46vw, 34rem); aspect-ratio: 900 / 309; opacity: 0.22; }
+/* The desk's lamps: each over one of its yellow lights, dark when off, glowing when on, each
+   at its own pace (--t) and starting point (--d). */
+.art-lamps { display: none; position: absolute; inset: 0; }
+.admin-main[data-art="controller"] .art-lamps { display: block; }
+.art-lamps i {
+  position: absolute; left: calc(var(--x) - var(--w) / 2 - 1px); top: calc(var(--y) - var(--h) / 2 - 1px);
+  width: calc(var(--w) + 2px); height: calc(var(--h) + 2px); border-radius: 2px;
+  animation: art-lamp var(--t) steps(1, end) var(--d) infinite;
+}
+@keyframes art-lamp {
+  0% { background: #26353d; box-shadow: none; }
+  45% { background: #fff1a8; box-shadow: 0 0 6px 2px rgba(255, 205, 70, 0.9); }
+}
+@media (prefers-reduced-motion: reduce) { .art-lamps i { animation: none; } }
+@media (max-width: 760px) {
+  .admin-art { width: 45vw; opacity: 0.12; }
+  .admin-main[data-art="controller"] .admin-art { width: 70vw; opacity: 0.16; }
+}
+@media print { .admin-art { display: none !important; } }
 .admin-pane > h2 {
   margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;
   text-transform: none; color: var(--text);
