@@ -5,7 +5,7 @@ Description=Irate-Box hub
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/irate-box/server.py
+ExecStart=/home/pi/irate-box/irate-box server
 WorkingDirectory=/home/pi/irate-box
 Restart=on-failure
 Environment=PORT=8000

@@ -71,7 +71,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
 
 From a root shell, the same file also resets the login, for an owner who has lost it:
 
-    sudo python3 /opt/irate-box/hub_control.py reset-password
+    sudo /opt/irate-box/irate-box hub_control reset-password
 
 which puts the box back to unclaimed: /admin asks the next visitor to choose a password, and
 install.sh --apps-from-actions uses  hub_control.py install-app APP ZIP  for a first install.
@@ -95,13 +95,13 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-import health
-import manifests
-import netinv
-import secdoctor
-import security
-import uplink
-import usbstick
+from irate_box.root import health
+from irate_box.hub import manifests
+from irate_box.hub import netinv
+from irate_box.root import secdoctor
+from irate_box.root import security
+from irate_box.hub import uplink
+from irate_box.root import usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -539,24 +539,25 @@ def verify_update(src, installed, opts, progress=None):
                              "history continues from the installed commit" if ff else
                              f"{installed} is not an ancestor: the branch was rewritten, or the box was "
                              "installed from elsewhere. Read the changes before installing.", warn=True))
-    for script in ("install.sh", "uninstall.sh", "tailscale-apply.sh"):
+    for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
             out = run("bash", "-n", str(path))
             checks.append(_check(f"{script} parses", out.returncode == 0,
                                  (out.stderr.strip().splitlines() or [""])[-1]))
     bad = []
-    pys = sorted(src.glob("*.py"))
+    pys = sorted([*src.glob("irate_box/**/*.py"), *src.glob("scripts/*.py")])
     for py in pys:
         try:
             compile(py.read_text(), str(py), "exec")
         except (SyntaxError, ValueError, UnicodeDecodeError) as exc:
-            bad.append(f"{py.name}: {exc}")
-    checks.append(_check("Python files compile", not bad, "; ".join(bad) or f"{len(pys)} files"))
+            bad.append(f"{py.relative_to(src)}: {exc}")
+    checks.append(_check("Python files compile", bool(pys) and not bad,
+                         "; ".join(bad) or (f"{len(pys)} files" if pys else "no Python files under irate_box/: not this layout")))
 
     if WEB_SERVER == "nginx":
         checks.append(_nginx_check(src, opts))
-    caddyfile = src / "Caddyfile"
+    caddyfile = src / "config" / "Caddyfile"
     if WEB_SERVER == "caddy" and caddyfile.exists():
         # As install.sh will write it: the box's current login hash in place of the marker.
         current = _login_file().read_text() if _login_file().exists() else ""
@@ -582,11 +583,11 @@ def _nginx_check(src, opts):
     """The new irate-box.nginx as install.sh will write it, through nginx -t on its own (a
     minimal main config around it, so the box's live config is not touched)."""
     name = "The new nginx site passes nginx -t"
-    template = src / "irate-box.nginx"
+    template = src / "config" / "irate-box.nginx"
     if not template.exists():
-        return _check(name, False, "irate-box.nginx is missing from the update")
+        return _check(name, False, "config/irate-box.nginx is missing from the update")
     text = template.read_text()
-    for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "static"),
+    for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "web"),
                        "@APPS@": "/usr/share/hub/apps", "@GIT_ROOT@": str(STATE / "git"),
                        "@FIRMWARE@": str(STATE / "firmware"),
                        "@HTPASSWD@": str(NGINX_LOGINS),
@@ -1047,7 +1048,7 @@ def usb_import(req):
     with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
         progress.step(f"Copying {Path(file).name} from the stick")
         name = usbstick.import_zim(device, file, ZIM_DIR, HUB_USER, _min_free(),
-                                   ["python3", str(CODE / "librarian.py")], STATE, progress.bytes)
+                                   [str(CODE / "irate-box"), "librarian"], STATE, progress.bytes)
     return f"{name}: added to the library"
 
 
@@ -1318,7 +1319,7 @@ def main():
 if __name__ == "__main__":
     if sys.argv[1:] == ["reset-password"]:
         if os.geteuid() != 0:
-            sys.exit("run as root: sudo python3 hub_control.py reset-password")
+            sys.exit("run as root: sudo ./irate-box hub_control reset-password")
         print(reset_password())
         sys.exit(0)
     if len(sys.argv) == 4 and sys.argv[1] == "install-app":

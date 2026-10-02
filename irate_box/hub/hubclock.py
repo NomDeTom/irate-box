@@ -27,7 +27,7 @@ record ticks() alongside their data and expire it by comparing against a later r
     if clock.ticks() - post["created"] > TTL:
         drop(post)
 
-Run directly to inspect the counter:  python3 hubclock.py
+Run directly to inspect the counter:  ./irate-box hubclock
 """
 
 import json

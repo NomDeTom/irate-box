@@ -23,7 +23,7 @@ import subprocess
 import time
 from pathlib import Path
 
-import zimcheck
+from irate_box.library import zimcheck
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
 FILESYSTEMS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "iso9660"}

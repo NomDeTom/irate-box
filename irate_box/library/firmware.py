@@ -40,8 +40,8 @@ import time
 import zipfile
 from pathlib import Path
 
-import librarian
-from librarian import LibrarianError
+from irate_box.library import librarian
+from irate_box.library.librarian import LibrarianError
 
 ROOT = Path(os.environ.get("HUB_FIRMWARE_ROOT", librarian.STATE_DIR / "firmware"))
 SETTINGS = librarian.LIB_DIR / "firmware.json"

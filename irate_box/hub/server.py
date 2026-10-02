@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Irate-Box hub server: shoutbox, board, blob store, status, captive-portal target.
 
-Serves static/ itself so a bare `python3 server.py` works; behind the web server
+Serves web/ itself so a bare `./irate-box server` works; behind the web server
 (nginx, or Caddy) the assets come off disk and only `/` and the API reach this process."""
 
 import io
@@ -23,23 +23,24 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import html
-import board
-import ci
-import firmware
-import flasher
-import gitrepos
-import hotspot
-import hubclock
-import librarian
-import manifests
-import store
-import uplink
-import zimcheck
+from irate_box.hub import board
+from irate_box.hub import ci
+from irate_box.library import firmware
+from irate_box.hub import flasher
+from irate_box.hub import gitrepos
+from irate_box.hub import hotspot
+from irate_box.hub import hubclock
+from irate_box.library import librarian
+from irate_box.hub import manifests
+from irate_box.hub import store
+from irate_box.hub import uplink
+from irate_box.library import zimcheck
 
-STATIC = Path(__file__).parent / "static"
+CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/hub/server.py → the checkout
+STATIC = CHECKOUT / "web"
 # Mutable state lives outside the code directory so packaging can point it at
 # /var/lib/hub and `apt purge` cannot eat anyone's messages.
-STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", Path(__file__).parent))
+STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", CHECKOUT))
 DATA_FILE = STATE_DIR / "messages.json"
 MAX_MESSAGES = 200
 # Shoutbox entries expire against powered-on time, not the wall clock, which does not
@@ -619,7 +620,7 @@ def firmware_action(payload):
 CONTROL_DIR = STATE_DIR / "control"
 CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
-VERSION_FILE = Path(__file__).parent / "VERSION"
+VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
 CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
 CONTROL_OPS.update({f"{WEB_SERVER}.service": ["restart"], "irate-box.service": ["restart"]})
@@ -832,7 +833,7 @@ def helper_state():
     return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER,
             "commands": ["sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
                          "sudo systemctl start irate-box-control.path",
-                         "sudo python3 /opt/irate-box/health.py"]}
+                         "sudo /opt/irate-box/irate-box health"]}
 
 
 def health_snapshot():

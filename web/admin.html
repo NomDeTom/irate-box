@@ -426,7 +426,7 @@
           The box doctor: is everything the installer set up still there and working — the last
           install, the root helper, every service, Kiwix and its books, the uplink watchdog, the web
           server's configuration. Each problem says what to do; the safe repairs are buttons. The same
-          report from a terminal on the box: <code>sudo python3 /opt/irate-box/health.py</code>, which
+          report from a terminal on the box: <code>sudo /opt/irate-box/irate-box health</code>, which
           works even when this page cannot reach the root helper.
         </p>
         <p class="setting-desc" id="health-when">Not looked yet.</p>
@@ -555,7 +555,7 @@
           files in the hub's folders, unit sandboxing, secrets on command lines and at rest, git
           pushes, sudo rules, accounts and the kernel's protections. It changes nothing and has no
           buttons beyond this one; each line says what to do by hand. Also from a shell:
-          <code>sudo python3 /opt/irate-box/secdoctor.py</code>.
+          <code>sudo /opt/irate-box/irate-box secdoctor</code>.
         </p>
         <p class="setting-desc" id="audit-when">Not run yet.</p>
         <div class="library-buttons">

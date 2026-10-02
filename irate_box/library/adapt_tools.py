@@ -8,7 +8,7 @@
 The published site stays as it is; only the hub's copy changes, and only this much:
 
   * the hub's palette: the site's own hook for this is directory-override.css, which every
-    maintained page loads after its embedded styles, so the hub's palette (static/tools-hub.css)
+    maintained page loads after its embedded styles, so the hub's palette (web/tools-hub.css)
     is written there. A page without the hook gets a link to /tools-hub.css instead;
   * navigation: "Back to index" goes to the hub page that lists the calculator (RF & LoRa,
     Calculators, Electronics or Meshtastic, as the manifests in apps.d/ say), in the whole
@@ -36,7 +36,7 @@ import shutil
 import sys
 from pathlib import Path
 
-import manifests
+from irate_box.hub import manifests
 
 ORIGIN = "https://nomdetom.github.io/"
 INDEX_JSON = "irate-box-index.json"
@@ -184,7 +184,7 @@ def main(tools_dir, static_dir):
     # The site's own override file is a template, all commented out; the hub's palette
     # replaces it, so every page with the hook takes the hub's colours.
     (tools / OVERRIDE).write_text(
-        "/* Written by irate-box's adapt_tools.py: the hub's palette, from static/tools-hub.css,\n"
+        "/* Written by irate-box's adapt_tools.py: the hub's palette, from web/tools-hub.css,\n"
         "   in place of the site's commented-out template. */\n"
         + (static / "tools-hub.css").read_text(encoding="utf-8"), encoding="utf-8")
     listed = homes(index)

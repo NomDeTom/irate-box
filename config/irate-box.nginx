@@ -57,7 +57,7 @@ server {
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
 	# The Host header passes through untouched, so server.py's probe-host check
 	# (captive.apple.com, connectivitycheck.gstatic.com, ...) still fires. / and /index.html
-	# go to the hub, which fills in the tiles; other files under static/ come off disk.
+	# go to the hub, which fills in the tiles; other files under web/ come off disk.
 	root @STATIC@;
 	location = / { proxy_pass http://irate_box_hub; }
 	location = /index.html { proxy_pass http://irate_box_hub; }

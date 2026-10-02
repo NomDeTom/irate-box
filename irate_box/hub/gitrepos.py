@@ -26,7 +26,7 @@ import subprocess
 import time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).parent / "git"))
+ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] / "git"))
 AREAS = {"public": "/git/", "private": "/git-private/"}
 GUEST_PUSH = ROOT / "guest-push"
 # The largest single push the web server takes (irate-box.nginx, the Caddyfile): said on the page.
@@ -34,7 +34,7 @@ MAX_PUSH = 64 * 2**20
 # A name as typed, without ".git"; it becomes <name>.git, which is what URLs and cgit show.
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_DESC = 200
-HOOKS = Path(__file__).parent / "git-hooks"
+HOOKS = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks"
 
 
 def _git(*args, cwd=None):

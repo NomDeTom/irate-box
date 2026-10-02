@@ -22,7 +22,7 @@ difference between a hub that works and one that stalls for everyone on the SSID
 Run directly to serve just this API, which is how to test it against a desktop
 Excalidraw or Mermaid build without the rest of the hub:
 
-    python3 store.py            # listens on :8090, state in ./store-state
+    ./irate-box store            # listens on :8090, state in ./store-state
 """
 
 import hashlib
@@ -34,7 +34,7 @@ import shutil
 import threading
 from pathlib import Path
 
-import hubclock
+from irate_box.hub import hubclock
 
 # Namespaces the Excalidraw frontend uses. Scenes are shared drawings, rooms are
 # collaboration state, files are pasted images.
@@ -82,7 +82,7 @@ MAX_KIND = 32
 #   X-Lock-New: <head hex>:<n>    lock what this request creates
 #   X-Lock: <proof hex>           authorise a change to something locked
 #   X-Lock-Next: <head hex>:<n>   replace the chain (with a valid X-Lock)
-# static/lock.js is the browser side. Responses carry "locked" and "lock_n" (how many changes
+# web/lock.js is the browser side. Responses carry "locked" and "lock_n" (how many changes
 # the chain has left), never the head.
 LOCK_MAX_N = 65536
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -904,7 +904,7 @@ if __name__ == "__main__":
         sys.exit(0)
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
-    STATE = Path(os.environ.get("HUB_STORE_DIR", Path(__file__).parent / "store-state"))
+    STATE = Path(os.environ.get("HUB_STORE_DIR", Path(__file__).resolve().parents[2] / "store-state"))
     CLOCK = hubclock.HubClock(STATE / "clock.json")
     STORE = Store(STATE / "store", CLOCK)
     PORT = int(os.environ.get("PORT", 8090))

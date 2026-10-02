@@ -28,13 +28,13 @@ Battery charging is never switched on. On the RX8130 the backup switch (INIEN) i
 the kernel driver does; charging (CHGEN) is left as it is and reported, since charging a coin
 cell is a hazard.
 
-    sudo python3 rtc.py find              look for a module on every I2C bus (reads only)
-    sudo python3 rtc.py setup CHIP BUS ADDR   e.g. setup ds3231 2 0x68
-    sudo python3 rtc.py status            the module's time against the system's
-    sudo python3 rtc.py save              set the module from the system clock (if trusted)
-    sudo python3 rtc.py remove            undo the setup
-    sudo python3 rtc.py auto              for install.sh: set up the one module found, if one
-    rtc.py boot                           (the unit's own)
+    sudo ./irate-box rtc find              look for a module on every I2C bus (reads only)
+    sudo ./irate-box rtc setup CHIP BUS ADDR   e.g. setup ds3231 2 0x68
+    sudo ./irate-box rtc status            the module's time against the system's
+    sudo ./irate-box rtc save              set the module from the system clock (if trusted)
+    sudo ./irate-box rtc remove            undo the setup
+    sudo ./irate-box rtc auto              for install.sh: set up the one module found, if one
+    ./irate-box rtc boot                   (the unit's own)
 
 For tests, HUB_RTC_FAKE=/path/regs.json stands in for the I2C buses. Stdlib only.
 """
@@ -60,7 +60,7 @@ RUN = Path(os.environ.get("HUB_RUN_DIR", "/run/irate-box"))
 TRUSTED = RUN / "clock-trusted"      # health.py writes it when the owner sets the clock
 FROM_RTC = RUN / "clock-from-rtc"    # this boot's clock came from the module
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
-CODE = Path(__file__).resolve().parent
+CODE = Path(__file__).resolve().parents[2]  # irate_box/root/rtc.py → the checkout, whose launcher the units run
 FAKE = os.environ.get("HUB_RTC_FAKE")
 I2C_SLAVE = 0x0703
 RTC_SET_TIME = 0x4024700A
@@ -581,8 +581,8 @@ Conflicts=shutdown.target
 Type=oneshot
 RemainAfterExit=yes
 Environment=HUB_STATE_DIR={state} HUB_ETC_DIR={etc}
-ExecStart=/usr/bin/python3 {code}/rtc.py boot
-ExecStop=/usr/bin/python3 {code}/rtc.py save
+ExecStart={code}/irate-box rtc boot
+ExecStop={code}/irate-box rtc save
 
 [Install]
 WantedBy=sysinit.target
@@ -593,7 +593,7 @@ Description=Irate-Box: set the clock module from the system clock, if that is tr
 [Service]
 Type=oneshot
 Environment=HUB_STATE_DIR={state} HUB_ETC_DIR={etc}
-ExecStart=/usr/bin/python3 {code}/rtc.py save
+ExecStart={code}/irate-box rtc save
 """,
     "irate-box-rtc-save.timer": """[Unit]
 Description=Irate-Box: keep the clock module set, hourly

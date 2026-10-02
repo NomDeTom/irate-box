@@ -63,7 +63,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-import netinv
+from irate_box.hub import netinv
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))

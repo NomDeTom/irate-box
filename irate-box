@@ -1,0 +1,25 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# Run one of the box's modules by its short name, from wherever this checkout is:
+#   ./irate-box health summary        (python3 -m irate_box.root.health summary)
+#   sudo /opt/irate-box/irate-box secdoctor
+# The checkout, not the current directory, goes first on the module path, so a stray
+# irate_box/ folder where this is run from cannot stand in for the real one.
+here=$(dirname "$(readlink -f "$0")")
+name=${1:-}
+[ -n "$name" ] || { echo "usage: irate-box MODULE [ARGS...]   (a file under irate_box/hub, library or root)" >&2; exit 2; }
+shift
+for part in hub library root; do
+	if [ -f "$here/irate_box/$part/$name.py" ]; then
+		exec python3 -c 'import runpy, sys
+sys.path[0] = sys.argv.pop(1)
+runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' "$here" "irate_box.$part.$name" "$@"
+	fi
+done
+if [ ! -r "$here/irate_box/root" ] || [ ! -x "$here/irate_box/root" ]; then
+	echo "irate-box: no module '$name' that this user can read (irate_box/root/ is for root: try sudo)" >&2
+else
+	echo "irate-box: no module '$name' under $here/irate_box" >&2
+fi
+exit 2

@@ -31,7 +31,7 @@
 	# Assets (js, css, board.html…) come straight off disk. `/` itself stays with
 	# the hub so the captive-probe check runs before index.html is served.
 	handle {
-		root * {$HUB_STATIC:/home/user/irate-box/static}
+		root * {$HUB_STATIC:/home/user/irate-box/web}
 		# / and /index.html go to the hub, which fills in the tiles from apps.d/.
 		@asset {
 			file
@@ -244,7 +244,7 @@
 			}
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
-					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/git-http-guard.py
+					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/scripts/git-http-guard.py
 					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/public
 					env GIT_HTTP_EXPORT_ALL 1
 					env PATH_INFO /{re.smart.1}
@@ -274,7 +274,7 @@
 			}
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
-					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/git-http-guard.py
+					env SCRIPT_FILENAME {$HUB_CODE_DIR:/opt/irate-box}/scripts/git-http-guard.py
 					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/private
 					env GIT_HTTP_EXPORT_ALL 1
 					env PATH_INFO /{re.smart.1}

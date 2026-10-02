@@ -8,11 +8,11 @@ box"); /admin's Network page runs it again through hub_control.py ("net-scan"), 
 dongle or another device; and it runs on its own on any Linux board, before anything is
 installed, to see what irate-box would make of it:
 
-    python3 netinv.py                 a plain report
-    python3 netinv.py --iface wlan1   the same, for one device only
-    python3 netinv.py --json          the whole inventory as JSON
-    python3 netinv.py --write [PATH]  JSON to $HUB_STATE_DIR/control/netinv.json (or PATH)
-    python3 netinv.py summary         one line per point worth knowing, for install.sh
+    ./irate-box netinv                 a plain report
+    ./irate-box netinv --iface wlan1   the same, for one device only
+    ./irate-box netinv --json          the whole inventory as JSON
+    ./irate-box netinv --write [PATH]  JSON to $HUB_STATE_DIR/control/netinv.json (or PATH)
+    ./irate-box netinv summary         one line per point worth knowing, for install.sh
 
 What it looks at:
   - each radio (`iw`): driver, bus (USB, SDIO, PCI), the modes it supports, whether it can run

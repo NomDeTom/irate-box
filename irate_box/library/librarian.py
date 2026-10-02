@@ -67,10 +67,11 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import manifests
-import zimcheck
+from irate_box.hub import manifests
+from irate_box.library import zimcheck
 
-STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", Path(__file__).parent))
+CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/library/librarian.py → the checkout
+STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", CHECKOUT))
 ZIM_DIR = STATE_DIR / "zim"
 LIB_DIR = STATE_DIR / "library"
 SOURCES_FILE = LIB_DIR / "sources.json"
@@ -252,7 +253,6 @@ def validate_source(src):
 # which checks it again and swaps it in, keeping the previous copy for a roll back.
 # Each bundle carries irate-box-bundle.json: {"app", "repository", "ref", "commit", "built", "run"?}.
 
-CODE_DIR = Path(__file__).parent
 APP_STAGING = LIB_DIR / "apps"
 APP_MAX_BYTES = 400 << 20  # unpacked; the largest bundle (draw) is ~25 MB
 APPS = manifests.installable()
@@ -363,7 +363,7 @@ def _pack_git(src, cand, part):
         shutil.rmtree(tree / ".git")
         adapt = APPS[name]["source"].get("adapt")
         if adapt:
-            out = subprocess.run([sys.executable, str(CODE_DIR / adapt), str(tree), str(CODE_DIR / "static")],
+            out = subprocess.run([str(CHECKOUT / "irate-box"), Path(adapt).stem, str(tree), str(CHECKOUT / "web")],
                                  capture_output=True, text=True, timeout=300)
             if out.returncode != 0:
                 raise LibrarianError(f"{adapt} failed: {(out.stderr or out.stdout).strip()[-300:]}")
@@ -870,7 +870,7 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             save_status(status)
         # The firmware mirror (firmware.py), on the same schedule and under the same lock.
         if not names or "firmware" in names:
-            import firmware
+            from irate_box.library import firmware
             if firmware.settings()["enabled"] and (not scheduled or firmware.due(policy["check_every_hours"])):
                 results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
                 log(f"firmware: {results['firmware']}")
@@ -958,7 +958,7 @@ def main(argv=None):
                     add_source(default_app_source(app))
                     print(f"added {app}")
         elif args.cmd == "firmware":
-            import firmware
+            from irate_box.library import firmware
             with Lock():
                 print(firmware.sync(check_only=args.check))
         elif args.cmd == "rebuild-library":

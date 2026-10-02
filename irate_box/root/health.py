@@ -21,9 +21,9 @@ Every finding says what to do by hand ("fix", shell commands where they help) an
 safe to do from a button, offers it ("actions", carried out by fix()). Nothing changes unless
 asked. Three ways in:
 
-    sudo python3 /opt/irate-box/health.py            the report, with what to do
-    sudo python3 /opt/irate-box/health.py summary    problems only (install.sh's closing lines)
-    sudo python3 /opt/irate-box/health.py fix CHOICE one repair, as offered in the report
+    sudo /opt/irate-box/irate-box health            the report, with what to do
+    sudo /opt/irate-box/irate-box health summary    problems only (install.sh's closing lines)
+    sudo /opt/irate-box/irate-box health fix CHOICE one repair, as offered in the report
     /admin → System → Health                         the same, through hub_control.py
 
 The shell is the way in when /admin itself is stuck (the root helper is what runs this for
@@ -41,8 +41,8 @@ import time
 import urllib.request
 from pathlib import Path
 
-import rtc
-import zimcheck
+from irate_box.root import rtc
+from irate_box.library import zimcheck
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -764,15 +764,15 @@ def report(data, problems_only=False):
             lines.append(f"         what to do: {f['fix']}")
         for a in f["actions"]:
             if a["choice"] == "clock-set":
-                lines.append(f"         or: sudo python3 {CODE}/health.py fix clock-set:$(date -d 'YYYY-MM-DD HH:MM' +%s)   (from a terminal: give the right time)")
+                lines.append(f"         or: sudo {CODE}/irate-box health fix clock-set:$(date -d 'YYYY-MM-DD HH:MM' +%s)   (from a terminal: give the right time)")
             elif a["choice"] != "rerun-install":
-                lines.append(f"         or: sudo python3 {CODE}/health.py fix {a['choice']}   ({a['label']})")
+                lines.append(f"         or: sudo {CODE}/irate-box health fix {a['choice']}   ({a['label']})")
     return "\n".join(lines)
 
 
 def main(argv):
     if os.geteuid() != 0:
-        sys.exit("run as root: sudo python3 health.py [summary | fix CHOICE]")
+        sys.exit("run as root: sudo ./irate-box health [summary | fix CHOICE]")
     if not argv:
         print(report(scan()))
     elif argv == ["summary"]:

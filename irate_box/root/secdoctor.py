@@ -18,9 +18,9 @@ silently. Run it before the fixes and again after: the lines that were problems 
 Status: ok | warn | problem (critical and high findings are "problem", the rest "warn").
 A check that cannot read what it needs (not root, no systemd) says so as a warn, never ok.
 
-    sudo python3 /opt/irate-box/secdoctor.py            step by step, with what to do
-    sudo python3 /opt/irate-box/secdoctor.py summary    problems and warnings only
-    sudo python3 /opt/irate-box/secdoctor.py json       the report, as the page reads it
+    sudo /opt/irate-box/irate-box secdoctor            step by step, with what to do
+    sudo /opt/irate-box/irate-box secdoctor summary    problems and warnings only
+    sudo /opt/irate-box/irate-box secdoctor json       the report, as the page reads it
     /admin → Security → Security doctor                 the same, through hub_control.py
 
 The F2 fix (request bodies drained or the connection closed) declares itself with
@@ -127,7 +127,7 @@ def F(fid, title, status, detail, fix="", ref=""):
 
 
 def _cannot(fid, title, why, ref=""):
-    return F(fid, title, "warn", f"Could not check: {why}.", "Run the doctor as root (sudo python3 /opt/irate-box/secdoctor.py).", ref)
+    return F(fid, title, "warn", f"Could not check: {why}.", "Run the doctor as root (sudo /opt/irate-box/irate-box secdoctor).", ref)
 
 
 # --- nginx -------------------------------------------------------------------------------
@@ -701,7 +701,7 @@ def load_addons():
     service (so an add-on added there later is audited with no change here), plus Tailscale,
     which the OS image ships and no manifest describes."""
     out = []
-    folder = next((d for d in (CODE / "apps.d", Path(__file__).resolve().parent / "apps.d") if d.is_dir()), None)
+    folder = next((d for d in (CODE / "apps.d", Path(__file__).resolve().parents[2] / "apps.d") if d.is_dir()), None)
     for f in sorted(folder.glob("*.json")) if folder else ():
         try:
             m = json.loads(_read(f) or "")
@@ -1230,8 +1230,14 @@ NOT_COVERED = [
 ]
 
 
+# The files the code step reads, by the name its findings use.
+HUB_SOURCES = {"server.py": "irate_box/hub/server.py", "health.py": "irate_box/root/health.py",
+               "store.py": "irate_box/hub/store.py"}
+
+
 def _hub_source(name):
-    return _read(CODE / name) or _read(Path(__file__).resolve().parent / name)
+    rel = HUB_SOURCES[name]
+    return _read(CODE / rel) or _read(Path(__file__).resolve().parents[2] / rel)
 
 
 def make_context():

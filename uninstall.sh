@@ -67,7 +67,7 @@ fi
 
 # What the Security page changed on the owner's say-so (Cockpit, SSH, LLMNR, units switched
 # off) goes back as it was found, before the code that knows how is removed.
-if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
+if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/irate_box/root/security.py" ]; then
 	# A service install.sh --take-port-80 switched off needs :80 back, so the hub's web
 	# server lets go of it first.
 	if grep -q 'take-port-80' "$ETC/security-changes.json"; then
@@ -75,19 +75,19 @@ if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/security.py" ]; then
 		[ "$NGINX_OURS" = 0 ] || systemctl disable --now nginx >/dev/null 2>&1 || true
 	fi
 	say "Putting back what the Security page changed"
-	HUB_ETC_DIR="$ETC" python3 "$CODE/security.py" undo-all | sed 's/^/    /' || true
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" security undo-all | sed 's/^/    /' || true
 fi
 
 # "Keep retrying" on /admin's Network page changed two settings of the owner's WiFi profile;
 # put them back (uplink.py recorded the old values).
-if [ -f "$ETC/uplink-changes.json" ] && [ -f "$CODE/uplink.py" ]; then
+if [ -f "$ETC/uplink-changes.json" ] && [ -f "$CODE/irate_box/hub/uplink.py" ]; then
 	say "Putting the WiFi profile back as it was"
-	HUB_ETC_DIR="$ETC" python3 "$CODE/uplink.py" undo-all | sed 's/^/    /' || true
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink undo-all | sed 's/^/    /' || true
 fi
 
 # A clock module set up by rtc.py: its units go, and a kernel-declared module is released.
-if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/rtc.py" ]; then
-	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" python3 "$CODE/rtc.py" remove | sed 's/^/    /' || true
+if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/irate_box/root/rtc.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" rtc remove | sed 's/^/    /' || true
 fi
 
 say "Removing unit files and drop-ins"

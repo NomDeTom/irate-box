@@ -46,7 +46,7 @@ import os
 import re
 from pathlib import Path
 
-APPS_D = Path(os.environ.get("HUB_APPS_D", Path(__file__).parent / "apps.d"))
+APPS_D = Path(os.environ.get("HUB_APPS_D", Path(__file__).resolve().parents[2] / "apps.d"))
 SHARE = Path(os.environ.get("HUB_SHARE_DIR", "/usr/share/hub"))
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
