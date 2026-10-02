@@ -67,6 +67,72 @@ MAX_NAME = 64
 MAX_KIND = 32
 
 
+# --- locks ---------------------------------------------------------------------------
+# A guest can lock a save or a dropped file so that nobody else can change or remove it (it
+# still expires and is evicted as usual, and the admin can still remove it). No password is
+# typed: the hub serves plain HTTP on an open network, where a password would cross the air in
+# clear on every use, and people reuse passwords. Instead a hash chain (S/KEY): the browser
+# picks a random seed and sends only head = SHA-256 applied n times to it. Each change sends
+# the value one step earlier (the "proof"); the hub checks that one SHA-256 of it is the head
+# it holds, then keeps the proof as the new head. A listener sees values already used, and
+# cannot hash backwards to make the next one. When n runs low the browser sends a new head
+# with a valid proof (X-Lock-Next). Headers:
+#   X-Lock-New: <head hex>:<n>    lock what this request creates
+#   X-Lock: <proof hex>           authorise a change to something locked
+#   X-Lock-Next: <head hex>:<n>   replace the chain (with a valid X-Lock)
+# static/lock.js is the browser side. Responses carry "locked" and "lock_n" (how many changes
+# the chain has left), never the head.
+LOCK_MAX_N = 65536
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class LockError(Exception):
+    """A change to a locked item without a valid proof."""
+
+    def __init__(self, lock):
+        super().__init__("locked: only the device that locked it can change it")
+        self.lock = lock
+
+
+def parse_lock(value):
+    """{"head", "n"} from "<head>:<n>", or None."""
+    m = re.fullmatch(r"([0-9a-f]{64}):(\d{1,6})", (value or "").strip().lower())
+    if not m or not 1 <= int(m.group(2)) <= LOCK_MAX_N:
+        return None
+    return {"head": m.group(1), "n": int(m.group(2))}
+
+
+def advance_lock(lock, proof):
+    """The lock after a valid proof, or None if the proof is not the next step of the chain."""
+    proof = (proof or "").strip().lower()
+    if not lock or not _HEX64.match(proof) or lock.get("n", 0) < 1:
+        return None
+    if hashlib.sha256(bytes.fromhex(proof)).hexdigest() != lock.get("head"):
+        return None
+    return {"head": proof, "n": lock["n"] - 1}
+
+
+def public_meta(meta):
+    """Metadata as clients see it: whether it is locked, never the lock itself."""
+    out = {k: v for k, v in meta.items() if k != "lock"}
+    out["locked"] = bool(meta.get("lock"))
+    if meta.get("lock"):
+        out["lock_n"] = meta["lock"]["n"]
+    return out
+
+
+def _lock_after(current, proof=None, new=None, nxt=None, force=False):
+    """What the lock becomes for a change, or LockError. current: the item's lock (or None)."""
+    if current and not force:
+        advanced = advance_lock(current, proof)
+        if advanced is None:
+            raise LockError(current)
+        return nxt or advanced
+    if current and force:
+        return current
+    return new  # unlocked: whoever writes may lock it
+
+
 def _numeric_id(length=16):
     """Scene ids must be digits only -- the Excalidraw frontend parses them as numbers.
 
@@ -140,12 +206,13 @@ class Store:
 
     # -- saves API (gallery) --------------------------------------------------
 
-    def save(self, kind, name, payload, thumb=None, key=None):
+    def save(self, kind, name, payload, thumb=None, key=None, proof=None, lock_new=None, lock_next=None):
         """Store a document plus optional pre-rendered thumbnail. Returns its metadata.
 
         A client may supply its own id. The Mermaid History panel mints uuids locally
         before it knows the save succeeded, and letting it keep them means the client
-        never has to reconcile a local id against a server-assigned one.
+        never has to reconcile a local id against a server-assigned one. Overwriting a
+        locked save needs its proof (see "locks" above); raises LockError otherwise.
         """
         key = key or secrets.token_hex(8)
         meta = {
@@ -158,6 +225,10 @@ class Store:
         }
         with self._lock:
             saves = self._dir("saves")
+            old = self._read_meta(saves / (key + ".meta"))
+            lock = _lock_after((old or {}).get("lock"), proof, lock_new, lock_next)
+            if lock:
+                meta["lock"] = lock
             self._write(saves / (key + ".data"), payload)
             if thumb:
                 self._write(saves / (key + ".thumb"), thumb)
@@ -180,13 +251,20 @@ class Store:
         out.sort(key=lambda m: m.get("created", 0), reverse=True)
         return out
 
-    def rename_save(self, key, name):
+    def rename_save(self, key, name, proof=None, lock_next=None, unlock=False, force=False):
+        """Rename (and, with unlock, remove the lock). force: the admin, past any lock."""
         meta_path = self._dir("saves") / (key + ".meta")
         with self._lock:
             meta = self._read_meta(meta_path)
             if meta is None:
                 return None
-            meta["name"] = name
+            lock = _lock_after(meta.get("lock"), proof, None, lock_next, force)
+            if name:
+                meta["name"] = name
+            if unlock or not lock:
+                meta.pop("lock", None)
+            else:
+                meta["lock"] = lock
             self._write(meta_path, json.dumps(meta).encode())
         return meta
 
@@ -202,8 +280,12 @@ class Store:
     def get_thumb(self, key):
         return self.get("saves", key + ".thumb")
 
-    def delete_save(self, key):
+    def delete_save(self, key, proof=None, force=False):
         with self._lock:
+            meta = self._read_meta(self._dir("saves") / (key + ".meta"))
+            if meta and meta.get("lock") and not force:
+                if advance_lock(meta["lock"], proof) is None:
+                    raise LockError(meta["lock"])
             return self._drop_save(key)
 
     def _read_meta(self, path):
@@ -356,7 +438,7 @@ class Drop:
         return {"files": len(metas), "bytes": sum(m.get("size", 0) for m in metas),
                 "max_total": DROP_MAX_TOTAL, "max_file": DROP_MAX_FILE, "ttl": DROP_TTL}
 
-    def receive(self, stream, length, name, by=""):
+    def receive(self, stream, length, name, by="", lock=None):
         """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
         ValueError (too large, card too full) or OSError (the body stopped short)."""
         if length > DROP_MAX_FILE:
@@ -379,6 +461,8 @@ class Drop:
                 os.fsync(fh.fileno())
             meta = {"id": key, "name": clean_filename(name), "size": length,
                     "by": str(by).strip()[:MAX_NAME], "created": self.clock.ticks()}
+            if lock:
+                meta["lock"] = lock
             with self._lock:
                 os.replace(tmp, self.dir / (key + ".data"))
                 (self.dir / (key + ".meta")).write_text(json.dumps(meta))
@@ -397,9 +481,20 @@ class Drop:
         except (OSError, ValueError):
             return None
 
-    def delete(self, key):
+    def delete(self, key, proof=None, force=False):
+        """Remove a file: the admin (force), or a guest with the proof for a locked file.
+        Nobody else: a file nobody locked stays until it expires or the admin removes it."""
+        if ID_RE.match(key) is None:
+            return False
         with self._lock:
-            return ID_RE.match(key) is not None and self._remove(key)
+            try:
+                meta = json.loads((self.dir / (key + ".meta")).read_text())
+            except (OSError, ValueError):
+                return False
+            if not force:
+                if not meta.get("lock") or advance_lock(meta["lock"], proof) is None:
+                    raise LockError(meta.get("lock"))
+            return self._remove(key)
 
 
 def clean_filename(name):
@@ -419,7 +514,9 @@ def content_disposition(name):
 def _handle_drop(handler, method, path, drop):
     from urllib.parse import unquote
     if path == "/api/drop" and method == "GET":
-        _send_json(handler, 200, {"files": [{k: m.get(k) for k in ("id", "name", "size", "by", "age")} for m in drop.list()],
+        _send_json(handler, 200, {"files": [{**{k: m.get(k) for k in ("id", "name", "size", "by", "age")}, "locked": bool(m.get("lock")),
+                                             **({"lock_n": m["lock"]["n"]} if m.get("lock") else {})}
+                                            for m in drop.list()],
                                   "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL})
         return True
     if path == "/api/drop" and method == "POST":
@@ -441,7 +538,7 @@ def _handle_drop(handler, method, path, drop):
         name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
         by = unquote(handler.headers.get("X-Drop-By", "") or "")
         try:
-            meta = drop.receive(handler.rfile, length, name, by)
+            meta = drop.receive(handler.rfile, length, name, by, lock=parse_lock(handler.headers.get("X-Lock-New")))
         except ValueError as exc:
             handler.close_connection = True
             _send_json(handler, 507 if "full" in str(exc) else 413, {"error": str(exc)})
@@ -450,7 +547,20 @@ def _handle_drop(handler, method, path, drop):
             handler.close_connection = True
             _send_json(handler, 400, {"error": "the upload stopped part-way"})
             return True
-        _send_json(handler, 201, {k: meta[k] for k in ("id", "name", "size")})
+        _send_json(handler, 201, {**{k: meta[k] for k in ("id", "name", "size")}, "locked": bool(meta.get("lock"))})
+        return True
+    if path.startswith("/api/drop/") and method == "DELETE":
+        key = path[len("/api/drop/"):]
+        try:
+            gone = drop.delete(key, proof=handler.headers.get("X-Lock"))
+        except LockError as exc:
+            if exc.lock is None:
+                _send_json(handler, 403, {"error": "only the admin can remove a file nobody locked; it goes when it expires",
+                                          "locked": False})
+            else:
+                _send_locked(handler, exc)
+            return True
+        _send_json(handler, 200, {"id": key}) if gone else _send_json(handler, 404, {"error": "not found (it may have expired)"})
         return True
     if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
         found = drop.open(path[len("/api/drop/"):])
@@ -500,6 +610,17 @@ def _send(handler, code, body=b"", ctype="application/octet-stream", extra=None)
 
 def _send_json(handler, code, data, extra=None):
     _send(handler, code, json.dumps(data).encode(), "application/json", extra)
+
+
+def _lock_headers(handler):
+    """(proof, new lock, next lock) from the request: see "locks" above."""
+    h = handler.headers
+    return h.get("X-Lock"), parse_lock(h.get("X-Lock-New")), parse_lock(h.get("X-Lock-Next"))
+
+
+def _send_locked(handler, exc):
+    lock = exc.lock or {}
+    _send_json(handler, 403, {"error": str(exc), "locked": True, **({"lock_n": lock["n"]} if "n" in lock else {})})
 
 
 def _read_body(handler):
@@ -616,7 +737,7 @@ def _handle_saves(handler, method, path, store):
             _send_json(handler, 200, {
                 "now": store.clock.ticks(),
                 "ttl": SAVE_TTL,
-                "saves": saves,
+                "saves": [public_meta(m) for m in saves],
             })
             return True
         if method == "POST":
@@ -651,7 +772,7 @@ def _handle_saves(handler, method, path, store):
         if meta is None:
             _send_json(handler, 404, {"error": "not found"})
             return True
-        payload = _with_state(store, meta)
+        payload = public_meta(_with_state(store, meta))
         payload["now"] = store.clock.ticks()
         _send_json(handler, 200, payload)
         return True
@@ -662,16 +783,29 @@ def _handle_saves(handler, method, path, store):
             body = json.loads(raw) if raw else {}
         except ValueError:
             body = {}
+        if not isinstance(body, dict):
+            body = {}
         name = str(body.get("name", "")).strip()[:MAX_NAME]
-        if not name:
+        unlock = body.get("unlock") is True
+        proof, _, nxt = _lock_headers(handler)
+        if not name and not unlock and not nxt:
             _send_json(handler, 400, {"error": "name required"})
             return True
-        meta = store.rename_save(key, name)
-        _send_json(handler, 200, meta) if meta else _send_json(handler, 404, {"error": "not found"})
+        try:
+            meta = store.rename_save(key, name, proof=proof, lock_next=nxt, unlock=unlock)
+        except LockError as exc:
+            _send_locked(handler, exc)
+            return True
+        _send_json(handler, 200, public_meta(meta)) if meta else _send_json(handler, 404, {"error": "not found"})
         return True
 
     if method == "DELETE":
-        if store.delete_save(key):
+        try:
+            gone = store.delete_save(key, proof=_lock_headers(handler)[0])
+        except LockError as exc:
+            _send_locked(handler, exc)
+            return True
+        if gone:
             _send_json(handler, 200, {"id": key})
         else:
             _send_json(handler, 404, {"error": "not found"})
@@ -723,8 +857,13 @@ def _create_save(handler, store):
             thumb = None
 
     body = json.dumps(state).encode()
-    meta = store.save(kind, name, body, thumb, key)
-    _send_json(handler, 201, meta)
+    proof, new, nxt = _lock_headers(handler)
+    try:
+        meta = store.save(kind, name, body, thumb, key, proof=proof, lock_new=new, lock_next=nxt)
+    except LockError as exc:
+        _send_locked(handler, exc)
+        return
+    _send_json(handler, 201, public_meta(meta))
 
 
 if __name__ == "__main__":

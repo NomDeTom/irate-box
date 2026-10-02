@@ -927,7 +927,8 @@ def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
         msgs = live_messages(now)
-    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(), "drops": DROP.list()}
+    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(),
+            "drops": [store.public_meta(m) for m in DROP.list()]}
 
 
 def delete_message(created, name):
@@ -949,14 +950,15 @@ def moderation_action(payload):
     elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
         ok = BOARD.delete_post(payload["id"], payload["index"])
     elif action == "delete_drop" and isinstance(payload.get("id"), str):
-        ok = DROP.delete(payload["id"])
+        ok = DROP.delete(payload["id"], force=True)  # moderation removes locked files too
     else:
         return 400, {"error": "unknown action"}
     return (200 if ok else 404), moderation_snapshot()
 
 
 def store_snapshot():
-    return {"now": CLOCK.ticks(), "saves": STORE.list_saves(), "usage": STORE.usage(), "drop": DROP.usage()}
+    return {"now": CLOCK.ticks(), "saves": [store.public_meta(m) for m in STORE.list_saves()], "usage": STORE.usage(),
+            "drop": DROP.usage()}
 
 
 def store_action(payload):
@@ -966,10 +968,10 @@ def store_action(payload):
     try:
         if action == "rename":
             name = str(payload.get("name", "")).strip()[:store.MAX_NAME]
-            if not name or STORE.rename_save(key, name) is None:
+            if not name or STORE.rename_save(key, name, force=True) is None:
                 return 404, {"error": "no such save, or no name"}
         elif action == "delete":
-            STORE.delete_save(key)
+            STORE.delete_save(key, force=True)
         elif action == "clear":
             STORE.clear_namespace(str(payload.get("namespace", "")))
         else:

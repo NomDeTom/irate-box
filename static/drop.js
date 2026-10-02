@@ -9,6 +9,9 @@
   const zone = document.getElementById('drop-zone');
   const by = document.getElementById('drop-by');
   const limits = document.getElementById('drop-limits');
+  const lockBox = document.getElementById('drop-lock');
+  lockBox.checked = localStorage.getItem('drop-lock') === '1';
+  lockBox.addEventListener('change', () => localStorage.setItem('drop-lock', lockBox.checked ? '1' : '0'));
   let maxFile = 25 * 2 ** 20;
 
   by.value = localStorage.getItem('shout-name') || '';
@@ -43,11 +46,41 @@
         a.href = `/api/drop/${encodeURIComponent(f.id)}`;
         a.textContent = f.name;
         a.setAttribute('download', f.name);
-        return li('drop-item', a, span('setting-desc', ` ${size(f.size)} · ${f.by ? `${f.by} · ` : ''}${formatAge(f.age)}`));
+        const row = li('drop-item', f.locked ? span('drop-locked', '🔒 ') : '', a,
+          span('setting-desc', ` ${size(f.size)} · ${f.by ? `${f.by} · ` : ''}${formatAge(f.age)}`));
+        if (f.locked && window.HubLock && HubLock.has('drop', f.id)) {
+          const rm = document.createElement('button');
+          rm.type = 'button';
+          rm.className = 'small';
+          rm.textContent = 'Remove';
+          rm.title = 'This device locked it, so it can remove it before it expires.';
+          rm.addEventListener('click', () => removeMine(f, rm));
+          row.append(' ', rm);
+        }
+        return row;
       }) : [li('setting-desc', 'Nothing here yet.')]));
     } catch (_) {
       list.replaceChildren(li('setting-desc', 'Could not reach the box.'));
     }
+  }
+
+  async function removeMine(f, button) {
+    if (!confirm(`Remove ${f.name} from the box?`)) return;
+    const c = HubLock.change('drop', f.id, f.lock_n);
+    if (!c) return;
+    button.disabled = true;
+    try {
+      const r = await fetch(`/api/drop/${encodeURIComponent(f.id)}`, { method: 'DELETE', headers: c.headers });
+      if (r.ok) {
+        HubLock.forget('drop', f.id);
+      } else {
+        const data = await r.json().catch(() => ({}));
+        alert(`Not removed: ${data.error || `error ${r.status}`}`);
+      }
+    } catch (_) {
+      alert('Not removed: the connection dropped.');
+    }
+    refresh();
   }
 
   function upload(file) {
@@ -69,6 +102,8 @@
       xhr.open('POST', '/api/drop');
       xhr.setRequestHeader('X-Drop-Name', encodeURIComponent(file.name));
       xhr.setRequestHeader('X-Drop-By', encodeURIComponent(by.value.trim()));
+      const lock = lockBox.checked && window.HubLock ? HubLock.create() : null;
+      if (lock) xhr.setRequestHeader('X-Lock-New', lock.header);
       xhr.upload.onprogress = (e) => {
         bar.value = e.loaded;
         status.textContent = `${size(e.loaded)} of ${size(file.size)}`;
@@ -77,7 +112,10 @@
         let msg = '';
         try { msg = JSON.parse(xhr.responseText).error || ''; } catch (_) { /* not JSON: the web server's 413 */ }
         if (xhr.status === 201) {
-          status.textContent = 'Done.';
+          if (lock) {
+            try { HubLock.keep('drop', JSON.parse(xhr.responseText).id, lock.seed); } catch (_) { /* no id: nothing to keep */ }
+          }
+          status.textContent = lock ? 'Done, locked to this device.' : 'Done.';
           bar.value = bar.max;
           setTimeout(() => row.remove(), 3000);
         } else {

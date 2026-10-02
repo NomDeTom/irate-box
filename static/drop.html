@@ -30,6 +30,15 @@
       <label class="drop-capture-btn">📷 Take a photo <input type="file" id="drop-photo" accept="image/*" capture="environment"></label>
       <label class="drop-capture-btn">🎙️ Record a voice note <input type="file" id="drop-voice" accept="audio/*" capture></label>
     </div>
+    <label class="setting drop-lock">
+      <input type="checkbox" id="drop-lock">
+      <span>
+        <span class="setting-name">🔒 Lock what I upload</span>
+        <span class="setting-desc">Only this device can remove it before it expires (nobody else can remove it
+        either way). No password: this browser keeps the key, so clearing its data loses the lock, and the file
+        then simply expires.</span>
+      </span>
+    </label>
     <ul class="drop-uploads" id="drop-uploads"></ul>
   </section>
 
@@ -40,6 +49,7 @@
 
   <script src="/hub.js"></script>
   <script src="/age.js"></script>
+  <script src="/lock.js"></script>
   <script src="/drop.js"></script>
 </body>
 </html>
