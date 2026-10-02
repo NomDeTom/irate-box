@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
-<html lang="en">
+<html lang="en" class="art-page">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
-<body class="drop">
+<body class="drop about" data-art="doctor" data-art-side="left">
   <header>
     <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>ℹ️ About this box</h1>
@@ -71,16 +71,36 @@
       app came as a bundle, its list of the licences of everything inside is next to it (its
       THIRD-PARTY-NOTICES file), and names the exact source it was built from.
     </p>
+    <h3>The apps</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">Excalidraw</span><span class="setting-desc"> (drawing), MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">Mermaid live editor</span><span class="setting-desc"> (diagrams), MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">Meshtastic web flasher</span><span class="setting-desc"> GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
-      <li class="drop-item"><span class="setting-name">Meshtastic firmware</span><span class="setting-desc"> (in the flasher's mirror), GPL-3.0: source at <code>github.com/meshtastic/firmware</code>, tagged with each version</span></li>
-      <li class="drop-item"><span class="setting-name">Kiwix</span><span class="setting-desc"> (the offline library), GPL-3.0</span></li>
-      <li class="drop-item"><span class="setting-name">nginx</span><span class="setting-desc"> (or Caddy, Apache-2.0), BSD-2-Clause; <span class="setting-name">cgit</span> GPL-2.0; <span class="setting-name">ttyd</span> MIT; <span class="setting-name">SilverBullet</span> MIT; <span class="setting-name">Syncthing</span> MPL-2.0; <span class="setting-name">Mosquitto</span> EPL-2.0 / EDL-1.0</span></li>
+      <li class="drop-item"><span class="setting-name">Excalidraw</span><span class="setting-desc"> Drawing, on every box. MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">Mermaid live editor</span><span class="setting-desc"> Diagrams, on every box. MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">Meshtastic web flasher</span><span class="setting-desc"> Flashing radios over USB, on every box. GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
+      <li class="drop-item"><span class="setting-name">Meshtastic firmware</span><span class="setting-desc"> In the flasher's mirror, if the owner keeps one. GPL-3.0; source at <code>github.com/meshtastic/firmware</code>, tagged with each version</span></li>
+      <li class="drop-item"><span class="setting-name">Kiwix</span><span class="setting-desc"> The offline library, when the box has books. GPL-3.0</span></li>
+    </ul>
+    <h3>What runs them</h3>
+    <ul class="drop-list">
+      <li class="drop-item"><span class="setting-name">nginx</span><span class="setting-desc"> The web server in front of everything, on every box unless the owner chose Caddy. BSD-2-Clause</span></li>
+      <li class="drop-item"><span class="setting-name">Caddy</span><span class="setting-desc"> The other web server, only on a box whose owner chose it (or where nginx could not be installed). Apache-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">Python</span><span class="setting-desc"> Runs the hub itself. PSF-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">git</span><span class="setting-desc"> Behind the git servers (git http-backend). GPL-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">cgit</span><span class="setting-desc"> The git servers' web pages. GPL-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">fcgiwrap</span><span class="setting-desc"> Runs git and cgit for the web server. MIT</span></li>
+    </ul>
+    <h3>Add-ons, when the owner adds them</h3>
+    <ul class="drop-list">
+      <li class="drop-item"><span class="setting-name">ttyd</span><span class="setting-desc"> The terminal (the shell in the browser), behind the admin login: installed on every box, running only when added. MIT</span></li>
+      <li class="drop-item"><span class="setting-name">SilverBullet</span><span class="setting-desc"> Notes. MIT</span></li>
+      <li class="drop-item"><span class="setting-name">Syncthing</span><span class="setting-desc"> Keeps folders in step with the owner's machines. MPL-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">Mosquitto</span><span class="setting-desc"> The MQTT broker for Meshtastic nodes. EPL-2.0 / EDL-1.0</span></li>
+      <li class="drop-item"><span class="setting-name">excalidraw-room</span><span class="setting-desc"> Live collaboration on the whiteboard. MIT</span></li>
+      <li class="drop-item"><span class="setting-name">Node.js</span><span class="setting-desc"> Runs the collaboration relay. MIT</span></li>
     </ul>
   </section>
 
+  <!-- The doctor in the bottom-left corner (style.css: data-art, data-art-side). -->
+  <div class="admin-art" aria-hidden="true"></div>
   <script src="/hub.js"></script>
   <script src="/about.js"></script>
 </body>

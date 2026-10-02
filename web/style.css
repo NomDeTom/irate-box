@@ -699,6 +699,7 @@ body.admin button.link-button {
 .art-page { scrollbar-gutter: stable; }
 /* The same art on a public page (Services: data-art on its body), behind its sections. */
 body[data-art] > header, body[data-art] > section { position: relative; z-index: 1; }
+[data-art-side="left"] .admin-art { right: auto; left: 1rem; background-position: left bottom; }
 .admin-art {
   display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;
   width: min(30vw, 22rem); aspect-ratio: 520 / 539; background: no-repeat center / contain; opacity: 0.16;
@@ -731,6 +732,7 @@ body[data-art] > header, body[data-art] > section { position: relative; z-index:
   text-transform: none; color: var(--text);
 }
 body.admin h3 { margin: 1.75rem 0 0.5rem; font-size: 1rem; }
+body.about h3 { margin: 1.25rem 0 0.4rem; font-size: 0.95rem; }
 @media (max-width: 760px) {
   .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .admin-side { position: relative; top: 0; }
