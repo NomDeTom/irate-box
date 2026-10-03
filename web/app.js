@@ -22,7 +22,7 @@ const APP_THEME_KEYS = [
 function hubTheme() {
   try {
     const t = localStorage.getItem('theme');
-    return t === 'light' || t === 'dark' ? t : 'auto';
+    return t === 'cybercore' ? 'dark' : t === 'light' || t === 'dark' ? t : 'auto';
   } catch (_) { return 'auto'; }
 }
 

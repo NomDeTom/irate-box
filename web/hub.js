@@ -44,7 +44,7 @@ window.addEventListener('storage', (e) => {
   if (e.key !== 'theme' && e.key !== null) return;
   let t = 'auto';
   try { t = localStorage.getItem('theme') || 'auto'; } catch (_) {}
-  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  if (t === 'light' || t === 'dark' || t === 'cybercore') document.documentElement.dataset.theme = t;
   else { t = 'auto'; delete document.documentElement.dataset.theme; }
   if (picker) {
     picker.querySelectorAll('[data-theme-choice]').forEach(
