@@ -58,8 +58,8 @@
 
     <main class="admin-main">
       <!-- Background art by side-bar group (admin.js sets data-art on main). The controller's
-           desk lights come in ten groups, each a layer of art/krab-controller-lamps.webp. -->
-      <div class="admin-art" aria-hidden="true"><span class="art-lamps"><i style="--g:0"></i><i style="--g:1"></i><i style="--g:2"></i><i style="--g:3"></i><i style="--g:4"></i><i style="--g:5"></i><i style="--g:6"></i><i style="--g:7"></i><i style="--g:8"></i><i style="--g:9"></i></span></div>
+           desk lights are made by krab-desk.js from art/krab-controller-lit.webp and -mask.webp. -->
+      <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
       <div class="helper-banner" id="helper-banner" role="alert" hidden>
         <strong>The box's root helper is not answering.</strong>
         <span id="helper-banner-detail"></span>
@@ -745,6 +745,8 @@
   </div>
 
   <script src="/hub.js"></script>
+
+  <script src="/krab-desk.js"></script>
   <script src="/admin.js"></script>
 </body>
 </html>
