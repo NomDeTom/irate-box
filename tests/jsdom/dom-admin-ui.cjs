@@ -76,7 +76,7 @@ setTimeout(() => {
   check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
-  check('the desk has its ten lamp groups', d.querySelectorAll('.art-lamps i').length === 10);
+  check('the desk has its lamp host and crab layer, lit by krab-desk.js', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-lit', '-mask', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && fs.existsSync(`${WEB}/krab-desk.js`));
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const af = d.getElementById('auto-form');
   check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
