@@ -31,23 +31,24 @@ UPDATES_LOG_NAME = "security-updates.log"
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
 KNOWN_PORTS = {
     ("tcp", 22): "SSH", ("tcp", 80): "the hub (web server)", ("tcp", 9090): "Cockpit",
-    ("tcp", 1883): "MQTT broker (mosquitto)", ("tcp", 22000): "Syncthing", ("udp", 22000): "Syncthing",
+    ("tcp", 1883): "MQTT broker (mosquitto)", ("tcp", 6667): "IRC server (ngIRCd)",
+    ("tcp", 22000): "Syncthing", ("udp", 22000): "Syncthing",
     ("udp", 21027): "Syncthing discovery", ("udp", 5353): "mDNS (Avahi or resolved)",
     ("tcp", 5355): "LLMNR (systemd-resolved)", ("udp", 5355): "LLMNR (systemd-resolved)",
     ("udp", 41641): "Tailscale", ("udp", 53): "DNS", ("tcp", 53): "DNS", ("udp", 67): "DHCP",
 }
 # The hub's own listeners, there on purpose: reported, not offered for closing here.
-OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
+OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 6667), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
 # Units of the hub and its add-ons: whatever they listen on is theirs (Syncthing, for one,
 # also opens random UDP ports for its connections).
-OUR_UNITS = re.compile(r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$")
+OUR_UNITS = re.compile(r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|ngircd|excalidraw-room|syncthing@.*)\.service$")
 # The hub's front door: nginx, or Caddy, the fallback (install.sh --web).
 WEB_UNITS = {"nginx.service": "nginx", "caddy.service": "Caddy"}
 # The box's own network clients: they answer only the network's DHCP server.
 CLIENT_PORTS = {("udp", 68): "DHCP client", ("udp", 546): "DHCPv6 client"}
 # Units the page never offers to stop: the box would be unreachable or the hub would break.
 PROTECTED = re.compile(r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|nginx|caddy|"
-                       r"irate-box.*|tailscaled|mosquitto|syncthing@.*|kiwix|init)\.(service|socket)$")
+                       r"irate-box.*|tailscaled|mosquitto|ngircd|syncthing@.*|kiwix|init)\.(service|socket)$")
 
 
 def run(*cmd, timeout=60):
