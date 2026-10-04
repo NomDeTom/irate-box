@@ -10,7 +10,7 @@
 #   sudo ./uninstall.sh --purge-packages    ... and the apt packages install.sh added:
 #                                           nginx (if irate-box installed it), caddy (and
 #                                           its apt repo), kiwix-tools, syncthing,
-#                                           mosquitto, nodejs, cgit, fcgiwrap
+#                                           mosquitto, ngircd, nodejs, cgit, fcgiwrap
 #
 # State goes too unless --keep-state (the git repositories are state): back it up
 # first. -y skips the confirmation.
@@ -57,6 +57,9 @@ done
 # install.sh enables mosquitto only for --with-mqtt; with its config gone it would come
 # back up as a bare broker on :1883, so it is stopped here and purged or left disabled.
 systemctl disable --now mosquitto >/dev/null 2>&1 || true
+# The same for ngircd (--with-irc): Debian starts it on install, and without irate-box's
+# config it would come back as Debian's example server on :6667.
+systemctl disable --now ngircd >/dev/null 2>&1 || true
 
 if systemctl cat tailscaled.service >/dev/null 2>&1; then
 	say "Handing Tailscale back as an ordinary boot service (left $(systemctl is-active tailscaled))"
@@ -96,11 +99,12 @@ rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-gi
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-control.{path,service} \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
-	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf"
-rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" 2>/dev/null || true
+	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf" "$UNITDIR/ngircd.service.d/irate-box.conf"
+rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" "$UNITDIR/ngircd.service.d" 2>/dev/null || true
 
 say "Removing service config"
 rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl
+rm -f /etc/ngircd/irate-box.conf /etc/ngircd/irate-box.motd
 # An owner's own Caddy: the hub's site file and the import line install.sh added go; the
 # rest of their Caddyfile is theirs and stays as it is.
 if [ -f /etc/caddy/irate-box.caddy ]; then
@@ -155,7 +159,7 @@ if [ "$PURGE_PKGS" = 1 ]; then
 	say "Purging packages"
 	export DEBIAN_FRONTEND=noninteractive
 	pkgs=()
-	for p in caddy kiwix-tools syncthing mosquitto mosquitto-clients nodejs cgit fcgiwrap; do
+	for p in caddy kiwix-tools syncthing mosquitto mosquitto-clients ngircd nodejs cgit fcgiwrap; do
 		dpkg -s "$p" >/dev/null 2>&1 && pkgs+=("$p")
 	done
 	# nginx only if irate-box brought it: an owner's nginx serves their own sites.
@@ -165,7 +169,7 @@ if [ "$PURGE_PKGS" = 1 ]; then
 	# Stopped first, not left to the packages' own scripts: a policy-rc.d (containers, some
 	# images) stops those from stopping anything, and nginx outlived its purge in a test.
 	for p in "${pkgs[@]}"; do
-		case "$p" in nginx | caddy | mosquitto) systemctl disable --now "$p" >/dev/null 2>&1 || true ;; esac
+		case "$p" in nginx | caddy | mosquitto | ngircd) systemctl disable --now "$p" >/dev/null 2>&1 || true ;; esac
 	done
 	[ ${#pkgs[@]} -eq 0 ] || apt-get purge -y -q "${pkgs[@]}"
 	apt-get autoremove --purge -y -q
