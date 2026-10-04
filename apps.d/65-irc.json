@@ -1,0 +1,24 @@
+{
+  "id": "irc",
+  "order": 65,
+  "tile": {
+    "icon": "💬🗨️",
+    "name": "IRC chat",
+    "desc": "Real-time chat in any IRC app",
+    "href": "/irc.html"
+  },
+  "status": {
+    "path": "/irc.html",
+    "name": "IRC server (ngIRCd)",
+    "port": 6667,
+    "unit": "ngircd.service",
+    "control": true,
+    "note": "chat in any IRC app, on :6667"
+  },
+  "addon": {
+    "option": "--with-irc",
+    "title": "IRC server (ngIRCd)",
+    "summary": "A small IRC server on :6667 with a #lobby channel, for chat in any IRC app, and a page at /irc.html saying how to join. A few MB of memory.",
+    "consent": "The server answers anyone on the box's network on port 6667, with no accounts and no encryption (client addresses are hidden from other users, and there are no moderators). Add it?"
+  }
+}
