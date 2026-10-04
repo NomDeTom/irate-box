@@ -5,7 +5,7 @@ Maintainer: NomDeTom <NomDeTom@users.noreply.github.com>
 Installed-Size: @SIZE@
 Depends: python3 (>= 3.11), curl, ca-certificates, git, unzip, fcgiwrap, cgit, iw, openssl
 Recommends: nginx | caddy, kiwix-tools
-Suggests: syncthing, mosquitto, mosquitto-clients, nodejs
+Suggests: syncthing, mosquitto, mosquitto-clients, ngircd, nodejs
 Section: net
 Priority: optional
 Homepage: https://github.com/NomDeTom/irate-box
