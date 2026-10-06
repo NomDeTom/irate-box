@@ -69,6 +69,8 @@ def fake(cmd, timeout=0, check=True):
         return R("".join(f"{k}: {d[k]}\n" for k in fields if k in d))
     if name == "systemctl":
         return R()
+    if name == "apt-cache" and cmd[1] == "show":
+        return R(f"Package: {cmd[-1]}\nVersion: {ARCHIVE[cmd[-1]][0]}\n" if cmd[-1] in ARCHIVE else "", 0 if cmd[-1] in ARCHIVE else 100)
     if name == "dpkg" and cmd[1:] == ["--print-architecture"]:
         return R(BOARD["arch"] + "\n")
     if name == "apt-get":
@@ -408,5 +410,51 @@ kits.fetch("small", budget_mb=10, log=lambda *a: None)
 (T / "defs" / "odd.json").write_text(json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]}))
 check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
 (T / "defs" / "odd.json").unlink()
+# Step 38: the owner's own kits, and extra tools in a shipped kit.
+line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "radio", "title": "Radio tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
+                                                  "remove_after_hours": 4}})
+own = kits.definitions().get("radio")
+check("an own kit: kept by root, marked as the owner's, repeats dropped, its consent names the packages", own and own["owner"] and own["packages"] == ["gdb", "tcpdump"]
+      and "gdb, tcpdump" in own["consent"] and "added" in line and (kits.ROOT / "owner" / "radio.json").stat().st_mode & 0o777 == 0o644, (line, own))
+check("  and the hub sees it too (kitdefs, readable)", "radio" in toolkits.definitions() and toolkits.settings()["kits"]["radio"]["remove_after"] == 4)
+for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "one of the box's own kits"), ({"id": "r2", "title": "x", "packages": ["no-such-pkg"]}, "not in this box's package lists"),
+                 ({"id": "r2", "title": "x", "packages": ["--force"]}, "Debian package names"), ({"id": "r2", "title": "", "packages": ["gdb"]}, "title"),
+                 ({"id": "../x", "title": "x", "packages": ["gdb"]}, "id"), ({"id": "extras", "title": "x", "packages": ["gdb"]}, "id"),
+                 ({"id": "r2", "title": "x", "packages": []}, "at least one")):
+    try:
+        kits.define(bad); check(f"define refuses: {why}", False)
+    except ValueError as exc:
+        check(f"define refuses: {why}", why in str(exc), str(exc))
+kits.fetch("radio", budget_mb=10, log=lambda *a: None)
+check("an own kit is fetched like the others", kits.manifest("radio") and {p["name"] for p in kits.manifest("radio")["packages"]} >= {"gdb"})
+kits.install("radio", hours=1, log=lambda *a: None)
+try:
+    kits.undefine("radio"); check("an installed own kit can't be deleted", False)
+except ValueError:
+    check("an installed own kit can't be deleted", True)
+kits.remove("radio", log=lambda *a: None)
+print_ = hub_control.ACTIONS["kit-undefine"]({"kit": "radio"})
+check("deleted: its definition and its cache", "radio" not in kits.definitions() and not kits.manifest("radio")
+      and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("radio") is None, print_)
+try:
+    kits.undefine("debug"); check("a shipped kit can't be deleted", False)
+except ValueError:
+    check("a shipped kit can't be deleted", True)
+line = hub_control.ACTIONS["kit-extra"]({"kit": "capture", "packages": ["gdb", "tcpdump"]})
+cap = kits.definitions()["capture"]
+check("extra tools in a shipped kit: added to its packages, one it has already left out", cap["packages"] == ["tcpdump", "tshark", "gdb"] and cap["extra"] == ["gdb"], (line, cap))
+hub_control.ACTIONS["kit-extra"]({"kit": "capture", "packages": []})
+check("  and cleared", kits.definitions()["capture"]["packages"] == ["tcpdump", "tshark"] and "extra" not in kits.definitions()["capture"])
+for bad in ({"kit": "radio", "packages": ["gdb"]}, {"kit": "capture", "packages": ["no-such-pkg"]}, {"kit": "capture", "packages": "gdb"}):
+    try:
+        hub_control.ACTIONS["kit-extra"](bad); check(f"extra refused: {bad}", False)
+    except ValueError:
+        check(f"extra refused: {bad}", True)
+queued.clear()
+toolkits.action({"action": "define", "kit": {"title": "Debug", "packages": "gdb, strace  tcpdump"}})
+check("the page's define: an id from the name (my- when it would clash), packages split", queued[-1]["kit"]["id"] == "my-debug"
+      and queued[-1]["kit"]["packages"] == ["gdb", "strace", "tcpdump"], queued[-1])
+toolkits.action({"action": "extra", "kit": "capture", "packages": ["gdb"]})
+check("  and extra", queued[-1] == {"action": "kit-extra", "kit": "capture", "packages": ["gdb"]})
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

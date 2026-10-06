@@ -140,6 +140,19 @@ def action(payload):
     if what == "settings":
         set_settings(payload)
         return None
+    if what == "define":
+        spec = payload.get("kit")
+        if not isinstance(spec, dict):
+            raise LibrarianError("kit: {title, packages, ...}")
+        kid = spec.get("id") or re.sub(r"[^a-z0-9]+", "-", str(spec.get("title", "")).lower()).strip("-")[:32]
+        if kid in kitdefs.shipped() or kid == "extras":
+            kid = f"my-{kid}"[:32]
+        pkgs = spec.get("packages")
+        if isinstance(pkgs, str):
+            pkgs = re.split(r"[\s,]+", pkgs.strip())
+        return librarian._queue_root({"action": "kit-define", "kit": {
+            "id": kid, "title": str(spec.get("title", "")), "summary": str(spec.get("summary", "")),
+            "packages": [p for p in (pkgs or []) if p], "remove_after_hours": spec.get("remove_after_hours", 24)}})
     kid = payload.get("kit")
     if what != "status" and kid not in definitions():
         raise LibrarianError("kit: one of " + ", ".join(definitions()))
@@ -154,7 +167,14 @@ def action(payload):
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid})
     if what == "status":
         return librarian._queue_root({"action": "kit-status"})
-    raise LibrarianError("action: settings, fetch, install, keep, remove, rollback or status")
+    if what == "extra":
+        pkgs = payload.get("packages")
+        if not isinstance(pkgs, list) or len(pkgs) > 20:
+            raise LibrarianError("packages: a list of up to 20 names")
+        return librarian._queue_root({"action": "kit-extra", "kit": kid, "packages": [str(p) for p in pkgs]})
+    if what == "undefine":
+        return librarian._queue_root({"action": "kit-undefine", "kit": kid})
+    raise LibrarianError("action: settings, fetch, install, keep, remove, rollback, status, define, undefine or extra")
 
 
 def step(policy, now=None, log=print):

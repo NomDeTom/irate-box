@@ -376,6 +376,20 @@
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
         <div class="card-grid" id="kits-grid"></div>
+        <h3 id="kits-form-title">Add a toolkit of your own</h3>
+        <p class="setting-desc">
+          Any Debian packages this box's package lists know, kept, refreshed and removed like the
+          kits above. Each name is checked before the kit is kept.
+        </p>
+        <form id="kits-add" class="library-form">
+          <input type="hidden" name="id">
+          <label>Name <input name="title" required maxlength="60" placeholder="Radio tools"></label>
+          <label>What it is for <input name="summary" maxlength="200" placeholder="optional, one line"></label>
+          <label>Packages <textarea name="packages" rows="2" required placeholder="rtl-sdr gqrx-sdr sox"></textarea></label>
+          <label>Removed after <select name="hours"><option value="1">an hour</option><option value="4">4 hours</option><option value="24" selected>a day</option><option value="168">a week</option><option value="720">a month</option><option value="never">never</option></select></label>
+          <button type="submit">Add toolkit</button>
+          <button type="button" id="kits-add-cancel" hidden>Cancel</button>
+        </form>
       </section>
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">

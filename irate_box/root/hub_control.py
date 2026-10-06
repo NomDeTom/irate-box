@@ -75,6 +75,10 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       install it from there with no internet (removed again after "hours"; null: never),
       remove what it added, change when it goes, or remove every kit whose time is up. A
       request names a kit, never packages. control/kits.json says what is cached and installed.
+  {"action": "kit-define", "kit": {id, title, summary, packages, remove_after_hours}}
+  {"action": "kit-undefine", "kit": ...}   {"action": "kit-extra", "kit": ..., "packages": [...]}
+      The owner's own kits, and extra tools in a shipped kit (step 38): every package name
+      checked against this box's package lists before root keeps the definition.
 
 From a root shell, the same file also resets the login, for an owner who has lost it:
 
@@ -1764,9 +1768,16 @@ def _kit_req(fn):
     """A toolkit action, and control/kits.json written after it, whatever happened."""
     def action(req):
         kit = req.get("kit")
+        if fn is kits.define:
+            try:
+                return kits.define(kit)
+            finally:
+                _kits_status()
         if fn is not kits.expire and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
             raise ValueError("kit: a toolkit's id")
         try:
+            if fn is kits.set_extra:
+                return kits.set_extra(kit, req.get("packages"))
             if fn is kits.fetch:
                 budget = req.get("budget_mb", 500)
                 if type(budget) is not int or not 10 <= budget <= 1 << 16:
@@ -1793,7 +1804,8 @@ ACTIONS = {"service": service, "password": password,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
-           "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
+           "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
+           "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
 
 
 def answer(rid, ok, message):
