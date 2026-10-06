@@ -215,7 +215,9 @@ def _mirror_version(rel, cfg, policy, log):
 def _subset(name, mode):
     """Where a deps-zip entry goes under pio-deps/, or None to leave it out."""
     parts = name.split("/")
-    if len(parts) < 3 or ".." in parts:
+    # No empty part (a "//" made the rest absolute, and joining that discarded the folder: F10),
+    # no "." or "..", no backslash.
+    if len(parts) < 3 or any(p in ("", ".", "..") for p in parts[:-1]) or parts[-1] in (".", "..") or "\\" in name:
         return None
     _, area, *rest = parts            # pio-deps-<env>/<area>/...
     if mode == "whole":
@@ -254,6 +256,8 @@ def _carry_cache(rel, cfg, policy, log):
                 if not rel_path or info.is_dir():
                     continue
                 target = work / rel_path
+                if not target.resolve().is_relative_to(work.resolve()):
+                    raise LibrarianError(f"{deps['name']} names a file outside its folder: {info.filename[:80]}")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)

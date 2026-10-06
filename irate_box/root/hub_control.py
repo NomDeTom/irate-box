@@ -850,6 +850,9 @@ def _check_for_update(progress):
     branch = _option(opts, "--branch", "main")
     if not repo:
         raise ValueError("install-options names no repository")
+    if repo.startswith(("http://", "git://")):
+        # Code that root will run, over a transport anyone on the way can rewrite (F22).
+        raise ValueError(f"updates come from {repo}, which is not encrypted: rerun install.sh with --repo https://…")
     progress.step(f"Fetching {branch} from {repo}")
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
@@ -864,6 +867,7 @@ def _check_for_update(progress):
         _git("clone", "--depth", "200", "--branch", branch, repo, src)
     progress.step("Reading the changes")
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
+    full = _git("-C", src, "rev-parse", "HEAD")
     installed = _installed_commit()
     known = bool(installed) and run("git", "-C", src, "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
     span = f"{installed}..HEAD" if known else "-10"
@@ -874,12 +878,13 @@ def _check_for_update(progress):
         "available_date": _git("-C", src, "log", "-1", "--format=%cs"),
         "installed": installed, "up_to_date": up_to_date,
         "changes": changes[:50], "changes_known": known, "fetched": time.time(),
-        "verified": None, "checks": [],
+        "verified": None, "verified_sha": None, "checks": [],
     }
-    # The same commit fetched before: its checks and downloads still stand.
+    # The same commit fetched before: its checks and downloads still stand. Matched on the
+    # whole hash (F21): a commit sharing the first 7 digits must not inherit "verified".
     old = _read_update_state()
-    if not up_to_date and old.get("verified") == head:
-        state.update(verified=head, checks=old.get("checks", []))
+    if not up_to_date and old.get("verified_sha") == full:
+        state.update(verified=head, verified_sha=full, checks=old.get("checks", []))
     if old.get("install_steps"):
         state["install_steps"] = old["install_steps"]
     return state, opts
@@ -919,8 +924,9 @@ def update_fetch(req):
         progress.step("Checking the new version")
         checks = verify_update(UPDATE_SRC, state["installed"], opts, progress)
     head = state["available"]
+    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
-    state.update(checks=checks, verified=None if failed else head)
+    state.update(checks=checks, verified=None if failed else head, verified_sha=None if failed else full)
     _write_update_state(state)
     if failed:
         return f"update {head} found but did not pass verification: {failed[0]['name']} ({failed[0]['detail']})"
@@ -960,8 +966,9 @@ def update_install(req):
     if not (UPDATE_SRC / "install.sh").is_file():
         raise ValueError("nothing fetched yet: check for updates first")
     state = _read_update_state()
-    head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
-    if state.get("verified") != head:
+    # The whole hash of what is checked out, against the whole hash that passed (F21).
+    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if not state.get("verified_sha") or state.get("verified_sha") != full:
         raise ValueError("the fetched version has not passed verification: fetch the update again")
     return _install_fetched(state)
 
