@@ -121,8 +121,13 @@ def _list(names, limit=MAX_LISTED):
     return ", ".join(names[:limit]) + ("…" if len(names) > limit else "")
 
 
-def F(fid, title, status, detail, fix="", ref=""):
-    return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": ref}
+def F(fid, title, status, detail, fix="", ref="", source="doctor", about=None):
+    """One finding, in the shape every source shares (security-doctor-plan §4): which source said
+    it, what it is about ({kind: package | service | setting | file | kit, key}), so the joint
+    report can merge what several sources say about one thing; accepted is the reason when the
+    box's design accepts it (stage 2)."""
+    return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": ref,
+            "source": source, "about": about, "accepted": None}
 
 
 def _cannot(fid, title, why, ref=""):
@@ -1502,6 +1507,175 @@ def step_origins(ctx):
     return out
 
 
+# --- debsecan: Debian's packages against Debian's security tracker (step 29) -----------------
+# Run from the security kit: installed if it is, otherwise unpacked from its cache (debsecan and
+# python3-apt's apt_pkg, a module over libapt-pkg, which every Debian has), with the tracker's
+# data the librarian keeps (library/debsecan/). Nothing is installed for it, nothing fetched.
+
+DEBSECAN_FEED = STATE / "library" / "debsecan" / "release" / "1"
+KITS_ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
+SUMMARY_RE = re.compile(r"^(\S+) (\S+)(?: \((.*)\))?$")
+
+
+def _codename():
+    for line in (_read(Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))) or "").splitlines():
+        if line.startswith("VERSION_CODENAME="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def _debsecan_command(work):
+    """[argv...] and the environment to run debsecan with, or (None, why)."""
+    if Path("/usr/bin/debsecan").exists():
+        try:
+            import apt_pkg  # noqa: F401
+            return ["/usr/bin/debsecan"], {}
+        except ImportError:
+            pass
+    pool = KITS_ROOT / "pool"
+    debs = {}
+    for name in ("debsecan", "python3-apt", "python-apt-common"):
+        found = sorted(pool.glob(f"{name}_*.deb")) if pool.is_dir() else []
+        if not found:
+            return None, "debsecan is not on the box, and the security kit's cache doesn't hold it"
+        debs[name] = found[-1]
+    # Run as root: only files that are still what the kit's manifest says was fetched.
+    from irate_box.root import kits
+    damaged = {Path(p.split(" ", 1)[0]).name for p in kits.verify()}
+    for d in debs.values():
+        if d.name in damaged:
+            return None, f"{d.name} in the security kit's cache fails its check"
+        r = subprocess.run(["dpkg-deb", "-x", str(d), str(work)], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return None, f"unpacking {d.name}: {r.stderr.strip()[:200]}"
+    return [sys.executable, str(work / "usr" / "bin" / "debsecan")], {"PYTHONPATH": str(work / "usr" / "lib" / "python3" / "dist-packages")}
+
+
+def _debsecan(cmd, env, suite, status=None, timeout=300):
+    """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary."""
+    args = [*cmd, "--suite", suite, "--source", f"file://{DEBSECAN_FEED}/", "--format", "summary"]
+    if status:
+        args += ["--status", str(status)]
+    r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **env))
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300])
+    out = {}
+    for line in r.stdout.splitlines():
+        m = SUMMARY_RE.match(line.strip())
+        if not m:
+            continue
+        notes = [n.strip() for n in (m.group(3) or "").split(",") if n.strip()]
+        urgency = next((n.split()[0] for n in notes if n.endswith(" urgency")), "")
+        out.setdefault(m.group(2), []).append((m.group(1), {"fixed": "fixed" in notes, "remote": "remotely exploitable" in notes,
+                                                            "urgency": urgency}))
+    return out
+
+
+def _sources():
+    """{binary package: its source package}, from dpkg."""
+    r = subprocess.run(["dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n"], capture_output=True, text=True, timeout=60)
+    return dict(l.split("\t", 1) for l in r.stdout.splitlines() if "\t" in l)
+
+
+def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
+    """Findings from debsecan's two runs. A fix Debian has released but the box hasn't installed:
+    a problem when remotely exploitable or high urgency (Tom, 2026-10-06), else a warning; one
+    finding per package. Unfixed ones are listed, not counted. A kit's cache holding a version
+    with a released fix: a warning on that kit (refresh it while online)."""
+    out = []
+    age = f" Tracker data of {time.strftime('%Y-%m-%d', time.localtime(feed_date))}." if feed_date else ""
+    # One finding per source package (perl, perl-base, libperl5.40… are one fix), naming its binaries.
+    source_of = source_of or {}
+    groups = {}
+    for pkg, vulns in installed.items():
+        fixed = [(c, n) for c, n in vulns if n["fixed"]]
+        if fixed:
+            g = groups.setdefault(source_of.get(pkg) or pkg, {"bins": set(), "cves": {}})
+            g["bins"].add(pkg)
+            for c, n in fixed:
+                g["cves"][c] = n
+    for src, g in sorted(groups.items()):
+        fixed = sorted(g["cves"].items())
+        bad = [c for c, n in fixed if n["remote"] or n["urgency"] == "high"]
+        bins = sorted(g["bins"])
+        out.append(F(f"debsecan-{src}", f"{src}: Debian has released a fix that isn't installed", "problem" if bad else "warn",
+                     (f"In {', '.join(bins)}. " if bins != [src] else "") +
+                     f"{len(fixed)} fixed: " + ", ".join(c + (" (remotely exploitable)" if n["remote"] else "") +
+                                                         (f" ({n['urgency']} urgency)" if n["urgency"] else "") for c, n in fixed[:8])
+                     + ("…" if len(fixed) > 8 else "") + "." + age,
+                     "Install the security updates: the Security page, or apt-get upgrade while online.", "",
+                     source="debsecan", about={"kind": "package", "key": src}))
+    unfixed = sorted(p for p, v in installed.items() if not any(n["fixed"] for _, n in v))
+    out.append(F("debsecan-unfixed", "Known vulnerabilities with no fix released yet", "ok",
+                 (f"{len(unfixed)} installed packages have CVEs Debian hasn't fixed yet (listed, not counted): " + _list(unfixed, 20) + "."
+                  if unfixed else "None.") + age, "", "", source="debsecan"))
+    per_kit = {}
+    for pkg, vulns in cached.items():
+        if any(n["fixed"] for _, n in vulns):
+            for kid in kit_of.get(pkg, []):
+                per_kit.setdefault(kid, set()).add(pkg)
+    for kid, pkgs in sorted(per_kit.items()):
+        out.append(F(f"debsecan-kit-{kid}", f"The {kid} kit's cache has packages with fixes released since", "warn",
+                     f"Cached versions of {_list(sorted(pkgs))} have fixes Debian has released.{age}",
+                     "Refresh the kit while the box has internet (Library → Toolkits); installing it now would bring those versions.",
+                     "", source="debsecan", about={"kind": "kit", "key": kid}))
+    return out
+
+
+def step_debsecan(ctx):
+    suite = _codename()
+    feed = DEBSECAN_FEED / suite if suite else None
+    if not feed or not feed.is_file():
+        return [F("debsecan-data", "Debian's security tracker data", "warn",
+                  "Not on the box yet: the librarian fetches it daily while the security kit is kept current and the box is online.",
+                  "Library → Toolkits: keep the Security kit current, and let the box reach the internet once.", "", source="debsecan")]
+    import tempfile
+    import shutil as _sh
+    work = Path(tempfile.mkdtemp(prefix="debsecan-"))
+    try:
+        cmd, env = _debsecan_command(work)
+        if cmd is None:
+            return [F("debsecan-tool", "debsecan", "warn", f"Could not run it: {env}.",
+                      "Library → Toolkits: refresh the Security kit while online (it is not installed for this; its cache is enough).",
+                      "", source="debsecan")]
+        installed = _debsecan(cmd, env, suite)
+        kit_of = {}
+        for m in sorted((KITS_ROOT / "manifests").glob("*.json")) if (KITS_ROOT / "manifests").is_dir() else []:
+            if m.name.endswith(".previous.json"):
+                continue
+            for p in (json.loads(_read(m) or "{}") or {}).get("packages", []):
+                kit_of.setdefault(p["name"], []).append(m.stem)
+        status = KITS_ROOT / "kits-status"
+        cached = _debsecan(cmd, env, suite, status) if status.is_file() else {}
+        return debsecan_findings(installed, cached, kit_of, feed.stat().st_mtime, _sources())
+    finally:
+        _sh.rmtree(work, ignore_errors=True)
+
+
+def joint(steps):
+    """The joint report's skeleton (security-doctor-plan §5): findings merged by what they are
+    about, each item saying which sources agree and the worst status; then each source's counts.
+    With one source and debsecan today; the others join in stages 2 and 3."""
+    rank = {"ok": 0, "warn": 1, "problem": 2}
+    items = {}
+    sources = {}
+    for f in (f for s in steps for f in s["findings"]):
+        src = sources.setdefault(f.get("source", "doctor"), {"problem": 0, "warn": 0, "ok": 0})
+        src[f["status"]] = src.get(f["status"], 0) + 1
+        a = f.get("about")
+        if not a or f["status"] == "ok" or f.get("accepted"):
+            continue
+        key = f"{a['kind']}:{a['key']}"
+        it = items.setdefault(key, {"about": a, "sources": [], "status": "ok", "titles": [], "fix": f["fix"]})
+        if f.get("source", "doctor") not in it["sources"]:
+            it["sources"].append(f.get("source", "doctor"))
+        it["titles"].append(f["title"])
+        if rank[f["status"]] > rank[it["status"]]:
+            it["status"], it["fix"] = f["status"], f["fix"]
+    merged = sorted(items.values(), key=lambda i: (-rank[i["status"]], i["about"]["kind"], i["about"]["key"]))
+    return {"items": merged, "sources": sources}
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
@@ -1517,6 +1691,7 @@ STEPS = [
     ("git", "Git servers and pushed content", "F17 F18", step_git),
     ("accounts", "Sudo rules and accounts", "", step_accounts),
     ("kernel", "Kernel protections", "F3 F9", step_kernel),
+    ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
@@ -1582,7 +1757,7 @@ def audit(progress=None):
             progress(n, len(STEPS), steps[-1])
     flat = [f for s in steps for f in s["findings"]]
     version = (_read(CODE / "VERSION") or "unknown").strip()
-    return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps,
+    return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps, "joint": joint(steps),
             "counts": {k: sum(1 for f in flat if f["status"] == k) for k in ("problem", "warn", "ok")},
             "not_covered": NOT_COVERED}
 
