@@ -23,6 +23,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from irate_box.root import secdoctor_xref
+
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 CONTROL = STATE / "control"
 REPORT = CONTROL / "security-deep.json"
@@ -91,13 +93,18 @@ def parse_cis(text):
 def cis_findings(checks, summary, took=None):
     """Failed checks grouped by the benchmark's section (5.2: sshd; 4.1: auditd…), a warning
     each section; the accepted ones apart; the passes counted."""
-    out, sections, acc = [], {}, []
+    out, sections, acc, shared_found = [], {}, [], []
     for status, check, msgs in checks:
         if status == "OK":
             continue
         why = accepted("debian-cis", check)
         if why:
             acc.append((check, why))
+            continue
+        shared = secdoctor_xref.about("debian-cis", check)
+        if shared:  # a question another source asks too: a finding of its own, for the joint report
+            shared_found.append(_f(f"cis-{check}", f"CIS {check.split('_', 1)[0]}: {secdoctor_xref.title(shared['key'])}", "warn",
+                          "; ".join(m for m in msgs if m)[:300] or "Not met.", "", "debian-cis", shared))
             continue
         sec = ".".join(check.split("_", 1)[0].split(".")[:2])
         sections.setdefault(sec, []).append((check, [m for m in msgs if m][:2]))
@@ -108,6 +115,7 @@ def cis_findings(checks, summary, took=None):
                       f"{names}." + (f" For example: {first}." if first else ""),
                       "Each is a setting to look at, not an emergency: the benchmark is a general server's, not a hotspot's.",
                       "debian-cis", {"kind": "setting", "key": f"cis-{sec}"}))
+    out += shared_found
     by_why = {}
     for check, why in acc:
         by_why.setdefault(why, []).append(check)
@@ -167,7 +175,7 @@ def lynis_findings(rep, took=None):
     for test, text in rep["warnings"]:
         why = accepted("lynis", test)
         out.append(_f(f"lynis-{test}", f"Lynis {test}: {text}", "warn", text + ".", "See Lynis's notes for the test, from a shell: lynis show details " + test,
-                      "lynis", {"kind": "setting", "key": f"lynis-{test}"}, why))
+                      "lynis", secdoctor_xref.about("lynis", test) or {"kind": "setting", "key": f"lynis-{test}"}, why))
     tests = sorted({t for t, _ in rep["suggestions"]})
     out.append(_f("lynis-summary", "Lynis", "ok",
                   f"Hardening index {rep['index'] or '?'}; {len(rep['warnings'])} warning{'s' if len(rep['warnings']) != 1 else ''}, "

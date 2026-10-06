@@ -40,6 +40,8 @@ import sys
 import time
 from pathlib import Path
 
+from irate_box.root import secdoctor_xref
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
@@ -1677,29 +1679,162 @@ def _deep_findings(source):
     return out
 
 
-def joint(steps):
-    """The joint report's skeleton (security-doctor-plan §5): findings merged by what they are
-    about, each item saying which sources agree and the worst status; then each source's counts.
-    With one source and debsecan today; the others join in stages 2 and 3."""
+def step_security_page(ctx):
+    """The Security page's own scan (security.py, control/security.json), as a source of its own,
+    so the joint report can say where it and the doctor (or nmap) agree."""
+    try:
+        scan = json.loads(_read(CONTROL / "security.json") or "")
+    except ValueError:
+        scan = None
+    if not scan:
+        return [F("security-page-none", "The Security page's scan", "ok", "Not run yet: it runs when the Security page is opened.", "", "",
+                  source="security-page")]
+    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(scan.get("at") or 0))
+    out = []
+    for f in scan.get("findings", []):
+        out.append(F(f"page-{f['id']}", f["title"], f["status"], f"{f['detail']} (scan of {when})", f.get("fix", ""), "",
+                     source="security-page", about=secdoctor_xref.about("security-page", f["id"])))
+    return out
+
+
+IMPORTS = STATE / "security-imports"
+
+
+def step_imports(ctx):
+    """OpenVAS and nmap reports imported on the page (secimports.py), kept until replaced: OpenVAS's
+    results by port, a problem from CVSS 7, a warning from 4; nmap's open ports, a warning for one
+    the box was not listening on when the report came in; and either one old, or from before the
+    box's ports changed, a warning of its own."""
+    out = []
+    try:
+        now_ports = sorted({f"{l['proto']}/{l['port']}" for l in json.loads(_read(CONTROL / "security.json") or "{}").get("listeners", [])})
+    except (ValueError, KeyError, TypeError):
+        now_ports = None
+    for kind in ("openvas", "nmap"):
+        try:
+            rep = json.loads(_read(IMPORTS / f"{kind}.json", limit=4 << 20) or "")
+        except ValueError:
+            rep = None
+        if not rep:
+            continue
+        when = time.strftime("%Y-%m-%d", time.localtime(rep.get("ran") or rep.get("imported") or 0))
+        by_port = {}
+        for r in rep.get("results", []):
+            if kind == "openvas" and r.get("cvss", 0) <= 0:
+                continue
+            by_port.setdefault((r["proto"], r["port"]), []).append(r)
+        for (proto, port), rs in sorted(by_port.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+            about = {"kind": "service", "key": f"{proto}/{port}"} if isinstance(port, int) else None
+            where = f"{proto.upper()} {port}" if isinstance(port, int) else "the box as a whole"
+            if kind == "openvas":
+                worst = max(r["cvss"] for r in rs)
+                status = "problem" if worst >= 7 else "warn" if worst >= 4 else "ok"
+                names = "; ".join(f"{r['name']} (CVSS {r['cvss']:g})" for r in sorted(rs, key=lambda r: -r["cvss"])[:5])
+                fix = next((r["solution"] for r in sorted(rs, key=lambda r: -r["cvss"]) if r.get("solution")), "")
+                out.append(F(f"openvas-{proto}-{port}", f"OpenVAS on {where}: {len(rs)} result{'s' if len(rs) != 1 else ''}", status,
+                             f"{names}. (Scan of {when}.)", fix, "", source="openvas", about=about))
+            else:
+                seen = f"{proto}/{port}"
+                listening = rep.get("box_ports")
+                status = "warn" if listening is not None and seen not in listening else "ok"
+                svc = next((r["service"] for r in rs if r.get("service")), "")
+                out.append(F(f"nmap-{proto}-{port}", f"nmap found {where} open" + (f" ({svc})" if svc else ""), status,
+                             ("The box was not listening there when the report came in: worth a look." if status == "warn" else "Open, as the box serves it.")
+                             + f" (Scan of {when}.)", "", "", source="nmap", about=about))
+        age = (time.time() - (rep.get("ran") or rep.get("imported") or 0)) / 86400
+        changed = now_ports is not None and rep.get("box_ports") is not None and sorted(rep["box_ports"]) != now_ports
+        if changed:
+            gained = sorted(set(now_ports) - set(rep["box_ports"]))
+            out.append(F(f"{kind}-ports-changed", f"The {kind} report is from before the box's ports changed", "warn",
+                         f"Since it was imported the box also listens on {', '.join(gained) or 'nothing new'}; "
+                         f"no longer on {', '.join(sorted(set(rep['box_ports']) - set(now_ports))) or 'nothing'}.",
+                         f"Run {kind} against the box again and import it.", "", source=kind))
+        elif age > 90:
+            out.append(F(f"{kind}-old", f"The {kind} report is {int(age)} days old", "warn", f"From {when}.",
+                         f"Run {kind} against the box again and import it.", "", source=kind))
+    if not out:
+        out.append(F("imports-none", "Imported scans", "ok",
+                     "None yet. Run OpenVAS (Greenbone) or nmap from a PC on the hotspot against the box, and import its report here: "
+                     "the outside view, including software debsecan can't see.", "", "", source="openvas"))
+    return out
+
+
+KIND_SOURCES = {"service": ("security-page", "nmap", "openvas")}
+
+
+def freshness():
+    """Each source's date and its data's date (§5.6)."""
+    out = {"doctor": time.time()}
+    try:
+        out["security-page"] = json.loads(_read(CONTROL / "security.json") or "{}").get("at")
+    except ValueError:
+        pass
+    suite = _codename()
+    feed = DEBSECAN_FEED / suite if suite else None
+    if feed and feed.is_file():
+        out["debsecan"] = feed.stat().st_mtime
+    try:
+        deep = json.loads(_read(CONTROL / "security-deep.json", limit=8 << 20) or "{}")
+        for src, v in (deep.get("sources") or {}).items():
+            out[src] = v.get("at")
+    except ValueError:
+        pass
+    for kind in ("openvas", "nmap"):
+        try:
+            rep = json.loads(_read(IMPORTS / f"{kind}.json", limit=4 << 20) or "{}")
+            if rep:
+                out[kind] = rep.get("ran") or rep.get("imported")
+        except ValueError:
+            pass
+    return {k: v for k, v in out.items() if v}
+
+
+def joint(steps, freshness=None):
+    """The joint report (security-doctor-plan §5): findings merged by what they are about, each
+    item saying which sources agree, the worst status and its fix; items only one source saw where
+    others could have (worth a look, or a false positive); each source's counts, what it covers,
+    and how fresh it is; and the counts after merging, which the page's badge shows, so four tools
+    saying the same thing count once."""
     rank = {"ok": 0, "warn": 1, "problem": 2}
-    items = {}
-    sources = {}
+    items, sources, loose = {}, {}, {"problem": 0, "warn": 0}
     for f in (f for s in steps for f in s["findings"]):
-        src = sources.setdefault(f.get("source", "doctor"), {"problem": 0, "warn": 0, "ok": 0})
-        src[f["status"]] = src.get(f["status"], 0) + 1
+        src = f.get("source", "doctor")
+        c = sources.setdefault(src, {"problem": 0, "warn": 0, "ok": 0})
+        c[f["status"]] = c.get(f["status"], 0) + 1
         a = f.get("about")
-        if not a or f["status"] == "ok" or f.get("accepted"):
+        if f.get("accepted"):
+            continue
+        if not a:
+            if f["status"] in loose:
+                loose[f["status"]] += 1
             continue
         key = f"{a['kind']}:{a['key']}"
-        it = items.setdefault(key, {"about": a, "sources": [], "status": "ok", "titles": [], "fix": f["fix"]})
-        if f.get("source", "doctor") not in it["sources"]:
-            it["sources"].append(f.get("source", "doctor"))
-        it["titles"].append(f["title"])
-        if rank[f["status"]] > rank[it["status"]]:
-            it["status"], it["fix"] = f["status"], f["fix"]
-    merged = sorted(items.values(), key=lambda i: (-rank[i["status"]], i["about"]["kind"], i["about"]["key"]))
-    return {"items": merged, "sources": sources}
-
+        label = secdoctor_xref.title(a["key"]) if a["kind"] == "setting" else \
+            " ".join(x.upper() if i == 0 else x for i, x in enumerate(a["key"].split("/"))) if a["kind"] == "service" else a["key"]
+        it = items.setdefault(key, {"about": a, "title": label,
+                                    "sources": [], "status": "ok", "titles": [], "fix": ""})
+        if src not in it["sources"]:
+            it["sources"].append(src)
+        it["titles"].append(f"{src}: {f['title']}")
+        if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
+            it["status"], it["fix"] = max((it["status"], f["status"]), key=rank.get), f["fix"] or it["fix"]
+    # A source ran when it said something real, not only "not run yet" / "none imported".
+    ran = {f.get("source", "doctor") for s in steps for f in s["findings"] if not f["id"].endswith("-none")}
+    for it in items.values():
+        # Who could have said the same: any port-seeing source for a port; for a setting, the
+        # sources the cross-reference table lists for it; a package or a kit, debsecan alone.
+        a = it["about"]
+        could = set(KIND_SOURCES["service"]) if a["kind"] == "service" else \
+            {k for k, v in secdoctor_xref.XREF.get(a["key"], {}).items() if isinstance(v, list)} if a["kind"] == "setting" else set()
+        could &= ran
+        it["alone"] = len(it["sources"]) == 1 and len(could - set(it["sources"])) > 0
+        it["could_see"] = sorted(could - set(it["sources"]))
+    merged = sorted((i for i in items.values() if i["status"] != "ok"), key=lambda i: (-rank[i["status"]], i["about"]["kind"], i["about"]["key"]))
+    agreed = [i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1]
+    after = {"problem": loose["problem"] + sum(1 for i in merged if i["status"] == "problem"),
+             "warn": loose["warn"] + sum(1 for i in merged if i["status"] == "warn")}
+    return {"items": merged, "agreed_ok": len(agreed), "sources": sources, "after": after,
+            "coverage": {s: secdoctor_xref.COVERAGE.get(s, "") for s in sources}, "freshness": freshness or {}}
 
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
@@ -1719,6 +1854,8 @@ STEPS = [
     ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
     ("debian-cis", "The CIS benchmark (debian-cis, in the deep audit)", "", step_deep_cis),
     ("lynis", "Lynis (in the deep audit)", "", step_deep_lynis),
+    ("security-page", "The Security page's scan", "", step_security_page),
+    ("imports", "Imported scans (OpenVAS, nmap)", "", step_imports),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
@@ -1782,9 +1919,12 @@ def audit(progress=None):
         steps.append({"id": sid, "title": title, "ref": ref, "findings": found})
         if progress:
             progress(n, len(STEPS), steps[-1])
+    for f in (f for s in steps for f in s["findings"]):
+        if not f.get("about") and f.get("source", "doctor") in ("doctor", "debian-cis", "lynis"):
+            f["about"] = secdoctor_xref.about(f.get("source", "doctor"), f["id"].removeprefix("cis-").removeprefix("lynis-"))
     flat = [f for s in steps for f in s["findings"]]
     version = (_read(CODE / "VERSION") or "unknown").strip()
-    return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps, "joint": joint(steps),
+    return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps, "joint": joint(steps, freshness()),
             "counts": {k: sum(1 for f in flat if f["status"] == k) for k in ("problem", "warn", "ok")},
             "not_covered": NOT_COVERED}
 

@@ -936,6 +936,7 @@ function renderSecurity(data) {
     : (deep.at ? `Last deep audit ${new Date(deep.at * 1000).toLocaleString()}, ${Math.round((deep.took || 0) / 60)} min. ` : 'No deep audit yet. ')
       + 'It runs debian-cis\'s CIS benchmark checks and Lynis (about 8 minutes on a small board), weekly while the Security kit is kept current.';
   renderAudit(data.audit, busy);
+  renderImports(data.imports);
   sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => el('tr', {},
     el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
     el('td', {}, el('span', { className: 'setting-name', textContent: l.name }),
@@ -955,8 +956,119 @@ function renderSecurity(data) {
 
 // The security doctor's report (secdoctor.py): one block per step, the steps with something to
 // look at open. Read-only, so a line has no buttons, only what to do by hand.
+// --- the joint report (secdoctor.joint): what several sources say about one thing, once ------------
+const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page', debsecan: 'debsecan', 'debian-cis': 'debian-cis',
+  lynis: 'Lynis', openvas: 'OpenVAS', nmap: 'nmap' };
+const srcWords = (list) => list.map((x) => SOURCE_WORDS[x] || x).join(', ');
+function renderJoint(j) {
+  const box = (id) => document.getElementById(id);
+  if (!j) { box('joint-summary').textContent = 'Run the doctor to see it.'; box('joint-items').replaceChildren(); return; }
+  const a = j.after || { problem: 0, warn: 0 };
+  box('joint-summary').textContent = `After merging what the sources agree on: ${a.problem} to fix, ${a.warn} to look at` +
+    (j.agreed_ok ? `; ${j.agreed_ok} thing${j.agreed_ok === 1 ? '' : 's'} several sources agree are fine` : '') + '.';
+  const items = (j.items || []);
+  box('joint-items').replaceChildren(...items.map((i) => el('div', { className: `git-card joint-item joint-${i.status}` },
+    el('h4', { textContent: `${MARK[i.status]} ${i.title}` }),
+    el('p', { className: 'badges' }, el('span', { className: 'badge', textContent: i.about.kind }),
+      ...i.sources.map((x) => el('span', { className: 'badge badge-mirror', textContent: SOURCE_WORDS[x] || x }))),
+    el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree.` : `Said by ${srcWords(i.sources)}.` }),
+    el('ul', { className: 'joint-titles' }, ...i.titles.slice(0, 4).map((x) => el('li', { textContent: x }))),
+    i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null)));
+  const alone = items.filter((i) => i.alone);
+  box('joint-alone').hidden = !alone.length;
+  box('joint-alone-list').replaceChildren(...alone.map((i) => el('li', { className: `check check-${i.status}` },
+    el('strong', { textContent: i.title }),
+    el('span', { textContent: ` — only ${srcWords(i.sources)} said so; ${srcWords(i.could_see)} could have seen it and did not.` }))));
+  const fresh = j.freshness || {};
+  box('joint-sources').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
+    const c = j.sources[src];
+    return el('tr', {}, el('td', { textContent: SOURCE_WORDS[src] || src }), el('td', { className: 'setting-desc', textContent: (j.coverage || {})[src] || '' }),
+      el('td', { textContent: fresh[src] ? new Date(fresh[src] * 1000).toISOString().slice(0, 10) : '—' }),
+      el('td', { textContent: `${c.problem || 0} / ${c.warn || 0}` }));
+  }));
+}
+
+// Scan reports, read here in the browser: only what they found goes to the box (secimports.py).
+function xmlDoc(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('This is not XML the page can read.');
+  return doc;
+}
+const kid = (node, name) => { const n = node && [...node.children].find((c) => c.tagName === name); return n ? n.textContent.trim() : ''; };
+function parseNmapXml(text) {
+  const doc = xmlDoc(text);
+  if (doc.documentElement.tagName !== 'nmaprun') throw new Error('Not an nmap XML report (nmap -oX).');
+  const results = [];
+  for (const host of doc.getElementsByTagName('host')) {
+    const addr = (host.getElementsByTagName('address')[0] || { getAttribute: () => '' }).getAttribute('addr');
+    for (const p of host.getElementsByTagName('port')) {
+      const st = p.getElementsByTagName('state')[0];
+      const sv = p.getElementsByTagName('service')[0];
+      results.push({ port: Number(p.getAttribute('portid')), proto: p.getAttribute('protocol'), host: addr, state: st ? st.getAttribute('state') : '',
+        service: sv ? [sv.getAttribute('name'), sv.getAttribute('product'), sv.getAttribute('version')].filter(Boolean).join(' ') : '' });
+    }
+  }
+  const start = Number(doc.documentElement.getAttribute('start')) || null;
+  return { kind: 'nmap', ran: start, results: results.filter((r) => r.state === 'open' || r.state === 'open|filtered') };
+}
+function splitPort(text) {
+  const [p, proto] = String(text || '').split('/');
+  return { port: /^\d+$/.test(p) ? Number(p) : 'general', proto: (proto || 'tcp').toLowerCase() === 'udp' ? 'udp' : 'tcp' };
+}
+function parseOpenvasXml(text) {
+  const doc = xmlDoc(text);
+  const results = [];
+  for (const r of doc.getElementsByTagName('result')) {
+    const nvt = [...r.children].find((c) => c.tagName === 'nvt');
+    if (!nvt) continue;
+    const tags = kid(nvt, 'tags');
+    const tag = (name) => ((tags.match(new RegExp(`(?:^|\\|)${name}=([^|]*)`)) || [])[1] || '').trim();
+    const cvss = parseFloat(kid(r, 'severity') || kid(nvt, 'cvss_base')) || 0;
+    if (cvss <= 0) continue;
+    const cves = [...nvt.getElementsByTagName('ref')].filter((x) => x.getAttribute('type') === 'cve').map((x) => x.getAttribute('id'))
+      .concat((kid(nvt, 'cve').match(/CVE-\d{4}-\d{4,7}/g) || []));
+    results.push({ ...splitPort(kid(r, 'port')), host: (r.getElementsByTagName('host')[0] || { firstChild: null }).firstChild?.textContent?.trim() || '',
+      cvss, name: kid(nvt, 'name'), summary: tag('summary') || kid(r, 'description').slice(0, 600),
+      solution: kid(nvt, 'solution') || tag('solution'), cves: [...new Set(cves)].slice(0, 50) });
+  }
+  const start = Date.parse((doc.getElementsByTagName('scan_start')[0] || {}).textContent || '');
+  return { kind: 'openvas', ran: Number.isFinite(start) ? start / 1000 : null, results: results.slice(0, 1000) };
+}
+function csvRows(text) {
+  const rows = []; let row = [], field = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; } else field += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim()));
+}
+function parseOpenvasCsv(text) {
+  const [head, ...rows] = csvRows(text);
+  const ix = (name) => head.findIndex((h) => h.trim().toLowerCase() === name);
+  const col = { ip: ix('ip'), port: ix('port'), proto: ix('port protocol'), cvss: ix('cvss'), name: ix('nvt name'), summary: ix('summary'),
+    solution: ix('solution'), cves: ix('cves'), time: ix('timestamp') };
+  if (col.cvss < 0 || col.name < 0) throw new Error('Not an OpenVAS CSV report (it has no CVSS and NVT Name columns).');
+  const results = rows.map((r) => ({ port: /^\d+$/.test(r[col.port] || '') ? Number(r[col.port]) : 'general',
+    proto: (r[col.proto] || 'tcp').toLowerCase() === 'udp' ? 'udp' : 'tcp', host: r[col.ip] || '', cvss: parseFloat(r[col.cvss]) || 0,
+    name: r[col.name] || '', summary: r[col.summary] || '', solution: col.solution >= 0 ? r[col.solution] : '',
+    cves: ((col.cves >= 0 ? r[col.cves] : '') .match(/CVE-\d{4}-\d{4,7}/g) || []).slice(0, 50) })).filter((r) => r.cvss > 0);
+  const t = col.time >= 0 && rows[0] ? Date.parse(rows[0][col.time]) : NaN;
+  return { kind: 'openvas', ran: Number.isFinite(t) ? t / 1000 : null, results: results.slice(0, 1000) };
+}
+function parseScanReport(text, name) {
+  const t = text.replace(/^\uFEFF/, '').trimStart();
+  const report = !t.startsWith('<') ? parseOpenvasCsv(t) : /<nmaprun[\s>]/.test(t.slice(0, 4000)) ? parseNmapXml(t) : parseOpenvasXml(t);
+  return { ...report, name: name || '' };
+}
+
 function renderAudit(audit, busy) {
-  badge('secdoctor', audit && audit.counts.problem ? String(audit.counts.problem) : '');
+  badge('secdoctor', audit ? String((audit.joint && audit.joint.after ? audit.joint.after.problem : audit.counts.problem) || '') : '');
+  renderJoint(audit && audit.joint);
   if (!audit) {
     sec.auditWhen.textContent = busy ? 'Running…' : 'Not run yet.';
     sec.auditSteps.replaceChildren();
@@ -1006,6 +1118,32 @@ function secFix(fid, action) {
 sec.scan.addEventListener('click', () => secRequest({ action: 'scan' }, 'scan'));
 sec.auditRun.addEventListener('click', () => secRequest({ action: 'audit' }, 'audit'));
 sec.auditDeep.addEventListener('click', () => secRequest({ action: 'deep' }, 'audit'));
+const importNote = document.getElementById('import-note');
+document.getElementById('import-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = e.target.elements.file.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 64 * 2 ** 20) throw new Error('That file is over 64 MB: export fewer results.');
+    const text = file.text ? await file.text() : await new Promise((ok, no) => {
+      const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(r.error); r.readAsText(file);
+    });
+    const report = parseScanReport(text, file.name);
+    const r = await postJSON('/admin/security', { action: 'import', report });
+    say(`${report.kind === 'nmap' ? 'nmap' : 'OpenVAS'}: ${report.results.length} results read. ${r.message || ''}`, true, importNote);
+    secWaiting = { id: r.id, fid: 'audit' };
+    loadSecurity();
+  } catch (err) { say(err.message, false, importNote); }
+});
+function renderImports(imports) {
+  document.getElementById('import-list').replaceChildren(...Object.entries(imports || {}).map(([kind, i]) => el('li', { className: 'admin-item' },
+    el('span', {}, el('strong', { textContent: kind === 'nmap' ? 'nmap' : 'OpenVAS' }),
+      el('span', { className: 'setting-desc', textContent: ` ${i.name || ''}: ${i.results} results; ran ${i.ran ? new Date(i.ran * 1000).toISOString().slice(0, 10) : '?'}, imported ${new Date(i.imported * 1000).toISOString().slice(0, 10)}` })),
+    actionButton('Remove', async () => {
+      try { const r = await postJSON('/admin/security', { action: 'import-remove', kind }); secWaiting = { id: r.id, fid: 'audit' }; loadSecurity(); }
+      catch (err) { say(err.message, false, importNote); }
+    }, { className: 'small' }))));
+}
 loadSecurity();
 
 // --- health ----------------------------------------------------------------------------
