@@ -314,7 +314,7 @@ server {
 	# exists (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
 	location = /git { return 301 /git/; }
 	location = /git-private { return 301 /git-private/; }
-	location ^~ /git-static/ { alias /usr/share/cgit/; }
+	location ^~ /git-static/ { alias /usr/share/cgit/; add_header X-Content-Type-Options nosniff; }
 	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
 		set $irate_box_git_auth off;
 		if ($arg_service = git-receive-pack) { set $irate_box_git_auth "Irate-Box"; }
@@ -342,6 +342,11 @@ server {
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
 		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-public;
+		# Scripts: only the box's own (themes.js, cgit.js); a README's HTML is already text
+		# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files,
+		# served as text/plain, are never run as a script.
+		add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" always;
+		add_header X-Content-Type-Options nosniff always;
 		fastcgi_param PATH_INFO $irate_box_cgit_path;
 		fastcgi_pass unix:/run/irate-box-git.sock;
 	}
@@ -364,6 +369,11 @@ server {
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
 		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-private;
+		# Scripts: only the box's own (themes.js, cgit.js); a README's HTML is already text
+		# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files,
+		# served as text/plain, are never run as a script.
+		add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" always;
+		add_header X-Content-Type-Options nosniff always;
 		fastcgi_param PATH_INFO $irate_box_cgit_path;
 		fastcgi_pass unix:/run/irate-box-git.sock;
 	}

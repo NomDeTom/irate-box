@@ -1,63 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* SPDX-FileCopyrightText: 2026 NomDeTom */
+@import url("palette.css");
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  color-scheme: dark;
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --border: #2a2d3a;
-  --accent: #7c6af7;
-  /* Text drawn on top of --accent. Every palette sets its own; white only
-     works while the accent is dark enough to carry it. */
-  --accent-ink: #fff;
-  /* Author colours carry only a hue (see shoutbox.js); each palette supplies the
-     saturation and lightness that stay legible on its own surface. */
-  --author-s: 70%;
-  --author-l: 72%;
-  --text: #e2e4ef;
-  --muted: #6b6f8a;
-  --shadow: rgba(0, 0, 0, 0.4);
-  /* Service states (services.html) and the memory/disk bars. */
-  --ok: #4ade80;
-  --warn: #fbbf24;
-  --radius: 10px;
-}
-
-/* Light palette: applied when the OS asks for it and the user has not overridden,
-   or when the user picked "light" explicitly. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --bg: #f4f5f9;
-    --surface: #ffffff;
-    --border: #d9dbe6;
-    --accent: #5b4bd6;
-    --accent-ink: #fff;
-    --author-s: 55%;
-    --author-l: 38%;
-    --text: #1b1d27;
-    --muted: #6b6f8a;
-    --shadow: rgba(20, 20, 40, 0.15);
-    --ok: #15803d;
-    --warn: #b45309;
-  }
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f4f5f9;
-  --surface: #ffffff;
-  --border: #d9dbe6;
-  --accent: #5b4bd6;
-  --accent-ink: #fff;
-  --author-s: 55%;
-  --author-l: 38%;
-  --text: #1b1d27;
-  --muted: #6b6f8a;
-  --shadow: rgba(20, 20, 40, 0.15);
-  --ok: #15803d;
-  --warn: #b45309;
-}
 
 body {
   background: var(--bg);
