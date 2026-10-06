@@ -2087,91 +2087,193 @@ loadUsb();
 const git = {
   usage: noteEl('git-usage'), note: noteEl('git-note'),
   form: document.getElementById('git-create'), createNote: noteEl('git-create-note'),
-  lists: { public: noteEl('git-public'), private: noteEl('git-private') },
+  grid: noteEl('git-grid'), side: noteEl('git-side'), search: document.getElementById('git-search'),
+  chipsKind: noteEl('git-chips-kind'), chipsArea: noteEl('git-chips-area'), manageAs: document.getElementById('git-manage-as'),
   mirrors: noteEl('git-mirrors'), mirrorForm: document.getElementById('git-mirror-add'), mirrorNote: noteEl('git-mirror-note'),
 };
 const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
+// The Git page as cards (git-ci-plan §1, Kiwix's library as the model): a filter bar, a card per
+// repository with its badges in words, and Manage, opening under the card or beside the grid.
+let gitData = null;
+const gitView = { kind: 'all', area: 'all', q: '', open: null };
+try { git.manageAs.value = localStorage.getItem('irate-git-manage-as') || 'drawer'; } catch (_) { /* no storage */ }
+const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'the admin pushes', nobody: 'read-only' };
+const builds = (r) => r.can_build && r.build && r.has_script;
+const repoKey = (r) => `${r.area}/${r.name}`;
+const GIT_KINDS = [['all', 'All', () => true], ['mine', 'Mine', (r) => !r.mirror_of], ['mirrors', 'Mirrors', (r) => !!r.mirror_of],
+  ['builds', 'Builds', builds]];
+const GIT_AREAS = [['all', 'Public and private', () => true], ['public', 'Public', (r) => r.area === 'public'],
+  ['private', 'Private', (r) => r.area === 'private']];
+
+// One sentence for the card: who sees it, who pushes, whether pushes are built (git-ci-plan §2).
+function accessSentence(r) {
+  const see = r.area === 'public' ? 'Anyone on the network can see and clone it' : 'Only the admin can see and clone it';
+  const push = r.mirror_of ? 'nobody pushes (the librarian keeps it)' : { everyone: 'anyone can push', admin: 'only the admin can push', nobody: 'nobody can push' }[r.write];
+  const build = builds(r) ? '; pushes are built' : r.can_build && r.has_script && !r.build ? '; builds are switched off' : '';
+  return `${see}; ${push}${build}.`;
+}
 
 function renderGit(data) {
+  gitData = data;
   if (!data.installed) {
     git.usage.textContent = 'The git servers are not set up on this box: rerun install.sh.';
-    git.form.hidden = true;
+    git.grid.replaceChildren();
     return;
   }
-  git.form.hidden = false;
   renderMirrors(data);
   const total = data.repos.reduce((n, r) => n + r.size, 0);
   git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
     (data.free != null ? `; ${size(data.free)} free on the card` : '') +
     `. A single push can be up to ${size(data.max_push)}.`;
-  const act = (body, at, confirmText) => async () => {
-    if (confirmText && !confirm(confirmText)) return;
-    try { renderGit(await postJSON('/admin/git', body)); say('', true, at); } catch (err) { say(err.message, false, at); }
-  };
-  for (const area of ['public', 'private']) {
-    const repos = data.repos.filter((r) => r.area === area);
-    git.lists[area].replaceChildren(...(repos.length ? repos.map((r) => el('div', { className: 'admin-item' },
-      el('span', {},
-        el('strong', {}, el('a', { href: r.url, textContent: `${r.name}.git` })),
-        el('span', { className: 'setting-desc', textContent: [r.description,
-          r.last_commit ? `last commit ${commitDate(r.last_commit)}` : 'empty',
-          r.branches > 1 ? `${r.branches} branches` : null, size(r.size)].filter(Boolean).join(' · ') }),
-        el('span', { className: 'setting-desc git-preset-text', textContent: r.mirror_of
-          ? `mirror of ${r.mirror_of}: read-only, kept by the librarian (see Mirrors).` : `${r.preset}: ${r.preset_text}.` })),
-      el('span', { className: 'library-buttons' },
-        r.mirror_of ? null : presetPicker(r, (data.presets || {})[area] || []),
-        actionButton('Copy clone URL', () => {
-          const url = `${location.origin}${r.url.replace(/\/$/, '')}`;
-          navigator.clipboard?.writeText(url).then(() => say(`Copied ${url}`, true, git.note),
-            () => say(url, true, git.note));
-        }, { className: 'small' }),
-        actionButton('Describe', () => {
-          const d = prompt(`Description for ${r.name}.git`, r.description);
-          if (d !== null) act({ action: 'describe', area, name: r.name, description: d }, git.note)();
-        }, { className: 'small' }),
-        r.mirror_of ? null : actionButton(area === 'public' ? 'Make private' : 'Make public', act({ action: 'move', area, name: r.name,
-          to: area === 'public' ? 'private' : 'public' }, git.note, area === 'public'
-          ? `Move ${r.name}.git to /git-private/? Only the admin login will see or clone it, and its clone URL changes.`
-          : `Move ${r.name}.git to /git/? Anyone on the network will be able to browse and clone it, and its clone URL changes.`),
-        { className: 'small' }),
-        actionButton('Publish…', () => {
-          const others = data.repos.filter((o) => !(o.area === r.area && o.name === r.name));
-          if (!others.length) { say('There is no other repository to publish to: create one first.', false, git.note); return; }
-          const target = prompt(`Publish from ${r.name}.git to which repository?\n`
-            + others.map((o) => `${o.area}/${o.name}`).join('\n'), others[0] ? `${others[0].area}/${others[0].name}` : '');
-          if (!target) return;
-          const [toArea, toName] = target.trim().split('/');
-          const refs = prompt('Which branches or tags (separated by spaces)? They replace those of the same name there.', 'main');
-          if (!refs) return;
-          act({ action: 'publish', from: { area, name: r.name }, to: { area: toArea, name: (toName || '').replace(/\.git$/, '') },
-            refs: refs.trim().split(/\s+/) }, git.note)();
-        }, { className: 'small' }),
-        r.mirror_of ? null : actionButton('Delete', act({ action: 'delete', area, name: r.name }, git.note,
-          `Delete ${r.name}.git and all its history? Clones elsewhere keep theirs; this one cannot be brought back.`),
-        { className: 'small' }))))
-      : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
+  // Submodule mirrors have no card of their own: Library → Mirrors lists them under their parent.
+  const shown = data.repos.filter((r) => !r.submodule_of);
+  const chips = (box, list, key) => box.replaceChildren(...list.map(([id, label, test]) => el('button', {
+    type: 'button', className: `chip${gitView[key] === id ? ' on' : ''}`, textContent: `${label} ${shown.filter(test).length}`,
+    onclick: () => { gitView[key] = id; renderGit(gitData); } })));
+  chips(git.chipsKind, GIT_KINDS, 'kind');
+  chips(git.chipsArea, GIT_AREAS, 'area');
+  [...git.chipsKind.children, ...git.chipsArea.children].forEach((b) => b.setAttribute('aria-pressed', b.classList.contains('on')));
+  const q = gitView.q.toLowerCase();
+  const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
+  const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
+  const list = shown.filter((r) => kindTest(r) && areaTest(r) && (!q || r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)));
+  const side = git.manageAs.value === 'side';
+  const cards = [newCard()];
+  for (const r of list) {
+    cards.push(repoCard(r, data));
+    if (!side && gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
   }
+  if (!side && gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
+  if (!list.length) cards.push(el('p', { className: 'setting-desc', textContent: shown.length ? 'Nothing matches.' : 'No repositories yet.' }));
+  git.grid.replaceChildren(...cards);
+  const openRepo = shown.find((r) => repoKey(r) === gitView.open);
+  git.side.hidden = !(side && (openRepo || gitView.open === 'new'));
+  git.side.replaceChildren(...(git.side.hidden ? [] : [openRepo ? managePanel(openRepo, data, 'git-sidepanel') : newPanel('git-sidepanel')]));
+  document.getElementById('git-layout').classList.toggle('with-side', !git.side.hidden);
 }
 
-// Who may push, per repository (gitrepos.py PRESETS). Letting anyone push asks first.
-function presetPicker(r, presets) {
-  const sel = el('select', { className: 'git-preset', title: 'Who may push' },
-    ...presets.map((p) => el('option', { value: p.name, textContent: p.name, selected: p.name === r.preset })));
-  sel.addEventListener('change', async () => {
-    const p = presets.find((x) => x.name === sel.value);
-    if (p.write === 'everyone' && !confirm(`Let anyone on the network push to ${r.name}.git, without the login? `
-        + 'They cannot rewrite or delete its history, and the public repositories have a size cap, but anything '
-        + 'they push is served from this box.')) {
-      sel.value = r.preset;
-      return;
-    }
-    try {
-      renderGit(await postJSON('/admin/git', { action: 'preset', area: r.area, name: r.name, preset: sel.value }));
-      say(`${r.name}.git: ${p.text}.`, true, git.note);
-    } catch (err) { sel.value = r.preset; say(err.message, false, git.note); }
-  });
-  return sel;
+function newCard() {
+  return withAttrs(el('button', { type: 'button', className: 'git-card git-new',
+    onclick: () => { gitView.open = gitView.open === 'new' ? null : 'new'; renderGit(gitData); } },
+  el('span', { className: 'git-new-plus', textContent: '＋', ariaHidden: 'true' }), el('strong', { textContent: 'New' }),
+  el('span', { className: 'setting-desc', textContent: 'An empty repository, or a mirror of one on the internet' })),
+  { 'aria-expanded': String(gitView.open === 'new') });
 }
+const withAttrs = (node, attrs) => { for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v); return node; };
+
+function newPanel(cls) {
+  git.form.hidden = false;
+  return el('div', { className: `git-manage ${cls}` },
+    el('div', { className: 'git-manage-head' }, el('strong', { textContent: 'New' }), closeButton()),
+    el('section', {}, el('h4', { textContent: 'An empty repository' }),
+      el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Public: anyone on the network can browse and clone it; only the admin pushes until you choose otherwise. Private: everything needs the admin login.' }),
+      git.form, git.createNote),
+    el('section', {}, el('h4', { textContent: 'A mirror of a repository on the internet' }),
+      el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed in Library → Mirrors.' }),
+      el('a', { href: '#mirrors', className: 'button-link', textContent: 'Add a mirror in Library → Mirrors' })));
+}
+
+const closeButton = () => actionButton('Close', () => { gitView.open = null; renderGit(gitData); }, { className: 'small' });
+const copyUrl = (r) => actionButton('Copy clone URL', () => {
+  const url = `${location.origin}${r.url.replace(/\/$/, '')}`;
+  navigator.clipboard?.writeText(url).then(() => say(`Copied ${url}`, true, git.note), () => say(url, true, git.note));
+}, { className: 'small' });
+
+function repoCard(r, data) {
+  const m = r.mirror_of ? (data.mirrors || []).find((x) => x.name === r.name && x.area === r.area) : null;
+  const ms = (m && m.status) || {};
+  const b = r.last_build;
+  const badges = [
+    [r.area === 'public' ? 'Public' : 'Private', `badge-${r.area}`],
+    [r.mirror_of ? 'read-only' : PUSH_WORDS[r.write], 'badge-push'],
+    r.mirror_of ? ['Mirror', 'badge-mirror'] : null,
+    builds(r) ? [b ? `${STATE_ICON[b.state] || ''} build ${b.state}${b.started ? `, ${commitDate(b.started)}` : ''}` : 'builds on push', `badge-build${b && b.state === 'failed' ? ' bad' : ''}`] : null,
+  ].filter(Boolean);
+  const facts = r.mirror_of
+    ? [`from ${r.mirror_of.replace(/^https:\/\//, '')}`, ms.updated ? `updated ${commitDate(ms.updated)}` : 'not fetched yet', size(r.size)]
+    : [r.last_commit ? `Last commit ${commitDate(r.last_commit)}` : 'Empty', r.branches ? `${r.branches} branch${r.branches === 1 ? '' : 'es'}` : null, size(r.size)];
+  const open = gitView.open === repoKey(r);
+  return el('div', { className: `git-card${open ? ' open' : ''}` },
+    el('h4', {}, el('a', { href: r.url, textContent: `${r.name}.git` })),
+    el('p', { className: 'badges' }, ...badges.map(([text, cls]) => el('span', { className: `badge ${cls}`, textContent: text }))),
+    r.description ? el('p', { className: 'git-about' }, el('span', { className: 'git-label', textContent: 'About ' }), r.description) : null,
+    el('p', { className: 'setting-desc git-facts', textContent: facts.filter(Boolean).join(' · ') }),
+    el('p', { className: 'setting-desc git-access', textContent: accessSentence(r) }),
+    el('p', { className: 'library-buttons' }, copyUrl(r),
+      r.mirror_of ? el('a', { href: '#mirrors', className: 'button-link small', textContent: 'Manage in Library' })
+        : withAttrs(actionButton('Manage', () => { gitView.open = open ? null : repoKey(r); renderGit(gitData); },
+          { className: 'small' }), { 'aria-expanded': String(open) })));
+}
+
+// Manage: each part with a sentence of what it does; Delete at the bottom, apart.
+function managePanel(r, data, cls) {
+  const act = (body, confirmText, done) => async () => {
+    if (confirmText && !confirm(confirmText)) return false;
+    try {
+      const out = await postJSON('/admin/git', body);
+      if (body.action === 'move') gitView.open = `${body.to}/${r.name}`;
+      if (body.action === 'delete') gitView.open = null;
+      renderGit(out);
+      say(done || '', true, git.note);
+      return true;
+    } catch (err) { say(err.message, false, git.note); renderGit(gitData); return false; }
+  };
+  const radio = (group, value, label, checked, onpick) => el('label', { className: 'inline' },
+    el('input', { type: 'radio', name: `${group}-${repoKey(r)}`, value, checked, onchange: onpick }), ` ${label}`);
+  // Who can see it: the area. Moving changes the clone URL, so it asks.
+  const see = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can see it?' }),
+    radio('see', 'public', 'Everyone on the network', r.area === 'public', act({ action: 'move', area: r.area, name: r.name, to: 'public' },
+      `Move ${r.name}.git to /git/? Anyone on the network will be able to browse and clone it, and its clone URL changes.`, `${r.name}.git is public now.`)),
+    radio('see', 'private', 'Only the admin', r.area === 'private', act({ action: 'move', area: r.area, name: r.name, to: 'private' },
+      `Move ${r.name}.git to /git-private/? Only the admin login will see or clone it, and its clone URL changes.`, `${r.name}.git is private now.`)),
+    el('p', { className: 'setting-desc', textContent: 'Moving it changes its clone URL; clones elsewhere need git remote set-url.' }));
+  const presets = (data.presets || {})[r.area] || [];
+  const WHO = { everyone: 'Anyone', admin: 'Only the admin', nobody: 'Nobody (read-only)' };
+  const push = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can push?' }),
+    ...presets.map((p) => radio('push', p.name, WHO[p.write], p.name === r.preset, act({ action: 'preset', area: r.area, name: r.name, preset: p.name },
+      p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git, without the login? They cannot rewrite or delete its history, and the public repositories have a size cap, but anything they push is served from this box.` : null,
+      `${r.name}.git: ${p.text}.`))),
+    el('p', { className: 'setting-desc', textContent: 'The hub decides each push; nobody can rewrite or delete history in a public repository.' }));
+  const build = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Build on push?' }),
+    r.can_build
+      ? el('label', { className: 'inline' }, el('input', { type: 'checkbox', className: 'git-build', checked: r.build,
+        onchange: (e) => act({ action: 'build', area: r.area, name: r.name, on: e.target.checked }, null,
+          `${r.name}.git: builds ${e.target.checked ? 'on' : 'off'}.`)() }), ' Build each push that has a .irate-ci.sh')
+      : null,
+    el('p', { className: 'setting-desc', textContent: r.can_build
+      ? (r.has_script ? 'Its newest commit has a .irate-ci.sh. A build runs as a user of its own, sandboxed, at the lowest priority (Builds, below).'
+        : 'Its newest commit has no .irate-ci.sh yet: add one at the top of the repository to build.')
+      : r.area === 'public' ? 'Public repositories never build: anyone could push what runs.'
+        : 'Only for repositories that only the admin can push to.' }));
+  const desc = el('textarea', { rows: 2, maxLength: 200, value: r.description || '', className: 'git-desc' });
+  const about = el('section', {}, el('h4', { textContent: 'About' }),
+    el('p', { className: 'setting-desc', textContent: 'A line on what it is, shown on its card and in cgit.' }), desc,
+    actionButton('Save', () => act({ action: 'describe', area: r.area, name: r.name, description: desc.value }, null, 'Saved.')(), { className: 'small' }));
+  const others = data.repos.filter((o) => !(o.area === r.area && o.name === r.name) && !o.mirror_of);
+  const target = el('select', { className: 'git-publish-to' }, ...others.map((o) => el('option', { value: repoKey(o), textContent: `${o.area}/${o.name}.git` })));
+  const refs = withAttrs(el('input', { value: 'main', className: 'git-publish-refs' }), { 'aria-label': 'Branches or tags, separated by spaces' });
+  const publish = el('section', {}, el('h4', { textContent: 'Publish to…' }),
+    el('p', { className: 'setting-desc', textContent: 'Copy branches or tags into another repository on the box (they replace those of the same name there): a private draft to a public copy, say.' }),
+    others.length ? el('p', { className: 'library-buttons' }, target, refs, actionButton('Publish', () => {
+      const [toArea, toName] = target.value.split('/');
+      act({ action: 'publish', from: { area: r.area, name: r.name }, to: { area: toArea, name: toName }, refs: refs.value.trim().split(/\s+/) },
+        null, 'Published.')();
+    }, { className: 'small' })) : el('p', { className: 'setting-desc', textContent: 'There is no other repository to publish to yet.' }));
+  return el('div', { className: `git-manage ${cls}` },
+    el('div', { className: 'git-manage-head' }, el('strong', { textContent: `Manage ${r.name}.git` }), closeButton()),
+    el('section', {}, el('h4', { textContent: 'Access' }), el('p', { className: 'setting-desc', textContent: accessSentence(r) }), see, push, build),
+    about, publish,
+    el('section', { className: 'git-danger' }, el('h4', { textContent: 'Delete' }),
+      el('p', { className: 'setting-desc', textContent: 'Its history goes with it. Clones elsewhere keep theirs; this one cannot be brought back.' }),
+      actionButton(`Delete ${r.name}.git`, act({ action: 'delete', area: r.area, name: r.name },
+        `Delete ${r.name}.git and all its history? Clones elsewhere keep theirs; this one cannot be brought back.`, 'Deleted.'), { className: 'small danger' })));
+}
+
+git.search.addEventListener('input', () => { gitView.q = git.search.value.trim(); if (gitData) renderGit(gitData); });
+git.manageAs.addEventListener('change', () => {
+  try { localStorage.setItem('irate-git-manage-as', git.manageAs.value); } catch (_) { /* no storage */ }
+  if (gitData) renderGit(gitData);
+});
 
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {

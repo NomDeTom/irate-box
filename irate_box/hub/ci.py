@@ -83,6 +83,10 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
     repo = Path(repo_dir or os.environ.get("GIT_DIR", ".")).resolve()
     if repo.parent.name != "private":
         return 0
+    # The repository's build switch (gitrepos.build_on, /admin's Git page): on unless set off.
+    off = _git("config", "--get", "irate-box.ci", cwd=repo)
+    if off.returncode == 0 and off.stdout.strip() == "off":
+        return 0
     for line in stdin:
         parts = line.split()
         if len(parts) != 3:

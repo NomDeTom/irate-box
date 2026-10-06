@@ -679,7 +679,20 @@ def git_snapshot():
     """The Git page: the repositories, and the mirrors with what each keeps (mirrors.py)."""
     from irate_box.library import mirrors
     snap = gitrepos.snapshot()
-    snap.update(mirrors=mirrors.snapshot(), running=librarian.is_running(), progress=librarian.progress())
+    mirror_list = mirrors.snapshot()
+    # Each repository's newest build, and which mirror a submodule mirror belongs to (the Git
+    # page leaves those out of its grid; Library → Mirrors lists them under their parent).
+    last = {}
+    for r in ci.snapshot(limit=500)["runs"]:
+        last.setdefault(r["run"].split("/")[0], {k: r.get(k) for k in ("run", "state", "started", "duration", "branch", "commit")})
+    parent = {}
+    for m in mirror_list:
+        for sub in (m.get("status") or {}).get("submodules", {}).values():
+            parent[(m["area"], sub["repo"])] = m["name"]
+    for r in snap["repos"]:
+        r["last_build"] = last.get(r["name"]) if r["area"] == "private" else None
+        r["submodule_of"] = parent.get((r["area"], r["name"]))
+    snap.update(mirrors=mirror_list, running=librarian.is_running(), progress=librarian.progress())
     return snap
 
 

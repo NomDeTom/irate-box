@@ -33,6 +33,7 @@
         <a href="#apps">Apps</a>
         <a href="#books">Books</a>
         <a href="#firmware">Firmware</a>
+        <a href="#mirrors">Mirrors</a>
         <a href="#sources">Schedule and token</a>
         <p class="admin-side-group">Hub content</p>
         <a href="#saved">Saved work</a>
@@ -329,6 +330,33 @@
         <div id="fw-kept" class="admin-list"></div>
       </section>
 
+      <section class="admin-pane" id="mirrors" aria-labelledby="mirrors-title">
+        <h2 id="mirrors-title">Mirrors</h2>
+        <p class="setting-desc">
+          Repositories the box keeps from an upstream on the internet, by a policy: which branches,
+          how many releases, how much history, and their submodules. The librarian checks them on
+          its schedule (Schedule and token). Each is read-only on the box, and shows on the Git page
+          as a card of its own. New mirrors are public (anyone on the network can browse and clone
+          them, as on the internet); choose Private to keep one behind the admin login.
+        </p>
+        <div id="git-mirrors" class="admin-list"></div>
+        <h3>Add a mirror</h3>
+        <form id="git-mirror-add" class="library-form">
+          <label>Upstream <input name="upstream" type="url" required placeholder="https://github.com/meshtastic/firmware"></label>
+          <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" placeholder="firmware"></label>
+          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Branches <input name="branches" value="main" placeholder="main develop"></label>
+          <label>Releases to keep <input name="releases" type="number" min="0" max="20" value="2" title="GitHub releases (github.com upstreams)"></label>
+          <label>Pre-releases to keep <input name="prereleases" type="number" min="0" max="20" value="0" title="GitHub pre-releases (github.com upstreams)"></label>
+          <label>Or tags matching <input name="pattern" placeholder="v*.*.*" title="For other upstreams: a tag glob, the newest kept"></label>
+          <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
+          <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
+          <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too (so builds here need no internet)</label>
+          <button type="submit">Add mirror</button>
+        </form>
+        <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
+      </section>
+
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
         <h2 id="sources-title">Schedule and token</h2>
         <p class="setting-desc">For apps and books alike: how often the librarian looks for new versions, how many old ones it keeps, and the token some sources need.</p>
@@ -436,47 +464,42 @@
       <section class="admin-pane" id="git" aria-labelledby="git-title">
         <h2 id="git-title">Git</h2>
         <p class="setting-desc">
-          Two git servers on this box. <a href="/git/">/git/</a> is public: anyone on the network can
-          browse and clone. <a href="/git-private/">/git-private/</a> is behind the admin login for
-          everything. Who may push is each repository's own: choose it beside the repository.
-          Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git asks for the
-          login when it is needed.
+          The repositories on this box, a card each. <a href="/git/">/git/</a> is public: anyone on
+          the network can browse and clone. <a href="/git-private/">/git-private/</a> is behind the
+          admin login. Who may push, and whether a push is built, is each repository's own: Manage
+          on its card. Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git
+          asks for the login when it is needed.
         </p>
+        <details class="git-glossary" id="git-glossary">
+          <summary>What the words mean</summary>
+          <dl>
+            <dt>Public, Private</dt><dd>Where it lives: /git/ (anyone on the network sees it) or /git-private/ (only with the admin login). Moving it changes its clone URL.</dd>
+            <dt>Who pushes</dt><dd>Anyone; only the admin; or nobody (read-only). The hub decides each push; git's own setting is the backstop.</dd>
+            <dt>Mirror</dt><dd>A copy of a repository on the internet, kept to a policy by the librarian (Library → Mirrors). Read-only here.</dd>
+            <dt>Builds</dt><dd>A push to a private repository that only the admin pushes to, whose commit has a .irate-ci.sh, is built on the box (Builds, below), if its switch is on.</dd>
+          </dl>
+        </details>
         <p class="setting-desc" id="git-usage"></p>
         <p class="setting-desc action-note" id="git-note" role="status" hidden></p>
-        <h3>New repository</h3>
-        <form id="git-create" class="library-form">
+        <div class="git-filter" role="group" aria-label="Show">
+          <input id="git-search" type="search" placeholder="Search names and descriptions" aria-label="Search">
+          <span class="chips" id="git-chips-kind"></span>
+          <span class="chips" id="git-chips-area"></span>
+          <label class="git-manage-as">Manage opens <select id="git-manage-as"><option value="drawer">under the card</option><option value="side">beside the grid</option></select></label>
+        </div>
+        <div class="git-layout" id="git-layout">
+          <div class="card-grid git-grid" id="git-grid"></div>
+          <aside class="git-side" id="git-side" aria-label="Manage" hidden></aside>
+        </div>
+        <div hidden id="git-forms">
+        <form id="git-create" class="library-form git-create">
           <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
           <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
           <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
           <button type="submit">Create</button>
         </form>
         <p class="setting-desc action-note" id="git-create-note" role="status" hidden></p>
-        <h3>Public</h3>
-        <div id="git-public" class="admin-list"></div>
-        <h3>Private</h3>
-        <div id="git-private" class="admin-list"></div>
-        <h3>Mirrors</h3>
-        <p class="setting-desc">
-          Repositories the box keeps from an upstream on the internet, by a policy: which branches,
-          how many releases, how much history. The librarian checks them on its schedule; each is
-          read-only here, and listed with the others above.
-        </p>
-        <div id="git-mirrors" class="admin-list"></div>
-        <form id="git-mirror-add" class="library-form">
-          <label>Upstream <input name="upstream" type="url" required placeholder="https://github.com/meshtastic/firmware"></label>
-          <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" placeholder="firmware"></label>
-          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
-          <label>Branches <input name="branches" value="main" placeholder="main develop"></label>
-          <label>Releases to keep <input name="releases" type="number" min="0" max="20" value="2" title="GitHub releases (github.com upstreams)"></label>
-          <label>Pre-releases to keep <input name="prereleases" type="number" min="0" max="20" value="0" title="GitHub pre-releases (github.com upstreams)"></label>
-          <label>Or tags matching <input name="pattern" placeholder="v*.*.*" title="For other upstreams: a tag glob, the newest kept"></label>
-          <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
-          <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
-          <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too (so builds here need no internet)</label>
-          <button type="submit">Add mirror</button>
-        </form>
-        <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
+        </div>
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
         <form id="ci-cache-form" class="library-form">

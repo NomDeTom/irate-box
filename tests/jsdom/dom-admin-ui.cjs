@@ -120,11 +120,6 @@ setTimeout(() => {
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
-  // Git: each repository's preset, offered per area, and a change asks the hub.
-  const sels = [...d.querySelectorAll('select.git-preset')];
-  check('git: a preset menu beside each repository but the mirror', sels.length === 3, sels.length);
-  check('git: the mirror says what it mirrors, with no Delete of its own', t('.git-preset-text').some((x) => x.startsWith('mirror of https://github.com/meshtastic/firmware'))
-    && ![...d.querySelectorAll('#git-public .admin-item')].find((n) => n.textContent.includes('firmware.git')).textContent.includes('Delete'));
   check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
     && /5 fetched, 0 dropped/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
   check('git: a mirror says which revoked releases it leaves out', /revoked, left out: v2\.8\.0\.47db0e3/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
@@ -133,6 +128,9 @@ setTimeout(() => {
   w.confirm = () => true;
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
+  // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
+  check('mirrors: the list and its form are in Library → Mirrors', d.querySelector('#mirrors #git-mirrors') && d.querySelector('#mirrors #git-mirror-add')
+    && [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#firmware #mirrors #sources'));
   // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.
   check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
   const cacheForm = d.getElementById('ci-cache-form');
@@ -146,25 +144,12 @@ setTimeout(() => {
   const mf = d.getElementById('git-mirror-add').elements;
   mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
-  check('git: each shows its own preset', sels.map((s) => s.value).join('|') === 'public-admin-writes|public-read-only|private-to-admin', sels.map((s) => s.value).join('|'));
-  check('git: a private repository is offered only the private presets', [...sels[2].options].map((o) => o.value).join('|') === 'private-to-admin|private-read-only');
-  check('git: the line says what the preset means', t('.git-preset-text')[0] === 'public-admin-writes: anyone can browse and clone; pushing needs the admin login.', t('.git-preset-text')[0]);
-  check('git: the old guest-push switch is gone', !d.getElementById('git-guest-push'));
-  const prompts = ['private/secret', 'main dev'];
-  w.prompt = () => prompts.shift();
-  [...d.querySelectorAll('#git-public button')].find((b) => b.textContent === 'Publish…').click();
-  [...d.querySelectorAll('#git-public button')].find((b) => b.textContent === 'Make private').click();
-  sels[0].value = 'public-everything';
-  sels[0].dispatchEvent(new w.Event('change'));
   force.click();
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
   [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
   setTimeout(() => {
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
-    check('git: Publish asks the hub, with the target and the refs', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'publish'
-      && p[1].to.area === 'private' && p[1].to.name === 'secret' && p[1].refs.join() === 'main,dev'), JSON.stringify(posted));
-    check('git: Make private asks the hub to move it', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'move' && p[1].to === 'private'));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));
     const keepRev = posted.find((p) => p[1].action === 'mirror-change');
     check('git: Keep revoked switches it off on the release groups only', keepRev && keepRev[1].mirror.groups.every((g) => g.skip_revoked === false)
@@ -177,8 +162,6 @@ setTimeout(() => {
     const add = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'fw2');
     check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
       && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));
-    check('git: choosing public-everything asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'preset'
-      && p[1].name === 'demo' && p[1].preset === 'public-everything'), JSON.stringify(posted));
     check('no page errors', !errors.length, errors);
     // A null handed to replaceChildren or append shows as the word itself (the access slots did,
     // 2026-10-06): no text node on the page may be just that.
