@@ -1807,6 +1807,7 @@ if [ -f "$src_tar" ] && runuser -u "$HUB_USER" -- sh -c '
 	repo="$1" tar="$2" ver="$3"
 	[ -d "$repo" ] || git init -q --bare -b main "$repo"
 	git -C "$repo" config http.receivepack false
+	git -C "$repo" config irate-box.write nobody  # public-read-only on the Git page: the box writes it, nobody pushes
 	printf "This box'"'"'s own source: irate-box %s, as installed (AGPL-3.0-or-later; see LICENSES/)\n" "$ver" >"$repo/description"
 	scratch="$(mktemp -d)"; trap "rm -rf \"$scratch\"" EXIT
 	# The tarball, unpacked: the same files as /source, root/ included (unreadable in $CODE here).
