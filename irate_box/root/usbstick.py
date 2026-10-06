@@ -11,6 +11,8 @@ import_zim()   one of those books copied into the hub's ZIM folder as the hub us
                min_free_mb.
 export_zim()   a book from the hub onto the stick, under irate-box/, mounted read-write only
                for the copy.
+export_kit(), import_kit()   a toolkit to or from the stick's irate-box/kits/ (kits.py: the
+               import checks every .deb against Debian's signatures first).
 
 A stick the desktop has mounted already is used where it is and left mounted. Stdlib only.
 """
@@ -133,8 +135,10 @@ def scan():
         try:
             with Mounted(dev) as root:
                 dev["zims"] = _zims(root)
+                from irate_box.root import kits
+                dev["kits"] = kits.stick_kits(root)
         except (ValueError, OSError) as exc:
-            dev["zims"], dev["error"] = [], str(exc)
+            dev["zims"], dev["kits"], dev["error"] = [], [], str(exc)
         out.append(dev)
     return {"at": time.time(), "devices": out}
 
@@ -204,6 +208,27 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
     if out.returncode != 0:
         raise ValueError(f"{name} is copied, but the library was not rebuilt: {out.stderr.strip()[-200:]}")
     return name
+
+
+def export_kit(device, kit, budget_report=None):
+    """A toolkit onto the stick's irate-box/kits/ (kits.export_usb), mounted read-write for it."""
+    from irate_box.root import kits
+    dev = _find(None, device)
+    if dev["fstype"] == "iso9660":
+        raise ValueError("that is a read-only disc")
+    with Mounted(dev, writable=True) as root:
+        folder = root / "irate-box" / "kits"
+        folder.mkdir(parents=True, exist_ok=True)
+        return kits.export_usb(kit, folder, budget_report)
+
+
+def import_kit(device, kit, budget_mb, report=None):
+    """A toolkit from the stick into the local repository, every .deb checked against Debian's
+    signed indexes (kits.import_usb); the stick read-only."""
+    from irate_box.root import kits
+    dev = _find(None, device)
+    with Mounted(dev) as root:
+        return kits.import_usb(root / "irate-box" / "kits", kit, budget_mb, report)
 
 
 def export_zim(device, book, zim_dir, report=None):

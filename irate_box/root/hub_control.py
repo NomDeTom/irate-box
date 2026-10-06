@@ -1481,6 +1481,39 @@ def usb_export(req):
     return f"{book}: copied to the stick as {where}; it is safe to unplug"
 
 
+def usb_kit_export(req):
+    device, kit = str(req.get("device", "")), str(req.get("kit", ""))
+    if not kits.ID_RE.match(kit):
+        raise ValueError("kit: a toolkit's id")
+    try:
+        with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
+            progress.step(f"Copying the {kit} kit to the stick")
+            line = usbstick.export_kit(device, kit, progress.bytes)
+        try:
+            _write_usb(usbstick.scan())
+        except (ValueError, OSError):
+            pass
+        return f"{line}; it is safe to unplug"
+    finally:
+        _kits_status()
+
+
+def usb_kit_import(req):
+    device, kit = str(req.get("device", "")), str(req.get("kit", ""))
+    if not kits.ID_RE.match(kit):
+        raise ValueError("kit: a toolkit's id")
+    try:
+        budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
+    except (OSError, ValueError, TypeError, AttributeError):
+        budget = 500
+    try:
+        with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
+            progress.step(f"Checking and copying the {kit} kit from the stick")
+            return usbstick.import_kit(device, kit, budget, progress.bytes)
+    finally:
+        _kits_status()
+
+
 # --- app bundles -------------------------------------------------------------------
 # The librarian (as the hub user) downloads a bundle into $STATE/library/apps/ and checks it;
 # this checks it again -- the hub wrote that file -- and swaps it in, keeping the previous
@@ -1809,6 +1842,7 @@ ACTIONS = {"service": service, "password": password,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
+           "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
