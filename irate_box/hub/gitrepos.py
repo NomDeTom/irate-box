@@ -152,6 +152,8 @@ def snapshot():
 
 
 def _target(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("name a repository: area and name")
     area, name = payload.get("area"), payload.get("name")
     if area not in AREAS:
         raise ValueError("area must be public or private")
@@ -200,6 +202,46 @@ def action(payload):
             if not isinstance(desc, str) or len(desc) > MAX_DESC or "\n" in desc:
                 raise ValueError(f"a description is one line, up to {MAX_DESC} characters")
             (path / "description").write_text(desc.strip() + "\n")
+        elif what == "move":
+            path = _target(payload)
+            if not (path / "HEAD").exists():
+                raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            to = payload.get("to")
+            if to not in AREAS or to == path.parent.name:
+                raise ValueError("to: the other area, public or private")
+            dest = ROOT / to / path.name
+            if dest.exists():
+                raise ValueError(f"{path.name} already exists in {to}")
+            level = write_level(path)
+            os.rename(path, dest)
+            # Its hooks and level as the new area has them: anyone-may-push is public-only, and
+            # builds run only for private repositories.
+            _git("config", "core.hooksPath", str(HOOKS if to == "private" else HOOKS_PUBLIC), cwd=dest)
+            set_write_level(dest, "admin" if level == "everyone" else level)
+        elif what == "publish":
+            src, dst = _target(payload.get("from") or {}), _target(payload.get("to") or {})
+            if src == dst:
+                raise ValueError("publish to another repository")
+            for r in (src, dst):
+                if not (r / "HEAD").exists():
+                    raise ValueError(f"no repository {r.name} in {r.parent.name}")
+            refs = payload.get("refs") or ["main"]
+            if not isinstance(refs, list) or not refs or len(refs) > 20 or not all(
+                    isinstance(r, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$", r) and ".." not in r for r in refs):
+                raise ValueError("refs: up to 20 branch or tag names")
+            specs = []
+            for r in refs:
+                if _git("show-ref", "--verify", "--quiet", f"refs/heads/{r}", cwd=src).returncode == 0:
+                    specs.append(f"+refs/heads/{r}:refs/heads/{r}")
+                elif _git("show-ref", "--verify", "--quiet", f"refs/tags/{r}", cwd=src).returncode == 0:
+                    specs.append(f"+refs/tags/{r}:refs/tags/{r}")
+                else:
+                    raise ValueError(f"{src.name} has no branch or tag {r}")
+            # The hub's own copy between its own repositories: not a push, so the destination's
+            # preset (read-only, say) does not apply; the owner chose this on /admin.
+            out = _git("fetch", "--quiet", "--no-write-fetch-head", str(src), *specs, cwd=dst)
+            if out.returncode != 0:
+                raise ValueError((out.stderr.strip().splitlines() or ["git fetch failed"])[-1])
         elif what == "preset":
             path = _target(payload)
             if not (path / "HEAD").exists():
@@ -209,7 +251,7 @@ def action(payload):
                 raise ValueError(f"{path.parent.name} repositories take: {', '.join(PRESETS[path.parent.name])}")
             set_write_level(path, PRESETS[path.parent.name][preset])
         else:
-            raise ValueError("action must be create, delete, describe or preset")
+            raise ValueError("action must be create, delete, describe, preset, move or publish")
     except ValueError as exc:
         return 400, {"error": str(exc)}
     except OSError as exc:
