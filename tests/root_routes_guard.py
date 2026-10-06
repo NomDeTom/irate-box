@@ -73,5 +73,16 @@ check("F12: the health scan asks as the hub", kp.call_args.kwargs.get("user") ==
 check("F12: the USB import checks a copy as the hub",
       "zimcheck.problem(tmp, user=hub_user)" in (REPO / "irate_box/root/usbstick.py").read_text())
 
+# F19: every unit that runs as the hub user carries the sandbox.
+sandbox = install[install.index('HUB_SANDBOX="'):]
+sandbox = sandbox[:sandbox.index('"\n')]
+for opt in ("ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "ProtectHome=yes", "ProtectProc=invisible"):
+    check(f"F19: the hub's sandbox has {opt}", opt in sandbox)
+for unit in ("irate-box.service", "irate-box-git.service", "irate-box-librarian.service"):
+    body = install[install.index(f"cat >/etc/systemd/system/{unit} <<EOF"):]
+    body = body[:body.index("\nEOF")]
+    check(f"F19: {unit} uses it, and names what it writes", "$HUB_SANDBOX" in body and "ReadWritePaths=" in body
+          and "ProtectSystem=full" not in body, body[-300:])
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

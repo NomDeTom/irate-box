@@ -73,6 +73,8 @@ def _busy():
         try:
             os.kill(int(p.get("pid", 0)), 0)
             return f"the root helper is busy ({p.get('action', 'working')})"
+        except PermissionError:  # alive, and root's: the hub may not signal it
+            return f"the root helper is busy ({p.get('action', 'working')})"
         except (OSError, ValueError, TypeError):
             pass
     return None
