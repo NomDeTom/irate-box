@@ -2381,6 +2381,13 @@ function managePanel(r, data, cls) {
       p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git, without the login? They cannot rewrite or delete its history, and the public repositories have a size cap, but anything they push is served from this box.` : null,
       `${r.name}.git: ${p.text}.`))),
     el('p', { className: 'setting-desc', textContent: 'The hub decides each push; nobody can rewrite or delete history in a public repository.' }));
+  const buildNow = r.can_build && r.build && r.has_script ? actionButton('Build now', async () => {
+    try {
+      const out = await postJSON('/admin/ci', { action: 'build', repo: r.name });
+      say(`Queued: ${r.name}.git ${out.branch} at ${out.commit.slice(0, 7)}. Its run shows under Builds.`, true, git.note);
+      renderCi(out.snapshot);
+    } catch (err) { say(err.message, false, git.note); }
+  }, { className: 'small' }) : null;
   const build = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Build on push?' }),
     r.can_build
       ? el('label', { className: 'inline' }, el('input', { type: 'checkbox', className: 'git-build', checked: r.build,
@@ -2391,7 +2398,8 @@ function managePanel(r, data, cls) {
       ? (r.has_script ? 'Its newest commit has a .irate-ci.sh. A build runs as a user of its own, sandboxed, at the lowest priority (Builds, below).'
         : 'Its newest commit has no .irate-ci.sh yet: add one at the top of the repository to build.')
       : r.area === 'public' ? 'Public repositories never build: anyone could push what runs.'
-        : 'Only for repositories that only the admin can push to.' }));
+        : 'Only for repositories that only the admin can push to.' }),
+    buildNow, r.can_build ? buildSetup(r) : null);
   const desc = el('textarea', { rows: 2, maxLength: 200, value: r.description || '', className: 'git-desc' });
   const about = el('section', {}, el('h4', { textContent: 'About' }),
     el('p', { className: 'setting-desc', textContent: 'A line on what it is, shown on its card and in cgit.' }), desc,
@@ -2509,25 +2517,101 @@ let ciPoll = null;
 const STATE_ICON = { passed: '✅', failed: '❌', 'timed out': '⏱', running: '⏳' };
 const minutes = (s) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
 
+let ciData = null;
+let ciViewing = null; // { run, next, log } while a run's view is open
 function renderCi(data) {
+  ciData = data;
   if (!data.installed) { ciAbout.textContent = 'Builds are not set up on this box: rerun install.sh.'; return; }
   ciAbout.textContent = `A push to a private repository whose commit has a ${data.script} at its top builds it here: ` +
-    `a fresh clone, then bash ${data.script}, as a user of its own, at the lowest priority, for up to ` +
-    `${Math.round(data.time_limit / 3600)} hours. Public repositories never build.` +
-    (data.queued ? ` ${data.queued} waiting.` : '');
-  const fileUrl = (r, name) => `/admin/ci/file?run=${encodeURIComponent(r.run)}&name=${encodeURIComponent(name)}`;
+    `a fresh clone, then bash ${data.script}, as a user of its own, at the lowest priority. Public repositories never build. ` +
+    'Set one up, or build now, under Manage on its card.' + (data.queued ? ` ${data.queued} waiting.` : '');
+  const mem = data.memory || {};
+  const memText = /^\d+$/.test(mem.max || '') ? `memory capped at ${size(Number(mem.max))}` : 'no memory cap';
+  noteEl('ci-limits').textContent = `Each build: up to ${Math.round(data.time_limit / 3600)} hours, ${memText}, ` +
+    `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}; the newest ${data.keep_runs} per repository are kept, and any marked Keep.`;
+  const kf = document.getElementById('ci-keep-form');
+  if (!kf.contains(document.activeElement)) kf.elements.keep.value = data.keep_runs;
+  noteEl('ci-offline').textContent = 'With no internet: ' + ((data.mirrored || []).length
+    ? `a build's git fetches of ${data.mirrored.length} URL${data.mirrored.length === 1 ? '' : 's'} come from this box's mirrors (${data.mirrored.slice(0, 3).map((u) => u.replace(/^https:\/\//, '')).join(', ')}${data.mirrored.length > 3 ? '…' : ''})`
+    : 'no mirrors yet, so a build that fetches from the internet needs it (Library → Mirrors)')
+    + (data.pio_deps ? '; PlatformIO\'s packages come from the library\'s cache (CI_PIO_DEPS).' : '; no PlatformIO cache kept (Builds above, the firmware build cache).');
   ciRuns.replaceChildren(...(data.runs.length ? data.runs.map((r) => el('div', { className: 'admin-item' },
     el('span', {},
-      el('strong', { textContent: `${STATE_ICON[r.state] || ''} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` }),
-      el('span', { className: 'setting-desc', textContent: [r.state,
+      el('strong', { textContent: `${STATE_ICON[r.state] || ''} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` + (r.keep ? ' · kept' : '') }),
+      el('span', { className: 'setting-desc', textContent: [r.state, r.by === 'build-now' ? 'built by hand' : null,
         r.duration != null ? minutes(r.duration) : null,
         r.started ? commitDate(r.started) : null].filter(Boolean).join(' · ') })),
-    el('span', { className: 'library-buttons' },
-      el('a', { href: fileUrl(r, 'log.txt'), textContent: 'Log', target: '_blank', className: 'small' }),
-      ...(r.artifacts || []).map((a) => el('a', { href: fileUrl(r, a), textContent: a, className: 'small' })))))
+    el('span', { className: 'library-buttons' }, actionButton('View', () => openRun(r.run), { className: 'small' }))))
     : [el('p', { className: 'setting-desc', textContent: 'No builds yet.' })]));
+  // A build that failed since this page last showed the Git pane: a mark on its side-bar link.
+  let seen = 0;
+  try { seen = Number(localStorage.getItem('irate-ci-seen')) || 0; } catch (_) { /* no storage */ }
+  const newBad = data.runs.filter((r) => r.finished && r.finished > seen && r.state !== 'passed').length;
+  if (location.hash === '#git') { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
+  badge('git', location.hash !== '#git' && newBad ? String(newBad) : '');
   clearTimeout(ciPoll);
   if (data.queued || data.runs.some((r) => r.state === 'running')) ciPoll = setTimeout(loadCi, 5000);
+}
+
+const ciFile = (run, name) => `/admin/ci/file?run=${encodeURIComponent(run)}&name=${encodeURIComponent(name)}`;
+async function openRun(run) {
+  ciViewing = { run, next: 0, log: '' };
+  await followRun();
+}
+async function followRun() {
+  if (!ciViewing) return;
+  const box = noteEl('ci-run-view');
+  let v;
+  try { v = await getJSON(`/admin/ci/run?run=${encodeURIComponent(ciViewing.run)}&from=${ciViewing.next}`); }
+  catch (err) { box.hidden = false; box.replaceChildren(el('p', { className: 'setting-desc bad', textContent: err.message })); return; }
+  ciViewing.log += v.log;
+  ciViewing.next = v.next;
+  const st = v.status;
+  const running = st.state === 'running';
+  const pre = el('pre', { className: 'admin-log ci-log', textContent: ciViewing.log.slice(-200000) });
+  box.hidden = false;
+  box.replaceChildren(
+    el('div', { className: 'git-manage-head' }, el('strong', { textContent: `${STATE_ICON[st.state] || ''} ${st.repo} · ${st.branch} · ${st.commit.slice(0, 7)}` }),
+      actionButton('Close', () => { ciViewing = null; box.hidden = true; }, { className: 'small' })),
+    el('p', { className: 'setting-desc', textContent: [st.state, st.duration != null ? minutes(st.duration) : running ? `running for ${minutes(Math.round(Date.now() / 1000 - st.started))}` : null,
+      st.keep ? 'kept' : null].filter(Boolean).join(' · ') }),
+    v.steps.length ? el('ol', { className: 'ci-steps' }, ...v.steps.map((x) => el('li', { textContent: x }))) : null,
+    pre,
+    v.artifacts.length ? el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Artifacts: ' }),
+      ...v.artifacts.map((a) => el('a', { href: ciFile(v.run, a.name), className: 'button-link small', textContent: `${a.name} (${size(a.size)})` }))) : null,
+    el('p', { className: 'library-buttons' },
+      el('a', { href: ciFile(v.run, 'log.txt'), target: '_blank', className: 'button-link small', textContent: 'The whole log' }),
+      running ? null : actionButton(st.keep ? 'Stop keeping' : 'Keep', () => ciChange(v.run, st.keep ? 'unkeep' : 'keep'), { className: 'small' }),
+      running ? null : actionButton('Delete', () => { if (confirm('Delete this run, its log and its artifacts?')) ciChange(v.run, 'delete'); }, { className: 'small danger' })));
+  pre.scrollTop = pre.scrollHeight;
+  if (running) setTimeout(followRun, 2000);
+}
+async function ciChange(run, action) {
+  try {
+    await postJSON('/admin/ci', { action, run });
+    say(action === 'delete' ? 'Deleted once the builder gets to it (after a build in progress).' : 'Done once the builder gets to it.', true, git.note);
+    if (action === 'delete') { ciViewing = null; noteEl('ci-run-view').hidden = true; }
+    setTimeout(loadCi, 1500);
+  } catch (err) { say(err.message, false, git.note); }
+}
+document.getElementById('ci-keep-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try { renderCi(await postJSON('/admin/ci', { action: 'settings', keep_runs: Number(e.target.elements.keep.value) })); say('Saved.', true, git.note); }
+  catch (err) { say(err.message, false, git.note); }
+});
+
+// "Set up builds", in a repository's Manage: what a script gets, and templates to start from.
+function buildSetup(r) {
+  if (!ciData || !ciData.templates) return null;
+  return el('details', { className: 'ci-setup' }, el('summary', { textContent: 'Set up builds: what a script gets, and templates' }),
+    el('p', { className: 'setting-desc', textContent: `Put a ${ciData.script} at the top of the repository; each push to a branch runs it with bash, in a fresh clone of that commit.` }),
+    el('dl', { className: 'ci-env' }, ...Object.entries(ciData.env || {}).flatMap(([k, v]) => [el('dt', {}, el('code', { textContent: k })), el('dd', { textContent: v })])),
+    ...Object.entries(ciData.templates).map(([k, t]) => {
+      const pre = el('pre', { className: 'admin-log', textContent: t.script });
+      return el('div', { className: 'ci-template' }, el('strong', { textContent: t.title }),
+        actionButton('Copy', () => navigator.clipboard?.writeText(t.script).then(() => say(`Copied the ${t.title} template: save it as ${ciData.script}.`, true, git.note),
+          () => say('Select the text and copy it.', false, git.note)), { className: 'small' }), pre);
+    }));
 }
 
 async function loadCi() {

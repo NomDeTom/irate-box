@@ -1084,3 +1084,10 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .joint-item.joint-problem { border-color: #e5484d; }
 .joint-item.joint-warn { border-color: var(--warn); }
 .joint-titles { margin: 0.2rem 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--muted); }
+
+/* Builds: a run's own view, and the templates. */
+.ci-log { max-height: 24rem; overflow: auto; white-space: pre-wrap; font-size: 0.78rem; }
+.ci-steps { margin: 0.2rem 0; padding-left: 1.4rem; font-size: 0.85rem; }
+.ci-env { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.7rem; font-size: 0.82rem; }
+.ci-env dd { margin: 0; color: var(--muted); }
+.ci-template pre { max-height: 14rem; overflow: auto; font-size: 0.75rem; }
