@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MQTT explorer</title>
+<link rel="stylesheet" href="explorer.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>MQTT explorer</h1>
+    <p id="state" class="state" role="status">Starting…</p>
+  </header>
+  <p class="note">The box's broker, as it happens. Meshtastic sends most packets
+    <strong>encrypted</strong> (topics with <code>/e/</code>), so for those this shows the topics and the
+    traffic, not what was said. Topics with <code>/json/</code> are readable. This page only listens: it
+    never publishes, and keeps nothing once closed.</p>
+  <form id="sub" class="bar">
+    <label>Topics <input id="filter" value="msh/#" spellcheck="false" autocomplete="off" aria-label="Topic filter"></label>
+    <button type="submit">Listen</button>
+    <button type="button" id="pause">Pause</button>
+    <button type="button" id="clear">Clear</button>
+    <label>Show <input id="search" type="search" placeholder="part of a topic" aria-label="Show topics containing"></label>
+  </form>
+  <p id="totals" class="totals"></p>
+  <div class="split">
+    <div class="scroll">
+      <table id="topics">
+        <thead><tr><th>Topic</th><th class="n">Messages</th><th class="n">Bytes</th><th class="n">Last</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="empty">Nothing yet. Packets appear here as nodes send them.</p>
+    </div>
+    <section id="detail" class="detail" hidden>
+      <h2 id="detail-topic"></h2>
+      <ol id="detail-list" reversed></ol>
+    </section>
+  </div>
+</main>
+<script src="explorer.js"></script>
+</body>
+</html>

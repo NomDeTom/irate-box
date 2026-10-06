@@ -187,5 +187,26 @@ check("maps: connect from the manifest, {box} as the hub's host", "connect-src '
 routes = access.addon_caddy_routes(access.clean({"eliza": "public"}), loc, "H")
 check("Caddy routes: off ones left out, the rest 404", "handle /eliza/*" in routes and "handle /demo/*" not in routes and routes.rstrip().endswith("}"))
 
+# The MQTT explorer (step 13): the hub's own page, cut out of a clone of the hub at the pin.
+import shutil  # noqa: E402
+from irate_box.library import adapt_mqtt_explorer as AX  # noqa: E402
+REPO = Path(__file__).resolve().parents[1]
+tree = T / "mx" / "tree"
+shutil.copytree(REPO / "extras", tree / "extras"); (tree / "LICENSES").mkdir(); shutil.copy(REPO / "LICENSES" / "MIT.txt", tree / "LICENSES")
+(tree / "install.sh").write_text("#!/bin/sh\n"); (tree / "irate_box").mkdir(); (tree / "irate_box" / "x.py").write_text("")
+AX.adapt(tree)
+check("the explorer: only its page, at the top, with its licence", sorted(p.name for p in tree.iterdir()) == ["LICENSE", "explorer.css", "explorer.js", "index.html"],
+      sorted(p.name for p in tree.iterdir()))
+AX.adapt(tree)
+check("  twice changes nothing", len(list(tree.iterdir())) == 4 and not (T / "mx" / ".tree.keep").exists())
+bare = T / "mx" / "old"; bare.mkdir(); (bare / "README.md").write_text("x")
+try:
+    AX.adapt(bare); check("a commit without the explorer: refused", False)
+except AX.AdaptError as exc:
+    check("a commit without the explorer: refused", "not a commit with the explorer" in str(exc), str(exc))
+js = (REPO / "extras/mqtt-explorer/explorer.js").read_text()
+check("the page reaches nothing but the broker", "fetch(" not in js and "XMLHttpRequest" not in js and js.count("new WebSocket(") == 1
+      and "src=\"http" not in (REPO / "extras/mqtt-explorer/index.html").read_text())
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
