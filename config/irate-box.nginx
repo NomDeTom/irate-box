@@ -118,23 +118,13 @@ server {
 		proxy_pass http://irate_box_hub;
 	}
 
-	# --- /wiki -> kiwix-serve, path passed through (--urlRootLocation /wiki) --------
-	location = /wiki { return 301 /wiki/; }
+	# --- /wiki -> Kiwix, on an origin of its own (the server block at the end, port @WIKI_PORT@):
+	# a book's pages run whatever script the book carries, from a download, a stick or a URL,
+	# so on the hub's origin a book could act with the owner's login (next-work plan step 11).
+	location = /wiki { return 302 $scheme://$host:@WIKI_PORT@/wiki/; }
 	location /wiki/ {
 		if ($irate_box_off_wiki) { return 404; }
-		auth_basic $irate_box_auth_wiki;
-		auth_basic_user_file @HTPASSWD@;
-		proxy_pass http://127.0.0.1:8081;
-	}
-	# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM would hide behind the old
-	# copy for an hour. Its ETag carries the book UUID, so always revalidating is a cheap 304.
-	location /wiki/content/ {
-		if ($irate_box_off_wiki) { return 404; }
-		auth_basic $irate_box_auth_wiki;
-		auth_basic_user_file @HTPASSWD@;
-		proxy_hide_header Cache-Control;
-		add_header Cache-Control "no-cache" always;
-		proxy_pass http://127.0.0.1:8081;
+		return 302 $scheme://$host:@WIKI_PORT@$request_uri;
 	}
 
 	# --- /draw -> Excalidraw, static, with the SPA fallback --------------------------
@@ -502,6 +492,43 @@ server {
 		auth_basic_user_file @HTPASSWD@;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
+	}
+	location / { return 404; }
+}
+
+# --- the books' origin: Kiwix, next-work plan step 11 ---------------------------------------
+# kiwix-serve on 127.0.0.1:8081, path passed through (--urlRootLocation /wiki), with the same
+# login switch as before (/admin, Apps).
+server {
+	listen @WIKI_PORT@;
+	listen [::]:@WIKI_PORT@;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	absolute_redirect off;
+	include @ACCESS@;
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Irate-Front "";
+	location = / { return 302 /wiki/; }
+	location = /wiki { return 301 /wiki/; }
+	location /wiki/ {
+		if ($irate_box_off_wiki) { return 404; }
+		auth_basic $irate_box_auth_wiki;
+		auth_basic_user_file @HTPASSWD@;
+		proxy_pass http://127.0.0.1:8081;
+	}
+	# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM would hide behind the old
+	# copy for an hour. Its ETag carries the book UUID, so always revalidating is a cheap 304.
+	location /wiki/content/ {
+		if ($irate_box_off_wiki) { return 404; }
+		auth_basic $irate_box_auth_wiki;
+		auth_basic_user_file @HTPASSWD@;
+		proxy_hide_header Cache-Control;
+		add_header Cache-Control "no-cache" always;
+		proxy_pass http://127.0.0.1:8081;
 	}
 	location / { return 404; }
 }
