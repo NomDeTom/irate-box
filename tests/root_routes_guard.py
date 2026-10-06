@@ -84,5 +84,11 @@ for unit in ("irate-box.service", "irate-box-git.service", "irate-box-librarian.
     check(f"F19: {unit} uses it, and names what it writes", "$HUB_SANDBOX" in body and "ReadWritePaths=" in body
           and "ProtectSystem=full" not in body, body[-300:])
 
+# F9's remaining moments: no password on a command line during a change or an install.
+hc = (REPO / "irate_box/root/hub_control.py").read_text()
+check("F9: caddy hash-password reads the password on stdin", '"--plaintext"' not in hc and "--plaintext" not in install)
+check("F9: Syncthing's GUI password goes through its REST API", '"password", "set"' not in hc
+      and "config gui password set" not in install and "hub_control syncthing-gui-password" in install)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -1137,7 +1137,7 @@ fi
 # --- the web server: Caddy (the fallback) ----------------------------------------------
 if [ "$WEB" = caddy ]; then
 	say "Configuring Caddy"
-	HASH="$(caddy hash-password --plaintext "$ADMIN_PW")"
+	HASH="$(printf '%s\n' "$ADMIN_PW" | caddy hash-password)"  # on stdin, not in /proc (F9)
 	CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
 	CADDY_SITE=/etc/caddy/irate-box.caddy
 	IMPORT_LINE="import $CADDY_SITE"
@@ -1987,7 +1987,9 @@ if [ "$WITH_SYNC" = 1 ]; then
 	st config options raw-max-folder-concurrency set 1
 	# Same credentials as the web server's gate, so the one Basic-auth prompt satisfies both.
 	st config gui user set admin
-	st config gui password set "$ADMIN_PW"
+	# Through Syncthing's REST API, the password on stdin: never on a command line (F9).
+	printf '%s\n' "$ADMIN_PW" | HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" hub_control syncthing-gui-password ||
+		problem "could not set Syncthing's GUI password (/sync/ keeps its old one)"
 	if [ "$WITH_NOTES" = 1 ] && ! st config folders list | grep -qx hub-notes; then
 		st config folders add --id hub-notes --label "Hub notes" --path "$STATE/notes"
 	fi
