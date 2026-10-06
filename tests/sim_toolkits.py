@@ -34,6 +34,7 @@ ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.1
            "fail2ban": ("1.1.0-8", ["python3-systemd"]), "python3-systemd": ("235-1", []), "libc6": ("2.41-12", [])}
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
+BOARD = {"arch": "armhf"}
 (T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
 calls = []
 policy_seen = []
@@ -60,11 +61,16 @@ def fake(cmd, timeout=0, check=True):
     if name == "dpkg-query" and cmd[1] == "-L":
         return R("/usr/bin/fail2ban-server\n/usr/lib/systemd/system/fail2ban.service\n" if cmd[2] == "fail2ban" else f"/usr/bin/{cmd[2]}\n")
     if name == "dpkg-deb":
-        d = json.loads(Path(cmd[2]).read_text())
+        try:
+            d = json.loads(Path(cmd[2]).read_text())
+        except ValueError:
+            return R("", 2)  # as dpkg-deb on a damaged file
         fields = cmd[3:] or list(d)
         return R("".join(f"{k}: {d[k]}\n" for k in fields if k in d))
     if name == "systemctl":
         return R()
+    if name == "dpkg" and cmd[1:] == ["--print-architecture"]:
+        return R(BOARD["arch"] + "\n")
     if name == "apt-get":
         words = [a for i, a in enumerate(cmd[1:], 1) if not a.startswith("-") and cmd[i - 1] != "-o"]
         verb, pkgs = words[0], words[1:]
@@ -212,6 +218,8 @@ check("expire: a kit whose time is up is removed", len(out) == 1 and "cap" not i
 victim = kits.POOL / kits.manifest("small")["packages"][0]["file"]
 victim.write_text(victim.read_text() + "x")
 check("a changed file is found", any("has changed since it was fetched" in p for p in kits.verify()), kits.verify())
+kits.write_index()
+check("  and left out of the index apt reads", f"Filename: ./{victim.name}" not in (kits.POOL / "Packages").read_text())
 try:
     kits.install("small"); check("a cache that fails its check installs nothing", False)
 except ValueError as exc:
@@ -375,5 +383,30 @@ man_at(40)
 f = [x for x in hub_control.kits_findings() if x["check"] == "Security tools' freshness"]
 check("  over a month, a problem", any(x["status"] == "problem" and "security kit's cache is 40 days" in x["detail"] for x in f), f)
 hub_control.STATE = real_state
+# 64-bit only (Tom, 2026-10-06): bpftrace, bcc and bpftool are left out on a 32-bit board.
+check("the debug kit marks bpftrace, bcc and bpftool 64-bit only", set(kits.definitions()["debug"]["needs_64bit"]) == {"bpftrace", "bpfcc-tools", "bpftool"})
+from irate_box.hub import kitdefs  # noqa: E402
+dbg = kits.definitions()["debug"]
+for arch_, gone in (("armhf", {"bpftrace", "bpfcc-tools", "bpftool"}), ("arm64", set()), ("amd64", set()), ("i386", {"bpftrace", "bpfcc-tools", "bpftool"})):
+    keep, left = kitdefs.packages_for(dbg, arch_)
+    check(f"  on {arch_}: {'left out' if gone else 'all kept'}", set(left) == gone and not (gone & set(keep)) and "gdb" in keep, (keep, left))
+d = json.loads((T / "defs" / "small.json").read_text()); d["needs_64bit"] = ["gdb"]
+(T / "defs" / "small.json").write_text(json.dumps(d))
+ARCHIVE["gdb"] = ("16.3-9", ARCHIVE["gdb"][1])
+calls.clear()
+line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
+check("fetched on a 32-bit board: left out, and said", "left out on this armhf board (64-bit only): gdb" in line
+      and "gdb" not in {p["name"] for p in kits.manifest("small")["packages"]} and kits.manifest("small")["left_out"] == ["gdb"]
+      and not any("gdb" in c for c in calls if c[0] == "apt-get"), line)
+check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_out"] == ["gdb"])
+BOARD["arch"] = "arm64"
+line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
+check("on a 64-bit board it comes", "gdb" in {p["name"] for p in kits.manifest("small")["packages"]} and not kits.manifest("small")["left_out"], line)
+BOARD["arch"] = "armhf"
+d.pop("needs_64bit"); (T / "defs" / "small.json").write_text(json.dumps(d))
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+(T / "defs" / "odd.json").write_text(json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]}))
+check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
+(T / "defs" / "odd.json").unlink()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
