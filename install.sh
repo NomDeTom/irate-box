@@ -1896,6 +1896,10 @@ Wants=network-online.target
 Type=oneshot
 User=$HUB_USER
 Group=$HUB_USER
+# The hub's own settings (hub.env): the git, firmware and other roots it keeps. Without them the
+# mirrors' repositories resolved under $CODE (read-only), and every scheduled run stopped there,
+# before the books' and the hub's own updates (2026-10-06).
+EnvironmentFile=$ETC/hub.env
 Environment=HUB_STATE_DIR=$STATE
 ExecStart=$CODE/irate-box librarian update --scheduled
 # A download competes with guests for the card and the CPU; let it lose.
