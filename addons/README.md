@@ -53,6 +53,21 @@ The design and the reasons: `plans/no-root-addons-plan` in the project notes.
 Nothing else is allowed in a web add-on's manifest: no services, ports, units, install options
 or restarts. Those are the built-in add-ons in `apps.d/`, which need the installer and root.
 
+## The hub's theme
+
+An add-on's pages can't read the hub's storage, being on another origin. When the hub bar
+frames one, it adds the theme's base to the address instead: `hub-theme=light`, `dark` or
+`auto` (auto: follow the device). The add-on's own query is kept. A page that wants to match
+reads it on load:
+
+```js
+const theme = new URLSearchParams(location.search).get('hub-theme'); // light, dark, auto or null
+if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+```
+
+When the owner changes theme, the bar reloads the add-on with the new value. Opened on its own
+(without the bar), there's no `hub-theme`; follow `prefers-color-scheme` then.
+
 ## A worked example: the calculators, as a plain copy
 
 [`templates/calculators.json`](templates/calculators.json) is a complete, valid web add-on for

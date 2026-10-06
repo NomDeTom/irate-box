@@ -1147,9 +1147,9 @@ const net = {
   hazards: document.getElementById('net-hazards'),
   status: document.getElementById('up-status'),
   eager: document.getElementById('up-eager'),
-  eagerDesc: document.getElementById('up-eager-desc'),
   forgive: document.getElementById('up-forgive'),
   forgiveDesc: document.getElementById('up-forgive-desc'),
+  will: document.getElementById('up-will'),
   iface: document.getElementById('up-iface'),
   custom: document.getElementById('up-custom'),
   fields: document.getElementById('up-fields'),
@@ -1178,6 +1178,8 @@ let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
 let upDirty = false;
+// The levels chosen on the page (the ladder and the toggle), before Save.
+const upPick = { eagerness: 'patient', forgiveness: 'normal' };
 let netAsked = false;
 
 function upPreset(e, f, levels) {
@@ -1199,18 +1201,86 @@ function buildUpFields(levels) {
       input = el('input', { type: 'text', inputMode: 'decimal', size: 8 });
     }
     input.dataset.key = key;
-    input.addEventListener('input', () => { upDirty = true; });
+    input.addEventListener('input', () => { upDirty = true; if (netData) showUpPreset(netData.levels); showUpSave(); });
     net.fields.append(el('label', {}, el('span', { textContent: label }), input));
   }
 }
 
+// --- the levels in words ---------------------------------------------------------------
+const cap1 = (t) => t[0].toUpperCase() + t.slice(1);
+const dur = (sec) => (sec < 60 ? `${sec} s` : sec % 3600 === 0 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`);
+const FLAP_DOES = { note: 'is only noted', pin: 'is locked to the strongest access point', repair: 'is repaired like any outage' };
+
+// What a set of numbers does once the link counts as down: an eagerness level's own preset (its
+// line on the ladder), or the effective numbers with any custom values ("What this will do").
+function stepsInWords(p) {
+  const st = p.steps || {};
+  if (!Object.keys(st).length) return 'does nothing but note it';
+  const parts = [];
+  if ('reconnect' in st) {
+    let r = st.reconnect ? `reconnects after ${dur(st.reconnect)}` : 'reconnects at once';
+    if (p.repeat) r += `, then again every ${dur(p.repeat)}` + (p.backoff > 1 && p.max_repeat ? ` (the gap growing ×${p.backoff}, up to ${dur(p.max_repeat)})` : '');
+    parts.push(r);
+  }
+  if ('restart' in st) parts.push(`restarts the network service after ${dur(st.restart)}`);
+  if ('radio' in st) parts.push(`resets the radio after ${dur(st.radio)}`);
+  parts.push('reboot' in st ? `reboots after ${dur(st.reboot)}${p.reboots_per_day ? ` (at most ${p.reboots_per_day} a day)` : ''}` : 'never reboots');
+  const heavy = 'radio' in st || 'reboot' in st;
+  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', with guests on or not' : ', but not while guests are on the hotspot') : '');
+}
+
+function rungLine(name, levels) {
+  const p = { ...levels.presets.common, ...levels.presets.eagerness[name] };
+  return name === 'off' ? 'Checks, and never acts.' : `When it's down: ${stepsInWords(p)}.`;
+}
+
+function forgiveLine(f) {
+  return `Down after ${f.misses} failed check${f.misses === 1 ? '' : 's'} and ${dur(f.grace)} more. `
+    + `${f.flap_count} drops within ${dur(f.flap_window)} count as flapping, which ${FLAP_DOES[f.flap_action] || f.flap_action}.`;
+}
+
+function willText(eff) {
+  return `What this will do: it checks the link every ${dur(eff.check)}. It counts it as down after ${eff.misses} failed `
+    + `check${eff.misses === 1 ? '' : 's'} and ${dur(eff.grace)} more, and then ${stepsInWords(eff)}. `
+    + `A link that drops ${eff.flap_count} times within ${dur(eff.flap_window)} ${FLAP_DOES[eff.flap_action] || eff.flap_action}.`;
+}
+
+function buildUpChoices(levels) {
+  if (net.eager.childElementCount) return;
+  net.eager.replaceChildren(...levels.eagerness.map((name) => {
+    const input = el('input', { type: 'radio', name: 'up-eager', value: name });
+    input.addEventListener('change', () => upChoose({ eagerness: name }, levels));
+    return el('label', { className: 'up-rung' }, input,
+      el('span', { className: 'up-rung-text' },
+        el('span', { className: 'setting-name', textContent: cap1(name) }),
+        el('span', { className: 'setting-desc', textContent: levels.describe[name] || '' }),
+        el('span', { className: 'setting-desc up-does', textContent: rungLine(name, levels) })));
+  }));
+  net.forgive.replaceChildren(...levels.forgiveness.map((name) => {
+    const b = el('button', { type: 'button', textContent: cap1(name), onclick: () => upChoose({ forgiveness: name }, levels) });
+    b.setAttribute('role', 'radio');
+    b.dataset.level = name;
+    return b;
+  }));
+}
+
+function upChoose(change, levels) {
+  Object.assign(upPick, change);
+  upDirty = true;
+  showUpPreset(levels);
+  showUpSave();
+}
+
+function showUpSave() {
+  const busy = !!netWaiting || (netData && netData.pending > 0);
+  net.save.disabled = busy || !upDirty;
+  net.save.textContent = upDirty ? 'Save (not saved yet)' : 'Save';
+}
+
 function fillUpForm(chosen, levels) {
-  const sel = (box, names, value) => {
-    if (!box.childElementCount) box.replaceChildren(...names.map((n) => el('option', { value: n, textContent: n[0].toUpperCase() + n.slice(1) })));
-    box.value = value;
-  };
-  sel(net.eager, levels.eagerness, chosen.eagerness);
-  sel(net.forgive, levels.forgiveness, chosen.forgiveness);
+  buildUpChoices(levels);
+  upPick.eagerness = chosen.eagerness;
+  upPick.forgiveness = chosen.forgiveness;
   net.iface.value = [...net.iface.options].some((o) => o.value === chosen.iface) ? chosen.iface : 'auto';
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll('[data-key]')) {
@@ -1222,10 +1292,22 @@ function fillUpForm(chosen, levels) {
 }
 
 function showUpPreset(levels) {
-  const e = net.eager.value, f = net.forgive.value;
-  net.eagerDesc.textContent = levels.describe[e] || '';
-  net.forgiveDesc.textContent = levels.describe[f] || '';
+  const e = upPick.eagerness, f = upPick.forgiveness;
+  for (const input of net.eager.querySelectorAll('input')) {
+    input.checked = input.value === e;
+    input.closest('.up-rung').classList.toggle('chosen', input.checked);
+  }
+  for (const b of net.forgive.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.level === f));
+  net.forgiveDesc.textContent = `${levels.describe[f] || ''} ${forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[f] })}`;
   const eff = upPreset(e, f, levels);
+  try {
+    const over = readUpForm().overrides;
+    const shown = { ...eff, ...over, steps: { ...eff.steps } };
+    for (const [k, v] of Object.entries(over.steps || {})) { if (v === null) delete shown.steps[k]; else shown.steps[k] = v; }
+    net.will.textContent = willText(shown);
+  } catch (_) {
+    net.will.textContent = willText(eff);
+  }
   for (const input of net.fields.querySelectorAll('input[data-key]')) {
     const v = upGet(eff, input.dataset.key);
     input.placeholder = v === undefined ? 'off' : String(v);
@@ -1250,7 +1332,7 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  return { eagerness: net.eager.value, forgiveness: net.forgive.value, iface: net.iface.value, overrides };
+  return { eagerness: upPick.eagerness, forgiveness: upPick.forgiveness, iface: net.iface.value, overrides };
 }
 
 const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1329,7 +1411,7 @@ function renderNetwork(data) {
   buildUpFields(levels);
   if (!upDirty) fillUpForm((u && u.chosen) || { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} }, levels);
   net.status.textContent = upStatusText(u);
-  net.save.disabled = busy;
+  showUpSave();
   const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;
   net.unhold.hidden = !held;
@@ -1385,8 +1467,8 @@ async function netRequest(body, where) {
 }
 
 net.scan.addEventListener('click', () => netRequest({ action: 'scan', iface: net.device.value || null }, 'scan'));
-for (const box of [net.eager, net.forgive, net.iface]) {
-  box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); });
+for (const box of [net.iface]) {
+  box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); showUpSave(); });
 }
 net.save.addEventListener('click', () => {
   let settings;

@@ -988,6 +988,16 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* Network page: the uplink settings, and the watchdog's custom values in a compact grid */
 .net-settings { display: flex; flex-direction: column; gap: 0.4rem; max-width: 40rem; }
+/* Staying on the network: eagerness as a ladder of cards, each with what it means and does. */
+.up-ladder { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
+.up-rung { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.up-rung:hover { border-color: var(--accent); }
+.up-rung.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.up-rung input { margin-top: 0.25rem; accent-color: var(--accent); }
+.up-rung-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.up-does { font-style: italic; }
+.up-will { margin: 0.6rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--surface); }
 .net-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem 1rem; margin-top: 0.5rem; }
 .net-fields label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.9em; }
 .net-fields input, .net-fields select { width: 100%; box-sizing: border-box; }

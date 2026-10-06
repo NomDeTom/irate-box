@@ -34,10 +34,26 @@ function pushTheme() {
 pushTheme();
 document.addEventListener('hub-theme', () => {
   pushTheme();
-  try { frame.contentWindow.location.reload(); } catch (_) { frame.src = target(); }
+  // A web add-on gets a new address, which carries the new theme (and it is on its own
+  // origin, so it could not be reloaded from here anyway).
+  if (target().startsWith('/addons/')) { frame.src = frameSrc(target()); return; }
+  try { frame.contentWindow.location.reload(); } catch (_) { frame.src = frameSrc(target()); }
 });
 
 // Same-origin paths only: "/wiki/…" yes, "//elsewhere" or "https://…" no.
+// A web add-on (/addons/<id>/…, plans/no-root-addons-plan) is on its own origin, so it cannot
+// read the hub's storage: it is told the theme's base in its address instead, hub-theme=light,
+// dark or auto, beside whatever query it has. Every other app reads its own setting (above).
+function frameSrc(path) {
+  if (!path.startsWith('/addons/')) return path;
+  const hash = path.indexOf('#');
+  const base = hash < 0 ? path : path.slice(0, hash);
+  const frag = hash < 0 ? '' : path.slice(hash);
+  const url = new URL(base, location.origin);
+  url.searchParams.set('hub-theme', hubTheme());
+  return url.pathname + url.search + frag;
+}
+
 function target() {
   const p = decodeURIComponent(location.hash.slice(1));
   return p.startsWith('/') && !p.startsWith('//') ? p : '/';
@@ -142,11 +158,11 @@ setInterval(sync, 1000);
 
 // An edited address or a pasted link: point the frame at the new fragment.
 window.addEventListener('hashchange', () => {
-  if (target() !== shown) { shown = target(); frame.src = shown; }
+  if (target() !== shown) { shown = target(); frame.src = frameSrc(shown); }
 });
 
 shown = target();
-frame.src = shown;
+frame.src = frameSrc(shown);
 
 // --- ↑ the list page the app was opened from --------------------------------------
 // A list page's links carry ?from=<list id> on app.html itself (server.py menu_page), so it

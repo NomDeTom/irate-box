@@ -9,8 +9,10 @@ const BASE = process.env.BASE || 'http://127.0.0.1:18098';
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
 const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
 const errors = [];
+let fails = 0;
+const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const vc = new VirtualConsole();
-vc.on('jsdomError', (e) => errors.push('jsdom: ' + e.message));
+vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
 vc.on('error', (...a) => errors.push('console: ' + a.join(' ')));
 const dom = new JSDOM(html, { url: BASE + '/admin/#network', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
@@ -18,6 +20,13 @@ const posted = [];
 w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/network') posted.push(JSON.parse(opts.body));
   if (opts.method === 'POST' && u === '/admin/network') return new Response(JSON.stringify({ id: 'x' }), { status: 202 });
+  if (u === '/admin/network') {
+    // The root helper's answer to what was posted: done, so the page is not left busy.
+    const data = await (await fetch(new URL(u, BASE), opts)).json();
+    data.results = [...(data.results || []), { id: 'x', ok: true, message: 'Done.' }];
+    data.pending = 0;
+    return new Response(JSON.stringify(data), { status: 200 });
+  }
   return fetch(new URL(u, BASE), opts);
 };
 w.confirm = () => true;
@@ -30,22 +39,44 @@ setTimeout(() => {
   console.log('RADIOS:'); t('#net-radios tbody tr').forEach((r) => console.log('  ', r));
   console.log('HAZARDS:'); t('#net-hazards li').forEach((r) => console.log('  ', r.slice(0, 160)));
   console.log('STATUS:', t('#up-status')[0]);
-  console.log('LEVELS:', d.getElementById('up-eager').value, d.getElementById('up-forgive').value, '|', t('#up-eager-desc')[0], '|', t('#up-forgive-desc')[0]);
   console.log('FIELDS:', [...d.querySelectorAll('#up-fields [data-key]')].map((i) => `${i.dataset.key}=${i.value || '(' + (i.placeholder || i.options?.[0]?.textContent) + ')'}`).join('  '));
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
-  // Change eagerness → descriptions and placeholders follow, then save with a custom value.
-  const e = d.getElementById('up-eager'); e.value = 'stubborn'; e.dispatchEvent(new w.Event('change'));
-  console.log('AFTER stubborn:', t('#up-eager-desc')[0], '| reboot placeholder:', d.querySelector('[data-key="steps.reboot"]').placeholder);
-  d.querySelector('[data-key="steps.reboot"]').value = 'off';
-  d.querySelector('[data-key="check"]').value = '45';
-  d.getElementById('up-save').click();
-  d.querySelector('[data-key="check"]').value = 'abc';
-  d.getElementById('up-save').click();
+  // Staying on the network: eagerness as a ladder, forgiveness as a three-way toggle (2026-10-06).
+  const rungs = [...d.querySelectorAll('#up-eager .up-rung')];
+  check('eagerness: five cards, off to stubborn', rungs.map((r) => r.querySelector('input').value).join(' ') === 'off patient standard persistent stubborn',
+    rungs.map((r) => r.querySelector('input').value).join(' '));
+  check('every card shows its description and what it does', rungs.every((r) => r.querySelectorAll('.setting-desc').length === 2 && r.querySelector('.up-does').textContent.length > 10));
+  check('the chosen level is marked', rungs.filter((r) => r.classList.contains('chosen')).length === 1);
+  check('stubborn\'s line says it reboots', /reboots after 30 min/.test(rungs[4].querySelector('.up-does').textContent), rungs[4].querySelector('.up-does').textContent);
+  check('off\'s line says it never acts', /never acts/.test(rungs[0].querySelector('.up-does').textContent));
+  const toggle = [...d.querySelectorAll('#up-forgive button')];
+  check('forgiveness: a three-way toggle', toggle.map((b) => b.dataset.level).join(' ') === 'tolerant normal strict' && toggle.filter((b) => b.getAttribute('aria-checked') === 'true').length === 1);
+  check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
+  const save = d.getElementById('up-save');
+  check('Save is off until something changes', save.disabled && save.textContent === 'Save');
+  rungs[4].querySelector('input').click();
+  check('choosing stubborn marks it, and Save comes on', rungs[4].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
+  check('the sentence follows: it reboots', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
+  toggle[2].click();
+  check('strict on the toggle, its line under it', toggle[2].getAttribute('aria-checked') === 'true' && /Down after 2 failed checks and 15 s more/.test(t('#up-forgive-desc')[0]), t('#up-forgive-desc')[0]);
+  const reboot = d.querySelector('[data-key="steps.reboot"]'); reboot.value = 'off'; reboot.dispatchEvent(new w.Event('input'));
+  const chk = d.querySelector('[data-key="check"]'); chk.value = '45'; chk.dispatchEvent(new w.Event('input'));
+  check('custom values change the sentence', /every 45 s/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
+  save.click();
+  // Once that is saved, Save is off again; a bad value typed in turns it on, and is refused.
   setTimeout(() => {
-    console.log('POSTED:', JSON.stringify(posted));
-    console.log('NOTE:', t('#up-note')[0]);
-    console.log('ERRORS:', errors.length ? errors : 'none');
-    process.exit(0);
+    check('saved: Save off again', save.disabled && save.textContent === 'Save');
+    chk.value = 'abc'; chk.dispatchEvent(new w.Event('input'));
+    save.click();
   }, 1500);
+  setTimeout(() => {
+    const sent = posted.find((p) => p.action === 'settings');
+    check('Save posts the levels and custom values', sent && sent.settings.eagerness === 'stubborn' && sent.settings.forgiveness === 'strict'
+      && sent.settings.overrides.check === 45 && sent.settings.overrides.steps.reboot === null, JSON.stringify(posted));
+    check('a bad custom value is refused on the page', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-note')[0] || ''), t('#up-note')[0]);
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    console.log(fails ? `${fails} failure(s)` : 'ok');
+    process.exit(fails ? 1 : 0);
+  }, 3500);
 }, 6000);
