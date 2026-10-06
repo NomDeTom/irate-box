@@ -1118,6 +1118,16 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     return results
 
 
+def outcomes(results):
+    """Every outcome line in update()'s results: a stage's own, or each one's of a stage that
+    has several (the mirrors: {name: line}, which main() once took for a line and crashed on)."""
+    for v in results.values():
+        if isinstance(v, dict):
+            yield from (str(x) for x in v.values())
+        else:
+            yield str(v)
+
+
 def _hub_update_state():
     from irate_box.library import selfupdate
     return selfupdate.load_state()
@@ -1180,7 +1190,7 @@ def main(argv=None):
             results = update(args.names, scheduled=args.scheduled)
             # The timer exits 0 regardless: a failing source is recorded in status.json and
             # shown on /admin, rather than leaving a failed unit on the dashboard every hour.
-            failed = any(v.startswith("error") for v in results.values())
+            failed = any(str(o).startswith("error") for o in outcomes(results))
             return 1 if failed and not args.scheduled else 0
         elif args.cmd == "check":
             update(args.names, mode="check")

@@ -231,5 +231,12 @@ unit = (REPO / "install.sh").read_text()
 unit = unit[unit.index("irate-box-librarian.service <<EOF"):]
 unit = unit[:unit.index("\nEOF")]
 check("the librarian's unit reads hub.env (the git and firmware roots)", "EnvironmentFile=$ETC/hub.env" in unit, unit)
+# librarian main() on update()'s results, the mirrors' a dict of lines (it crashed on that from
+# step 12 until 2026-10-06, failing the timer's unit after doing the work).
+out = list(librarian.outcomes({"books": "up to date", "mirrors": {"fw": "error: x", "y": "up to date"}, "hub": None}))
+check("every stage's outcome is read, a dict's too", out == ["up to date", "error: x", "up to date", "None"], out)
+with mock.patch.object(librarian, "update", return_value={"mirrors": {"fw": "error: refused"}, "books": "up to date"}):
+    rc_hand, rc_timer = librarian.main(["update"]), librarian.main(["update", "--scheduled"])
+check("main(): a mirror's error fails a run by hand, never the timer's unit", rc_hand == 1 and rc_timer == 0, (rc_hand, rc_timer))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
