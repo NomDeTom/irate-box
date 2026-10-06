@@ -174,6 +174,9 @@ ACCESS_FILE = ETC / "access.json"
 ACCESS_STATE = CONTROL / "access.json"
 ACCESS_STOPPED = ETC / "access-stopped.json"  # the services "off" stopped, to start again
 NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"))
+# The add-on server's maps (http level), and Caddy's add-on routes: from access.json and the
+# local add-ons' manifests, re-checked here (the hub writes those).
+NGINX_ADDON_ACCESS = Path(os.environ.get("HUB_NGINX_ADDON_ACCESS", ETC / "nginx-addons.conf"))
 CADDY_ACCESS = Path(os.environ.get("HUB_ACCESS_DIR", "/etc/caddy/irate-box-access"))
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
@@ -420,9 +423,11 @@ def _write_root_file(path, text, mode=0o644, group=None):
 
 def _access_files(state):
     """The web server's part, written; returns what it replaced, to put back on failure."""
+    local, _ = manifests.load_local(builtin=MANIFESTS)
     if WEB_SERVER == "nginx":
-        old = {NGINX_ACCESS: NGINX_ACCESS.read_text() if NGINX_ACCESS.exists() else None}
+        old = {p: p.read_text() if p.exists() else None for p in (NGINX_ACCESS, NGINX_ADDON_ACCESS)}
         _write_root_file(NGINX_ACCESS, access.nginx_conf(state))
+        _write_root_file(NGINX_ADDON_ACCESS, access.addon_nginx_conf(state, local))
         return old
     login = _caddy_hash()
     if not login:
@@ -430,7 +435,9 @@ def _access_files(state):
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
-    for name, text in access.caddy_snippets(state, login, _caddy_directive()).items():
+    files = dict(access.caddy_snippets(state, login, _caddy_directive()))
+    files["addons-routes.caddy"] = access.addon_caddy_routes(state, local, login, _caddy_directive())
+    for name, text in files.items():
         path = CADDY_ACCESS / name
         old[path] = path.read_text() if path.exists() else None
         _write_root_file(path, text)
@@ -482,12 +489,15 @@ def access_set(req):
     """One app public, private or off. Off also stops (and disables) an add-on's service;
     leaving off starts it again."""
     app, mode = str(req.get("app", "")), str(req.get("mode", ""))
-    if app not in access.ROUTED:
+    local = {m["id"] for m in manifests.load_local(builtin=MANIFESTS)[0]}
+    # Off is always safe, so a web add-on just removed (its manifest gone) can still be switched
+    # off: the hub asks that when one is added or removed.
+    if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
         raise ValueError(f"{app} is not an app whose access can be set")
     if mode not in access.MODES:
         raise ValueError("mode: public, private or off")
     state = access.read(ACCESS_FILE)
-    was = state[app]
+    was = access.mode_of(state, app)
     state[app] = mode
     _access_apply(state)
     done = f"{app}: {mode}"
@@ -828,6 +838,13 @@ def _nginx_check(src, opts):
         # Who may open each app, as this box has it now (install.sh writes it the same way).
         (Path(tmp) / "access.conf").write_text(access.nginx_conf(access.read(ACCESS_FILE)))
         text = text.replace("@ACCESS@", f"{tmp}/access.conf")
+        # The front's /admin secret: its include, with a stand-in (the check only parses it).
+        (Path(tmp) / "front.conf").write_text('proxy_set_header X-Irate-Front "check";\n')
+        text = text.replace("@FRONT@", f"{tmp}/front.conf")
+        (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
+        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090",
+                           "@ADDONS@": str(STATE / "addons")}.items():
+            text = text.replace(key, value)
         conf = Path(tmp) / "nginx.conf"
         conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
                         f"http {{\ninclude /etc/nginx/mime.types;\n{text}\n}}\n")

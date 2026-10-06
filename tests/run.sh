@@ -21,6 +21,11 @@ run sim_uplink.py
 run sim_rtc.py
 run sim_selfupdate.py
 run sim_configs.py
+run sim_pin.py
+run sim_local_addons.py
+run api_admin_gate.py
+run doctor_guard.py
+run theme_guard.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

@@ -96,6 +96,12 @@ setTimeout(() => {
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('no page errors', !errors.length, errors);
+    // A null handed to replaceChildren or append shows as the word itself (the access slots did,
+    // 2026-10-06): no text node on the page may be just that.
+    const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
+    const stray = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.tagName);
+    check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
     console.log('\nfailures:', fails);
     process.exit(fails ? 1 : 0);
   }, 300);

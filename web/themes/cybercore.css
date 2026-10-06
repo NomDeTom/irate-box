@@ -1,0 +1,112 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* SPDX-FileCopyrightText: 2026 willp618 */
+/* SPDX-FileCopyrightText: 2026 NomDeTom */
+/* Cybercore (willp618, from the PirateBox skin; merged as e04d394, moved here from style.css
+   unchanged). Loaded by themes.js only while chosen; styles [data-theme="cybercore"] over
+   style.css. Uses system fonts only (no downloads), so it works offline. */
+:root[data-theme="cybercore"] {
+  color-scheme: dark;
+  --bg:#05070b; --surface:#0b1119; --border:#131b26;
+  --accent:#00f0ff; --accent-ink:#05070b;
+  --text:#d8f4ff; --muted:#7d94a8; --shadow:rgba(0,0,0,.5);
+  --ok:#39ff88; --warn:#f4c542; --radius:2px;
+  --author-s:100%; --author-l:60%;
+  --magenta:#ff2e88; --danger:#ff3b5c; --text-low:#45566a;
+  --font-head:system-ui,'Segoe UI',sans-serif;
+  --font-body:ui-monospace,Consolas,monospace;
+}
+[data-theme="cybercore"] body {
+  font-family:var(--font-body);
+  background-color:var(--bg);
+  background-image:
+    linear-gradient(rgba(0,240,255,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,.06) 1px, transparent 1px),
+    radial-gradient(ellipse at 20% 0%, rgba(0,240,255,.08), transparent 55%),
+    radial-gradient(ellipse at 90% 100%, rgba(255,46,136,.07), transparent 55%);
+  background-size:42px 42px, 42px 42px, cover, cover;
+  background-attachment:fixed;
+}
+/* scanlines */
+[data-theme="cybercore"] body::before {
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:999;
+  background:repeating-linear-gradient(to bottom, rgba(255,255,255,.02), rgba(255,255,255,.02) 1px, transparent 2px, transparent 4px);
+}
+[data-theme="cybercore"] ::selection { background:var(--magenta); color:var(--bg); }
+[data-theme="cybercore"] ::-webkit-scrollbar { width:10px; height:10px; }
+[data-theme="cybercore"] ::-webkit-scrollbar-track { background:var(--surface); }
+[data-theme="cybercore"] ::-webkit-scrollbar-thumb { background:var(--border); border:1px solid var(--accent); }
+[data-theme="cybercore"] ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+
+[data-theme="cybercore"] a { color:var(--magenta); transition:color .15s, text-shadow .15s; }
+[data-theme="cybercore"] a:hover { color:var(--accent); text-shadow:0 0 6px rgba(0,240,255,.7); }
+
+/* Headings */
+[data-theme="cybercore"] header h1 {
+  font-family:var(--font-head); font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+  text-shadow:0 0 10px rgba(0,240,255,.55);
+}
+[data-theme="cybercore"] header .subtitle { color:var(--muted); letter-spacing:.12em; text-transform:uppercase; font-size:.8rem; }
+[data-theme="cybercore"] h2 {
+  font-family:var(--font-head); font-weight:800; color:var(--accent); letter-spacing:.04em;
+  text-shadow:0 0 10px rgba(0,240,255,.45); border-bottom:1px solid var(--border); padding-bottom:.5em; text-transform:none; font-size:1.05rem;
+}
+
+/* Nav, tabs, header buttons */
+[data-theme="cybercore"] .tabs { border-bottom-color:var(--border); }
+[data-theme="cybercore"] .tabs a, [data-theme="cybercore"] .head-btn, [data-theme="cybercore"] .theme-picker button, [data-theme="cybercore"] .tab-expand {
+  font-family:var(--font-head); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:.75rem;
+}
+[data-theme="cybercore"] .tabs a { color:var(--muted); }
+[data-theme="cybercore"] .tabs a:hover, [data-theme="cybercore"] .tabs a.active { color:var(--accent); text-shadow:0 0 8px rgba(0,240,255,.6); }
+[data-theme="cybercore"] .tabs a.active { border-bottom-color:var(--accent); }
+[data-theme="cybercore"] .head-btn, [data-theme="cybercore"] .theme-picker, [data-theme="cybercore"] .tab-expand { border-radius:2px; border-color:var(--border); background:var(--surface); }
+[data-theme="cybercore"] .theme-picker button { border-radius:2px; }
+[data-theme="cybercore"] .head-btn:hover, [data-theme="cybercore"] .tab-expand:hover { border-color:var(--accent); color:var(--accent); box-shadow:0 0 8px rgba(0,240,255,.4); }
+[data-theme="cybercore"] .theme-picker button[aria-pressed="true"] { box-shadow:0 0 10px rgba(0,240,255,.6); }
+
+/* Cards: square panels with the magenta corner notch */
+[data-theme="cybercore"] .service-card, [data-theme="cybercore"] .setting, [data-theme="cybercore"] .post, [data-theme="cybercore"] .thread-row, [data-theme="cybercore"] .help-item {
+  position:relative; background:var(--surface); border:1px solid var(--border); border-radius:2px;
+  box-shadow:0 0 0 1px rgba(0,240,255,.05), 0 8px 24px rgba(0,0,0,.5);
+}
+[data-theme="cybercore"] .service-card::before, [data-theme="cybercore"] .setting::before, [data-theme="cybercore"] .post::before, [data-theme="cybercore"] .thread-row::before {
+  content:""; position:absolute; top:0; left:0; width:18px; height:18px; pointer-events:none;
+  border-top:2px solid var(--magenta); border-left:2px solid var(--magenta);
+}
+[data-theme="cybercore"] .service-card:hover { border-color:var(--accent); transform:none; box-shadow:0 0 14px rgba(0,240,255,.25), 0 8px 24px rgba(0,0,0,.5); }
+[data-theme="cybercore"] .people-card:hover, [data-theme="cybercore"] .system-card:hover { box-shadow:0 0 0 1px rgba(0,240,255,.05), 0 8px 24px rgba(0,0,0,.5); border-color:var(--border); }
+[data-theme="cybercore"] .service-card .name { font-family:var(--font-head); font-weight:600; letter-spacing:.06em; text-transform:uppercase; font-size:.85rem; color:var(--accent); }
+[data-theme="cybercore"] .service-card .desc { color:var(--muted); }
+[data-theme="cybercore"] .service-card .icon { filter:drop-shadow(0 0 6px rgba(0,240,255,.5)); }
+[data-theme="cybercore"] .people-card .name { font-size:1.8rem; color:var(--accent); text-shadow:0 0 10px rgba(0,240,255,.6); }
+
+/* Meters: the cyan to magenta bar */
+[data-theme="cybercore"] .meter-label { letter-spacing:.06em; }
+[data-theme="cybercore"] .meter-label b { color:var(--accent); }
+[data-theme="cybercore"] .meter .bar { height:8px; border-radius:2px; background:var(--bg); border:1px solid var(--border); box-shadow:inset 0 0 6px rgba(0,0,0,.6); }
+[data-theme="cybercore"] .meter .bar > span { background-image:linear-gradient(90deg, var(--accent), var(--magenta)); box-shadow:0 0 10px rgba(0,240,255,.6); }
+[data-theme="cybercore"] .meter .bar > span.high { background-image:linear-gradient(90deg, var(--warn), var(--magenta)); box-shadow:0 0 10px rgba(244,197,66,.6); }
+
+/* Shoutbox and forms */
+[data-theme="cybercore"] #messages { background:var(--bg); border:1px solid var(--border); border-radius:2px; }
+[data-theme="cybercore"] .msg { padding-bottom:.3em; border-bottom:1px dashed var(--border); }
+[data-theme="cybercore"] .msg .author { text-shadow:0 0 6px currentColor; }
+[data-theme="cybercore"] .msg .time { color:var(--text-low); }
+[data-theme="cybercore"] .msg code { background:var(--surface); border-color:var(--border); }
+[data-theme="cybercore"] #shout-form input, [data-theme="cybercore"] #thread-form input, [data-theme="cybercore"] #thread-form textarea,
+[data-theme="cybercore"] #reply-form input, [data-theme="cybercore"] #reply-form textarea, [data-theme="cybercore"] .hue-swatch, [data-theme="cybercore"] #name-roll {
+  font-family:var(--font-body); background:var(--surface); border-radius:2px; border-color:var(--border); color:var(--text);
+}
+[data-theme="cybercore"] #name-input { border-radius:2px 0 0 2px !important; }
+[data-theme="cybercore"] input::placeholder, [data-theme="cybercore"] textarea::placeholder { color:var(--text-low); }
+[data-theme="cybercore"] input:focus, [data-theme="cybercore"] textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 8px rgba(0,240,255,.35); }
+[data-theme="cybercore"] #shout-form button:not(.emoji-toggle):not(#name-roll), [data-theme="cybercore"] #thread-form button:not(.emoji-toggle), [data-theme="cybercore"] #reply-form button:not(.emoji-toggle),
+[data-theme="cybercore"] body.admin section button {
+  background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:2px;
+  font-family:var(--font-head); letter-spacing:.08em; text-transform:uppercase; font-size:.8rem; transition:background .15s, box-shadow .15s, color .15s;
+}
+[data-theme="cybercore"] #shout-form button:not(.emoji-toggle):not(#name-roll):hover, [data-theme="cybercore"] body.admin section button:hover:not(:disabled) { background:rgba(0,240,255,.1); box-shadow:0 0 12px rgba(0,240,255,.5); opacity:1; }
+[data-theme="cybercore"] #shout-form button:not(.emoji-toggle):not(#name-roll):active { background:var(--accent); color:var(--bg); box-shadow:0 0 16px rgba(0,240,255,.8); }
+[data-theme="cybercore"] .decay-note { color:var(--text-low); }
+[data-theme="cybercore"] .state, [data-theme="cybercore"] .access-toggle { border-radius:2px; }
+@media (prefers-reduced-motion: reduce) { [data-theme="cybercore"] * { transition:none !important; } }

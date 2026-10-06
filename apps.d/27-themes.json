@@ -1,0 +1,14 @@
+{
+  "id": "themes",
+  "order": 27,
+  "tile": {
+    "icon": "🎨🖌️",
+    "name": "Themes",
+    "desc": "Light, dark, e-ink and more",
+    "href": "/themes.html"
+  },
+  "access": {
+    "title": "Themes page",
+    "note": "Its tile and page. The 🎨 in every page's header stays either way."
+  }
+}

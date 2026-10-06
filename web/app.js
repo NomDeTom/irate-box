@@ -19,11 +19,9 @@ const APP_THEME_KEYS = [
   ['nomdetom-theme-mode', { light: 'light', dark: 'dark', auto: 'auto' }],  // calculators
 ];
 
+// What the apps are told: the chosen theme's base (themes.js), light, dark or auto.
 function hubTheme() {
-  try {
-    const t = localStorage.getItem('theme');
-    return t === 'cybercore' ? 'dark' : t === 'light' || t === 'dark' ? t : 'auto';
-  } catch (_) { return 'auto'; }
+  return window.HubThemes ? window.HubThemes.base() : 'auto';
 }
 
 function pushTheme() {
@@ -149,3 +147,20 @@ window.addEventListener('hashchange', () => {
 
 shown = target();
 frame.src = shown;
+
+// --- ↑ the list page the app was opened from --------------------------------------
+// A list page's links carry ?from=<list id> on app.html itself (server.py menu_page), so it
+// lasts through the app's own navigation (only the fragment changes), a reload, or a link
+// passed on. The list's title and address come from the hub (/menus.json).
+const up = document.getElementById('app-up');
+const from = new URLSearchParams(location.search).get('from');
+if (up && from && /^[a-z0-9-]+$/.test(from)) {
+  fetch('/menus.json').then((r) => (r.ok ? r.json() : {})).then((lists) => {
+    const list = lists[from];
+    if (!list) return;
+    up.href = list.href;
+    up.textContent = `↑ ${list.title}`;
+    up.title = `Back to the ${list.title} list`;
+    up.hidden = false;
+  }).catch(() => {});
+}
