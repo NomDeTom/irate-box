@@ -951,7 +951,13 @@ body.home.full { max-width: 960px; padding-top: 1rem; }
 body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* --- File drop (drop.html) --- */
-.drop-name { display: flex; flex-direction: column; gap: 0.25rem; margin: 1rem 0; font-size: 0.85rem; max-width: 20rem; }
+/* The upload section is a column with one gap between its blocks (Tom, 2026-10-06: they were
+   1rem, 0.75rem and none, and the capture buttons touched the lock box). */
+body.drop > section:first-of-type { display: flex; flex-direction: column; gap: 1rem; }
+body.drop > section:first-of-type > * { margin-top: 0; margin-bottom: 0; }
+body.drop > section + section { margin-top: 2.5rem; }
+.drop-uploads:empty { display: none; }
+.drop-name { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; max-width: 20rem; }
 .drop-name input {
   padding: 0.45rem 0.6rem; font: inherit; color: inherit; background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px;
@@ -975,7 +981,7 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .drop-item a { color: var(--accent); font-weight: 600; }
 .usb-book { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
 .usb-book .action-note { flex-basis: 100%; }
-.drop-capture { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.drop-capture { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .drop-capture-btn {
   position: relative; padding: 0.45rem 0.9rem; font-size: 0.9rem; cursor: pointer;
   background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
