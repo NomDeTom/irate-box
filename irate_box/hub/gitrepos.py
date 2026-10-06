@@ -90,6 +90,7 @@ def _repo_info(path, area):
     level = write_level(path)
     return {"name": path.name[:-4], "area": area, "url": AREAS[area] + path.name + "/",
             "write": level, "preset": preset_of(area, level), "preset_text": PRESET_TEXT[preset_of(area, level)],
+            "mirror_of": mirror_of(path),
             "description": desc, "size": _size(path), "branches": len(dates),
             "last_commit": int(dates[0]) if dates else None}
 
@@ -101,6 +102,17 @@ def write_level(path):
     if level in WRITE_LEVELS and (level != "everyone" or path.parent.name == "public"):
         return level
     return "everyone" if path.parent.name == "public" and GUEST_PUSH.exists() else "admin"
+
+
+def mirror_of(path):
+    """The upstream a mirror is kept from (mirrors.py), or None for the box's own repository."""
+    out = _git("config", "--get", "irate-box.mirror", cwd=path)
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def _not_a_mirror(path):
+    if mirror_of(path):
+        raise ValueError(f"{path.name} is a mirror, kept read-only by the librarian: remove it under Mirrors instead")
 
 
 def preset_of(area, level):
@@ -193,6 +205,7 @@ def action(payload):
             path = _target(payload)
             if not (path / "HEAD").exists():
                 raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
             shutil.rmtree(path)
         elif what == "describe":
             path = _target(payload)
@@ -206,6 +219,7 @@ def action(payload):
             path = _target(payload)
             if not (path / "HEAD").exists():
                 raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
             to = payload.get("to")
             if to not in AREAS or to == path.parent.name:
                 raise ValueError("to: the other area, public or private")
@@ -246,6 +260,7 @@ def action(payload):
             path = _target(payload)
             if not (path / "HEAD").exists():
                 raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
             preset = payload.get("preset")
             if preset not in PRESETS[path.parent.name]:
                 raise ValueError(f"{path.parent.name} repositories take: {', '.join(PRESETS[path.parent.name])}")

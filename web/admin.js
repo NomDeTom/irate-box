@@ -29,7 +29,9 @@ function showPane() {
   let group = link && link.previousElementSibling;
   while (group && !group.classList.contains('admin-side-group')) group = group.previousElementSibling;
   const ART = { Box: 'controller', System: 'controller', Library: 'librarian', 'Hub content': 'librarian', Health: 'doctor' };
-  document.querySelector('.admin-main').dataset.art = (group && ART[group.textContent.trim()]) || '';
+  document.querySelector('.admin-main').dataset.art = pane.id === 'welcome'
+    ? 'welcome-controller'
+    : (group && ART[group.textContent.trim()]) || '';
   const title = pane.querySelector('h2').textContent;
   document.getElementById('admin-current').textContent = title;
   document.title = `${title} · Hub admin`;
@@ -2084,6 +2086,7 @@ const git = {
   usage: noteEl('git-usage'), note: noteEl('git-note'),
   form: document.getElementById('git-create'), createNote: noteEl('git-create-note'),
   lists: { public: noteEl('git-public'), private: noteEl('git-private') },
+  mirrors: noteEl('git-mirrors'), mirrorForm: document.getElementById('git-mirror-add'), mirrorNote: noteEl('git-mirror-note'),
 };
 const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 
@@ -2094,6 +2097,7 @@ function renderGit(data) {
     return;
   }
   git.form.hidden = false;
+  renderMirrors(data);
   const total = data.repos.reduce((n, r) => n + r.size, 0);
   git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
     (data.free != null ? `; ${size(data.free)} free on the card` : '') +
@@ -2110,9 +2114,10 @@ function renderGit(data) {
         el('span', { className: 'setting-desc', textContent: [r.description,
           r.last_commit ? `last commit ${commitDate(r.last_commit)}` : 'empty',
           r.branches > 1 ? `${r.branches} branches` : null, size(r.size)].filter(Boolean).join(' · ') }),
-        el('span', { className: 'setting-desc git-preset-text', textContent: `${r.preset}: ${r.preset_text}.` })),
+        el('span', { className: 'setting-desc git-preset-text', textContent: r.mirror_of
+          ? `mirror of ${r.mirror_of}: read-only, kept by the librarian (see Mirrors).` : `${r.preset}: ${r.preset_text}.` })),
       el('span', { className: 'library-buttons' },
-        presetPicker(r, (data.presets || {})[area] || []),
+        r.mirror_of ? null : presetPicker(r, (data.presets || {})[area] || []),
         actionButton('Copy clone URL', () => {
           const url = `${location.origin}${r.url.replace(/\/$/, '')}`;
           navigator.clipboard?.writeText(url).then(() => say(`Copied ${url}`, true, git.note),
@@ -2122,7 +2127,7 @@ function renderGit(data) {
           const d = prompt(`Description for ${r.name}.git`, r.description);
           if (d !== null) act({ action: 'describe', area, name: r.name, description: d }, git.note)();
         }, { className: 'small' }),
-        actionButton(area === 'public' ? 'Make private' : 'Make public', act({ action: 'move', area, name: r.name,
+        r.mirror_of ? null : actionButton(area === 'public' ? 'Make private' : 'Make public', act({ action: 'move', area, name: r.name,
           to: area === 'public' ? 'private' : 'public' }, git.note, area === 'public'
           ? `Move ${r.name}.git to /git-private/? Only the admin login will see or clone it, and its clone URL changes.`
           : `Move ${r.name}.git to /git/? Anyone on the network will be able to browse and clone it, and its clone URL changes.`),
@@ -2139,7 +2144,7 @@ function renderGit(data) {
           act({ action: 'publish', from: { area, name: r.name }, to: { area: toArea, name: (toName || '').replace(/\.git$/, '') },
             refs: refs.trim().split(/\s+/) }, git.note)();
         }, { className: 'small' }),
-        actionButton('Delete', act({ action: 'delete', area, name: r.name }, git.note,
+        r.mirror_of ? null : actionButton('Delete', act({ action: 'delete', area, name: r.name }, git.note,
           `Delete ${r.name}.git and all its history? Clones elsewhere keep theirs; this one cannot be brought back.`),
         { className: 'small' }))))
       : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
@@ -2165,6 +2170,54 @@ function presetPicker(r, presets) {
   });
   return sel;
 }
+
+// Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
+function renderMirrors(data) {
+  const act = (body, confirmText) => async () => {
+    if (confirmText && !confirm(confirmText)) return;
+    try { renderGit(await postJSON('/admin/git', body)); say(body.action === 'mirror-remove' ? 'Removed.' : 'Started: the outcome shows here when it is done.', true, git.mirrorNote); }
+    catch (err) { say(err.message, false, git.mirrorNote); }
+  };
+  const list = data.mirrors || [];
+  git.mirrors.replaceChildren(...(list.length ? list.map((m) => {
+    const st = m.status || {};
+    const keeps = [m.branches.join(', '),
+      ...m.groups.map((g) => `${g.keep} ${g.kind === 'tags' ? `tag${g.keep === 1 ? '' : 's'} ${g.pattern}` : g.kind + (g.keep === 1 ? '' : 's')}`),
+      m.history, `budget ${m.budget_mb} MB`].join(' · ');
+    const state = st.error ? `error: ${st.error}` : st.outcome
+      ? `${st.outcome}${st.size != null ? ` · ${size(st.size)}` : ''}${st.checked ? ` · checked ${commitDate(st.checked)}` : ''}`
+      : 'not fetched yet';
+    return el('div', { className: 'admin-item' },
+      el('span', {},
+        el('strong', {}, el('a', { href: `${m.area === 'public' ? '/git/' : '/git-private/'}${m.name}.git/`, textContent: `${m.name}.git` })),
+        el('span', { className: 'setting-desc', textContent: `from ${m.upstream}` }),
+        el('span', { className: 'setting-desc', textContent: `keeps ${keeps}` }),
+        el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state })),
+      el('span', { className: 'library-buttons' },
+        actionButton('Check', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton('Update', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton('Remove', act({ action: 'mirror-remove', name: m.name },
+          `Remove the mirror ${m.name}.git and its copy on the box? The upstream is not touched.`), { className: 'small' })));
+  }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
+}
+
+git.mirrorForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = git.mirrorForm.elements;
+  const groups = [];
+  if (f.pattern.value.trim()) groups.push({ kind: 'tags', pattern: f.pattern.value.trim(), keep: Number(f.releases.value) || 0 });
+  else {
+    if (Number(f.releases.value)) groups.push({ kind: 'release', keep: Number(f.releases.value) });
+    if (Number(f.prereleases.value)) groups.push({ kind: 'prerelease', keep: Number(f.prereleases.value) });
+  }
+  const mirror = { upstream: f.upstream.value.trim(), name: f.name.value.trim(), area: f.area.value,
+    branches: f.branches.value.trim().split(/\s+/).filter(Boolean), groups, history: f.history.value,
+    budget_mb: Number(f.budget.value) || 2048 };
+  try {
+    renderGit(await postJSON('/admin/git', { action: 'mirror-add', mirror }));
+    say(`Added ${mirror.name}.git: Update fetches it now, or the librarian on its schedule.`, true, git.mirrorNote);
+  } catch (err) { say(err.message, false, git.mirrorNote); }
+});
 
 async function loadGit() {
   try { renderGit(await getJSON('/admin/git')); } catch (_) { git.usage.textContent = 'Could not read the repositories.'; }

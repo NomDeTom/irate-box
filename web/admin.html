@@ -459,6 +459,26 @@
         <div id="git-public" class="admin-list"></div>
         <h3>Private</h3>
         <div id="git-private" class="admin-list"></div>
+        <h3>Mirrors</h3>
+        <p class="setting-desc">
+          Repositories the box keeps from an upstream on the internet, by a policy: which branches,
+          how many releases, how much history. The librarian checks them on its schedule; each is
+          read-only here, and listed with the others above.
+        </p>
+        <div id="git-mirrors" class="admin-list"></div>
+        <form id="git-mirror-add" class="library-form">
+          <label>Upstream <input name="upstream" type="url" required placeholder="https://github.com/meshtastic/firmware"></label>
+          <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" placeholder="firmware"></label>
+          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Branches <input name="branches" value="main" placeholder="main develop"></label>
+          <label>Releases to keep <input name="releases" type="number" min="0" max="20" value="2" title="GitHub releases (github.com upstreams)"></label>
+          <label>Pre-releases to keep <input name="prereleases" type="number" min="0" max="20" value="0" title="GitHub pre-releases (github.com upstreams)"></label>
+          <label>Or tags matching <input name="pattern" placeholder="v*.*.*" title="For other upstreams: a tag glob, the newest kept"></label>
+          <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
+          <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
+          <button type="submit">Add mirror</button>
+        </form>
+        <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
         <div id="ci-runs" class="admin-list"></div>

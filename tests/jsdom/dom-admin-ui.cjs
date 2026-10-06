@@ -40,7 +40,13 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 17909500
   { name: 'mirror', area: 'public', url: '/git/mirror.git/', write: 'nobody', preset: 'public-read-only',
     preset_text: 'anyone can browse and clone; nobody can push', description: '', size: 1000, branches: 1, last_commit: null },
   { name: 'secret', area: 'private', url: '/git-private/secret.git/', write: 'admin', preset: 'private-to-admin',
-    preset_text: 'browse, clone and push with the admin login', description: '', size: 1000, branches: 1, last_commit: null }] };
+    preset_text: 'browse, clone and push with the admin login', description: '', size: 1000, branches: 1, last_commit: null },
+  { name: 'firmware', area: 'public', url: '/git/firmware.git/', write: 'nobody', preset: 'public-read-only', mirror_of: 'https://github.com/meshtastic/firmware',
+    preset_text: 'anyone can browse and clone; nobody can push', description: '', size: 5e8, branches: 1, last_commit: null }],
+  mirrors: [{ name: 'firmware', area: 'public', upstream: 'https://github.com/meshtastic/firmware', branches: ['master'],
+    groups: [{ name: 'release', kind: 'release', pattern: '*', keep: 2 }, { name: 'prerelease', kind: 'prerelease', pattern: '*', keep: 2 }],
+    follow: 'latest', pin: '', history: 'shallow', budget_mb: 2048,
+    status: { outcome: '5 fetched, 0 dropped', size: 5e8, checked: 1790950000 } }], running: false };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -108,7 +114,15 @@ setTimeout(() => {
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
   // Git: each repository's preset, offered per area, and a change asks the hub.
   const sels = [...d.querySelectorAll('select.git-preset')];
-  check('git: a preset menu beside each repository', sels.length === 3, sels.length);
+  check('git: a preset menu beside each repository but the mirror', sels.length === 3, sels.length);
+  check('git: the mirror says what it mirrors, with no Delete of its own', t('.git-preset-text').some((x) => x.startsWith('mirror of https://github.com/meshtastic/firmware'))
+    && ![...d.querySelectorAll('#git-public .admin-item')].find((n) => n.textContent.includes('firmware.git')).textContent.includes('Delete'));
+  check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
+    && /5 fetched, 0 dropped/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
+  const mf = d.getElementById('git-mirror-add').elements;
+  mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
+  d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   check('git: each shows its own preset', sels.map((s) => s.value).join('|') === 'public-admin-writes|public-read-only|private-to-admin', sels.map((s) => s.value).join('|'));
   check('git: a private repository is offered only the private presets', [...sels[2].options].map((o) => o.value).join('|') === 'private-to-admin|private-read-only');
   check('git: the line says what the preset means', t('.git-preset-text')[0] === 'public-admin-writes: anyone can browse and clone; pushing needs the admin login.', t('.git-preset-text')[0]);
@@ -128,6 +142,10 @@ setTimeout(() => {
     check('git: Publish asks the hub, with the target and the refs', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'publish'
       && p[1].to.area === 'private' && p[1].to.name === 'secret' && p[1].refs.join() === 'main,dev'), JSON.stringify(posted));
     check('git: Make private asks the hub to move it', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'move' && p[1].to === 'private'));
+    check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));
+    const add = posted.find((p) => p[1].action === 'mirror-add');
+    check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
+      && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));
     check('git: choosing public-everything asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'preset'
       && p[1].name === 'demo' && p[1].preset === 'public-everything'), JSON.stringify(posted));
     check('no page errors', !errors.length, errors);

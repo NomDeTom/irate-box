@@ -675,6 +675,40 @@ def library_action(payload):
     return 200, library_snapshot()
 
 
+def git_snapshot():
+    """The Git page: the repositories, and the mirrors with what each keeps (mirrors.py)."""
+    from irate_box.library import mirrors
+    snap = gitrepos.snapshot()
+    snap.update(mirrors=mirrors.snapshot(), running=librarian.is_running(), progress=librarian.progress())
+    return snap
+
+
+def git_action(payload):
+    """(status, body) for POST /admin/git: a repository change (gitrepos.py), or a mirror's."""
+    from irate_box.library import mirrors
+    action = payload.get("action")
+    if not str(action).startswith("mirror-"):
+        code, body = gitrepos.action(payload)
+        return (code, git_snapshot()) if code == 200 else (code, body)
+    try:
+        if action == "mirror-add":
+            mirrors.add(payload.get("mirror") or {})
+        elif action == "mirror-remove":
+            mirrors.remove(str(payload.get("name", "")))
+        elif action in ("mirror-check", "mirror-update"):
+            names = [str(payload["name"])] if payload.get("name") else None
+            def run():
+                with librarian.Lock():
+                    return {"mirrors": mirrors.sync_all(names, check_only=(action == "mirror-check"), log=lambda *_: None)}
+            if not library_start(action, run):
+                return 409, {"error": "the librarian is already running"}
+        else:
+            return 400, {"error": "action must be mirror-add, mirror-remove, mirror-check or mirror-update"}
+    except librarian.LibrarianError as exc:
+        return 400, {"error": str(exc)}
+    return 200, git_snapshot()
+
+
 def firmware_action(payload):
     """(status, body) for POST /admin/firmware: the settings, or a run (firmware.py)."""
     action = payload.get("action")
@@ -1795,7 +1829,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/git":
-            self.send_json(200, gitrepos.snapshot())
+            self.send_json(200, git_snapshot())
             return
 
         if path == "/admin/ci":
@@ -2028,7 +2062,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/git":
-            self.send_json(*gitrepos.action(payload))
+            self.send_json(*git_action(payload))
             return
 
         if path == "/admin/firmware":
