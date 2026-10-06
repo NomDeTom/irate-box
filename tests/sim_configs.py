@@ -116,5 +116,29 @@ with mock.patch.object(firmware, "_releases", return_value=[dict(rel, channel="a
     out = firmware.sync(log=lambda *a: None)
     check("flash files off, cache on: the cache is still carried", carry.called and "build cache 215 MB" in out
           and firmware.status()["cache"]["mode"] == "native", out)
+# A download cut off part way resumes with a range request (librarian._download, step 33b).
+class Resp(io.BytesIO):
+    def __init__(self, data, status):
+        super().__init__(data); self.status = status; self.headers = {"Content-Length": str(len(data))}
+whole = bytes(range(256)) * 40
+asked = []
+def fake_open(url, auth=None, method="GET", timeout=60, extra=None):
+    asked.append(extra)
+    start = int(extra["Range"][6:-1]) if extra else 0
+    return Resp(whole[start:], 206) if extra and honour else Resp(whole, 200)
+real_open, librarian._open = librarian._open, fake_open
+part = T / "part.bin"
+for honour, why in ((True, "a server that allows ranges: the rest appended"), (False, "one that ignores the range (200): started again")):
+    part.write_bytes(whole[:3000]); asked.clear()
+    librarian._download("http://x/y", part, expected=len(whole), resume=True)
+    check(f"resume: {why}", part.read_bytes() == whole and asked == [{"Range": "bytes=3000-"}], (part.stat().st_size, asked))
+part.write_bytes(b"z" * 99999); asked.clear()
+librarian._download("http://x/y", part, expected=len(whole), resume=True)
+check("resume: a part bigger than the file is not trusted", part.read_bytes() == whole and asked == [None], asked)
+part.write_bytes(whole[:3000]); asked.clear()
+librarian._download("http://x/y", part, expected=len(whole))
+check("without resume: never a range", part.read_bytes() == whole and asked == [None], asked)
+librarian._open = real_open
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
