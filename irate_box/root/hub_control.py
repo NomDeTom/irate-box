@@ -732,13 +732,11 @@ def prefetch(src, opts, progress=None):
             try:
                 z = _fetch(f"https://github.com/silverbulletmd/silverbullet/releases/download/{sb}/{name}",
                            DOWNLOADS / f"silverbullet-{sb}-{name}", report=report)
-                # SilverBullet publishes no checksums; at least the zip must be whole.
-                try:
-                    with zipfile.ZipFile(z) as zf:
-                        ok = zf.testzip() is None
-                except zipfile.BadZipFile:
-                    ok = False
-                return _check(f"SilverBullet {sb} downloaded", ok, "zip is intact" if ok else "zip is damaged")
+                # The digest pinned beside SB_VERSION (GitHub's record of the release asset: F30).
+                want = _var(script, f"SB_SHA256_{arch['sb']}")
+                ok = bool(want) and hashlib.sha256(Path(z).read_bytes()).hexdigest() == want
+                return _check(f"SilverBullet {sb} downloaded", ok,
+                              "checksum matches" if ok else "checksum MISMATCH" if want else f"no SB_SHA256_{arch['sb']} in install.sh")
             except OSError as exc:
                 return _check(f"SilverBullet {sb} downloaded", False, str(exc))
         jobs.append((f"Downloading SilverBullet {sb}", get_sb))
