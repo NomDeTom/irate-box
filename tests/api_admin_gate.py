@@ -3,7 +3,7 @@
 """The hub's own guard on /admin, against a hub it starts with a front secret: /admin refused
 without the front's header (F27, F31: anything on loopback), /admin changes refused without the
 /admin page's header or from another origin (S3), and a refused request's body never left on a
-kept-alive connection to poison the next one (F2's mechanism). python3 tests/api_admin_gate.py"""
+kept-alive connection to poison the next one (F2), refused or not. python3 tests/api_admin_gate.py"""
 import http.client, os, subprocess, sys, tempfile, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
@@ -41,6 +41,21 @@ try:
     check("after a refused POST, the next request on the connection is itself", go("GET", "/admin/settings", front) == 200)
     go("POST", "/admin/settings", {"Content-Type": "application/json"}, b'{"x": 1}')
     check("after a refused POST (no secret), likewise", go("POST", "/admin/settings", page, b"{}") == 200)
+    # Every route that answers without reading the body (F2 properly): the body is read away
+    # after the answer, so the next request on the connection is still itself.
+    for method, path in (("PUT", "/nothing-here"), ("DELETE", "/nothing-here"), ("PATCH", "/nothing-here"),
+                         ("GET", "/status"), ("OPTIONS", "/nothing-here"), ("POST", "/store/" + "x" * 300)):
+        go(method, path, {"Content-Type": "application/json"}, b'{"store_save_ttl_hours": 7}' * 40)
+        check(f"after {method} {path[:20]} with a body it does not read, the next request is itself",
+              go("GET", "/admin/settings", front) == 200)
+    # A large one is read away too (up to DRAIN_MAX), not answered by closing on a client still
+    # sending; a chunked one, which the hub never reads, closes the connection.
+    check("a 2 MB unread body: answered", go("PUT", "/nothing-here", {}, b"x" * (2 << 20)) == 404)
+    check("and the next request is itself", go("GET", "/admin/settings", front) == 200)
+    c.request("PUT", "/nothing-here", body=iter([b"x" * 100]), headers={"Host": f"127.0.0.1:{port}"}, encode_chunked=True)
+    r = c.getresponse(); r.read()
+    check("a chunked unread body closes the connection", r.will_close, r.getheaders())
+    check("and the next request, on a new one, is itself", go("GET", "/admin/settings", front) == 200)
 finally:
     hub.terminate()
 print("ok" if not fails else f"{fails} failure(s)")

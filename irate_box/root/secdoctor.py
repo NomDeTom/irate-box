@@ -1480,10 +1480,9 @@ def make_context():
     drains = None
     caps = None
     if server:
-        # The F2 fix declares itself (DRAINS_REQUEST_BODIES = True in server.py); the function names
-        # are a fallback for a fix written without the marker.
-        drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server)
-                      or re.search(r"def _drain|_discard_body|drain_body|def _read_body", server))
+        # The F2 fix declares itself (DRAINS_REQUEST_BODIES = True in server.py). Only the marker
+        # counts: hub versions before it had _discard_body, but drained only refused requests.
+        drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server))
         m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
         caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
     units = {u: _show(u, *UNIT_PROPS) for u in _our_units()}
