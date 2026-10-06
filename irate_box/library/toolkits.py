@@ -11,8 +11,10 @@ Settings ($HUB_STATE_DIR/library/toolkits.json):
   kits.<id>.remove_after    hours an install stays by default (the kit's own: 24, the build kit
                             never), or null for never
 """
-import json
+import os
+import re
 import time
+import zlib
 
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
@@ -21,6 +23,11 @@ from irate_box.hub import kitdefs
 SETTINGS = librarian.LIB_DIR / "toolkits.json"
 STATE = librarian.LIB_DIR / "toolkits-state.json"  # when each kit's fetch was last asked for
 STATUS = librarian.STATE_DIR / "control" / "kits.json"  # root's: what is cached and installed
+# debsecan's data (Debian's security tracker), kept so debsecan works offline from the last copy:
+#   debsecan --source file://<FEED>/ --suite <codename>
+FEED = librarian.LIB_DIR / "debsecan" / "release" / "1"
+FEED_URL = "https://security-tracker.debian.org/tracker/debsecan/release/1/"
+OS_RELEASE = "/etc/os-release"
 MAX_HOURS = 24 * 365
 
 
@@ -69,7 +76,62 @@ def status():
 
 
 def snapshot():
-    return {"kits": definitions(), "settings": settings(), "status": status()}
+    return {"kits": definitions(), "settings": settings(), "status": status(), "feeds": feeds()}
+
+
+def suite():
+    try:
+        for line in open(OS_RELEASE):
+            if line.startswith("VERSION_CODENAME="):
+                return line.split("=", 1)[1].strip().strip('"') or None
+    except OSError:
+        pass
+    return None
+
+
+def feeds():
+    """Each data feed a kit keeps, with its age."""
+    s = suite()
+    f = FEED / s if s else None
+    return {"debsecan": {"suite": s, "fetched": f.stat().st_mtime if f and f.is_file() else None,
+                         "source": f"file://{FEED}/"}}
+
+
+def refresh_feed(log=print):
+    """debsecan's data for this box's suite (and GENERIC), checked before it replaces the last."""
+    s = suite()
+    if not s or not re.match(r"^[a-z]{2,20}$", s):
+        raise LibrarianError("this box's Debian suite is unknown (/etc/os-release)")
+    FEED.mkdir(parents=True, exist_ok=True)
+    for name in (s, "GENERIC"):
+        with librarian._open(FEED_URL + name, timeout=120) as resp:
+            raw = resp.read(64 << 20)
+        if not zlib.decompress(raw)[:10] == b"VERSION 1\n":
+            raise LibrarianError(f"debsecan's data for {name} is not in the format it reads")
+        tmp = FEED / f".{name}.tmp"
+        tmp.write_bytes(raw)
+        os.replace(tmp, FEED / name)
+    return f"debsecan's data for {s}: {(FEED / s).stat().st_size >> 10} KB"
+
+
+def ensure_git_sources(log=print):
+    """The git sources a kit kept current names (the security kit's debian-cis): each a mirror,
+    added once if there is none of its upstream; the mirrors' own stage keeps it."""
+    from irate_box.library import mirrors
+    have = {m["upstream"].rstrip("/").lower() for m in mirrors.load()}
+    added = []
+    cfg = settings()
+    for kid, k in definitions().items():
+        if not cfg["kits"][kid]["keep_current"]:
+            continue
+        for g in k.get("git", []):
+            if g["upstream"].rstrip("/").lower() in have:
+                continue
+            mirrors.add({"name": g["name"], "area": "public", "upstream": g["upstream"], "branches": [g.get("branch", "main")],
+                         "groups": [], "history": "shallow", "budget_mb": 64, "submodules": False})
+            have.add(g["upstream"].rstrip("/").lower())
+            added.append(g["name"])
+    return added
 
 
 def action(payload):
@@ -107,6 +169,22 @@ def step(policy, now=None, log=print):
         out.append("removing the kits whose time is up")
     cfg = settings()
     asked = librarian._read_json(STATE, {})
+    feeding = [kid for kid, k in definitions().items() if cfg["kits"][kid]["keep_current"] and "debsecan" in k.get("feeds", [])]
+    if feeding:
+        try:
+            added = ensure_git_sources(log)
+            if added:
+                out.append(f"mirroring {', '.join(added)}")
+        except (LibrarianError, OSError) as exc:
+            out.append(f"git sources: {exc}")
+        f = feeds()["debsecan"]
+        if now - max(f["fetched"] or 0, asked.get("feed:debsecan", 0)) >= 24 * 3600:
+            asked["feed:debsecan"] = now
+            librarian._write_json(STATE, asked)
+            try:
+                out.append(refresh_feed(log))
+            except (LibrarianError, OSError, zlib.error) as exc:
+                out.append(f"debsecan's data: {exc}")
     for kid, k in definitions().items():
         if not cfg["kits"][kid]["keep_current"]:
             continue

@@ -11,6 +11,7 @@ Under ROOT (/var/cache/irate-box/kits, root's):
   pool/*.deb, pool/Packages     every kit's packages, one pool, and the index apt reads
   manifests/<id>.json           the kit's current set: each package, version, file, size, sha256
   manifests/<id>.previous.json  the set before, for rolling back offline
+  kits-status                   every cached package, in dpkg's status format: for debsecan --status
   kits.list, lists/             the one apt source the installs use (file:, trusted: the
                                 signatures were checked when the .debs were fetched)
   installed.json                each installed kit: what it added, when, when it goes
@@ -86,9 +87,14 @@ def installed_state():
     return _read(INSTALLED, {})
 
 
+def _installed_versions():
+    out = run(["dpkg-query", "-W", "-f", "${Package}\t${db:Status-Abbrev}\t${Version}\n"]).stdout
+    rows = (l.split("\t") + ["", ""] for l in out.splitlines())
+    return {r[0].split(":")[0]: r[2] for r in rows if r[1].startswith("ii")}
+
+
 def _installed_packages():
-    out = run(["dpkg-query", "-W", "-f", "${Package}\t${db:Status-Abbrev}\n"]).stdout
-    return {name.split(":")[0] for name, _, st in (l.partition("\t") for l in out.splitlines()) if st.startswith("ii")}
+    return set(_installed_versions())
 
 
 def _kit_added(state, but=None):
@@ -104,9 +110,9 @@ def _base_status(dest, leave_out):
 
 
 def _deb_fields(path):
-    out = run(["dpkg-deb", "-f", str(path), "Package", "Version", "Architecture"]).stdout
+    out = run(["dpkg-deb", "-f", str(path), "Package", "Version", "Architecture", "Source"]).stdout
     f = dict(l.split(": ", 1) for l in out.splitlines() if ": " in l)
-    return f.get("Package", ""), f.get("Version", ""), f.get("Architecture", "")
+    return f.get("Package", ""), f.get("Version", ""), f.get("Architecture", ""), f.get("Source", "")
 
 
 def sha256(path):
@@ -157,8 +163,8 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         for deb in sorted(stage.glob("*.deb")):
             if not DEB_RE.match(deb.name):
                 continue
-            name, version, arch = _deb_fields(deb)
-            pkgs.append({"name": name, "version": version, "arch": arch, "file": deb.name,
+            name, version, arch, source = _deb_fields(deb)
+            pkgs.append({"name": name, "version": version, "arch": arch, "source": source, "file": deb.name,
                          "size": deb.stat().st_size, "sha256": sha256(deb)})
         on_box = sorted(p for p in kit["packages"] if p in base)
         missing = sorted(set(kit["packages"]) - {p["name"] for p in pkgs} - set(on_box))
@@ -211,6 +217,13 @@ def write_index():
         control = run(["dpkg-deb", "-f", str(path)]).stdout.rstrip("\n")
         stanzas.append(f"{control}\nFilename: ./{f}\nSize: {p['size']}\nSHA256: {p['sha256']}\n")
     (POOL / "Packages").write_text("\n".join(stanzas))
+    # Every cached package as dpkg's status file would list it, so debsecan --status can say
+    # which of them have known vulnerabilities before any is installed (security-doctor-plan §2).
+    # With Source: as dpkg writes it, since debsecan matches vulnerabilities by source package
+    # (libpython3.13's are python3.13's).
+    rows = sorted({(p["name"], p["version"], p["arch"], p.get("source", "")) for p in _referenced().values()})
+    (ROOT / "kits-status").write_text("".join(f"Package: {n}\nStatus: install ok installed\n" + (f"Source: {src}\n" if src else "")
+                                              + f"Version: {v}\nArchitecture: {a}\n\n" for n, v, a, src in rows))
     (ROOT / "kits.list").write_text(f"deb [trusted=yes] file:{POOL} ./\n")
     (ROOT / "lists").mkdir(exist_ok=True)
 
@@ -254,7 +267,7 @@ def install(kit_id, hours=24, log=print):
     if bad:
         raise ValueError("the cache fails its check, so nothing was installed: " + "; ".join(bad[:5]))
     state = installed_state()
-    before = _installed_packages()
+    before = _installed_versions()
     # Services stay stopped: Debian starts a package's service on install unless this says no.
     if POLICY_RC.exists():
         raise ValueError(f"{POLICY_RC} exists already: another install is under way, or the box has its own")
@@ -266,7 +279,12 @@ def install(kit_id, hours=24, log=print):
         run(["apt-get", *_apt_offline(), "install", "-y", "-q", "--no-install-recommends", *kit["packages"]], timeout=3600)
     finally:
         POLICY_RC.unlink(missing_ok=True)
-    added = sorted(_installed_packages() - before)
+    after = _installed_versions()
+    added = sorted(set(after) - set(before))
+    # A package the box had, brought up to the cached version because a new one needs exactly
+    # that (libc6 for libc6-dev: Debian's security updates, on the Lyra on 2026-10-06). Said, and
+    # recorded: removing the kit does not take it back down.
+    upgraded = sorted(f"{p} {before[p]} → {after[p]}" for p in before if p in after and after[p] != before[p])
     # A service the kit is for (the debug kit's core dumps: systemd-coredump.socket) runs; every
     # other one its packages brought stays stopped and disabled.
     wanted = {u for u in kit.get("services", []) if isinstance(u, str) and UNIT_RE.match(f"/lib/systemd/system/{u}")}
@@ -275,11 +293,13 @@ def install(kit_id, hours=24, log=print):
         run(["systemctl", "enable", "--now", u], check=False, timeout=120)
     prev = state.get(kit_id, {})
     state[kit_id] = {"added": sorted(set(prev.get("added", [])) | set(added)), "at": prev.get("at") or time.time(),
-                     "remove_at": None if hours is None else time.time() + hours * 3600, "units": units}
+                     "remove_at": None if hours is None else time.time() + hours * 3600, "units": units,
+                     "upgraded": prev.get("upgraded", []) + upgraded}
     _write(INSTALLED, state)
     when = "kept until removed" if hours is None else f"removed after {hours} h"
     return f"{kit['title']}: installed {len(added)} packages from the local repository; {when}" + \
-        (f"; services left stopped: {', '.join(units)}" if units else "")
+        (f"; services left stopped: {', '.join(units)}" if units else "") + \
+        (f"; also brought up to date, as the new packages need (removing the kit leaves them): {', '.join(upgraded)}" if upgraded else "")
 
 
 def _disable_units(packages, keep=()):

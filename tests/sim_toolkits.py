@@ -29,10 +29,11 @@ def check(name, cond, info=""):
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
 # The stand-in archive: name -> (version, depends). libc6 and strace are on the box already.
-ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.13.5-2", ["libc6"]),
+ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.13.5-2", ["libc6"]),  # libpython3.13's source: python3.13
            "tcpdump": ("4.99.5-2", ["libpcap0.8"]), "libpcap0.8": ("1.10.5-2", []), "strace": ("6.13-1", []),
            "fail2ban": ("1.1.0-8", ["python3-systemd"]), "python3-systemd": ("235-1", []), "libc6": ("2.41-12", [])}
 installed = {"libc6", "strace"}
+versions = {}  # installed versions that differ from the archive's
 (T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
 calls = []
 policy_seen = []
@@ -55,7 +56,7 @@ def fake(cmd, timeout=0, check=True):
     calls.append(cmd)
     name = Path(cmd[0]).name
     if name == "dpkg-query" and cmd[1] == "-W":
-        return R("".join(f"{p}\tii \n" for p in sorted(installed)))
+        return R("".join(f"{p}\tii \t{versions.get(p, ARCHIVE[p][0])}\n" for p in sorted(installed)))
     if name == "dpkg-query" and cmd[1] == "-L":
         return R("/usr/bin/fail2ban-server\n/usr/lib/systemd/system/fail2ban.service\n" if cmd[2] == "fail2ban" else f"/usr/bin/{cmd[2]}\n")
     if name == "dpkg-deb":
@@ -75,7 +76,8 @@ def fake(cmd, timeout=0, check=True):
             dest = Path(opt(cmd, "Dir::Cache::archives"))
             for p in closure(pkgs, have):
                 v = ARCHIVE[p][0]
-                (dest / f"{p}_{v}_armhf.deb").write_text(json.dumps({"Package": p, "Version": v, "Architecture": "armhf", "Depends": ", ".join(ARCHIVE[p][1])}))
+                (dest / f"{p}_{v}_armhf.deb").write_text(json.dumps({"Package": p, "Version": v, "Architecture": "armhf", "Depends": ", ".join(ARCHIVE[p][1]),
+                                                                    **({"Source": "python3.13"} if p == "libpython3.13" else {})}))
             return R()
         if verb == "install":
             assert opt(cmd, "Dir::Etc::sourceparts") == "-" and opt(cmd, "Acquire::http::Proxy") == kits.DEAD_PROXY, cmd
@@ -146,6 +148,7 @@ ARCHIVE["gdb"] = ("16.3-3", ARCHIVE["gdb"][1])
 line = kits.install("small", hours=24, log=lambda *a: None)
 st = kits.installed_state()["small"]
 check("install: what it added is recorded, not what was there", sorted(st["added"]) == ["fail2ban", "gdb", "libpcap0.8", "libpython3.13", "python3-systemd", "tcpdump"], st)
+check("  nothing on the box changed version: nothing said", "brought up to date" not in line and st["upgraded"] == [], st)
 check("  policy-rc.d in place during the install, gone after", policy_seen == [True] and not Path(os.environ["HUB_POLICY_RC"]).exists())
 check("  a service it brought is disabled and stopped", st["units"] == ["fail2ban.service"]
       and ["systemctl", "disable", "--now", "fail2ban.service"] in calls)
@@ -163,6 +166,19 @@ check("a kit's own service is enabled and started, not disabled; a bad name igno
       and ["systemctl", "disable", "--now", "fail2ban.service"] not in calls and not any("evil" in " ".join(c) for c in calls)
       and kits.installed_state()["small"]["units"] == [])
 d.pop("services"); (T / "defs" / "small.json").write_text(json.dumps(d))
+# A package the box has, brought up to the cached version by the install: said and recorded.
+kits.remove("small", log=lambda *a: None)
+versions["libc6"] = "2.41-11"
+def upgrading(cmd, **kw):
+    r = real_fake(cmd, **kw)
+    if Path(cmd[0]).name == "apt-get" and "install" in cmd and "--download-only" not in cmd:
+        versions.pop("libc6", None)
+    return r
+kits.run = upgrading
+line = kits.install("small", hours=24, log=lambda *a: None)
+kits.run = real_fake
+check("an install that upgrades a package the box had says so, and records it", "libc6 2.41-11 → 2.41-12" in line
+      and kits.installed_state()["small"]["upgraded"] == ["libc6 2.41-11 → 2.41-12"], line)
 # Fetching an installed kit still caches it whole (resolved without what kits added).
 calls.clear()
 ARCHIVE["tcpdump"] = ("4.99.5-3", ["libpcap0.8"])
@@ -243,6 +259,9 @@ check("the doctor: a changed file is a problem", any(x["status"] == "problem" fo
 from irate_box.library import toolkits, librarian  # noqa: E402
 queued = []
 librarian._queue_root = lambda req: (queued.append(req), "rid")[1]
+def offline(*a, **k):
+    raise librarian.LibrarianError("no network in the tests")
+librarian._open = offline  # nothing here reaches the internet
 cfg = toolkits.settings()
 check("settings: 500 MB, every kit kept current, each kit's own removal time", cfg["budget_mb"] == 500 and cfg["kits"]["build"]["remove_after"] is None
       and cfg["kits"]["debug"]["remove_after"] == 24 and all(k["keep_current"] for k in cfg["kits"].values()))
@@ -268,5 +287,73 @@ toolkits.set_settings({"kits": {k: {"keep_current": False} for k in toolkits.def
 queued.clear()
 check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removing the kits whose time is up")
       and not any(q["action"] == "kit-fetch" for q in queued), queued)
+
+# Step 27, the security kit: debian-cis as a mirror, debsecan's data as a feed, the cached packages
+# in dpkg's status format, and how fresh they are.
+sec = toolkits.definitions()["security"]
+check("the security kit: Lynis, debsecan, fail2ban, nmap and the rest; debian-cis from git; debsecan's feed; daily",
+      {"lynis", "debsecan", "python3-apt", "fail2ban", "nmap", "tcpdump", "tshark", "strace", "socat", "python3-scapy"} == set(sec["packages"])
+      and sec["git"][0]["upstream"] == "https://github.com/ovh/debian-cis" and sec["feeds"] == ["debsecan"] and sec["refresh_hours"] == 24)
+ks = (kits.ROOT / "kits-status").read_text()
+check("  with the source package where it differs (debsecan matches by source)", "Package: libpython3.13\nStatus: install ok installed\nSource: python3.13\n" in ks, ks)
+check("kits-status lists every cached package as dpkg's status file would", "Package: gdb\nStatus: install ok installed\nVersion: 16.3-3\n" in ks
+      and ks.count("Package: ") == len({(p["name"], p["version"]) for p in kits._referenced().values()}), ks[:200])
+toolkits.set_settings({"kits": {"security": {"keep_current": True}}})
+from irate_box.library import mirrors  # noqa: E402
+from unittest import mock  # noqa: E402
+added = []
+with mock.patch.object(mirrors, "load", return_value=[]), mock.patch.object(mirrors, "add", side_effect=lambda m: added.append(m)):
+    toolkits.ensure_git_sources()
+check("debian-cis is mirrored once the security kit is kept current: shallow, master, public", len(added) == 1 and added[0]["name"] == "debian-cis"
+      and added[0]["branches"] == ["master"] and added[0]["history"] == "shallow", added)
+with mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/OVH/debian-cis/"}]), mock.patch.object(mirrors, "add") as add:
+    toolkits.ensure_git_sources()
+check("  not again when a mirror of it exists", not add.called)
+import io, zlib  # noqa: E402
+(T / "os-release").write_text('NAME="Debian"\nVERSION_CODENAME=trixie\n')
+toolkits.OS_RELEASE = str(T / "os-release")
+good = zlib.compress(b"VERSION 1\nCVE-2026-0001,,x\n")
+class Resp(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+fetched = []
+with mock.patch.object(librarian, "_open", side_effect=lambda url, **k: (fetched.append(url), Resp(good))[1]):
+    line = toolkits.refresh_feed()
+check("debsecan's data: this suite's and GENERIC, from Debian's tracker", fetched == [toolkits.FEED_URL + "trixie", toolkits.FEED_URL + "GENERIC"]
+      and (toolkits.FEED / "trixie").read_bytes() == good and "trixie" in line, fetched)
+check("  and its source for debsecan, a file: URL", toolkits.feeds()["debsecan"]["source"] == f"file://{toolkits.FEED}/" and toolkits.feeds()["debsecan"]["fetched"])
+with mock.patch.object(librarian, "_open", side_effect=lambda url, **k: Resp(zlib.compress(b"<html>captive portal</html>"))):
+    try:
+        toolkits.refresh_feed(); check("data in another format is refused, the last copy kept", False)
+    except librarian.LibrarianError:
+        check("data in another format is refused, the last copy kept", (toolkits.FEED / "trixie").read_bytes() == good)
+(T / "os-release").write_text("NAME=x\n")
+try:
+    toolkits.refresh_feed(); check("no suite: said", False)
+except librarian.LibrarianError as exc:
+    check("no suite: said", "suite is unknown" in str(exc))
+(T / "os-release").write_text('VERSION_CODENAME=trixie\n')
+queued.clear(); fetched.clear()
+with mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/ovh/debian-cis"}]), \
+     mock.patch.object(librarian, "_open", side_effect=lambda url, **k: (fetched.append(url), Resp(good))[1]):
+    os.utime(toolkits.FEED / "trixie", (time.time() - 2 * 86400,) * 2)
+    st_ = librarian._read_json(toolkits.STATE, {}); st_.pop("feed:debsecan", None); librarian._write_json(toolkits.STATE, st_)
+    toolkits.step({"check_every_hours": 24})
+    n = len(fetched)
+    toolkits.step({"check_every_hours": 24})
+check("the librarian refreshes the feed daily, not every run", n == 2 and len(fetched) == 2, fetched)
+# Freshness, in the doctor: the security kit's cache and its data.
+def man_at(days):
+    m = kits.manifest("small"); m["id"] = "security"; m["fetched"] = time.time() - days * 86400
+    kits._write(kits.MANIFESTS / "security.json", m)
+real_state = hub_control.STATE
+hub_control.STATE = T / "state"
+man_at(10); os.utime(toolkits.FEED / "trixie", (time.time() - 40 * 86400,) * 2)
+f = [x for x in hub_control.kits_findings() if x["check"] == "Security tools' freshness"]
+check("the doctor: the security kit's cache over a week old is a warning", any(x["status"] == "warn" and "security kit's cache is 10 days" in x["detail"] for x in f), f)
+man_at(40)
+f = [x for x in hub_control.kits_findings() if x["check"] == "Security tools' freshness"]
+check("  over a month, a problem", any(x["status"] == "problem" and "security kit's cache is 40 days" in x["detail"] for x in f), f)
+hub_control.STATE = real_state
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
