@@ -2576,6 +2576,7 @@ function kitCard(k, st, cfg) {
     c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` +
       Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ') +
       (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
+    c && c.left_out && c.left_out.length ? el('p', { className: 'setting-desc', textContent: `Left out on this ${c.arch || ''} board, as they need a 64-bit one: ${c.left_out.join(', ')}.` }) : null,
     (k.git || []).length ? el('p', { className: 'setting-desc', textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, '')}, a mirror)`).join(', ')}.` }) : null,
     el('p', { className: 'library-buttons' },
       actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),

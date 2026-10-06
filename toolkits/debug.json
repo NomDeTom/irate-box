@@ -20,11 +20,16 @@
  "consent": "These tools can read any process's memory and every packet on the box. Install them only while you need them: they are removed again after the time you choose.",
  "notes": [
   "perf is built for Debian's kernel; on a vendor kernel parts of it may not work (on the Lyra's 6.1 it reports 6.12 and runs).",
-  "bpftrace and the bcc tools need the kernel's BPF support. On the Lyra (32-bit, vendor kernel 6.1) bpftrace's programs pass the verifier but fail to load: it does not work there (2026-10-06).",
+  "bpftrace, bcc (bpfcc-tools) and bpftool come only on 64-bit boards: a 32-bit ARM kernel will not load their programs (the Lyra's did not, 2026-10-06). Where they come, they need the kernel's BTF (/sys/kernel/btf/vmlinux) or its headers.",
   "Core dumps are collected while the kit is installed (systemd-coredump); its other services stay stopped."
  ],
  "remove_after_hours": 24,
  "services": [
   "systemd-coredump.socket"
+ ],
+ "needs_64bit": [
+  "bpftrace",
+  "bpfcc-tools",
+  "bpftool"
  ]
 }

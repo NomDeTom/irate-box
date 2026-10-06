@@ -76,6 +76,14 @@ def definitions():
     return kitdefs.definitions()
 
 
+def arch():
+    return run(["dpkg", "--print-architecture"]).stdout.strip()
+
+
+def _packages(kit):
+    return kitdefs.packages_for(kit, arch())
+
+
 def _kit(kit_id):
     kits = definitions()
     if kit_id not in kits:
@@ -155,19 +163,20 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         leave_out = _kit_added(installed_state())
         _base_status(stage / "status", leave_out)
         base = {l[len("Package: "):] for l in (stage / "status").read_text().splitlines() if l.startswith("Package: ")}
-        log(f"{kit_id}: downloading {len(kit['packages'])} packages and what they need")
+        packages, left_out = _packages(kit)
+        log(f"{kit_id}: downloading {len(packages)} packages and what they need")
         run(["apt-get", "install", "--download-only", "-y", "-q", "--no-install-recommends",
              "-o", f"Dir::Cache::archives={stage}", "-o", f"Dir::State::status={stage / 'status'}",
-             "-o", "Debug::NoLocking=1", *kit["packages"]], timeout=3600)
+             "-o", "Debug::NoLocking=1", *packages], timeout=3600)
         pkgs = []
         for deb in sorted(stage.glob("*.deb")):
             if not DEB_RE.match(deb.name):
                 continue
-            name, version, arch, source = _deb_fields(deb)
-            pkgs.append({"name": name, "version": version, "arch": arch, "source": source, "file": deb.name,
+            name, version, deb_arch, source = _deb_fields(deb)
+            pkgs.append({"name": name, "version": version, "arch": deb_arch, "source": source, "file": deb.name,
                          "size": deb.stat().st_size, "sha256": sha256(deb)})
-        on_box = sorted(p for p in kit["packages"] if p in base)
-        missing = sorted(set(kit["packages"]) - {p["name"] for p in pkgs} - set(on_box))
+        on_box = sorted(p for p in packages if p in base)
+        missing = sorted(set(packages) - {p["name"] for p in pkgs} - set(on_box))
         if missing:
             raise ValueError(f"apt fetched no {', '.join(missing)}")
         # The budget: the pool as it would be, with this kit's new set current and its current one
@@ -185,7 +194,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
             if not (dest.exists() and sha256(dest) == p["sha256"]):
                 os.replace(stage / p["file"], dest)
             os.chmod(dest, 0o644)
-        new = {"id": kit_id, "fetched": time.time(), "packages": pkgs, "on_box": on_box,
+        new = {"id": kit_id, "fetched": time.time(), "packages": pkgs, "on_box": on_box, "left_out": left_out, "arch": arch(),
                "bytes": sum(p["size"] for p in pkgs)}
         if cur and not same:
             _write(MANIFESTS / f"{kit_id}.previous.json", cur)
@@ -193,7 +202,8 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         prune()
         write_index()
         changed = "unchanged" if same else f"{len(pkgs)} packages, {new['bytes'] >> 20} MB"
-        return f"{kit['title']}: {changed}" + (f"; already on the box: {', '.join(on_box)}" if on_box else "")
+        return f"{kit['title']}: {changed}" + (f"; already on the box: {', '.join(on_box)}" if on_box else "") + \
+            (f"; left out on this {new['arch']} board (64-bit only): {', '.join(left_out)}" if left_out else "")
     finally:
         shutil.rmtree(stage, ignore_errors=True)
 
@@ -214,7 +224,10 @@ def write_index():
         path = POOL / f
         if not path.is_file():
             continue
-        control = run(["dpkg-deb", "-f", str(path)]).stdout.rstrip("\n")
+        out = run(["dpkg-deb", "-f", str(path)], check=False)
+        if out.returncode != 0 or sha256(path) != p["sha256"]:
+            continue  # damaged since it was fetched: not offered to apt (verify() reports it)
+        control = out.stdout.rstrip("\n")
         stanzas.append(f"{control}\nFilename: ./{f}\nSize: {p['size']}\nSHA256: {p['sha256']}\n")
     (POOL / "Packages").write_text("\n".join(stanzas))
     # Every cached package as dpkg's status file would list it, so debsecan --status can say
@@ -276,7 +289,7 @@ def install(kit_id, hours=24, log=print):
     try:
         run(["apt-get", *_apt_offline(), "update", "-q"], timeout=300)
         log(f"{kit_id}: installing from the local repository")
-        run(["apt-get", *_apt_offline(), "install", "-y", "-q", "--no-install-recommends", *kit["packages"]], timeout=3600)
+        run(["apt-get", *_apt_offline(), "install", "-y", "-q", "--no-install-recommends", *_packages(kit)[0]], timeout=3600)
     finally:
         POLICY_RC.unlink(missing_ok=True)
     after = _installed_versions()
@@ -382,7 +395,7 @@ def status():
     for kid, k in definitions().items():
         cur, prev = manifest(kid), manifest(kid, "previous")
         kits[kid] = {"cached": cur and {"fetched": cur["fetched"], "packages": len(cur["packages"]), "bytes": cur["bytes"],
-                                        "on_box": cur.get("on_box", []), "versions": {p["name"]: p["version"] for p in cur["packages"]}},
+                                        "on_box": cur.get("on_box", []), "left_out": cur.get("left_out", []), "arch": cur.get("arch"), "versions": {p["name"]: p["version"] for p in cur["packages"]}},
                      "previous": prev and {"fetched": prev["fetched"], "bytes": prev["bytes"]}}
     return {"at": time.time(), "kits": kits, "installed": installed_state(), "pool_bytes": pool_bytes(),
             "problems": verify()}

@@ -19,7 +19,8 @@ const kitsData = {
   settings: { budget_mb: 500, kits: { debug: { keep_current: true, remove_after: 24 }, build: { keep_current: true, remove_after: null },
     capture: { keep_current: false, remove_after: 24 }, security: { keep_current: true, remove_after: 24 } } },
   status: { at: now, pool_bytes: 91 * 2 ** 20, problems: [],
-    kits: { debug: { cached: { fetched: now - 3600, packages: 55, bytes: 69 * 2 ** 20, on_box: ['strace'], versions: { gdb: '16.3-1' } }, previous: null },
+    kits: { debug: { cached: { fetched: now - 3600, packages: 55, bytes: 69 * 2 ** 20, on_box: ['strace'], versions: { gdb: '16.3-1' },
+        left_out: ['bpftrace', 'bpfcc-tools', 'bpftool'], arch: 'armhf' }, previous: null },
       build: { cached: null, previous: null },
       capture: { cached: { fetched: now - 7200, packages: 3, bytes: 2 ** 20, on_box: [], versions: {} }, previous: null },
       security: { cached: { fetched: now - 600, packages: 38, bytes: 29 * 2 ** 20, on_box: [], versions: {} }, previous: { fetched: now - 86400 * 3, bytes: 28 * 2 ** 20 } } },
@@ -71,6 +72,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging').querySelector('details')))
     && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging').querySelector('details')))
     && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security').querySelector('details'))));
+  check('what a 32-bit board leaves out is said', /Left out on this armhf board, as they need a 64-bit one: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging').querySelector('details'))));
   check('keep current shown as set', !card('Capture').querySelector('input[type=checkbox]').checked && card('Debugging').querySelector('input[type=checkbox]').checked);
 
   button(card('Debugging'), 'Remove now').click();
