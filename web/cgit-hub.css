@@ -3,7 +3,7 @@
 /* cgit (/git/, /git-private/) in the hub's look: loaded after cgit's own cgit.css by
    config/cgit-head.html, with palette.css for the colours and themes.js for the chosen theme.
    Colours only from the palette's variables, so every theme applies. Also: the highlighted code
-   (scripts/cgit-highlight.py, classes hl-*), the rendered README (scripts/cgit-about.py), and a
+   (web/cgit-hub.js with Debian's highlight.js, classes hljs-*), the rendered README (scripts/cgit-about.py), and a
    phone layout. */
 
 html { color-scheme: inherit; }
@@ -75,17 +75,17 @@ div#cgit table.blob td.linenumbers a, div#cgit table.blob td.linenumbers a:hover
 div#cgit table.blob pre, div#cgit div.content pre, div#cgit div.content code {
   font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; color: var(--text);
 }
-div#cgit .hl-c, div#cgit .hl-c1, div#cgit .hl-cm, div#cgit .hl-cs, div#cgit .hl-ch, div#cgit .hl-cp, div#cgit .hl-cpf { color: var(--muted); font-style: italic; }
-div#cgit .hl-k, div#cgit .hl-kc, div#cgit .hl-kd, div#cgit .hl-kn, div#cgit .hl-kp, div#cgit .hl-kr, div#cgit .hl-kt, div#cgit .hl-ow { color: var(--accent); font-weight: 600; }
-div#cgit .hl-s, div#cgit .hl-s1, div#cgit .hl-s2, div#cgit .hl-sa, div#cgit .hl-sb, div#cgit .hl-sc, div#cgit .hl-sd,
-div#cgit .hl-se, div#cgit .hl-sh, div#cgit .hl-si, div#cgit .hl-sx, div#cgit .hl-sr, div#cgit .hl-ss { color: var(--ok); }
-div#cgit .hl-m, div#cgit .hl-mi, div#cgit .hl-mf, div#cgit .hl-mh, div#cgit .hl-mo, div#cgit .hl-mb, div#cgit .hl-il { color: var(--warn); }
-div#cgit .hl-nf, div#cgit .hl-nc, div#cgit .hl-nn, div#cgit .hl-fm, div#cgit .hl-nd { color: var(--text); font-weight: 600; }
-div#cgit .hl-nb, div#cgit .hl-bp, div#cgit .hl-nt, div#cgit .hl-na { color: var(--accent); }
-div#cgit .hl-err { color: #e5484d; }
-div#cgit .hl-gd { color: #e5484d; }
-div#cgit .hl-gi { color: var(--ok); }
-div#cgit .hl-gh, div#cgit .hl-gu { color: var(--accent); font-weight: 600; }
+div#cgit .hljs-comment, div#cgit .hljs-quote, div#cgit .hljs-meta { color: var(--muted); font-style: italic; }
+div#cgit .hljs-keyword, div#cgit .hljs-selector-tag, div#cgit .hljs-literal, div#cgit .hljs-built_in,
+div#cgit .hljs-type, div#cgit .hljs-section { color: var(--accent); font-weight: 600; }
+div#cgit .hljs-string, div#cgit .hljs-regexp, div#cgit .hljs-symbol, div#cgit .hljs-template-variable,
+div#cgit .hljs-addition, div#cgit .hljs-meta-string { color: var(--ok); }
+div#cgit .hljs-number, div#cgit .hljs-variable, div#cgit .hljs-template-tag, div#cgit .hljs-link { color: var(--warn); }
+div#cgit .hljs-title, div#cgit .hljs-name, div#cgit .hljs-function .hljs-title, div#cgit .hljs-class .hljs-title { color: var(--text); font-weight: 600; }
+div#cgit .hljs-attr, div#cgit .hljs-attribute, div#cgit .hljs-tag, div#cgit .hljs-params, div#cgit .hljs-bullet { color: var(--accent); }
+div#cgit .hljs-deletion { color: #e5484d; }
+div#cgit .hljs-emphasis { font-style: italic; }
+div#cgit .hljs-strong { font-weight: 700; }
 
 /* The about page: the README */
 div#cgit div.readme-md { max-width: 48rem; line-height: 1.55; }

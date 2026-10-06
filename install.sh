@@ -652,10 +652,11 @@ CADDY_MARK=/etc/hub/caddy-from-release
 CADDY_FROM_RELEASE=0
 [ -f "$CADDY_MARK" ] && CADDY_FROM_RELEASE=1
 # fcgiwrap and cgit: the git servers (/git/, /git-private/), part of every install: ~2 MB,
-# and nothing runs until someone browses, clones or pushes. python3-pygments and
-# python3-markdown: cgit's highlighted code and rendered READMEs (scripts/cgit-*.py); ~6 MB.
+# and nothing runs until someone browses, clones or pushes. python3-markdown: READMEs rendered
+# on cgit's about pages (scripts/cgit-about.py), ~1 MB. libjs-highlight.js: code highlighted
+# in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-pygments python3-markdown iw)
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -1279,9 +1280,9 @@ js=/git-static/cgit.js
 favicon=/git-static/favicon.ico
 # The hub's colours and theme, and a phone layout (config/cgit-head.html, web/cgit-hub.css).
 head-include=$CODE/config/cgit-head.html
-# Code highlighted, and READMEs shown on a repository's about page, Markdown rendered with any
-# HTML in it shown as text (the web server also forbids scripts here but the box's own).
-source-filter=$CODE/scripts/cgit-highlight.py
+# READMEs shown on a repository's about page, Markdown rendered with any HTML in it shown as
+# text (the web server also forbids scripts here but the box's own). Code is highlighted in
+# the browser (cgit-head.html).
 about-filter=$CODE/scripts/cgit-about.py
 readme=:README.md
 readme=:readme.md

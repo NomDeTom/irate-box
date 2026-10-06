@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""cgit's README and code views stay inert (next-work plan step 7): whatever a pushed README or
-file holds, the filters put out no markup it did not ask for in Markdown, and both web servers
+"""cgit's README and code views stay inert (next-work plan step 7): whatever a pushed README
+holds, the filter puts out no markup it did not ask for in Markdown, and both web servers
 send cgit's pages a CSP that allows no script but the box's own. Runs with or without
 Python-Markdown and Pygments installed (without them, the filters show text).
 python3 tests/cgit_guard.py"""
@@ -34,24 +34,25 @@ if "<h1>" in md:
     check("about README.md: Markdown is rendered (Python-Markdown here)", "<h1>Title</h1>" in md and 'href="https://example.com"' in md, md)
 else:
     check("about README.md: without Python-Markdown, shown as text", md.startswith('<pre class="readme-text">'), md)
-out = run("cgit-highlight.py", "x.py", 'def f():\n    return "<b>"  # </code></pre><script>\n')
-check("highlight: the file's text is escaped", "<script>" not in out and "<b>" not in out and "&lt;" in out, out)
-out = run("cgit-highlight.py", "x.unknown-ext", "<script>alert(1)</script>")
-check("highlight: an unknown kind of file is escaped text", out == "&lt;script&gt;alert(1)&lt;/script&gt;", out)
-big = "x = 1\n" * 60000
-out = run("cgit-highlight.py", "big.py", big)
-check("highlight: a large file is plain text, not highlighted", "<span" not in out and len(out) == len(big))
+md = run("cgit-about.py", "README.md", "<!-- SPDX" + "-License-Identifier: MIT -->\n# T\n")  # split: REUSE reads the whole line
+check("about README.md: HTML comments are dropped, not shown", "SPDX" not in md, md)
 
 inst = (REPO / "install.sh").read_text()
 rc = inst[inst.index("css=/git-static/cgit.css"):]
 rc = rc[:rc.index("\nEOF")]
-for key in ("head-include=$CODE/config/cgit-head.html", "source-filter=$CODE/scripts/cgit-highlight.py",
+check("cgitrc: no source-filter (code is highlighted in the browser: Pygments took 2-5 s a page on the Lyra)",
+      "source-filter" not in rc)
+for key in ("head-include=$CODE/config/cgit-head.html",
             "about-filter=$CODE/scripts/cgit-about.py", "readme=:README.md", "js=/git-static/cgit.js"):
     check(f"cgitrc: {key.split('=')[0]} set, before scan-path", key in rc and rc.index(key) < rc.index("scan-path="))
-check("install.sh installs pygments and markdown", "python3-pygments" in inst and "python3-markdown" in inst)
+check("install.sh installs markdown and highlight.js, not pygments", "python3-markdown" in inst and "libjs-highlight.js" in inst
+      and "python3-pygments" not in inst)
 head = (REPO / "config" / "cgit-head.html").read_text()
 check("cgit's head loads the palette, the hub's cgit look and themes.js",
-      all(s in head for s in ('href="/palette.css"', 'href="/cgit-hub.css"', 'src="/themes.js"', 'name="viewport"')))
+      all(s in head for s in ('href="/palette.css"', 'href="/cgit-hub.css"', 'src="/themes.js"', 'name="viewport"',
+                              'src="/git-hl/highlight.min.js" defer', 'src="/cgit-hub.js" defer')))
+check("nginx serves /git-hl/ from Debian's highlight.js, nosniff", "alias /usr/share/javascript/highlight.js/;" in (REPO / "config" / "irate-box.nginx").read_text())
+check("Caddy serves /git-hl/ likewise", "root * /usr/share/javascript/highlight.js" in (REPO / "config" / "Caddyfile").read_text())
 nginx = (REPO / "config" / "irate-box.nginx").read_text()
 caddy = (REPO / "config" / "Caddyfile").read_text()
 for front, text in (("nginx", nginx), ("Caddy", caddy)):

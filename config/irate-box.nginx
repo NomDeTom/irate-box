@@ -315,6 +315,15 @@ server {
 	location = /git { return 301 /git/; }
 	location = /git-private { return 301 /git-private/; }
 	location ^~ /git-static/ { alias /usr/share/cgit/; add_header X-Content-Type-Options nosniff; }
+	# Debian's highlight.js (libjs-highlight.js), for cgit's code view (web/cgit-hub.js): 850 KB,
+	# so compressed and kept by the browser for a day.
+	location ^~ /git-hl/ {
+		alias /usr/share/javascript/highlight.js/;
+		gzip on;
+		gzip_types application/javascript text/javascript;
+		add_header Cache-Control "public, max-age=86400";
+		add_header X-Content-Type-Options nosniff;
+	}
 	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
 		set $irate_box_git_auth off;
 		if ($arg_service = git-receive-pack) { set $irate_box_git_auth "Irate-Box"; }
