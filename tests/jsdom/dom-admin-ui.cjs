@@ -110,6 +110,9 @@ setTimeout(() => {
   check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
+  w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
+    && /\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp[^}]*width: min\(46vw, 34rem\)/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
   check('the desk has its lamp host and crab layer, lit by krab-desk.js', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-lit', '-mask', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && fs.existsSync(`${WEB}/krab-desk.js`));
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const af = d.getElementById('auto-form');
