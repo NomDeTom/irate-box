@@ -49,6 +49,10 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 17909500
     status: { outcome: '5 fetched, 0 dropped', size: 5e8, checked: 1790950000,
       releases: { list: [['v2.8.1', true, false], ['v2.8.0.47db0e3', true, true]], fetched: 1790940000 },
       releases_cached: { since: 1790940000, why: 'GitHub API rate limit reached (60/hour without a token)' } } }], running: false };
+// Firmware (step 23): the source not mirrored yet; the build cache kept, its control on the Git page.
+const fwFix = { settings: { enabled: false, boards: [], keep_alpha: 2, keep_beta: 1, cache: 'native', configs: true },
+  status: { last_check: '2026-10-06T15:00:00Z', outcome: 'build cache 215 MB', cache: { version: '2.8.1.8e6a88d', mode: 'native', bytes: 215 * 2 ** 20 } },
+  targets: [], free_mb: 9000, source: null };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -59,10 +63,12 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST') {
     posted.push([u, JSON.parse(opts.body)]);
     if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
+    if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
     return new Response('{"id":"x"}', { status: 202 });
   }
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
+  if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
   if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
@@ -127,6 +133,16 @@ setTimeout(() => {
   w.confirm = () => true;
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
+  // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.
+  check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
+  const cacheForm = d.getElementById('ci-cache-form');
+  check('git: the build cache is under Builds, showing the setting and what is kept', d.querySelector('#git #ci-cache-form')
+    && cacheForm.elements.cache.value === 'native' && /Kept: 2\.8\.1\.8e6a88d's, headless, 215/.test(t('#ci-cache-status')[0]), t('#ci-cache-status')[0]);
+  check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
+    && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
+  [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
+  cacheForm.elements.cache.value = 'whole';
+  cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const mf = d.getElementById('git-mirror-add').elements;
   mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
@@ -153,7 +169,12 @@ setTimeout(() => {
     const keepRev = posted.find((p) => p[1].action === 'mirror-change');
     check('git: Keep revoked switches it off on the release groups only', keepRev && keepRev[1].mirror.groups.every((g) => g.skip_revoked === false)
       && keepRev[1].mirror.status === undefined, JSON.stringify(keepRev));
-    const add = posted.find((p) => p[1].action === 'mirror-add');
+    const fwm = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'meshtastic-firmware');
+    check('firmware: Mirror the source adds meshtastic/firmware with its submodules', fwm && fwm[1].mirror.submodules === true
+      && fwm[1].mirror.upstream === 'https://github.com/meshtastic/firmware' && fwm[1].mirror.groups.length === 2, JSON.stringify(fwm));
+    const cs = posted.find((p) => p[0] === '/admin/firmware');
+    check('git: saving the build cache sends only the cache', cs && JSON.stringify(cs[1]) === JSON.stringify({ action: 'settings', cache: 'whole' }), JSON.stringify(cs));
+    const add = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'fw2');
     check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
       && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));
     check('git: choosing public-everything asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'preset'

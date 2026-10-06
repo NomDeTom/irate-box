@@ -2291,8 +2291,13 @@ loadCi();
 // there is nothing to pick yet, and Check now fetches the list.
 const fw = {
   form: document.getElementById('fw-form'), status: noteEl('fw-status'), note: noteEl('fw-note'),
-  boards: noteEl('fw-boards'), filter: noteEl('fw-filter'), kept: noteEl('fw-kept'),
+  boards: noteEl('fw-boards'), filter: noteEl('fw-filter'), kept: noteEl('fw-kept'), source: noteEl('fw-source'),
+  cacheForm: document.getElementById('ci-cache-form'), cacheStatus: noteEl('ci-cache-status'), cacheNote: noteEl('ci-cache-note'),
 };
+// The firmware's source, as a mirror (git-ci-plan 4a): what the Mirror the source button adds.
+const FW_SOURCE_MIRROR = { upstream: 'https://github.com/meshtastic/firmware', name: 'meshtastic-firmware', area: 'public',
+  branches: ['master'], groups: [{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }], history: 'shallow',
+  budget_mb: 2048, submodules: true };
 let fwPoll = null;
 let fwChosen = new Set();
 
@@ -2305,7 +2310,6 @@ function renderFirmware(data) {
     f.configs.checked = cfg.configs !== false;
     f.keep_alpha.value = cfg.keep_alpha;
     f.keep_beta.value = cfg.keep_beta;
-    f.cache.value = cfg.cache;
     f.all_boards.checked = cfg.boards === 'all';
     fwChosen = new Set(cfg.boards === 'all' ? [] : cfg.boards);
   }
@@ -2317,6 +2321,19 @@ function renderFirmware(data) {
     (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : '');
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter((t) => !q || t.board.includes(q) || t.platform.includes(q));
+  if (!fw.cacheForm.contains(document.activeElement)) fw.cacheForm.elements.cache.value = cfg.cache;
+  fw.cacheStatus.textContent = st.cache ? `Kept: ${st.cache.version}'s, ${st.cache.mode === 'native' ? 'headless' : 'all of it'}, ${size(st.cache.bytes)}.`
+    : cfg.cache === 'discard' ? '' : 'Not fetched yet: the library fetches it on its schedule, or Update now on the Firmware page.';
+  fw.source.replaceChildren(...(data.source
+    ? [`Source: mirrored as `, el('a', { href: `${data.source.area === 'public' ? '/git/' : '/git-private/'}${data.source.name}.git/`, textContent: `${data.source.name}.git` }),
+      ' (Git → Mirrors). The pinout map\'s board configs are read from it, with no internet.']
+    : ['Source: not mirrored on this box. ', actionButton('Mirror the source', async () => {
+      try {
+        await postJSON('/admin/git', { action: 'mirror-add', mirror: FW_SOURCE_MIRROR });
+        say('Added meshtastic-firmware.git (master, 2 releases, 2 pre-releases, shallow, with submodules): the library fetches it on its schedule, or Update on Git → Mirrors.', true, fw.note);
+        loadFirmware();
+      } catch (err) { say(err.message, false, fw.note); }
+    }, { className: 'small' })]));
   fw.boards.hidden = f.all_boards.checked;
   fw.boards.replaceChildren(...(data.targets && data.targets.length ? targets.map((t) => el('label', { className: 'inline' },
     el('input', { type: 'checkbox', checked: fwChosen.has(t.board),
@@ -2345,11 +2362,19 @@ fw.form.addEventListener('submit', async (e) => {
   const f = fw.form.elements;
   try {
     fwData = await postJSON('/admin/firmware', { action: 'settings', enabled: f.enabled.checked, configs: f.configs.checked,
-      keep_alpha: Number(f.keep_alpha.value), keep_beta: Number(f.keep_beta.value), cache: f.cache.value,
+      keep_alpha: Number(f.keep_alpha.value), keep_beta: Number(f.keep_beta.value),
       boards: f.all_boards.checked ? 'all' : [...fwChosen] });
     renderFirmware(fwData);
     say('Saved. Update now fetches what is missing; the schedule does the rest.', true, fw.note);
   } catch (err) { say(err.message, false, fw.note); }
+});
+fw.cacheForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    fwData = await postJSON('/admin/firmware', { action: 'settings', cache: fw.cacheForm.elements.cache.value });
+    renderFirmware(fwData);
+    say('Saved. The library fetches or drops it on its schedule (Update now on the Firmware page does it now).', true, fw.cacheNote);
+  } catch (err) { say(err.message, false, fw.cacheNote); }
 });
 for (const [id, action] of [['fw-check', 'check'], ['fw-update', 'update']]) {
   document.getElementById(id).addEventListener('click', async () => {

@@ -302,22 +302,19 @@
       <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
         <h2 id="firmware-title">Firmware</h2>
         <p class="setting-desc">
-          Meshtastic firmware kept on the box for the web flasher, so a radio can be flashed with no
-          internet. Only the boards you tick are kept (a few MB each, per release); "all boards" is
-          about 600 MB a release. Checked on the library's schedule, whenever the box has internet.
+          Meshtastic's release files kept on the box for the web flasher, so a radio can be flashed
+          with no internet. Only the boards you tick are kept (a few MB each, per release); "all
+          boards" is about 600 MB a release. Checked on the library's schedule, whenever the box has
+          internet. The firmware's source code is a mirror like any other repository (Git → Mirrors);
+          the build cache is with the builds (Git → Builds).
         </p>
+        <p class="setting-desc" id="fw-source"></p>
         <p class="setting-desc" id="fw-status"></p>
         <form id="fw-form" class="library-form">
           <label class="inline"><input type="checkbox" name="enabled"> Keep firmware on this box</label>
           <label class="inline"><input type="checkbox" name="configs"> Keep meshtasticd's board configs (<code>bin/config.d</code>, a few hundred KB), so the calculators' pinout map lists them with no internet — even with no firmware kept</label>
           <label>Alphas to keep <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
           <label>Betas to keep <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
-          <label>Build cache, for building firmware on the box with no internet
-            <select name="cache">
-              <option value="discard">Don't keep it</option>
-              <option value="native">Keep what a headless build needs (~215 MB)</option>
-              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
-            </select></label>
           <label class="inline"><input type="checkbox" name="all_boards"> All boards</label>
           <label>Boards <input id="fw-filter" type="search" placeholder="filter: rak, heltec, t-deck…"></label>
           <div id="fw-boards" class="fw-boards"></div>
@@ -482,6 +479,17 @@
         <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
+        <form id="ci-cache-form" class="library-form">
+          <label>Firmware build cache (PlatformIO's packages for the newest Meshtastic release), so firmware builds here need no internet
+            <select name="cache">
+              <option value="discard">Don't keep it</option>
+              <option value="native">Keep what a headless build needs (~215 MB)</option>
+              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
+            </select></label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc" id="ci-cache-status"></p>
+        <p class="setting-desc action-note" id="ci-cache-note" role="status" hidden></p>
         <div id="ci-runs" class="admin-list"></div>
       </section>
 
