@@ -42,6 +42,7 @@ BLOB_NAMESPACES = ("scenes", "rooms", "files")
 
 # The upstream default, and the frontend can genuinely produce large pastes.
 MAX_BODY = int(os.environ.get("HUB_STORE_MAX_BODY", 50 * 1024 * 1024))
+DEV_CORS = os.environ.get("HUB_STORE_CORS", "")  # one origin, for development only (F20)
 # Total on-disk budget for everything here. The card also holds ZIMs and firmware, so
 # this is a real ceiling rather than a formality; oldest content is evicted to stay under.
 MAX_TOTAL = int(os.environ.get("HUB_STORE_MAX_TOTAL", 64 * 1024 * 1024))
@@ -621,12 +622,13 @@ def _send(handler, code, body=b"", ctype="application/octet-stream", extra=None)
     handler.send_response(code)
     handler.send_header("Content-Type", ctype)
     handler.send_header("Content-Length", str(len(body)))
-    # The Excalidraw build may be served from somewhere other than the hub during
-    # development, and upstream's NestJS app enables CORS wholesale. Nothing here is
-    # credentialed, so a bare wildcard is the same trust model as the rest of the box.
-    handler.send_header("Access-Control-Allow-Origin", "*")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-    handler.send_header("Access-Control-Allow-Headers", "*")
+    # No CORS on the box (F20): everything that uses the store is on the hub's own origin, and
+    # a wildcard let any website a guest visited read the drop and saves and change saves.
+    # For development with Excalidraw served elsewhere, HUB_STORE_CORS names that one origin.
+    if DEV_CORS:
+        handler.send_header("Access-Control-Allow-Origin", DEV_CORS)
+        handler.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        handler.send_header("Access-Control-Allow-Headers", "*")
     for key, value in (extra or {}).items():
         handler.send_header(key, value)
     handler.end_headers()

@@ -56,6 +56,14 @@ try:
     r = c.getresponse(); r.read()
     check("a chunked unread body closes the connection", r.will_close, r.getheaders())
     check("and the next request, on a new one, is itself", go("GET", "/admin/settings", front) == 200)
+    # F15: the hub reads no JSON over 256 KB; the connection stays usable after.
+    big = b'{"x": "' + b"y" * (300 * 1024) + b'"}'
+    check("a JSON body over 256 KB: 413", go("POST", "/messages", {"Content-Type": "application/json"}, big) == 413)
+    check("and the next request is itself", go("GET", "/admin/settings", front) == 200)
+    # F20: the store answers without CORS headers.
+    c.request("GET", "/api/saves", headers={"Host": f"127.0.0.1:{port}", "Origin": "http://evil.example"})
+    r = c.getresponse(); r.read()
+    check("the store sends no Access-Control-Allow-Origin", r.getheader("Access-Control-Allow-Origin") is None, r.getheaders())
 finally:
     hub.terminate()
 print("ok" if not fails else f"{fails} failure(s)")
