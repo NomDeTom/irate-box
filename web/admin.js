@@ -2534,7 +2534,9 @@ function renderCi(data) {
   noteEl('ci-offline').textContent = 'With no internet: ' + ((data.mirrored || []).length
     ? `a build's git fetches of ${data.mirrored.length} URL${data.mirrored.length === 1 ? '' : 's'} come from this box's mirrors (${data.mirrored.slice(0, 3).map((u) => u.replace(/^https:\/\//, '')).join(', ')}${data.mirrored.length > 3 ? '…' : ''})`
     : 'no mirrors yet, so a build that fetches from the internet needs it (Library → Mirrors)')
-    + (data.pio_deps ? '; PlatformIO\'s packages come from the library\'s cache (CI_PIO_DEPS).' : '; no PlatformIO cache kept (Builds above, the firmware build cache).');
+    + (data.pio_deps ? '; PlatformIO\'s packages come from the library\'s cache (CI_PIO_DEPS).' : '; no PlatformIO cache kept (Builds above, the firmware build cache).')
+    + (data.wheelhouse ? ' pip installs (platformio itself) come from the Building kit\'s wheelhouse (PIP_NO_INDEX, PIP_FIND_LINKS).'
+      : ' The Building kit has no wheelhouse yet: a build\'s pip install still needs the internet.');
   ciRuns.replaceChildren(...(data.runs.length ? data.runs.map((r) => el('div', { className: 'admin-item' },
     el('span', {},
       el('strong', { textContent: `${STATE_ICON[r.state] || ''} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` + (r.keep ? ' · kept' : '') }),
@@ -2655,8 +2657,13 @@ function renderFirmware(data) {
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter((t) => !q || t.board.includes(q) || t.platform.includes(q));
   if (!fw.cacheForm.contains(document.activeElement)) fw.cacheForm.elements.cache.value = cfg.cache;
-  fw.cacheStatus.textContent = st.cache ? `Kept: ${st.cache.version}'s, ${st.cache.mode === 'native' ? 'headless' : 'all of it'}, ${size(st.cache.bytes)}.`
-    : cfg.cache === 'discard' ? '' : 'Not fetched yet: the library fetches it on its schedule, or Update now on the Firmware page.';
+  fw.cacheStatus.replaceChildren(...(st.cache
+    ? [`Kept: ${st.cache.version}'s, ${st.cache.mode === 'native' ? 'headless' : 'all of it'}, ${size(st.cache.bytes)}. `,
+      actionButton('Flush', async () => {
+        try { fwData = await postJSON('/admin/firmware', { action: 'flush-cache' }); renderFirmware(fwData); say('Gone. The next check or update re-fetches it if the policy still wants one.', true, fw.cacheNote); }
+        catch (err) { say(err.message, false, fw.cacheNote); }
+      }, { className: 'small' })]
+    : [cfg.cache === 'discard' ? '' : 'Not fetched yet: the library fetches it on its schedule, or Update now on the Firmware page.']));
   fw.source.replaceChildren(...(data.source
     ? [`Source: mirrored as `, el('a', { href: `${data.source.area === 'public' ? '/git/' : '/git-private/'}${data.source.name}.git/`, textContent: `${data.source.name}.git` }),
       ' (Git → Mirrors). The pinout map\'s board configs are read from it, with no internet.']

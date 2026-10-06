@@ -31,10 +31,14 @@ def check(name, cond, info=""):
 # The stand-in archive: name -> (version, depends). libc6 and strace are on the box already.
 ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.13.5-2", ["libc6"]),  # libpython3.13's source: python3.13
            "tcpdump": ("4.99.5-2", ["libpcap0.8"]), "libpcap0.8": ("1.10.5-2", []), "strace": ("6.13-1", []),
-           "fail2ban": ("1.1.0-8", ["python3-systemd"]), "python3-systemd": ("235-1", []), "libc6": ("2.41-12", [])}
+           "fail2ban": ("1.1.0-8", ["python3-systemd"]), "python3-systemd": ("235-1", []), "libc6": ("2.41-12", []),
+           "build-essential": ("12.10", []), "cmake": ("3.31.0-1", []), "pkg-config": ("1.8.1-4", []),
+           "python3-dev": ("3.13.5-2", []), "python3-venv": ("3.13.5-2", [])}
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
 BOARD = {"arch": "armhf"}
+# The build kit's wheelhouse (toolkits-plan §5), stood in: what `pip download platformio` fetches.
+WHEELS = {"platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)]}
 (T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
 calls = []
 policy_seen = []
@@ -53,14 +57,14 @@ def closure(names, have):
     return out
 class R:
     def __init__(self, out="", rc=0): self.stdout, self.stderr, self.returncode = out, "", rc
-def fake(cmd, timeout=0, check=True):
+def fake(cmd, timeout=0, check=True, env=None):
     calls.append(cmd)
     name = Path(cmd[0]).name
     if name == "dpkg-query" and cmd[1] == "-W":
         return R("".join(f"{p}\tii \t{versions.get(p, ARCHIVE[p][0])}\n" for p in sorted(installed)))
     if name == "dpkg-query" and cmd[1] == "-L":
         return R("/usr/bin/fail2ban-server\n/usr/lib/systemd/system/fail2ban.service\n" if cmd[2] == "fail2ban" else f"/usr/bin/{cmd[2]}\n")
-    if name == "dpkg-deb":
+    if name == "dpkg-deb" and cmd[1] == "-f":
         try:
             d = json.loads(Path(cmd[2]).read_text())
         except ValueError:
@@ -73,6 +77,21 @@ def fake(cmd, timeout=0, check=True):
         return R(f"Package: {cmd[-1]}\nVersion: {ARCHIVE[cmd[-1]][0]}\n" if cmd[-1] in ARCHIVE else "", 0 if cmd[-1] in ARCHIVE else 100)
     if name == "dpkg" and cmd[1:] == ["--print-architecture"]:
         return R(BOARD["arch"] + "\n")
+    if name == "dpkg-deb" and cmd[1] == "-x":
+        # The one-off pip (kits._fetch_wheels): a fake python3-pip .deb, unpacked.
+        (Path(cmd[3]) / "usr" / "lib" / "python3.13" / "dist-packages").mkdir(parents=True, exist_ok=True)
+        return R()
+    if name == "python3" and cmd[1:3] == ["-m", "pip"]:
+        dest = Path(cmd[cmd.index("--dest") + 1])
+        pkgs = [a for a in cmd[cmd.index("--dest") + 2:] if not a.startswith("-")]
+        for p in pkgs:
+            for fname, size in WHEELS.get(p, [(f"{p}-1.0-py3-none-any.whl", 500)]):
+                (dest / fname).write_bytes(b"x" * size)
+        return R()
+    if name == "apt-get" and cmd[1:3] == ["install", "--download-only"] and cmd[-1] == "python3-pip":
+        Path(opt(cmd, "Dir::Cache::archives")).mkdir(parents=True, exist_ok=True)
+        (Path(opt(cmd, "Dir::Cache::archives")) / "python3-pip_24.0-1_all.deb").write_text("deb")
+        return R()
     if name == "apt-get":
         words = [a for i, a in enumerate(cmd[1:], 1) if not a.startswith("-") and cmd[i - 1] != "-o"]
         verb, pkgs = words[0], words[1:]
@@ -456,5 +475,33 @@ check("the page's define: an id from the name (my- when it would clash), package
       and queued[-1]["kit"]["packages"] == ["gdb", "strace", "tcpdump"], queued[-1])
 toolkits.action({"action": "extra", "kit": "capture", "packages": ["gdb"]})
 check("  and extra", queued[-1] == {"action": "kit-extra", "kit": "capture", "packages": ["gdb"]})
+
+# The wheelhouse (toolkits-plan §5): the build kit names Python packages too, fetched with pip
+# into a folder of its own, so a build's `pip install platformio` needs no internet.
+check("the build kit names platformio for its wheelhouse", kits.definitions()["build"]["pip"] == ["platformio"])
+line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
+man = kits.manifest("build")
+check("fetch: the wheelhouse too, counted in the kit's size", {w["file"] for w in man["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+      and man["bytes"] == sum(p["size"] for p in man["packages"]) + 1200, man)
+check("  each wheel cached with its sha256", all((kits.WHEELHOUSE / w["file"]).is_file() and kits.sha256(kits.WHEELHOUSE / w["file"]) == w["sha256"] for w in man["wheels"]))
+check("  no stage left behind", not list(kits.ROOT.glob("stage-*")))
+line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
+check("unchanged on a second fetch (wheels included)", "unchanged" in line)
+# A newer platformio: the old wheels become previous, and stay cached until nothing refers to them.
+WHEELS["platformio"] = [("platformio-6.2.0-py3-none-any.whl", 1100), ("click-8.1.0-py3-none-any.whl", 200)]
+kits.fetch("build", budget_mb=50, log=lambda *a: None)
+check("a new wheel: current and previous both named, both still in the wheelhouse",
+      {w["file"] for w in kits.manifest("build")["wheels"]} == {"platformio-6.2.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+      and {w["file"] for w in kits.manifest("build", "previous")["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+      and (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists() and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists())
+# Tampering and pruning reach the wheelhouse too.
+victim = kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl"
+victim.write_bytes(victim.read_bytes() + b"x")
+check("a changed wheel is found by verify", any("has changed since it was fetched" in p for p in kits.verify("build")), kits.verify("build"))
+WHEELS["platformio"] = [("platformio-6.3.0-py3-none-any.whl", 900), ("click-8.1.0-py3-none-any.whl", 200)]
+kits.fetch("build", budget_mb=50, log=lambda *a: None)
+check("pruning drops a wheel no manifest names any more", not (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
+      and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists() and (kits.WHEELHOUSE / "platformio-6.3.0-py3-none-any.whl").exists())
+check("kits.status() counts the wheels and the wheelhouse's bytes", kits.status()["kits"]["build"]["cached"]["wheels"] == 2 and kits.wheelhouse_bytes() > 0)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

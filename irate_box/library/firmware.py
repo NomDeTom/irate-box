@@ -259,7 +259,8 @@ def _carry_cache(rel, cfg, policy, log):
     tmp = librarian.TMP_DIR / deps["name"]
     tmp.parent.mkdir(parents=True, exist_ok=True)
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
-    librarian._download(deps["url"], tmp, name=f"build cache {rel['version']}", expected=deps["size"])
+    if not (tmp.is_file() and tmp.stat().st_size == deps["size"]):
+        librarian._download(deps["url"], tmp, name=f"build cache {rel['version']}", expected=deps["size"], resume=True)
     work = dest.with_name("pio-deps.new")
     shutil.rmtree(work, ignore_errors=True)
     try:
@@ -288,6 +289,25 @@ def _carry_cache(rel, cfg, policy, log):
     shutil.rmtree(dest, ignore_errors=True)
     os.replace(work, dest)
     return {"version": rel["version"], "mode": cfg["cache"], "bytes": _du(dest)}
+
+
+def flush_cache(log=print):
+    """Git -> Builds, Flush: the build cache is gone now, whatever the policy. The next check or
+    update re-fetches it if the policy still wants one (git-ci-plan: "a Flush per cache beside
+    it", so flushing is the builds' call, not only the librarian's schedule)."""
+    gone = 0
+    for other in ROOT.glob("*/pio-deps"):
+        gone += _du(other)
+        shutil.rmtree(other, ignore_errors=True)
+        try:
+            other.parent.rmdir()
+        except OSError:
+            pass
+    st = status()
+    st["cache"] = None
+    _save_status(st)
+    log(f"the build cache is gone ({gone >> 20} MB freed)" if gone else "no build cache was kept")
+    return gone
 
 
 def _du(path):

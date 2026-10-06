@@ -737,8 +737,10 @@ def firmware_action(payload):
                     return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
             if not library_start(f"firmware-{action}", run):
                 return 409, {"error": "the librarian is already running"}
+        elif action == "flush-cache":
+            firmware.flush_cache(log=lambda *_: None)
         else:
-            return 400, {"error": "action must be settings, check or update"}
+            return 400, {"error": "action must be settings, check, update or flush-cache"}
     except librarian.LibrarianError as exc:
         return 400, {"error": str(exc)}
     snap = firmware.snapshot()

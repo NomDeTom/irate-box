@@ -18,6 +18,8 @@ DEFS = Path(os.environ.get("HUB_KITS_DEFS", Path(__file__).resolve().parents[2] 
 OWNER = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits")) / "owner"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 PKG_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{1,62}$")
+# PyPI's own name rule (PEP 508), for a kit's "pip" list (toolkits-plan §5: the build kit's wheelhouse).
+PIP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 # Packages a kit marks "needs_64bit" (the debug kit's bpftrace, bcc and bpftool: BPF programs that
@@ -34,7 +36,8 @@ def packages_for(kit, arch):
 def _ok(k, stem):
     return (isinstance(k, dict) and ID_RE.match(str(k.get("id", ""))) and k["id"] == stem
             and isinstance(k.get("packages"), list) and k["packages"] and all(isinstance(p, str) and PKG_RE.match(p) for p in k["packages"])
-            and isinstance(k.get("needs_64bit", []), list) and all(p in k["packages"] for p in k.get("needs_64bit", [])))
+            and isinstance(k.get("needs_64bit", []), list) and all(p in k["packages"] for p in k.get("needs_64bit", []))
+            and isinstance(k.get("pip", []), list) and all(isinstance(p, str) and PIP_RE.match(p) for p in k.get("pip", [])))
 
 
 def _load(path):
