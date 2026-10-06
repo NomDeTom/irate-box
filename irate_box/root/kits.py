@@ -33,15 +33,15 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.hub import kitdefs
+
 ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
-DEFS = Path(os.environ.get("HUB_KITS_DEFS", Path(__file__).resolve().parents[2] / "toolkits"))
 DPKG_STATUS = Path(os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status"))
 POLICY_RC = Path(os.environ.get("HUB_POLICY_RC", "/usr/sbin/policy-rc.d"))
 POOL = ROOT / "pool"
 MANIFESTS = ROOT / "manifests"
 INSTALLED = ROOT / "installed.json"
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
-PKG_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{1,62}$")
+ID_RE = kitdefs.ID_RE
 DEB_RE = re.compile(r"^[A-Za-z0-9+.~_%-]{1,200}\.deb$")
 UNIT_RE = re.compile(r"^/(?:usr/)?lib/systemd/system/([A-Za-z0-9@_.:-]+\.(?:service|socket|timer|path))$")
 APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "LC_ALL": "C"}
@@ -72,14 +72,7 @@ def _write(path, data):
 
 
 def definitions():
-    """{id: kit}, from the shipped toolkit files; anything malformed is left out."""
-    out = {}
-    for f in sorted(DEFS.glob("*.json")):
-        k = _read(f, None)
-        if (isinstance(k, dict) and ID_RE.match(str(k.get("id", ""))) and k["id"] == f.stem
-                and isinstance(k.get("packages"), list) and k["packages"] and all(isinstance(p, str) and PKG_RE.match(p) for p in k["packages"])):
-            out[k["id"]] = k
-    return out
+    return kitdefs.definitions()
 
 
 def _kit(kit_id):

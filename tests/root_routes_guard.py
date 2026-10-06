@@ -101,5 +101,11 @@ check("F30: install.sh checks the zip before unpacking it", 'sb_sum_ok "$tmp/sb.
 hc_src = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the nginx check fills an unknown @…_PORT@ with a spare port", 're.sub(r"@[A-Z_]+_PORT@"' in hc_src)
 
+# The hub cannot read root's code (irate_box/root is 0700 root on the box): a hub or library module
+# importing it at module level fails there, as library/toolkits.py did on 2026-10-06.
+for f in sorted((REPO / "irate_box").glob("[hl]*/*.py")):
+    if f.parent.name in ("hub", "library"):
+        check(f"{f.parent.name}/{f.name} does not import root's code at module level",
+              not re.search(r"^(from irate_box\.root|import irate_box\.root)", f.read_text(), re.M))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

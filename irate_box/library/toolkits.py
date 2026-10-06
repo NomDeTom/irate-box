@@ -16,7 +16,7 @@ import time
 
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
-from irate_box.root import kits as rootkits
+from irate_box.hub import kitdefs
 
 SETTINGS = librarian.LIB_DIR / "toolkits.json"
 STATE = librarian.LIB_DIR / "toolkits-state.json"  # when each kit's fetch was last asked for
@@ -25,7 +25,7 @@ MAX_HOURS = 24 * 365
 
 
 def definitions():
-    return rootkits.definitions()
+    return kitdefs.definitions()
 
 
 def settings():
