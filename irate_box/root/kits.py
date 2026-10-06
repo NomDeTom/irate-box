@@ -15,6 +15,7 @@ Under ROOT (/var/cache/irate-box/kits, root's):
   kits.list, lists/             the one apt source the installs use (file:, trusted: the
                                 signatures were checked when the .debs were fetched)
   installed.json                each installed kit: what it added, when, when it goes
+  owner/                        the owner's own kits and extra tools (kitdefs.py), root's
 
 A kit may name "services" it is for (the debug kit's systemd-coredump.socket): those are left
 running; every other service its packages bring stays stopped and disabled.
@@ -43,6 +44,7 @@ POOL = ROOT / "pool"
 MANIFESTS = ROOT / "manifests"
 INSTALLED = ROOT / "installed.json"
 ID_RE = kitdefs.ID_RE
+PKG_RE = kitdefs.PKG_RE
 DEB_RE = re.compile(r"^[A-Za-z0-9+.~_%-]{1,200}\.deb$")
 UNIT_RE = re.compile(r"^/(?:usr/)?lib/systemd/system/([A-Za-z0-9@_.:-]+\.(?:service|socket|timer|path))$")
 APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "LC_ALL": "C"}
@@ -351,6 +353,88 @@ def remove(kit_id, log=print):
     del state[kit_id]
     _write(INSTALLED, state)
     return f"{kit_id}: removed {len(go)} packages" + (f"; kept {len(shared & set(present))} another kit uses" if shared else "")
+
+
+# --- the owner's own kits, and extra tools in a shipped kit (step 38) -----------------------
+
+MAX_OWN = 40
+
+
+def _checked_packages(pkgs, most):
+    """Package names the page typed: Debian's rules, no repeats, and each one this box's package
+    lists know (apt-cache), so a typo is refused now rather than at the next fetch."""
+    if not isinstance(pkgs, list) or len(pkgs) > most or not all(isinstance(p, str) and PKG_RE.match(p) for p in pkgs):
+        raise ValueError(f"packages: up to {most} Debian package names (lowercase letters, digits, + - .)")
+    pkgs = list(dict.fromkeys(pkgs))
+    unknown = [p for p in pkgs if not run(["apt-cache", "show", "--no-all-versions", p], check=False, timeout=120).stdout.strip()]
+    if unknown:
+        raise ValueError(f"not in this box's package lists: {', '.join(unknown)} (check the name, or refresh the lists while online)")
+    return pkgs
+
+
+def define(spec):
+    """A kit of the owner's own, new or changed. spec: {id, title, summary, packages, remove_after_hours}."""
+    if not isinstance(spec, dict):
+        raise ValueError("kit: an object")
+    kid = str(spec.get("id", ""))
+    if not ID_RE.match(kid) or kid == "extras":
+        raise ValueError("id: lowercase letters, digits and -, up to 32")
+    if kid in kitdefs.shipped():
+        raise ValueError(f"{kid} is one of the box's own kits: add tools to it instead")
+    title = str(spec.get("title", "")).strip()
+    summary = str(spec.get("summary", "")).strip()
+    if not 1 <= len(title) <= 60 or len(summary) > 200 or any(c in title + summary for c in "\n\r<>"):
+        raise ValueError("title: 1 to 60 characters; summary up to 200; one line each")
+    hours = spec.get("remove_after_hours", 24)
+    if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
+        raise ValueError("remove_after_hours: 1 to 8760, or null for never")
+    pkgs = _checked_packages(spec.get("packages"), MAX_OWN)
+    if not pkgs:
+        raise ValueError("packages: at least one")
+    kitdefs.OWNER.mkdir(parents=True, exist_ok=True)
+    os.chmod(kitdefs.OWNER, 0o755)
+    new = not (kitdefs.OWNER / f"{kid}.json").exists()
+    _write(kitdefs.OWNER / f"{kid}.json", {"id": kid, "title": title, "summary": summary or f"{len(pkgs)} packages of the owner's choosing.",
+                                           "packages": pkgs, "remove_after_hours": hours,
+                                           "consent": "Packages you chose: " + ", ".join(pkgs) + ". Some may run services (left stopped) or "
+                                                      "need root to use. They are removed again after the time you choose.",
+                                           "notes": ["One of your own: added on this box's Library → Toolkits."]})
+    os.chmod(kitdefs.OWNER / f"{kid}.json", 0o644)
+    return f"{title}: {'added' if new else 'changed'}, {len(pkgs)} packages; Refresh it while the box has internet to cache it"
+
+
+def undefine(kit_id, log=print):
+    """One of the owner's own kits, gone: its definition, its cache (its manifests; the pool
+    keeps what another kit still names)."""
+    if kit_id not in definitions() or not definitions()[kit_id].get("owner"):
+        raise ValueError(f"{kit_id} is not one of your own kits")
+    if kit_id in installed_state():
+        raise ValueError(f"{kit_id} is installed: remove it first")
+    (kitdefs.OWNER / f"{kit_id}.json").unlink(missing_ok=True)
+    for m in (f"{kit_id}.json", f"{kit_id}.previous.json"):
+        (MANIFESTS / m).unlink(missing_ok=True)
+    if POOL.is_dir():
+        prune()
+        write_index()
+    return f"{kit_id}: deleted, and its cache"
+
+
+def set_extra(kit_id, packages):
+    """Extra tools tracked in a shipped kit ([] clears them)."""
+    if kit_id not in kitdefs.shipped():
+        raise ValueError(f"{kit_id} is not one of the box's own kits")
+    base = set(kitdefs.shipped()[kit_id]["packages"])
+    pkgs = [p for p in _checked_packages(packages, 20) if p not in base]
+    kitdefs.OWNER.mkdir(parents=True, exist_ok=True)
+    os.chmod(kitdefs.OWNER, 0o755)
+    extras = _read(kitdefs.OWNER / "extras.json", {}) or {}
+    if pkgs:
+        extras[kit_id] = pkgs
+    else:
+        extras.pop(kit_id, None)
+    _write(kitdefs.OWNER / "extras.json", extras)
+    os.chmod(kitdefs.OWNER / "extras.json", 0o644)
+    return f"{kit_id}: " + (f"also tracks {', '.join(pkgs)}; the next refresh fetches them" if pkgs else "no extra tools")
 
 
 def rollback(kit_id, log=print):

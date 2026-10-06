@@ -2488,7 +2488,8 @@ loadFirmware();
 // --- toolkits (toolkits.py, root's kits.py): a card per kit, Kiwix's library as the model --------
 // Each action is a request for the root helper; the page shows "Working…" until its answer is in.
 const kitsEl = { summary: noteEl('kits-summary'), note: noteEl('kits-note'), grid: noteEl('kits-grid'),
-  problems: noteEl('kits-problems'), budget: document.getElementById('kits-budget') };
+  problems: noteEl('kits-problems'), budget: document.getElementById('kits-budget'),
+  add: document.getElementById('kits-add'), addTitle: noteEl('kits-form-title'), addCancel: document.getElementById('kits-add-cancel') };
 const REMOVE_AFTER = [[1, 'an hour'], [4, '4 hours'], [24, 'a day'], [168, 'a week'], [720, 'a month'], [null, 'never']];
 const hoursWords = (h) => (REMOVE_AFTER.find(([v]) => v === h) || [h, h == null ? 'never' : `${h} hours`])[1];
 const dayOf = (unix) => (unix ? new Date(unix * 1000).toISOString().slice(0, 10) : '');
@@ -2544,6 +2545,8 @@ function kitCard(k, st, cfg) {
   const badges = [
     c ? [`Cached ${dayOf(c.fetched)}, ${size(c.bytes)}`, 'badge-public'] : ['Not cached', 'badge-push'],
     s.previous ? ['2 versions', 'badge-push'] : null,
+    k.owner ? ['Yours', 'badge-mirror'] : null,
+    (k.extra || []).length ? [`+${k.extra.length} extra`, 'badge-mirror'] : null,
     inst ? [inst.remove_at ? `Installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'Installed, kept', 'badge-private'] : null,
   ].filter(Boolean);
   const body = [];
@@ -2569,6 +2572,13 @@ function kitCard(k, st, cfg) {
         { className: 'small', disabled: !c, title: c ? '' : 'Not cached yet: Refresh it while the box has internet.' }),
       c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' })));
   }
+  if (k.owner) {
+    body.push(el('p', { className: 'library-buttons' },
+      actionButton('Edit', () => editKit(k, mine), { className: 'small' }),
+      actionButton('Delete', () => {
+        if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id });
+      }, { className: 'small', disabled: !!inst, title: inst ? 'Remove it first' : '' })));
+  }
   const def = hoursPicker(mine.remove_after);
   def.addEventListener('change', () => kitAct({ action: 'settings', kits: { [k.id]: { remove_after: pickedHours(def) } } }));
   const details = el('details', { className: 'kit-details' }, el('summary', { textContent: 'Details' }),
@@ -2576,6 +2586,7 @@ function kitCard(k, st, cfg) {
     c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` +
       Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ') +
       (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
+    k.owner ? null : extraTools(k),
     c && c.left_out && c.left_out.length ? el('p', { className: 'setting-desc', textContent: `Left out on this ${c.arch || ''} board, as they need a 64-bit one: ${c.left_out.join(', ')}.` }) : null,
     (k.git || []).length ? el('p', { className: 'setting-desc', textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, '')}, a mirror)`).join(', ')}.` }) : null,
     el('p', { className: 'library-buttons' },
@@ -2594,6 +2605,40 @@ function kitCard(k, st, cfg) {
     el('label', { className: 'inline setting-desc' }, keepCurrent, ' Keep current (the library refreshes it on its schedule)'),
     details);
 }
+
+// Extra tools tracked in a shipped kit (Tom, 2026-10-06: "the toolkit may want an extra tool").
+function extraTools(k) {
+  const input = el('input', { className: 'kit-extra', value: (k.extra || []).join(' '), placeholder: 'e.g. ltrace gdbserver' });
+  return el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Extra tools: ' }), input,
+    actionButton('Save', () => kitAct({ action: 'extra', kit: k.id, packages: input.value.trim().split(/[\s,]+/).filter(Boolean) }), { className: 'small' }));
+}
+
+function editKit(k, mine) {
+  const f = kitsEl.add.elements;
+  f.id.value = k.id; f.title.value = k.title; f.summary.value = k.summary || ''; f.packages.value = k.packages.join(' ');
+  f.hours.value = mine.remove_after == null ? 'never' : String(mine.remove_after);
+  kitsEl.addTitle.textContent = `Change ${k.title}`;
+  kitsEl.addCancel.hidden = false;
+  kitsEl.add.querySelector('button[type=submit]').textContent = 'Save toolkit';
+  kitsEl.add.scrollIntoView?.({ block: 'center' });
+}
+function resetKitForm() {
+  kitsEl.add.reset();
+  kitsEl.add.elements.id.value = '';
+  kitsEl.addTitle.textContent = 'Add a toolkit of your own';
+  kitsEl.addCancel.hidden = true;
+  kitsEl.add.querySelector('button[type=submit]').textContent = 'Add toolkit';
+}
+kitsEl.add.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = kitsEl.add.elements;
+  const kit = { title: f.title.value.trim(), summary: f.summary.value.trim(), packages: f.packages.value.trim().split(/[\s,]+/).filter(Boolean),
+    remove_after_hours: f.hours.value === 'never' ? null : Number(f.hours.value) };
+  if (f.id.value) kit.id = f.id.value;
+  kitAct({ action: 'define', kit });
+  resetKitForm();
+});
+kitsEl.addCancel.addEventListener('click', resetKitForm);
 
 async function loadKits() {
   try {

@@ -14,14 +14,15 @@ const def = (id, title, packages, extra = {}) => Object.assign({ id, title, summ
   packages, notes: [`${title} note`], remove_after_hours: 24 }, extra);
 const kitsData = {
   kits: { debug: def('debug', 'Debugging', ['gdb', 'strace']), build: def('build', 'Building', ['cmake'], { remove_after_hours: null }),
-    capture: def('capture', 'Capture', ['tcpdump']),
-    security: def('security', 'Security', ['lynis'], { git: [{ name: 'debian-cis', upstream: 'https://github.com/ovh/debian-cis' }] }) },
+    capture: def('capture', 'Capture', ['tcpdump', 'ngrep'], { extra: ['ngrep'] }),
+    security: def('security', 'Security', ['lynis'], { git: [{ name: 'debian-cis', upstream: 'https://github.com/ovh/debian-cis' }] }),
+    radio: def('radio', 'Radio tools', ['rtl-sdr', 'sox'], { owner: true, summary: 'SDR bits.' }) },
   settings: { budget_mb: 500, kits: { debug: { keep_current: true, remove_after: 24 }, build: { keep_current: true, remove_after: null },
-    capture: { keep_current: false, remove_after: 24 }, security: { keep_current: true, remove_after: 24 } } },
+    capture: { keep_current: false, remove_after: 24 }, security: { keep_current: true, remove_after: 24 }, radio: { keep_current: true, remove_after: 4 } } },
   status: { at: now, pool_bytes: 91 * 2 ** 20, problems: [],
     kits: { debug: { cached: { fetched: now - 3600, packages: 55, bytes: 69 * 2 ** 20, on_box: ['strace'], versions: { gdb: '16.3-1' },
         left_out: ['bpftrace', 'bpfcc-tools', 'bpftool'], arch: 'armhf' }, previous: null },
-      build: { cached: null, previous: null },
+      build: { cached: null, previous: null }, radio: { cached: null, previous: null },
       capture: { cached: { fetched: now - 7200, packages: 3, bytes: 2 ** 20, on_box: [], versions: {} }, previous: null },
       security: { cached: { fetched: now - 600, packages: 38, bytes: 29 * 2 ** 20, on_box: [], versions: {} }, previous: { fetched: now - 86400 * 3, bytes: 28 * 2 ** 20 } } },
     installed: { debug: { added: ['gdb'], at: now - 600, remove_at: now + 5 * 3600, units: [], upgraded: ['libc6 2.41-12+deb13u3 → 2.41-12+deb13u4'] } } },
@@ -61,9 +62,9 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
   check('Toolkits sits in Library, after Mirrors', [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#mirrors #toolkits #sources'));
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
-    /^3 of 4 toolkits cached, 91\.0 MB of 500 MB; newest fetch \d{4}-\d\d-\d\d\. Cached kits install with no internet\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
+    /^3 of 5 toolkits cached, 91\.0 MB of 500 MB; newest fetch \d{4}-\d\d-\d\d\. Cached kits install with no internet\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));
-  check('a card per kit', d.querySelectorAll('#kits-grid .kit-card').length === 4);
+  check('a card per kit', d.querySelectorAll('#kits-grid .kit-card').length === 5);
   check('installed: its time left, and what installing it upgraded', /Installed: removed in [45] h/.test(t(card('Debugging').querySelector('.badges')))
     && /also brought these up to date .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
   check('not cached: Install is off, and says why', button(card('Building'), 'Install…').disabled && /Refresh it while the box has internet/.test(t(card('Building'))));
@@ -114,6 +115,34 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   w.eval('loadKits()');
   await wait();
   check('a problem with the cache is shown', /has changed since it was fetched/.test(t(d.getElementById('kits-problems'))));
+  // Step 38: your own kits, and extra tools in a shipped kit.
+  check('your own kit says so, with Edit and Delete', /Yours/.test(t(card('Radio tools').querySelector('.badges')))
+    && button(card('Radio tools'), 'Edit') && button(card('Radio tools'), 'Delete'));
+  check('a shipped kit has no Delete, and offers extra tools', !button(card('Debugging'), 'Delete') && card('Debugging').querySelector('input.kit-extra'));
+  check('a kit with extra tools says so, and lists them', /\+1 extra/.test(t(card('Capture').querySelector('.badges'))) && card('Capture').querySelector('input.kit-extra').value === 'ngrep');
+  const ex = card('Debugging').querySelector('input.kit-extra');
+  ex.value = 'ltrace,  gdbserver';
+  button(ex.parentNode, 'Save').click();
+  await wait();
+  check('extra tools: Save sends the names', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'extra', kit: 'debug', packages: ['ltrace', 'gdbserver'] }),
+    JSON.stringify(posted[posted.length - 1]));
+  button(card('Radio tools'), 'Edit').click();
+  const af = d.getElementById('kits-add').elements;
+  check('Edit fills the form, and says it is a change', af.id.value === 'radio' && af.packages.value === 'rtl-sdr sox' && af.hours.value === '4'
+    && /Change Radio tools/.test(t(d.getElementById('kits-form-title'))));
+  af.packages.value = 'rtl-sdr sox gqrx-sdr';
+  d.getElementById('kits-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
+  await wait();
+  check('saving sends the kit, with its id', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'define',
+    kit: { title: 'Radio tools', summary: 'SDR bits.', packages: ['rtl-sdr', 'sox', 'gqrx-sdr'], remove_after_hours: 4, id: 'radio' } }), JSON.stringify(posted[posted.length - 1]));
+  check('  and the form is a new one again', af.id.value === '' && /Add a toolkit of your own/.test(t(d.getElementById('kits-form-title'))));
+  af.title.value = 'Mesh'; af.packages.value = 'mosquitto-clients'; af.hours.value = 'never';
+  d.getElementById('kits-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
+  await wait();
+  check('adding one: no id (the hub makes it), never removed', JSON.stringify(posted[posted.length - 1].kit) === JSON.stringify({ title: 'Mesh', summary: '', packages: ['mosquitto-clients'], remove_after_hours: null }));
+  button(card('Radio tools'), 'Delete').click();
+  await wait();
+  check('Delete asks, then asks the hub', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'undefine', kit: 'radio' }));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('the consent step is set apart (style.css)', /\.kit-consent \{[^}]*border: 1px solid var\(--warn\)/.test(css));
   const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
