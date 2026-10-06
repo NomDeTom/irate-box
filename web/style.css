@@ -766,6 +766,9 @@ body.admin button.link-button {
 .art-page { scrollbar-gutter: stable; }
 /* The same art on a public page (Services: data-art on its body), behind its sections. */
 body[data-art] > header, body[data-art] > section { position: relative; z-index: 1; }
+/* The header one layer above: with both on 1, a later section painted over the header's open
+   🎨 theme menu (Tom, 2026-10-06). */
+body[data-art] > header { z-index: 2; }
 [data-art-side="left"] .admin-art { right: auto; left: 1rem; background-position: left bottom; }
 .admin-art {
   display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;

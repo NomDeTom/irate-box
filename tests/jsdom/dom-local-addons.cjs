@@ -12,8 +12,14 @@ const PIN = '4ac38e6694526f2a5c849014d3312a20cdddf842';
 const local = {
   addon_port: 8090, running: false, job: { action: null, result: null }, errors: { 'bad.json': 'bad.json: tile: icon, name and desc' },
   added: [{ id: 'eliza', title: 'ELIZA (chatbot)', summary: 'The 1966 chatbot.', mode: 'off', installed: { commit: PIN, ref: 'pinned', repository: 'https://github.com/anthay/ELIZA' },
-    status: {}, pin: PIN, repo: 'https://github.com/anthay/ELIZA', capabilities: { connect: [], storage: false }, from_catalogue: true, consent: { how: 'catalogue' }, href: '/eliza.html' }],
-  catalogue: [{ id: 'eliza', title: 'ELIZA (chatbot)', added: true, summary: '', consent: '', repo: '', pin: PIN, capabilities: {} },
+    status: {}, pin: PIN, repo: 'https://github.com/anthay/ELIZA', capabilities: { connect: [], storage: false }, from_catalogue: true, consent: { how: 'catalogue' }, href: '/eliza.html',
+    catalogue: { status: 'held', at: 1791250000, held: ['now connects to wss://example.org'] } },
+    { id: 'notes2', title: 'Notebook', summary: 'A notebook.', mode: 'off', installed: { commit: 'c'.repeat(40), ref: 'pinned' }, status: {}, pin: 'c'.repeat(40),
+      repo: 'https://example.org/n', capabilities: {}, from_catalogue: true, consent: { how: 'catalogue' }, href: '/app.html#/addons/notes2/',
+      catalogue: { status: 'updated', at: 1791250000, changed: ['source', 'tile'] } },
+    { id: 'old', title: 'Old thing', summary: '', mode: 'off', installed: null, status: {}, pin: 'd'.repeat(40), repo: 'https://example.org/o',
+      capabilities: {}, from_catalogue: false, consent: { how: 'catalogue' }, href: '/app.html#/addons/old/', catalogue: { status: 'gone', at: 1791250000 } }],
+  catalogue: [{ id: 'eliza', title: 'ELIZA (chatbot)', added: true, summary: '', consent: 'ELIZA now talks to example.org. Add it?', repo: '', pin: PIN, capabilities: { connect: ['wss://example.org'] } },
     { id: 'mqttx', title: 'MQTT explorer', added: false, summary: 'Watch the broker.', consent: 'This downloads MQTTX. Add it?', repo: 'https://github.com/emqx/MQTTX', pin: 'b'.repeat(40),
       capabilities: { connect: ['ws://{box}/mqtt'], storage: true } }],
 };
@@ -41,6 +47,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(300);
   const d = w.document;
   const added = d.getElementById('local-added');
+  const rows = [...d.querySelectorAll('#local-added .library-source')];
+  const eliza = rows.find((r) => /ELIZA/.test(r.textContent));
+  check('a held catalogue version: said, with what changed', /newer version that changes what you agreed to: now connects to wss:\/\/example\.org/.test(eliza.textContent), eliza.textContent);
+  const acceptBtn = [...eliza.querySelectorAll('button')].find((b) => b.textContent === 'Accept the new version');
+  check('…and an Accept button', !!acceptBtn);
+  check('an updated one: what changed', /Updated from the catalogue on .*: source, tile\./.test(rows.find((r) => /Notebook/.test(r.textContent)).textContent));
+  check('one gone from the catalogue: said', /No longer in the catalogue/.test(rows.find((r) => /Old thing/.test(r.textContent)).textContent));
+  acceptBtn.click();
+  await sleep(100);
+  check('Accept asks the new consent text, with the changes', asked.some((t) => t.startsWith('ELIZA now talks to example.org.') && /What changed: now connects to wss:\/\/example\.org/.test(t)), asked.join(' | '));
+  const acc = posted.find(([u, b]) => u === '/admin/local-addons' && b.action === 'accept');
+  check('Accept posts it, agreed', acc && acc[1].id === 'eliza' && acc[1].agree === true, JSON.stringify(acc));
+  asked.length = 0;
   check('added: ELIZA, installed at the pinned commit', /ELIZA/.test(added.textContent) && /Installed: 4ac38e6 \(the pinned commit\)/.test(added.textContent), added.textContent);
   check('added: its access switch in its row', added.querySelectorAll('.access-toggle button').length === 3);
   check('added: Open and Remove', [...added.querySelectorAll('a, button')].some((b) => b.textContent === 'Open') && [...added.querySelectorAll('button')].some((b) => b.textContent === 'Remove'));

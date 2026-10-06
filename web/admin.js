@@ -1874,8 +1874,11 @@ function renderLocal(data) {
       el('span', { className: 'setting-desc', textContent: a.summary }),
       el('span', { className: `setting-desc${st.error && !(inst && inst.commit) ? ' bad' : ''}`, textContent: state }),
       el('span', { className: 'setting-desc', textContent: capsText(a.capabilities) + (a.from_catalogue ? '' : ' Added by pasting its manifest.') }),
+      catalogueNote(a),
       el('span', { className: 'library-buttons' },
         inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
+        a.catalogue && a.catalogue.status === 'held'
+          ? el('button', { type: 'button', textContent: 'Accept the new version', onclick: () => localAccept(a, data) }) : null,
         el('button', { type: 'button', textContent: 'Remove', onclick: () => localRemove(a) })),
       note(a.id)));
   }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
@@ -1891,6 +1894,28 @@ function renderLocal(data) {
   loc.errors.replaceChildren(...Object.values(data.errors || {}).map((why) => el('p', { className: 'setting-desc bad', textContent: `Left out: ${why}` })));
   clearTimeout(locPoll);
   if (fetching) locPoll = setTimeout(() => { loadLocal(); loadAccess(); }, 1500);
+}
+
+// Where an added add-on stands against the catalogue (server.py catalogue_sync).
+function catalogueNote(a) {
+  const c = a.catalogue;
+  if (!c) return null;
+  const day = new Date(c.at * 1000).toLocaleDateString();
+  if (c.status === 'updated') {
+    return el('span', { className: 'setting-desc', textContent: `Updated from the catalogue on ${day}: ${(c.changed || []).join(', ') || 'small changes'}.` });
+  }
+  if (c.status === 'held') {
+    return el('span', { className: 'setting-desc bad', textContent: `The catalogue has a newer version that changes what you agreed to: ${(c.held || []).join('; ')}. `
+      + 'The version you agreed to keeps running until you accept the new one.' });
+  }
+  if (c.status === 'gone') return el('span', { className: 'setting-desc', textContent: "No longer in the catalogue: it keeps working, but won't be updated from it." });
+  return null;
+}
+
+function localAccept(a, data) {
+  const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
+  if (!confirm(`${c.consent || ''}\n\nWhat changed: ${((a.catalogue || {}).held || []).join('; ')}.\n\n${capsText(c.capabilities)}`)) return;
+  localPost({ action: 'accept', id: a.id, agree: true }, a.id, `${a.title}: the new version accepted, fetching it…`);
 }
 
 async function loadLocal() {
