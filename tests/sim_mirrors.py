@@ -238,5 +238,42 @@ check("every stage's outcome is read, a dict's too", out == ["up to date", "erro
 with mock.patch.object(librarian, "update", return_value={"mirrors": {"fw": "error: refused"}, "books": "up to date"}):
     rc_hand, rc_timer = librarian.main(["update"]), librarian.main(["update", "--scheduled"])
 check("main(): a mirror's error fails a run by hand, never the timer's unit", rc_hand == 1 and rc_timer == 0, (rc_hand, rc_timer))
+# Monitoring the librarian's runs (2026-10-06: every scheduled run failed for hours unseen).
+import time as _t  # noqa: E402
+def crash():
+    raise AttributeError("'dict' object has no attribute 'startswith'")
+try:
+    librarian.record_run(crash, True)
+except AttributeError:
+    pass
+rec = json.loads(librarian.LAST_RUN.read_text())
+check("a crashed run is recorded, with where", rec["last_scheduled"]["ok"] is False and "AttributeError" in rec["last_scheduled"]["error"]
+      and "crash" in rec["last_scheduled"]["where"] and rec["last_scheduled"]["finished"], rec)
+from irate_box.root import hub_control  # noqa: E402
+f = hub_control.scheduled_findings()
+check("the updates doctor: a crashed run is a problem, saying where", any(x["status"] == "problem" and "crashed" in x["detail"] and "crash (" in x["detail"] for x in f), f)
+check("  and that the hub's own update has not been reached", any("not reached the hub's own update stage yet" in x["detail"] for x in f), f)
+librarian.record_run(lambda: {"books": "up to date", "mirrors": {"fw": "error: refused"}, "hub": "up to date"}, True)
+f = hub_control.scheduled_findings()
+check("a run that reaches the hub's update: ok, the sources' errors said", len(f) == 1 and f[0]["status"] == "ok" and "fw: error: refused" in f[0]["detail"], f)
+check("  later than 3 h without reaching it: a problem", any(x["status"] == "problem" for x in hub_control.scheduled_findings(now=_t.time() + 4 * 3600)))
+librarian.record_run(lambda: {"books": "up to date"}, False)
+check("a run by hand doesn't count as the timer's", json.loads(librarian.LAST_RUN.read_text())["last_scheduled"]["stages"] == ["books", "hub", "mirrors"])
+from irate_box.root import health  # noqa: E402
+props = {"irate-box-librarian.timer": {"LoadState": "loaded", "ActiveState": "active", "Result": "success", "UnitFileState": "enabled"},
+         "irate-box-librarian.service": {"LoadState": "loaded", "ActiveState": "inactive", "Result": "exit-code"}}
+with mock.patch.object(health, "expected_units", return_value=[("irate-box-librarian.timer", "the librarian's schedule")]), \
+     mock.patch.object(health, "unit_props", side_effect=lambda u: props.get(u, {"LoadState": "loaded", "ActiveState": "active", "Result": "success"})), \
+     mock.patch.object(health, "journal_tail", return_value=["AttributeError: x"]), mock.patch.object(health, "run", return_value=mock.Mock(stdout="", returncode=0)):
+    found = health.check_units()
+svc = [x for x in found if x["id"] == "unit:irate-box-librarian.service"]
+check("the services doctor: a timer running, its service's last run failed: a problem, with its log", svc and svc[0]["status"] == "problem"
+      and "exit-code" in svc[0]["detail"] and "AttributeError" in svc[0]["detail"], found)
+props["irate-box-librarian.service"]["Result"] = "success"
+with mock.patch.object(health, "expected_units", return_value=[("irate-box-librarian.timer", "the librarian's schedule")]), \
+     mock.patch.object(health, "unit_props", side_effect=lambda u: props.get(u, {"LoadState": "loaded", "ActiveState": "active", "Result": "success"})), \
+     mock.patch.object(health, "run", return_value=mock.Mock(stdout="", returncode=0)):
+    found = health.check_units()
+check("  once it succeeds, nothing said about it", not [x for x in found if x["id"] == "unit:irate-box-librarian.service"])
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

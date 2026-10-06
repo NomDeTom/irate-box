@@ -1279,8 +1279,40 @@ def doctor():
                                      "Fix the cause, then check for updates again."))
     except (OSError, ValueError):
         pass
+    findings += scheduled_findings()
     findings += kits_findings()
     return findings
+
+
+def scheduled_findings(now=None):
+    """Whether the timer's runs actually reach the hub's own update (library/last-run.json, kept
+    by the librarian): a check that the box *can* update says nothing about whether it *does*."""
+    now = now or time.time()
+    try:
+        rec = json.loads((STATE / "library" / "last-run.json").read_text())
+    except (OSError, ValueError):
+        return [_finding("Scheduled updates", "warn", "no run of the librarian's timer recorded yet",
+                         "It runs hourly; if this stays, see: journalctl -u irate-box-librarian -n 80")]
+    out = []
+    last = rec.get("last_scheduled") or {}
+    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("started") or 0))
+    if last and last.get("finished") is None:
+        pass  # running now
+    elif last and last.get("error"):
+        out.append(_finding("Scheduled updates", "problem", f"the timer's last run ({when}) crashed: {last['error']}"
+                            + (f" in {last['where']}" if last.get("where") else ""),
+                            "journalctl -u irate-box-librarian -n 80 has the whole of it; until it is fixed, nothing "
+                            "after the crash runs (the books', the toolkits', the hub's own update)."))
+    hub_at = rec.get("hub_stage_at")
+    if not hub_at or now - hub_at > 3 * 3600:
+        out.append(_finding("Scheduled updates", "problem",
+                            "the timer's runs have not reached the hub's own update stage "
+                            + (f"since {time.strftime('%Y-%m-%d %H:%M', time.localtime(hub_at))}" if hub_at else "yet"),
+                            "See the librarian's last runs: journalctl -u irate-box-librarian -n 80."))
+    if not out:
+        out.append(_finding("Scheduled updates", "ok", f"the timer's last run ({when}) finished and reached the hub's update"
+                            + ("" if last.get("ok") else f"; some sources had errors: {'; '.join(last.get('errors', [])[:3])}")))
+    return out
 
 
 def kits_findings(now=None):

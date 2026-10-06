@@ -212,6 +212,21 @@ def check_units():
                           f"systemctl enable {unit}", [_act(f"unit-enable:{unit}", "Start it at boot")]))
         else:
             out.append(_f(f"unit:{unit}", title, "ok", f"Running{', restarted ' + p['NRestarts'] + ' times' if p.get('NRestarts', '0') not in ('0', '') else ''}."))
+    # A timer's service: the timer stays "running" while every run of it fails, and a one-shot
+    # service's failure shows only in its result (the librarian's did, unseen, 2026-10-06).
+    for unit, why in expected_units():
+        if not unit.endswith(".timer"):
+            continue
+        svc = unit[:-len(".timer")] + ".service"
+        p = unit_props(svc)
+        result = p.get("Result")
+        if p.get("LoadState") == "not-found" or result in ("success", None, ""):
+            continue
+        tail = journal_tail(svc, 8)
+        out.append(_f(f"unit:{svc}", f"{svc} (each run of {why})", "problem",
+                      f"Its last run failed ({result})." + (f" Last lines of its log: {' | '.join(tail)}" if tail else ""),
+                      f"See why: journalctl -u {svc} -n 80. The timer starts it again within the hour; "
+                      f"systemctl reset-failed {svc} clears the mark once fixed.", [_act(f"unit-restart:{svc}", "Run it now")]))
     # The root helper: a request nobody has answered means /admin buttons go nowhere.
     reqs = sorted((CONTROL / "requests").glob("*.json"), key=lambda q: q.stat().st_mtime) if (CONTROL / "requests").is_dir() else []
     me = os.environ.get("HUB_CONTROL_RUNNING") == "1"
