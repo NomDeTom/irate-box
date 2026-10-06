@@ -97,5 +97,9 @@ for arch in ("x86_64", "aarch64", "armv7"):
     check(f"F30: SilverBullet's {arch} digest is pinned, and the updater can read it", bool(v and re.fullmatch(r"[0-9a-f]{64}", v)), v)
 check("F30: install.sh checks the zip before unpacking it", 'sb_sum_ok "$tmp/sb.zip" "$SB_ARCH" || die' in install)
 
+# The update's nginx check copes with a port placeholder it does not know yet.
+hc_src = (REPO / "irate_box/root/hub_control.py").read_text()
+check("the nginx check fills an unknown @…_PORT@ with a spare port", 're.sub(r"@[A-Z_]+_PORT@"' in hc_src)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
