@@ -1891,6 +1891,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, snap)
             return
 
+        if path == "/admin/ci/run":
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            try:
+                offset = int(query.get("from", "0"))
+            except ValueError:
+                offset = 0
+            view = ci.run_view(unquote(query.get("run", "")), offset)
+            self.send_json(*((200, view) if view else (404, {"error": "no such build"})))
+            return
+
         if path == "/admin/ci/file":
             # A build's log (shown as text) or one of its artifacts (a download, never shown).
             query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
@@ -2116,6 +2126,33 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/ci":
+            # Build now, keep or delete a run, how many runs to keep (ci.py).
+            action = payload.get("action")
+            try:
+                if action == "build":
+                    name = str(payload.get("repo", ""))
+                    if not gitrepos.NAME_RE.match(name):
+                        raise ValueError("repo: a private repository's name")
+                    branch = payload.get("branch")
+                    out = ci.queue_build(gitrepos.ROOT / "private" / f"{name}.git", str(branch) if branch else None)
+                    self.send_json(202, dict(out, queued=True, snapshot=ci.snapshot()))
+                elif action in ("keep", "unkeep", "delete"):
+                    ci.queue_run_change(str(payload.get("run", "")), action)
+                    self.send_json(202, {"queued": True})
+                elif action == "settings":
+                    keep = payload.get("keep_runs")
+                    if type(keep) is not int or not 1 <= keep <= 50:
+                        raise ValueError("keep_runs: 1 to 50")
+                    ci.SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+                    ci.SETTINGS.write_text(json.dumps({"keep_runs": keep}))
+                    self.send_json(200, ci.snapshot())
+                else:
+                    raise ValueError("action must be build, keep, unkeep, delete or settings")
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
             return
 
         if path == "/admin/kits":

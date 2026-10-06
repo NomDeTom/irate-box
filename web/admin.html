@@ -557,7 +557,14 @@
         </form>
         <p class="setting-desc" id="ci-cache-status"></p>
         <p class="setting-desc action-note" id="ci-cache-note" role="status" hidden></p>
+        <p class="setting-desc" id="ci-limits"></p>
+        <form id="ci-keep-form" class="library-form inline-form">
+          <label>Runs kept per repository <input name="keep" type="number" min="1" max="50"></label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc" id="ci-offline"></p>
         <div id="ci-runs" class="admin-list"></div>
+        <div id="ci-run-view" class="git-manage" hidden></div>
       </section>
 
       <section class="admin-pane" id="health" aria-labelledby="health-title">

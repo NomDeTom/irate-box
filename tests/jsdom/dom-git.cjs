@@ -35,6 +35,14 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: T,
     status: { outcome: 'up to date', size: 15e6, checked: T, updated: T,
       submodules: { protobufs: { repo: 'meshtastic-firmware--protobufs', url: 'https://github.com/meshtastic/protobufs', kept: ['b'.repeat(40)], size: 1e6 } } } }],
   running: false };
+const ciData = { installed: true, queued: 0, script: '.irate-ci.sh', time_limit: 43200, keep_runs: 5, runs_bytes: 5e6,
+  memory: { max: String(300 * 2 ** 20), high: String(230 * 2 ** 20) }, mirrored: ['https://github.com/meshtastic/firmware', 'https://github.com/meshtastic/protobufs'],
+  pio_deps: true, env: { CI: '1', CI_ARTIFACTS: 'a folder', HOME: 'kept' },
+  templates: { make: { title: 'Run make', script: '#!/bin/bash\nmake\n' } },
+  runs: [{ run: 'fw-ci/3', repo: 'fw-ci', branch: 'main', commit: 'a'.repeat(40), state: 'failed', started: T, finished: T + 60, duration: 60 },
+    { run: 'fw-ci/2', repo: 'fw-ci', branch: 'main', commit: 'b'.repeat(40), state: 'passed', started: T - 99, finished: T - 50, duration: 49, keep: true }] };
+const runView = { run: 'fw-ci/3', status: ciData.runs[0], log: '== start\nbuilding\n', offset: 0, next: 19, size: 19, steps: ['start'],
+  artifacts: [{ name: 'fw.bin', size: 4321 }] };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -48,9 +56,13 @@ w.fetch = async (u, opts = {}) => {
     posted.push([u, body]);
     // As the hub would: a moved repository is in its new area (its card and drawer follow it).
     if (body.action === 'move') Object.assign(gitData.repos.find((r) => r.name === body.name), { area: body.to, url: `/git-private/${body.name}.git/` });
+    if (u === '/admin/ci') return new Response(JSON.stringify(body.action === 'build' ? { branch: 'main', commit: 'c'.repeat(40), queued: true, snapshot: ciData }
+      : body.action === 'settings' ? ciData : { queued: true }), { status: 202 });
     return new Response(JSON.stringify(u === '/admin/git' ? gitData : { id: 'x' }), { status: 200 });
   }
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
+  if (u === '/admin/ci') return new Response(JSON.stringify(ciData), { status: 200 });
+  if (u.startsWith('/admin/ci/run?')) return new Response(JSON.stringify(runView), { status: 200 });
   return new Response('{}', { status: 404 });
 };
 w.confirm = () => true;
@@ -64,6 +76,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
   const cards = () => [...d.querySelectorAll('#git-grid > .git-card:not(.git-new)')];
   const card = (name) => cards().find((c) => t(c.querySelector('h4')) === `${name}.git`);
+  const button = (root, label) => root && [...root.querySelectorAll('button')].find((b) => t(b) === label);
   const chip = (label) => [...d.querySelectorAll('#git-chips-kind .chip, #git-chips-area .chip')].find((b) => t(b).replace(/ \d+$/, '') === label);
 
   check('a New card first, then a card per repository', d.querySelector('#git-grid > :first-child').classList.contains('git-new') && cards().length === 5, cards().length);
@@ -161,6 +174,36 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   check('creating asks the hub', posted.some(([, b]) => b.action === 'create' && b.name === 'notes' && b.area === 'private'));
 
+  // Builds (step 33): the limits, what is offline, a run's own view, Build now and the templates.
+  await wait(100);
+  check('builds: the limits said', /Each build: up to 12 hours, memory capped at 300\.0 MB, the lowest CPU priority\. The runs use 4\.8 MB; the newest 5 per repository are kept/.test(t(d.getElementById('ci-limits'))),
+    t(d.getElementById('ci-limits')));
+  check('builds: what comes from the box with no internet', /2 URLs come from this box's mirrors \(github\.com\/meshtastic\/firmware/.test(t(d.getElementById('ci-offline')))
+    && /PlatformIO's packages come from the library's cache/.test(t(d.getElementById('ci-offline'))), t(d.getElementById('ci-offline')));
+  check('builds: a kept run says so', /· kept/.test(t(d.getElementById('ci-runs'))));
+  [...d.querySelectorAll('#ci-runs button')].find((b) => t(b) === 'View').click();
+  await wait(100);
+  const rv = d.getElementById('ci-run-view');
+  check('a run\'s view: its steps, its log, its artifacts with sizes, Keep and Delete', !rv.hidden && /start/.test(t(rv.querySelector('.ci-steps')))
+    && rv.querySelector('pre.ci-log').textContent === '== start\nbuilding\n' && /fw\.bin \(0\.1 MB\)/.test(t(rv)) && button(rv, 'Keep') && button(rv, 'Delete'), t(rv));
+  w.confirm = () => true;
+  button(rv, 'Delete').click();
+  await wait();
+  check('  Delete asks the hub (the builder does it)', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'delete' && b.run === 'fw-ci/3') && rv.hidden);
+  as.value = 'drawer'; as.dispatchEvent(new w.Event('change'));
+  [...card('fw-ci').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();
+  const dr = d.querySelector('.git-drawer');
+  check('Manage: Build now, and Set up builds with the variables and templates', button(dr, 'Build now') && /Set up builds/.test(t(dr.querySelector('details.ci-setup')))
+    && /CI_ARTIFACTS/.test(t(dr.querySelector('.ci-env'))) && /Run make/.test(t(dr.querySelector('.ci-template'))));
+  button(dr, 'Build now').click();
+  await wait();
+  check('Build now asks the hub, and says what it queued', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'build' && b.repo === 'fw-ci')
+    && /Queued: fw-ci\.git main at cccccc/.test(t(d.getElementById('git-note'))), t(d.getElementById('git-note')));
+  const kf = d.getElementById('ci-keep-form');
+  kf.elements.keep.value = '8';
+  kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  await wait();
+  check('runs kept per repository: a setting', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'settings' && b.keep_runs === 8));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('the grid as Kiwix\'s: minmax(18rem, 1fr)', /\.card-grid \{[^}]*minmax\(18rem, 1fr\)/.test(css));
   check('a drawer spans the grid', /\.git-drawer \{ grid-column: 1 \/ -1; \}/.test(css));
