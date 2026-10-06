@@ -70,7 +70,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
   {"id": ..., "action": "kit-fetch", "kit": "<a shipped toolkit>", "budget_mb": 500}
   {"id": ..., "action": "kit-install", "kit": ..., "hours": 24|null}
-  {"id": ..., "action": "kit-remove" | "kit-keep", "kit": ...[, "hours": ...]}   {"action": "kit-expire"}
+  {"id": ..., "action": "kit-remove" | "kit-keep" | "kit-rollback", "kit": ...[, "hours": ...]}   {"action": "kit-expire"}
       Toolkits (kits.py): fetch a shipped kit's packages into the local repository (online),
       install it from there with no internet (removed again after "hours"; null: never),
       remove what it added, change when it goes, or remove every kit whose time is up. A
@@ -1761,7 +1761,7 @@ ACTIONS = {"service": service, "password": password,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
-           "kit-keep": _kit_req(kits.set_removal), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
+           "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
 
 
 def answer(rid, ok, message):

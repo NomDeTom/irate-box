@@ -150,11 +150,11 @@ def action(payload):
         if not _hours_ok(hours):
             raise LibrarianError(f"hours: 1 to {MAX_HOURS}, or null for never")
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid, "hours": hours})
-    if what == "remove":
-        return librarian._queue_root({"action": "kit-remove", "kit": kid})
+    if what in ("remove", "rollback"):
+        return librarian._queue_root({"action": f"kit-{what}", "kit": kid})
     if what == "status":
         return librarian._queue_root({"action": "kit-status"})
-    raise LibrarianError("action: settings, fetch, install, keep, remove or status")
+    raise LibrarianError("action: settings, fetch, install, keep, remove, rollback or status")
 
 
 def step(policy, now=None, log=print):

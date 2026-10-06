@@ -1071,3 +1071,10 @@ button.danger { border-color: #e5484d; color: #e5484d; }
   .card-grid { grid-template-columns: 1fr; }
   .git-manage-as { margin-left: 0; }
 }
+
+/* Library → Toolkits: the kits as cards (the Git page's), the consent step, the details. */
+.kit-consent { border: 1px solid var(--warn); border-radius: var(--radius); padding: 0.5rem 0.7rem; font-size: 0.88rem; }
+.kit-consent p { margin: 0.2rem 0; }
+.kit-details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+.kit-notes { margin: 0.3rem 0; padding-left: 1.2rem; font-size: 0.85rem; color: var(--muted); }
+.inline-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; }

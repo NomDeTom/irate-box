@@ -82,6 +82,9 @@ def fake(cmd, timeout=0, check=True):
         if verb == "install":
             assert opt(cmd, "Dir::Etc::sourceparts") == "-" and opt(cmd, "Acquire::http::Proxy") == kits.DEAD_PROXY, cmd
             policy_seen.append(Path(os.environ["HUB_POLICY_RC"]).exists())
+            for pin in [x for x in pkgs if "=" in x]:
+                versions[pin.split("=")[0]] = pin.split("=", 1)[1]
+            pkgs = [x.split("=")[0] for x in pkgs]
             index = (Path(opt(cmd, "Dir::Etc::sourcelist")).read_text().split("file:")[1].split()[0])
             avail = set(re.findall(r"^Package: (\S+)", (Path(index) / "Packages").read_text(), re.M))
             need = closure(pkgs, installed)
@@ -288,6 +291,23 @@ queued.clear()
 check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removing the kits whose time is up")
       and not any(q["action"] == "kit-fetch" for q in queued), queued)
 
+# Roll back (step 28): the previous set becomes current; an installed kit's packages go back.
+s_ = kits.installed_state(); s_.pop("debug", None); kits._write(kits.INSTALLED, s_)
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+cur_gdb = {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"}
+prev_gdb = {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"}
+calls.clear()
+line = kits.rollback("small", log=lambda *a: None)
+check("roll back: current and previous swap", {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == prev_gdb
+      and {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"} == cur_gdb, line)
+check("  an installed kit's packages are put back, offline, downgrades allowed", any("--allow-downgrades" in c and opt(c, "Dir::Etc::sourceparts") == "-" for c in calls)
+      or "small" not in kits.installed_state(), calls[-3:])
+kits.rollback("small", log=lambda *a: None)
+check("rolling back twice is back where it was", {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == cur_gdb)
+try:
+    kits.rollback("cap"); check("no previous set: said", False)
+except ValueError as exc:
+    check("no previous set: said", "no previous version" in str(exc))
 # Step 27, the security kit: debian-cis as a mirror, debsecan's data as a feed, the cached packages
 # in dpkg's status format, and how fresh they are.
 sec = toolkits.definitions()["security"]
