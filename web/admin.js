@@ -2790,6 +2790,49 @@ kitsEl.add.addEventListener('submit', (e) => {
 });
 kitsEl.addCancel.addEventListener('click', resetKitForm);
 
+// Kits by USB stick (usbstick.py, kits.py): the root helper's last stick scan, Import for each kit
+// found for this box's architecture, and a cached kit to copy onto each stick.
+let kitsUsbWaiting = null;
+async function loadKitsUsb() {
+  let data;
+  try { data = await getJSON('/admin/usb'); } catch (_) { return; }
+  const note = noteEl('kits-usb-note');
+  if (kitsUsbWaiting) {
+    const done = (data.results || []).find((r) => r.id === kitsUsbWaiting);
+    if (done) { kitsUsbWaiting = null; say(done.message, done.ok, note); loadKits(); }
+  }
+  const p = data.progress;
+  const busy = !!kitsUsbWaiting || !!p || data.pending > 0;
+  document.getElementById('kits-usb-scan').disabled = busy;
+  const st = (kitsData || {}).status || {};
+  const cached = Object.entries(st.kits || {}).filter(([, v]) => v.cached);
+  const here = (cached[0] && cached[0][1].cached.arch) || '';
+  const devs = (data.scan && data.scan.devices) || [];
+  noteEl('kits-usb').replaceChildren(...(data.scan && !devs.length ? [el('p', { className: 'setting-desc', textContent: 'No USB stick found. Plug one into the box and look again.' })] : []),
+    ...devs.map((d) => {
+      const pick = el('select', { disabled: busy || !cached.length }, ...cached.map(([kid]) => el('option', { value: kid, textContent: ((kitsData.kits || {})[kid] || {}).title || kid })));
+      return el('div', { className: 'setting library-source' }, el('span', {},
+        el('span', { className: 'setting-name', textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }),
+        d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
+        ...((d.kits || []).length ? d.kits.map((k) => el('span', { className: 'usb-book' },
+          el('span', { className: 'setting-desc', textContent: `${k.title}: ${k.packages} packages, ${size(k.bytes)}, ${k.arch}` +
+            (here && k.arch !== here ? ` (for another kind of board: this one is ${here})` : '') }),
+          !here || k.arch === here ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
+            onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the stick? Every package is checked against Debian's signatures first.`) }) : null))
+          : [el('span', { className: 'setting-desc', textContent: 'No toolkits on this stick.' })]),
+        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', textContent: 'Copy to this stick', disabled: busy,
+          onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
+    }),
+    p ? el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` }) : null);
+  if (busy) setTimeout(loadKitsUsb, 1500);
+}
+async function kitsUsbAsk(body, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try { kitsUsbWaiting = (await postJSON('/admin/usb', body)).id; say('Working…', true, noteEl('kits-usb-note')); loadKitsUsb(); }
+  catch (err) { say(err.message, false, noteEl('kits-usb-note')); }
+}
+document.getElementById('kits-usb-scan').addEventListener('click', () => kitsUsbAsk({ action: 'scan' }));
+
 async function loadKits() {
   try {
     const data = await getJSON('/admin/kits');
@@ -2806,5 +2849,5 @@ document.getElementById('kits-refresh-all').addEventListener('click', async () =
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
   say('Asked for each kit: the root helper fetches them one after another (minutes each).', true, kitsEl.note);
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#toolkits') loadKits(); });
-if (location.hash === '#toolkits') loadKits();
+window.addEventListener('hashchange', () => { if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); } });
+if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); }

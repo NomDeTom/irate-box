@@ -2141,8 +2141,10 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "export" and USB_DEVICE_RE.match(device) and isinstance(payload.get("book"), str):
                 self.send_json(202, {"id": control_request({"action": "usb-export", "device": device,
                                                             "book": payload["book"][:64]})})
+            elif action in ("kit-import", "kit-export") and USB_DEVICE_RE.match(device) and isinstance(payload.get("kit"), str):
+                self.send_json(202, {"id": control_request({"action": f"usb-{action}", "device": device, "kit": payload["kit"][:32]})})
             else:
-                self.send_json(400, {"error": "action must be scan, import (device, file) or export (device, book)"})
+                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export (device, kit)"})
             return
 
         if path == "/admin/kit":

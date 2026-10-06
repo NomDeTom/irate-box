@@ -376,6 +376,15 @@
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
         <div class="card-grid" id="kits-grid"></div>
+        <h3>By USB stick</h3>
+        <p class="setting-desc">
+          Carry kits to a box that never goes online: copy a cached kit onto a stick here, then import
+          it there. The stick also carries Debian's signed indexes for its packages, and an import
+          checks every package against them with the box's own keys before anything is kept.
+        </p>
+        <p class="library-buttons"><button type="button" id="kits-usb-scan">Look for USB sticks</button></p>
+        <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
+        <div id="kits-usb"></div>
         <h3 id="kits-form-title">Add a toolkit of your own</h3>
         <p class="setting-desc">
           Any Debian packages this box's package lists know, kept, refreshed and removed like the

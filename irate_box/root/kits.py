@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -465,6 +466,197 @@ def rollback(kit_id, log=print):
         return f"{kit['title']}: back to the set fetched {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}" + \
             (f"; {len(pins)} installed packages put back" if pins else "")
     return f"{kit['title']}: the cache is back to the set fetched {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}"
+
+
+# --- by USB stick (step 32, toolkits-plan §4.3) ---------------------------------------------------
+# A stick's .debs are trusted only as far as Debian's own signatures vouch for them, as apt does
+# online: the export carries the signed indexes (InRelease, and each Packages file that lists the
+# kit's packages) from /var/lib/apt/lists; the import checks each InRelease's signature with this
+# box's keys (gpgv), each Packages file against its InRelease, and each .deb against its Packages
+# file, before anything enters the pool. Layout on the stick:
+#   irate-box/kits/<arch>/<kit>/manifest.json, debs/*.deb, lists/*_InRelease, lists/*_Packages
+
+APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
+KEYRING_DIRS = [Path(p) for p in os.environ.get("HUB_APT_KEYRINGS", "/usr/share/keyrings:/etc/apt/trusted.gpg.d:/etc/apt/keyrings").split(":")]
+LIST_RE = re.compile(r"^(?P<release>.+_dists_[^_]+)_(?P<path>.+_Packages)$")
+
+
+def _packages_hashes(path):
+    """{deb file name: sha256} from an apt Packages file."""
+    out, name, sha = {}, None, None
+    with open(path, errors="replace") as fh:
+        for line in fh:
+            if line.startswith("Filename: "):
+                name = line[10:].strip().rsplit("/", 1)[-1]
+            elif line.startswith("SHA256: "):
+                sha = line[8:].strip()
+            elif not line.strip():
+                if name and sha:
+                    out[name] = sha
+                name = sha = None
+    if name and sha:
+        out[name] = sha
+    return out
+
+
+def export_usb(kit_id, dest, report=None):
+    """The kit's current set onto a stick folder (`dest`, its irate-box/kits/), with the signed
+    indexes that vouch for it. Returns where it went."""
+    kit = _kit(kit_id)
+    man = manifest(kit_id)
+    if not man:
+        raise ValueError(f"{kit['title']} is not cached: refresh it while the box has internet first")
+    if verify(kit_id):
+        raise ValueError("the cache fails its check, so it was not copied: refresh it first")
+    want = {p["file"]: p["sha256"] for p in man["packages"]}
+    lists, vouched = [], set()
+    for pk in sorted(APT_LISTS.glob("*_Packages")):
+        m = LIST_RE.match(pk.name)
+        if not m or not (APT_LISTS / f"{m.group('release')}_InRelease").exists():
+            continue
+        # By hash alone: apt saves a .deb with its version's epoch in the name (valgrind_1%3a3.24…),
+        # the index lists it without; a SHA-256 is the whole of the check either way.
+        hashes = set(_packages_hashes(pk).values())
+        hit = {f for f, h in want.items() if h in hashes}
+        if hit:
+            lists += [pk, APT_LISTS / f"{m.group('release')}_InRelease"]
+            vouched |= hit
+    unvouched = sorted(set(want) - vouched)
+    if unvouched:
+        raise ValueError("these are in no signed index on this box, so another box could not check them: "
+                         + ", ".join(unvouched[:5]) + " (refresh the package lists, then the kit, while online)")
+    folder = Path(dest) / man.get("arch", arch()) / kit_id
+    shutil.rmtree(folder, ignore_errors=True)
+    (folder / "debs").mkdir(parents=True)
+    (folder / "lists").mkdir()
+    files = [(POOL / f, folder / "debs" / f) for f in sorted(want)] + [(l, folder / "lists" / l.name) for l in sorted(set(lists))]
+    total = sum(src.stat().st_size for src, _ in files)
+    if shutil.disk_usage(folder).free < total:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise ValueError(f"not enough room on the stick: {total >> 20} MB needed")
+    done = 0
+    for src, dst in files:
+        shutil.copyfile(src, dst, follow_symlinks=False)
+        done += src.stat().st_size
+        if report:
+            report(done, total)
+    _write(folder / "manifest.json", dict(man, kit=kit_id, title=kit["title"], exported=time.time()))
+    return f"{kit['title']}: {len(want)} packages and {len(set(lists)) // 2} signed indexes, {total >> 20} MB"
+
+
+def stick_kits(root):
+    """Kits on a stick's irate-box/kits/, for this box's architecture or not."""
+    out = []
+    base = Path(root) / "irate-box" / "kits"
+    for m in sorted(base.glob("*/*/manifest.json")) if base.is_dir() else []:
+        if m.is_symlink():
+            continue
+        man = _read(m, None)
+        if isinstance(man, dict) and ID_RE.match(m.parent.name) and isinstance(man.get("packages"), list):
+            out.append({"kit": m.parent.name, "arch": m.parent.parent.name, "title": str(man.get("title", m.parent.name))[:60],
+                        "packages": len(man["packages"]), "bytes": int(man.get("bytes") or 0), "fetched": man.get("fetched")})
+    return out
+
+
+def _keyrings():
+    rings = []
+    for d in KEYRING_DIRS:
+        for k in sorted(d.glob("*")) if d.is_dir() else []:
+            if k.suffix in (".gpg", ".asc", ".pgp") and "removed" not in k.name and k.is_file():
+                rings += ["--keyring", str(k)]
+    return rings
+
+
+def _verified_release(inrelease, work):
+    """The signed content of an InRelease file, checked with this box's keys; ValueError if not."""
+    out = work / f"{inrelease.name}.verified"
+    r = run(["gpgv", *_keyrings(), "--output", str(out), str(inrelease)], check=False, timeout=120)
+    if r.returncode != 0 or not out.exists():
+        raise ValueError(f"{inrelease.name}: its signature does not check with this box's keys")
+    return out.read_text(errors="replace")
+
+
+def _sha256_section(release_text):
+    """{path: sha256} from a Release file's SHA256 section."""
+    out, inside = {}, False
+    for line in release_text.splitlines():
+        if line.startswith("SHA256:"):
+            inside = True
+            continue
+        if inside:
+            if not line.startswith(" "):
+                break
+            parts = line.split()
+            if len(parts) == 3:
+                out[parts[2]] = parts[0]
+    return out
+
+
+def import_usb(src_root, kit_id, budget_mb=500, report=None):
+    """A kit from a stick (`src_root` its irate-box/kits/) into the pool, every .deb checked against
+    Debian's signatures first. The kit's current set becomes previous, as after a fetch."""
+    kit = _kit(kit_id)
+    here = arch()
+    folder = Path(src_root) / here / kit_id
+    if not (folder / "manifest.json").is_file():
+        raise ValueError(f"no {kit_id} kit for this box's architecture ({here}) on the stick")
+    man = _read(folder / "manifest.json", None)
+    if not isinstance(man, dict) or not isinstance(man.get("packages"), list):
+        raise ValueError("the kit's manifest on the stick is unreadable")
+    work = Path(tempfile.mkdtemp(prefix="kit-usb-"))
+    try:
+        vouch = set()
+        for pk in sorted((folder / "lists").glob("*_Packages")):
+            m = LIST_RE.match(pk.name)
+            rel = folder / "lists" / f"{m.group('release')}_InRelease" if m else None
+            if not rel or not rel.is_file() or pk.is_symlink() or rel.is_symlink():
+                continue
+            listed = _sha256_section(_verified_release(rel, work))
+            path = m.group("path").replace("_", "/")
+            if listed.get(path) != sha256(pk):
+                raise ValueError(f"{pk.name} is not the index its signed release lists")
+            vouch |= set(_packages_hashes(pk).values())
+        pkgs = []
+        for p in man["packages"]:
+            name = str(p.get("file", ""))
+            deb = folder / "debs" / name
+            if not DEB_RE.match(name) or deb.is_symlink() or not deb.is_file():
+                raise ValueError(f"{name or 'a package'} is missing from the stick")
+            h = sha256(deb)
+            if h not in vouch:
+                raise ValueError(f"{name}: not vouched for by a signed index on the stick, so nothing was imported")
+            pkgs.append({"name": str(p["name"]), "version": str(p["version"]), "arch": str(p.get("arch", "")), "source": str(p.get("source", "")),
+                         "file": name, "size": deb.stat().st_size, "sha256": h})
+        total = sum(q["size"] for q in pkgs) + pool_bytes()
+        if total > budget_mb << 20:
+            raise ValueError(f"the toolkits' cache would be {total >> 20} MB, over its {budget_mb} MB budget")
+        for d in (ROOT, POOL, MANIFESTS):
+            d.mkdir(parents=True, exist_ok=True)
+        done = 0
+        for q in pkgs:
+            dest = POOL / q["file"]
+            if not (dest.exists() and sha256(dest) == q["sha256"]):
+                tmp = POOL / f".{q['file']}.usb"
+                shutil.copyfile(folder / "debs" / q["file"], tmp, follow_symlinks=False)
+                if sha256(tmp) != q["sha256"]:
+                    tmp.unlink()
+                    raise ValueError(f"{q['file']} changed while it was copied: the stick may be failing")
+                os.chmod(tmp, 0o644)
+                os.replace(tmp, dest)
+            done += q["size"]
+            if report:
+                report(done, total)
+        cur = manifest(kit_id)
+        if cur and sorted(x["sha256"] for x in cur["packages"]) != sorted(q["sha256"] for q in pkgs):
+            _write(MANIFESTS / f"{kit_id}.previous.json", cur)
+        _write(MANIFESTS / f"{kit_id}.json", {"id": kit_id, "fetched": man.get("fetched") or time.time(), "packages": pkgs,
+                                              "on_box": man.get("on_box", []), "left_out": man.get("left_out", []), "arch": here,
+                                              "bytes": sum(q["size"] for q in pkgs), "from_usb": time.time()})
+        prune()
+        write_index()
+        return f"{kit['title']}: {len(pkgs)} packages imported, each checked against Debian's signed indexes"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def expire(now=None):

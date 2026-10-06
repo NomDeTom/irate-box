@@ -37,6 +37,7 @@ run sim_git_levels.py
 run origin_guard.py
 run sim_mirrors.py
 run sim_toolkits.py
+run sim_kits_usb.py
 run sim_secdoctor_debsecan.py
 run sim_deepaudit.py
 run sim_secdoctor_joint.py
