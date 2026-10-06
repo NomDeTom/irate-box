@@ -12,6 +12,11 @@ for d in ("library", "control", "apps.d", "addons"):
 os.environ["HUB_STATE_DIR"] = str(T)
 os.environ["HUB_ETC_DIR"] = str(T)
 REPO = Path(__file__).resolve().parents[1]
+# A catalogue of its own, which the test changes as a hub update would (step 19).
+CAT = T / "catalogue"
+CAT.mkdir()
+(CAT / "eliza.json").write_text((REPO / "addons" / "eliza.json").read_text())
+os.environ["HUB_ADDON_CATALOGUE"] = str(CAT)
 sys.path.insert(0, str(REPO))
 from irate_box.hub import access, manifests as M  # noqa: E402
 fails = 0
@@ -128,6 +133,50 @@ check("remove: manifest, files and consent gone", code == 200 and not (T / "apps
       and not (T / "addons" / "pasted").exists() and "pasted" not in json.loads((T / "addons-consent.json").read_text()), body)
 code, body = S.local_addons_action({"action": "remove", "id": "../control"})
 check("remove refuses anything but an added id", code == 400, body)
+
+# --- catalogue updates reach an added add-on (next-work-plan step 19)
+def sync():
+    S._local_stamp["at"] = None      # as after a hub update: look again
+    S.refresh_manifests()
+    return json.loads((T / "addons-catalogue.json").read_text())
+copy = lambda: json.loads((T / "apps.d" / "eliza.json").read_text())
+entry = json.loads((CAT / "eliza.json").read_text())
+check("before any change: nothing to do", sync().get("eliza", {}).get("status") in (None, "current"))
+entry["tile"]["desc"] = "A description the catalogue changed"
+(CAT / "eliza.json").write_text(json.dumps(entry))
+st = sync()
+check("a tile change reaches the added copy", copy()["tile"]["desc"] == "A description the catalogue changed" and st["eliza"]["status"] == "updated"
+      and st["eliza"]["changed"] == ["tile"], st)
+started.clear()
+entry["source"]["pin"] = "b" * 40
+(CAT / "eliza.json").write_text(json.dumps(entry))
+st = sync()
+check("a moved pin reaches it, and is fetched at once", copy()["source"]["pin"] == "b" * 40 and started == ["update"]
+      and L.APPS["eliza"]["source"]["pin"] == "b" * 40, (copy()["source"], started))
+entry["capabilities"] = {"connect": ["wss://example.org"], "storage": False}
+(CAT / "eliza.json").write_text(json.dumps(entry))
+st = sync()
+check("a new connect waits for the owner; the agreed copy keeps running", st["eliza"]["status"] == "held"
+      and copy()["capabilities"]["connect"] == [] and any("wss://example.org" in h for h in st["eliza"]["held"]), st)
+snap = S.local_addons_snapshot()
+check("/admin is told it is held", next(a for a in snap["added"] if a["id"] == "eliza")["catalogue"]["status"] == "held")
+code, body = S.local_addons_action({"action": "accept", "id": "eliza"})
+check("accept without agreeing is refused", code == 400, body)
+code, body = S.local_addons_action({"action": "accept", "id": "eliza", "agree": True})
+st = sync()
+check("accepted: the new version, a new consent, and current again", code == 200 and copy()["capabilities"]["connect"] == ["wss://example.org"]
+      and st["eliza"]["status"] == "current", (code, body, st.get("eliza")))
+code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id="mine"),
+                                    "understood": "I understand this runs someone else's code on this box's address"})
+(CAT / "mine.json").write_text(json.dumps(dict(good, id="mine", tile=dict(good["tile"], desc="from the catalogue"))))
+st = sync()
+check("a pasted add-on is never touched, even when the catalogue later has one by its name",
+      json.loads((T / "apps.d" / "mine.json").read_text())["tile"]["desc"] == "d" and "mine" not in st, st.get("mine"))
+(CAT / "mine.json").unlink()
+(CAT / "eliza.json").unlink()
+st = sync()
+check("gone from the catalogue: kept, and said", (T / "apps.d" / "eliza.json").exists() and st["eliza"]["status"] == "gone", st)
+(CAT / "eliza.json").write_text(json.dumps(entry))
 
 # --- the add-on server's maps
 loc = [m for m in M.load_local()[0]]

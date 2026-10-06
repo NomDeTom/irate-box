@@ -81,7 +81,7 @@ SHARE = Path(os.environ.get("HUB_SHARE_DIR", "/usr/share/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 LOCAL_D = STATE / "apps.d"            # the local add-ons' manifests (the hub's)
 ADDONS = STATE / "addons"             # and their files, one folder each (the add-on origin)
-CATALOGUE = CHECKOUT / "addons"       # the add-ons the hub offers on /admin
+CATALOGUE = Path(os.environ.get("HUB_ADDON_CATALOGUE", CHECKOUT / "addons"))  # what /admin offers
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_.-]+\.service$")
@@ -309,6 +309,16 @@ def load_all():
     builtin = load()
     extra, _ = load_local(builtin=builtin)
     return sorted(builtin + extra, key=lambda m: (m["order"], m["id"]))
+
+
+# What adding an add-on means agreeing to: changes here wait for the owner (server.py
+# catalogue_sync); anything else in a catalogue entry reaches an added add-on by itself.
+def agreed_part(m):
+    src = m.get("source") or {}
+    return {"consent": (m.get("addon") or {}).get("consent"),
+            "connect": sorted((m.get("capabilities") or {}).get("connect", [])),
+            "storage": bool((m.get("capabilities") or {}).get("storage", False)),
+            "source": {k: src.get(k) for k in ("type", "repo", "workflow")}}
 
 
 def catalogue():

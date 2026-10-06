@@ -515,6 +515,16 @@ def step_web_addons(ctx):
             out.append(F(f"addons-consent-{m['id']}", f"{m['addon']['title']} is on with no consent recorded", "warn",
                          "It is switched on, but /admin has no record of the owner agreeing to it (added by hand?).",
                          "Remove it and add it again from /admin.", ""))
+    try:
+        cat_state = json.loads(_read(STATE / "addons-catalogue.json") or "{}")
+    except ValueError:
+        cat_state = {}
+    for m in local:
+        c = cat_state.get(m["id"]) or {}
+        if c.get("status") == "held":
+            out.append(F(f"addons-held-{m['id']}", f"{m['addon']['title']}: a newer catalogue version waits for you", "warn",
+                         "It changes what you agreed to: " + "; ".join(c.get("held", [])) + ". The agreed version keeps running.",
+                         "Read it, then accept it (or remove the add-on) on /admin, Add-ons, Web add-ons.", ""))
     code, _ = _addon_ask("/admin/settings")
     if code is None:
         out.append(F("addons-origin", "The add-on origin", "warn" if local else "ok",

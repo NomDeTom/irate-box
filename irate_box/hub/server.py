@@ -16,6 +16,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -161,13 +162,22 @@ def refresh_manifests():
     by renaming into place, which changes the folder's time): the tiles, /status, the list
     pages and the librarian's apps follow."""
     global MANIFESTS, SERVICES, MENU_PAGES
-    try:
-        stamp = manifests.LOCAL_D.stat().st_mtime_ns
-    except OSError:
-        stamp = None
+    stamp = []
+    for p in [manifests.LOCAL_D, manifests.CATALOGUE, *sorted(manifests.CATALOGUE.glob("*.json"))]:
+        try:
+            stamp.append(p.stat().st_mtime_ns)
+        except OSError:
+            stamp.append(None)
     if stamp == _local_stamp["at"]:
         return
-    _local_stamp["at"] = stamp
+    # The catalogue may have changed under added add-ons (a hub update): bring them along first.
+    # A copy it rewrites changes the folder again, and the next call finds nothing more to do.
+    try:
+        catalogue_sync()
+    except (OSError, ValueError, manifests.ManifestError) as exc:
+        print(f"catalogue sync: {exc}", file=sys.stderr)
+    _local_stamp["at"] = [p.stat().st_mtime_ns if p.exists() else None
+                          for p in [manifests.LOCAL_D, manifests.CATALOGUE, *sorted(manifests.CATALOGUE.glob("*.json"))]]
     MANIFESTS = manifests.load_all()
     SERVICES = _services()
     MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
@@ -1001,6 +1011,8 @@ def addons_snapshot():
 # files in manifests.ADDONS (the librarian's), served by the web server's add-on origin. The
 # owner's agreement to each is kept in CONSENTS. Switching one on is the access switch (root's).
 CONSENTS = STATE_DIR / "addons-consent.json"
+# Each added add-on against the catalogue (catalogue_sync): {id: {status, at, changed, held}}.
+CATALOGUE_STATE = STATE_DIR / "addons-catalogue.json"
 LOCAL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 
@@ -1020,6 +1032,77 @@ def _write_atomic(path, text):
     os.replace(tmp, path)
 
 
+def _agreed_changes(old, new):
+    """What changed in the part the owner agreed to, in words, for /admin."""
+    a, b = manifests.agreed_part(old), manifests.agreed_part(new)
+    out = []
+    if a["consent"] != b["consent"]:
+        out.append("its consent text")
+    added = [c for c in b["connect"] if c not in a["connect"]]
+    gone = [c for c in a["connect"] if c not in b["connect"]]
+    if added:
+        out.append("now connects to " + ", ".join(added))
+    if gone:
+        out.append("no longer connects to " + ", ".join(gone))
+    if a["storage"] != b["storage"]:
+        out.append("now keeps data in the visitor's browser" if b["storage"] else "no longer keeps data in the browser")
+    if a["source"] != b["source"]:
+        out.append(f"comes from {b['source'].get('repo')} (was {a['source'].get('repo')})")
+    return out
+
+
+def catalogue_sync():
+    """Bring each add-on added from the catalogue up to the catalogue's entry, as far as the owner's
+    consent allows (next-work-plan step 19). The added copy (manifests.LOCAL_D) is what the owner
+    agreed to; a newer catalogue entry with the same agreed part (manifests.agreed_part: consent
+    text, what it connects to, browser storage, where it comes from) replaces it: the tile, its
+    list, a moved pin. One that changes the agreed part waits for the owner to accept it (/admin);
+    the agreed copy keeps running. Pasted add-ons have no catalogue entry and are left alone."""
+    try:
+        cat = manifests.catalogue()
+    except (manifests.ManifestError, OSError, ValueError):
+        return {}
+    consents = _read_consents()
+    try:
+        state = json.loads(CATALOGUE_STATE.read_text())
+    except (OSError, ValueError):
+        state = {}
+    now = int(time.time())
+    kick = []
+    for path in sorted(manifests.LOCAL_D.glob("*.json")) if manifests.LOCAL_D.is_dir() else []:
+        i = path.stem
+        if (consents.get(i) or {}).get("how") != "catalogue":
+            continue
+        try:
+            copy = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        entry = cat.get(i)
+        if entry is None:
+            if (state.get(i) or {}).get("status") != "gone":
+                state[i] = {"status": "gone", "at": now}
+            continue
+        if entry == copy:
+            if (state.get(i) or {}).get("status") == "held":
+                state[i] = {"status": "current", "at": now}
+            continue
+        held = _agreed_changes(copy, entry)
+        if held:
+            state[i] = {"status": "held", "at": now, "held": held}
+            continue
+        changed = sorted(k for k in set(copy) | set(entry) if copy.get(k) != entry.get(k))
+        if (copy.get("source") or {}).get("pin") != (entry.get("source") or {}).get("pin"):
+            kick.append(i)
+        _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+        state[i] = {"status": "updated", "at": now, "changed": changed}
+    _write_atomic(CATALOGUE_STATE, json.dumps(state, indent=2) + "\n")
+    if kick:
+        # A moved pin: fetch it now rather than at the librarian's next turn.
+        librarian.reload_apps()
+        library_start("update", lambda: librarian.update(kick, mode="update", log=lambda *_: None))
+    return state
+
+
 def local_addons_snapshot():
     """/admin's local add-ons: the catalogue, what is added (and installed, and how it is
     switched), and any local manifest that was left out and why."""
@@ -1033,6 +1116,10 @@ def local_addons_snapshot():
     state = access.read(ACCESS_STATE)
     consents = _read_consents()
     status = librarian.load_status()
+    try:
+        cat_state = json.loads(CATALOGUE_STATE.read_text())
+    except (OSError, ValueError):
+        cat_state = {}
     added = []
     for m in local:
         i = m["id"]
@@ -1040,7 +1127,7 @@ def local_addons_snapshot():
                       "mode": access.mode_of(state, i), "installed": librarian.installed_app(i),
                       "status": status.get(i, {}), "pin": m["source"].get("pin"), "repo": m["source"].get("repo"),
                       "capabilities": m["capabilities"], "from_catalogue": i in cat,
-                      "consent": consents.get(i), "href": m["tile"]["href"]})
+                      "consent": consents.get(i), "href": m["tile"]["href"], "catalogue": cat_state.get(i)})
     have = {m["id"] for m in local}
     offered = [{"id": i, "title": c["addon"]["title"], "summary": c["addon"]["summary"],
                 "consent": c["addon"]["consent"], "repo": c["source"].get("repo"), "pin": c["source"].get("pin"),
@@ -1091,6 +1178,25 @@ def local_addons_action(payload):
                 return 400, {"error": "a pasted add-on needs its warning acknowledged"}
             manifests.check_local(m, "the pasted manifest", {x["id"] for x in manifests.load()})
             return 202, _local_add(m, "pasted")
+        if action == "accept":
+            # The catalogue's newer entry, whose agreed part changed: the owner has read the
+            # changes on /admin and takes it. It replaces the copy, with a new consent record.
+            i = str(payload.get("id", ""))
+            cat = manifests.catalogue()
+            path = manifests.LOCAL_D / f"{i}.json"
+            if not LOCAL_ID_RE.match(i) or i not in cat or not path.exists():
+                return 400, {"error": "id must name an add-on added from the catalogue"}
+            if payload.get("agree") is not True:
+                return 400, {"error": "agree to its consent text first"}
+            entry = cat[i]
+            _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+            consents = _read_consents()
+            consents[i] = {"at": int(time.time()), "how": "catalogue", "consent": entry["addon"]["consent"]}
+            _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+            refresh_manifests()
+            librarian.reload_apps()
+            library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+            return 200, {"accepted": i}
         if action == "remove":
             i = str(payload.get("id", ""))
             if not LOCAL_ID_RE.match(i) or not (manifests.LOCAL_D / f"{i}.json").exists():
@@ -1109,7 +1215,7 @@ def local_addons_action(payload):
             _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
             refresh_manifests()
             return 200, {"removed": i}
-        return 400, {"error": "action: add, paste or remove"}
+        return 400, {"error": "action: add, paste, accept or remove"}
     except manifests.ManifestError as exc:
         return 400, {"error": str(exc)}
     except (ValueError, librarian.LibrarianError) as exc:
