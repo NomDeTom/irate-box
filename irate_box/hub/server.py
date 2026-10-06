@@ -1381,11 +1381,81 @@ class HubServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
+# F2: whatever part of a request's body a route leaves unread is read away (or the connection
+# closed) after it answers, so the web server's kept-alive connection never carries it into the
+# next request. The doctor's F2 check looks for this marker.
+DRAINS_REQUEST_BODIES = True
+# More unread than this, and the connection is closed rather than read. Closing early is the
+# rougher choice (a client still sending sees a reset, and may lose the answer), so it is kept
+# for bodies far over any the hub takes (the drop's are up to 25 MB by default).
+DRAIN_MAX = 64 << 20
+
+
+class _Counted:
+    """The connection's reader, counting the bytes read since the request's headers."""
+
+    def __init__(self, f):
+        self._f = f
+        self.count = 0
+
+    def read(self, n=-1):
+        b = self._f.read(n)
+        self.count += len(b)
+        return b
+
+    def read1(self, n=-1):
+        b = self._f.read1(n)
+        self.count += len(b)
+        return b
+
+    def readline(self, n=-1):
+        b = self._f.readline(n)
+        self.count += len(b)
+        return b
+
+    def readinto(self, b):
+        n = self._f.readinto(b)
+        self.count += n or 0
+        return n
+
+    def __getattr__(self, name):
+        return getattr(self._f, name)
+
+
 class Handler(BaseHTTPRequestHandler):
     # Socket timeout per request. A phone that stalls mid-upload releases its thread
     # instead of pinning it; the web server in front already shields the listener itself.
     timeout = 30
     protocol_version = "HTTP/1.1"
+
+    def setup(self):
+        super().setup()
+        self.rfile = _Counted(self.rfile)
+
+    def parse_request(self):
+        ok = super().parse_request()
+        self.rfile.count = 0  # the body starts here
+        # A body that will not be read away (chunked: the hub reads none; or too large) means
+        # closing after the answer, so the answer says so, and the web server does not send its
+        # next request down a connection about to close.
+        self._close_after = False
+        if ok:
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = -1
+            self._close_after = bool(self.headers.get("Transfer-Encoding")) or not 0 <= n <= DRAIN_MAX
+        return ok
+
+    def send_response(self, code, message=None):
+        super().send_response(code, message)
+        if getattr(self, "_close_after", False):
+            self.send_header("Connection", "close")
+
+    def handle_one_request(self):
+        super().handle_one_request()
+        if not self.close_connection:
+            self._discard_body()
 
     def log_message(self, fmt, *args):
         pass  # quiet
@@ -1480,17 +1550,28 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _discard_body(self):
-        """Before refusing a request whose body is not read: read it away when it is small, or
-        close the connection. Left in the stream, the web server's kept-alive connection would
-        carry it into the next request (F2's mechanism: the next request fails, or is another)."""
+        """Read away what is left unread of this request's body when it is small, or close the
+        connection. Left in the stream, the web server's kept-alive connection would carry it
+        into the next request (F2's mechanism: the next request fails, or is another). Runs
+        after every request (handle_one_request), and before a refusal that reads nothing."""
+        headers = getattr(self, "headers", None)
+        if headers is None:
+            return
         try:
-            n = int(self.headers.get("Content-Length") or 0)
+            n = int(headers.get("Content-Length") or 0) - self.rfile.count
         except ValueError:
             n = -1
-        if self.headers.get("Transfer-Encoding") or n < 0 or n > (1 << 20):
+        if getattr(self, "_close_after", False) or n < 0:
             self.close_connection = True
-        elif n:
-            self.rfile.read(n)
+        else:
+            try:
+                while n > 0:
+                    got = len(self.rfile.read(min(n, 1 << 16)))
+                    if not got:
+                        break
+                    n -= got
+            except OSError:  # it never came: the socket timed out
+                self.close_connection = True
 
     def _admin_refused(self, path):
         """An /admin request that did not come through the front's /admin route: 403."""
