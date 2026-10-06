@@ -262,7 +262,8 @@ def _set_nginx_login(pw):
 
 def _set_caddy_login(pw):
     """The bcrypt hashes in the hub's Caddy config, validated before they replace it."""
-    hashed = run("caddy", "hash-password", "--plaintext", pw)
+    # On stdin, not the command line, which every process can read in /proc (F9).
+    hashed = run("caddy", "hash-password", input=pw + "\n")
     if hashed.returncode != 0:
         raise ValueError("caddy hash-password failed")
     new_hash = hashed.stdout.strip()
@@ -307,10 +308,30 @@ def set_login(pw, keep=True):
     (ETC / "ttyd.env").unlink(missing_ok=True)
     done = [web]
     if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode == 0:
-        st = run("runuser", "-u", HUB_USER, "--", "env", f"HOME={STATE}",
-                 "syncthing", "cli", "config", "gui", "password", "set", pw)
-        done.append("Syncthing" if st.returncode == 0 else "Syncthing (failed)")
+        done.append("Syncthing" if syncthing_gui_password(pw) else "Syncthing (failed)")
     return ", ".join(d for d in done if d)
+
+
+SYNCTHING_GUI = "http://127.0.0.1:8384"
+
+
+def syncthing_gui_password(pw):
+    """Syncthing's GUI password, through its REST API with the API key from its own config: the
+    password travels in the request body, never on a command line (F9: `syncthing cli … password
+    set` put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves."""
+    cfg = next((t for t in (STATE / ".local/state/syncthing/config.xml", STATE / ".config/syncthing/config.xml")
+                if t.exists()), None)
+    m = re.search(r"<apikey>([^<]+)</apikey>", cfg.read_text()) if cfg else None
+    if not m:
+        return False
+    req = urllib.request.Request(f"{SYNCTHING_GUI}/rest/config/gui", method="PATCH",
+                                 data=json.dumps({"password": pw}).encode(),
+                                 headers={"X-API-Key": m.group(1), "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.status == 200
+    except OSError:
+        return False
 
 
 # --- an offline kit of this box (/admin, Backup) ------------------------------------------
@@ -1681,6 +1702,9 @@ if __name__ == "__main__":
             sys.exit("run as root: sudo ./irate-box hub_control reset-password")
         print(reset_password())
         sys.exit(0)
+    if sys.argv[1:] == ["syncthing-gui-password"]:
+        # For install.sh: the password on stdin (F9).
+        sys.exit(0 if syncthing_gui_password(sys.stdin.readline().rstrip("\n")) else 1)
     if sys.argv[1:] == ["access-off-units"]:
         # For install.sh: the services of the apps switched off, which it leaves stopped.
         state = access.read(ACCESS_FILE)
