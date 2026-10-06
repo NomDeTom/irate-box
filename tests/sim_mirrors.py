@@ -164,6 +164,13 @@ kept = sorted(r.rsplit("/", 1)[-1] for r in refs(sp))
 check("…exactly the commits the kept refs name (main's and v1.1.0's lib)", kept == sorted([subs[1], subs[2]]), kept)
 check("…read-only, and a mirror of the submodule's URL", g("config", "--get", "irate-box.write", cwd=sp).stdout.strip() == "nobody"
       and g("config", "--get", "irate-box.mirror", cwd=sp).stdout.strip() == f"file://{SUB}")
+from irate_box.hub import server  # noqa: E402
+with mock.patch.object(mirrors, "load", return_value=[sm]):
+    snap = server.git_snapshot()
+sub_card = next(r for r in snap["repos"] if r["name"] == "withsub--lib")
+check("the Git page knows a submodule mirror's parent (and leaves it out of its grid)", sub_card["submodule_of"] == "withsub"
+      and next(r for r in snap["repos"] if r["name"] == "withsub")["submodule_of"] is None, sub_card)
+check("a mirror is never offered builds", not sub_card["can_build"] and not next(r for r in snap["repos"] if r["name"] == "withsub")["can_build"])
 check("the URL map names the mirror and its submodule", urls.get(f"file://{SUB}") == f"file://{sp}" and urls.get(f"file://{UP2}") == f"file://{mirrors.repo_path(sm)}", urls)
 # ci.py, as hubci: the rewrites in its global config, then a checkout with the upstream gone.
 from irate_box.hub import ci  # noqa: E402

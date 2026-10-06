@@ -7,7 +7,7 @@ import os, subprocess, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="git-levels-"))
-os.environ["HUB_GIT_ROOT"] = str(T)
+os.environ.update(HUB_GIT_ROOT=str(T), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
 from irate_box.hub import gitrepos  # noqa: E402
 fails = 0
@@ -94,6 +94,43 @@ check("publish to itself: refused", act(action="publish", **{"from": {"area": "p
       to={"area": "public", "name": "admins"}, refs=["main"])[0] == 400)
 check("a ref name that is an option: refused", act(action="publish", **{"from": {"area": "public", "name": "admins"}},
       to={"area": "public", "name": "ro"}, refs=["--upload-pack=x"])[0] == 400)
+# Build on push, per repository (step 24): on by default where offered, a switch, and ci.py honouring it.
+info = {(r["area"], r["name"]): r for r in gitrepos.snapshot()["repos"]}
+check("a private, admin-pushed repository is offered builds, on by default", info[("private", "secret")]["can_build"]
+      and info[("private", "secret")]["build"] is True and info[("private", "secret")]["has_script"] is False)
+check("a public one is never offered builds", not info[("public", "admins")]["can_build"])
+check("switching builds off", act(action="build", area="private", name="secret", on=False)[0] == 200
+      and cfg("private", "secret", "irate-box.ci") == "off")
+check("a public repository cannot be switched on", act(action="build", area="public", name="admins", on=True)[0] == 400)
+check("on must be true or false", act(action="build", area="private", name="secret", on="yes")[0] == 400)
+os.environ["HUB_CI_ROOT"] = str(T / "ci")
+(T / "ci" / "queue").mkdir(parents=True)
+from irate_box.hub import ci  # noqa: E402
+ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+w = T / "w"
+subprocess.run(["git", "init", "-q", "-b", "main", str(w)], check=True)
+(w / ".irate-ci.sh").write_text("echo hi\n")
+subprocess.run(["git", "add", "."], cwd=w, check=True); subprocess.run(["git", "commit", "-qm", "c"], cwd=w, env=ENV, check=True)
+subprocess.run(["git", "push", "-q", str(T / "private" / "secret.git"), "main"], cwd=w, check=True, capture_output=True)
+sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=w, capture_output=True, text=True).stdout.strip()
+import io, contextlib  # noqa: E402
+def push_queues():
+    before = len(list(ci.QUEUE.glob("*.json")))
+    with contextlib.redirect_stdout(io.StringIO()):
+        ci.enqueue(io.StringIO(f"{'0' * 40} {sha} refs/heads/main\n"), repo_dir=T / "private" / "secret.git")
+    return len(list(ci.QUEUE.glob("*.json"))) > before
+check("switched off: a push with .irate-ci.sh queues nothing", not push_queues())
+check("switching on", act(action="build", area="private", name="secret", on=True)[0] == 200)
+check("switched on: the same push queues a build", push_queues())
+check("  and the card knows it has the script", next(r for r in gitrepos.snapshot()["repos"] if r["name"] == "secret")["has_script"])
+import json  # noqa: E402
+for n, (state, started) in {1: ("failed", 100), 2: ("passed", 200)}.items():
+    (T / "ci" / "runs" / "secret" / str(n)).mkdir(parents=True)
+    (T / "ci" / "runs" / "secret" / str(n) / "status.json").write_text(json.dumps({"state": state, "started": started, "branch": "main", "commit": sha}))
+from irate_box.hub import server  # noqa: E402
+lb = {r["name"]: r["last_build"] for r in server.git_snapshot()["repos"]}
+check("each repository's newest build on its card; none for a public one", lb["secret"] and lb["secret"]["state"] == "passed"
+      and lb["secret"]["run"] == "secret/2" and lb["admins"] is None, lb)
 nginx = (REPO / "config" / "irate-box.nginx").read_text()
 check("nginx asks the hub, with the admin login as the other way in",
       "auth_request /_irate_git_access;" in nginx and "satisfy any;" in nginx and "guest-push" not in nginx)

@@ -88,9 +88,13 @@ def _repo_info(path, area):
     out = _git("for-each-ref", "--sort=-committerdate", "--format=%(committerdate:unix)", "refs/heads", cwd=path)
     dates = out.stdout.split() if out.returncode == 0 else []
     level = write_level(path)
+    mirror = mirror_of(path)
     return {"name": path.name[:-4], "area": area, "url": AREAS[area] + path.name + "/",
             "write": level, "preset": preset_of(area, level), "preset_text": PRESET_TEXT[preset_of(area, level)],
-            "mirror_of": mirror_of(path),
+            "mirror_of": mirror,
+            # Build on push (ci.py): offered only where only the admin pushes (git-ci-plan §2).
+            "can_build": area == "private" and level == "admin" and not mirror, "build": build_on(path),
+            "has_script": bool(dates) and _git("cat-file", "-e", "HEAD:.irate-ci.sh", cwd=path).returncode == 0,
             "description": desc, "size": _size(path), "branches": len(dates),
             "last_commit": int(dates[0]) if dates else None}
 
@@ -102,6 +106,14 @@ def write_level(path):
     if level in WRITE_LEVELS and (level != "everyone" or path.parent.name == "public"):
         return level
     return "everyone" if path.parent.name == "public" and GUEST_PUSH.exists() else "admin"
+
+
+def build_on(path):
+    """The repository's build-on-push switch (irate-box.ci): on unless set off, so repositories
+    that built before the switch existed still do (Tom, 2026-10-06). ci.py also needs it private,
+    only the admin pushing, and a .irate-ci.sh in the pushed commit."""
+    out = _git("config", "--get", "irate-box.ci", cwd=path)
+    return not (out.returncode == 0 and out.stdout.strip() == "off")
 
 
 def mirror_of(path):
@@ -265,8 +277,19 @@ def action(payload):
             if preset not in PRESETS[path.parent.name]:
                 raise ValueError(f"{path.parent.name} repositories take: {', '.join(PRESETS[path.parent.name])}")
             set_write_level(path, PRESETS[path.parent.name][preset])
+        elif what == "build":
+            path = _target(payload)
+            if not (path / "HEAD").exists():
+                raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
+            on = payload.get("on")
+            if type(on) is not bool:
+                raise ValueError("on: true or false")
+            if on and (path.parent.name != "private" or write_level(path) != "admin"):
+                raise ValueError("builds are only for private repositories that only the admin can push to")
+            _git("config", "irate-box.ci", "on" if on else "off", cwd=path)
         else:
-            raise ValueError("action must be create, delete, describe, preset, move or publish")
+            raise ValueError("action must be create, delete, describe, preset, move, publish or build")
     except ValueError as exc:
         return 400, {"error": str(exc)}
     except OSError as exc:
