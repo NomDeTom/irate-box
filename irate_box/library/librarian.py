@@ -230,6 +230,16 @@ def validate_source(src):
             return out
         if out["type"] not in ("actions", "nightly-link"):
             raise LibrarianError("an app bundle comes from actions or nightly-link")
+        # A bundle app comes from the repository, workflow and artifact its manifest names, and
+        # nowhere else (F11): a request may choose only the branch. Otherwise a forged request
+        # could repoint draw, the flasher or the room relay at someone else's build.
+        spec = APPS[out["name"]]["source"]
+        branch = str(src.get("branch") or spec.get("branch", "main")).strip()
+        if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
+            raise LibrarianError("branch: a branch name")
+        out.update(repo=spec["repo"], workflow=spec["workflow"], pattern=spec["pattern"], branch=branch,
+                   enabled=bool(src.get("enabled", True)))
+        return out
     if not NAME_RE.match(out["name"]) or out["name"] == "library":
         raise LibrarianError("name: letters, digits, '.', '_' and '-' only (it becomes <name>.zim)")
     if out["type"] not in TYPES:
@@ -237,8 +247,10 @@ def validate_source(src):
     pattern = str(src.get("pattern", "")).strip()
     if out["type"] == "url":
         url = str(src.get("url", "")).strip()
-        if urllib.parse.urlparse(url).scheme not in ("http", "https"):
-            raise LibrarianError("url must be http(s)://…")
+        if urllib.parse.urlparse(url).scheme != "https":
+            # A book over plain HTTP can be swapped on the way, and its pages are served on the
+            # hub's own origin (F22).
+            raise LibrarianError("url must be https://…")
         out["url"] = url
     else:
         repo = str(src.get("repo", "")).strip()

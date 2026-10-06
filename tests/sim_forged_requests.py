@@ -84,5 +84,32 @@ check("unit names: no leading '-'", not hub_control.security.UNIT_RE.match("-x.s
 check("uplink: the reboot history is root's own record, not the status file's",
       'REBOOTS = ETC / "uplink-reboots.json"' in (REPO / "irate_box/hub/uplink.py").read_text())
 
+# F11: an app bundle's source is its manifest's; a request chooses the branch at most.
+from irate_box.library import librarian, firmware  # noqa: E402
+got = librarian.validate_source({"kind": "app", "name": "draw", "type": "nightly-link", "repo": "evil/excalidraw",
+                                 "workflow": "evil.yml", "pattern": "*", "branch": "dev"})
+spec = librarian.APPS["draw"]["source"]
+check("F11: a forged repo, workflow and pattern are replaced by the manifest's",
+      (got["repo"], got["workflow"], got["pattern"]) == (spec["repo"], spec["workflow"], spec["pattern"]), got)
+check("F11: the branch may be chosen", got["branch"] == "dev")
+check("F11: but not one that is an option", refused(librarian.validate_source, {"kind": "app", "name": "draw", "type": "nightly-link", "branch": "-x"},
+                                                    exc=(librarian.LibrarianError,)))
+# F10: a deps-zip member cannot leave its folder.
+check("F10: '//' in a member name is left out", firmware._subset("pio-deps-x//etc/cron.d/x", "whole") is None)
+check("F10: '..' is left out", firmware._subset("pio-deps-x/packages/../../x", "whole") is None)
+check("F10: a normal member is kept", firmware._subset("pio-deps-x/packages/tool/bin/gcc", "whole") == "packages/tool/bin/gcc")
+
+# F22: books and code over encrypted transports only.
+check("F22: a book url over http is refused", refused(librarian.validate_source, {"name": "b", "type": "url", "url": "http://x/b.zim"},
+                                                     exc=(librarian.LibrarianError,)))
+check("F22: over https it is taken", librarian.validate_source({"name": "b", "type": "url", "url": "https://x/b.zim"})["url"] == "https://x/b.zim")
+(T / "etc" / "install-options").write_text("--repo\nhttp://example.invalid/irate-box\n--branch\nmain\n")
+check("F22: updates from an http:// repository are refused before any fetch",
+      refused(hub_control._check_for_update, hub_control.Progress("check", 2, path=T / "p.json")))
+# F21: "verified" is matched on the whole hash.
+src = (REPO / "irate_box/root/hub_control.py").read_text()
+check("F21: install compares the whole hash that passed", 'state.get("verified_sha") != full' in src
+      and 'old.get("verified_sha") == full' in src)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

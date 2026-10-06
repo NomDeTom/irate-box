@@ -171,6 +171,11 @@ while [ $# -gt 0 ]; do
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
+# Books from the network over HTTPS only (F22): a book swapped on the way has its pages served
+# on the hub's own origin.
+for z in ${ZIMS[@]+"${ZIMS[@]}"}; do
+	case "$z" in http://*) echo "install.sh: --zim $z: use https:// (a book fetched over plain HTTP can be swapped on the way)" >&2; exit 2 ;; esac
+done
 
 # An add-on being removed is not installed by this run, whatever else asks for it.
 for r in "${REMOVE[@]}"; do
@@ -857,6 +862,10 @@ if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 	rec_branch="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH")"
 	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
 fi
+case "$rec_repo" in
+http://* | git://*)
+	notice "updates come from $rec_repo, a plain-text transport: the box's updater refuses it (anyone on the way could hand it code that root runs). Rerun with --repo https://… to have updates." ;;
+esac
 {
 	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch" --web "$WEB"
 	[ "$WITH_NOTES" = 1 ] && echo --with-notes
