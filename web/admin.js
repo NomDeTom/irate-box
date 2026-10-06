@@ -2546,6 +2546,7 @@ function kitCard(k, st, cfg) {
     c ? [`Cached ${dayOf(c.fetched)}, ${size(c.bytes)}`, 'badge-public'] : ['Not cached', 'badge-push'],
     s.previous ? ['2 versions', 'badge-push'] : null,
     k.owner ? ['Yours', 'badge-mirror'] : null,
+    ((kitsData || {}).flag_details || {})[k.id] ? ['Flagged by the doctor', 'badge-push bad'] : null,
     (k.extra || []).length ? [`+${k.extra.length} extra`, 'badge-mirror'] : null,
     inst ? [inst.remove_at ? `Installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'Installed, kept', 'badge-private'] : null,
   ].filter(Boolean);
@@ -2561,8 +2562,10 @@ function kitCard(k, st, cfg) {
   } else if (kitsOpen === k.id) {
     // The consent step: what the kit can do, and when it goes again.
     const hours = hoursPicker(mine.remove_after);
+    const flag = ((kitsData || {}).flag_details || {})[k.id];
     body.push(el('div', { className: 'kit-consent' },
       el('p', { textContent: k.consent }),
+      flag ? el('p', { className: 'kit-flag', textContent: `The security doctor flags this kit's cache: ${flag} Refresh it first if the box can reach the internet.` }) : null,
       el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
         actionButton('Install', () => { kitsOpen = null; kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }); }, { className: 'small' }),
         actionButton('Cancel', () => { kitsOpen = null; renderKits(kitsData); }, { className: 'small' }))));

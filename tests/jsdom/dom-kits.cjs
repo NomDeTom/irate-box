@@ -26,7 +26,8 @@ const kitsData = {
       capture: { cached: { fetched: now - 7200, packages: 3, bytes: 2 ** 20, on_box: [], versions: {} }, previous: null },
       security: { cached: { fetched: now - 600, packages: 38, bytes: 29 * 2 ** 20, on_box: [], versions: {} }, previous: { fetched: now - 86400 * 3, bytes: 28 * 2 ** 20 } } },
     installed: { debug: { added: ['gdb'], at: now - 600, remove_at: now + 5 * 3600, units: [], upgraded: ['libc6 2.41-12+deb13u3 → 2.41-12+deb13u4'] } } },
-  feeds: { debsecan: { suite: 'trixie', fetched: now - 1800 } }, results: [] };
+  feeds: { debsecan: { suite: 'trixie', fetched: now - 1800 } }, results: [],
+  flag_details: { capture: 'Cached versions of tcpdump have fixes Debian has released.' } };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -90,6 +91,9 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const consent = card('Capture').querySelector('.kit-consent');
   check('Install… shows the consent and when it goes again, before anything happens', consent && /Capture: read this first\./.test(t(consent))
     && consent.querySelector('select.kit-hours').value === '24' && posted.length === 1);
+  check('a kit the doctor flags: a badge, and the reason in the Install step, before anything happens',
+    /Flagged by the doctor/.test(t(card('Capture').querySelector('.badges'))) && /security doctor flags this kit's cache: Cached versions of tcpdump/.test(t(consent))
+    && !/Flagged/.test(t(card('Security').querySelector('.badges'))));
   consent.querySelector('select.kit-hours').value = '168';
   button(consent, 'Install').click();
   await wait();
