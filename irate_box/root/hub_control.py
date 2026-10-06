@@ -854,7 +854,7 @@ def _nginx_check(src, opts):
         (Path(tmp) / "front.conf").write_text('proxy_set_header X-Irate-Front "check";\n')
         text = text.replace("@FRONT@", f"{tmp}/front.conf")
         (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
-        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092",
+        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
                            "@ADDONS@": str(STATE / "addons")}.items():
             text = text.replace(key, value)
         # A port placeholder this helper does not know yet (an update adds a server block): a

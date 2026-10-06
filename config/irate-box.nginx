@@ -349,20 +349,12 @@ server {
 		fastcgi_read_timeout 1h;
 		fastcgi_pass unix:/run/irate-box-git.sock;
 	}
-	location ~ ^/git(?<irate_box_cgit_path>/.*)$ {
+	# cgit's web view is on an origin of its own (the server block at the end, port @GIT_PORT@):
+	# it shows what anyone who may push wrote. Clones and pushes stay here, so clone URLs keep
+	# working, and the push presets above still decide.
+	location ~ ^/git(/.*)$ {
 		if ($irate_box_off_git) { return 404; }
-		auth_basic $irate_box_auth_git;
-		auth_basic_user_file @HTPASSWD@;
-		include /etc/nginx/fastcgi_params;
-		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
-		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-public;
-		# Scripts: only the box's own (themes.js, cgit.js); a README's HTML is already text
-		# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files,
-		# served as text/plain, are never run as a script.
-		add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" always;
-		add_header X-Content-Type-Options nosniff always;
-		fastcgi_param PATH_INFO $irate_box_cgit_path;
-		fastcgi_pass unix:/run/irate-box-git.sock;
+		return 302 $scheme://$host:@GIT_PORT@$request_uri;
 	}
 	location ~ ^/git-private/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
 		auth_basic "Irate-Box";
@@ -377,20 +369,7 @@ server {
 		fastcgi_read_timeout 1h;
 		fastcgi_pass unix:/run/irate-box-git.sock;
 	}
-	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
-		auth_basic "Irate-Box";
-		auth_basic_user_file @HTPASSWD@;
-		include /etc/nginx/fastcgi_params;
-		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
-		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-private;
-		# Scripts: only the box's own (themes.js, cgit.js); a README's HTML is already text
-		# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files,
-		# served as text/plain, are never run as a script.
-		add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" always;
-		add_header X-Content-Type-Options nosniff always;
-		fastcgi_param PATH_INFO $irate_box_cgit_path;
-		fastcgi_pass unix:/run/irate-box-git.sock;
-	}
+	location ~ ^/git-private(/.*)$ { return 302 $scheme://$host:@GIT_PORT@$request_uri; }
 
 	# --- /admin -> the hub's own operator options ------------------------------------
 	# Same login as /term and /sync. First use: while @UNCLAIMED@ exists no password has
@@ -529,6 +508,75 @@ server {
 		proxy_hide_header Cache-Control;
 		add_header Cache-Control "no-cache" always;
 		proxy_pass http://127.0.0.1:8081;
+	}
+	location / { return 404; }
+}
+
+# --- cgit's origin: the git servers' web view, next-work plan step 11 -------------------------
+# What a repository holds is written by whoever may push, so its pages are served away from
+# /admin. Its CSP (scripts only the box's own) lets the hub's app bar frame it. Clones and
+# pushes are the hub's port's (a smart-HTTP request here is sent there).
+server {
+	listen @GIT_PORT@;
+	listen [::]:@GIT_PORT@;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	absolute_redirect off;
+	include @ACCESS@;
+	root @STATIC@;
+	location = / { return 302 /git/; }
+	location = /git { return 301 /git/; }
+	location = /git-private { return 301 /git-private/; }
+	# What cgit's pages load (config/cgit-head.html): the palette, the hub's cgit look, the
+	# theme and highlighting scripts, cgit's own files and Debian's highlight.js.
+	location = /palette.css { add_header X-Content-Type-Options nosniff; }
+	location = /cgit-hub.css { add_header X-Content-Type-Options nosniff; }
+	location = /themes.js { add_header X-Content-Type-Options nosniff; }
+	location = /cgit-hub.js { add_header X-Content-Type-Options nosniff; }
+	location ^~ /themes/ { add_header X-Content-Type-Options nosniff; }
+	location ^~ /git-static/ { alias /usr/share/cgit/; add_header X-Content-Type-Options nosniff; }
+	location ^~ /git-hl/ {
+		alias /usr/share/javascript/highlight.js/;
+		gzip on;
+		gzip_types application/javascript text/javascript;
+		add_header Cache-Control "public, max-age=86400";
+		add_header X-Content-Type-Options nosniff;
+	}
+	location ~ ^/git(-private)?/[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack)$ {
+		return 302 $scheme://$host:@PORT@$request_uri;
+	}
+	location ~ ^/git(?<irate_box_cgit_path>/.*)$ {
+		if ($irate_box_off_git) { return 404; }
+		auth_basic $irate_box_auth_git;
+		auth_basic_user_file @HTPASSWD@;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
+		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-public;
+		# Scripts: only the box's own (themes.js, cgit.js); a README's HTML is already text
+		# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files,
+		# served as text/plain, are never run as a script.
+		add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' $scheme://$host:@PORT@ $scheme://$host" always;
+		add_header X-Content-Type-Options nosniff always;
+		fastcgi_param HTTP_HOST $host:@PORT@;  # cgit's clone URLs: the hub's port, where git is served
+		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_pass unix:/run/irate-box-git.sock;
+	}
+	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
+		auth_basic "Irate-Box";
+		auth_basic_user_file @HTPASSWD@;
+		include /etc/nginx/fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
+		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-private;
+		# Scripts: only the box's own (themes.js, cgit.js); a README's HTML is already text
+		# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files,
+		# served as text/plain, are never run as a script.
+		add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' $scheme://$host:@PORT@ $scheme://$host" always;
+		add_header X-Content-Type-Options nosniff always;
+		fastcgi_param HTTP_HOST $host:@PORT@;  # cgit's clone URLs: the hub's port, where git is served
+		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_pass unix:/run/irate-box-git.sock;
 	}
 	location / { return 404; }
 }
