@@ -163,7 +163,7 @@ phone / laptop ──▶ nginx :80 ─┬─ /              → server.py :8000 
                               ├─ /sync/*        → Syncthing GUI :8384        (add-on, admin login)
                               ├─ /git/*  /git-private/*  → git http-backend, cgit (fcgiwrap; private: admin login)
                               ├─ /admin/*       → server.py                  (admin login)
-                              └─ /term/*        → ttyd :7681                 (admin login, off by default)
+                              └─ /term/*        → ttyd (a socket)            (admin login, off by default)
 
 Meshtastic node / phone app ──▶ mosquitto :1883  (add-on; raw MQTT, not through the web server)
 ```

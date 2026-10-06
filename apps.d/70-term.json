@@ -12,7 +12,7 @@
   "status": {
     "path": "/term/",
     "name": "Terminal (ttyd)",
-    "port": 7681,
+    "socket": "/run/ttyd/ttyd.sock",
     "unit": "ttyd.service",
     "control": true
   },

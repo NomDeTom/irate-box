@@ -17,7 +17,7 @@
 #   silverbullet.service      --with-notes: SilverBullet on a socket in /run/silverbullet, under /notes/
 #   syncthing@hub.service     --with-sync: Syncthing GUI on 127.0.0.1:8384 under /sync/
 #   kiwix.service             --zim: kiwix-serve on 127.0.0.1:8081 under /wiki/
-#   ttyd.service              ttyd on 127.0.0.1:7681 under /term/; enabled by --with-term only
+#   ttyd.service              ttyd on /run/ttyd/ttyd.sock under /term/; enabled by --with-term only
 #   mosquitto.service         --with-mqtt: MQTT on :1883, and WebSockets on 127.0.0.1:9001 at /mqtt
 #   excalidraw-room.service   --with-collab: live Excalidraw sessions on 127.0.0.1:3002 (/socket.io/)
 #   irate-box-tailscale.path  if Tailscale is installed: its on/off switch on /admin
@@ -184,6 +184,7 @@ CODE=/opt/irate-box
 STATE=/var/lib/hub
 APPS=/usr/share/hub/apps
 SB_SOCKET=/run/silverbullet/silverbullet.sock  # --with-notes: SilverBullet listens here
+TTYD_SOCKET=/run/ttyd/ttyd.sock  # --with-term: ttyd listens here
 # The local add-ons (plans/no-root-addons-plan): their own origin, this port of the web server,
 # serving $STATE/addons/<id>/; their manifests in $STATE/apps.d/. Both the hub's, so adding one
 # from /admin needs no root.
@@ -1576,17 +1577,23 @@ if ! /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
 	install -m 755 "$tmp/ttyd.$TTYD_ARCH" /usr/local/bin/ttyd
 	rm -rf "$tmp"
 fi
-# Same credential as the web server's gate, so the Basic-auth header it passes on
-# satisfies ttyd too; the terminal itself is /bin/login, so a real account is still needed.
-( umask 077; printf 'TTYD_CREDENTIAL=admin:%s\n' "$ADMIN_PW" >"$ETC/ttyd.env" )
+# No credential of its own (F9: ttyd's was the admin password, on its command line, readable
+# in /proc by every process for as long as it ran). It listens on a socket only the web
+# server's group can open, so the web server's admin login is the gate, and a stray start is
+# not a root shell on loopback. The terminal itself is /bin/login: a real account is needed.
+rm -f "$ETC/ttyd.env"
+if [ "$WEB" = nginx ]; then term_group="$ngx_group"; else term_group="$(id -gn caddy 2>/dev/null || echo root)"; fi
 cat >/etc/systemd/system/ttyd.service <<EOF
 [Unit]
 Description=ttyd terminal for Irate-Box (/term/), off unless install.sh --with-term
 After=network.target
 
 [Service]
-EnvironmentFile=$ETC/ttyd.env
-ExecStart=/usr/local/bin/ttyd --interface lo --port 7681 --base-path /term --credential \${TTYD_CREDENTIAL} --writable /bin/login
+ExecStart=/usr/local/bin/ttyd --interface $TTYD_SOCKET --base-path /term --check-origin --writable /bin/login
+# As root (+): the socket to the web server's group, once ttyd has made it.
+ExecStartPost=+/bin/sh -c 'until [ -S $TTYD_SOCKET ]; do sleep 0.1; done; chgrp $term_group $TTYD_SOCKET && chmod 660 $TTYD_SOCKET'
+RuntimeDirectory=ttyd
+RuntimeDirectoryMode=0755
 Restart=on-failure
 
 [Install]

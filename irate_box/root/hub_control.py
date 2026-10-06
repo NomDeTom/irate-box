@@ -12,7 +12,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       Optional services get every op; the web server and the hub itself only restart.
   {"id": ..., "action": "password", "password": "<new admin password>"[, "setup": true]}
       The one admin login: the web server's (nginx's login file, or Caddy's basic_auth
-      hashes; /admin, /sync, /term), ttyd's credential, Syncthing's GUI login, and
+      hashes; /admin, /sync, /term), Syncthing's GUI login, and
       /etc/hub/admin-password. With "setup", this is
       the first-use form on an unclaimed box: accepted only while UNCLAIMED exists, which
       it then deletes, so the first password chosen is the only one set this way.
@@ -302,14 +302,10 @@ def set_login(pw, keep=True):
         secret.chmod(0o600)
     else:
         secret.unlink(missing_ok=True)
-    ttyd_env = ETC / "ttyd.env"
-    if ttyd_env.exists():
-        # Explicitly 600: a umask only applies when a file is created, and this one exists.
-        ttyd_env.chmod(0o600)
-        ttyd_env.write_text(f"TTYD_CREDENTIAL=admin:{pw}\n")
-        ttyd_env.chmod(0o600)
-        run("systemctl", "try-restart", "ttyd")
-    done = [web, "ttyd" if ttyd_env.exists() else None]
+    # ttyd has no credential of its own any more (F9); a box installed before then has one, the
+    # old password, which is no use to anyone once it changes: it goes.
+    (ETC / "ttyd.env").unlink(missing_ok=True)
+    done = [web]
     if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode == 0:
         st = run("runuser", "-u", HUB_USER, "--", "env", f"HOME={STATE}",
                  "syncthing", "cli", "config", "gui", "password", "set", pw)

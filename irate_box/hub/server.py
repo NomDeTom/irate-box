@@ -458,12 +458,16 @@ def port_listening(port):
 
 
 def socket_listening(path):
-    """A service on a UNIX socket (SilverBullet's: no TCP port at all, F31)."""
+    """A service on a UNIX socket (SilverBullet's: no TCP port at all, F31; ttyd's, F9)."""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
             s.connect(path)
             return True
+    except PermissionError:
+        # There, but not the hub's to open (ttyd's is root's and the web server's group's).
+        # Its folder is the unit's RuntimeDirectory, gone when the unit stops, so it is live.
+        return True
     except OSError:
         return False
 
