@@ -18,6 +18,8 @@ A build is a fresh clone of the pushed commit and `bash .irate-ci.sh` in it, wit
   kept)  HOME (persistent, so tool caches such as ~/.platformio survive between builds)
   CI_PIO_DEPS  (when the librarian carries one: firmware.py) PlatformIO's libdeps/ and packages/
   for the newest kept Meshtastic release, for a build with no internet
+  PIP_NO_INDEX, PIP_FIND_LINKS  (when the Building kit's wheelhouse is cached: root/kits.py) so
+  `pip install platformio` needs no internet either (toolkits-plan §5)
 and a time limit. Its log, status and artifacts go to runs/<repo>/<number>/; the newest
 KEEP_RUNS per repository are kept. /admin's Git page lists them (snapshot()).
 
@@ -65,14 +67,18 @@ ENV_VARS = {
     "CI_COMMIT": "the commit, 40 hex digits",
     "CI_ARTIFACTS": "a folder: what the script leaves there is kept with the run",
     "CI_PIO_DEPS": "when the library keeps one: PlatformIO's packages for the newest Meshtastic release",
+    "PIP_NO_INDEX": "when the Building kit's wheelhouse is cached: 1, so pip never reaches the internet",
+    "PIP_FIND_LINKS": "when the Building kit's wheelhouse is cached: its folder, so `pip install platformio` needs no internet",
     "HOME": "a folder of its own that stays between builds, so tool caches (~/.platformio, a venv) survive",
 }
 TEMPLATES = {
     "meshtasticd": {"title": "Meshtastic firmware: meshtasticd (native)", "script": """#!/bin/bash
 # .irate-ci.sh: build meshtasticd (PlatformIO env "native") on the box. The source is cloned from
 # GitHub's URL, which this box rewrites to its own mirror (Library -> Mirrors), so no internet is
-# needed once the mirror and PlatformIO are in place. Needs the Building kit. A first build on a
-# small board takes hours (the Lyra: 2.8 h); later ones are incremental, as $HOME is kept.
+# needed once the mirror and PlatformIO are in place. Needs the Building kit (its wheelhouse, once
+# cached, is where `pip install platformio` below comes from: PIP_NO_INDEX, PIP_FIND_LINKS). A
+# first build on a small board takes hours (the Lyra: 2.8 h); later ones are incremental, as $HOME
+# is kept.
 set -eu
 FW_REF=develop
 [ -x "$HOME/pio/bin/pio" ] || { python3 -m venv "$HOME/pio" && "$HOME/pio/bin/pip" install -q platformio; }
@@ -249,6 +255,13 @@ def _pio_deps():
     return path if cache.get("version") and path.is_dir() else None
 
 
+def _wheelhouse():
+    """The Building kit's wheelhouse (root/kits.py: WHEELHOUSE), or None: PlatformIO's wheels,
+    so a build's `pip install platformio` needs no internet."""
+    path = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits")) / "wheelhouse"
+    return path if path.is_dir() and any(path.iterdir()) else None
+
+
 def _next_number(repo_runs):
     nums = [int(p.name) for p in repo_runs.iterdir() if p.name.isdigit()] if repo_runs.is_dir() else []
     return max(nums, default=0) + 1
@@ -300,6 +313,11 @@ def build(job):
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
                 say(f"CI_PIO_DEPS={deps} (the librarian's build cache)")
+            wheelhouse = _wheelhouse()
+            if wheelhouse:
+                env["PIP_NO_INDEX"] = "1"
+                env["PIP_FIND_LINKS"] = str(wheelhouse)
+                say(f"PIP_FIND_LINKS={wheelhouse} (the Building kit's wheelhouse)")
             proc = subprocess.run(["bash", SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
                                   stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
             state = "passed" if proc.returncode == 0 else "failed"
@@ -412,7 +430,7 @@ def snapshot(limit=20):
     return {"installed": QUEUE.is_dir(), "queued": queued, "runs": runs[:limit], "script": SCRIPT,
             "time_limit": TIME_LIMIT, "keep_runs": settings()["keep_runs"], "runs_bytes": used,
             "memory": {"max": props.get("MemoryMax"), "high": props.get("MemoryHigh")},
-            "mirrored": mirrors, "pio_deps": bool(_pio_deps()), "env": ENV_VARS,
+            "mirrored": mirrors, "pio_deps": bool(_pio_deps()), "wheelhouse": bool(_wheelhouse()), "env": ENV_VARS,
             "templates": {k: {"title": v["title"], "script": v["script"]} for k, v in TEMPLATES.items()}}
 
 

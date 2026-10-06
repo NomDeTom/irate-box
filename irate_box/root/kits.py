@@ -42,19 +42,24 @@ ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 DPKG_STATUS = Path(os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status"))
 POLICY_RC = Path(os.environ.get("HUB_POLICY_RC", "/usr/sbin/policy-rc.d"))
 POOL = ROOT / "pool"
+# The build kit's wheelhouse (toolkits-plan §5): PlatformIO and what it needs, as wheels, so a
+# build's `pip install` needs no internet (ci.py sets PIP_NO_INDEX and PIP_FIND_LINKS to this).
+WHEELHOUSE = ROOT / "wheelhouse"
 MANIFESTS = ROOT / "manifests"
 INSTALLED = ROOT / "installed.json"
 ID_RE = kitdefs.ID_RE
 PKG_RE = kitdefs.PKG_RE
+PIP_RE = kitdefs.PIP_RE
 DEB_RE = re.compile(r"^[A-Za-z0-9+.~_%-]{1,200}\.deb$")
+WHEEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+.~_%-]{1,200}\.(?:whl|tar\.gz|zip)$")
 UNIT_RE = re.compile(r"^/(?:usr/)?lib/systemd/system/([A-Za-z0-9@_.:-]+\.(?:service|socket|timer|path))$")
 APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "LC_ALL": "C"}
 DEAD_PROXY = "http://127.0.0.1:9"  # nothing listens there: an install that tried the network fails loudly
 
 
-def run(cmd, timeout=1800, check=True):
+def run(cmd, timeout=1800, check=True, env=None):
     """Every command goes through here (the tests stand it in)."""
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **APT_ENV))
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **APT_ENV, **(env or {})))
     if check and out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
         raise ValueError(f"{Path(cmd[0]).name} {cmd[1] if len(cmd) > 1 else ''}: {lines[-1][:300] if lines else 'failed'}")
@@ -146,12 +151,54 @@ def _referenced():
     return files
 
 
+def _referenced_wheels():
+    files = {}
+    for m in MANIFESTS.glob("*.json") if MANIFESTS.is_dir() else []:
+        for w in (_read(m, {}) or {}).get("wheels", []):
+            files[w["file"]] = w
+    return files
+
+
 def pool_bytes():
     return sum(f.stat().st_size for f in POOL.glob("*.deb")) if POOL.is_dir() else 0
 
 
+def wheelhouse_bytes():
+    return sum(f.stat().st_size for f in WHEELHOUSE.glob("*")) if WHEELHOUSE.is_dir() else 0
+
+
+def _fetch_wheels(kit_id, pip_pkgs, stage, log):
+    """pip download, into stage/wheelhouse: platformio and everything it needs, as wheels. Needs
+    no package installed on the box (python3-venv's `ensurepip` is disabled on Debian without
+    it): python3-pip's own .deb is fetched (not installed) and unpacked for a one-off pip."""
+    wstage = stage / "wheelhouse"
+    wstage.mkdir()
+    pipstage = stage / "pip-tool"
+    pipstage.mkdir()
+    log(f"{kit_id}: fetching a copy of pip to use while online (not installed on the box)")
+    run(["apt-get", "install", "--download-only", "--reinstall", "-y", "-q", "--no-install-recommends",
+         "-o", f"Dir::Cache::archives={pipstage}", "python3-pip"], timeout=300)
+    deb = next(iter(sorted(pipstage.glob("python3-pip_*.deb"))), None)
+    if not deb:
+        raise ValueError(f"{kit_id}: could not fetch python3-pip, needed once to build the wheelhouse")
+    extract = pipstage / "root"
+    run(["dpkg-deb", "-x", str(deb), str(extract)], timeout=120)
+    site = next(iter(sorted(extract.glob("usr/lib/python3*/dist-packages"))), None)
+    if not site:
+        raise ValueError(f"{kit_id}: python3-pip's .deb did not hold a usable pip")
+    log(f"{kit_id}: downloading {len(pip_pkgs)} Python package(s) and what they need")
+    run(["python3", "-m", "pip", "download", "--dest", str(wstage), "--no-input", *pip_pkgs],
+        timeout=1800, env={"PYTHONPATH": str(site)})
+    wheels = []
+    for w in sorted(wstage.iterdir()):
+        if WHEEL_RE.match(w.name) and w.is_file():
+            wheels.append({"file": w.name, "size": w.stat().st_size, "sha256": sha256(w)})
+    return wheels
+
+
 def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
-    """The kit's packages and their dependencies into the pool (online). Returns a line."""
+    """The kit's packages and their dependencies into the pool (online), and, for a kit that
+    names Python packages (the build kit: platformio), its wheelhouse too."""
     kit = _kit(kit_id)
     for d in (ROOT, POOL, MANIFESTS):
         d.mkdir(parents=True, exist_ok=True)
@@ -182,14 +229,21 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         missing = sorted(set(packages) - {p["name"] for p in pkgs} - set(on_box))
         if missing:
             raise ValueError(f"apt fetched no {', '.join(missing)}")
-        # The budget: the pool as it would be, with this kit's new set current and its current one
-        # previous (if they differ), every other kit's sets as they are.
+        wheels = _fetch_wheels(kit_id, kit["pip"], stage, log) if kit.get("pip") else []
+        # The budget: the pool and wheelhouse as they would be, with this kit's new sets current
+        # and its current ones previous (if they differ), every other kit's sets as they are.
         cur = manifest(kit_id)
-        same = bool(cur) and sorted((p["file"], p["sha256"]) for p in cur["packages"]) == sorted((p["file"], p["sha256"]) for p in pkgs)
-        sets = [(_read(m, {}) or {}).get("packages", []) for m in MANIFESTS.glob("*.json")
-                if m.name not in (f"{kit_id}.json", f"{kit_id}.previous.json")]
-        sets += [pkgs, (cur or {}).get("packages", []) if not same else (manifest(kit_id, "previous") or {}).get("packages", [])]
-        total = sum(p["size"] for p in {p["file"]: p for s_ in sets for p in s_}.values())
+        same = bool(cur) and sorted((p["file"], p["sha256"]) for p in cur["packages"]) == sorted((p["file"], p["sha256"]) for p in pkgs) \
+            and sorted((w["file"], w["sha256"]) for w in cur.get("wheels", [])) == sorted((w["file"], w["sha256"]) for w in wheels)
+        prev = manifest(kit_id, "previous")
+        other_debs = [(_read(m, {}) or {}).get("packages", []) for m in MANIFESTS.glob("*.json")
+                      if m.name not in (f"{kit_id}.json", f"{kit_id}.previous.json")]
+        other_wheels = [(_read(m, {}) or {}).get("wheels", []) for m in MANIFESTS.glob("*.json")
+                        if m.name not in (f"{kit_id}.json", f"{kit_id}.previous.json")]
+        deb_sets = other_debs + [pkgs, (cur or {}).get("packages", []) if not same else (prev or {}).get("packages", [])]
+        wheel_sets = other_wheels + [wheels, (cur or {}).get("wheels", []) if not same else (prev or {}).get("wheels", [])]
+        total = sum(p["size"] for p in {p["file"]: p for s_ in deb_sets for p in s_}.values()) \
+            + sum(w["size"] for w in {w["file"]: w for s_ in wheel_sets for w in s_}.values())
         if total > budget_mb << 20:
             raise ValueError(f"the toolkits' cache would be {total >> 20} MB with {kit_id}, over its {budget_mb} MB budget")
         for p in pkgs:
@@ -197,8 +251,15 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
             if not (dest.exists() and sha256(dest) == p["sha256"]):
                 os.replace(stage / p["file"], dest)
             os.chmod(dest, 0o644)
-        new = {"id": kit_id, "fetched": time.time(), "packages": pkgs, "on_box": on_box, "left_out": left_out, "arch": arch(),
-               "bytes": sum(p["size"] for p in pkgs)}
+        if wheels:
+            WHEELHOUSE.mkdir(parents=True, exist_ok=True)
+            for w in wheels:
+                dest = WHEELHOUSE / w["file"]
+                if not (dest.exists() and sha256(dest) == w["sha256"]):
+                    os.replace(stage / "wheelhouse" / w["file"], dest)
+                os.chmod(dest, 0o644)
+        new = {"id": kit_id, "fetched": time.time(), "packages": pkgs, "wheels": wheels, "on_box": on_box, "left_out": left_out, "arch": arch(),
+               "bytes": sum(p["size"] for p in pkgs) + sum(w["size"] for w in wheels)}
         if cur and not same:
             _write(MANIFESTS / f"{kit_id}.previous.json", cur)
         _write(MANIFESTS / f"{kit_id}.json", new)
@@ -212,11 +273,15 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
 
 
 def prune():
-    """Pool files no manifest names any more."""
+    """Pool and wheelhouse files no manifest names any more."""
     keep = set(_referenced())
     for deb in POOL.glob("*.deb"):
         if deb.name not in keep:
             deb.unlink()
+    keep_wheels = set(_referenced_wheels())
+    for w in WHEELHOUSE.glob("*") if WHEELHOUSE.is_dir() else []:
+        if w.name not in keep_wheels:
+            w.unlink()
 
 
 def write_index():
@@ -268,6 +333,12 @@ def verify(kit_id=None):
                 problems.append(f"{p['file']} is missing")
             elif path.stat().st_size != p["size"] or sha256(path) != p["sha256"]:
                 problems.append(f"{p['file']} has changed since it was fetched")
+        for w in man.get("wheels", []):
+            path = WHEELHOUSE / w["file"]
+            if not path.is_file():
+                problems.append(f"{w['file']} is missing")
+            elif path.stat().st_size != w["size"] or sha256(path) != w["sha256"]:
+                problems.append(f"{w['file']} has changed since it was fetched")
     return sorted(set(problems))
 
 
@@ -671,7 +742,8 @@ def status():
     for kid, k in definitions().items():
         cur, prev = manifest(kid), manifest(kid, "previous")
         kits[kid] = {"cached": cur and {"fetched": cur["fetched"], "packages": len(cur["packages"]), "bytes": cur["bytes"],
+                                        "wheels": len(cur.get("wheels", [])),
                                         "on_box": cur.get("on_box", []), "left_out": cur.get("left_out", []), "arch": cur.get("arch"), "versions": {p["name"]: p["version"] for p in cur["packages"]}},
                      "previous": prev and {"fetched": prev["fetched"], "bytes": prev["bytes"]}}
-    return {"at": time.time(), "kits": kits, "installed": installed_state(), "pool_bytes": pool_bytes(),
+    return {"at": time.time(), "kits": kits, "installed": installed_state(), "pool_bytes": pool_bytes(), "wheelhouse_bytes": wheelhouse_bytes(),
             "problems": verify()}

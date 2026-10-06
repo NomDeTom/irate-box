@@ -63,7 +63,10 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST') {
     posted.push([u, JSON.parse(opts.body)]);
     if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
-    if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
+    if (u === '/admin/firmware') {
+      if (posted[posted.length - 1][1].action === 'flush-cache') return new Response(JSON.stringify({ ...fwFix, status: { ...fwFix.status, cache: null } }), { status: 200 });
+      return new Response(JSON.stringify(fwFix), { status: 200 });
+    }
     return new Response('{"id":"x"}', { status: 202 });
   }
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
@@ -157,7 +160,7 @@ setTimeout(() => {
     const fwm = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'meshtastic-firmware');
     check('firmware: Mirror the source adds meshtastic/firmware with its submodules', fwm && fwm[1].mirror.submodules === true
       && fwm[1].mirror.upstream === 'https://github.com/meshtastic/firmware' && fwm[1].mirror.groups.length === 2, JSON.stringify(fwm));
-    const cs = posted.find((p) => p[0] === '/admin/firmware');
+    const cs = posted.find((p) => p[0] === '/admin/firmware' && p[1].action === 'settings');
     check('git: saving the build cache sends only the cache', cs && JSON.stringify(cs[1]) === JSON.stringify({ action: 'settings', cache: 'whole' }), JSON.stringify(cs));
     const add = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'fw2');
     check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
@@ -169,7 +172,12 @@ setTimeout(() => {
     const stray = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.tagName);
     check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
-    console.log('\nfailures:', fails);
-    process.exit(fails ? 1 : 0);
+    [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
+    setTimeout(() => {
+      check('git: Flush asks the hub, and the cache is gone from the page', posted.some((p) => p[0] === '/admin/firmware' && p[1].action === 'flush-cache')
+        && !/Kept:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);
+      console.log('\nfailures:', fails);
+      process.exit(fails ? 1 : 0);
+    }, 100);
   }, 300);
 }, 2500);

@@ -670,8 +670,8 @@ def set_policy(**changes):
 
 # --- HTTP --------------------------------------------------------------------
 
-def _request(url, auth=None, method="GET"):
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"}
+def _request(url, auth=None, method="GET", extra=None):
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json", **(extra or {})}
     req = urllib.request.Request(url, headers=headers, method=method)
     if auth and urllib.parse.urlparse(url).hostname == "api.github.com":
         # Not carried on a redirect (F28): an artifact download answers with a 302 to GitHub's
@@ -680,9 +680,9 @@ def _request(url, auth=None, method="GET"):
     return req
 
 
-def _open(url, auth=None, method="GET", timeout=60):
+def _open(url, auth=None, method="GET", timeout=60, extra=None):
     try:
-        return urllib.request.urlopen(_request(url, auth, method), timeout=timeout)
+        return urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
             raise LibrarianError(f"{url}: 401, a GitHub token is needed (or a valid one)")
@@ -800,14 +800,22 @@ def resolve(src):
 
 # --- installing --------------------------------------------------------------
 
-def _download(url, dest, auth=None, name=None, expected=0):
+def _download(url, dest, auth=None, name=None, expected=0, resume=False):
     """Stream url to dest. While it runs, progress.json says how far it has got (written at
-    most once a second), so /admin can show a 60 MB book arriving at hotspot speed."""
+    most once a second), so /admin can show a 60 MB book arriving at hotspot speed. With resume,
+    a part already at dest (from a run the hub's restart cut off: the Lyra's 507 MB build cache
+    stopped at 498 MB, 2026-10-06) is continued with a range request when the server allows one."""
     started = time.monotonic()
     done, last = 0, 0.0
+    have = dest.stat().st_size if resume and expected and dest.is_file() and not dest.is_symlink() else 0
+    if not 0 < have < expected:
+        have = 0
     try:
-        with _open(url, auth, timeout=120) as resp, open(dest, "wb") as out:
-            total = int(resp.headers.get("Content-Length") or 0) or expected
+        resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
+        go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
+        done = have if go_on else 0
+        with resp, open(dest, "ab" if go_on else "wb") as out:
+            total = (done + int(resp.headers.get("Content-Length") or 0)) or expected
             while True:
                 chunk = resp.read(CHUNK)
                 if not chunk:

@@ -87,10 +87,28 @@ for t in ci.TEMPLATES.values():
     used |= set(re.findall(r"\$\{?(CI_[A-Z_]+|HOME)\b", t["script"]))
 check("the templates use only what a build gets", used and used <= set(ci.ENV_VARS), used - set(ci.ENV_VARS))
 build_src = (REPO / "irate_box/hub/ci.py").read_text()
-given = set(re.findall(r"\b(CI(?:_[A-Z_]+)?)=", build_src[build_src.index("def build(job)"):])) | {"CI_PIO_DEPS", "HOME"}
+given = set(re.findall(r"\b(CI(?:_[A-Z_]+)?)=", build_src[build_src.index("def build(job)"):])) | {"CI_PIO_DEPS", "PIP_NO_INDEX", "PIP_FIND_LINKS", "HOME"}
 check("and what the page says a build gets is what build() sets", set(ci.ENV_VARS) <= given, set(ci.ENV_VARS) - given)
 snap = ci.snapshot()
-check("the snapshot says the limits, the runs' size, what is offline, and the templates", {"keep_runs", "runs_bytes", "memory", "mirrored", "pio_deps", "env", "templates"} <= set(snap)
+check("the snapshot says the limits, the runs' size, what is offline, and the templates", {"keep_runs", "runs_bytes", "memory", "mirrored", "pio_deps", "wheelhouse", "env", "templates"} <= set(snap)
       and snap["runs_bytes"] >= 4321, sorted(snap))
+check("no wheelhouse yet: not offered", snap["wheelhouse"] is False)
+
+# The Building kit's wheelhouse (toolkits-plan §5): once cached, a build gets PIP_NO_INDEX and
+# PIP_FIND_LINKS, with no change to the template (pip reads them from its environment).
+kits_root = T / "kits"; (kits_root / "wheelhouse").mkdir(parents=True)
+(kits_root / "wheelhouse" / "platformio-6.1.0-py3-none-any.whl").write_bytes(b"x" * 10)
+os.environ["HUB_KITS_ROOT"] = str(kits_root)
+check("the wheelhouse is offered once cached", ci.snapshot()["wheelhouse"] is True)
+w = T / "w-wh"
+subprocess.run(["git", "init", "-q", "-b", "main", str(w)], check=True)
+(w / ".irate-ci.sh").write_text('#!/bin/bash\necho -n "$PIP_NO_INDEX $PIP_FIND_LINKS" > "$CI_ARTIFACTS/env.txt"\n')
+subprocess.run(["git", "add", "-A"], cwd=w, check=True); subprocess.run(["git", "commit", "-qm", "c"], cwd=w, env=ENV, check=True)
+wh_bare = T / "git" / "private" / "wh.git"
+subprocess.run(["git", "clone", "-q", "--bare", str(w), str(wh_bare)], check=True)
+commit = subprocess.run(["git", "rev-parse", "main"], cwd=w, capture_output=True, text=True, check=True).stdout.strip()
+ci.build({"repo": str(wh_bare), "branch": "main", "commit": commit, "queued": time.time()})
+env_out = (ci.RUNS / "wh" / "1" / "artifacts" / "env.txt").read_text()
+check("a build gets PIP_NO_INDEX and PIP_FIND_LINKS from the wheelhouse", env_out == f"1 {kits_root / 'wheelhouse'}", env_out)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
