@@ -1100,6 +1100,16 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                 except (LibrarianError, OSError) as exc:
                     results["mirrors"] = f"error: {exc}"
                     log(f"mirrors: error: {exc}")
+        # Toolkits (toolkits.py): installs whose time is up removed; one due kit's cache refreshed.
+        if (scheduled and not names) or (names and "toolkits" in names):
+            from irate_box.library import toolkits
+            try:
+                line = toolkits.step(policy, log=log)
+            except (LibrarianError, OSError) as exc:
+                line = f"error: {exc}"
+            if line:
+                results["toolkits"] = line
+                log(f"toolkits: {line}")
         # The hub's own updates (selfupdate.py): one step per run of the timer.
         if scheduled and not names:
             from irate_box.library import selfupdate

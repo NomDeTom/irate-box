@@ -36,6 +36,7 @@ run sim_git_public.py
 run sim_git_levels.py
 run origin_guard.py
 run sim_mirrors.py
+run sim_toolkits.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

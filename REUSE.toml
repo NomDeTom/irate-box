@@ -4,7 +4,7 @@
 version = 1
 
 [[annotations]]
-path = ["apps.d/*.json", "addons/*.json", "addons/templates/*.json"]
+path = ["apps.d/*.json", "addons/*.json", "addons/templates/*.json", "toolkits/*.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"

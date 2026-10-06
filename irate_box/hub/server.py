@@ -1851,6 +1851,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, ci.snapshot())
             return
 
+        if path == "/admin/kits":
+            from irate_box.library import toolkits
+            snap = toolkits.snapshot()
+            snap["results"] = [r for r in control_results(20)]
+            self.send_json(200, snap)
+            return
+
         if path == "/admin/firmware":
             snap = firmware.snapshot()
             snap.update(running=librarian.is_running(), progress=librarian.progress())
@@ -2082,6 +2089,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/kits":
+            from irate_box.library import toolkits
+            try:
+                rid = toolkits.action(payload)
+            except librarian.LibrarianError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            snap = toolkits.snapshot()
+            if rid:
+                snap["id"] = rid
+            self.send_json(202 if rid else 200, snap)
             return
 
         if path == "/admin/usb":

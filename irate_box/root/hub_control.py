@@ -68,6 +68,13 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
+  {"id": ..., "action": "kit-fetch", "kit": "<a shipped toolkit>", "budget_mb": 500}
+  {"id": ..., "action": "kit-install", "kit": ..., "hours": 24|null}
+  {"id": ..., "action": "kit-remove" | "kit-keep", "kit": ...[, "hours": ...]}   {"action": "kit-expire"}
+      Toolkits (kits.py): fetch a shipped kit's packages into the local repository (online),
+      install it from there with no internet (removed again after "hours"; null: never),
+      remove what it added, change when it goes, or remove every kit whose time is up. A
+      request names a kit, never packages. control/kits.json says what is cached and installed.
 
 From a root shell, the same file also resets the login, for an owner who has lost it:
 
@@ -103,7 +110,7 @@ from irate_box.hub import netinv
 from irate_box.root import secdoctor
 from irate_box.root import security
 from irate_box.hub import uplink
-from irate_box.root import safeio, usbstick
+from irate_box.root import kits, safeio, usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -1272,7 +1279,37 @@ def doctor():
                                      "Fix the cause, then check for updates again."))
     except (OSError, ValueError):
         pass
+    findings += kits_findings()
     return findings
+
+
+def kits_findings(now=None):
+    """The toolkits (toolkits-plan §8): the cache's files against their manifests, its folder,
+    its size against the budget the page set, and kits left installed."""
+    now = now or time.time()
+    out = []
+    problems = kits.verify()
+    if problems:
+        out.append(_finding("Toolkits' cache", "problem", "; ".join(problems[:5]),
+                            "Fetch the kit again while online (Library → Toolkits); nothing is installed from a cache that fails this."))
+    elif kits.MANIFESTS.is_dir() and any(kits.MANIFESTS.glob("*.json")):
+        out.append(_finding("Toolkits' cache", "ok", f"every file matches its manifest ({kits.pool_bytes() >> 20} MB)"))
+    try:
+        budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
+    except (OSError, ValueError, TypeError, AttributeError):
+        budget = 500
+    if kits.pool_bytes() > budget << 20:
+        out.append(_finding("Toolkits' cache", "warn", f"{kits.pool_bytes() >> 20} MB, over its {budget} MB budget",
+                            "Raise the budget, or stop keeping a kit current."))
+    for kit, v in kits.installed_state().items():
+        days = (now - v.get("at", now)) / 86400
+        if kit == "debug" and days > 7:
+            out.append(_finding("Toolkits installed", "warn", f"the debug kit has been installed for {int(days)} days: "
+                                "it can read any process's memory and every packet", "Remove it under Library → Toolkits."))
+        elif v.get("remove_at") is None and kit != "build":
+            out.append(_finding("Toolkits installed", "warn", f"{kit} is installed with no removal time",
+                                "Set one under Library → Toolkits, or remove it."))
+    return out
 
 
 def update_doctor(req):
@@ -1659,6 +1696,41 @@ def uplink_profile(req):
     return msg
 
 
+def _kits_status():
+    safeio.write(CONTROL / "kits.json", json.dumps(kits.status()))
+
+
+def _kit_hours(req):
+    hours = req.get("hours", 24)
+    if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
+        raise ValueError("hours: 1 to 8760, or null for never")
+    return hours
+
+
+def _kit_req(fn):
+    """A toolkit action, and control/kits.json written after it, whatever happened."""
+    def action(req):
+        kit = req.get("kit")
+        if fn is not kits.expire and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+            raise ValueError("kit: a toolkit's id")
+        try:
+            if fn is kits.fetch:
+                budget = req.get("budget_mb", 500)
+                if type(budget) is not int or not 10 <= budget <= 1 << 16:
+                    raise ValueError("budget_mb: 10 to 65536")
+                return kits.fetch(kit, budget_mb=budget, log=lambda *_: None)
+            if fn is kits.install:
+                return kits.install(kit, _kit_hours(req), log=lambda *_: None)
+            if fn is kits.set_removal:
+                return kits.set_removal(kit, _kit_hours(req))
+            if fn is kits.expire:
+                return "; ".join(kits.expire()) or "nothing due"
+            return fn(kit, log=lambda *_: None)
+        finally:
+            _kits_status()
+    return action
+
+
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-force-install": update_force_install,
@@ -1666,7 +1738,9 @@ ACTIONS = {"service": service, "password": password,
            "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile}
+           "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
+           "kit-keep": _kit_req(kits.set_removal), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
 
 
 def answer(rid, ok, message):
