@@ -11,7 +11,10 @@ def check(name, cond, info=""):
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 def req(method, path, body=None, headers=None, raw=None):
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
-    r = urllib.request.Request(H + path, data=data, method=method, headers=headers or {})
+    headers = dict(headers or {})
+    if method == "POST" and path.startswith("/admin"):
+        headers.setdefault("X-Irate-Admin", "1")  # as the /admin page sends it (server.py _forged)
+    r = urllib.request.Request(H + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(r) as resp:
             return resp.status, json.loads(resp.read() or b"{}")

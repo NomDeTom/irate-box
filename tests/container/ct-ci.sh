@@ -4,7 +4,7 @@
 H=127.0.0.1 PW=correct-horse-1
 export GIT_TERMINAL_PROMPT=0 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@x GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@x
 fails=0; ok() { echo "  ok   $*"; }; bad() { echo "  FAIL $*"; fails=$((fails+1)); }
-admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -d "$1" "http://$H/admin/git" >/dev/null; }
+admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://$H/admin/git" >/dev/null; }
 ci() { curl -s -u "admin:$PW" "http://$H/admin/ci"; }
 wait_runs() { for _ in $(seq 60); do n=$(ci | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for r in d["runs"] if r["state"]!="running"), d["queued"])'); [ "${n%% *}" -ge "$1" ] && [ "${n##* }" = 0 ] && return 0; sleep 1; done; return 1; }
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; cd "$W"

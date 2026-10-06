@@ -11,7 +11,7 @@
   "status": {
     "path": "/notes/",
     "name": "Notes (SilverBullet)",
-    "port": 3000,
+    "socket": "/run/silverbullet/silverbullet.sock",
     "unit": "silverbullet.service",
     "control": true
   },

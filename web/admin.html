@@ -7,20 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hub admin</title>
   <link rel="stylesheet" href="/style.css">
-  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='cybercore')document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <script src="/themes.js"></script>
 </head>
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>Admin</h1>
     <p class="subtitle">Options for whoever owns the box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme">
-      <span class="theme-label" aria-hidden="true">Theme</span>
-      <button type="button" data-theme-choice="light" title="Light">☀️</button>
-      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
-      <button type="button" data-theme-choice="cybercore" title="Cybercore">🏴‍☠️</button>
-      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
-    </div>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <div class="admin-layout">
@@ -123,6 +117,36 @@
           <summary>Installer output</summary>
           <pre class="admin-log" id="addons-log"></pre>
         </details>
+
+        <h3>Web add-ons</h3>
+        <p class="setting-desc">
+          Apps that run in the visitor's browser, added here in a minute with no installer and no
+          restart. Each is served on its own address (this box, port <span id="local-port">8090</span>),
+          so it cannot reach this page, the hub's settings or anything else on the box. An added one
+          starts <strong>off</strong>: switch it public or private when you are ready. The Library
+          pane's Apps keeps it current, at the commit the hub's code checked unless you choose the newest.
+        </p>
+        <div id="local-added"></div>
+        <h4>The catalogue</h4>
+        <p class="setting-desc">Add-ons this hub's code offers, each pinned to a commit that was checked.</p>
+        <div id="local-catalogue"></div>
+        <details class="admin-output" id="local-paste">
+          <summary>Add one by pasting its manifest</summary>
+          <div class="danger-box" role="note">
+            <p><strong>⚠️ Only do this with a manifest you have read and from someone you trust.</strong></p>
+            <p>A pasted manifest is not checked by anyone but you. It downloads someone else's code and
+            serves it to everyone on this box's network who opens it, under this box's name. That code
+            can show them anything, ask them for anything, and send what they type to wherever its
+            manifest lets it connect. It cannot reach this page or the box itself: that much the hub
+            enforces. If you are not sure, use the catalogue instead.</p>
+          </div>
+          <textarea id="local-paste-text" rows="10" spellcheck="false" placeholder='{"id": "...", "order": 70, "tile": {...}, "source": {...}, "needs": "index.html", "addon": {...}}'></textarea>
+          <label class="setting"><input type="checkbox" id="local-paste-ok">
+            <span class="setting-desc">I understand this runs someone else's code on this box's address</span></label>
+          <span class="library-buttons"><button type="button" id="local-paste-go">Add it</button></span>
+          <span class="setting-desc" id="local-paste-note" role="status"></span>
+        </details>
+        <div id="local-errors"></div>
       </section>
 
       <section class="admin-pane" id="access" aria-labelledby="access-title">

@@ -1,0 +1,68 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 NomDeTom
+;
+; The Irate-Box's own keywords, installed as scripts/box.txt and added to a script before it is
+; read: eliza.html?script=NAME&add=box puts these rules in front of the script's closing "()"
+; (adapt_eliza.py adds that to the page). Same rule syntax as the scripts: a keyword,
+; an optional precedence (higher wins), then (decomposition) and its reassembly rules.
+; Keep them in capitals, with no punctuation but commas and full stops.
+
+(MESH 5
+    ((0 MESH 0)
+        (TELL ME MORE ABOUT THE MESH)
+        (DOES THE MESH FEEL RELIABLE TO YOU)
+        (WHO ELSE IS ON THE MESH)
+        (HOW DOES THE MESH MAKE YOU FEEL)))
+
+(MESHTASTIC 5
+    (=MESH))
+
+(NODE 4
+    ((0)
+        (WHICH NODE ARE YOU THINKING OF)
+        (WHAT DOES YOUR NODE MEAN TO YOU)
+        (DO YOU FEEL ALONE WITHOUT A NODE)))
+
+(LORA 4
+    ((0)
+        (THE RADIO IS NOT THE PROBLEM, IS IT)
+        (DO YOU FEEL YOU ARE BEING HEARD)
+        (HOW LONG DO YOU WAIT FOR AN ANSWER)))
+
+(ANTENNA 4
+    ((0)
+        (WHAT ARE YOU TRYING TO REACH)
+        (DO YOU FEEL YOU ARE REACHING PEOPLE)
+        (IS IT HIGH ENOUGH, DO YOU THINK)))
+
+(BATTERY 4
+    ((0)
+        (DO YOU OFTEN FEEL RUN DOWN)
+        (HOW LONG HAVE YOU BEEN RUNNING ON EMPTY)
+        (WHAT WOULD IT TAKE TO CHARGE YOU)))
+
+(SOLAR 3
+    (=BATTERY))
+
+(FIRMWARE 4
+    ((0)
+        (DO YOU FEEL YOU NEED AN UPDATE)
+        (WHAT WOULD YOU CHANGE ABOUT YOURSELF IF YOU COULD FLASH IT)
+        (IS IT STABLE, OR ARE YOU AFRAID OF WHAT HAPPENS WHEN YOU UPDATE)))
+
+(FLASH 3
+    (=FIRMWARE))
+
+(SIGNAL 4
+    ((0)
+        (WHAT KIND OF SIGNAL ARE YOU SENDING OUT)
+        (DO YOU FEEL YOU ARE DROWNED OUT BY THE NOISE)
+        (IS ANYONE LISTENING)))
+
+(BOX 3
+    ((0 THE BOX 0)
+        (WHAT DOES THE BOX REPRESENT FOR YOU)
+        (DO YOU THINK THE BOX UNDERSTANDS YOU)
+        (WHY DO YOU TALK TO A BOX))
+    ((0)
+        (DOES IT BOTHER YOU THAT I AM A BOX)))

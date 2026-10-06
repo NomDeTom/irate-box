@@ -18,6 +18,8 @@ A source says where new versions of one book come from:
 
 It also keeps the hub's web apps current (kind "app": the apps with a "source" in apps.d/),
 from the forks' irate-box-bundle.yml artifacts or a git repository -- see "app bundles" below.
+For a git app whose manifest pins a commit (its last known good), it tracks two versions, the
+newest and the pinned one, and installs the one the source follows ("pinned" by default).
 
 Each book keeps its file name, <name>.zim, across versions, so /wiki/content/<name>/ links
 never change. A new version is downloaded beside the old one, checked (free space, the ZIM
@@ -221,7 +223,10 @@ def validate_source(src):
             branch = str(src.get("branch") or spec.get("branch", "main")).strip()
             if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
                 raise LibrarianError("branch: a branch name")
-            out.update(repo=spec["repo"], branch=branch, enabled=bool(src.get("enabled", True)))
+            follow = str(src.get("follow") or _default_follow(out["name"]))
+            if follow not in ("latest", "pinned") or (follow == "pinned" and not spec.get("pin")):
+                raise LibrarianError("follow: latest, or pinned for an app whose manifest pins a commit")
+            out.update(repo=spec["repo"], branch=branch, follow=follow, enabled=bool(src.get("enabled", True)))
             return out
         if out["type"] not in ("actions", "nightly-link"):
             raise LibrarianError("an app bundle comes from actions or nightly-link")
@@ -265,10 +270,28 @@ def validate_source(src):
 # /usr/share/hub needs root, so it hands the checked zip to hub_control.py (app-install),
 # which checks it again and swaps it in, keeping the previous copy for a roll back.
 # Each bundle carries irate-box-bundle.json: {"app", "repository", "ref", "commit", "built", "run"?}.
+#
+# Latest and pinned: a git app's manifest may pin a commit ("source": {"pin": SHA}), the last
+# one its maintainers looked at and know to work (for ELIZA: third-party code and scripts that
+# visitors are served, and an adapt script that patches the page). Every check then records
+# both, "latest" (the branch head) and "pinned", in the app's status. Its source follows one:
+#   pinned  (the default when there is a pin) installs the pinned commit; a newer one is only
+#           reported, until the pin moves with the hub's code or the owner follows latest;
+#   latest  installs the branch head; if that does not fetch, adapt or check, the box keeps
+#           the build it has, or with none, installs the pinned one.
+# Whichever it is, the commit is fetched by its hash, so what is installed is what was checked.
 
 APP_STAGING = LIB_DIR / "apps"
 APP_MAX_BYTES = 400 << 20  # unpacked; the largest bundle (draw) is ~25 MB
-APPS = manifests.installable()
+# The built-in apps and the local add-ons (manifests.py), which the owner adds and removes from
+# /admin while the hub runs: reload_apps() reads them again.
+APPS = manifests.installable(manifests.load_all())
+
+
+def reload_apps():
+    global APPS
+    APPS = manifests.installable(manifests.load_all())
+    return APPS
 BUNDLE_JSON = "irate-box-bundle.json"
 
 
@@ -276,10 +299,29 @@ def app_dir(name):
     return manifests.install_dir(APPS[name])
 
 
+def _default_follow(name):
+    return "pinned" if APPS[name]["source"].get("pin") else "latest"
+
+
+def _follow(src):
+    """What a git app source installs: "latest" or "pinned" (a source saved before pins
+    existed has no "follow", and gets its manifest's default)."""
+    pin = APPS.get(src["name"], {}).get("source", {}).get("pin")
+    follow = src.get("follow") or (_default_follow(src["name"]) if src["name"] in APPS else "latest")
+    return follow if pin or follow == "latest" else "latest"
+
+
+def _pinned_candidate(src):
+    sha = APPS[src["name"]]["source"]["pin"]
+    return {"version": f"git-{sha}", "url": src["repo"], "size": 0, "zip": False, "commit": sha,
+            "label": f"pinned {sha[:7]}", "auth": None, "pinned": True}
+
+
 def default_app_source(name, via="nightly-link"):
     spec = APPS[name]["source"]
     if spec["type"] == "git":
-        return {"name": name, "kind": "app", "type": "git", "repo": spec["repo"], "branch": spec.get("branch", "main")}
+        return {"name": name, "kind": "app", "type": "git", "repo": spec["repo"], "branch": spec.get("branch", "main"),
+                "follow": _default_follow(name)}
     return {"name": name, "kind": "app", "type": via, "repo": spec["repo"], "workflow": spec["workflow"],
             "branch": spec.get("branch", ""), "pattern": spec.get("pattern", f"irate-box-{name}-*")}
 
@@ -350,7 +392,8 @@ def _git(*args, timeout=300):
     out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=timeout)
     if out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
-        raise LibrarianError(f"git {args[0]}: {lines[-1] if lines else 'failed'}")
+        what = args[2] if args[0] == "-C" and len(args) > 2 else args[0]
+        raise LibrarianError(f"git {what}: {lines[-1] if lines else 'failed'}")
     return out.stdout
 
 
@@ -371,8 +414,16 @@ def _pack_git(src, cand, part):
     work = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=APP_STAGING))
     try:
         tree = work / "tree"
-        _git("clone", "-q", "--depth", "1", "--branch", src.get("branch", "main"), src["repo"], str(tree))
+        want = cand.get("commit")
+        if want:  # by its hash: the commit that was resolved (or pinned), not whatever is newest now
+            _git("init", "-q", str(tree))
+            _git("-C", str(tree), "fetch", "-q", "--depth", "1", src["repo"], want)
+            _git("-C", str(tree), "checkout", "-q", "FETCH_HEAD")
+        else:
+            _git("clone", "-q", "--depth", "1", "--branch", src.get("branch", "main"), src["repo"], str(tree))
         commit = _git("-C", str(tree), "rev-parse", "HEAD").strip()
+        if want and commit != want:
+            raise LibrarianError(f"asked {src['repo']} for {want[:7]} and got {commit[:7]}")
         shutil.rmtree(tree / ".git")
         adapt = APPS[name]["source"].get("adapt")
         if adapt:
@@ -381,7 +432,7 @@ def _pack_git(src, cand, part):
             if out.returncode != 0:
                 raise LibrarianError(f"{adapt} failed: {(out.stderr or out.stdout).strip()[-300:]}")
         (tree / BUNDLE_JSON).write_text(json.dumps({
-            "app": name, "repository": src["repo"], "ref": src.get("branch", "main"),
+            "app": name, "repository": src["repo"], "ref": "pinned" if cand.get("pinned") else src.get("branch", "main"),
             "commit": commit, "built": now_iso(), "source": "git"}))
         with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in sorted(tree.rglob("*")):
@@ -442,11 +493,111 @@ def update_app(src, cand, entry, mode):
                                       "commit": str(bundle.get("commit", ""))[:7]}
     if mode != "update":
         return f"fetched {fetched['commit']} ({cand['label']}); ready to update"
+    if APPS[src["name"]].get("local"):
+        # A local add-on is the hub's own to install: no root helper.
+        message = install_local(src["name"], staged)
+        entry.pop("pending", None)
+        entry["install_result"] = {"ok": True, "message": message, "at": now_iso()}
+        entry.pop("fetched", None)
+        return f"installed {fetched['commit']} ({cand['label']})"
     rid = _queue_root({"action": "app-install", "app": src["name"], "zip": str(staged)})
     entry["pending"] = rid
     entry.pop("install_result", None)
     entry.pop("fetched", None)
     return f"installing {fetched['commit']} ({cand['label']})"
+
+
+def install_local(name, zip_path):
+    """A local add-on's bundle, unpacked into its folder in $HUB_STATE_DIR/addons as the hub user
+    (the root helper's install_app, without root: the folder is the hub's, served by the add-on
+    origin). Checked as every bundle is: no links, no absolute or '..' paths, its size, what it
+    needs. The previous copy is kept beside it as .<name>.prev, which the add-on origin never
+    serves (it serves only /<id>/, and ids start with a letter or digit)."""
+    meta = check_bundle(zip_path, name)
+    target = app_dir(name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    new = target.parent / f".{name}.new"
+    prev = target.parent / f".{name}.prev"
+    shutil.rmtree(new, ignore_errors=True)
+    new.mkdir(mode=0o755)
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(new)
+        for root, _dirs, files in os.walk(new):
+            os.chmod(root, 0o755)
+            for f in files:
+                os.chmod(os.path.join(root, f), 0o644)
+        if target.exists():
+            shutil.rmtree(prev, ignore_errors=True)
+            os.rename(target, prev)
+        os.rename(new, target)
+    finally:
+        shutil.rmtree(new, ignore_errors=True)
+    Path(zip_path).unlink(missing_ok=True)
+    return f"{name}: installed {str(meta.get('commit', ''))[:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
+
+
+def rollback_local(name):
+    """A local add-on back to its previous copy (the current one becomes the previous)."""
+    target = app_dir(name)
+    prev = target.parent / f".{name}.prev"
+    if not prev.is_dir():
+        raise LibrarianError(f"no previous {name} to go back to")
+    swap = target.parent / f".{name}.swap"
+    shutil.rmtree(swap, ignore_errors=True)
+    if target.exists():
+        os.rename(target, swap)
+    os.rename(prev, target)
+    if swap.exists():
+        os.rename(swap, prev)
+    return f"{name}: back to the previous copy"
+
+
+def update_app_source(src, cand, entry, mode, latest_error=None):
+    """An app source's part of update(): update_app() on the build the source follows. cand is
+    the newest (None if it could not be resolved: latest_error says why). With a pin, the
+    status records both, and following latest falls back as the comment above says."""
+    pin = APPS[src["name"]]["source"].get("pin") if src["type"] == "git" else None
+    if not pin:
+        if cand is None:
+            raise LibrarianError(latest_error)
+        return update_app(src, cand, entry, mode)
+    pinned = _pinned_candidate(src)
+    entry["pinned"] = {"version": pinned["version"], "label": pinned["label"]}
+    entry["follow"] = _follow(src)
+    if entry["follow"] == "pinned":
+        out = update_app(src, pinned, entry, mode)
+        if cand is None:
+            return f"{out}; the newest is not known ({latest_error})"
+        return out if cand["commit"] == pin else f"{out}; newer, not followed: {cand['label']}"
+    if cand is not None:
+        try:
+            out = update_app(src, cand, entry, mode)
+            entry.pop("latest_failed", None)
+            return out
+        except LibrarianError as exc:
+            entry["latest_failed"] = {"version": cand["version"], "label": cand["label"], "error": str(exc)}
+            why = f"the newest ({cand['label']}) failed: {exc}"
+    else:
+        why = f"the newest is not known ({latest_error})"
+    inst = installed_app(src["name"])
+    if inst and inst.get("commit"):
+        return f"{why}; keeping {inst['commit'][:7]}"
+    return f"{why}; {update_app(src, pinned, entry, mode)}"
+
+
+def fetch_app_source(src):
+    """install.sh's first install (app-fetch): the build the source follows, or the pinned one
+    when following latest and the newest does not fetch, adapt or check."""
+    pin = APPS[src["name"]]["source"].get("pin") if src["type"] == "git" else None
+    if not pin:
+        return fetch_app(src, resolve(src))
+    if _follow(src) == "latest":
+        try:
+            return fetch_app(src, resolve(src))
+        except LibrarianError as exc:
+            print(f"{src['name']}: the newest failed ({exc}); using the pinned {pin[:7]}", file=sys.stderr)
+    return fetch_app(src, _pinned_candidate(src))
 
 
 def default_apps():
@@ -456,7 +607,7 @@ def default_apps():
 
 def apps_snapshot():
     return {name: {"title": m["install"].get("title", name), "installed": installed_app(name),
-                   "source_type": m.get("source", {}).get("type")}
+                   "source_type": m.get("source", {}).get("type"), "pin": m.get("source", {}).get("pin")}
             for name, m in APPS.items() if m.get("source")}
 
 
@@ -781,6 +932,8 @@ def rollback(name, version=None):
     if src.get("kind") == "app":
         if not (installed_app(name) or {}).get("has_previous"):
             raise LibrarianError(f"no previous {name} bundle to go back to")
+        if APPS.get(name, {}).get("local"):
+            return rollback_local(name)
         return "queued: " + _queue_root({"action": "app-rollback", "app": name})
     folder = ARCHIVE_DIR / name
     choices = sorted(folder.glob("*.zim"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -830,6 +983,26 @@ def _due(entry, hours):
     return (datetime.now(timezone.utc) - then).total_seconds() >= hours * 3600 - 300
 
 
+def update_book(src, cand, entry, mode, policy, log):
+    """A book source's part of update(), as update_app() is an app's."""
+    name = src["name"]
+    if entry.get("current", {}).get("version") == cand["version"] and (ZIM_DIR / f"{name}.zim").exists():
+        entry.pop("fetched", None)
+        staged_book(name).unlink(missing_ok=True)
+        return f"up to date: {cand['label']}"
+    if _fetched(name, cand, entry) and mode != "update":
+        return f"fetched {cand['label']}; ready to update"
+    if mode == "check":
+        return f"newer available: {cand['label']}"
+    if mode == "fetch":
+        log(f"{name}: fetching {cand['label']}")
+        fetch_book(src, cand, policy, entry)
+        return f"fetched {cand['label']}; ready to update"
+    log(f"{name}: installing {cand['label']}")
+    install(src, cand, policy, entry)
+    return f"installed {cand['label']}"
+
+
 def update(names=None, scheduled=False, download=True, log=print, mode=None):
     """Check the chosen sources (all enabled ones by default) and act on anything newer:
     mode "check" only records it, "fetch" downloads and checks it without changing what is
@@ -853,27 +1026,19 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                 continue
             entry["last_check"] = now_iso()
             try:
-                cand = resolve(src)
-                entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
                 if src.get("kind") == "app":
+                    # A pinned app still has its pin when the newest cannot be found.
+                    try:
+                        cand, latest_error = resolve(src), None
+                        entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
+                    except LibrarianError as exc:
+                        cand, latest_error = None, str(exc)
                     log(f"{name}: checking the app bundle")
-                    outcome = update_app(src, cand, entry, mode)
-                elif entry.get("current", {}).get("version") == cand["version"] and (ZIM_DIR / f"{name}.zim").exists():
-                    outcome = f"up to date: {cand['label']}"
-                    entry.pop("fetched", None)
-                    staged_book(name).unlink(missing_ok=True)
-                elif _fetched(name, cand, entry) and mode != "update":
-                    outcome = f"fetched {cand['label']}; ready to update"
-                elif mode == "check":
-                    outcome = f"newer available: {cand['label']}"
-                elif mode == "fetch":
-                    log(f"{name}: fetching {cand['label']}")
-                    fetch_book(src, cand, policy, entry)
-                    outcome = f"fetched {cand['label']}; ready to update"
+                    outcome = update_app_source(src, cand, entry, mode, latest_error)
                 else:
-                    log(f"{name}: installing {cand['label']}")
-                    install(src, cand, policy, entry)
-                    outcome = f"installed {cand['label']}"
+                    cand = resolve(src)
+                    entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
+                    outcome = update_book(src, cand, entry, mode, policy, log)
                 entry.pop("error", None)
             except LibrarianError as exc:
                 entry["error"] = str(exc)
@@ -1002,7 +1167,7 @@ def main(argv=None):
             src = next((s for s in load_config()["sources"] if s["name"] == args.app),
                        validate_source(default_app_source(args.app)))
             with Lock():
-                path, meta = fetch_app(src, resolve(src))
+                path, meta = fetch_app_source(src)
             print(path)
             print(f"{args.app}: {meta.get('commit', '')[:7]} ({meta.get('ref')}, built {meta.get('built')})", file=sys.stderr)
     except LibrarianError as exc:

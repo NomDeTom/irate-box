@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+"""The hub's own guard on /admin, against a hub it starts with a front secret: /admin refused
+without the front's header (F27, F31: anything on loopback), /admin changes refused without the
+/admin page's header or from another origin (S3), and a refused request's body never left on a
+kept-alive connection to poison the next one (F2's mechanism). python3 tests/api_admin_gate.py"""
+import http.client, os, subprocess, sys, tempfile, time
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[1]
+state = tempfile.mkdtemp(prefix="admin-gate-")
+port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+SECRET = "f" * 64
+env = dict(os.environ, HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=state, HUB_ETC_DIR=state, PORT=str(port), HUB_BIND="127.0.0.1")
+hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+fails = 0
+def check(name, cond, info=""):
+    global fails
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+try:
+    for _ in range(50):
+        try:
+            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status"); break
+        except OSError:
+            time.sleep(0.1)
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    def go(method, path, headers=None, body=None):
+        h = {"Host": f"127.0.0.1:{port}", **(headers or {})}
+        c.request(method, path, body=body, headers=h); r = c.getresponse(); r.read(); return r.status
+    front = {"X-Irate-Front": SECRET}
+    page = {**front, "X-Irate-Admin": "1", "Content-Type": "application/json"}
+    check("GET /admin without the front's header: 403", go("GET", "/admin/settings") == 403)
+    check("GET /admin with a wrong one: 403", go("GET", "/admin/settings", {"X-Irate-Front": "0" * 64}) == 403)
+    check("GET /admin with it: 200", go("GET", "/admin/settings", front) == 200)
+    check("guest pages need neither", go("GET", "/status") == 200)
+    check("POST /admin without X-Irate-Admin: 403", go("POST", "/admin/settings", {**front, "Content-Type": "application/json"}, b"{}") == 403)
+    check("POST /admin from another origin: 403", go("POST", "/admin/settings", {**page, "Origin": "http://evil.example"}, b"{}") == 403)
+    check("POST /admin from a cross-site fetch: 403", go("POST", "/admin/settings", {**page, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403)
+    check("POST /admin from the page itself: 200", go("POST", "/admin/settings", {**page, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}, b"{}") == 200)
+    # A refused request with a body, then another on the same kept-alive connection.
+    go("POST", "/admin/settings", {**front, "Content-Type": "application/json"}, b'{"store_save_ttl_hours": 7}')
+    check("after a refused POST, the next request on the connection is itself", go("GET", "/admin/settings", front) == 200)
+    go("POST", "/admin/settings", {"Content-Type": "application/json"}, b'{"x": 1}')
+    check("after a refused POST (no secret), likewise", go("POST", "/admin/settings", page, b"{}") == 200)
+finally:
+    hub.terminate()
+print("ok" if not fails else f"{fails} failure(s)")
+sys.exit(1 if fails else 0)

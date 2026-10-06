@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
+// Every /admin change carries X-Irate-Admin, which the hub requires (server.py _forged): a page
+// elsewhere cannot send it with the owner's cached login.
+const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' };
 // Admin options. The gate is the web server's basic auth on /admin/* -- by the time this page
 // loads, the operator has already authenticated. Each toggle saves on change; there is
 // no Save button to forget to press.
@@ -75,7 +78,7 @@ async function save(box) {
   try {
     const r = await fetch('/admin/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: ADMIN_HEADERS,
       body: JSON.stringify({ [box.id]: box.checked }),
     });
     if (!r.ok) throw new Error(r.status);
@@ -132,7 +135,7 @@ async function saveRemote() {
   try {
     const r = await fetch('/admin/tailscale', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: ADMIN_HEADERS,
       body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(r.status);
@@ -192,7 +195,7 @@ const where = (s) => s.type === 'url' ? s.url
 
 async function libPost(body) {
   const r = await fetch('/admin/library', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { status: r.status });
@@ -270,14 +273,20 @@ function renderApps(snap, busy) {
     const src = sources[name];
     const st = snap.status[name] || {};
     const res = st.install_result;
-    const newer = !!(st.latest && st.current) && st.latest.version !== st.current.version;
-    const fetched = newer && st.fetched && st.fetched.version === st.latest.version ? st.fetched : null;
+    // A pinned app (librarian.py, "Latest and pinned") installs the build its source follows.
+    const follow = a.pin ? (src && src.follow) || st.follow || 'pinned' : 'latest';
+    const target = follow === 'pinned' ? st.pinned : st.latest;
+    const newer = !!(target && st.current) && target.version !== st.current.version;
+    const fetched = newer && st.fetched && st.fetched.version === target.version ? st.fetched : null;
     const lines = [
       inst === null ? 'Not installed.' : inst.commit
         ? `Installed: ${inst.commit.slice(0, 7)} from ${inst.repository} (${inst.ref}), built ${String(inst.built).slice(0, 10)}.`
         : 'Installed by hand (no bundle record): the first update replaces it.',
       src ? (src.type === 'git' ? `Source: git, ${src.repo} @ ${src.branch}, adapted for the hub.`
         : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.`) : 'Not kept current: it has no update source yet.',
+      a.pin ? `Pinned (last known good): ${a.pin.slice(0, 7)}. Newest: ${st.latest ? st.latest.label : 'not checked yet'}. ` +
+        (follow === 'pinned' ? 'Installs the pinned one.' : 'Installs the newest; if it fails, keeps what it has (or the pinned one).') : null,
+      st.latest_failed && follow === 'latest' ? `The newest (${st.latest_failed.label}) failed: ${st.latest_failed.error}` : null,
       st.last_check ? `Checked ${st.last_check}: ${st.outcome || ''}` : null,
       fetched ? `Fetched: ${fetched.commit} (${fetched.label}), ready to update.` : null,
       res ? `${res.ok ? 'Installed' : 'Install failed'}: ${res.message}` : null,
@@ -294,7 +303,10 @@ function renderApps(snap, busy) {
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
         el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
         inst && inst.has_previous ? el('button', { type: 'button', textContent: 'Roll back', disabled: busy,
-          onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null)
+          onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null,
+        a.pin ? el('button', { type: 'button', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
+          onclick: post(`app:${name}`, { action: 'add', source: { ...src, follow: follow === 'pinned' ? 'latest' : 'pinned' } },
+            follow === 'pinned' ? `Install the newest ${a.title} from now on, rather than the pinned commit the hub's maintainers checked? Nobody will have looked at it first.` : null) }) : null)
         : el('span', { className: 'library-buttons' },
           el('button', { type: 'button', textContent: 'Keep current', disabled: busy,
             title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
@@ -436,7 +448,7 @@ async function getJSON(url) {
 }
 async function postJSON(url, body) {
   const r = await fetch(url, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
@@ -1582,7 +1594,8 @@ function renderAccess(data) {
     group.setAttribute('aria-label', `Who can open ${a.title}`);
     const note = accessNote && accessNote.app === a.id
       ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
-    slot.replaceChildren(group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }), note);
+    // No note: left out, not passed as null (replaceChildren would show the word "null").
+    slot.replaceChildren(...[group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }), note].filter(Boolean));
     if (a.kind === 'builtin') builtin.push(a);
   }
   document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
@@ -1682,6 +1695,107 @@ async function addonSet(a, on) {
 }
 
 loadAddons();
+
+// --- web add-ons (local: plans/no-root-addons-plan) ---------------------------------------
+// Added, kept current and removed by the hub itself, no installer; switched like any app
+// (accessSlot). Adding one asks its consent text first; a pasted one needs the warning read.
+const loc = {
+  added: document.getElementById('local-added'),
+  cat: document.getElementById('local-catalogue'),
+  errors: document.getElementById('local-errors'),
+  port: document.getElementById('local-port'),
+  paste: document.getElementById('local-paste-text'),
+  pasteOk: document.getElementById('local-paste-ok'),
+  pasteGo: document.getElementById('local-paste-go'),
+  pasteNote: document.getElementById('local-paste-note'),
+};
+let locNote = null; // { id, text, ok }
+let locPoll = null;
+const LOC_UNDERSTOOD = "I understand this runs someone else's code on this box's address";
+
+function capsText(c) {
+  const connect = (c && c.connect) || [];
+  return (connect.length ? `Connects to: ${connect.join(', ')} ({box} is this hub).` : 'Connects to nothing but its own address.')
+    + (c && c.storage ? " Keeps data in the visitor's browser." : '');
+}
+
+function renderLocal(data) {
+  loc.port.textContent = data.addon_port;
+  const note = (id) => (locNote && locNote.id === id
+    ? el('span', { className: `setting-desc action-note${locNote.ok ? '' : ' bad'}`, role: 'status', textContent: locNote.text }) : null);
+  const fetching = data.running || !!(data.job && data.job.action && !data.job.result);
+  loc.added.replaceChildren(...(data.added.length ? data.added.map((a) => {
+    const inst = a.installed;
+    const st = a.status || {};
+    const state = inst && inst.commit ? `Installed: ${inst.commit.slice(0, 7)} (${inst.ref === 'pinned' ? 'the pinned commit' : inst.ref}), from ${a.repo}.`
+      : st.error ? `Not installed: ${st.error}` : fetching ? 'Fetching…' : 'Not installed yet.';
+    return el('div', { className: 'setting library-source' }, el('span', {},
+      el('span', { className: 'setting-name', textContent: a.title }),
+      accessSlot(a.id),
+      el('span', { className: 'setting-desc', textContent: a.summary }),
+      el('span', { className: `setting-desc${st.error && !(inst && inst.commit) ? ' bad' : ''}`, textContent: state }),
+      el('span', { className: 'setting-desc', textContent: capsText(a.capabilities) + (a.from_catalogue ? '' : ' Added by pasting its manifest.') }),
+      el('span', { className: 'library-buttons' },
+        inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
+        el('button', { type: 'button', textContent: 'Remove', onclick: () => localRemove(a) })),
+      note(a.id)));
+  }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
+  const offered = data.catalogue.filter((c) => !c.added);
+  loc.cat.replaceChildren(
+    ...(data.catalogue_error ? [el('p', { className: 'setting-desc bad', textContent: `The catalogue has a fault: ${data.catalogue_error}` })] : []),
+    ...(offered.length ? offered.map((c) => el('div', { className: 'setting library-source' }, el('span', {},
+      el('span', { className: 'setting-name', textContent: c.title }),
+      el('span', { className: 'setting-desc', textContent: c.summary }),
+      el('span', { className: 'setting-desc', textContent: `${capsText(c.capabilities)} From ${c.repo} at ${String(c.pin).slice(0, 7)}.` }),
+      el('span', { className: 'library-buttons' }, el('button', { type: 'button', textContent: 'Add', disabled: fetching, onclick: () => localAdd(c) })),
+      note(c.id)))) : [el('p', { className: 'setting-desc', textContent: 'Everything in the catalogue is added.' })]));
+  loc.errors.replaceChildren(...Object.values(data.errors || {}).map((why) => el('p', { className: 'setting-desc bad', textContent: `Left out: ${why}` })));
+  clearTimeout(locPoll);
+  if (fetching) locPoll = setTimeout(() => { loadLocal(); loadAccess(); }, 1500);
+}
+
+async function loadLocal() {
+  try { renderLocal(await getJSON('/admin/local-addons')); } catch (err) { console.error('local add-ons:', err); }
+}
+
+async function localPost(body, id, doing) {
+  try {
+    await postJSON('/admin/local-addons', body);
+    locNote = { id, text: doing, ok: true };
+  } catch (err) { locNote = { id, text: err.message, ok: false }; }
+  loadLocal();
+  loadAccess();
+}
+
+function localAdd(c) {
+  if (!confirm(`${c.consent}\n\n${capsText(c.capabilities)}\n\nIt starts off: switch it on here once it is installed.`)) return;
+  localPost({ action: 'add', id: c.id, agree: true }, c.id, `Adding ${c.title}: fetching it…`);
+}
+
+function localRemove(a) {
+  if (!confirm(`Remove ${a.title}? Its files go; adding it back fetches it again.`)) return;
+  localPost({ action: 'remove', id: a.id }, a.id, `${a.title} removed.`);
+}
+
+loc.pasteGo.addEventListener('click', async () => {
+  const bad = (text) => { loc.pasteNote.textContent = text; loc.pasteNote.className = 'setting-desc bad'; };
+  let manifest;
+  try { manifest = JSON.parse(loc.paste.value); } catch (err) { bad(`Not JSON: ${err.message}`); return; }
+  if (!loc.pasteOk.checked) { bad('Read the warning, and tick the box, first.'); return; }
+  const addon = (manifest && manifest.addon) || {};
+  if (!confirm(`Add "${addon.title}" from a pasted manifest?\n\n${addon.consent || ''}\n\n${capsText(manifest.capabilities)}`)) return;
+  try {
+    await postJSON('/admin/local-addons', { action: 'paste', manifest, understood: LOC_UNDERSTOOD });
+    loc.pasteNote.textContent = 'Added: fetching it.';
+    loc.pasteNote.className = 'setting-desc';
+    loc.paste.value = '';
+    loc.pasteOk.checked = false;
+  } catch (err) { bad(err.message); }
+  loadLocal();
+  loadAccess();
+});
+
+loadLocal();
 
 // --- setup steps -----------------------------------------------------------------------
 // The rest of the first-use setup (the password is step 1, on admin-setup.html). Each step's

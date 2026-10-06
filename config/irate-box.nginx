@@ -31,6 +31,11 @@ upstream irate_box_hub {
 	keepalive 8;
 }
 
+# The local add-ons' maps, per add-on id: off, login realm, Content-Security-Policy (the root
+# helper writes them from /etc/hub/access.json and the add-ons' manifests). Read by the add-on
+# server at the end of this file.
+include @ADDON_ACCESS@;
+
 server {
 	listen @PORT@ default_server;
 	listen [::]:@PORT@ default_server;
@@ -59,6 +64,8 @@ server {
 	proxy_set_header X-Forwarded-Host $http_host;
 	proxy_set_header Upgrade $http_upgrade;
 	proxy_set_header Connection $irate_box_connection;
+	# Never a guest's: only the /admin location below sends it (the hub's proof of the login).
+	proxy_set_header X-Irate-Front "";
 
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
 	# The Host header passes through untouched, so server.py's probe-host check
@@ -76,6 +83,14 @@ server {
 	location = /drop.html {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
+		auth_basic_user_file @HTPASSWD@;
+		add_header Cache-Control "no-cache";
+	}
+	# The themes page (its tile): public, private or off like the apps. Off hides only the
+	# page; the 🎨 in every page's header stays.
+	location = /themes.html {
+		if ($irate_box_off_themes) { return 404; }
+		auth_basic $irate_box_auth_themes;
 		auth_basic_user_file @HTPASSWD@;
 		add_header Cache-Control "no-cache";
 	}
@@ -177,14 +192,23 @@ server {
 		}
 	}
 
+	# --- /addons/<id>/ -> the add-on origin (below): the local add-ons' own address ---------
+	# Tiles and list pages link here, so a link stays on the hub's port and name.
+	location ~ ^/addons/([a-z0-9-]+/.*)$ { return 302 $scheme://$host:@ADDON_PORT@/$1$is_args$args; }
+	location = /addons { return 404; }
+
 	# --- /notes -> SilverBullet (add-on), path passed through (SB_URL_PREFIX=/notes) --
+	# On its socket (silverbullet.service). Its capability endpoints are refused here whatever
+	# the unit says: the shell (F1), the HTTP proxy, which can reach the hub's loopback API
+	# past the /admin login (F31), and the runtime API. Notes themselves stay open.
 	location = /notes { return 301 /notes/; }
+	location ~* ^/notes/\.(shell|proxy|runtime) { return 403; }
 	location /notes/ {
 		if ($irate_box_off_notes) { return 404; }
 		auth_basic $irate_box_auth_notes;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_read_timeout 1h;
-		proxy_pass http://127.0.0.1:3000;
+		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
 	}
 
 	# --- /sync -> Syncthing web GUI (add-on, operator only) -------------------------
@@ -354,6 +378,15 @@ server {
 		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
 		auth_basic $irate_box_admin_auth;
 		auth_basic_user_file @HTPASSWD@;
+		# The secret that tells the hub this came through here (server.py FRONT_SECRET), from
+		# a root-only file. Setting a header here drops the server-level ones, so all again.
+		include @FRONT@;
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $irate_box_connection;
 		proxy_pass http://irate_box_hub;
 	}
 
@@ -370,4 +403,37 @@ server {
 	}
 
 	# Nothing here sets Strict-Transport-Security. Keep it that way (§5).
+}
+
+# --- the add-on origin: the local add-ons (plans/no-root-addons-plan) ------------------
+# Their own origin, a second port, so nothing they serve can reach /admin with the owner's
+# login, read the hub's storage, or script its pages. Their files are the hub user's
+# (/var/lib/hub/addons/<id>/, from the librarian, no root); nothing here runs anything or
+# proxies anywhere, and links are not followed (the hub owns the folder). Whether each is
+# public, private or off, and what it may connect to, comes from the include at the top.
+server {
+	listen @ADDON_PORT@;
+	listen [::]:@ADDON_PORT@;
+	server_name _;
+	root @ADDONS@;
+	disable_symlinks on;
+	autoindex off;
+	access_log off;
+	server_tokens off;
+	add_header X-Content-Type-Options nosniff always;
+	add_header Referrer-Policy no-referrer always;
+	add_header Cache-Control "no-cache" always;
+	location ~ ^/(?<irate_box_addon>[a-z0-9-]+)/ {
+		if ($irate_box_addon_off) { return 404; }
+		auth_basic $irate_box_addon_auth;
+		auth_basic_user_file @HTPASSWD@;
+		# Its own files only; never the bundle record or anything dotted.
+		location ~ (^|/)(\.|irate-box-bundle\.json$) { return 404; }
+		add_header Content-Security-Policy $irate_box_addon_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+		add_header Cache-Control "no-cache" always;
+		try_files $uri $uri/index.html =404;
+	}
+	location / { return 404; }
 }

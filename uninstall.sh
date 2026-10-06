@@ -118,7 +118,8 @@ rm -rf /etc/caddy/irate-box-access
 # package's, and stays.
 if [ -f /etc/nginx/conf.d/irate-box.conf ] || [ -f "$ETC/nginx-default-site-off" ]; then
 	rm -f /etc/nginx/conf.d/irate-box.conf /etc/nginx/conf.d/irate-box.conf.prev \
-		/etc/nginx/irate-box.htpasswd /etc/nginx/irate-box.htpasswd.new /etc/nginx/irate-box-unclaimed
+		/etc/nginx/irate-box.htpasswd /etc/nginx/irate-box.htpasswd.new /etc/nginx/irate-box-unclaimed \
+		/etc/nginx/irate-box-front.conf
 	if [ -f "$ETC/nginx-default-site-off" ] && [ -f /etc/nginx/sites-available/default ]; then
 		ln -sf ../sites-available/default /etc/nginx/sites-enabled/default
 	fi

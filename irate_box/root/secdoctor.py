@@ -271,14 +271,10 @@ def front_has(ctx, *prefixes):
 # --- the steps ---------------------------------------------------------------------------
 # Each takes the shared context and returns findings. A step never raises: run_step wraps it.
 
-def step_notes(ctx):
-    """F1: SilverBullet's shell backend and its login."""
-    unit = "silverbullet.service"
-    sh = _show(unit, "LoadState", "ActiveState", "UnitFileState", "User", "DynamicUser", "Environment", "EnvironmentFiles")
-    if not sh:
-        return [_cannot("notes-shell", "Notes add-on", "systemctl is not answering", "F1")]
-    if sh.get("LoadState") != "loaded":
-        return [F("notes-shell", "Notes add-on (SilverBullet)", "ok", "Not installed.", ref="F1")]
+def _sb_env(sh):
+    """SilverBullet's environment as systemd builds it: Environment= lines, then the
+    EnvironmentFile (which wins over them), then `env K=V` on the command line (which wins
+    over both, and is where install.sh puts what the owner's file must not undo)."""
     env = {}
     try:
         for tok in shlex.split(sh.get("Environment", "")):
@@ -287,46 +283,254 @@ def step_notes(ctx):
                 env[k] = v
     except ValueError:
         pass
-    from_file = {}
     for part in sh.get("EnvironmentFiles", "").split():
         if part.startswith("/"):
             for line in (_read(part) or "").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    from_file.setdefault(k.strip(), v.strip().strip("'\""))
-    merged = {**from_file, **env}
+                    env[k.strip()] = v.strip().strip("'\"")
+    m = re.search(r"argv\[\]=(.*?)\s;", sh.get("ExecStart", ""))
+    if m:
+        argv = m.group(1).split()
+        if argv and argv[0].endswith("/env"):
+            for tok in argv[1:]:
+                if "=" not in tok or tok.startswith("-"):
+                    break
+                k, v = tok.split("=", 1)
+                env[k] = v
+    return env
+
+
+def _front_refuses_notes_capabilities(ctx):
+    """Whether the front refuses /notes/.shell, .proxy and .runtime itself (install.sh's
+    regex location in nginx, or the @capability matcher in Caddy)."""
+    if ctx["front_kind"] == "caddy":
+        text = json.dumps(ctx["front"]) if not isinstance(ctx["front"], str) else ctx["front"]
+        return bool(re.search(r"notes/\\+\.\(shell\|proxy\|runtime\)", text)) and "403" in text
+    for stack, d in ctx["front"] or []:
+        if (len(stack) >= 2 and stack[0] == "server" and stack[1].startswith("location")
+                and re.search(r"notes/\\\.\(shell\|proxy\|runtime\)", stack[1]) and d.startswith("return 403")):
+            return True
+    return False
+
+
+def step_notes(ctx):
+    """F1: SilverBullet's shell backend and its login. F31: its HTTP proxy, which reaches the
+    hub's loopback API (no login there: the front asks for it) unless SilverBullet has no IP
+    networking or the front refuses /notes/.proxy."""
+    unit = "silverbullet.service"
+    sh = _show(unit, "LoadState", "ActiveState", "UnitFileState", "User", "DynamicUser", "Environment", "EnvironmentFiles",
+               "ExecStart", "RestrictAddressFamilies", "IPAddressDeny", "ProtectSystem", "ReadWritePaths")
+    if not sh:
+        return [_cannot("notes-shell", "Notes add-on", "systemctl is not answering", "F1")]
+    if sh.get("LoadState") != "loaded":
+        return [F("notes-shell", "Notes add-on (SilverBullet)", "ok", "Not installed.", ref="F1")]
+    merged = _sb_env(sh)
     running = sh.get("ActiveState") == "active"
-    shell_off = merged.get("SB_SHELL_BACKEND", "").lower() in ("off", "false", "0")
-    read_only = merged.get("SB_READ_ONLY", "").lower() in ("true", "1", "yes", "on")
+    # SilverBullet 2.11 (server/src/shell.rs): the shell runs when SB_SHELL_BACKEND is unset,
+    # empty or "local"; any other value turns it off. Read-only mode turns it off too.
+    shell_on = merged.get("SB_SHELL_BACKEND", "").strip().lower() in ("", "local")
+    read_only = bool(merged.get("SB_READ_ONLY", "").strip())
     sb_login = bool(merged.get("SB_USER"))
     front_login = bool(ctx["front"] and front_gated(ctx, "/notes"))
     login = sb_login or front_login
     state = "running" if running else f"installed but {sh.get('ActiveState', 'not running')} (it starts at boot if enabled)"
+    front_blocks = _front_refuses_notes_capabilities(ctx)
     out = []
-    if shell_off or read_only:
+    if not shell_on or read_only:
         out.append(F("notes-shell", "Notes: server-side shell", "ok",
-                     f"Off ({'SB_SHELL_BACKEND=off' if shell_off else 'read-only mode'}); the add-on is {state}.", ref="F1"))
+                     f"Off ({'read-only mode' if read_only else 'SB_SHELL_BACKEND=' + merged['SB_SHELL_BACKEND']})"
+                     f"{'; the front refuses /notes/.shell as well' if front_blocks else ''}; the add-on is {state}.", ref="F1"))
+    elif front_blocks:
+        out.append(F("notes-shell", "Notes: server-side shell on, refused by the front", "warn",
+                     f"SilverBullet is {state} with its shell on; the web server refuses /notes/.shell, so it cannot be reached through it.",
+                     "Rerun install.sh: it sets SB_SHELL_BACKEND=off on the unit's command line.", "F1"))
     elif not login:
         out.append(F("notes-shell", "Notes: server-side shell with no login", "problem",
                      f"SilverBullet is {state}. Its shell endpoint is on and /notes/ has no login, so anyone who can reach "
                      "the box runs commands as the hub user, which can queue root-helper requests (password change included).",
-                     "Now: sudo systemctl stop silverbullet. Fix: Environment=SB_SHELL_BACKEND=off in the unit (not the editable env file), "
-                     "plus a login or read-only mode.", "F1"))
+                     "Now: sudo systemctl stop silverbullet. Fix: rerun install.sh (shell off on the command line, "
+                     "and the web server refuses /notes/.shell).", "F1"))
     else:
         out.append(F("notes-shell", "Notes: server-side shell on, behind a login", "warn",
                      f"SilverBullet is {state}. The shell endpoint is on; whoever holds the login runs commands as the hub user.",
-                     "Set Environment=SB_SHELL_BACKEND=off in the unit.", "F1"))
+                     "Rerun install.sh: it sets SB_SHELL_BACKEND=off on the unit's command line.", "F1"))
+    # F31: the proxy. Two layers, either of which stops it: no IP networking for the unit, and
+    # the front refusing /notes/.proxy. Read-only mode turns the proxy off as well.
+    families = sh.get("RestrictAddressFamilies", "")
+    no_ip = (families and not families.startswith("~") and "AF_INET" not in families) or "0.0.0.0/0" in sh.get("IPAddressDeny", "")
+    if read_only or (no_ip and front_blocks):
+        out.append(F("notes-proxy", "Notes: HTTP proxy to the hub's loopback API", "ok",
+                     "Read-only mode." if read_only else "SilverBullet has no IP networking, and the web server refuses /notes/.proxy.", ref="F31"))
+    elif no_ip or front_blocks:
+        out.append(F("notes-proxy", "Notes: HTTP proxy, one of two guards", "warn",
+                     ("SilverBullet has no IP networking, but the web server passes /notes/.proxy through." if no_ip else
+                      "The web server refuses /notes/.proxy, but SilverBullet itself can still reach loopback (anything local that talks to it can use the proxy)."),
+                     "Rerun install.sh: it sets both.", "F31"))
+    elif not login:
+        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin with no login", "problem",
+                     f"SilverBullet is {state}. Its /notes/.proxy/127.0.0.1:<port>/ forwards any request to the hub's loopback "
+                     "port, which has no login of its own, so any guest can read and change /admin's settings and the password.",
+                     "Now: sudo systemctl stop silverbullet. Fix: rerun install.sh (SilverBullet on a socket with no IP networking, "
+                     "and the web server refuses /notes/.proxy).", "F31"))
+    else:
+        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin, behind the notes login", "warn",
+                     "Whoever holds the notes login can reach the hub's loopback API through /notes/.proxy, past the admin login.",
+                     "Rerun install.sh.", "F31"))
     if not login and not read_only:
         out.append(F("notes-login", "Notes: no login", "warn",
                      "Guests can edit notes, and notes can carry scripts (Space Lua, widgets) that run on the hub's origin, "
                      "next to /admin.", "SB_USER, read-only mode, or /notes/ behind the admin login.", "F1/S4"))
-    if sh.get("DynamicUser") != "yes" and sh.get("User") in (HUB_USER, "", "root"):
+    confined = sh.get("ProtectSystem") == "strict" and all(
+        p.startswith(str(STATE / "notes")) for p in sh.get("ReadWritePaths", "").split()) and sh.get("ReadWritePaths")
+    if sh.get("DynamicUser") != "yes" and sh.get("User") in (HUB_USER, "", "root") and not confined:
         who = sh.get("User") or "root"
         out.append(F("notes-user", "Notes: runs as a user that owns the hub's state", "warn",
                      f"silverbullet.service runs as '{who}', the same user that can write the root helper's request queue, "
                      "so a flaw in the add-on is a takeover of /admin.",
-                     "Run it as its own DynamicUser with only the notes folder writable.", "F1"))
+                     "Rerun install.sh: it confines the unit to the notes folder (ProtectSystem=strict).", "F1"))
+    return out
+
+
+def _hub_port():
+    for line in (_read(ETC / "hub.env") or "").splitlines():
+        if line.startswith("PORT="):
+            try:
+                return int(line.split("=", 1)[1].strip())
+            except ValueError:
+                pass
+    return 8000
+
+
+def _hub_ask(method, path, headers, body=None):
+    """One request straight to the hub's loopback port, past the front: the status code, or
+    None when it does not answer."""
+    import http.client
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", _hub_port(), timeout=5)
+        conn.request(method, path, body=body, headers=headers)
+        code = conn.getresponse().status
+        conn.close()
+        return code
+    except OSError:
+        return None
+
+
+def step_admin_gate(ctx):
+    """F27/F31/F8 and S3, by behaviour: what the hub itself does with an /admin request that did
+    not come through the front's /admin route (no secret), and with an /admin change that did
+    not come from the /admin page (no X-Irate-Admin). Both are asked of the hub directly, on
+    loopback, as anything else on the box could; neither changes anything."""
+    out = []
+    secret = ""
+    for line in (_read(ETC / "front-secret.env") or "").splitlines():
+        if line.startswith("HUB_FRONT_SECRET="):
+            secret = line.split("=", 1)[1].strip()
+    code = _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"})
+    if code is None:
+        return [_cannot("admin-loopback", "/admin from loopback", "the hub does not answer on its port", "F27")]
+    if code == 200:
+        out.append(F("admin-loopback", "/admin answers anything on the box", "problem",
+                     f"GET /admin/settings straight to the hub's port {_hub_port()}, with no login and no word from the front, "
+                     "answered 200: anything that can send a request to loopback (a build, a proxy such as SilverBullet's "
+                     "used to be, another user) is the admin.",
+                     "Rerun install.sh: it makes the front's secret (/etc/hub/front-secret.env), and the hub refuses /admin without it.",
+                     "F27"))
+    else:
+        out.append(F("admin-loopback", "/admin only through the front", "ok",
+                     f"Straight to the hub's port with no word from the front: {code}.", ref="F27"))
+    if secret:
+        st = (ETC / "front-secret.env").stat()
+        if st.st_uid != 0 or st.st_mode & 0o077:
+            out.append(F("admin-secret-file", "The front's secret is readable beyond root", "problem",
+                         f"{ETC / 'front-secret.env'} is mode {oct(st.st_mode & 0o777)}, owner uid {st.st_uid}.",
+                         f"chown root:root {ETC / 'front-secret.env'}; chmod 600 {ETC / 'front-secret.env'}", "F27"))
+        code = _hub_ask("POST", "/admin/settings", {"Host": "127.0.0.1", "X-Irate-Front": secret,
+                                                    "Content-Type": "application/json", "Content-Length": "2"}, b"{}")
+        if code == 200:
+            out.append(F("admin-csrf", "/admin changes accepted without the /admin page's header", "problem",
+                         "A POST to /admin with no X-Irate-Admin was accepted: a page elsewhere that the owner visits could "
+                         "change settings with the owner's cached login.", "Update the hub (server.py _forged).", "S3"))
+        elif code is not None:
+            out.append(F("admin-csrf", "/admin changes need the /admin page's header", "ok",
+                         f"A POST with the front's secret but no X-Irate-Admin: {code}.", ref="S3"))
+    return out
+
+
+def _addon_ask(path):
+    """(status, headers) from the add-on origin on loopback, or (None, {})."""
+    import http.client
+    port = 8090
+    for line in (_read(ETC / "hub.env") or "").splitlines():
+        if line.startswith("HUB_ADDON_PORT="):
+            try:
+                port = int(line.split("=", 1)[1])
+            except ValueError:
+                pass
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", path, headers={"Host": "127.0.0.1"})
+        resp = conn.getresponse()
+        out = (resp.status, {k.lower(): v for k, v in resp.getheaders()})
+        conn.close()
+        return out
+    except OSError:
+        return None, {}
+
+
+def step_web_addons(ctx):
+    """The local add-ons (plans/no-root-addons-plan): their folder holds only plain files and
+    folders (the hub writes it; nginx follows no links there, Caddy would), each one switched on
+    was agreed to, and the add-on origin serves nothing of the hub's and sends each its CSP."""
+    from irate_box.hub import access as acc, manifests as man
+    out = []
+    root = STATE / "addons"
+    if not root.is_dir():
+        return [F("addons", "Web add-ons", "ok", "None: no add-on folder on this box.")]
+    odd = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            p = Path(dirpath) / name
+            if p.is_symlink() or not (p.is_dir() or p.is_file()):
+                odd.append(str(p))
+    if odd:
+        out.append(F("addons-files", "Links or special files among the web add-ons", "problem",
+                     f"{len(odd)} in {root}, e.g. {odd[0]}. The hub writes this folder; under Caddy a link would be followed.",
+                     "Remove the add-on on /admin and add it again; if they come back, the hub user is not to be trusted.", ""))
+    else:
+        out.append(F("addons-files", "Web add-ons' files", "ok", f"Plain files and folders only, in {root}."))
+    local, errors = man.load_local()
+    for name, why in errors.items():
+        out.append(F(f"addons-bad-{name}", "A web add-on's manifest is left out", "warn", why,
+                     "Remove it on /admin (or the file in /var/lib/hub/apps.d).", ""))
+    state = acc.read(ETC / "access.json")
+    try:
+        consents = json.loads(_read(STATE / "addons-consent.json") or "{}")
+    except ValueError:
+        consents = {}
+    on = [m for m in local if acc.mode_of(state, m["id"]) != "off"]
+    for m in on:
+        if m["id"] not in consents:
+            out.append(F(f"addons-consent-{m['id']}", f"{m['addon']['title']} is on with no consent recorded", "warn",
+                         "It is switched on, but /admin has no record of the owner agreeing to it (added by hand?).",
+                         "Remove it and add it again from /admin.", ""))
+    code, _ = _addon_ask("/admin/settings")
+    if code is None:
+        out.append(F("addons-origin", "The add-on origin", "warn" if local else "ok",
+                     "Nothing answers on the add-on port." + (" Added add-ons cannot be opened." if local else ""),
+                     "Rerun install.sh: it sets up the add-on server." if local else ""))
+    elif code == 200:
+        out.append(F("addons-origin", "The add-on origin serves the hub's pages", "problem",
+                     "/admin/settings answered 200 on the add-on port: it should serve nothing but the add-ons' folder.",
+                     "Restore the add-on server block of irate-box.nginx (reinstall).", ""))
+    else:
+        out.append(F("addons-origin", "The add-on origin", "ok", f"Serves none of the hub's pages (/admin/settings: {code})."))
+    for m in on:
+        code, headers = _addon_ask(f"/{m['id']}/")
+        if code not in (None, 404) and "content-security-policy" not in headers:
+            out.append(F(f"addons-csp-{m['id']}", f"{m['addon']['title']} is served with no Content-Security-Policy", "problem",
+                         "Its pages could load or send anything, anywhere.", "Rerun install.sh (the add-on server block).", ""))
     return out
 
 
@@ -396,8 +600,8 @@ def step_front(ctx):
                      "Restore the /admin block of irate-box.nginx (reinstall).", "F27"))
     else:
         out.append(F("front-admin", "/admin login", "ok",
-                     "The front asks for the login on /admin. (The hub trusts the front completely: F27 asks it to refuse "
-                     "requests that did not come with the front's header.)", ref="F27"))
+                     "The front asks for the login on /admin. (Whether the hub refuses /admin that did not come through "
+                     "it: the next step, \'/admin from inside the box\'.)", ref="F27"))
     for pfx, name in (("/term", "/term (the web terminal)"), ("/git-private", "/git-private/")):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
@@ -464,8 +668,8 @@ def step_front_caddy(ctx):
                      "Restore the /admin block of the Caddyfile (reinstall).", "F27"))
     else:
         out.append(F("front-admin", "/admin login", "ok",
-                     "Caddy asks for the login on /admin. (The hub trusts the front completely: F27 asks it to refuse "
-                     "requests that did not come with the front's header.)", ref="F27"))
+                     "Caddy asks for the login on /admin. (Whether the hub refuses /admin that did not come through "
+                     "it: the next step, \'/admin from inside the box\'.)", ref="F27"))
     for pfx, name in (("/term", "/term (the web terminal)"), ("/git-private", "/git-private/")):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
@@ -689,6 +893,13 @@ def step_units(ctx):
         if blocks_loopback:
             out.append(F("units-ci-loopback", "Builds and the hub's loopback", "ok",
                          "irate-box-ci.service cannot connect to 127.0.0.1" + (" (private network)." if private else f" (IPAddressDeny={deny})."), ref="F8"))
+        elif _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"}) == 403:
+            # The hub refuses /admin without the front's secret (step admin-gate), so what builds
+            # reach on loopback is what any guest reaches.
+            out.append(F("units-ci-loopback", "Builds can reach the hub on loopback (not /admin)", "warn",
+                         "irate-box-ci.service can connect to 127.0.0.1, so builds reach the hub's guest API, as any guest "
+                         "can; /admin refuses them (it needs the front's secret, which builds cannot read).",
+                         "IPAddressDeny=localhost on the unit, to keep builds off loopback altogether.", "F8"))
         else:
             out.append(F("units-ci-loopback", "Builds can reach the hub's admin API on loopback", "problem",
                          "irate-box-ci.service has no IPAddressDeny, PrivateNetwork or RestrictAddressFamilies"
@@ -1219,6 +1430,8 @@ def step_kernel(ctx):
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
+    ("admin-gate", "/admin from inside the box", "F27 F31 S3", step_admin_gate),
+    ("web-addons", "Web add-ons", "", step_web_addons),
     ("folders", "Links and root-written files in hub-owned folders", "F3 F4 F5 F13", step_folders),
     ("code", "Installed code and allow-lists", "F3 F6 F20", step_code),
     ("units", "Unit sandboxing and the build unit", "F8 F19", step_units),

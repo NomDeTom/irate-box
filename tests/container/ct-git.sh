@@ -10,7 +10,7 @@ ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 check() { local want=$1; shift; local got; got="$("$@" 2>/dev/null)"; [ "$got" = "$want" ] && ok "$* -> $got" || bad "$* -> $got (want $want)"; }
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@"; }
-admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -d "$1" "http://$H/admin/git"; }
+admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://$H/admin/git"; }
 W=$(mktemp -d); cd "$W" || exit 1
 for area in public private; do for n in demo secret big; do admin "{\"action\":\"delete\",\"area\":\"$area\",\"name\":\"$n\"}" >/dev/null; done; done
 admin '{"action":"guest-push","on":false}' >/dev/null
@@ -22,9 +22,9 @@ check "$want_group" stat -c '%G' /run/irate-box-git.sock
 
 echo "== admin: create"
 check 401 code -X POST -d '{}' "http://$H/admin/git"
-check "demo" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"demo\",\"description\":\"a demo\"}' http://$H/admin/git | python3 -c 'import json,sys; print(\" \".join(r[\"name\"] for r in json.load(sys.stdin)[\"repos\"] if r[\"name\"] != \"irate-box-source\"))'"
+check "demo" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"demo\",\"description\":\"a demo\"}' http://$H/admin/git | python3 -c 'import json,sys; print(\" \".join(r[\"name\"] for r in json.load(sys.stdin)[\"repos\"] if r[\"name\"] != \"irate-box-source\"))'"
 admin '{"action":"create","area":"private","name":"secret.git"}' >/dev/null
-check "a name is letters, digits, '.', '_' and '-', up to 64, starting with a letter or digit" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"../evil\"}' http://$H/admin/git | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"error\"])'"
+check "a name is letters, digits, '.', '_' and '-', up to 64, starting with a letter or digit" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"../evil\"}' http://$H/admin/git | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"error\"])'"
 check "hub" stat -c '%U' /var/lib/hub/git/public/demo.git
 check "true" runuser -u hub -- git -C /var/lib/hub/git/public/demo.git config http.receivepack
 

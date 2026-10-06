@@ -24,6 +24,9 @@
 }
 
 :80 {
+	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
+	request_header -X-Irate-Front
+
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
 	# Host header passes through untouched, so server.py's probe-host check
 	# (captive.apple.com, connectivitycheck.gstatic.com, …) still fires here.
@@ -53,6 +56,15 @@
 			max_size 25MB
 		}
 		reverse_proxy 127.0.0.1:8000
+	}
+
+	# The themes page (its tile): public, private or off like the apps. Off hides only the
+	# page; the 🎨 in every page's header stays.
+	handle /themes.html {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/themes.caddy*
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
 	}
 
 	# The file drop's page and its files, behind the same switch as its upload.
@@ -155,13 +167,22 @@
 	}
 	redir /serial /serial/ permanent
 
+	# --- /addons/<id>/ → the add-on origin (below): the local add-ons' own address ----------
+	# Tiles and list pages link here, so a link stays on the hub's port and name.
+	@addon path_regexp addon ^/addons/([a-z0-9-]+/.*)$
+	redir @addon http://{host}:{$HUB_ADDON_PORT:8090}/{re.addon.1}{uri.query_string_with_question_mark} 302
+
 	# --- /notes → SilverBullet (optional add-on) ------------------------------------
 	# Markdown notes in a plain folder. Not in any profile: 502 and a greyed card until
 	# installed. Official builds are ARMv7/ARM64 only, so never on the Zero W.
-	# Path passes through — run it with  SB_URL_PREFIX=/notes  SB_PORT=3000  (binds 127.0.0.1)
+	# Path passes through (SB_URL_PREFIX=/notes), to its socket (silverbullet.service). Its
+	# capability endpoints are refused whatever the unit says: the shell (F1), the HTTP proxy,
+	# which can reach the hub's loopback API past the /admin login (F31), and the runtime API.
 	handle /notes/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
-		reverse_proxy 127.0.0.1:3000
+		@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
+		respond @capability 403
+		reverse_proxy unix//run/silverbullet/silverbullet.sock
 	}
 	redir /notes /notes/ permanent
 
@@ -353,13 +374,21 @@
 			try_files /irate-box-unclaimed
 		}
 		handle @unclaimed {
-			reverse_proxy 127.0.0.1:8000
+			reverse_proxy 127.0.0.1:8000 {
+				# The hub's proof this came through here (server.py FRONT_SECRET), read
+				# from the environment at request time, so never in Caddy's saved config.
+				header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+			}
 		}
 		handle {
 			basic_auth {
 				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
 			}
-			reverse_proxy 127.0.0.1:8000
+			reverse_proxy 127.0.0.1:8000 {
+				# The hub's proof this came through here (server.py FRONT_SECRET), read
+				# from the environment at request time, so never in Caddy's saved config.
+				header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+			}
 		}
 	}
 	redir /admin /admin/ permanent
@@ -385,3 +414,22 @@
 		level WARN
 	}
 }
+
+# --- the add-on origin: the local add-ons (plans/no-root-addons-plan) ------------------
+# Their own origin, a second port, so nothing they serve can reach /admin with the owner's
+# login, read the hub's storage, or script its pages. Their files are the hub user's
+# ($HUB_STATE_DIR/addons/<id>/, from the librarian, no root); nothing here runs anything or
+# proxies anywhere. The routes, one per add-on that is not off with its login and
+# Content-Security-Policy, are the root helper's (addons-routes.caddy). Caddy follows links,
+# unlike nginx's disable_symlinks: the security doctor looks for any in the folder.
+:{$HUB_ADDON_PORT:8090} {
+	root * {$HUB_ADDONS_ROOT:/var/lib/hub/addons}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Cache-Control "no-cache"
+		-Server
+	}
+	import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/addons-routes.caddy*
+}
+

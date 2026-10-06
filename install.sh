@@ -7,13 +7,14 @@
 # What it sets up:
 #   /opt/irate-box            the hub (irate_box/, web/, config/), copied from a checkout or cloned
 #   /var/lib/hub              state: messages, board, store, clock; notes/ for the add-ons
-#   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, tools/, serial/ (optional)
+#   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, tools/, serial/
+#   /var/lib/hub/addons/      the local add-ons (from /admin, Add-ons), on their own port: 8090
 #   /var/lib/hub/zim/         --zim: ZIM files and the Kiwix library.xml
 #   /etc/hub/                 hub.env, admin-password
 #   /etc/nginx/conf.d/irate-box.conf   the front on :80, from the repo's irate-box.nginx
 #                             (--web caddy: /etc/caddy/Caddyfile from the repo's Caddyfile)
 #   irate-box.service         server.py on 127.0.0.1:8000 as the `hub` user
-#   silverbullet.service      --with-notes: SilverBullet on 127.0.0.1:3000 under /notes/
+#   silverbullet.service      --with-notes: SilverBullet on a socket in /run/silverbullet, under /notes/
 #   syncthing@hub.service     --with-sync: Syncthing GUI on 127.0.0.1:8384 under /sync/
 #   kiwix.service             --zim: kiwix-serve on 127.0.0.1:8081 under /wiki/
 #   ttyd.service              ttyd on 127.0.0.1:7681 under /term/; enabled by --with-term only
@@ -137,6 +138,9 @@ while [ $# -gt 0 ]; do
 	--with-sync) WITH_SYNC=1; shift ;;
 	--zim) ZIMS+=("$2"); shift 2 ;;
 	--with-term) WITH_TERM=1; shift ;;
+	# ELIZA was an option here (2026-10-05); it is an add-on from /admin's catalogue now. Still
+	# accepted, so an older install record replays.
+	--with-eliza) shift ;;
 	--with-mqtt) WITH_MQTT=1; shift ;;
 	--with-collab) WITH_COLLAB=1; shift ;;
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
@@ -158,7 +162,7 @@ while [ $# -gt 0 ]; do
 		case "$UPLINK" in *,*) case "${UPLINK#*,}" in tolerant | normal | strict) ;; *) echo "--uplink: forgiveness is tolerant, normal or strict" >&2; exit 2 ;; esac ;; esac
 		shift 2 ;;
 	--remove)
-		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
+		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
 		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
@@ -179,6 +183,11 @@ HUB_USER=hub
 CODE=/opt/irate-box
 STATE=/var/lib/hub
 APPS=/usr/share/hub/apps
+SB_SOCKET=/run/silverbullet/silverbullet.sock  # --with-notes: SilverBullet listens here
+# The local add-ons (plans/no-root-addons-plan): their own origin, this port of the web server,
+# serving $STATE/addons/<id>/; their manifests in $STATE/apps.d/. Both the hub's, so adding one
+# from /admin needs no root.
+ADDON_PORT=8090
 ROOM=/usr/share/hub/room
 ETC=/etc/hub
 SB_VERSION=2.11.1
@@ -507,6 +516,8 @@ all_installed() {
 # own web server is the one the hub fits into, and a bare box gets nginx.
 NGINX_SITE=/etc/nginx/conf.d/irate-box.conf
 NGINX_LOGINS=/etc/nginx/irate-box.htpasswd
+# The front's secret header for /admin (server.py FRONT_SECRET), as an nginx include: root's.
+NGINX_FRONT=/etc/nginx/irate-box-front.conf
 # irate-box installed the package (so uninstall.sh --purge-packages may remove it), and it
 # turned off the package's default site (so uninstall.sh turns it back on).
 NGINX_OURS_MARK=/etc/hub/nginx-ours
@@ -742,7 +753,7 @@ fi
 # --- user and directories --------------------------------------------------------
 id -u "$HUB_USER" >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin "$HUB_USER"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" "$STATE/notes"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
 install -d -m 755 "$CODE" "$APPS"
 install -d -m 750 "$ETC"
 
@@ -757,7 +768,10 @@ if [ -n "$SRC" ]; then
 		--exclude=./store --exclude=./messages.json --exclude=./board.json \
 		--exclude=./clock.json --exclude=./settings.json --exclude='./tailscale.want*' --exclude='./*.code-workspace' . |
 		tar -C "$CODE" -xf -
+	# Root's alone, whatever modes the source carried (a checkout made with umask 002 would leave
+	# files group-writable): the root helper, the doctors and this script run from here.
 	chown -R root:root "$CODE"
+	chmod -R go-w "$CODE"
 elif [ -d "$CODE/.git" ]; then
 	say "Updating $CODE"
 	git -C "$CODE" pull --ff-only
@@ -773,7 +787,7 @@ fi
 if ver="$(git -C "${SRC:-$CODE}" describe --always --dirty --tags 2>/dev/null)"; then
 	printf '%s (installed %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
 elif [ -n "$SRC" ] && [ -f "$SRC/VERSION" ]; then
-	cp "$SRC/VERSION" "$CODE/VERSION"
+	install -m 644 -o root -g root "$SRC/VERSION" "$CODE/VERSION"
 else
 	printf 'unknown (installed %s)\n' "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
 fi
@@ -819,6 +833,16 @@ if [ -n "$APPS_SRC" ]; then
 		rm -rf "$APPS/$app/.git"
 		chown -R root:root "$APPS/$app"
 	done
+fi
+# ELIZA was a built-in add-on here (--with-eliza, 2026-10-05). It is a local add-on now, from
+# /admin's catalogue (addons/eliza.json), installed in $STATE/addons/ with no root. The old copy
+# goes, and so does its librarian source unless the local add-on has taken the name.
+if [ -d "$APPS/eliza" ] || [ -d "$APPS/.eliza.prev" ]; then
+	rm -rf "${APPS:?}/eliza" "$APPS/.eliza.prev"
+	notice "ELIZA has moved: it is an add-on in /admin's catalogue now (Add-ons). The old copy is removed; add it again there."
+	if [ ! -f "$STATE/apps.d/eliza.json" ] && grep -qs '"name": "eliza"' "$STATE/library/sources.json"; then
+		runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian remove eliza || true
+	fi
 fi
 # Prebuilt apps from the forks' irate-box-bundle.yml artifacts. The librarian downloads and
 # checks each as the hub user; hub_control.py checks it again and unpacks it as root -- the
@@ -871,6 +895,17 @@ else
 	ADMIN_PW="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 fi
 
+# The front's secret for /admin (server.py FRONT_SECRET): the web server adds it to what comes
+# through its /admin route, where it asked for the login, and the hub refuses /admin without
+# it, so nothing else on the box that can reach the hub's loopback port is the admin. Made
+# once, kept across reinstalls; root's alone (systemd reads it for the hub and Caddy).
+if ! grep -qs '^HUB_FRONT_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
+	( umask 077; printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >"$ETC/front-secret.env" )
+fi
+chown root:root "$ETC/front-secret.env"
+chmod 600 "$ETC/front-secret.env"
+FRONT_SECRET="$(sed -n 's/^HUB_FRONT_SECRET=//p' "$ETC/front-secret.env")"
+
 cat >"$ETC/hub.env" <<EOF
 # Read by irate-box.service. Changes take effect on: systemctl restart irate-box
 PORT=8000
@@ -892,6 +927,8 @@ HUB_CI_ROOT=$STATE/ci
 # The web flasher's bundle, and the firmware the librarian keeps for it (/flasher/).
 HUB_FLASHER_ROOT=$APPS/flasher
 HUB_FIRMWARE_ROOT=$STATE/firmware
+# The local add-ons' own origin: the web server's second port (/addons/<id>/ redirects there).
+HUB_ADDON_PORT=$ADDON_PORT
 EOF
 
 # When :80 is the owner's, the hub takes a port of its own (8080 first); recorded, so
@@ -936,7 +973,7 @@ if hub_site_in "$OTHER"; then
 		rm -f /etc/caddy/irate-box-unclaimed /etc/systemd/system/caddy.service.d/irate-box.conf
 		rmdir /etc/systemd/system/caddy.service.d 2>/dev/null || true
 	else
-		rm -f "$NGINX_SITE" "$NGINX_SITE.prev" "$NGINX_LOGINS" /etc/nginx/irate-box-unclaimed
+		rm -f "$NGINX_SITE" "$NGINX_SITE.prev" "$NGINX_LOGINS" "$NGINX_FRONT" /etc/nginx/irate-box-unclaimed
 		if [ -f "$NGINX_DEFAULT_MARK" ]; then
 			ln -sf ../sites-available/default /etc/nginx/sites-enabled/default
 			rm -f "$NGINX_DEFAULT_MARK"
@@ -986,7 +1023,9 @@ nginx_serves_port() {
 nginx_config() {
 	echo "# Generated by irate-box install.sh from $CODE/config/irate-box.nginx. Edits are overwritten on reinstall."
 	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/web|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" -e "s|@FIRMWARE@|$STATE/firmware|g" \
-		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" -e "s|@ACCESS@|$ETC/nginx-access.conf|g" "$CODE/config/irate-box.nginx" |
+		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" -e "s|@ACCESS@|$ETC/nginx-access.conf|g" \
+		-e "s|@FRONT@|$NGINX_FRONT|g" -e "s|@ADDON_PORT@|$ADDON_PORT|g" -e "s|@ADDONS@|$STATE/addons|g" \
+		-e "s|@ADDON_ACCESS@|$ETC/nginx-addons.conf|g" "$CODE/config/irate-box.nginx" |
 		# A kernel without IPv6: the [::] listener would stop nginx from starting at all.
 		if [ -f /proc/net/if_inet6 ]; then cat; else sed '/listen \[::\]:/d'; fi
 }
@@ -1019,6 +1058,8 @@ if [ "$WEB" = nginx ]; then
 	fi
 	[ -f "$NGINX_SITE" ] && cp "$NGINX_SITE" "$NGINX_SITE.prev"
 	access_install nginx >/dev/null
+	( umask 077; printf '# Generated by irate-box install.sh from %s. Root only.\nproxy_set_header X-Irate-Front "%s";\n' \
+		"$ETC/front-secret.env" "$FRONT_SECRET" >"$NGINX_FRONT" )
 	nginx_config "$HUB_PORT" >"$NGINX_SITE"
 	if ! out="$(nginx -t 2>&1)"; then
 		printf '%s\n' "$out" | tail -3 >&2
@@ -1122,6 +1163,10 @@ if [ "$WEB" = caddy ]; then
 	Environment=HUB_CODE_DIR=$CODE
 	Environment=HUB_FLASHER_ROOT=$APPS/flasher
 	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
+	Environment=HUB_ADDON_PORT=$ADDON_PORT
+	Environment=HUB_ADDONS_ROOT=$STATE/addons
+	# HUB_FRONT_SECRET, for /admin (header_up {env.HUB_FRONT_SECRET}): root's file, read by systemd.
+	EnvironmentFile=$ETC/front-secret.env
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi
@@ -1147,6 +1192,7 @@ After=network.target
 User=$HUB_USER
 Group=$HUB_USER
 EnvironmentFile=$ETC/hub.env
+EnvironmentFile=$ETC/front-secret.env
 ExecStart=$CODE/irate-box server
 WorkingDirectory=$STATE
 Restart=on-failure
@@ -1294,6 +1340,9 @@ if [ "$WITH_NOTES" = 1 ]; then
 #SB_READ_ONLY=true
 #SB_USER=user:password
 EOF
+	# The socket's group: the web server's, so it (and the hub, its owner) can connect, and
+	# nothing else can.
+	if [ "$WEB" = nginx ]; then sb_group="$ngx_group"; else sb_group="$(id -gn caddy 2>/dev/null || echo root)"; fi
 	cat >/etc/systemd/system/silverbullet.service <<EOF
 [Unit]
 Description=SilverBullet notes for Irate-Box (/notes/)
@@ -1302,15 +1351,45 @@ After=network.target
 [Service]
 User=$HUB_USER
 Group=$HUB_USER
-# Must match the web server's route, which passes /notes through unstripped.
-Environment=SB_URL_PREFIX=/notes
-Environment=SB_HOSTNAME=127.0.0.1
-Environment=SB_PORT=3000
-Environment=SB_FOLDER=$STATE/notes
+# silverbullet.env (the owner's: SB_USER, SB_READ_ONLY) cannot undo what is set on the command
+# line below, as it could an Environment= line here (an EnvironmentFile wins over those):
+#   - SB_SHELL_BACKEND=off: no shell commands at /notes/.shell (F1);
+#   - a socket, not a port: with no IP networking at all (RestrictAddressFamilies), its HTTP
+#     proxy (/notes/.proxy) cannot reach the hub's loopback API, which trusts the web server
+#     in front to have asked for the login (F31). The web server also refuses /notes/.shell,
+#     .proxy and .runtime outright.
+#   - the prefix must match the web server's route, which passes /notes through unstripped.
 EnvironmentFile=-$ETC/silverbullet.env
-ExecStart=/usr/local/bin/silverbullet
-WorkingDirectory=$STATE
+ExecStart=/usr/bin/env SB_SHELL_BACKEND=off SB_UNIX_SOCKET=$SB_SOCKET SB_URL_PREFIX=/notes SB_FOLDER=$STATE/notes /usr/local/bin/silverbullet
+# As root (+): the socket to the web server's group, once SilverBullet has made it (the start
+# timeout bounds the wait).
+ExecStartPost=+/bin/sh -c 'until [ -S $SB_SOCKET ]; do sleep 0.1; done; chgrp $sb_group $SB_SOCKET && chmod 660 $SB_SOCKET'
+RuntimeDirectory=silverbullet
+RuntimeDirectoryMode=0755
+WorkingDirectory=$STATE/notes
 Restart=on-failure
+# Writes only its notes folder: never the root helper's queue or anything else the hub owns.
+ProtectSystem=strict
+ReadWritePaths=$STATE/notes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
 
 [Install]
 WantedBy=multi-user.target

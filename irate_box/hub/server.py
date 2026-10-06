@@ -11,6 +11,7 @@ import ipaddress
 import json
 import os
 import re
+import hmac
 import secrets
 import shutil
 import socket
@@ -127,25 +128,51 @@ TAILSCALE_NAME = "Remote access (Tailscale)"
 # The web server in front (install.sh --web): nginx, or Caddy, the fallback.
 WEB_SERVER = os.environ.get("HUB_WEB_SERVER", "nginx")
 WEB_SERVER_NAME = {"nginx": "nginx", "caddy": "Caddy"}.get(WEB_SERVER, WEB_SERVER)
-MANIFESTS = manifests.load()
+# The built-in manifests and the local add-ons' (manifests.py), which the owner adds and removes
+# from /admin while the hub runs: refresh_manifests() reads them again when their folder changes.
+MANIFESTS = manifests.load_all()
 
 
 def _service_entry(status):
     entry = {"path": status.get("path"), "name": status["name"]}
     if "root_env" in status:
         entry["root"] = status["root_env"]
-    for key in ("port", "unit", "note"):
+    for key in ("port", "socket", "unit", "note", "local_dir"):
         if key in status:
             entry[key] = status[key]
     return entry
 
 
-SERVICES = [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
-    {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
-     "active": True, "note": "switched on and off from /admin"},
-    {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
-    {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
-]
+def _services():
+    return [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
+        {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
+         "active": True, "note": "switched on and off from /admin"},
+        {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
+        {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
+    ]
+
+
+SERVICES = _services()
+_local_stamp = {"at": None}
+
+
+def refresh_manifests():
+    """Read the manifests again when the local add-ons' folder has changed (the hub writes it
+    by renaming into place, which changes the folder's time): the tiles, /status, the list
+    pages and the librarian's apps follow."""
+    global MANIFESTS, SERVICES, MENU_PAGES
+    try:
+        stamp = manifests.LOCAL_D.stat().st_mtime_ns
+    except OSError:
+        stamp = None
+    if stamp == _local_stamp["at"]:
+        return
+    _local_stamp["at"] = stamp
+    MANIFESTS = manifests.load_all()
+    SERVICES = _services()
+    MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
+    librarian.reload_apps()
+    _home_page["mtime"] = None
 
 
 # The hub's live tiles (a manifest names one with "widget"); hub.js and home.js fill them in.
@@ -172,7 +199,10 @@ def hidden_apps():
     """The apps not on the home page or the list pages: private or off (access.py; the root
     helper leaves its copy of the choices in the control folder)."""
     state = access.read(ACCESS_STATE)
-    return {i for i, mode in state.items() if mode != "public"}
+    # The switched apps (built-in, by their choice or default) and the local add-ons (off until
+    # switched on). A built-in with no switch (a list page, the box row, About) is never hidden.
+    ids = set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
+    return {i for i in ids if access.mode_of(state, i) != "public"}
 
 
 def render_tiles(row="apps", hidden=frozenset()):
@@ -238,7 +268,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title} · Hub</title>
   <link rel="stylesheet" href="style.css">
-  <script>try{{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='cybercore')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
+  <script src="/themes.js"></script>
 </head>
 <body{art_attrs}>
   <!-- {about}
@@ -246,16 +276,10 @@ MENU_TEMPLATE = """<!DOCTYPE html>
        "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
        out when data-service is down. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>{title}</h1>
     <p class="subtitle">{subtitle}</p>
-    <div class="theme-picker" role="group" aria-label="Theme">
-      <span class="theme-label" aria-hidden="true">Theme</span>
-      <button type="button" data-theme-choice="light" title="Light">☀️</button>
-      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
-      <button type="button" data-theme-choice="cybercore" title="Cybercore">🏴‍☠️</button>
-      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
-    </div>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section class="item-section">
@@ -264,7 +288,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
     </ul>
   </section>
 
-{art}  <script src="hub.js"></script>
+{art}{banner}  <script src="hub.js"></script>
 </body>
 </html>
 """
@@ -273,7 +297,11 @@ MENU_TEMPLATE = """<!DOCTYPE html>
 def menu_page(m):
     items = []
     for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps()):
-        attrs = f'href="{html.escape(e["href"])}"'
+        href = e["href"]
+        if href.startswith("/app.html#"):
+            # The hub bar then offers ↑ back to this list (app.js).
+            href = f"/app.html?from={m['id']}#" + href[len("/app.html#"):]
+        attrs = f'href="{html.escape(href)}"'
         if service:
             attrs += f' data-service="{html.escape(service)}"'
         if e.get("new_tab", True):
@@ -283,9 +311,13 @@ def menu_page(m):
     menu = m["menu"]
     # A krab in the bottom-left corner, if the manifest names one (style.css: data-art).
     art = menu.get("art")
-    art_attrs = f' data-art="{art}" data-art-side="left"' if art else ""
+    lines = menu.get("banner")
+    # Text art instead, if the manifest has it (e.g. ELIZA's, from its source): the same kind of
+    # faint ident in the bottom-right corner, behind the list (style.css: .menu-ident).
+    art_attrs = f' data-art="{art}" data-art-side="left"' if art else (' data-art="ident"' if lines else "")
     art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
-    return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html,title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
+    banner = f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n' if lines else ""
+    return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html, banner=banner, title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
                                 about=html.escape(menu.get("about", "")).replace("--", "-"),
                                 items="\n".join(items)).encode()
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
@@ -415,6 +447,17 @@ def port_listening(port):
         return False
 
 
+def socket_listening(path):
+    """A service on a UNIX socket (SilverBullet's: no TCP port at all, F31)."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(0.2)
+            s.connect(path)
+            return True
+    except OSError:
+        return False
+
+
 def unit_states(units):
     """{unit: (installed?, active?, enabled?)} from one `systemctl show`, or {} where there
     is no systemd to ask (a dev machine): the caller then treats every unit as installed."""
@@ -464,6 +507,9 @@ def service_status(proxied):
         _status_cache["ports"] = {
             svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
         }
+        _status_cache["sockets"] = {
+            svc["socket"]: socket_listening(svc["socket"]) for svc in SERVICES if "socket" in svc
+        }
         _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
         _status_cache["why"] = {}
         _status_cache["at"] = now
@@ -471,7 +517,10 @@ def service_status(proxied):
     out = []
     for svc in SERVICES:
         installed, active, _ = units.get(svc["unit"], (True, False, False)) if "unit" in svc else (True, False, False)
-        if "root" in svc:
+        if "local_dir" in svc:
+            installed = Path(svc["local_dir"]).is_dir()
+            running = installed and proxied
+        elif "root" in svc:
             root = os.environ.get(svc["root"])
             installed = root is None or Path(root).is_dir()
             running = installed and proxied
@@ -481,6 +530,8 @@ def service_status(proxied):
             running = proxied
         elif svc.get("active"):
             running = installed and active
+        elif "socket" in svc:
+            running = _status_cache["sockets"].get(svc["socket"], False)
         else:
             running = _status_cache["ports"].get(svc["port"], False)
         state = "running" if running else "stopped" if installed else "missing"
@@ -653,6 +704,16 @@ MIN_PASSWORD = 8
 # hub serves only the set-the-password page there. It sits beside that server's config.
 UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
 SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
+
+
+# The front's word that a request came through its /admin route, where it asked for the
+# login: a secret it adds there and nowhere else (install.sh makes it, root-only, and hands it
+# to the web server and to this unit). Without it, anything that can send a request to the
+# hub's loopback port is the admin: a build (F8), a proxy like SilverBullet's (F31), a path
+# the front did not normalise (F27). Unset, as when the hub runs bare in development, /admin
+# is as open as it always was.
+FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
+FRONT_HEADER = "X-Irate-Front"
 
 
 def unclaimed():
@@ -935,6 +996,126 @@ def addons_snapshot():
             "pending": _pending_actions("addon"), "results": control_results(5)}
 
 
+# --- local add-ons (plans/no-root-addons-plan) ---------------------------------
+# Added, kept current and removed by the hub itself: their manifests in manifests.LOCAL_D, their
+# files in manifests.ADDONS (the librarian's), served by the web server's add-on origin. The
+# owner's agreement to each is kept in CONSENTS. Switching one on is the access switch (root's).
+CONSENTS = STATE_DIR / "addons-consent.json"
+LOCAL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+
+def _read_consents():
+    try:
+        data = json.loads(CONSENTS.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_atomic(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+def local_addons_snapshot():
+    """/admin's local add-ons: the catalogue, what is added (and installed, and how it is
+    switched), and any local manifest that was left out and why."""
+    refresh_manifests()
+    try:
+        cat = manifests.catalogue()
+        cat_error = None
+    except (manifests.ManifestError, OSError, ValueError) as exc:
+        cat, cat_error = {}, str(exc)
+    local, errors = manifests.load_local(builtin=manifests.load())
+    state = access.read(ACCESS_STATE)
+    consents = _read_consents()
+    status = librarian.load_status()
+    added = []
+    for m in local:
+        i = m["id"]
+        added.append({"id": i, "title": m["addon"]["title"], "summary": m["addon"]["summary"],
+                      "mode": access.mode_of(state, i), "installed": librarian.installed_app(i),
+                      "status": status.get(i, {}), "pin": m["source"].get("pin"), "repo": m["source"].get("repo"),
+                      "capabilities": m["capabilities"], "from_catalogue": i in cat,
+                      "consent": consents.get(i), "href": m["tile"]["href"]})
+    have = {m["id"] for m in local}
+    offered = [{"id": i, "title": c["addon"]["title"], "summary": c["addon"]["summary"],
+                "consent": c["addon"]["consent"], "repo": c["source"].get("repo"), "pin": c["source"].get("pin"),
+                "capabilities": c.get("capabilities", {}), "added": i in have} for i, c in cat.items()]
+    job = {k: _library_job.get(k) for k in ("action", "result")}
+    return {"catalogue": offered, "catalogue_error": cat_error, "added": added, "errors": errors,
+            "addon_port": int(os.environ.get("HUB_ADDON_PORT", "8090")), "job": job,
+            "running": librarian.is_running()}
+
+
+def _local_add(m, how):
+    """Write a checked local manifest, record the consent, and fetch it in the background."""
+    i = m["id"]
+    path = manifests.LOCAL_D / f"{i}.json"
+    if path.exists():
+        raise ValueError(f"{i} is already added")
+    _write_atomic(path, json.dumps(m, indent=2) + "\n")
+    consents = _read_consents()
+    consents[i] = {"at": int(time.time()), "how": how, "consent": m["addon"]["consent"]}
+    _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+    refresh_manifests()
+    # Off until the owner switches it on, whatever was chosen for that name before (a removed
+    # add-on, or the built-in ELIZA of 2026-10-05): root's, which also puts it in the web
+    # server's add-on maps.
+    rid = control_request({"action": "access", "app": i, "mode": "off"})
+    librarian.add_source(librarian.default_app_source(i))
+    started = library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+    return {"added": i, "fetching": started, "access": rid}
+
+
+def local_addons_action(payload):
+    """(status code, body) for one POST /admin/local-addons."""
+    action = payload.get("action")
+    try:
+        if action == "add":
+            i = str(payload.get("id", ""))
+            cat = manifests.catalogue()
+            if i not in cat:
+                return 400, {"error": "id must name an add-on in the catalogue"}
+            if payload.get("agree") is not True:
+                return 400, {"error": "agree to its consent text first"}
+            return 202, _local_add(cat[i], "catalogue")
+        if action == "paste":
+            m = payload.get("manifest")
+            # Pasted: anyone's manifest, not one this hub's code offers. The page shows the
+            # heavy warning; the request must say it was read.
+            if payload.get("understood") != "I understand this runs someone else's code on this box's address":
+                return 400, {"error": "a pasted add-on needs its warning acknowledged"}
+            manifests.check_local(m, "the pasted manifest", {x["id"] for x in manifests.load()})
+            return 202, _local_add(m, "pasted")
+        if action == "remove":
+            i = str(payload.get("id", ""))
+            if not LOCAL_ID_RE.match(i) or not (manifests.LOCAL_D / f"{i}.json").exists():
+                return 400, {"error": "id must name an added add-on"}
+            try:
+                librarian.remove_source(i)
+            except librarian.LibrarianError:
+                pass
+            for p in (manifests.ADDONS / i, manifests.ADDONS / f".{i}.prev", manifests.ADDONS / f".{i}.new"):
+                shutil.rmtree(p, ignore_errors=True)
+            # Off first (root's, while the manifest is still there to name it), then gone.
+            control_request({"action": "access", "app": i, "mode": "off"})
+            (manifests.LOCAL_D / f"{i}.json").unlink(missing_ok=True)
+            consents = _read_consents()
+            consents.pop(i, None)
+            _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+            refresh_manifests()
+            return 200, {"removed": i}
+        return 400, {"error": "action: add, paste or remove"}
+    except manifests.ManifestError as exc:
+        return 400, {"error": str(exc)}
+    except (ValueError, librarian.LibrarianError) as exc:
+        return 409 if "already" in str(exc) else 400, {"error": str(exc)}
+
+
 def kit_snapshot():
     """/admin's offline kit: the one made last (if its file is still there), the one being made,
     and how much the books would add."""
@@ -1192,9 +1373,53 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _discard_body(self):
+        """Before refusing a request whose body is not read: read it away when it is small, or
+        close the connection. Left in the stream, the web server's kept-alive connection would
+        carry it into the next request (F2's mechanism: the next request fails, or is another)."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if self.headers.get("Transfer-Encoding") or n < 0 or n > (1 << 20):
+            self.close_connection = True
+        elif n:
+            self.rfile.read(n)
+
+    def _admin_refused(self, path):
+        """An /admin request that did not come through the front's /admin route: 403."""
+        if not FRONT_SECRET or not path.startswith("/admin"):
+            return False
+        if hmac.compare_digest(self.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode()):
+            return False
+        self._discard_body()
+        self.send_json(403, {"error": "/admin only through the web server in front"})
+        return True
+
+    def _forged(self, path):
+        """An /admin POST a page elsewhere could have made (S3): it must carry X-Irate-Admin,
+        which a cross-site form cannot send and a cross-site fetch cannot without a preflight
+        the hub never answers; and when the browser says where it came from (Origin,
+        Sec-Fetch-Site), that must be this host. Browsers send a cached login with a forged
+        form, so the login alone does not stop it."""
+        if not path.startswith("/admin"):
+            return False
+        ok = self.headers.get("X-Irate-Admin") == "1"
+        site = self.headers.get("Sec-Fetch-Site")
+        if site and site not in ("same-origin", "none"):
+            ok = False
+        origin = self.headers.get("Origin")
+        if origin and urlparse(origin).netloc != self.headers.get("Host", ""):
+            ok = False
+        if not ok:
+            self._discard_body()
+            self.send_json(403, {"error": "an /admin change must come from the /admin page itself"})
+        return not ok
+
     def _admin_locked(self, path):
         """On an unclaimed box, every admin path but the setup page answers 403."""
         if path.startswith("/admin") and unclaimed() and path not in SETUP_PATHS:
+            self._discard_body()
             self.send_json(403, {"error": "no admin password has been chosen yet: open /admin/"})
             return True
         return False
@@ -1259,12 +1484,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         note_client(self)
+        refresh_manifests()
         if self._is_captive_probe() or self._off_hub_name():
             self._redirect_to_hub()
             return
 
         path = self.path.split("?")[0]
-        if self._admin_locked(path):
+        if self._admin_refused(path) or self._admin_locked(path):
             return
 
         if path.startswith("/flasher/") or path == "/flasher":
@@ -1346,6 +1572,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, addons_snapshot())
             return
 
+        if path == "/admin/local-addons":
+            self.send_json(200, local_addons_snapshot())
+            return
+
         if path == "/admin/kit":
             self.send_json(200, kit_snapshot())
             return
@@ -1356,7 +1586,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             state = access.read(ACCESS_STATE)
-            self.send_json(200, {"apps": [dict(a, mode=state[a["id"]]) for a in access.apps(MANIFESTS)],
+            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"])) for a in access.apps(MANIFESTS)],
                                  "results": control_results()})
             return
 
@@ -1416,6 +1646,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/menus.json":
+            # The list pages, for the hub bar's ↑ (app.js): {id: {title, href}}, public ones only.
+            hidden = hidden_apps()
+            self.send_json(200, {i: {"title": mm["menu"]["title"], "href": mm["tile"]["href"]}
+                                 for i, mm in manifests.menus(MANIFESTS).items() if i not in hidden})
+            return
+
         if path == "/status":
             # The web server's proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
@@ -1445,7 +1682,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, result)
             return
 
-        if path in MENU_PAGES:
+        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
             body = menu_page(MENU_PAGES[path])
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
@@ -1487,6 +1724,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         note_client(self)
+        refresh_manifests()
         path = self.path.split("?")[0]
 
         # Delegated before the body is read: the store takes raw bytes, and the
@@ -1494,7 +1732,7 @@ class Handler(BaseHTTPRequestHandler):
         if store.handle(self, "POST", path, STORE, DROP):
             return
 
-        if self._admin_locked(path):
+        if self._admin_refused(path) or self._forged(path) or self._admin_locked(path):
             return
         payload = self._read_payload()
         if payload is None:
@@ -1599,10 +1837,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             app, mode = str(payload.get("app", "")), payload.get("mode")
-            if app not in access.ROUTED or mode not in access.MODES:
+            if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES:
                 self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off"})
             else:
                 self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
+            return
+
+        if path == "/admin/local-addons":
+            code, body = local_addons_action(payload)
+            self.send_json(code, body)
             return
 
         if path == "/admin/addons":
