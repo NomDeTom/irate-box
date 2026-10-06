@@ -24,16 +24,23 @@ Settings ($HUB_STATE_DIR/library/firmware.json, /admin's Firmware page):
   enabled      off by default
   boards       a list of PlatformIO targets ("rak4631"), or "all"
   keep_alpha   alphas kept (2) ;  keep_beta  betas kept (1)
-  configs      on by default: keep config.d.json (above), mirror or not. From, in order: the
-               release's own source package (meshtasticd-*-src.zip) if the box holds it; a
-               sparse git fetch of that one folder at the release's tag (a few hundred KB); or
-               that source package streamed from the release, stopping once the folder has
-               gone past (it comes 0.3 MB into the 465 MB at 2.8.1)
-  cache        "discard" (default) | "native" | "whole": the newest kept release's
+  configs      on by default: keep config.d.json (above), mirror or not. From, in order: a
+               mirror of meshtastic/firmware on this box (mirrors.py) that holds the release's
+               tag, read with git, offline and instant; the release's own source package
+               (meshtasticd-*-src.zip) if the box holds it; a sparse git fetch of that one
+               folder at the release's tag (a few hundred KB); or that source package streamed
+               from the release, stopping once the folder has gone past (it comes 0.3 MB into
+               the 465 MB at 2.8.1)
+  cache        "discard" (default) | "native" | "whole": the newest release's
                platformio-deps zip (484 MB, for native-tft), kept so builds on push (ci.py,
                CI_PIO_DEPS) need no internet. "native" keeps what a headless meshtasticd uses
                (~215 MB unpacked): not lvgl and meshtastic-device-ui, not PlatformIO's copy of
-               the archives. Only the newest kept release keeps one.
+               the archives. Only the newest kept release keeps one. A build matter, not the
+               flasher's (git-ci-plan 4a): set on the Git page's Builds, and kept whether or
+               not flash files are.
+
+The firmware's source is not kept here: it is a mirror like any other repository (mirrors.py,
+the Git page's Mirrors), and source_mirror() finds it.
 
 Runs inside the librarian (its lock, schedule and progress): librarian.py firmware [--check].
 Stdlib only.
@@ -236,6 +243,10 @@ def _carry_cache(rel, cfg, policy, log):
     for other in ROOT.glob("*/pio-deps"):
         if other.parent.name != rel["version"] or cfg["cache"] == "discard":
             shutil.rmtree(other, ignore_errors=True)
+            try:
+                other.parent.rmdir()  # a release kept only for its cache (no flash files)
+            except OSError:
+                pass
     if cfg["cache"] == "discard" or not rel.get("deps"):
         return None
     dest = ROOT / rel["version"] / "pio-deps"
@@ -343,6 +354,43 @@ def _configs_from_package(open_at):
     return sorted(files, key=lambda f: f["path"])
 
 
+def source_mirror():
+    """The mirror of meshtastic/firmware on this box (mirrors.py), or None: the first whose
+    upstream is it on github.com and whose repository exists."""
+    from irate_box.library import mirrors
+    for m in mirrors.load():
+        if (mirrors._github(m.get("upstream", "")) or "").lower() == REPO and (mirrors.repo_path(m) / "HEAD").exists():
+            return m
+    return None
+
+
+def _configs_from_mirror(rel):
+    """bin/config.d at the release's tag, read from the mirror with git: no network."""
+    from irate_box.library import mirrors
+    m = source_mirror()
+    if not m:
+        raise LibrarianError("no mirror of meshtastic/firmware on this box")
+    path = str(mirrors.repo_path(m))
+    try:
+        librarian._git("-C", path, "rev-parse", "--verify", "--quiet", f"refs/tags/{rel['tag']}^{{commit}}")
+    except LibrarianError:
+        raise LibrarianError(f"the mirror {m['name']} does not hold {rel['tag']}")
+    files, total = [], 0
+    for line in librarian._git("-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/").split("\0"):
+        if not line:
+            continue
+        meta, _, name = line.partition("\t")
+        mode, kind, sha = meta.split()
+        if kind != "blob" or mode == "120000" or not name.endswith((".yaml", ".yml")):
+            continue
+        text = librarian._git("-C", path, "cat-file", "blob", sha)
+        total += len(text)
+        if total > CONFIGS_MAX:
+            raise LibrarianError("bin/config.d is larger than expected; not kept")
+        files.append({"path": name[len("bin/config.d/"):], "text": text})
+    return sorted(files, key=lambda f: f["path"]), m["name"]
+
+
 def _configs_from_git(rel, work):
     librarian._git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", rel["tag"],
                    f"https://github.com/{REPO}.git", str(work / "repo"))
@@ -377,7 +425,12 @@ def sync_configs(rel, log=print):
     held = ROOT / rel["version"] / src["name"] if src else None
     tried = []
     files, method = None, None
-    if held and held.is_file():
+    try:
+        files, name = _configs_from_mirror(rel)
+        method = f"the mirror {name}.git, at the tag {rel['tag']}"
+    except LibrarianError as exc:
+        tried.append(f"the mirror: {exc}")
+    if not files and held and held.is_file():
         try:
             files = _configs_from_package(lambda off: _seek(open(held, "rb"), off))
             method = "the release's source package, held on this box"
@@ -434,9 +487,12 @@ def sync(check_only=False, log=print):
                 configs = f"configs: {exc}"
             st["configs"] = configs
         if not cfg["enabled"]:
+            # The build cache is the builds' (git-ci-plan 4a): kept whether or not flash files are.
+            st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
             st.pop("error", None)
             _save_status(st)
-            return configs or "mirror off"
+            return "; ".join(x for x in (configs, f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None) if x) \
+                or "flash files off"
         versions = {}
         for rel in kept:
             log(f"firmware {rel['version']}: {len(cfg['boards']) if cfg['boards'] != 'all' else 'all'} boards")
@@ -482,5 +538,7 @@ def targets():
 
 
 def snapshot():
+    m = source_mirror()
     return {"settings": settings(), "status": status(), "targets": targets(),
+            "source": m and {"name": m["name"], "area": m["area"]},
             "free_mb": librarian._free_bytes(ROOT) >> 20 if ROOT.exists() else None}
