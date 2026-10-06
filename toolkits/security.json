@@ -1,7 +1,36 @@
-{"id": "security", "title": "Security",
+{
+ "id": "security",
+ "title": "Security",
  "summary": "Audit the box and look at it as an attacker would: Lynis, nmap, debsecan and the rest.",
- "packages": ["lynis", "debsecan", "python3-apt", "fail2ban", "nmap", "tcpdump", "tshark", "strace", "socat", "python3-scapy"],
+ "packages": [
+  "lynis",
+  "debsecan",
+  "python3-apt",
+  "fail2ban",
+  "nmap",
+  "tcpdump",
+  "tshark",
+  "strace",
+  "socat",
+  "python3-scapy"
+ ],
  "consent": "These tools probe networks and read packets. fail2ban installs stopped: switch it on separately, on the Security page.",
- "notes": ["Kept fresher than the other kits: from outside the box's control, so refreshed daily when online.",
-           "Greenbone/OpenVAS is not on the box (gigabytes of RAM, no armhf build): run it from a PC on the hotspot against the box."],
- "remove_after_hours": 24, "refresh_hours": 24}
+ "notes": [
+  "Kept fresher than the other kits: from outside the box's control, so refreshed daily when online.",
+  "Greenbone/OpenVAS is not on the box (gigabytes of RAM, no armhf build): run it from a PC on the hotspot against the box.",
+  "debsecan's data (Debian's security tracker, about 2 MB) is kept by the librarian and refreshed daily when online, so debsecan works offline from the last copy; its age is shown."
+ ],
+ "remove_after_hours": 24,
+ "refresh_hours": 24,
+ "git": [
+  {
+   "name": "debian-cis",
+   "upstream": "https://github.com/ovh/debian-cis",
+   "branch": "master",
+   "why": "The CIS benchmark's checks for Debian, run --audit only (never its fixes) by the security doctor's deep audit."
+  }
+ ],
+ "feeds": [
+  "debsecan"
+ ]
+}

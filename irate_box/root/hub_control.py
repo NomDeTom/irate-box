@@ -1301,6 +1301,27 @@ def kits_findings(now=None):
     if kits.pool_bytes() > budget << 20:
         out.append(_finding("Toolkits' cache", "warn", f"{kits.pool_bytes() >> 20} MB, over its {budget} MB budget",
                             "Raise the budget, or stop keeping a kit current."))
+    # Kits kept fresher (the security kit: from outside the box's control), and their data:
+    # a warning after a week, a problem after a month (toolkits-plan §1a).
+    def age(what, when, fix):
+        days = (now - when) / 86400
+        if days > 30:
+            out.append(_finding("Security tools' freshness", "problem", f"{what} is {int(days)} days old", fix))
+        elif days > 7:
+            out.append(_finding("Security tools' freshness", "warn", f"{what} is {int(days)} days old", fix))
+    for kid, k in kits.definitions().items():
+        man = kits.manifest(kid)
+        if k.get("refresh_hours") and man:
+            age(f"the {kid} kit's cache", man["fetched"], "Connect the box to the internet: the librarian refreshes it daily.")
+        if "debsecan" in k.get("feeds", []) and man:
+            try:
+                codename = next(l.split("=", 1)[1].strip().strip('"') for l in open("/etc/os-release") if l.startswith("VERSION_CODENAME="))
+                feed = STATE / "library" / "debsecan" / "release" / "1" / codename
+                if feed.is_file():
+                    age("debsecan's data (Debian's security tracker)", feed.stat().st_mtime,
+                        "Connect the box to the internet: the librarian refreshes it daily.")
+            except (OSError, StopIteration):
+                pass
     for kit, v in kits.installed_state().items():
         days = (now - v.get("at", now)) / 86400
         if kit == "debug" and days > 7:
