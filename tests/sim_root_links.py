@@ -11,7 +11,8 @@ T = Path(tempfile.mkdtemp(prefix="root-links-"))
 STATE, ETC = T / "state", T / "etc"
 for d in (STATE / "control" / "results", STATE / "control" / "requests", ETC):
     d.mkdir(parents=True)
-os.environ.update(HUB_STATE_DIR=str(STATE), HUB_ETC_DIR=str(ETC), HUB_RUN_DIR=str(T / "run"))
+os.environ.update(HUB_STATE_DIR=str(STATE), HUB_ETC_DIR=str(ETC), HUB_RUN_DIR=str(T / "run"),
+                  HUB_SHARE_DIR=str(T / "share"), HUB_APP_TAKEN=str(T / "taken"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import hub_control, safeio  # noqa: E402
 from irate_box.hub import netinv, uplink  # noqa: E402
@@ -132,6 +133,38 @@ inst = src["install.sh"]
 bad = [l.strip() for l in inst.splitlines() if re.search(r'install -d .*"\$STATE/', l)]
 check("install.sh makes no $STATE folder with install -d (state_dir walks without links)", not bad, bad)
 check("install.sh chowns nothing in control/", "control/netinv.json" not in inst.split("netinv --write")[1].split("\n")[1] if "netinv --write" in inst else True)
+
+# --- app-install (F7): one read of the staged bundle, into root's own copy ------------------
+import zipfile  # noqa: E402
+staging = hub_control.APP_STAGING; staging.mkdir(parents=True, exist_ok=True)
+def bundle(path, app="draw", extra=None):
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("index.html", "<h1>draw</h1>")
+        zf.writestr("irate-box-bundle.json", json.dumps({"app": app, "commit": "abc1234", "ref": "main", "built": "2026-10-06"}))
+        for k, v in (extra or {}).items():
+            zf.writestr(k, v)
+good = staging / "draw-1.zip"; bundle(good)
+msg = hub_control.install_app("draw", str(good))
+check("F7: a staged bundle installs", "installed abc1234" in msg and (T / "share/apps/draw/index.html").exists(), msg)
+check("F7: the staged zip is removed, and root's copy too", not good.exists() and not any((T / "taken").iterdir()))
+v = victim(); link = staging / "draw-2.zip"; os.symlink(v, link)
+try:
+    hub_control.install_app("draw", str(link)); refused = False
+except ValueError:
+    refused = True
+check("F7: a staged 'bundle' that is a link: refused, its target untouched", refused and untouched(v) and link.is_symlink())
+link.unlink()
+# The folder swapped for a link (to a folder of root's holding a real bundle): nothing read or removed.
+elsewhere = T / "roots-folder"; elsewhere.mkdir(); bundle(elsewhere / "draw-3.zip")
+real = staging; os.rename(real, T / "apps.real"); os.symlink(elsewhere, real)
+try:
+    hub_control.install_app("draw", str(real / "draw-3.zip")); refused = False
+except (ValueError, OSError):
+    refused = True
+check("F7: the staging folder swapped for a link: refused, nothing removed there", refused and (elsewhere / "draw-3.zip").exists())
+os.unlink(real); os.rename(T / "apps.real", real)
+src_ = (REPO / "irate_box/root/hub_control.py").read_text()
+check("F7: the check and the extraction read root's copy only", "_install_taken(app, taken, zip_path)" in src_ and "Path(zip_path).unlink" not in src_)
 
 # --- install.sh's state_dir, for real --------------------------------------------------------
 fn = inst[inst.index("state_dir() {"):]
