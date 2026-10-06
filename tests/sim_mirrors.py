@@ -210,5 +210,19 @@ check("keep is bounded", bad(groups=[{"kind": "tags", "pattern": "v*", "keep": 9
 ok = mirrors.validate(dict(base, upstream="https://github.com/meshtastic/firmware",
                            groups=[{"kind": "release", "keep": 2}, {"kind": "prerelease", "keep": 2}]))
 check("Meshtastic's firmware, release 2 and prerelease 2, is a valid mirror", ok["groups"][1] == {"name": "prerelease", "kind": "prerelease", "pattern": "*", "keep": 2, "skip_revoked": True}, ok)
+# The scheduled librarian (2026-10-06): its unit lacked hub.env, so the git root fell back to the
+# read-only code folder and write_urls() raised, ending the whole run before the hub's own update.
+ro = T / "ro"; ro.mkdir(); ro.chmod(0o555)
+with mock.patch.object(mirrors, "URLS", ro / "sub" / "mirror-urls.json"), mock.patch.object(mirrors, "load", return_value=[m]):
+    try:
+        line = mirrors.sync(m)
+        check("a mirror list it cannot write is said in the outcome, not raised", "not written" in line or os.geteuid() == 0, line)
+    except OSError as exc:
+        check("a mirror list it cannot write is said in the outcome, not raised", False, exc)
+ro.chmod(0o755)
+unit = (REPO / "install.sh").read_text()
+unit = unit[unit.index("irate-box-librarian.service <<EOF"):]
+unit = unit[:unit.index("\nEOF")]
+check("the librarian's unit reads hub.env (the git and firmware roots)", "EnvironmentFile=$ETC/hub.env" in unit, unit)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
