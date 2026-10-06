@@ -388,13 +388,15 @@ def check_bundle(zip_path, name):
 
 
 def _queue_root(req):
-    """Hand a request to hub_control.py (as server.py's control_request does)."""
-    control = STATE_DIR / "control"
-    requests = control / "requests"
+    """Hand a request to hub_control.py, as server.py's control_request does: written in the
+    hub's own folder and renamed in. Not in control/, which is root's (F3): writing there failed
+    every app update that needed root, from the timer and from /admin alike (found 2026-10-06)."""
+    requests = STATE_DIR / "control" / "requests"
     requests.mkdir(parents=True, exist_ok=True)
     rid = os.urandom(8).hex()
-    tmp = control / f".{rid}.tmp"
-    with open(tmp, "w") as fh:
+    tmp = STATE_DIR / f".request-{rid}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
         json.dump(dict(req, id=rid), fh)
     os.replace(tmp, requests / f"{rid}.json")
     return rid
@@ -1070,7 +1072,7 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                     entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
                     outcome = update_book(src, cand, entry, mode, policy, log)
                 entry.pop("error", None)
-            except LibrarianError as exc:
+            except (LibrarianError, OSError) as exc:
                 entry["error"] = str(exc)
                 outcome = f"error: {exc}"
             entry["outcome"] = outcome
@@ -1082,7 +1084,10 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             from irate_box.library import firmware
             fw = firmware.settings()
             if (fw["enabled"] or fw["configs"]) and (not scheduled or firmware.due(policy["check_every_hours"])):
-                results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
+                try:
+                    results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
+                except (LibrarianError, OSError) as exc:
+                    results["firmware"] = f"error: {exc}"
                 log(f"firmware: {results['firmware']}")
         # Mirrored git repositories (mirrors.py), likewise.
         if not names or "mirrors" in names:
