@@ -1118,6 +1118,40 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     return results
 
 
+LAST_RUN = LIB_DIR / "last-run.json"
+
+
+def record_run(fn, scheduled):
+    """Run update() and keep a record of it, for the page and both doctors: when it started and
+    ended, whether it finished, the error if it crashed, which stages it reached, and (for the
+    timer's runs) when one last reached the hub's own update. Before 2026-10-06 a crash was only
+    in the journal, and every scheduled run failed for hours without a doctor noticing."""
+    import traceback
+    rec = _read_json(LAST_RUN, {})
+    run = {"started": time.time(), "scheduled": scheduled, "finished": None, "ok": None, "error": None, "stages": []}
+    try:
+        results = fn()
+        run.update(ok=not any(str(o).startswith("error") for o in outcomes(results)), stages=sorted(results),
+                   errors=[f"{k}: {o}" for k, v in results.items() for o in ([v] if not isinstance(v, dict) else
+                           [f"{n}: {x}" for n, x in v.items()]) if str(o).startswith("error") or ": error" in str(o)][:10])
+        if scheduled and "hub" in results:
+            rec["hub_stage_at"] = time.time()
+        return results
+    except BaseException as exc:
+        run.update(ok=False, error=f"{type(exc).__name__}: {exc}"[:400],
+                   where=" < ".join(f"{f.name} ({Path(f.filename).name}:{f.lineno})" for f in reversed(traceback.extract_tb(exc.__traceback__)[-3:])))
+        raise
+    finally:
+        run["finished"] = time.time()
+        rec["last"] = run
+        if scheduled:
+            rec["last_scheduled"] = run
+        try:
+            _write_json(LAST_RUN, rec)
+        except OSError:
+            pass
+
+
 def outcomes(results):
     """Every outcome line in update()'s results: a stage's own, or each one's of a stage that
     has several (the mirrors: {name: line}, which main() once took for a line and crashed on)."""
@@ -1187,7 +1221,7 @@ def main(argv=None):
         if args.cmd == "status":
             print(json.dumps(snapshot(), indent=2))
         elif args.cmd == "update":
-            results = update(args.names, scheduled=args.scheduled)
+            results = record_run(lambda: update(args.names, scheduled=args.scheduled), args.scheduled)
             # The timer exits 0 regardless: a failing source is recorded in status.json and
             # shown on /admin, rather than leaving a failed unit on the dashboard every hour.
             failed = any(str(o).startswith("error") for o in outcomes(results))
