@@ -2183,7 +2183,8 @@ function renderMirrors(data) {
     const st = m.status || {};
     const keeps = [m.branches.join(', '),
       ...m.groups.map((g) => `${g.keep} ${g.kind === 'tags' ? `tag${g.keep === 1 ? '' : 's'} ${g.pattern}` : g.kind + (g.keep === 1 ? '' : 's')}`),
-      m.history, `budget ${m.budget_mb} MB`].join(' · ');
+      m.history, m.submodules ? 'with submodules' : null, `budget ${m.budget_mb} MB`].filter(Boolean).join(' · ');
+    const subs = Object.entries(st.submodules || {}).map(([p, s]) => `${p} (${s.kept.length} commit${s.kept.length === 1 ? '' : 's'}, ${size(s.size)})`);
     const state = st.error ? `error: ${st.error}` : st.outcome
       ? `${st.outcome}${st.size != null ? ` · ${size(st.size)}` : ''}${st.checked ? ` · checked ${commitDate(st.checked)}` : ''}`
       : 'not fetched yet';
@@ -2192,10 +2193,13 @@ function renderMirrors(data) {
         el('strong', {}, el('a', { href: `${m.area === 'public' ? '/git/' : '/git-private/'}${m.name}.git/`, textContent: `${m.name}.git` })),
         el('span', { className: 'setting-desc', textContent: `from ${m.upstream}` }),
         el('span', { className: 'setting-desc', textContent: `keeps ${keeps}` }),
+        subs.length ? el('span', { className: 'setting-desc', textContent: `submodules: ${subs.join(', ')}` }) : null,
         el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state })),
       el('span', { className: 'library-buttons' },
         actionButton('Check', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
         actionButton('Update', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton(m.submodules ? 'Without submodules' : 'With submodules', act({ action: 'mirror-change',
+          mirror: Object.assign({}, m, { status: undefined, submodules: !m.submodules }) }), { className: 'small' }),
         actionButton('Remove', act({ action: 'mirror-remove', name: m.name },
           `Remove the mirror ${m.name}.git and its copy on the box? The upstream is not touched.`), { className: 'small' })));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
@@ -2212,7 +2216,7 @@ git.mirrorForm.addEventListener('submit', async (e) => {
   }
   const mirror = { upstream: f.upstream.value.trim(), name: f.name.value.trim(), area: f.area.value,
     branches: f.branches.value.trim().split(/\s+/).filter(Boolean), groups, history: f.history.value,
-    budget_mb: Number(f.budget.value) || 2048 };
+    budget_mb: Number(f.budget.value) || 2048, submodules: f.submodules.checked };
   try {
     renderGit(await postJSON('/admin/git', { action: 'mirror-add', mirror }));
     say(`Added ${mirror.name}.git: Update fetches it now, or the librarian on its schedule.`, true, git.mirrorNote);

@@ -37,6 +37,9 @@ from pathlib import Path
 ROOT = Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
 # Builds come only from here (F23): the queue is writable by the hub, and guests may push to public repos.
 PRIVATE = Path(os.environ.get("HUB_GIT_PRIVATE", ROOT.parent / "git" / "private"))
+# The librarian's mirrors (mirrors.py): upstream URL -> the local repository. Builds fetch from
+# these instead, so a submodule (Meshtastic's protobufs, say) needs no internet.
+MIRROR_URLS = Path(os.environ.get("HUB_MIRROR_URLS", PRIVATE.parent / "mirror-urls.json"))
 QUEUE = ROOT / "queue"
 RUNS = ROOT / "runs"
 WORK = ROOT / "work"
@@ -52,6 +55,25 @@ RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[0-9]{1,6}$")
 
 def _git(*args, cwd=None, timeout=600):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+
+
+def use_mirrors():
+    """hubci's global url.<local>.insteadOf <upstream> for each mirrored URL, and none left over
+    from a mirror since removed. Global config, for the reason safe.directory is (above)."""
+    try:
+        urls = json.loads(MIRROR_URLS.read_text())
+    except (OSError, ValueError):
+        urls = {}
+    have = _git("config", "--global", "--get-regexp", r"^url\..*\.insteadof$").stdout.splitlines()
+    for line in have:
+        key, _, upstream = line.partition(" ")
+        local = key[len("url."):-len(".insteadof")]
+        if local.startswith("file://") and urls.get(upstream) != local:
+            _git("config", "--global", "--unset-all", key, f"^{re.escape(upstream)}$")
+    for upstream, local in urls.items():
+        if isinstance(local, str) and local.startswith("file://") and f"url.{local}.insteadof {upstream}" not in have:
+            _git("config", "--global", "--add", f"url.{local}.insteadOf", upstream)
+    return urls
 
 
 def enqueue(stdin=sys.stdin, repo_dir=None):
@@ -168,6 +190,7 @@ def run_queue():
     # from the upload-pack that a local clone starts.
     if _git("config", "--global", "--get-all", "safe.directory").stdout.split() != ["*"]:
         _git("config", "--global", "--replace-all", "safe.directory", "*")
+    use_mirrors()
     while True:
         jobs = sorted(p for p in QUEUE.glob("*.json"))
         if not jobs:

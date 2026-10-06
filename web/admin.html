@@ -476,6 +476,7 @@
           <label>Or tags matching <input name="pattern" placeholder="v*.*.*" title="For other upstreams: a tag glob, the newest kept"></label>
           <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
           <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
+          <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too (so builds here need no internet)</label>
           <button type="submit">Add mirror</button>
         </form>
         <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
