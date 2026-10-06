@@ -410,7 +410,9 @@ def _hub_ask(method, path, headers, body=None):
     try:
         conn = http.client.HTTPConnection("127.0.0.1", _hub_port(), timeout=5)
         conn.request(method, path, body=body, headers=headers)
-        code = conn.getresponse().status
+        resp = conn.getresponse()
+        resp.read()  # read to the end, so closing is not a reset the hub logs
+        code = resp.status
         conn.close()
         return code
     except OSError:
@@ -472,6 +474,7 @@ def _addon_ask(path):
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         conn.request("GET", path, headers={"Host": "127.0.0.1"})
         resp = conn.getresponse()
+        resp.read()
         out = (resp.status, {k.lower(): v for k, v in resp.getheaders()})
         conn.close()
         return out
