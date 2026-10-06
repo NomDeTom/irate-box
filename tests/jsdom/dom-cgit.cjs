@@ -45,6 +45,16 @@ dom.window.hljs = { getLanguage: () => true, highlightBlock: () => { called = tr
 dom.window.eval(script);
 await new Promise((resolve) => setTimeout(resolve, 50));
 check('a page with no code (an index, a log) is left alone', !called);
+r = await (async () => {
+  const d = new JSDOM('<!DOCTYPE html><body><table class="blob"><tr><td class="lines"><pre><code>x = 1</code></pre></td></tr></table></body>',
+    { url: 'http://box.local/git/r.git/tree/a.py', runScripts: 'outside-only' });
+  const seen = [];
+  d.window.hljs = { getLanguage: () => true, highlightElement: (el) => seen.push(el.className) };
+  d.window.eval(script);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  return seen;
+})();
+check('highlight.js 11 (highlightElement only) works too', r.length === 1 && r[0] === 'language-py', JSON.stringify(r));
 console.log(fails ? `${fails} failure(s)` : 'ok');
 process.exit(fails ? 1 : 0);
 })();
