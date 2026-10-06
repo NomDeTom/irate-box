@@ -64,6 +64,10 @@ try:
     c.request("GET", "/api/saves", headers={"Host": f"127.0.0.1:{port}", "Origin": "http://evil.example"})
     r = c.getresponse(); r.read()
     check("the store sends no Access-Control-Allow-Origin", r.getheader("Access-Control-Allow-Origin") is None, r.getheaders())
+    # F26: malformed input is a 400, not a crashed handler; the connection stays usable.
+    check("a JSON array body: 400", go("POST", "/messages", {"Content-Type": "application/json"}, b"[1, 2]") == 400)
+    check("Content-Length that is not a number: 400", go("POST", "/messages", {"Content-Type": "application/json", "Content-Length": "abc"}, None) in (400, 411))
+    check("and the hub still answers", go("GET", "/status") == 200)
 finally:
     hub.terminate()
 print("ok" if not fails else f"{fails} failure(s)")

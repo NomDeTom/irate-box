@@ -859,6 +859,8 @@ fi
 rec_repo="$REPO" rec_branch="$BRANCH"
 if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 	rec_repo="$(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$REPO")"
+	# A token in the remote's URL is not recorded (install-options is world-readable: F30).
+	rec_repo="$(printf '%s' "$rec_repo" | sed -E 's#^([a-z+]+://)[^/@]*@#\1#')"
 	rec_branch="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH")"
 	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
 fi

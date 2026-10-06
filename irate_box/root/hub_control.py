@@ -832,10 +832,19 @@ def _nginx_check(src, opts):
                            "@ADDONS@": str(STATE / "addons")}.items():
             text = text.replace(key, value)
         conf = Path(tmp) / "nginx.conf"
+        # nginx's scratch paths in here too, so it needs nothing of the box's.
+        temps = "".join(f"{k}_temp_path {tmp}/{k};\n" for k in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
         conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
-                        f"http {{\ninclude /etc/nginx/mime.types;\n{text}\n}}\n")
+                        f"http {{\ninclude /etc/nginx/mime.types;\n{temps}{text}\n}}\n")
+        # As nobody, not root (F29): this is the fetched commit's config, not yet approved, and
+        # nginx -t as root would create any file its error_log or access_log names, or echo an
+        # include's first token (a root-only file's) into the report.
+        os.chmod(tmp, 0o755)
+        for f in Path(tmp).iterdir():
+            f.chmod(0o644)
+        as_nobody = ("runuser", "-u", "nobody", "--") if os.geteuid() == 0 else ()
         try:
-            out = run("nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
+            out = run(*as_nobody, "nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
         except (OSError, subprocess.SubprocessError) as exc:
             return _check(name, False, str(exc))
     lines = [l for l in (out.stderr or out.stdout).strip().splitlines() if "[emerg]" in l or "[crit]" in l]

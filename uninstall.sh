@@ -136,7 +136,11 @@ else
 	say "Removing $STATE"
 	rm -rf "$STATE"
 fi
-if id -u "$HUB_USER" >/dev/null 2>&1; then
+# With --keep-state the users stay: their files stay, and a user made later with the same uid
+# would own them (F30).
+if [ "$KEEP_STATE" = 1 ]; then
+	say "Keeping the $HUB_USER and hubci users, who own $STATE"
+elif id -u "$HUB_USER" >/dev/null 2>&1; then
 	say "Removing the $HUB_USER user"
 	pkill -u "$HUB_USER" 2>/dev/null || true
 	sleep 1
@@ -144,7 +148,7 @@ if id -u "$HUB_USER" >/dev/null 2>&1; then
 	getent group "$HUB_USER" >/dev/null && groupdel "$HUB_USER" 2>/dev/null || true
 fi
 # The builds' user (ci.py): it owns nothing outside $STATE/ci.
-if id -u hubci >/dev/null 2>&1; then
+if [ "$KEEP_STATE" != 1 ] && id -u hubci >/dev/null 2>&1; then
 	say "Removing the hubci user"
 	pkill -u hubci 2>/dev/null || true
 	sleep 1

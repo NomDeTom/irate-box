@@ -212,6 +212,8 @@ def _mirror_version(rel, cfg, policy, log):
             "missing": missing, "fetched": librarian.now_iso()}
 
 
+DEPS_RESERVE = 512 << 20  # free space the deps extraction leaves on the card
+
 def _subset(name, mode):
     """Where a deps-zip entry goes under pio-deps/, or None to leave it out."""
     parts = name.split("/")
@@ -251,6 +253,12 @@ def _carry_cache(rel, cfg, policy, log):
     shutil.rmtree(work, ignore_errors=True)
     try:
         with zipfile.ZipFile(tmp) as zf:
+            # What it unpacks to must fit, with room left (F30): a small zip can claim gigabytes.
+            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"]) and not i.is_dir())
+            free = shutil.disk_usage(ROOT).free
+            if wanted > free - DEPS_RESERVE:
+                raise LibrarianError(f"{deps['name']} unpacks to {wanted >> 20} MB; {free >> 20} MB are free, "
+                                     f"and {DEPS_RESERVE >> 20} MB must stay free")
             for info in zf.infolist():
                 rel_path = _subset(info.filename, cfg["cache"])
                 if not rel_path or info.is_dir():
