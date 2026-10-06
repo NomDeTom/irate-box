@@ -816,7 +816,12 @@ def _nginx_check(src, opts):
     if not template.exists():
         return _check(name, False, "config/irate-box.nginx is missing from the update")
     text = template.read_text()
-    for key, value in {"@PORT@": _option(opts, "--port", "80"), "@STATIC@": str(CODE / "web"),
+    # nobody may not bind a port under 1024, even for a test: an unprivileged one stands in, so
+    # the listen lines are still parsed (F29).
+    port = _option(opts, "--port", "80")
+    if os.geteuid() == 0 and port.isdigit() and int(port) < 1024:
+        port = "18080"
+    for key, value in {"@PORT@": port, "@STATIC@": str(CODE / "web"),
                        "@APPS@": "/usr/share/hub/apps", "@GIT_ROOT@": str(STATE / "git"),
                        "@FIRMWARE@": str(STATE / "firmware"),
                        "@HTPASSWD@": str(NGINX_LOGINS),
@@ -835,7 +840,7 @@ def _nginx_check(src, opts):
             text = text.replace(key, value)
         conf = Path(tmp) / "nginx.conf"
         # nginx's scratch paths in here too, so it needs nothing of the box's.
-        temps = "".join(f"{k}_temp_path {tmp}/{k};\n" for k in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
+        temps = "access_log off;\n" + "".join(f"{k}_temp_path {tmp}/{k};\n" for k in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
         conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
                         f"http {{\ninclude /etc/nginx/mime.types;\n{temps}{text}\n}}\n")
         # As nobody, not root (F29): this is the fetched commit's config, not yet approved, and
@@ -844,7 +849,12 @@ def _nginx_check(src, opts):
         os.chmod(tmp, 0o755)
         for f in Path(tmp).iterdir():
             f.chmod(0o644)
-        as_nobody = ("runuser", "-u", "nobody", "--") if os.geteuid() == 0 else ()
+        as_nobody = ()
+        if os.geteuid() == 0:
+            # nobody's own scratch folder: nginx -t writes its pid and temp paths there.
+            nobody = pwd.getpwnam("nobody")
+            os.chown(tmp, nobody.pw_uid, nobody.pw_gid)
+            as_nobody = ("runuser", "-u", "nobody", "--")
         try:
             out = run(*as_nobody, "nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
         except (OSError, subprocess.SubprocessError) as exc:
