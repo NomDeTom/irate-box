@@ -5,7 +5,7 @@
 still root's, the RTC set up only where a search found one, no linked book exported, no leading
 "-" in a name that becomes an argument, the clock's floor from root's files only and no jump
 years ahead. Runs as any user ("root's" is this user here). python3 tests/sim_forged_requests.py"""
-import json, os, re, sys, tempfile, time
+import json, os, re, sys, tempfile, time, urllib.request
 from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
@@ -110,6 +110,39 @@ check("F22: updates from an http:// repository are refused before any fetch",
 src = (REPO / "irate_box/root/hub_control.py").read_text()
 check("F21: install compares the whole hash that passed", 'state.get("verified_sha") != full' in src
       and 'old.get("verified_sha") == full' in src)
+
+# F28: the GitHub token is not carried across a redirect.
+req = librarian._request("https://api.github.com/repos/x/y/actions/artifacts/1/zip", auth="tok")
+redirected = urllib.request.HTTPRedirectHandler().redirect_request(req, None, 302, "Found", {}, "https://blob.example/x")
+check("F28: the token goes to api.github.com", req.get_header("Authorization") == "Bearer tok")
+check("F28: and not to the host a redirect leads to", redirected.get_header("Authorization") is None, redirected.header_items())
+# F23: builds only from git/private; a run's file is never a link.
+from irate_box.hub import ci  # noqa: E402
+check("F23: a public repository is not built", ci.PRIVATE.name == "private" and "repo.resolve().parent != PRIVATE.resolve()" in (REPO / "irate_box/hub/ci.py").read_text())
+# F26: a hue too large for an int does not crash the handler.
+from irate_box.hub import board  # noqa: E402
+check("F26: hue 1e999 is ignored, not a crash", board._clean_hue(1e999) is None)
+
+# F30: artifacts only from pushes to the repository itself.
+calls = []
+def fake_api(path, auth=None):
+    calls.append(path)
+    if "/runs?" in path:
+        return {"workflow_runs": [{"id": 1, "head_repository": {"full_name": "fork/excalidraw"}},
+                                  {"id": 2, "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
+    return {"artifacts": [{"name": "irate-box-draw-x", "expired": False, "id": int(path.split("/")[-2])}]}
+with mock.patch.object(librarian, "_api", side_effect=fake_api):
+    run_, art = librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
+check("F30: a fork's run is passed over for the repository's own", run_["id"] == 2, run_)
+check("F30: only push runs are asked for", "event=push" in calls[0], calls[0])
+inst = (REPO / "install.sh").read_text(); un = (REPO / "uninstall.sh").read_text(); ngx = (REPO / "config/irate-box.nginx").read_text()
+ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
+check("F30: install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)
+check("F30: uninstall --keep-state keeps the users", 'Keeping the $HUB_USER and hubci users' in un and '[ "$KEEP_STATE" != 1 ] && id -u hubci' in un)
+check("F30: the git push gate does not use the undecoded $arg_service", "$arg_service" not in ngx and "receive(-|%2d)pack" in ngx)
+check("F30: links in a cloned app tree are removed", "if path.is_symlink():" in (REPO / "irate_box/library/librarian.py").read_text())
+check("F30: deps extraction checks free space first", "DEPS_RESERVE" in (REPO / "irate_box/library/firmware.py").read_text())
+check("F24: nginx passes the guest's own address only", "$proxy_add_x_forwarded_for" not in ngx)
 
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

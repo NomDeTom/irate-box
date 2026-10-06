@@ -1944,7 +1944,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._too_large = False
         payload = self._read_payload()
-        if payload is None:
+        if not isinstance(payload, dict):  # None, or a JSON array or string (F26)
             if self._too_large:
                 self.send_json(413, {"error": f"a request to the hub is at most {MAX_JSON >> 10} KB"})
                 return

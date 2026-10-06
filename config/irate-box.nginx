@@ -61,7 +61,9 @@ server {
 	# the lot, so the ones that differ (/sync) repeat them in full.
 	proxy_http_version 1.1;
 	proxy_set_header Host $http_host;
-	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	# The guest's own address only (F24): $proxy_add_x_forwarded_for would keep whatever the
+	# guest sent first, and the hub reads the first entry.
+	proxy_set_header X-Forwarded-For $remote_addr;
 	proxy_set_header X-Forwarded-Proto $scheme;
 	proxy_set_header X-Forwarded-Host $http_host;
 	proxy_set_header Upgrade $http_upgrade;
@@ -225,7 +227,7 @@ server {
 		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
 		proxy_set_header Host 127.0.0.1:8384;
-		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header Upgrade $http_upgrade;
@@ -332,7 +334,8 @@ server {
 	}
 	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
 		set $irate_box_git_auth off;
-		if ($arg_service = git-receive-pack) { set $irate_box_git_auth "Irate-Box"; }
+		# $args, not $arg_service, which is not decoded: service=git%2Dreceive-pack got past (F30).
+		if ($args ~* "(^|&)service=git(-|%2d)receive(-|%2d)pack(&|$)") { set $irate_box_git_auth "Irate-Box"; }
 		if ($uri ~ /git-receive-pack$) { set $irate_box_git_auth "Irate-Box"; }
 		if (-f @GIT_ROOT@/guest-push) { set $irate_box_git_auth off; }
 		# Private (/admin): every clone and fetch needs the login too.
@@ -407,7 +410,7 @@ server {
 		# a root-only file. Setting a header here drops the server-level ones, so all again.
 		include @FRONT@;
 		proxy_set_header Host $http_host;
-		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header Upgrade $http_upgrade;

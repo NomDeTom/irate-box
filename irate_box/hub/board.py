@@ -43,7 +43,7 @@ def _clean_hue(value):
         return None
     try:
         return int(value) % 360
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # 1e999 is a float too large for int (F26)
         return None
 
 

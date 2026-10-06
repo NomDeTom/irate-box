@@ -35,6 +35,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
+# Builds come only from here (F23): the queue is writable by the hub, and guests may push to public repos.
+PRIVATE = Path(os.environ.get("HUB_GIT_PRIVATE", ROOT.parent / "git" / "private"))
 QUEUE = ROOT / "queue"
 RUNS = ROOT / "runs"
 WORK = ROOT / "work"
@@ -109,6 +111,8 @@ def build(job):
     name = repo.name[:-4]
     if not NAME_RE.match(name) or not re.fullmatch(r"[0-9a-f]{40}", job.get("commit", "")):
         return
+    if repo.resolve().parent != PRIVATE.resolve():
+        return  # a public (guest-pushed) repository, or anywhere else: never built
     repo_runs = RUNS / name
     repo_runs.mkdir(parents=True, exist_ok=True)
     run = repo_runs / str(_next_number(repo_runs))
@@ -206,7 +210,10 @@ def run_file(run, name):
         path = base / "artifacts" / name
     else:
         return None
-    return path if path.is_file() else None
+    # Never through a link the build left (F23): /admin would serve its target, read as the hub.
+    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(RUNS.resolve()):
+        return None
+    return path
 
 
 if __name__ == "__main__":

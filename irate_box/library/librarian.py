@@ -437,6 +437,11 @@ def _pack_git(src, cand, part):
         if want and commit != want:
             raise LibrarianError(f"asked {src['repo']} for {want[:7]} and got {commit[:7]}")
         shutil.rmtree(tree / ".git")
+        # No links from the repository survive (F30): the adapt script and the zip below would
+        # follow them, writing or packing files of the hub's own.
+        for path in sorted(tree.rglob("*"), reverse=True):
+            if path.is_symlink():
+                path.unlink()
         adapt = APPS[name]["source"].get("adapt")
         if adapt:
             out = subprocess.run([str(CHECKOUT / "irate-box"), Path(adapt).stem, str(tree), str(CHECKOUT / "web")],
@@ -665,9 +670,12 @@ def set_policy(**changes):
 
 def _request(url, auth=None, method="GET"):
     headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"}
+    req = urllib.request.Request(url, headers=headers, method=method)
     if auth and urllib.parse.urlparse(url).hostname == "api.github.com":
-        headers["Authorization"] = f"Bearer {auth}"
-    return urllib.request.Request(url, headers=headers, method=method)
+        # Not carried on a redirect (F28): an artifact download answers with a 302 to GitHub's
+        # blob storage, and urllib would hand the token to that host as well.
+        req.add_unredirected_header("Authorization", f"Bearer {auth}")
+    return req
 
 
 def _open(url, auth=None, method="GET", timeout=60):
@@ -711,11 +719,15 @@ def _resolve_release(src, auth):
 
 
 def _newest_artifact(src, auth):
-    query = "status=success&per_page=10"
+    # Pushes to the repository itself only (F30): a run for a pull request, or from a fork,
+    # builds code the repository's owner has not taken.
+    query = "status=success&event=push&per_page=10"
     if src.get("branch"):
         query += "&branch=" + urllib.parse.quote(src["branch"], safe="")
     runs = _api(f"/repos/{src['repo']}/actions/workflows/{src['workflow']}/runs?{query}", auth)
     for run in runs.get("workflow_runs", []):
+        if (run.get("head_repository") or {}).get("full_name", src["repo"]).lower() != src["repo"].lower():
+            continue
         arts = _api(f"/repos/{src['repo']}/actions/runs/{run['id']}/artifacts", auth)
         for art in arts.get("artifacts", []):
             if not art.get("expired") and fnmatch.fnmatch(art["name"], src["pattern"]):
