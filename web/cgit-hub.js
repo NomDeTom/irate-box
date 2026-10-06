@@ -30,7 +30,8 @@
     if (!code || code.textContent.length > MAX) return;
     var lang = language(location.pathname);
     if (lang) code.className = 'language-' + lang;
-    hljs.highlightBlock(code);
+    // highlight.js 9 (Debian 13's) has highlightBlock; 10.7 renamed it, 11 dropped the old name.
+    (hljs.highlightElement || hljs.highlightBlock).call(hljs, code);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
