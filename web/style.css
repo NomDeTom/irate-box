@@ -674,6 +674,7 @@ body.admin button.link-button {
   text-decoration: underline;
 }
 .setting-desc.bad { color: #e5484d; }
+.setting-desc.warn { color: var(--warn); }
 /* The heavy warning before a pasted add-on (admin.html, Web add-ons). */
 .danger-box { margin: 0.75rem 0; padding: 0.75rem 1rem; border: 2px solid #e5484d; border-radius: var(--radius);
   background: color-mix(in srgb, #e5484d 8%, var(--surface)); display: flex; flex-direction: column; gap: 0.5rem; }

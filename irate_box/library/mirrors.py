@@ -117,7 +117,13 @@ def validate(m):
             raise LibrarianError("groups: a pattern is a tag glob, like v*.*.*")
         if g["kind"] != "tags" and not _github(upstream):
             raise LibrarianError("groups: release and prerelease need a github.com upstream")
-        groups.append({"name": str(g.get("name") or g["kind"])[:32], "kind": g["kind"], "pattern": pattern, "keep": keep})
+        skip = g.get("skip_revoked", True)
+        if type(skip) is not bool:
+            raise LibrarianError("groups: skip_revoked is true or false")
+        group = {"name": str(g.get("name") or g["kind"])[:32], "kind": g["kind"], "pattern": pattern, "keep": keep}
+        if g["kind"] != "tags":
+            group["skip_revoked"] = skip
+        groups.append(group)
     follow = m.get("follow", "latest")
     pin = str(m.get("pin") or "").strip()
     if follow not in ("latest", "pinned") or (follow == "pinned" and not (re.fullmatch(r"[0-9a-f]{40}", pin) or _ref_ok(pin))):
@@ -204,10 +210,29 @@ def _remote_refs(upstream):
 
 
 def _github_releases(upstream):
-    """[(tag, prerelease)], newest first, from GitHub's API (drafts left out)."""
+    """[[tag, prerelease, revoked]], newest first, from GitHub's API (drafts left out)."""
     repo = _github(upstream)
     data = librarian._api(f"/repos/{repo}/releases?per_page=100", librarian.token())
-    return [(r["tag_name"], bool(r.get("prerelease"))) for r in data if not r.get("draft")]
+    return [[r["tag_name"], bool(r.get("prerelease")), librarian.revoked(r)] for r in data if not r.get("draft")]
+
+
+def _releases(m, entry):
+    """The release list for a mirror with release groups, kept in its status so that a refused
+    API call (60 an hour without a token) is answered from the last one, its age said."""
+    if not any(g["kind"] != "tags" for g in m["groups"]):
+        entry.pop("releases", None)
+        return None
+    try:
+        rel = _github_releases(m["upstream"])
+        entry["releases"] = {"list": rel, "fetched": time.time()}
+        entry.pop("releases_cached", None)
+        return rel
+    except LibrarianError as exc:
+        cached = entry.get("releases") or {}
+        if not cached.get("list"):
+            raise
+        entry["releases_cached"] = {"since": cached.get("fetched"), "why": str(exc)[:200]}
+        return cached["list"]
 
 
 def wanted(m, refs=None, releases=None):
@@ -221,8 +246,9 @@ def wanted(m, refs=None, releases=None):
         else:
             if rel is None:
                 rel = _github_releases(m["upstream"]) if releases is None else releases
-            chosen = [t for t, pre in rel if pre == (g["kind"] == "prerelease")
-                      and fnmatch.fnmatchcase(t, g["pattern"]) and f"refs/tags/{t}" in refs]
+            chosen = [r[0] for r in rel if r[1] == (g["kind"] == "prerelease")
+                      and not (g.get("skip_revoked", True) and len(r) > 2 and r[2])
+                      and fnmatch.fnmatchcase(r[0], g["pattern"]) and f"refs/tags/{r[0]}" in refs]
         for t in chosen[:g["keep"]]:
             keep[f"refs/tags/{t}"] = refs[f"refs/tags/{t}"]
     for i, b in enumerate(m["branches"]):
@@ -345,7 +371,7 @@ def sync(m, check_only=False, log=print):
     entry["checked"] = time.time()
     try:
         refs = _remote_refs(m["upstream"])
-        keep = wanted(m, refs)
+        keep = wanted(m, refs, _releases(m, entry))
         path = repo_path(m)
         have = _local_refs(path) if (path / "HEAD").exists() else {}
         missing = {r: sha for r, sha in keep.items() if have.get(r) != sha}
