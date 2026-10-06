@@ -340,6 +340,36 @@ def remove(kit_id, log=print):
     return f"{kit_id}: removed {len(go)} packages" + (f"; kept {len(shared & set(present))} another kit uses" if shared else "")
 
 
+def rollback(kit_id, log=print):
+    """The previous set becomes current (and the current one previous), offline; an installed kit
+    is put back to those versions."""
+    kit = _kit(kit_id)
+    cur, prev = manifest(kit_id), manifest(kit_id, "previous")
+    if not prev:
+        raise ValueError(f"{kit['title']} has no previous version to go back to")
+    bad = verify(kit_id)
+    if bad:
+        raise ValueError("the cache fails its check, so nothing changed: " + "; ".join(bad[:5]))
+    _write(MANIFESTS / f"{kit_id}.json", prev)
+    _write(MANIFESTS / f"{kit_id}.previous.json", cur)
+    write_index()
+    if kit_id in installed_state():
+        present = _installed_versions()
+        pins = [f"{p['name']}={p['version']}" for p in prev["packages"] if p["name"] in present and present[p["name"]] != p["version"]]
+        if pins:
+            log(f"{kit_id}: back to the previous versions of {len(pins)} packages")
+            POLICY_RC.write_text("#!/bin/sh\nexit 101\n")
+            os.chmod(POLICY_RC, 0o755)
+            try:
+                run(["apt-get", *_apt_offline(), "update", "-q"], timeout=300)
+                run(["apt-get", *_apt_offline(), "install", "-y", "-q", "--no-install-recommends", "--allow-downgrades", *pins], timeout=3600)
+            finally:
+                POLICY_RC.unlink(missing_ok=True)
+        return f"{kit['title']}: back to the set fetched {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}" + \
+            (f"; {len(pins)} installed packages put back" if pins else "")
+    return f"{kit['title']}: the cache is back to the set fetched {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}"
+
+
 def expire(now=None):
     """Remove every kit whose time is up. Returns the lines."""
     now = now or time.time()

@@ -130,7 +130,7 @@ setTimeout(() => {
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
   // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
   check('mirrors: the list and its form are in Library → Mirrors', d.querySelector('#mirrors #git-mirrors') && d.querySelector('#mirrors #git-mirror-add')
-    && [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#firmware #mirrors #sources'));
+    && [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#firmware #mirrors #toolkits #sources'));
   // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.
   check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
   const cacheForm = d.getElementById('ci-cache-form');

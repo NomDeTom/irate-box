@@ -34,6 +34,7 @@
         <a href="#books">Books</a>
         <a href="#firmware">Firmware</a>
         <a href="#mirrors">Mirrors</a>
+        <a href="#toolkits">Toolkits</a>
         <a href="#sources">Schedule and token</a>
         <p class="admin-side-group">Hub content</p>
         <a href="#saved">Saved work</a>
@@ -355,6 +356,26 @@
           <button type="submit">Add mirror</button>
         </form>
         <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
+      </section>
+
+      <section class="admin-pane" id="toolkits" aria-labelledby="toolkits-title">
+        <h2 id="toolkits-title">Toolkits</h2>
+        <p class="setting-desc">
+          Sets of tools the box keeps in a local repository of its own, fetched while it has
+          internet and installed from there with none: for debugging, building, capturing traffic
+          and checking its security. Each installs only when you ask, with its services left
+          stopped, and is removed again after the time you choose (a day, unless you change it).
+          The library keeps each one current on its schedule (Schedule and token).
+        </p>
+        <p class="setting-desc" id="kits-summary"></p>
+        <form id="kits-budget" class="library-form inline-form">
+          <label>The cache's budget, MB <input name="budget" type="number" min="10" max="65536" step="10"></label>
+          <button type="submit">Save</button>
+          <button type="button" id="kits-refresh-all">Refresh all now</button>
+        </form>
+        <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
+        <ul class="admin-checks" id="kits-problems"></ul>
+        <div class="card-grid" id="kits-grid"></div>
       </section>
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">

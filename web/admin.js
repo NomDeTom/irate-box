@@ -2484,3 +2484,131 @@ for (const [id, action] of [['fw-check', 'check'], ['fw-update', 'update']]) {
   });
 }
 loadFirmware();
+
+// --- toolkits (toolkits.py, root's kits.py): a card per kit, Kiwix's library as the model --------
+// Each action is a request for the root helper; the page shows "Working…" until its answer is in.
+const kitsEl = { summary: noteEl('kits-summary'), note: noteEl('kits-note'), grid: noteEl('kits-grid'),
+  problems: noteEl('kits-problems'), budget: document.getElementById('kits-budget') };
+const REMOVE_AFTER = [[1, 'an hour'], [4, '4 hours'], [24, 'a day'], [168, 'a week'], [720, 'a month'], [null, 'never']];
+const hoursWords = (h) => (REMOVE_AFTER.find(([v]) => v === h) || [h, h == null ? 'never' : `${h} hours`])[1];
+const dayOf = (unix) => (unix ? new Date(unix * 1000).toISOString().slice(0, 10) : '');
+const kitsWaiting = new Set();
+let kitsData = null;
+let kitsPoll = null;
+let kitsOpen = null; // the card whose Install… step is showing
+
+function hoursPicker(value) {
+  return el('select', { className: 'kit-hours' }, ...REMOVE_AFTER.map(([v, label]) =>
+    el('option', { value: v == null ? 'never' : String(v), textContent: label, selected: v === value })));
+}
+const pickedHours = (sel) => (sel.value === 'never' ? null : Number(sel.value));
+
+async function kitAct(body, quiet) {
+  try {
+    const data = await postJSON('/admin/kits', body);
+    if (data.id) kitsWaiting.add(data.id);
+    if (!quiet) say(data.id ? 'Asked: the root helper works on it now (a fetch takes a few minutes).' : 'Saved.', true, kitsEl.note);
+    renderKits(data);
+  } catch (err) { say(err.message, false, kitsEl.note); }
+}
+
+function renderKits(data) {
+  kitsData = data;
+  const st = data.status || {};
+  const cfg = data.settings;
+  const kits = Object.values(data.kits || {});
+  // Answers to what this page asked: shown, and the waiting ends.
+  for (const r of data.results || []) {
+    if (kitsWaiting.has(r.id)) { kitsWaiting.delete(r.id); say(r.message, r.ok, kitsEl.note); }
+  }
+  const cached = kits.filter((k) => ((st.kits || {})[k.id] || {}).cached);
+  const newest = Math.max(0, ...cached.map((k) => st.kits[k.id].cached.fetched));
+  const feed = (data.feeds || {}).debsecan;
+  kitsEl.summary.textContent = (st.at ? `${cached.length} of ${kits.length} toolkits cached, ${size(st.pool_bytes || 0)} of ${cfg.budget_mb} MB` +
+    (newest ? `; newest fetch ${dayOf(newest)}` : '') + '. Cached kits install with no internet.' : 'Not looked at yet.') +
+    (feed && feed.fetched ? ` debsecan's data: ${dayOf(feed.fetched)}.` : '') + (kitsWaiting.size ? ' Working…' : '');
+  if (!kitsEl.budget.contains(document.activeElement)) kitsEl.budget.elements.budget.value = cfg.budget_mb;
+  kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
+    'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
+  kitsEl.grid.replaceChildren(...kits.map((k) => kitCard(k, st, cfg)));
+  clearTimeout(kitsPoll);
+  if (kitsWaiting.size) kitsPoll = setTimeout(loadKits, 3000);
+}
+
+function kitCard(k, st, cfg) {
+  const s = (st.kits || {})[k.id] || {};
+  const c = s.cached;
+  const inst = (st.installed || {})[k.id];
+  const mine = cfg.kits[k.id];
+  const left = inst && inst.remove_at ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600)) : null;
+  const badges = [
+    c ? [`Cached ${dayOf(c.fetched)}, ${size(c.bytes)}`, 'badge-public'] : ['Not cached', 'badge-push'],
+    s.previous ? ['2 versions', 'badge-push'] : null,
+    inst ? [inst.remove_at ? `Installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'Installed, kept', 'badge-private'] : null,
+  ].filter(Boolean);
+  const body = [];
+  if (inst) {
+    const keep = hoursPicker(mine.remove_after);
+    body.push(el('p', { className: 'library-buttons' },
+      actionButton('Remove now', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
+      el('span', { className: 'setting-desc', textContent: 'Keep it for ' }), keep,
+      actionButton('Keep longer', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })),
+    inst.upgraded && inst.upgraded.length ? el('p', { className: 'setting-desc', textContent:
+      `Installing it also brought these up to date (they stay when it goes): ${inst.upgraded.join(', ')}.` }) : null);
+  } else if (kitsOpen === k.id) {
+    // The consent step: what the kit can do, and when it goes again.
+    const hours = hoursPicker(mine.remove_after);
+    body.push(el('div', { className: 'kit-consent' },
+      el('p', { textContent: k.consent }),
+      el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
+        actionButton('Install', () => { kitsOpen = null; kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }); }, { className: 'small' }),
+        actionButton('Cancel', () => { kitsOpen = null; renderKits(kitsData); }, { className: 'small' }))));
+  } else {
+    body.push(el('p', { className: 'library-buttons' },
+      actionButton('Install…', () => { kitsOpen = k.id; renderKits(kitsData); },
+        { className: 'small', disabled: !c, title: c ? '' : 'Not cached yet: Refresh it while the box has internet.' }),
+      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' })));
+  }
+  const def = hoursPicker(mine.remove_after);
+  def.addEventListener('change', () => kitAct({ action: 'settings', kits: { [k.id]: { remove_after: pickedHours(def) } } }));
+  const details = el('details', { className: 'kit-details' }, el('summary', { textContent: 'Details' }),
+    el('ul', { className: 'kit-notes' }, ...(k.notes || []).map((n) => el('li', { textContent: n }))),
+    c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` +
+      Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ') +
+      (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
+    (k.git || []).length ? el('p', { className: 'setting-desc', textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, '')}, a mirror)`).join(', ')}.` }) : null,
+    el('p', { className: 'library-buttons' },
+      actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
+      s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
+        if (confirm(`Go back to ${k.title}'s set fetched ${dayOf(s.previous.fetched)}?${inst ? ' Its installed packages are put back to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
+      }, { className: 'small' }) : null),
+    el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Removed after, by default: ' }), def));
+  const keepCurrent = el('input', { type: 'checkbox', checked: mine.keep_current,
+    onchange: (e) => kitAct({ action: 'settings', kits: { [k.id]: { keep_current: e.target.checked } } }) });
+  return el('div', { className: `git-card kit-card${inst ? ' open' : ''}` },
+    el('h4', { textContent: k.title }),
+    el('p', { className: 'badges' }, ...badges.map(([text, cls]) => el('span', { className: `badge ${cls}`, textContent: text }))),
+    el('p', { className: 'git-about', textContent: k.summary }),
+    ...body,
+    el('label', { className: 'inline setting-desc' }, keepCurrent, ' Keep current (the library refreshes it on its schedule)'),
+    details);
+}
+
+async function loadKits() {
+  try {
+    const data = await getJSON('/admin/kits');
+    // Root writes what is cached and installed; on a first visit, ask it to.
+    if (!(data.status || {}).at && !kitsWaiting.size) { kitAct({ action: 'status' }, true); return; }
+    renderKits(data);
+  } catch (_) { kitsEl.summary.textContent = 'Could not read the toolkits.'; }
+}
+kitsEl.budget.addEventListener('submit', (e) => {
+  e.preventDefault();
+  kitAct({ action: 'settings', budget_mb: Number(kitsEl.budget.elements.budget.value) });
+});
+document.getElementById('kits-refresh-all').addEventListener('click', async () => {
+  for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
+  say('Asked for each kit: the root helper fetches them one after another (minutes each).', true, kitsEl.note);
+});
+window.addEventListener('hashchange', () => { if (location.hash === '#toolkits') loadKits(); });
+if (location.hash === '#toolkits') loadKits();
