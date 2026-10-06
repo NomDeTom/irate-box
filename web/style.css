@@ -729,6 +729,9 @@ body[data-art] > header { z-index: 2; }
 }
 [data-art="librarian"] .admin-art { display: block; background-image: url("art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
 [data-art="electronics"] .admin-art { display: block; background-image: url("art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
+/* The workbench (Toolkits) is a desk too: shown the controller desk's size. */
+[data-art="workbench"] .admin-art { display: block; background-image: url("art/krab-workbench.webp");
+  width: min(46vw, 34rem); aspect-ratio: 900 / 315; opacity: 0.22; }
 [data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp");
   width: min(46vw, 34rem); aspect-ratio: 900 / 317; opacity: 0.22; }
 /* The desk's lights: the picture above is the desk dark (krab-controller.webp). krab-desk.js reads
@@ -745,7 +748,7 @@ body[data-art] > header { z-index: 2; }
 /* No motion asked for: krab-desk.js leaves every light on, as in the picture. */
 @media (max-width: 760px) {
   .admin-art { width: 45vw; opacity: 0.12; }
-  [data-art="controller"] .admin-art { width: 70vw; opacity: 0.16; }
+  [data-art="controller"] .admin-art, [data-art="workbench"] .admin-art { width: 70vw; opacity: 0.16; }
 }
 @media print { .admin-art { display: none !important; } }
 .admin-pane > h2 {
