@@ -83,9 +83,11 @@ import hashlib
 import json
 import os
 import platform
+import pwd
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1368,9 +1370,8 @@ def _checked_bundle(app, zip_path):
     """The bundle's metadata, or ValueError: the same rules as librarian.check_bundle."""
     if app not in APPS:
         raise ValueError(f"{app} is not an app the hub installs")
-    path = Path(zip_path)
-    staging = APP_STAGING.resolve()
-    if path.is_symlink() or not path.resolve().is_relative_to(staging) or not path.is_file():
+    path = Path(zip_path)  # root's own copy (_take_staged), not the hub's staged file
+    if path.is_symlink() or not path.is_file():
         raise ValueError("the bundle must be a file the librarian staged")
     try:
         with zipfile.ZipFile(path) as zf:
@@ -1393,7 +1394,78 @@ def _checked_bundle(app, zip_path):
         raise ValueError(f"not a valid bundle: {exc}")
 
 
+# Root's copy of a bundle while it is checked and extracted (F7): the staged zip is in the hub's
+# folder, where the hub could swap it between the check and the extraction.
+APP_TAKEN = Path(os.environ.get("HUB_APP_TAKEN", "/var/cache/irate-box/app-install"))
+
+
+def _staged_dir_fd(zip_path):
+    """The staged bundle's folder, opened without following a link, and only if the hub (this
+    user, when not root) owns it: a folder swapped for a link, or for one of root's, is refused."""
+    path = Path(zip_path)
+    staging = APP_STAGING.resolve()
+    if not path.resolve().is_relative_to(staging):
+        raise ValueError("the bundle must be a file the librarian staged")
+    dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    owner = pwd.getpwnam(HUB_USER).pw_uid if os.geteuid() == 0 else os.geteuid()
+    if os.fstat(dfd).st_uid != owner:
+        os.close(dfd)
+        raise ValueError("the bundle's folder is not the librarian's")
+    return dfd
+
+
+def _take_staged(zip_path):
+    """A root-owned copy of the staged bundle, read once through an O_NOFOLLOW fd (F7)."""
+    name = Path(zip_path).name
+    dfd = _staged_dir_fd(zip_path)
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
+    except OSError:
+        raise ValueError("the bundle must be a file the librarian staged")
+    finally:
+        os.close(dfd)
+    with os.fdopen(fd, "rb") as src:
+        st = os.fstat(src.fileno())
+        if not stat.S_ISREG(st.st_mode) or st.st_size > APP_MAX_BYTES:
+            raise ValueError("the bundle must be a plain file, and not too large")
+        APP_TAKEN.mkdir(parents=True, exist_ok=True)
+        os.chmod(APP_TAKEN, 0o700)
+        copy = APP_TAKEN / f"{secrets.token_hex(8)}.zip"
+        with open(copy, "xb") as out:
+            # Bounded: the hub could still be writing to the file it staged.
+            while chunk := src.read(1 << 20):
+                out.write(chunk)
+                if out.tell() > APP_MAX_BYTES:
+                    break
+        if copy.stat().st_size > APP_MAX_BYTES:
+            copy.unlink()
+            raise ValueError("the bundle is too large")
+    return copy
+
+
+def _drop_staged(zip_path):
+    """The hub's staged zip removed, through its folder's fd (never a link's target)."""
+    try:
+        dfd = _staged_dir_fd(zip_path)
+    except (ValueError, OSError):
+        return
+    try:
+        os.unlink(Path(zip_path).name, dir_fd=dfd)
+    except OSError:
+        pass
+    finally:
+        os.close(dfd)
+
+
 def install_app(app, zip_path):
+    taken = _take_staged(zip_path)
+    try:
+        return _install_taken(app, taken, zip_path)
+    finally:
+        taken.unlink(missing_ok=True)
+
+
+def _install_taken(app, zip_path, staged):
     meta = _checked_bundle(app, zip_path)
     target = _app_dir(app)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1421,7 +1493,7 @@ def install_app(app, zip_path):
         os.rename(new, target)
     finally:
         shutil.rmtree(new, ignore_errors=True)
-    Path(zip_path).unlink(missing_ok=True)
+    _drop_staged(staged)
     if APPS[app]["install"].get("restart"):
         run("systemctl", "try-restart", APPS[app]["install"]["restart"])
     return f"{app}: installed {str(meta.get('commit', ''))[:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
