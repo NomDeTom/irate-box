@@ -1143,7 +1143,7 @@ const net = {
   device: document.getElementById('net-device'),
   scan: document.getElementById('net-scan'),
   scanNote: document.getElementById('net-scan-note'),
-  radios: document.querySelector('#net-radios tbody'),
+  devices: document.getElementById('net-devices'),
   hazards: document.getElementById('net-hazards'),
   status: document.getElementById('up-status'),
   eager: document.getElementById('up-eager'),
@@ -1363,6 +1363,69 @@ function upStatusText(u) {
   return parts.join(' ');
 }
 
+// --- the devices, in plain words -------------------------------------------------------
+const MANAGED_BY = {
+  networkmanager: 'NetworkManager, the system\'s own network settings. irate-box asks it, and doesn\'t take over.',
+  wpa_supplicant: 'wpa_supplicant, which joins WiFi networks (with something else giving the address).',
+  ifupdown: 'ifupdown, from /etc/network/interfaces.',
+  networkd: 'systemd-networkd.',
+  dhcpcd: 'dhcpcd.',
+  iwd: 'iwd. irate-box can watch it, not repair it yet.',
+  connman: 'connman. irate-box can watch it, not repair it yet.',
+  none: 'Nothing irate-box recognises.',
+};
+const BUS_WORDS = { usb: 'USB', sdio: 'built-in (SDIO)', pci: 'built-in (PCI)', platform: 'built-in' };
+const COND_MARK = { how: '•', limit: '◦', untested: '?', needs: '!' };
+const COND_WORD = { how: '', limit: 'Limit: ', untested: 'Untested: ', needs: 'Needs: ' };
+
+function signalWords(dbm) {
+  if (typeof dbm !== 'number') return '';
+  return dbm >= -50 ? 'excellent' : dbm >= -60 ? 'good' : dbm >= -70 ? 'fair' : dbm >= -80 ? 'weak' : 'poor';
+}
+
+function deviceCard(inv, d, wifi, hazards) {
+  const line = (label, text) => el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: label }), el('span', { textContent: text }));
+  const kind = wifi ? 'WiFi' : 'Wired';
+  const usb = d.usb || {};
+  const what = [wifi ? `${BUS_WORDS[d.bus] || d.bus || ''} WiFi adapter`.trim() : `${BUS_WORDS[d.bus] || ''} Ethernet port`.trim(),
+    d.driver ? `driver ${d.driver}` : null, usb.product || null, usb.id ? `USB id ${usb.id}` : null].filter(Boolean).join(', ');
+  let now;
+  if (wifi) {
+    const l = d.link || {};
+    if (l.ssid) {
+      const band = l.freq ? (l.freq < 3000 ? '2.4 GHz' : l.freq < 5925 ? '5 GHz' : '6 GHz') : '';
+      now = `Connected to ${l.ssid}, channel ${l.channel}${band ? ` (${band})` : ''}, signal ${l.signal} dBm (${signalWords(l.signal)}).`;
+    } else if (d.type === 'AP') now = 'Running a hotspot.';
+    else now = 'Not connected to a network.';
+  } else {
+    now = d.carrier ? 'Cable in.' : 'No cable.';
+  }
+  if (inv.uplink && inv.uplink.iface === d.iface) now += ' This is the box\'s link to your network.';
+  const owner = wifi ? d.owner : (inv.uplink && inv.uplink.iface === d.iface ? inv.uplink.backend : null);
+  const managed = owner ? (MANAGED_BY[owner] || owner) + (d.manager ? ` With ${d.manager} for the address.` : '') : '—';
+  const kids = [
+    el('h4', {}, el('span', { textContent: d.iface }), el('span', { className: 'state', textContent: kind })),
+    line('What it is', what || '—'),
+    line('Now', now),
+    line('Managed by', managed),
+  ];
+  if (wifi) {
+    const a = (inv.ap || []).find((x) => x.phy === d.phy);
+    if (a) {
+      const conds = a.conditions || [{ kind: 'how', text: a.detail }];
+      const any = conds.some((c) => c.kind !== 'how');
+      const verdict = !a.possible ? 'No.' : any ? `Yes, with conditions (through ${a.backend}).` : `Yes (through ${a.backend}).`;
+      kids.push(line('Can it run the hotspot?', verdict),
+        el('ul', { className: 'net-conditions' }, ...conds.map((c) => el('li', { className: `cond-${c.kind}` },
+          el('span', { className: 'cond-mark', textContent: COND_MARK[c.kind] || '•', ariaHidden: 'true' }),
+          el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` })))));
+    }
+  }
+  const mine = hazards.filter((h) => h.iface === d.iface);
+  if (mine.length) kids.push(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix))));
+  return el('div', { className: 'net-device setting' }, ...kids);
+}
+
 function renderNetwork(data) {
   netData = data;
   const busy = data.pending > 0 || !!netWaiting;
@@ -1389,21 +1452,12 @@ function renderNetwork(data) {
     box.replaceChildren(first, ...devices.map((d) => el('option', { value: d, textContent: d })));
     box.value = [...box.options].some((o) => o.value === keep) ? keep : first.value;
   }
-  const apFor = (r) => (inv.ap || []).find((a) => a.phy === r.phy);
-  net.radios.replaceChildren(...(inv ? inv.radios : []).map((r) => {
-    const a = apFor(r);
-    const ident = [r.driver, r.bus && r.bus.toUpperCase(), r.usb && r.usb.id].filter(Boolean).join(', ');
-    const link = r.link && r.link.ssid ? `${r.link.ssid}, channel ${r.link.channel}, ${r.link.signal} dBm` : r.type;
-    return el('tr', {},
-      el('td', {}, el('span', { className: 'setting-name', textContent: r.iface }), el('span', { className: 'setting-desc', textContent: `${ident} — ${link}` })),
-      el('td', { textContent: r.owner + (r.manager ? ` + ${r.manager}` : '') }),
-      el('td', {}, el('span', { className: 'setting-name', textContent: a ? (a.possible ? `Yes: ${a.mode.replace('-', ' ')}, through ${a.backend}` : 'No') : '—' }),
-        a ? el('span', { className: 'setting-desc', textContent: a.detail }) : null));
-  }), ...(inv ? inv.wired : []).map((w) => el('tr', {},
-    el('td', {}, el('span', { className: 'setting-name', textContent: w.iface }), el('span', { className: 'setting-desc', textContent: `${w.driver || 'wired'} — ${w.carrier ? 'cable in' : 'no cable'}` })),
-    el('td', { textContent: inv.uplink.iface === w.iface ? inv.uplink.backend : '' }), el('td', { textContent: '—' }))));
+  // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
+  // can run the hotspot and on what conditions, and the warnings that are about it.
+  const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
   const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
-  net.hazards.replaceChildren(...hz.map((h) => checkItem(h.status, h.title, h.detail, h.fix)));
+  net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
+  net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => checkItem(h.status, h.title, h.detail, h.fix)));
   const sn = netNotes.scan;
   say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
 

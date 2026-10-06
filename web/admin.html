@@ -514,10 +514,19 @@
           <button type="button" id="net-scan">Look again</button>
         </div>
         <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
-        <table class="admin-table" id="net-radios">
-          <thead><tr><th>Device</th><th>Run by</th><th>Its own hotspot</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <details class="net-glossary" id="net-glossary">
+          <summary>What these words mean</summary>
+          <dl>
+            <dt>Client</dt><dd>The box joined to your WiFi, as a laptop would: its way to your network and the internet.</dd>
+            <dt>Hotspot</dt><dd>The box's own WiFi network, which guests join (an "access point").</dd>
+            <dt>Beside the client</dt><dd>Some radios can be both at once: on your WiFi, and running the hotspot as a second network.</dd>
+            <dt>Takes the radio</dt><dd>A radio that can only do one: running the hotspot means leaving your WiFi.</dd>
+            <dt>Channel</dt><dd>The slice of the WiFi band a network uses. A radio that can only use one channel at a time makes its hotspot follow your WiFi's.</dd>
+            <dt>Managed by</dt><dd>The program on the box that looks after a device's connection (NetworkManager, wpa_supplicant, …). irate-box asks it, and doesn't take over.</dd>
+            <dt>Signal</dt><dd>How strongly your WiFi is heard, in dBm: closer to 0 is stronger. About −50 is excellent, −70 weak, −80 barely there.</dd>
+          </dl>
+        </details>
+        <div class="net-devices" id="net-devices"></div>
         <ul class="admin-checks" id="net-hazards"></ul>
 
         <h3>Staying on the network</h3>

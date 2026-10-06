@@ -574,8 +574,12 @@ def _os_name():
     return (m.group(1) if m else None) if not rel else f"mPWRD-OS ({m.group(1) if m else 'Debian'})"
 
 
-def _h(hid, status, title, detail, fix=""):
-    return {"id": hid, "status": status, "title": title, "detail": detail, "fix": fix}
+def _h(hid, status, title, detail, fix="", iface=None):
+    """A finding; iface: the device it is about, so /admin shows it on that device's card."""
+    out = {"id": hid, "status": status, "title": title, "detail": detail, "fix": fix}
+    if iface:
+        out["iface"] = iface
+    return out
 
 
 def hazards(inv):
@@ -602,32 +606,36 @@ def hazards(inv):
             out.append(_h(f"auth-retries:{p['uuid']}", "warn", f"WiFi profile {p['name']}: gives up on repeated handshake failures",
                           "After 3 failed handshakes (a flaky link looks like a wrong password) NetworkManager stops "
                           "trying until someone reconnects it by hand, which a headless box cannot ask for.",
-                          "Network page: \"Keep retrying\" sets auth-retries to 0 on this profile, with your say-so."))
+                          "Network page: \"Keep retrying\" sets auth-retries to 0 on this profile, with your say-so.",
+                          iface=p.get("iface")))
     for r in radios:
         rf = r.get("rfkill")
         if rf and (rf["soft"] or rf["hard"]):
             out.append(_h(f"rfkill:{r['iface']}", "problem", f"{r['iface']}: radio switched off",
                           f"rfkill: {'hard' if rf['hard'] else 'soft'} blocked.",
-                          "A hard block is a switch or the board; a soft one: rfkill unblock wifi (and see wifisync)."))
+                          "A hard block is a switch or the board; a soft one: rfkill unblock wifi (and see wifisync).",
+                          iface=r["iface"]))
         usb = r.get("usb") or {}
         if usb.get("autosuspend"):
             out.append(_h(f"autosuspend:{r['iface']}", "warn", f"{r['iface']}: USB autosuspend on",
                           "The kernel may suspend the USB radio when idle, which some drivers do not survive.",
-                          f"echo on > /sys/bus/usb/devices/{usb.get('port')}/power/control (a udev rule keeps it)."))
+                          f"echo on > /sys/bus/usb/devices/{usb.get('port')}/power/control (a udev rule keeps it).",
+                          iface=r["iface"]))
         if r.get("power_save") == "on":
             out.append(_h(f"powersave:{r['iface']}", "warn", f"{r['iface']}: power save on",
                           "Power save makes a link slower to answer and, on some drivers, drop.",
-                          "NetworkManager: wifi.powersave = 2; otherwise iw dev IFACE set power_save off."))
+                          "NetworkManager: wifi.powersave = 2; otherwise iw dev IFACE set power_save off.",
+                          iface=r["iface"]))
         params = r.get("params") or {}
         if r.get("power_save") == "off" and params.get("ps_on") in ("Y", "1"):
             out.append(_h(f"driver-ps:{r['iface']}", "ok", f"{r['iface']}: driver loaded with ps_on",
                           f"{r.get('driver')} has its own power-save option on, while iw reports power save off. "
-                          "Which one wins is not known yet (a test in the AP research)."))
+                          "Which one wins is not known yet (a test in the AP research).", iface=r["iface"]))
         p = r.get("profile") or {}
         if p.get("netplan"):
             out.append(_h(f"netplan:{r['iface']}", "ok", f"{r['iface']}: profile written by netplan",
                           f"{p['name']} is generated from /etc/netplan; a change made to it with nmcli may be put back "
-                          "by netplan apply or at boot (not tested yet)."))
+                          "by netplan apply or at boot (not tested yet).", iface=r["iface"]))
     if inv.get("country") in ("00", None) and radios:
         out.append(_h("regdom", "warn", "No WiFi country set",
                       "The radio uses the world-safe channel set, which limits a hotspot's channels and power.",
@@ -674,7 +682,10 @@ def uplink_verdict(inv):
 
 
 def ap_verdicts(inv):
-    """For each radio: could irate-box run its hotspot there, how, and at what cost."""
+    """For each radio: could irate-box run its hotspot there, how, and at what cost. detail is
+    one sentence (the doctor, install.sh's summary); conditions the same in parts, each
+    {text, kind}: kind "how" (how it would work), "limit", "untested" or "needs" (/admin lists
+    them one per line)."""
     out = []
     up = inv.get("uplink") or {}
     nm_on = bool((inv["stacks"].get("networkmanager") or {}).get("running"))
@@ -686,18 +697,28 @@ def ap_verdicts(inv):
         seen.add(r.get("phy"))
         if not r.get("ap"):
             out.append({"phy": r["phy"], "iface": r["iface"], "possible": False, "mode": None, "backend": None,
-                        "detail": f"{r.get('driver') or 'This radio'} cannot be an access point."})
+                        "detail": f"{r.get('driver') or 'This radio'} cannot be an access point.",
+                        "conditions": [{"kind": "limit", "text": f"{r.get('driver') or 'This radio'} cannot be an access point."}]})
             continue
         is_uplink = up.get("iface") == r["iface"] and up.get("kind") == "wifi"
+        conditions = []
         if not is_uplink:
             mode, detail = "radio-alone", "The radio is not the box's link to the network: the hotspot can have it to itself."
+            conditions.append({"kind": "how", "text": "This radio isn't the box's link to your network, so the hotspot can have it to itself."})
         elif r.get("ap_beside_client"):
             mode = "beside-client"
             detail = (f"A second interface beside the client link, which stays up. Up to {r['channels_at_once']} channels at once"
                       + (" (whether the hotspot can stay put when the client link roams to another channel is untested)."
                          if r["channels_at_once"] > 1 else ": the hotspot must follow the client link's channel."))
+            conditions.append({"kind": "how", "text": "It can run the hotspot and stay on your WiFi at the same time, as a second interface beside the link."})
+            if r["channels_at_once"] > 1:
+                conditions.append({"kind": "limit", "text": f"It can use up to {r['channels_at_once']} channels at once, so the hotspot need not follow your WiFi's channel."})
+                conditions.append({"kind": "untested", "text": "Whether the hotspot stays put when your WiFi roams to another channel."})
+            else:
+                conditions.append({"kind": "limit", "text": "It works on one channel at a time, so the hotspot follows your WiFi's channel."})
         else:
             mode, detail = "takes-radio", "Only by taking the radio from the client link: the box would leave the home network."
+            conditions.append({"kind": "limit", "text": "Only by taking the radio from your WiFi: the box would leave your network while the hotspot runs."})
         owner = r["owner"]
         if owner == "networkmanager" or (owner == "none" and nm_on):
             backend = "networkmanager"
@@ -705,11 +726,13 @@ def ap_verdicts(inv):
             backend = "hostapd"
             if not hostapd:
                 detail += " Needs hostapd (apt install hostapd)."
+                conditions.append({"kind": "needs", "text": "hostapd, which isn't installed (apt install hostapd)."})
         else:
             backend = None
             detail += f" {owner} runs this radio, and irate-box has no {owner} backend for the hotspot yet."
+            conditions.append({"kind": "limit", "text": f"{owner} runs this radio, and irate-box can't run a hotspot through {owner} yet."})
         out.append({"phy": r["phy"], "iface": r["iface"], "possible": backend is not None, "mode": mode,
-                    "backend": backend, "detail": detail})
+                    "backend": backend, "detail": detail, "conditions": conditions})
     return out
 
 
