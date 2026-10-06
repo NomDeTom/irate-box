@@ -66,6 +66,34 @@ check("the old guest-push action is gone", act(action="guest-push", on=True)[0] 
 subprocess.run(["git", "config", "--unset", "irate-box.write"], cwd=T / "public" / "admins.git")
 check("a repository from before, with guest push on, reads as public-everything", gitrepos.write_level(T / "public" / "admins.git") == "everyone")
 check("…but never a private one", gitrepos.write_level(T / "private" / "secret.git") == "admin")
+# Move between the areas: the level and hooks follow the new area.
+(T / "guest-push").unlink()
+check("move public-everything to private", act(action="move", area="public", name="open", to="private")[0] == 200)
+check("…it is private-to-admin there (anyone-may-push is public only)", cfg("private", "open", "irate-box.write") == "admin"
+      and cfg("private", "open", "core.hooksPath").endswith("scripts/git-hooks") and not (T / "public" / "open.git").exists())
+check("move it back: public-admin-writes, the public hook", act(action="move", area="private", name="open", to="public")[0] == 200
+      and cfg("public", "open", "irate-box.write") == "admin" and cfg("public", "open", "core.hooksPath").endswith("git-hooks-public"))
+check("move read-only keeps read-only", act(action="move", area="public", name="ro", to="private")[0] == 200
+      and cfg("private", "ro", "irate-box.write") == "nobody" and cfg("private", "ro", "http.receivepack") == "false")
+act(action="move", area="private", name="ro", to="public")
+check("a move onto an existing name is refused", (act(action="create", area="private", name="open"), act(action="move", area="public", name="open", to="private"))[1][0] == 400)
+# Publish: the hub copies branches from one repository into another, read-only or not.
+W = T / "work"
+env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+subprocess.run(["git", "init", "-q", "-b", "main", str(W)], env=env)
+(W / "f").write_text("x"); subprocess.run(["git", "add", "f"], cwd=W, env=env); subprocess.run(["git", "commit", "-qm", "x"], cwd=W, env=env)
+subprocess.run(["git", "push", "-q", str(T / "public" / "admins.git"), "main", "main:dev"], cwd=W, env=env)
+subprocess.run(["git", "tag", "v1"], cwd=W, env=env); subprocess.run(["git", "push", "-q", str(T / "public" / "admins.git"), "v1"], cwd=W, env=env)
+code, body = act(action="publish", **{"from": {"area": "public", "name": "admins"}}, to={"area": "public", "name": "ro"}, refs=["main", "v1"])
+check("publish main and a tag into a read-only repository", code == 200, body)
+heads = subprocess.run(["git", "for-each-ref", "--format=%(refname)"], cwd=T / "public" / "ro.git", capture_output=True, text=True).stdout.split()
+check("…they are there, and only they", heads == ["refs/heads/main", "refs/tags/v1"], heads)
+check("publish a branch that does not exist: refused", act(action="publish", **{"from": {"area": "public", "name": "admins"}},
+      to={"area": "public", "name": "ro"}, refs=["nope"])[0] == 400)
+check("publish to itself: refused", act(action="publish", **{"from": {"area": "public", "name": "admins"}},
+      to={"area": "public", "name": "admins"}, refs=["main"])[0] == 400)
+check("a ref name that is an option: refused", act(action="publish", **{"from": {"area": "public", "name": "admins"}},
+      to={"area": "public", "name": "ro"}, refs=["--upload-pack=x"])[0] == 400)
 nginx = (REPO / "config" / "irate-box.nginx").read_text()
 check("nginx asks the hub, with the admin login as the other way in",
       "auth_request /_irate_git_access;" in nginx and "satisfy any;" in nginx and "guest-push" not in nginx)

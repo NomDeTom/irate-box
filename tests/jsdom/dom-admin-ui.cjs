@@ -113,6 +113,10 @@ setTimeout(() => {
   check('git: a private repository is offered only the private presets', [...sels[2].options].map((o) => o.value).join('|') === 'private-to-admin|private-read-only');
   check('git: the line says what the preset means', t('.git-preset-text')[0] === 'public-admin-writes: anyone can browse and clone; pushing needs the admin login.', t('.git-preset-text')[0]);
   check('git: the old guest-push switch is gone', !d.getElementById('git-guest-push'));
+  const prompts = ['private/secret', 'main dev'];
+  w.prompt = () => prompts.shift();
+  [...d.querySelectorAll('#git-public button')].find((b) => b.textContent === 'Publish…').click();
+  [...d.querySelectorAll('#git-public button')].find((b) => b.textContent === 'Make private').click();
   sels[0].value = 'public-everything';
   sels[0].dispatchEvent(new w.Event('change'));
   force.click();
@@ -121,6 +125,9 @@ setTimeout(() => {
   setTimeout(() => {
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
+    check('git: Publish asks the hub, with the target and the refs', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'publish'
+      && p[1].to.area === 'private' && p[1].to.name === 'secret' && p[1].refs.join() === 'main,dev'), JSON.stringify(posted));
+    check('git: Make private asks the hub to move it', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'move' && p[1].to === 'private'));
     check('git: choosing public-everything asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'preset'
       && p[1].name === 'demo' && p[1].preset === 'public-everything'), JSON.stringify(posted));
     check('no page errors', !errors.length, errors);

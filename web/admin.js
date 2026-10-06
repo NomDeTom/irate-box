@@ -2122,6 +2122,23 @@ function renderGit(data) {
           const d = prompt(`Description for ${r.name}.git`, r.description);
           if (d !== null) act({ action: 'describe', area, name: r.name, description: d }, git.note)();
         }, { className: 'small' }),
+        actionButton(area === 'public' ? 'Make private' : 'Make public', act({ action: 'move', area, name: r.name,
+          to: area === 'public' ? 'private' : 'public' }, git.note, area === 'public'
+          ? `Move ${r.name}.git to /git-private/? Only the admin login will see or clone it, and its clone URL changes.`
+          : `Move ${r.name}.git to /git/? Anyone on the network will be able to browse and clone it, and its clone URL changes.`),
+        { className: 'small' }),
+        actionButton('Publish…', () => {
+          const others = data.repos.filter((o) => !(o.area === r.area && o.name === r.name));
+          if (!others.length) { say('There is no other repository to publish to: create one first.', false, git.note); return; }
+          const target = prompt(`Publish from ${r.name}.git to which repository?\n`
+            + others.map((o) => `${o.area}/${o.name}`).join('\n'), others[0] ? `${others[0].area}/${others[0].name}` : '');
+          if (!target) return;
+          const [toArea, toName] = target.trim().split('/');
+          const refs = prompt('Which branches or tags (separated by spaces)? They replace those of the same name there.', 'main');
+          if (!refs) return;
+          act({ action: 'publish', from: { area, name: r.name }, to: { area: toArea, name: (toName || '').replace(/\.git$/, '') },
+            refs: refs.trim().split(/\s+/) }, git.note)();
+        }, { className: 'small' }),
         actionButton('Delete', act({ action: 'delete', area, name: r.name }, git.note,
           `Delete ${r.name}.git and all its history? Clones elsewhere keep theirs; this one cannot be brought back.`),
         { className: 'small' }))))
