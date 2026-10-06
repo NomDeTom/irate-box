@@ -1078,7 +1078,13 @@ def probe_ttyd(ctx, a, show):
         out.append(("problem", f"it runs a bare shell ({argv[-1]}), so the login is the only barrier to a shell as "
                     f"{show.get('User') or 'root'}", "run /bin/login, which asks for a real account"))
     if "--interface" not in argv and "-i" not in argv:
-        out.append(("problem", "no --interface: ttyd listens on every interface", "--interface lo"))
+        out.append(("problem", "no --interface: ttyd listens on every interface", "--interface /run/ttyd/ttyd.sock"))
+    else:
+        i = argv.index("--interface") if "--interface" in argv else argv.index("-i")
+        iface = argv[i + 1] if i + 1 < len(argv) else ""
+        if not iface.startswith("/"):
+            out.append(("warn", f"on a TCP port ({iface}): anything on the box can reach the login prompt",
+                        "a socket only the web server's group can open (install.sh does this)"))
     return out
 
 

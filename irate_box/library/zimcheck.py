@@ -11,12 +11,15 @@ box doctor (health.py, which also sets bad ones aside). Two layers:
                          (the checksum sits at the end, so a short file is a truncated one:
                          an interrupted download or copy, or a stick pulled too soon)
   kiwix_problem(path)    kiwix-manage adds it to a scratch library: what Kiwix itself makes
-                         of it. Slower; skipped (None) when kiwix-tools is not installed
-  problem(path)          the first of the two that finds something, or None
+                         of it. Slower; skipped (None) when kiwix-tools is not installed.
+                         user="hub": run as that user when called as root (F12: libzim and
+                         Xapian reading an untrusted book must not be root)
+  problem(path[, user])  the first of the two that finds something, or None
 
 Each returns None for a good book, or a short reason in plain words. Stdlib only.
 """
 
+import os
 import shutil
 import struct
 import subprocess
@@ -50,14 +53,18 @@ def header_problem(path):
     return None
 
 
-def kiwix_problem(path, timeout=300):
+def kiwix_problem(path, timeout=300, user=None):
     manage = shutil.which("kiwix-manage")
     if not manage:
         return None
     with tempfile.TemporaryDirectory(prefix="zimcheck-") as d:
         lib = Path(d) / "lib.xml"
+        cmd = [manage, str(lib), "add", str(path)]
+        if user and os.geteuid() == 0:
+            shutil.chown(d, user, user)  # the scratch library is written as that user
+            cmd = ["runuser", "-u", user, "--", *cmd]
         try:
-            r = subprocess.run([manage, str(lib), "add", str(path)], capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         except (OSError, subprocess.SubprocessError) as exc:
             return f"kiwix-manage could not be run ({exc})"
         if r.returncode == 0 and lib.exists() and "<book " in lib.read_text(errors="replace"):
@@ -66,5 +73,5 @@ def kiwix_problem(path, timeout=300):
         return "kiwix-manage cannot read it" + (f": {msg[-1][:160]}" if msg else "")
 
 
-def problem(path):
-    return header_problem(path) or kiwix_problem(path)
+def problem(path, user=None):
+    return header_problem(path) or kiwix_problem(path, user=user)

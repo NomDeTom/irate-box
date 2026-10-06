@@ -65,7 +65,6 @@ r="$(set_pw "$PW1" "$PW2")"; [[ $r == OK* ]] && ok "change: $r" || bad "change: 
 until_pw "$PW2"
 check 200 code -u "admin:$PW2" "http://$H/admin/"
 check 401 code -u "admin:$PW1" "http://$H/admin/"
-check "TTYD_CREDENTIAL=admin:$PW2" cat /etc/hub/ttyd.env
 # back to PW1 for later runs
 set_pw "$PW2" "$PW1" >/dev/null; until_pw "$PW1" || bad "could not set the password back"
 

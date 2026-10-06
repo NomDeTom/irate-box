@@ -185,7 +185,7 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
             _copy(src, tmp, report)
             shutil.chown(tmp, hub_user, hub_user)
             os.chmod(tmp, 0o644)
-            why = zimcheck.problem(tmp)
+            why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root (F12)
             if why:
                 raise ValueError(f"{rel.name} was not added: the copy is {why}. It looked whole on the stick, "
                                  "so the stick may be failing, or was pulled out; nothing on the hub changed.")

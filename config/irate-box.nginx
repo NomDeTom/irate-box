@@ -391,15 +391,15 @@ server {
 	}
 
 	# --- /term -> ttyd (the escape hatch), path passed through (--base-path /term) ----
-	# Gated here as well as by ttyd's own credential, so a stray unit start is not an open
-	# root shell.
+	# Gated here only: ttyd has no credential (F9), and listens on a socket only this web
+	# server's group can open, so a stray unit start is not an open root shell.
 	location = /term { return 301 /term/; }
 	location /term/ {
 		if ($irate_box_off_term) { return 404; }
 		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
 		proxy_read_timeout 1h;
-		proxy_pass http://127.0.0.1:7681;
+		proxy_pass http://unix:/run/ttyd/ttyd.sock;
 	}
 
 	# Nothing here sets Strict-Transport-Security. Keep it that way (§5).
