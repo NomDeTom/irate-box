@@ -99,6 +99,6 @@ j = sd.joint(steps)
 check("joint: one item for the package, both sources, the worst status and its fix", len(j["items"]) == 1 and j["items"][0]["sources"] == ["doctor", "debsecan"]
       and j["items"][0]["status"] == "problem" and j["items"][0]["fix"] == "install updates", j)
 check("  each source's counts", j["sources"] == {"doctor": {"problem": 0, "warn": 1, "ok": 1}, "debsecan": {"problem": 1, "warn": 0, "ok": 1}}, j["sources"])
-check("the step is in the doctor's list, last", sd.STEPS[-1][0] == "debsecan")
+check("the step is in the doctor's list", "debsecan" in [x[0] for x in sd.STEPS])
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

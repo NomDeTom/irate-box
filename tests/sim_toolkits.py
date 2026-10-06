@@ -291,7 +291,7 @@ queued.clear()
 s = kits.installed_state(); s["small"]["remove_at"] = time.time() - 5; kits._write(kits.INSTALLED, s)
 (T / "state" / "control" / "kits.json").write_text(json.dumps(kits.status()))
 line = toolkits.step({"check_every_hours": 24})
-check("the librarian: an expired install is removed, and one due kit fetched", [q["action"] for q in queued] == ["kit-expire", "kit-fetch"], queued)
+check("the librarian: an expired install is removed, and one due kit fetched", [q["action"] for q in queued if q["action"] != "security-deep-audit"] == ["kit-expire", "kit-fetch"], queued)
 queued.clear()
 toolkits.step({"check_every_hours": 24})
 check("  the next run fetches the next kit, not the same one again", [q.get("kit") for q in queued if q["action"] == "kit-fetch"] != [None]

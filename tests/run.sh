@@ -38,6 +38,7 @@ run origin_guard.py
 run sim_mirrors.py
 run sim_toolkits.py
 run sim_secdoctor_debsecan.py
+run sim_deepaudit.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

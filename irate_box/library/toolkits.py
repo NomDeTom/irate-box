@@ -37,7 +37,7 @@ def definitions():
 
 def settings():
     raw = librarian._read_json(SETTINGS, {})
-    out = {"budget_mb": raw.get("budget_mb", 500), "kits": {}}
+    out = {"budget_mb": raw.get("budget_mb", 500), "deep_audit_days": raw.get("deep_audit_days", 7), "kits": {}}
     for kid, k in definitions().items():
         mine = (raw.get("kits") or {}).get(kid, {})
         out["kits"][kid] = {"keep_current": mine.get("keep_current", True),
@@ -56,6 +56,11 @@ def set_settings(changes):
         if type(b) is not int or not 10 <= b <= 1 << 16:
             raise LibrarianError("budget_mb: 10 to 65536")
         cfg["budget_mb"] = b
+    if "deep_audit_days" in changes:
+        d = changes["deep_audit_days"]
+        if type(d) is not int or not 0 <= d <= 90:
+            raise LibrarianError("deep_audit_days: 0 (never on its own) to 90")
+        cfg["deep_audit_days"] = d
     for kid, ch in (changes.get("kits") or {}).items():
         if kid not in cfg["kits"] or not isinstance(ch, dict):
             raise LibrarianError(f"no toolkit {kid}")
@@ -217,4 +222,14 @@ def step(policy, now=None, log=print):
             librarian._write_json(STATE, asked)
             out.append(f"fetching {kid}")
             break
+    # The security doctor's deep audit (debian-cis and Lynis), weekly by default (Tom), when the
+    # security kit is kept current: its tools come from its cache.
+    days = cfg.get("deep_audit_days", 7)
+    if days and cfg["kits"].get("security", {}).get("keep_current"):
+        last = (librarian._read_json(librarian.STATE_DIR / "control" / "security-deep.json", {}) or {}).get("at") or 0
+        if now - max(last, asked.get("deep-audit", 0)) >= days * 86400:
+            librarian._queue_root({"action": "security-deep-audit"})
+            asked["deep-audit"] = now
+            librarian._write_json(STATE, asked)
+            out.append("the weekly deep audit")
     return "; ".join(out) or None
