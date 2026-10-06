@@ -58,13 +58,17 @@ div#cgit table.diff td div.hunk { color: var(--accent); }
 div#cgit table.diff td div.add { color: var(--ok); }
 div#cgit table.diff td div.del { color: #e5484d; }
 div#cgit table.ssdiff td.add, div#cgit table.ssdiff td.add_dark, div#cgit table.ssdiff td.del,
-div#cgit table.ssdiff td.del_dark, div#cgit table.ssdiff td.changed, div#cgit table.ssdiff td.changed_dark,
+div#cgit table.ssdiff td.del_dark, div#cgit table.ssdiff td.changed, div#cgit table.ssdiff td.changed_dark {
+  color: var(--text); border-color: var(--border);
+}
 div#cgit table.ssdiff td.lineno, div#cgit table.ssdiff td.hunk, div#cgit table.ssdiff td.head {
   background: transparent; color: var(--text); border-color: var(--border);
 }
 div#cgit span.age-mins, div#cgit span.age-hours { color: var(--ok); font-weight: 600; }
 div#cgit span.age-days, div#cgit span.age-weeks, div#cgit span.age-months, div#cgit span.age-years { color: var(--muted); }
-div#cgit a.branch-deco, div#cgit a.tag-deco, div#cgit a.tag-annotated-deco, div#cgit a.remote-deco, div#cgit a.deco {
+div#cgit a.branch-deco, div#cgit a.tag-deco, div#cgit a.tag-annotated-deco, div#cgit a.remote-deco, div#cgit a.deco,
+div#cgit table.list td a.branch-deco, div#cgit table.list td a.tag-deco, div#cgit table.list td a.tag-annotated-deco,
+div#cgit table.list td a.remote-deco, div#cgit table.list td a.deco {
   color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 4px; padding: 0 0.3em;
 }
 
@@ -104,6 +108,72 @@ div#cgit div.readme-md th, div#cgit div.readme-md td { border: 1px solid var(--b
 div#cgit div.readme-md img { max-width: 100%; }
 div#cgit div.readme-md blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--muted); }
 div#cgit div.footer { color: var(--muted); }
+
+/* The rest of cgit.css's fixed colours (white rows, black links, pastel diffs), each restated
+   from the palette so no theme is left with light-mode colours. tests/cgit_guard.py lists every
+   cgit.css rule with a fixed colour and fails if one is not restated here, so a Debian update that
+   adds more is caught. Additions and deletions: the palette's ok and the hub's red, as a tint for
+   backgrounds so the text on them stays readable on dark and light. */
+div#cgit {
+  --cg-del: #e5484d;
+  --cg-add-bg: color-mix(in srgb, var(--ok) 22%, transparent);
+  --cg-del-bg: color-mix(in srgb, #e5484d 22%, transparent);
+  --cg-chg-bg: color-mix(in srgb, var(--warn) 18%, transparent);
+  --cg-add-strong: color-mix(in srgb, var(--ok) 40%, transparent);
+  --cg-del-strong: color-mix(in srgb, #e5484d 40%, transparent);
+  background: transparent;
+}
+div#cgit div.error { color: var(--cg-del); }
+div#cgit div.footer a, div#cgit ul.pager a { color: var(--muted); }
+div#cgit span.insertions, div#cgit table.diffstat td.add a { color: var(--ok); }
+div#cgit span.deletions, div#cgit table.diffstat td.del a, div#cgit table.diffstat td span.modechange { color: var(--cg-del); }
+div#cgit table.diffstat td.upd a { color: var(--accent); }
+div#cgit table.diffstat td.graph td.add { background: var(--ok); }
+div#cgit table.diffstat td.graph td.rem { background: var(--cg-del); }
+
+/* Lists: every row transparent (cgit makes them white), links in the accent. */
+div#cgit table.list tr, div#cgit table.list tr.nohover,
+div#cgit table.list tr.nohover-highlight:hover:nth-child(odd) { background: transparent; }
+div#cgit table.list tr.logheader { background: var(--surface); }
+div#cgit table.list td a { color: var(--accent); }
+div#cgit table.list td a:hover { color: var(--accent); }
+/* The commit graph's six columns: the palette's colours, then the same at half strength. */
+div#cgit table.list td.commitgraph .column1 { color: var(--accent); }
+div#cgit table.list td.commitgraph .column2 { color: var(--ok); }
+div#cgit table.list td.commitgraph .column3 { color: var(--warn); }
+div#cgit table.list td.commitgraph .column4 { color: var(--cg-del); }
+div#cgit table.list td.commitgraph .column5 { color: var(--muted); }
+div#cgit table.list td.commitgraph .column6 { color: var(--text); }
+
+/* Blame, blobs: alternating blocks as a faint surface; cgit's own highlight classes (unused
+   since highlight.js does the colouring, but still in cgit.css) from the palette. */
+div#cgit table.blame div.alt:nth-child(even) { background: var(--surface); }
+div#cgit table.blame div.alt:nth-child(odd) { background: transparent; }
+div#cgit div#blob, div#cgit table.bin-blob, div#cgit table.bin-blob td, div#cgit table.bin-blob th { border-color: var(--border); }
+div#cgit table.blob td.hashes, div#cgit table.blob td.lines { color: var(--text); }
+div#cgit table.blob .com, div#cgit table.blob .lin { color: var(--muted); }
+div#cgit table.blob .kwa, div#cgit table.blob .kwb, div#cgit table.blob .kwc, div#cgit table.blob .kwd { color: var(--accent); }
+div#cgit table.blob .str, div#cgit table.blob .esc { color: var(--ok); }
+div#cgit table.blob .num, div#cgit table.blob .opt { color: var(--warn); }
+div#cgit table.blob .ppc, div#cgit table.blob .pps, div#cgit table.blob .slc { color: var(--muted); }
+
+/* Side-by-side diffs: tints, not cgit's pastels with black text. */
+div#cgit table.ssdiff td, div#cgit table.ssdiff td.foot { border-color: var(--border); }
+div#cgit table.ssdiff td.add, div#cgit table.ssdiff td.add_dark { background: var(--cg-add-bg); }
+div#cgit table.ssdiff td.del, div#cgit table.ssdiff td.del_dark { background: var(--cg-del-bg); }
+div#cgit table.ssdiff td.changed, div#cgit table.ssdiff td.changed_dark { background: var(--cg-chg-bg); }
+div#cgit table.ssdiff span.add { background: var(--cg-add-strong); }
+div#cgit table.ssdiff span.del { background: var(--cg-del-strong); }
+div#cgit table.ssdiff td.head div.head { color: var(--text); }
+div#cgit table.ssdiff td.lineno a { color: var(--muted); }
+div#cgit table.ssdiff td.lineno a:hover { color: var(--accent); }
+
+/* Downloads, stats and the commit graphs (stats page). */
+div#cgit table#downloads, div#cgit table.stats, div#cgit table.stats td, div#cgit table.stats th,
+div#cgit table.hgraph, div#cgit table.hgraph th, div#cgit table.vgraph, div#cgit table.vgraph th { border-color: var(--border); }
+div#cgit table#downloads th, div#cgit table.stats th, div#cgit table.hgraph th, div#cgit table.vgraph th { background: var(--surface); }
+div#cgit table.stats td.sum { color: var(--text); }
+div#cgit table.hgraph div.bar, div#cgit table.vgraph div.bar { background: var(--accent); }
 
 /* A phone: wide tables scroll inside the page rather than the page sideways. */
 @media (max-width: 640px) {
