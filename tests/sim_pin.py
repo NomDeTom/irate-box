@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 (T / "apps.d").mkdir()
 (T / "apps.d" / "eliza.json").write_text((Path(__file__).resolve().parents[1] / "addons" / "eliza.json").read_text())
 from irate_box.library import librarian as L  # noqa: E402
+REAL_QUEUE = L._queue_root
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -96,6 +97,24 @@ try:
     check("a source without a pin cannot follow pinned", False)
 except L.LibrarianError:
     check("a source without a pin cannot follow pinned", True)
+
+# Queuing for the root helper as the box lays it out (2026-10-06): control/ is root's and the hub
+# can't write in it; only control/requests/ is the hub's. The request must still arrive whole.
+import json, stat  # noqa: E402
+C = T / "control"
+(C / "requests").mkdir(parents=True, exist_ok=True)
+C.chmod(0o550)
+try:
+    rid = REAL_QUEUE({"action": "app-install", "app": "eliza", "zip": "/x.zip"})
+    got = json.loads((C / "requests" / f"{rid}.json").read_text())
+    check("a root request is queued with control/ not writable (root's, F3)", got == {"action": "app-install", "app": "eliza", "zip": "/x.zip", "id": rid}
+          or os.geteuid() == 0, got)
+    check("  written private, nothing left behind", stat.S_IMODE((C / "requests" / f"{rid}.json").stat().st_mode) == 0o600
+          and not list(T.glob(".request-*.tmp")))
+except OSError as exc:
+    check("a root request is queued with control/ not writable (root's, F3)", False, exc)
+finally:
+    C.chmod(0o755)
 
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
