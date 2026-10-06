@@ -1148,7 +1148,6 @@ const net = {
   status: document.getElementById('up-status'),
   eager: document.getElementById('up-eager'),
   forgive: document.getElementById('up-forgive'),
-  forgiveDesc: document.getElementById('up-forgive-desc'),
   will: document.getElementById('up-will'),
   iface: document.getElementById('up-iface'),
   custom: document.getElementById('up-custom'),
@@ -1178,7 +1177,7 @@ let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
 let upDirty = false;
-// The levels chosen on the page (the ladder and the toggle), before Save.
+// The levels chosen on the page (both as radio cards), before Save.
 const upPick = { eagerness: 'patient', forgiveness: 'normal' };
 let netAsked = false;
 
@@ -1245,23 +1244,25 @@ function willText(eff) {
     + `A link that drops ${eff.flap_count} times within ${dur(eff.flap_window)} ${FLAP_DOES[eff.flap_action] || eff.flap_action}.`;
 }
 
-function buildUpChoices(levels) {
-  if (net.eager.childElementCount) return;
-  net.eager.replaceChildren(...levels.eagerness.map((name) => {
-    const input = el('input', { type: 'radio', name: 'up-eager', value: name });
-    input.addEventListener('change', () => upChoose({ eagerness: name }, levels));
+// Both levels the same way (Tom, 2026-10-06): radio cards, each level's description and what it
+// does shown at once.
+function rungs(box, group, names, line, levels) {
+  box.replaceChildren(...names.map((name) => {
+    const input = el('input', { type: 'radio', name: `up-${group}`, value: name });
+    input.addEventListener('change', () => upChoose({ [group]: name }, levels));
     return el('label', { className: 'up-rung' }, input,
       el('span', { className: 'up-rung-text' },
         el('span', { className: 'setting-name', textContent: cap1(name) }),
         el('span', { className: 'setting-desc', textContent: levels.describe[name] || '' }),
-        el('span', { className: 'setting-desc up-does', textContent: rungLine(name, levels) })));
+        el('span', { className: 'setting-desc up-does', textContent: line(name) })));
   }));
-  net.forgive.replaceChildren(...levels.forgiveness.map((name) => {
-    const b = el('button', { type: 'button', textContent: cap1(name), onclick: () => upChoose({ forgiveness: name }, levels) });
-    b.setAttribute('role', 'radio');
-    b.dataset.level = name;
-    return b;
-  }));
+}
+
+function buildUpChoices(levels) {
+  if (net.eager.childElementCount) return;
+  rungs(net.eager, 'eagerness', levels.eagerness, (name) => rungLine(name, levels), levels);
+  rungs(net.forgive, 'forgiveness', levels.forgiveness,
+    (name) => forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[name] }), levels);
 }
 
 function upChoose(change, levels) {
@@ -1293,12 +1294,12 @@ function fillUpForm(chosen, levels) {
 
 function showUpPreset(levels) {
   const e = upPick.eagerness, f = upPick.forgiveness;
-  for (const input of net.eager.querySelectorAll('input')) {
-    input.checked = input.value === e;
-    input.closest('.up-rung').classList.toggle('chosen', input.checked);
+  for (const [box, chosen] of [[net.eager, e], [net.forgive, f]]) {
+    for (const input of box.querySelectorAll('input')) {
+      input.checked = input.value === chosen;
+      input.closest('.up-rung').classList.toggle('chosen', input.checked);
+    }
   }
-  for (const b of net.forgive.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.level === f));
-  net.forgiveDesc.textContent = `${levels.describe[f] || ''} ${forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[f] })}`;
   const eff = upPreset(e, f, levels);
   try {
     const over = readUpForm().overrides;
@@ -1491,9 +1492,11 @@ function renderNetwork(data) {
     net.profile.replaceChildren();
   }
   const evs = (u && u.events) || [];
+  // One line per event: when, then what (Tom, 2026-10-06).
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
-    el('span', { className: 'setting-desc', textContent: `${new Date(e.at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} ` }),
-    el('span', { textContent: e.text }))));
+    el('time', { className: 'ev-time', dateTime: new Date(e.at * 1000).toISOString(),
+      textContent: new Date(e.at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }),
+    el('span', { className: 'ev-text', textContent: e.text }))));
   const down = u && !u.stale && u.state !== 'up';
   badge('network', down ? '!' : '');
 
