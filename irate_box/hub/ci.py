@@ -276,7 +276,7 @@ def build(job):
     (run / "artifacts").mkdir(parents=True)
     started = time.time()
     _write_status(run, repo=name, branch=job["branch"], commit=job["commit"], queued=job["queued"],
-                  started=started, state="running")
+                  started=started, state="running", **({"by": job["by"]} if job.get("by") in ("build-now",) else {}))
     src = WORK / name
     shutil.rmtree(src, ignore_errors=True)
     with open(run / "log.txt", "w") as log:
@@ -344,15 +344,28 @@ def change_run(job):
         _write_status(run, keep=job["change"] == "keep")
 
 
-def run_queue():
-    """Every queued job, oldest first, until the queue is empty (more may arrive meanwhile)."""
-    WORK.mkdir(exist_ok=True)
+def prepare_git():
+    """hubci's global git config for building: every repository trusted, file:// allowed for
+    submodules, and the mirrors' rewrites. Returns the mirrors' URLs."""
     # The repositories belong to the hub user and builds run as hubci, so git refuses them as
     # "dubious ownership". It has to be hubci's global config: git strips -c and GIT_CONFIG_*
     # from the upload-pack that a local clone starts.
     if _git("config", "--global", "--get-all", "safe.directory").stdout.split() != ["*"]:
         _git("config", "--global", "--replace-all", "safe.directory", "*")
-    use_mirrors()
+    # The mirrors are file:// URLs (use_mirrors), and git refuses those for submodules unless told
+    # (protocol.file.allow, CVE-2022-39253: a cloned repository reading the local files it links
+    # to). A build runs whatever its script says as this user anyway, so that guard protects
+    # nothing here, and without it a submodule never comes from the mirror (the Lyra, 2026-10-06:
+    # "fatal: transport 'file' not allowed").
+    if _git("config", "--global", "--get", "protocol.file.allow").stdout.strip() != "always":
+        _git("config", "--global", "protocol.file.allow", "always")
+    return use_mirrors()
+
+
+def run_queue():
+    """Every queued job, oldest first, until the queue is empty (more may arrive meanwhile)."""
+    WORK.mkdir(exist_ok=True)
+    prepare_git()
     while True:
         jobs = sorted(p for p in QUEUE.glob("*.json"))
         if not jobs:
@@ -389,15 +402,16 @@ def snapshot(limit=20):
                 used += f.stat().st_size
         except OSError:
             pass
-    mem = subprocess.run(["systemctl", "show", "-p", "MemoryMax", "-p", "MemoryHigh", "--value", "irate-box-ci.service"],
-                         capture_output=True, text=True).stdout.split()
+    # systemd lists properties in its own order, not the order asked: read them by name.
+    props = dict(l.split("=", 1) for l in subprocess.run(["systemctl", "show", "-p", "MemoryMax", "-p", "MemoryHigh", "irate-box-ci.service"],
+                                                         capture_output=True, text=True).stdout.splitlines() if "=" in l)
     try:
         mirrors = sorted(json.loads(MIRROR_URLS.read_text()))
     except (OSError, ValueError):
         mirrors = []
     return {"installed": QUEUE.is_dir(), "queued": queued, "runs": runs[:limit], "script": SCRIPT,
             "time_limit": TIME_LIMIT, "keep_runs": settings()["keep_runs"], "runs_bytes": used,
-            "memory": {"max": mem[0] if mem else None, "high": mem[1] if len(mem) > 1 else None},
+            "memory": {"max": props.get("MemoryMax"), "high": props.get("MemoryHigh")},
             "mirrored": mirrors, "pio_deps": bool(_pio_deps()), "env": ENV_VARS,
             "templates": {k: {"title": v["title"], "script": v["script"]} for k, v in TEMPLATES.items()}}
 
