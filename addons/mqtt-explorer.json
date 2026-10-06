@@ -1,0 +1,27 @@
+{
+  "id": "mqtt-explorer",
+  "order": 72,
+  "tile": {
+    "icon": "📡",
+    "name": "MQTT explorer",
+    "desc": "The box's MQTT broker, live: topics, traffic and messages",
+    "path": "index.html"
+  },
+  "source": {
+    "type": "git",
+    "repo": "https://github.com/NomDeTom/irate-box",
+    "branch": "main",
+    "pin": "334c124cd7f510c1837610b780c554ae74c70a6e",
+    "adapt": "adapt_mqtt_explorer.py"
+  },
+  "needs": "explorer.js",
+  "addon": {
+    "title": "MQTT explorer",
+    "summary": "A page that listens to the box's MQTT broker (install.sh --with-mqtt) and lists its topics as messages arrive: how many, how big, how recent, and each topic's last messages as JSON, text or hex. Meshtastic's encrypted packets show as traffic, not content. It only listens and never publishes. About 20 KB, no service and no memory on the box.",
+    "consent": "This downloads the Irate-Box's own MQTT explorer page from github.com/NomDeTom/irate-box, at the commit this hub pins, and serves it to whoever you let open it. Its pages may reach the box's broker at /mqtt and nothing else. Anyone who can open it sees the topics and traffic on the broker (msh/#). Add it?"
+  },
+  "capabilities": {
+    "connect": ["ws://{box}/mqtt"],
+    "storage": false
+  }
+}
