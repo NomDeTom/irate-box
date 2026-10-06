@@ -1454,11 +1454,60 @@ def step_kernel(ctx):
     return out
 
 
+# Which apps run on an origin of their own (next-work plan step 11; S4): what an app's pages run
+# can act with the owner's login only where it shares the hub's origin.
+OWN_ORIGIN = (("notes", "Notes (SilverBullet)", r"proxy_pass\s+http://unix:/run/silverbullet/"),
+              ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8888|kiwix"),
+              ("git", "cgit and pushed content", r"cgit\.cgi"))
+
+
+def _nginx_servers(text):
+    """[(listen ports, the server block's text)] for each top-level server block."""
+    out, depth, start = [], 0, None
+    for m in re.finditer(r"(?m)^\s*server\s*\{|[{}]", text):
+        tok = m.group(0)
+        if tok.strip().startswith("server") and depth == 0:
+            start, depth = m.start(), 1
+        elif tok == "{" and start is not None:
+            depth += 1
+        elif tok == "}" and start is not None:
+            depth -= 1
+            if depth == 0:
+                block = text[start:m.end()]
+                out.append((sorted(set(re.findall(r"(?m)^\s*listen\s+(?:\[::\]:)?(\d+)", block))), block))
+                start = None
+    return out
+
+
+def step_origins(ctx):
+    """Which origin each app is on: the hub's own port, or one of its own (S4)."""
+    if ctx["front_kind"] != "nginx":
+        return [_cannot("origins", "Apps' origins", "only read from nginx's config", "S4")]
+    servers = _nginx_servers(_read(NGINX_CONF) or "")
+    if not servers:
+        return [_cannot("origins", "Apps' origins", f"{NGINX_CONF} could not be read", "S4")]
+    hub_ports = servers[0][0]
+    out = []
+    for key, name, pattern in OWN_ORIGIN:
+        where = [ports for ports, block in servers if re.search(pattern, block)]
+        if not where:
+            continue
+        ports = where[0]
+        if ports == hub_ports:
+            out.append(F(f"origin-{key}", f"{name}: the hub's own origin", "warn",
+                         f"Served on port {', '.join(hub_ports)} with /admin, so what its pages run could act with the owner's login.",
+                         "Its own origin (next-work plan step 11).", "S4"))
+        else:
+            out.append(F(f"origin-{key}", f"{name}: an origin of its own", "ok", f"Port {', '.join(ports)}; the hub is on {', '.join(hub_ports)}.", ref="S4"))
+    return out
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
     ("admin-gate", "/admin from inside the box", "F27 F31 S3", step_admin_gate),
     ("web-addons", "Web add-ons", "", step_web_addons),
+    ("origins", "Which origin each app is on", "S4", step_origins),
     ("folders", "Links and root-written files in hub-owned folders", "F3 F4 F5 F13", step_folders),
     ("code", "Installed code and allow-lists", "F3 F6 F20", step_code),
     ("units", "Unit sandboxing and the build unit", "F8 F19", step_units),
