@@ -286,6 +286,7 @@
 	redir /git-private /git-private/ permanent
 	handle_path /git-static/* {
 		root * /usr/share/cgit
+		header X-Content-Type-Options nosniff
 		file_server
 	}
 	handle_path /git/* {
@@ -318,6 +319,9 @@
 		}
 		handle {
 			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
+			# As on nginx: scripts only the box's own; a README's HTML is already text.
+			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
+			header X-Content-Type-Options nosniff
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
@@ -348,6 +352,9 @@
 			}
 		}
 		handle {
+			# As on nginx: scripts only the box's own; a README's HTML is already text.
+			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
+			header X-Content-Type-Options nosniff
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
