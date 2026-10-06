@@ -697,6 +697,12 @@ def _api(path, auth=None):
         return json.load(resp)
 
 
+def revoked(rel):
+    """A GitHub release its project has withdrawn. Meshtastic marks one in its name only
+    ("… Alpha (Revoked)"); GitHub has no flag for it. Shared by firmware.py and mirrors.py."""
+    return "revoked" in (rel.get("name") or "").lower()
+
+
 # --- resolving the newest version ---------------------------------------------
 # Each returns {"version", "url", "size", "zip", "label", "auth"}, or raises.
 

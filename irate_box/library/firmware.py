@@ -132,7 +132,7 @@ def _releases(cfg):
     data = librarian._api(f"/repos/{REPO}/releases?per_page=40", librarian.token())
     alphas, betas = [], []
     for rel in data:
-        if rel.get("draft") or "revoked" in (rel.get("name") or "").lower():
+        if rel.get("draft") or librarian.revoked(rel):
             continue
         version = rel["tag_name"].lstrip("v")
         names = {a["name"]: a for a in rel.get("assets", [])}

@@ -97,6 +97,40 @@ w = mirrors.wanted(rel, upref, releases=[("v2.13.0", False), ("v2.11.0-alpha", T
                                          ("v2.9.0-alpha", True), ("v2.6.0", False), ("v3.0.0", False)])
 check("release groups follow GitHub's flag and order, and only tags the upstream has",
       sorted(w) == ["refs/heads/main", "refs/tags/v2.10.0", "refs/tags/v2.11.0-alpha", "refs/tags/v2.13.0"], sorted(w))
+# A revoked release (Meshtastic marks it in the name only) is left out, and the next older kept.
+REVOKED = [["v2.13.0", False, False], ["v2.11.0-alpha", True, True], ["v2.10.0", False, False],
+           ["v2.9.0-alpha", True, False], ["v2.6.0", False, False]]
+w = mirrors.wanted(rel, upref, releases=REVOKED)
+check("a revoked prerelease is left out; the next older one is kept instead",
+      "refs/tags/v2.11.0-alpha" not in w and "refs/tags/v2.9.0-alpha" in w, sorted(w))
+forensic = dict(rel, groups=[dict(g, skip_revoked=False) for g in rel["groups"]])
+check("skip_revoked off keeps it", "refs/tags/v2.11.0-alpha" in mirrors.wanted(forensic, upref, releases=REVOKED))
+check("the rule is the librarian's, shared with firmware.py",
+      librarian.revoked({"name": "Meshtastic Firmware 2.8.0.47db0e3 Alpha (Revoked)"}) and not librarian.revoked({"name": "2.7.15 Beta"}))
+# The release list is cached in the mirror's status; a refused API call is answered from it.
+gh = dict(rel, name="fw-gh", upstream="https://github.com/meshtastic/firmware")
+entry = {}
+api = [{"tag_name": "v2.13.0", "name": "2.13.0 Beta", "prerelease": False},
+       {"tag_name": "v2.11.0-alpha", "name": "2.11.0 Alpha (Revoked)", "prerelease": True},
+       {"tag_name": "v2.12.0", "name": "draft", "prerelease": False, "draft": True}]
+with mock.patch.object(librarian, "_api", return_value=api):
+    got = mirrors._releases(gh, entry)
+check("the list from GitHub: drafts out, revoked marked", got == [["v2.13.0", False, False], ["v2.11.0-alpha", True, True]], got)
+check("and kept in the status", entry["releases"]["list"] == got and "releases_cached" not in entry, entry)
+with mock.patch.object(librarian, "_api", side_effect=librarian.LibrarianError("GitHub API rate limit reached (60/hour without a token)")):
+    again = mirrors._releases(gh, entry)
+check("a refused call is answered from the cache, and says so", again == got and "rate limit" in entry["releases_cached"]["why"]
+      and entry["releases_cached"]["since"] == entry["releases"]["fetched"], entry)
+try:
+    with mock.patch.object(librarian, "_api", side_effect=librarian.LibrarianError("refused")):
+        mirrors._releases(gh, {})
+    check("with no cache, a refused call is an error", False)
+except librarian.LibrarianError:
+    check("with no cache, a refused call is an error", True)
+with mock.patch.object(librarian, "_api", return_value=api):
+    mirrors._releases(gh, entry)
+check("a later good call clears the cached mark", "releases_cached" not in entry, entry)
+check("a mirror with tag groups only keeps no release list", mirrors._releases(base, {"releases": {}}) is None)
 
 # The Git page's ordinary actions leave a mirror alone.
 for body in ({"action": "delete"}, {"action": "preset", "preset": "public-everything"}, {"action": "move", "to": "private"}):
@@ -171,9 +205,10 @@ check("an http:// upstream is refused", bad(upstream="http://example.com/x.git")
 check("a token in the URL is refused", bad(upstream="https://user:tok@github.com/x/y"))
 check("a branch that is an option is refused", bad(branches=["--upload-pack=x"]))
 check("release groups need github.com", bad(upstream="https://example.com/x.git", groups=[{"kind": "release", "keep": 1}]))
+check("skip_revoked is a true or false", bad(groups=[{"kind": "release", "keep": 1, "skip_revoked": "no"}]))
 check("keep is bounded", bad(groups=[{"kind": "tags", "pattern": "v*", "keep": 99}]))
 ok = mirrors.validate(dict(base, upstream="https://github.com/meshtastic/firmware",
                            groups=[{"kind": "release", "keep": 2}, {"kind": "prerelease", "keep": 2}]))
-check("Meshtastic's firmware, release 2 and prerelease 2, is a valid mirror", ok["groups"][1] == {"name": "prerelease", "kind": "prerelease", "pattern": "*", "keep": 2}, ok)
+check("Meshtastic's firmware, release 2 and prerelease 2, is a valid mirror", ok["groups"][1] == {"name": "prerelease", "kind": "prerelease", "pattern": "*", "keep": 2, "skip_revoked": True}, ok)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

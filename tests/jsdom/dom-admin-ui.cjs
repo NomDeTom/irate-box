@@ -46,7 +46,9 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 17909500
   mirrors: [{ name: 'firmware', area: 'public', upstream: 'https://github.com/meshtastic/firmware', branches: ['master'],
     groups: [{ name: 'release', kind: 'release', pattern: '*', keep: 2 }, { name: 'prerelease', kind: 'prerelease', pattern: '*', keep: 2 }],
     follow: 'latest', pin: '', history: 'shallow', budget_mb: 2048,
-    status: { outcome: '5 fetched, 0 dropped', size: 5e8, checked: 1790950000 } }], running: false };
+    status: { outcome: '5 fetched, 0 dropped', size: 5e8, checked: 1790950000,
+      releases: { list: [['v2.8.1', true, false], ['v2.8.0.47db0e3', true, true]], fetched: 1790940000 },
+      releases_cached: { since: 1790940000, why: 'GitHub API rate limit reached (60/hour without a token)' } } }], running: false };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -119,6 +121,11 @@ setTimeout(() => {
     && ![...d.querySelectorAll('#git-public .admin-item')].find((n) => n.textContent.includes('firmware.git')).textContent.includes('Delete'));
   check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
     && /5 fetched, 0 dropped/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
+  check('git: a mirror says which revoked releases it leaves out', /revoked, left out: v2\.8\.0\.47db0e3/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
+  check('git: a release list from the cache says so, and why', /release list from the cache of .*rate limit/.test(t('#git-mirrors')[0])
+    && d.querySelector('#git-mirrors .setting-desc.warn'), t('#git-mirrors')[0]);
+  w.confirm = () => true;
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
   const mf = d.getElementById('git-mirror-add').elements;
   mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
@@ -143,6 +150,9 @@ setTimeout(() => {
       && p[1].to.area === 'private' && p[1].to.name === 'secret' && p[1].refs.join() === 'main,dev'), JSON.stringify(posted));
     check('git: Make private asks the hub to move it', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'move' && p[1].to === 'private'));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));
+    const keepRev = posted.find((p) => p[1].action === 'mirror-change');
+    check('git: Keep revoked switches it off on the release groups only', keepRev && keepRev[1].mirror.groups.every((g) => g.skip_revoked === false)
+      && keepRev[1].mirror.status === undefined, JSON.stringify(keepRev));
     const add = posted.find((p) => p[1].action === 'mirror-add');
     check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
       && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));

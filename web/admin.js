@@ -2188,18 +2188,31 @@ function renderMirrors(data) {
     const state = st.error ? `error: ${st.error}` : st.outcome
       ? `${st.outcome}${st.size != null ? ` · ${size(st.size)}` : ''}${st.checked ? ` · checked ${commitDate(st.checked)}` : ''}`
       : 'not fetched yet';
+    // Release groups: revoked releases (named so by their project) are left out unless switched off.
+    const relGroups = m.groups.filter((g) => g.kind !== 'tags');
+    const skipping = relGroups.some((g) => g.skip_revoked !== false);
+    const revoked = ((st.releases || {}).list || []).filter((r) => r[2]).map((r) => r[0]);
+    const relNote = !relGroups.length ? null : [
+      skipping ? (revoked.length ? `revoked, left out: ${revoked.join(', ')}` : 'revoked releases are left out')
+        : 'revoked releases are kept like any other',
+      st.releases_cached ? `release list from the cache of ${st.releases_cached.since ? commitDate(st.releases_cached.since) : 'earlier'} (${st.releases_cached.why})` : null,
+    ].filter(Boolean).join(' · ');
     return el('div', { className: 'admin-item' },
       el('span', {},
         el('strong', {}, el('a', { href: `${m.area === 'public' ? '/git/' : '/git-private/'}${m.name}.git/`, textContent: `${m.name}.git` })),
         el('span', { className: 'setting-desc', textContent: `from ${m.upstream}` }),
         el('span', { className: 'setting-desc', textContent: `keeps ${keeps}` }),
         subs.length ? el('span', { className: 'setting-desc', textContent: `submodules: ${subs.join(', ')}` }) : null,
+        relNote ? el('span', { className: `setting-desc${st.releases_cached ? ' warn' : ''}`, textContent: relNote }) : null,
         el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state })),
       el('span', { className: 'library-buttons' },
         actionButton('Check', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
         actionButton('Update', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running }),
         actionButton(m.submodules ? 'Without submodules' : 'With submodules', act({ action: 'mirror-change',
           mirror: Object.assign({}, m, { status: undefined, submodules: !m.submodules }) }), { className: 'small' }),
+        relGroups.length ? actionButton(skipping ? 'Keep revoked' : 'Leave revoked out', act({ action: 'mirror-change',
+          mirror: Object.assign({}, m, { status: undefined, groups: m.groups.map((g) => g.kind === 'tags' ? g : Object.assign({}, g, { skip_revoked: !skipping })) }) },
+          skipping ? 'Keep releases their project has revoked (for looking into them)? They are left out by default.' : null), { className: 'small' }) : null,
         actionButton('Remove', act({ action: 'mirror-remove', name: m.name },
           `Remove the mirror ${m.name}.git and its copy on the box? The upstream is not touched.`), { className: 'small' })));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
