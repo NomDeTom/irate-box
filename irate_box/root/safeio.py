@@ -16,6 +16,7 @@ the hub) a file of the hub's choosing. Here, nothing is followed:
   create(path, uid, gid)  a new file at exactly that name, owned through its fd, open to write
   read_request(path)      a small regular file, opened with O_NOFOLLOW|O_NONBLOCK, so neither a
                           link nor a FIFO (which would hang root) is read
+  read_own(path)          a file only if it and its folder are this user's (root's), no links
   mkdir(path, uid, gid)   a folder made, or one already there, refusing a link, and owned and
                           moded through its fd
 
@@ -116,6 +117,34 @@ def read_request(path, limit=1 << 20):
             raise OSError(f"{Path(path).name} is not a plain file")
         if st.st_size > limit:
             raise OSError(f"{Path(path).name} is too large")
+        with os.fdopen(fd, "rb", closefd=False) as fh:
+            return fh.read(limit + 1).decode("utf-8", errors="replace")
+    finally:
+        os.close(fd)
+
+
+class NotOurs(OSError):
+    pass
+
+
+def read_own(path, limit=4 << 20):
+    """The text of a file this process's user wrote, root's for the helpers: the file and its
+    folder both owned by us and neither a link, checked through their fds (F14). The hub owns
+    $STATE, so it could swap control/ for a folder of its own holding a forged update.json or
+    rtc-find.json; that one is refused."""
+    path = Path(path)
+    me = os.geteuid()
+    dfd = _dir_fd(path.parent)
+    try:
+        if os.fstat(dfd).st_uid != me:
+            raise NotOurs(f"{path.parent} is not this user's")
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
+    finally:
+        os.close(dfd)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != me or st.st_size > limit:
+            raise NotOurs(f"{path.name} is not a file this user wrote")
         with os.fdopen(fd, "rb", closefd=False) as fh:
             return fh.read(limit + 1).decode("utf-8", errors="replace")
     finally:

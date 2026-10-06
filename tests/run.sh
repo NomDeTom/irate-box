@@ -31,6 +31,7 @@ run root_routes_guard.py
 run sim_root_links.py
 run cgit_guard.py
 run sim_security_image.py
+run sim_forged_requests.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

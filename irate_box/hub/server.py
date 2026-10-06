@@ -872,7 +872,7 @@ SECURITY_STATE = CONTROL_DIR / "security.json"
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
-SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@._-]+)?$")
+SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?$")
 
 
 def security_snapshot():

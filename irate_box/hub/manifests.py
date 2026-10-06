@@ -84,7 +84,7 @@ ADDONS = STATE / "addons"             # and their files, one folder each (the ad
 CATALOGUE = Path(os.environ.get("HUB_ADDON_CATALOGUE", CHECKOUT / "addons"))  # what /admin offers
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
-UNIT_RE = re.compile(r"^[A-Za-z0-9@_.-]+\.service$")
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")  # no leading "-" (F14)
 DIR_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")

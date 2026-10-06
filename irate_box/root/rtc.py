@@ -45,6 +45,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -499,15 +500,21 @@ def ntp_synced():
     return out.stdout.strip() == "yes"
 
 
+def root_mtime(path):
+    """When root last wrote `path`, or None: a plain file owned by this user (root), not a link.
+    The hub can touch its own files, or plant links and its own copies, to push the floor
+    forward (F14); only root's own marks count."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return st.st_mtime if stat.S_ISREG(st.st_mode) and st.st_uid == os.geteuid() else None
+
+
 def floor_time():
     """The latest time the box has certainly reached: a module reading before it is wrong."""
-    marks = []
-    for p in (Path("/etc/fake-hwclock.data"), STATE / "clock.json", STATE / "control" / "health.json",
-              Path("/var/log/irate-box/install-state.json")):
-        try:
-            marks.append(p.stat().st_mtime)
-        except OSError:
-            pass
+    marks = [m for m in (root_mtime(p) for p in (Path("/etc/fake-hwclock.data"), STATE / "control" / "health.json",
+                                                 Path("/var/log/irate-box/install-state.json"))) if m]
     return max(marks) if marks else 0
 
 
@@ -622,6 +629,16 @@ def setup(chip, bus, addr):
     if chip not in CHIPS:
         raise RtcError(f"{chip} is not a clock this knows ({', '.join(CHIPS)})")
     a = int(addr, 16) if isinstance(addr, str) else addr
+    # Only what the last search found (F14): a request may not bind a driver at any bus and
+    # address. The search's result is root's own file, read only if it still is.
+    if a not in ADDRESSES:
+        raise RtcError(f"{a:#04x} is not an address a clock module uses")
+    try:
+        found = json.loads(safeio.read_own(FOUND)).get("found", [])
+    except (OSError, ValueError):
+        found = []
+    if not any(f.get("chip") == chip and f.get("bus") == int(bus) and f.get("addr") == f"{a:#04x}" for f in found):
+        raise RtcError(f"the last search did not find a {CHIPS[chip][0]} on bus {bus} at {a:#04x}: search again first")
     drv = kernel_driver(chip)
     mode = "kernel" if drv else "userspace" if CHIPS[chip][2] else None
     if not mode:

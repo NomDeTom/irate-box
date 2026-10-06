@@ -569,8 +569,9 @@ def _write_update_state(data):
 
 
 def _read_update_state():
+    # Root's own file, read only if it still is (F14): it says which commit passed verification.
     try:
-        return json.loads(UPDATE_STATE.read_text())
+        return json.loads(safeio.read_own(UPDATE_STATE))
     except (OSError, ValueError):
         return {}
 
@@ -1262,8 +1263,18 @@ def security_audit(req):
 
 def security_fix(req):
     choice = str(req.get("choice", ""))
-    if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@._-]+)?", choice):
+    if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
         raise ValueError("not a Security page choice")
+    # Only what root's own last scan offered (F14): a forged request could otherwise switch off
+    # any unit not on the protected list (a firewall, auditd, a getty). The scan is root's file,
+    # read only if it still is; every fix ends with a new one, so the page's buttons stay valid.
+    try:
+        offered = {a["choice"] for f in json.loads(safeio.read_own(SECURITY_STATE)).get("findings", [])
+                   for a in f.get("actions", [])}
+    except (OSError, ValueError, KeyError, TypeError):
+        offered = set()
+    if choice not in offered:
+        raise ValueError("the Security page did not offer that: scan again, then choose from what it shows")
     if choice == "security-updates":
         safeio.write(SECURITY_LOG, "")
     try:
@@ -1476,7 +1487,7 @@ def health_fix(req):
 
 # --- network: inventory and the uplink watchdog ------------------------------------------
 
-IFACE_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
+IFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")  # no leading "-": it would be an option (F14)
 
 
 def net_scan(req):

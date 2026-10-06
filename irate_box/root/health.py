@@ -501,12 +501,12 @@ def latest_known_time():
     for key in ("at", "started"):
         if isinstance(st.get(key), (int, float)):
             marks.append((st[key], "the last install"))
+    # Root's own files only (F14): the hub could touch its clock.json, or plant files of its own.
     for path, what in ((CODE / "VERSION", "the installed code"), (CONTROL / "health.json", "the last health check"),
-                       (CONTROL / "uplink.json", "the watchdog's report"), (STATE / "clock.json", "the hub's clock file")):
-        try:
-            marks.append((path.stat().st_mtime, what))
-        except OSError:
-            pass
+                       (CONTROL / "uplink.json", "the watchdog's report")):
+        m = rtc.root_mtime(path)
+        if m:
+            marks.append((m, what))
     return max(marks) if marks else (None, None)
 
 
@@ -650,6 +650,10 @@ def set_clock(epoch):
         raise ValueError(f"that time is before {what} was written, so this device's clock looks wrong; nothing changed")
     if epoch > now + 10 * 365 * 86400 or epoch < 1735689600:  # 2025-01-01
         raise ValueError("that time is not plausible; nothing changed")
+    # Not years past anything the box has seen (F14): a forged request could otherwise move the
+    # clock far forward, after which it is trusted, saved to the module, and hard to bring back.
+    if epoch > max(newest or 0, now) + 2 * 365 * 86400:
+        raise ValueError("that is more than two years past the newest time this box has seen; nothing changed")
     if abs(epoch - now) < 30:
         return "The box's clock already agrees with this device (within 30 s); nothing changed."
     r = run("date", "-u", "-s", f"@{int(epoch)}")
