@@ -988,6 +988,24 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* Network page: the uplink settings, and the watchdog's custom values in a compact grid */
 .net-settings { display: flex; flex-direction: column; gap: 0.4rem; max-width: 40rem; }
+/* The Network pane's devices: a card each, labelled lines, the hotspot's conditions one per line. */
+.net-devices { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
+.net-device { display: flex; flex-direction: column; gap: 0.3rem; }
+.net-device h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.2rem; font-size: 1rem; }
+.net-device h4 .state { color: var(--muted); }
+.net-line { display: grid; grid-template-columns: 11rem 1fr; gap: 0.6rem; margin: 0; font-size: 0.88rem; }
+.net-label { color: var(--muted); }
+@media (max-width: 560px) { .net-line { grid-template-columns: 1fr; gap: 0; } .net-label { font-size: 0.78rem; } }
+.net-conditions { list-style: none; margin: 0.1rem 0 0.2rem; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
+.net-conditions li { display: flex; gap: 0.5rem; }
+.net-conditions .cond-mark { width: 1rem; flex: none; text-align: center; color: var(--muted); }
+.net-conditions .cond-untested .cond-mark, .net-conditions .cond-needs .cond-mark { color: var(--warn); font-weight: 700; }
+.net-glossary { margin: 0.5rem 0; font-size: 0.85rem; }
+.net-glossary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 0.8rem; margin: 0.5rem 0 0; }
+.net-glossary dt { font-weight: 600; }
+.net-glossary dd { margin: 0; color: var(--muted); }
+@media (max-width: 560px) { .net-glossary dl { grid-template-columns: 1fr; } .net-glossary dd { margin-bottom: 0.3rem; } }
+
 /* Staying on the network: eagerness as a ladder of cards, each with what it means and does. */
 .up-ladder { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
 .up-rung { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
@@ -1001,7 +1019,12 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .net-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem 1rem; margin-top: 0.5rem; }
 .net-fields label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.9em; }
 .net-fields input, .net-fields select { width: 100%; box-sizing: border-box; }
-.net-events li { overflow-wrap: anywhere; }
+/* The watchdog's events: one line each, the time then what happened; no bullets. */
+.net-events { list-style: none; margin: 0.5rem 0; padding: 0; gap: 0; font-size: 0.85rem; }
+.net-events li { display: flex; gap: 0.75rem; align-items: baseline; padding: 0.2rem 0; border-top: 1px solid var(--border); }
+.net-events li:first-child { border-top: 0; }
+.net-events .ev-time { flex: none; min-width: 7.5rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.net-events .ev-text { min-width: 0; overflow-wrap: anywhere; }
 
 /* Health: the banner shown on every pane when the root helper stops answering */
 .helper-banner { border: 2px solid #e5484d; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; line-height: 1.5; }
