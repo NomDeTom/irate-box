@@ -318,8 +318,9 @@ server {
 	# Bare repositories under @GIT_ROOT@/public and /private, owned by the hub user, who runs
 	# both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
 	# paths below) goes to git http-backend; every other path is cgit's web view. Public:
-	# anyone may browse and clone, a push needs the admin login unless @GIT_ROOT@/guest-push
-	# exists (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	# anyone may browse and clone; who may push is each repository's preset (/admin's Git
+	# page), which the hub answers for on every request (auth_request, gitrepos.decide).
+	# Private: all of it behind the login. Pushes up to 64 MB.
 	location = /git { return 301 /git/; }
 	location = /git-private { return 301 /git-private/; }
 	location ^~ /git-static/ { alias /usr/share/cgit/; add_header X-Content-Type-Options nosniff; }
@@ -332,16 +333,22 @@ server {
 		add_header Cache-Control "public, max-age=86400";
 		add_header X-Content-Type-Options nosniff;
 	}
+	# The hub says whether this request needs no login (a fetch, or a push to a repository
+	# anyone may push to, while the git app is public); if not, the admin login is the other
+	# way in (satisfy any). The hub never sees a password.
+	location = /_irate_git_access {
+		internal;
+		proxy_pass http://irate_box_hub/internal/git-access;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header X-Original-URI $request_uri;
+		proxy_set_header X-Original-Method $request_method;
+	}
 	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
-		set $irate_box_git_auth off;
-		# $args, not $arg_service, which is not decoded: service=git%2Dreceive-pack got past (F30).
-		if ($args ~* "(^|&)service=git(-|%2d)receive(-|%2d)pack(&|$)") { set $irate_box_git_auth "Irate-Box"; }
-		if ($uri ~ /git-receive-pack$) { set $irate_box_git_auth "Irate-Box"; }
-		if (-f @GIT_ROOT@/guest-push) { set $irate_box_git_auth off; }
-		# Private (/admin): every clone and fetch needs the login too.
-		if ($irate_box_auth_git != off) { set $irate_box_git_auth $irate_box_auth_git; }
 		if ($irate_box_off_git) { return 404; }
-		auth_basic $irate_box_git_auth;
+		satisfy any;
+		auth_request /_irate_git_access;
+		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
 		client_max_body_size 64m;
 		include /etc/nginx/fastcgi_params;

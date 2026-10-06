@@ -139,7 +139,8 @@ inst = (REPO / "install.sh").read_text(); un = (REPO / "uninstall.sh").read_text
 ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
 check("F30: install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)
 check("F30: uninstall --keep-state keeps the users", 'Keeping the $HUB_USER and hubci users' in un and '[ "$KEEP_STATE" != 1 ] && id -u hubci' in un)
-check("F30: the git push gate does not use the undecoded $arg_service", "$arg_service" not in ngx and "receive(-|%2d)pack" in ngx)
+check("F30: the git push gate does not use the undecoded $arg_service (the hub decides, decoded)", "$arg_service" not in ngx
+      and "auth_request /_irate_git_access;" in ngx)
 check("F30: links in a cloned app tree are removed", "if path.is_symlink():" in (REPO / "irate_box/library/librarian.py").read_text())
 check("F30: deps extraction checks free space first", "DEPS_RESERVE" in (REPO / "irate_box/library/firmware.py").read_text())
 check("F24: nginx passes the guest's own address only", "$proxy_add_x_forwarded_for" not in ngx)

@@ -1853,6 +1853,15 @@ class Handler(BaseHTTPRequestHandler):
                                  for i, mm in manifests.menus(MANIFESTS).items() if i not in hidden})
             return
 
+        if path == "/internal/git-access":
+            # nginx's auth_request for a push or fetch on /git/ (gitrepos.decide): 204 if no login
+            # is needed, 403 if only the admin login will do (nginx then asks for it). Nothing
+            # here is secret: anything on loopback may ask what a guest may do.
+            mode = access.mode_of(access.read(ACCESS_STATE), "git")
+            ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode)
+            self.send_empty(204 if ok else 403)
+            return
+
         if path == "/status":
             # The web server's proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers

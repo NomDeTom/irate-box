@@ -29,6 +29,18 @@ const update = { state: { up_to_date: false, available: 'a4aad09', available_dat
   progress: null, pending: 0, results: [], log: [], doctor: null,
   auto: { hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5,
     state: { last: { step: 'check', ok: true, message: 'update available: 1 new commit', at: 1790950000 }, note: 'a4aad09 is ready; installs between 02:00 and 05:00' } } };
+const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 1790950000,
+  presets: { public: [{ name: 'public-everything', write: 'everyone', text: 'anyone on the network can browse, clone and push' },
+    { name: 'public-admin-writes', write: 'admin', text: 'anyone can browse and clone; pushing needs the admin login' },
+    { name: 'public-read-only', write: 'nobody', text: 'anyone can browse and clone; nobody can push' }],
+  private: [{ name: 'private-to-admin', write: 'admin', text: 'browse, clone and push with the admin login' },
+    { name: 'private-read-only', write: 'nobody', text: 'browse and clone with the admin login; nobody can push' }] },
+  repos: [{ name: 'demo', area: 'public', url: '/git/demo.git/', write: 'admin', preset: 'public-admin-writes',
+    preset_text: 'anyone can browse and clone; pushing needs the admin login', description: '', size: 1000, branches: 1, last_commit: 1790950000 },
+  { name: 'mirror', area: 'public', url: '/git/mirror.git/', write: 'nobody', preset: 'public-read-only',
+    preset_text: 'anyone can browse and clone; nobody can push', description: '', size: 1000, branches: 1, last_commit: null },
+  { name: 'secret', area: 'private', url: '/git-private/secret.git/', write: 'admin', preset: 'private-to-admin',
+    preset_text: 'browse, clone and push with the admin login', description: '', size: 1000, branches: 1, last_commit: null }] };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -36,7 +48,12 @@ const dom = new JSDOM(html, { url: 'http://box/admin/#clock', runScripts: 'outsi
 const w = dom.window;
 const posted = [];
 w.fetch = async (u, opts = {}) => {
-  if (opts.method === 'POST') { posted.push([u, JSON.parse(opts.body)]); return new Response('{"id":"x"}', { status: 202 }); }
+  if (opts.method === 'POST') {
+    posted.push([u, JSON.parse(opts.body)]);
+    if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
+    return new Response('{"id":"x"}', { status: 202 });
+  }
+  if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
@@ -89,12 +106,23 @@ setTimeout(() => {
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
+  // Git: each repository's preset, offered per area, and a change asks the hub.
+  const sels = [...d.querySelectorAll('select.git-preset')];
+  check('git: a preset menu beside each repository', sels.length === 3, sels.length);
+  check('git: each shows its own preset', sels.map((s) => s.value).join('|') === 'public-admin-writes|public-read-only|private-to-admin', sels.map((s) => s.value).join('|'));
+  check('git: a private repository is offered only the private presets', [...sels[2].options].map((o) => o.value).join('|') === 'private-to-admin|private-read-only');
+  check('git: the line says what the preset means', t('.git-preset-text')[0] === 'public-admin-writes: anyone can browse and clone; pushing needs the admin login.', t('.git-preset-text')[0]);
+  check('git: the old guest-push switch is gone', !d.getElementById('git-guest-push'));
+  sels[0].value = 'public-everything';
+  sels[0].dispatchEvent(new w.Event('change'));
   force.click();
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
   [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
   setTimeout(() => {
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
+    check('git: choosing public-everything asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'preset'
+      && p[1].name === 'demo' && p[1].preset === 'public-everything'), JSON.stringify(posted));
     check('no page errors', !errors.length, errors);
     // A null handed to replaceChildren or append shows as the word itself (the access slots did,
     // 2026-10-06): no text node on the page may be just that.

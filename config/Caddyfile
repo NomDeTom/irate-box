@@ -278,8 +278,10 @@
 	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
 	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
 	# paths in @smart) goes to git http-backend; every other path is cgit's web view. Public:
-	# anyone may browse and clone, a push needs the admin login unless guest-push exists in
-	# $HUB_GIT_ROOT (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	# anyone may browse and clone, a push needs the admin login. Caddy does not ask the hub
+	# about each repository's preset yet (nginx does: auth_request), so public-everything works
+	# on nginx only; read-only presets hold here too, through http.receivepack. Private: all of
+	# it behind the login. Pushes up to 64 MB.
 	# Pushes go through git-http-guard.py: Caddy streams the body, and a push it cuts off at
 	# max_size would otherwise leave git waiting forever (the guard says why).
 	redir /git /git/ permanent

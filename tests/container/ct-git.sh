@@ -13,7 +13,6 @@ code() { curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@"; }
 admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://$H/admin/git"; }
 W=$(mktemp -d); cd "$W" || exit 1
 for area in public private; do for n in demo secret big; do admin "{\"action\":\"delete\",\"area\":\"$area\",\"name\":\"$n\"}" >/dev/null; done; done
-admin '{"action":"guest-push","on":false}' >/dev/null
 
 echo "== units and socket"
 check "660 root" stat -c '%a %U' /run/irate-box-git.sock
@@ -61,14 +60,21 @@ cd priv && echo s >S && git add S && git commit -qm s && git push -q origin HEAD
 cd "$W"
 check 1 sh -c "curl -s -u admin:$PW http://$H/git-private/ | grep -c 'secret.git' | sed 's/^[1-9][0-9]*$/1/'"
 
-echo "== guest push"
-admin '{"action":"guest-push","on":true}' >/dev/null
+echo "== push presets (step 10)"
+preset() { admin "{\"action\":\"preset\",\"area\":\"public\",\"name\":\"demo\",\"preset\":\"$1\"}" >/dev/null; }
+preset public-everything
 cd pub && echo more >>README && git commit -qam second
-git push -q "http://$H/git/demo.git" main 2>/dev/null && ok "guest push with it on" || bad "guest push with it on"
+git push -q "http://$H/git/demo.git" main 2>/dev/null && ok "public-everything: a guest pushes" || bad "public-everything: a guest pushes"
 cd "$W"
 check 401 code "http://$H/git-private/secret.git/info/refs?service=git-receive-pack"
-admin '{"action":"guest-push","on":false}' >/dev/null
+preset public-admin-writes
 check 401 code "http://$H/git/demo.git/info/refs?service=git-receive-pack"
+check 401 code "http://$H/git/demo.git/info/refs?service=git%2Dreceive-pack"
+check 200 code -u "admin:$PW" "http://$H/git/demo.git/info/refs?service=git-receive-pack"
+preset public-read-only
+check 403 code -u "admin:$PW" "http://$H/git/demo.git/info/refs?service=git-receive-pack"
+check 200 code "http://$H/git/demo.git/info/refs?service=git-upload-pack"
+preset public-admin-writes
 
 echo "== push size cap"
 admin '{"action":"create","area":"public","name":"big"}' >/dev/null

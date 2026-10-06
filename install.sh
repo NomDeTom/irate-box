@@ -1400,11 +1400,30 @@ for repo in "$STATE"/git/private/*.git; do
 done
 # Public repositories: guests may not rewrite or delete branches, nobody may push past the
 # size cap, and every object is checked as it arrives (F18; git-hooks-public/pre-receive).
+# Each repository's push level (next-work plan step 10; gitrepos.py): a repository from before
+# gets the one that keeps its behaviour, public-everything where guest push was on, the
+# area's default otherwise. Then the old one-switch flag file goes. http.receivepack follows.
+git_level() {  # REPO DEFAULT
+	local lv
+	lv="$(runuser -u "$HUB_USER" -- git -C "$1" config --get irate-box.write 2>/dev/null)" || lv=""
+	[ -n "$lv" ] || { lv="$2"; runuser -u "$HUB_USER" -- git -C "$1" config irate-box.write "$lv"; }
+	runuser -u "$HUB_USER" -- git -C "$1" config http.receivepack "$([ "$lv" = nobody ] && echo false || echo true)"
+}
+pub_default=admin
+[ -f "$STATE/git/guest-push" ] && pub_default=everyone
 for repo in "$STATE"/git/public/*.git; do
 	[ -d "$repo" ] || continue
 	runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks-public"
 	runuser -u "$HUB_USER" -- git -C "$repo" config receive.fsckObjects true
+	git_level "$repo" "$pub_default"
 done
+for repo in "$STATE"/git/private/*.git; do
+	[ -d "$repo" ] && git_level "$repo" admin
+done
+if [ -f "$STATE/git/guest-push" ]; then
+	rm -f "$STATE/git/guest-push"
+	notice "guest push was on, so each public repository is now public-everything (anyone may push); change them one by one on /admin's Git page"
+fi
 cat >/etc/systemd/system/irate-box-ci.path <<EOF
 [Unit]
 Description=Irate-Box builds on push: watch the queue ($STATE/ci/queue)
