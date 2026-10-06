@@ -30,6 +30,7 @@ run theme_guard.py
 run root_routes_guard.py
 run sim_root_links.py
 run cgit_guard.py
+run sim_security_image.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))
