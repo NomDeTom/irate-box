@@ -886,6 +886,8 @@ const sec = {
   auditScope: document.getElementById('audit-scope'),
   auditNot: document.getElementById('audit-not-covered'),
   auditNote: document.getElementById('audit-note'),
+  auditDeep: document.getElementById('audit-deep'),
+  auditDeepWhen: document.getElementById('audit-deep-when'),
 };
 const RANK = { problem: 0, warn: 1, ok: 2 };
 let secWaiting = null; // { id, fid }: a request, and the line its answer goes under
@@ -927,6 +929,12 @@ function renderSecurity(data) {
     : busy ? 'Scanning…' : 'Not scanned yet.';
   sec.scan.disabled = busy;
   sec.auditRun.disabled = busy;
+  sec.auditDeep.disabled = busy;
+  const deep = data.deep || {};
+  sec.auditDeepWhen.textContent = deep.progress
+    ? `Deep audit running: ${deep.progress.step} (${deep.progress.n} of ${deep.progress.total})…`
+    : (deep.at ? `Last deep audit ${new Date(deep.at * 1000).toLocaleString()}, ${Math.round((deep.took || 0) / 60)} min. ` : 'No deep audit yet. ')
+      + 'It runs debian-cis\'s CIS benchmark checks and Lynis (about 8 minutes on a small board), weekly while the Security kit is kept current.';
   renderAudit(data.audit, busy);
   sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => el('tr', {},
     el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
@@ -997,6 +1005,7 @@ function secFix(fid, action) {
 
 sec.scan.addEventListener('click', () => secRequest({ action: 'scan' }, 'scan'));
 sec.auditRun.addEventListener('click', () => secRequest({ action: 'audit' }, 'audit'));
+sec.auditDeep.addEventListener('click', () => secRequest({ action: 'deep' }, 'audit'));
 loadSecurity();
 
 // --- health ----------------------------------------------------------------------------

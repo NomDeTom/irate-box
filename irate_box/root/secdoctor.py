@@ -1652,6 +1652,31 @@ def step_debsecan(ctx):
         _sh.rmtree(work, ignore_errors=True)
 
 
+def step_deep_cis(ctx):
+    return _deep_findings("debian-cis")
+
+
+def step_deep_lynis(ctx):
+    return _deep_findings("lynis")
+
+
+def _deep_findings(source):
+    """The deep audit's kept findings for one source, dated; a warning when it is old."""
+    from irate_box.root import deepaudit
+    rep = deepaudit.load()
+    got = (rep or {}).get("sources", {}).get(source)
+    if not got:
+        return [F(f"{source}-none", f"{source}: not run yet", "ok",
+                  "It runs in the deep audit: weekly, or Deep audit on this page (about 8 minutes on a small board).", "", "", source=source)]
+    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(got["at"]))
+    out = [dict(f) for f in got["findings"]]
+    if time.time() - got["at"] > 14 * 86400:
+        out.append(F(f"{source}-old", f"{source}: the last deep audit is old", "warn", f"From {when}.", "Run the deep audit again.", "", source=source))
+    for f in out:
+        f["detail"] = f"{f['detail']} (deep audit of {when})"
+    return out
+
+
 def joint(steps):
     """The joint report's skeleton (security-doctor-plan §5): findings merged by what they are
     about, each item saying which sources agree and the worst status; then each source's counts.
@@ -1692,6 +1717,8 @@ STEPS = [
     ("accounts", "Sudo rules and accounts", "", step_accounts),
     ("kernel", "Kernel protections", "F3 F9", step_kernel),
     ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
+    ("debian-cis", "The CIS benchmark (debian-cis, in the deep audit)", "", step_deep_cis),
+    ("lynis", "Lynis (in the deep audit)", "", step_deep_lynis),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.

@@ -1407,6 +1407,14 @@ def security_audit(req):
     return f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)"
 
 
+def security_deep_audit(req):
+    """debian-cis and Lynis (deepaudit.py), then the regular audit, so the report shows them."""
+    from irate_box.root import deepaudit
+    line = deepaudit.deep(log=lambda *_: None)
+    security_audit(req)
+    return line
+
+
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
@@ -1799,7 +1807,7 @@ ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
-           "security-scan": security_scan, "security-audit": security_audit, "security-fix": security_fix, "addon": addon,
+           "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
            "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,

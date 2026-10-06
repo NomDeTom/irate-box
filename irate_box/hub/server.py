@@ -960,7 +960,17 @@ def security_snapshot():
         log = [ANSI_RE.sub("", line) for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]]
     except OSError:
         log = []
-    return {"hub": hub, "scan": scan, "audit": audit, "log": log, "pending": _pending_actions("security-"),
+    deep = {}
+    try:
+        d = json.loads((CONTROL_DIR / "security-deep.json").read_text())
+        deep = {"at": d.get("at"), "took": d.get("took")}
+    except (OSError, ValueError):
+        pass
+    try:
+        deep["progress"] = json.loads((CONTROL_DIR / "security-deep-progress.json").read_text())
+    except (OSError, ValueError):
+        pass
+    return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "log": log, "pending": _pending_actions("security-"),
             "results": control_results(5)}
 
 
@@ -2200,6 +2210,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "security-scan"})})
             elif payload.get("action") == "audit":
                 self.send_json(202, {"id": control_request({"action": "security-audit"})})
+            elif payload.get("action") == "deep":
+                self.send_json(202, {"id": control_request({"action": "security-deep-audit"})})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
