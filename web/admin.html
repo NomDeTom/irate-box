@@ -440,21 +440,12 @@
         <h2 id="git-title">Git</h2>
         <p class="setting-desc">
           Two git servers on this box. <a href="/git/">/git/</a> is public: anyone on the network can
-          browse and clone, and pushing needs the admin login unless guests may push.
-          <a href="/git-private/">/git-private/</a> is behind the admin login for everything.
+          browse and clone. <a href="/git-private/">/git-private/</a> is behind the admin login for
+          everything. Who may push is each repository's own: choose it beside the repository.
           Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git asks for the
           login when it is needed.
         </p>
         <p class="setting-desc" id="git-usage"></p>
-        <!-- Not .settings: this switch has its own endpoint, not /admin/settings. -->
-        <div class="git-settings">
-          <label class="setting">
-            <input type="checkbox" id="git-guest-push">
-            <span><span class="setting-name">Guests may push to the public repositories</span>
-              <span class="setting-desc">Without the admin login. Anyone on the network could then
-                change or overwrite what is there; the private ones stay behind the login.</span></span>
-          </label>
-        </div>
         <p class="setting-desc action-note" id="git-note" role="status" hidden></p>
         <h3>New repository</h3>
         <form id="git-create" class="library-form">

@@ -1274,52 +1274,59 @@ def step_secrets(ctx):
     return out
 
 
+def _git_cfg(cfg, section, key):
+    """A value from a repository's config text: [section] key = value (git's own case rules)."""
+    m = re.search(rf"(?ims)^\s*\[{re.escape(section)}\]\s*$(.*?)(?=^\s*\[|\Z)", cfg)
+    v = m and re.search(rf"(?im)^\s*{re.escape(key)}\s*=\s*(\S+)\s*$", m.group(1))
+    return v.group(1).lower() if v else None
+
+
 def step_git(ctx):
-    """F17, F18: what pushed content can do, when guests may push."""
+    """F17, F18 and the push presets (next-work plan step 10): what pushed content can do."""
     root = STATE / "git"
-    guest = _lstat(root / "guest-push") is not None
-    out = []
-    missing = []
-    for area in ("public", "private"):
-        text = _read(root / f"cgitrc-{area}")
-        if text is None:
-            continue
-        if not all(re.search(rf"(?m)^mimetype\.{ext}\s*=\s*text/plain\s*$", text) for ext in ("html", "svg")):
-            missing.append(area)
     if _lstat(root / "cgitrc-public") is None and _lstat(root / "cgitrc-private") is None:
         return [F("git", "Git servers", "ok", "Not set up.", ref="F17/F18")]
-    if missing:
+    out = []
+    # cgit 1.2.3 serves /plain/ as text/plain with its own CSP, unless cgitrc maps a type.
+    loose = [a for a in ("public", "private")
+             if re.search(r"(?m)^(mimetype-file\s*=|mimetype\.(html?|xhtml|svg)\s*=\s*(?!text/plain))", _read(root / f"cgitrc-{a}") or "")]
+    if loose:
         out.append(F("git-mimetype", "cgit serves pushed HTML as HTML", "warn",
-                     f"cgitrc-{_list(missing)} does not map .html and .svg to text/plain, so cgit's /plain/ view serves a pushed "
-                     "page on the hub's origin, next to /admin"
-                     + (" — and guest push is ON, so a guest's page is one link away from the owner's login." if guest
-                        else " (guest push is off, so only pages the owner pushes)."),
-                     "mimetype.html=text/plain, mimetype.svg=text/plain (also .htm, .xhtml) in cgitrc, or Content-Security-Policy: sandbox.", "F17"))
+                     f"cgitrc-{_list(loose)} maps .html or .svg to a type that runs, so a pushed page runs on the hub's origin.",
+                     "Remove the mimetype lines, or map them to text/plain.", "F17"))
     else:
-        out.append(F("git-mimetype", "cgit's /plain/ view", "ok", "HTML and SVG are served as text/plain.", ref="F17"))
-    weak = []
-    pub = root / "public"
-    try:
-        repos = [p for p in sorted(pub.iterdir()) if (p / "HEAD").exists() and not p.is_symlink()][:200]
-    except OSError:
-        repos = []
-    for r in repos:
-        cfg = _read(r / "config") or ""
-        miss = [k for k in ("denyNonFastForwards", "denyDeletes", "fsckObjects")
-                if not re.search(rf"(?im)^\s*{k}\s*=\s*(true|yes|on|1)\s*$", cfg)]
-        if miss:
-            weak.append(f"{r.name} ({', '.join(miss)})")
-    if weak:
-        out.append(F("git-public", "Public repositories can be rewritten", "warn",
-                     f"{_list(weak)} lack receive.deny* / fsckObjects"
-                     + (": with guest push on, any guest can force-push or delete a branch, and repeated pushes fill the card"
-                        " (the 64 MB limit is per push)." if guest else " (guest push is off, so only the owner can push)."),
-                     "git config receive.denyNonFastForwards true; receive.denyDeletes true; receive.fsckObjects true; add a total-size quota.", "F18"))
-    elif repos:
-        out.append(F("git-public", "Public repositories", "ok", f"{len(repos)} protected against rewrites.", ref="F18"))
-    if guest and not weak and not missing:
-        out.append(F("git-guest", "Guest push", "warn", "Guests may push to the public repositories. Disk fill is the remaining risk (no total quota).",
-                     "A pre-receive size check.", "F18"))
+        out.append(F("git-mimetype", "cgit's /plain/ view", "ok", "Pushed files are served as text, with cgit's own CSP.", ref="F17"))
+    everyone, unhooked, leaky = [], [], []
+    for area in ("public", "private"):
+        try:
+            repos = [p for p in sorted((root / area).iterdir()) if (p / "HEAD").exists() and not p.is_symlink()][:200]
+        except OSError:
+            repos = []
+        for r in repos:
+            cfg = _read(r / "config") or ""
+            level = _git_cfg(cfg, "irate-box", "write") or "admin"
+            if area == "public" and level == "everyone":
+                everyone.append(r.name)
+            if area == "public" and not ((_git_cfg(cfg, "core", "hookspath") or "").endswith("git-hooks-public")
+                                         and _git_cfg(cfg, "receive", "fsckobjects") in ("true", "yes", "on", "1")):
+                unhooked.append(r.name)
+            if level == "nobody" and _git_cfg(cfg, "http", "receivepack") not in ("false", "no", "off", "0"):
+                leaky.append(r.name)
+    if everyone:
+        out.append(F("git-everyone", "Public repositories anyone may push to", "warn",
+                     f"{_list(everyone)} {'is' if len(everyone) == 1 else 'are'} public-everything: anyone on the network may push "
+                     "(no rewrites or deletions, and a size cap, by the public hook).",
+                     "On /admin's Git page, public-admin-writes unless guests are meant to push.", "F17/F18"))
+    if unhooked:
+        out.append(F("git-public", "Public repositories without their hook", "warn",
+                     f"{_list(unhooked)} lack the public pre-receive hook or receive.fsckObjects, so a push could rewrite "
+                     "history or fill the card.", "Rerun install.sh, which sets both.", "F18"))
+    if leaky:
+        out.append(F("git-readonly", "Read-only repositories that still take pushes", "problem",
+                     f"{_list(leaky)} {'is' if len(leaky) == 1 else 'are'} read-only by preset, but http.receivepack is not false.",
+                     "Set the preset again on /admin's Git page (it sets both).", "F18"))
+    if not (everyone or unhooked or leaky):
+        out.append(F("git-public", "Who may push", "ok", "Every repository's preset is held, and the public ones have their hook.", ref="F18"))
     return out
 
 

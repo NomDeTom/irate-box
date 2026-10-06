@@ -2081,7 +2081,7 @@ loadUsb();
 // The hub owns the repositories, so these changes need no root helper: each answer is the
 // new list.
 const git = {
-  usage: noteEl('git-usage'), note: noteEl('git-note'), guest: noteEl('git-guest-push'),
+  usage: noteEl('git-usage'), note: noteEl('git-note'),
   form: document.getElementById('git-create'), createNote: noteEl('git-create-note'),
   lists: { public: noteEl('git-public'), private: noteEl('git-private') },
 };
@@ -2098,7 +2098,6 @@ function renderGit(data) {
   git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
     (data.free != null ? `; ${size(data.free)} free on the card` : '') +
     `. A single push can be up to ${size(data.max_push)}.`;
-  git.guest.checked = data.guest_push;
   const act = (body, at, confirmText) => async () => {
     if (confirmText && !confirm(confirmText)) return;
     try { renderGit(await postJSON('/admin/git', body)); say('', true, at); } catch (err) { say(err.message, false, at); }
@@ -2110,8 +2109,10 @@ function renderGit(data) {
         el('strong', {}, el('a', { href: r.url, textContent: `${r.name}.git` })),
         el('span', { className: 'setting-desc', textContent: [r.description,
           r.last_commit ? `last commit ${commitDate(r.last_commit)}` : 'empty',
-          r.branches > 1 ? `${r.branches} branches` : null, size(r.size)].filter(Boolean).join(' · ') })),
+          r.branches > 1 ? `${r.branches} branches` : null, size(r.size)].filter(Boolean).join(' · ') }),
+        el('span', { className: 'setting-desc git-preset-text', textContent: `${r.preset}: ${r.preset_text}.` })),
       el('span', { className: 'library-buttons' },
+        presetPicker(r, (data.presets || {})[area] || []),
         actionButton('Copy clone URL', () => {
           const url = `${location.origin}${r.url.replace(/\/$/, '')}`;
           navigator.clipboard?.writeText(url).then(() => say(`Copied ${url}`, true, git.note),
@@ -2128,21 +2129,30 @@ function renderGit(data) {
   }
 }
 
+// Who may push, per repository (gitrepos.py PRESETS). Letting anyone push asks first.
+function presetPicker(r, presets) {
+  const sel = el('select', { className: 'git-preset', title: 'Who may push' },
+    ...presets.map((p) => el('option', { value: p.name, textContent: p.name, selected: p.name === r.preset })));
+  sel.addEventListener('change', async () => {
+    const p = presets.find((x) => x.name === sel.value);
+    if (p.write === 'everyone' && !confirm(`Let anyone on the network push to ${r.name}.git, without the login? `
+        + 'They cannot rewrite or delete its history, and the public repositories have a size cap, but anything '
+        + 'they push is served from this box.')) {
+      sel.value = r.preset;
+      return;
+    }
+    try {
+      renderGit(await postJSON('/admin/git', { action: 'preset', area: r.area, name: r.name, preset: sel.value }));
+      say(`${r.name}.git: ${p.text}.`, true, git.note);
+    } catch (err) { sel.value = r.preset; say(err.message, false, git.note); }
+  });
+  return sel;
+}
+
 async function loadGit() {
   try { renderGit(await getJSON('/admin/git')); } catch (_) { git.usage.textContent = 'Could not read the repositories.'; }
 }
 
-git.guest.addEventListener('change', async () => {
-  const on = git.guest.checked;
-  if (on && !confirm('Let anyone on the network push to the public repositories, without the login?')) {
-    git.guest.checked = false;
-    return;
-  }
-  try {
-    renderGit(await postJSON('/admin/git', { action: 'guest-push', on }));
-    say(on ? 'Guests can push to /git/ now.' : 'Pushing to /git/ needs the admin login again.', true, git.note);
-  } catch (err) { git.guest.checked = !on; say(err.message, false, git.note); }
-});
 git.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = git.form.elements;
