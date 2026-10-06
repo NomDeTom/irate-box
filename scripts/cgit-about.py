@@ -56,6 +56,8 @@ def main():
     text = raw[:MAX].decode("utf-8", errors="replace")
     name = (sys.argv[1] if len(sys.argv) > 1 else "").lower()
     if name.endswith((".md", ".markdown")):
+        # HTML comments (licence lines, notes to editors) are not for the reader: dropped, not shown.
+        text = re.sub(r"<!--.*?-->[ \t]*\n?", "", text, flags=re.S)
         try:
             sys.stdout.write('<div class="readme-md">' + markdown_html(text) + "</div>\n")
             return

@@ -284,6 +284,14 @@
 	# max_size would otherwise leave git waiting forever (the guard says why).
 	redir /git /git/ permanent
 	redir /git-private /git-private/ permanent
+	# Debian's highlight.js, for cgit's code view (web/cgit-hub.js).
+	handle_path /git-hl/* {
+		root * /usr/share/javascript/highlight.js
+		encode gzip
+		header Cache-Control "public, max-age=86400"
+		header X-Content-Type-Options nosniff
+		file_server
+	}
 	handle_path /git-static/* {
 		root * /usr/share/cgit
 		header X-Content-Type-Options nosniff
