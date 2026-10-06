@@ -857,6 +857,11 @@ def _nginx_check(src, opts):
         for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091",
                            "@ADDONS@": str(STATE / "addons")}.items():
             text = text.replace(key, value)
+        # A port placeholder this helper does not know yet (an update adds a server block): a
+        # spare port stands in, so a newer site is checked by its syntax, not refused for being
+        # newer than its checker (#27's @NOTES_PORT@ was, on 2026-10-06).
+        spare = iter(range(18100, 18200))
+        text = re.sub(r"@[A-Z_]+_PORT@", lambda m: str(next(spare)), text)
         conf = Path(tmp) / "nginx.conf"
         # nginx's scratch paths in here too, so it needs nothing of the box's.
         temps = "access_log off;\n" + "".join(f"{k}_temp_path {tmp}/{k};\n" for k in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
