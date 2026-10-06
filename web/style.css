@@ -720,7 +720,12 @@ body[data-art] > header { z-index: 2; }
   display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;
   width: min(30vw, 22rem); aspect-ratio: 520 / 539; background: no-repeat center / contain; opacity: 0.16;
 }
-[data-art="doctor"] .admin-art { display: block; background-image: url("art/krab-doctor.webp"); }
+[data-art="doctor"] .admin-art {
+  display: block; background-image: url("art/krab-doctor.webp"); aspect-ratio: 1;
+}
+[data-art="welcome-controller"] .admin-art {
+  display: block; background-image: url("art/krab-controller-clipboard.webp"); aspect-ratio: 1;
+}
 [data-art="librarian"] .admin-art { display: block; background-image: url("art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
 [data-art="electronics"] .admin-art { display: block; background-image: url("art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
 [data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp");
