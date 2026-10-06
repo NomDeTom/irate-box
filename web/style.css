@@ -950,8 +950,14 @@ body.drop > section + section { margin-top: 2.5rem; }
 .net-settings { display: flex; flex-direction: column; gap: 0.4rem; max-width: 40rem; }
 /* The Network pane's devices: a card each, labelled lines, the hotspot's conditions one per line. */
 .net-devices { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
-.net-device { display: flex; flex-direction: column; gap: 0.3rem; }
-.net-device h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.2rem; font-size: 1rem; }
+.net-device { display: flex; flex-direction: column; gap: 0; }
+.net-device h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding-bottom: 0.45rem; font-size: 1rem;
+  border-bottom: 1px solid var(--border); }
+/* A hairline between the card's parts, and a little room above each label. */
+.net-section { padding: 0.5rem 0 0.4rem; }
+.net-section + .net-section { border-top: 1px solid var(--border); }
+.net-section:last-child { padding-bottom: 0; }
+.net-section .net-conditions { margin-top: 0.35rem; }
 .net-device h4 .state { color: var(--muted); }
 .net-line { display: grid; grid-template-columns: 11rem 1fr; gap: 0.6rem; margin: 0; font-size: 0.88rem; }
 .net-label { color: var(--muted); }

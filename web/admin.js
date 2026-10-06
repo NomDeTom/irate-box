@@ -1388,6 +1388,8 @@ function signalWords(dbm) {
 
 function deviceCard(inv, d, wifi, hazards) {
   const line = (label, text) => el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: label }), el('span', { textContent: text }));
+  // Each labelled part a section of its own, a hairline between them, so the parts don't run together.
+  const section = (...parts) => el('div', { className: 'net-section' }, ...parts);
   const kind = wifi ? 'WiFi' : 'Wired';
   const usb = d.usb || {};
   const what = [wifi ? `${BUS_WORDS[d.bus] || d.bus || ''} WiFi adapter`.trim() : `${BUS_WORDS[d.bus] || ''} Ethernet port`.trim(),
@@ -1408,9 +1410,9 @@ function deviceCard(inv, d, wifi, hazards) {
   const managed = owner ? (MANAGED_BY[owner] || owner) + (d.manager ? ` With ${d.manager} for the address.` : '') : '—';
   const kids = [
     el('h4', {}, el('span', { textContent: d.iface }), el('span', { className: 'state', textContent: kind })),
-    line('What it is', what || '—'),
-    line('Now', now),
-    line('Managed by', managed),
+    section(line('What it is', what || '—')),
+    section(line('Now', now)),
+    section(line('Managed by', managed)),
   ];
   if (wifi) {
     const a = (inv.ap || []).find((x) => x.phy === d.phy);
@@ -1418,14 +1420,14 @@ function deviceCard(inv, d, wifi, hazards) {
       const conds = a.conditions || [{ kind: 'how', text: a.detail }];
       const any = conds.some((c) => c.kind !== 'how');
       const verdict = !a.possible ? 'No.' : any ? `Yes, with conditions (through ${a.backend}).` : `Yes (through ${a.backend}).`;
-      kids.push(line('Can it run the hotspot?', verdict),
+      kids.push(section(line('Can it run the hotspot?', verdict),
         el('ul', { className: 'net-conditions' }, ...conds.map((c) => el('li', { className: `cond-${c.kind}` },
           el('span', { className: 'cond-mark', textContent: COND_MARK[c.kind] || '•', ariaHidden: 'true' }),
-          el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` })))));
+          el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` }))))));
     }
   }
   const mine = hazards.filter((h) => h.iface === d.iface);
-  if (mine.length) kids.push(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix))));
+  if (mine.length) kids.push(section(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix)))));
   return el('div', { className: 'net-device setting' }, ...kids);
 }
 
