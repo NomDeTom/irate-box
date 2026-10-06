@@ -197,6 +197,11 @@ ADDON_PORT=8090
 ROOM=/usr/share/hub/room
 ETC=/etc/hub
 SB_VERSION=2.11.1
+# SilverBullet's release zips, as GitHub records them (the release's asset digests; F30: there
+# was no check at all). A new SB_VERSION needs these from: gh api repos/silverbulletmd/silverbullet/releases/tags/VERSION
+SB_SHA256_x86_64=82af0d5d008c377cdb4b49dbd21db0d21f8d14619efa40b0fdeae1dce778d018
+SB_SHA256_aarch64=4ca826b88431fcbe8d4c8f4d7d3f8cc3b076d42f724a40b6dc4d45a676d9dd87
+SB_SHA256_armv7=fb27b0cf7af3d95d03ccfbeb25c4260ce5228d6b8402d531f84535bafbe25855
 TTYD_VERSION=1.7.7
 
 # Add-ons already on this box stay added on a rerun that does not name them (an update, the
@@ -349,6 +354,15 @@ on_exit() {
 # Whatever it gets is kept in the box's own cache too, so an offline kit made from this box later
 # (/admin, Backup) can hand it on.
 OWN_CACHE=/var/cache/irate-box/downloads
+# SilverBullet's zip ($1) for $2 (its arch) is the release's, by the pinned digest; or, from an
+# offline kit, the box-made copy the kit lists in its own SHA256SUMS (as ttyd's).
+sb_sum_ok() {
+	local got want
+	got="$(sha256sum <"$1" | cut -d' ' -f1)"
+	want="$(eval "echo \${SB_SHA256_$2:-}")"
+	[ -n "$want" ] && [ "$got" = "$want" ] && return 0
+	[ -n "$DL_CACHE" ] && grep -qx "$got  silverbullet-server-linux-$2.zip" "$DL_CACHE/silverbullet-$SB_VERSION-SHA256SUMS" 2>/dev/null
+}
 fetch() {
 	local name="${3:-$(basename "$1")}"
 	if [ -n "$DL_CACHE" ] && [ -s "$DL_CACHE/$name" ]; then
@@ -454,10 +468,13 @@ make_bundle() {
 			z="silverbullet-$SB_VERSION-silverbullet-server-linux-$sb_arch.zip"
 			if kit_get "$z" "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$sb_arch.zip"; then
 				unzip -tq "$KIT_DL/$z" >/dev/null || die "$z is not a whole zip"
+				sb_sum_ok "$KIT_DL/$z" "$sb_arch" || die "$z does not match SilverBullet's published digest"
 				echo "    $a: SilverBullet $SB_VERSION"
 			elif [ "$sb_arch" = "$(own_sb_arch)" ] && /usr/local/bin/silverbullet --version 2>/dev/null | grep -q "$SB_VERSION"; then
 				# This box's installed SilverBullet, the same version, zipped as its release ships it.
 				python3 -c 'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED); z.write("/usr/local/bin/silverbullet", "silverbullet"); z.close()' "$KIT_DL/$z"
+				# Not the release's zip, so not its digest: the kit lists this one's sum itself.
+				printf '%s  silverbullet-server-linux-%s.zip\n' "$(sha256sum <"$KIT_DL/$z" | cut -d' ' -f1)" "$sb_arch" >>"$KIT_DL/silverbullet-$SB_VERSION-SHA256SUMS"
 				echo "    $a: SilverBullet $SB_VERSION (this box's installed copy; no internet for the release)"
 			else
 				echo "    $a: no SilverBullet (not in the download cache, and no internet): only needed for notes"
@@ -1431,6 +1448,7 @@ if [ "$WITH_NOTES" = 1 ]; then
 		tmp="$(mktemp -d)"
 		fetch "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$SB_ARCH.zip" \
 			"$tmp/sb.zip" "silverbullet-$SB_VERSION-silverbullet-server-linux-$SB_ARCH.zip"
+		sb_sum_ok "$tmp/sb.zip" "$SB_ARCH" || die "the SilverBullet zip does not match its published digest (SB_SHA256_$SB_ARCH)"
 		unzip -q -o "$tmp/sb.zip" -d "$tmp"
 		bin="$(find "$tmp" -type f -name silverbullet | head -1)"
 		[ -n "$bin" ] || die "no silverbullet binary in the release zip"

@@ -90,5 +90,12 @@ check("F9: caddy hash-password reads the password on stdin", '"--plaintext"' not
 check("F9: Syncthing's GUI password goes through its REST API", '"password", "set"' not in hc
       and "config gui password set" not in install and "hub_control syncthing-gui-password" in install)
 
+# F30: SilverBullet's download is checked against digests pinned beside its version.
+from irate_box.root import hub_control  # noqa: E402
+for arch in ("x86_64", "aarch64", "armv7"):
+    v = hub_control._var(install, f"SB_SHA256_{arch}")
+    check(f"F30: SilverBullet's {arch} digest is pinned, and the updater can read it", bool(v and re.fullmatch(r"[0-9a-f]{64}", v)), v)
+check("F30: install.sh checks the zip before unpacking it", 'sb_sum_ok "$tmp/sb.zip" "$SB_ARCH" || die' in install)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
