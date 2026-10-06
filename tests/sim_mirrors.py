@@ -175,7 +175,7 @@ check("the URL map names the mirror and its submodule", urls.get(f"file://{SUB}"
 # ci.py, as hubci: the rewrites in its global config, then a checkout with the upstream gone.
 from irate_box.hub import ci  # noqa: E402
 os.environ["HOME"] = str(T / "hubci-home"); (T / "hubci-home").mkdir()
-ci.use_mirrors()
+ci.prepare_git()  # as run_queue does before building
 HENV = dict(ENV, HOME=str(T / "hubci-home"))
 gl = subprocess.run(["git", "config", "--global", "--get-regexp", "^url"], env=HENV, capture_output=True, text=True).stdout
 check("ci: hubci's git config rewrites each mirrored URL", f"url.file://{sp}.insteadof file://{SUB}" in gl, gl)
@@ -183,12 +183,12 @@ import shutil
 shutil.rmtree(SUB)  # the "internet" goes away
 W = T / "build"
 g("clone", "-q", "--no-checkout", str(mirrors.repo_path(sm)), str(W)); g("checkout", "-q", "v1.1.0", cwd=W)
-r = subprocess.run(["git", "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+r = subprocess.run(["git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
                    cwd=W, env=dict(ENV, HOME=str(T / "hubci-home")), capture_output=True, text=True)
 check("ci: with the submodule's upstream gone, a checkout gets it from the box", r.returncode == 0 and (W / "lib" / "s").read_text() == "2\n", r.stderr[-300:])
 with mock.patch.object(mirrors, "load", return_value=[]):
     mirrors.write_urls()
-ci.use_mirrors()
+ci.prepare_git()  # as run_queue does before building
 check("ci: a removed mirror's rewrite goes too", "insteadof" not in subprocess.run(["git", "config", "--global", "--get-regexp", "^url"],
       env=HENV, capture_output=True, text=True).stdout.lower())
 
