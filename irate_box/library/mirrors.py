@@ -416,7 +416,10 @@ def sync(m, check_only=False, log=print):
     entry["outcome"] = line
     _write(STATUS, st)
     if not check_only:
-        write_urls()
+        try:
+            write_urls()
+        except OSError as exc:
+            line = f"{line}; the builds' list of mirrors not written: {exc}"
     return line
 
 

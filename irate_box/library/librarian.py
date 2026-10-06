@@ -1088,8 +1088,13 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         if not names or "mirrors" in names:
             from irate_box.library import mirrors
             if mirrors.load():
-                results["mirrors"] = mirrors.sync_all(check_only=(mode == "check"), scheduled=scheduled,
-                                                      hours=policy["check_every_hours"], log=log)
+                # One stage failing doesn't stop the ones after it (the hub's own update among them).
+                try:
+                    results["mirrors"] = mirrors.sync_all(check_only=(mode == "check"), scheduled=scheduled,
+                                                          hours=policy["check_every_hours"], log=log)
+                except (LibrarianError, OSError) as exc:
+                    results["mirrors"] = f"error: {exc}"
+                    log(f"mirrors: error: {exc}")
         # The hub's own updates (selfupdate.py): one step per run of the timer.
         if scheduled and not names:
             from irate_box.library import selfupdate
