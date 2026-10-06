@@ -4,7 +4,7 @@
   "tile": {
     "icon": "🗨️🛋️",
     "name": "ELIZA",
-    "desc": "The 1966 chatbot, its scripts, and a mesh vocabulary"
+    "desc": "Eliza - small language model"
   },
   "menu": {
     "title": "ELIZA",
