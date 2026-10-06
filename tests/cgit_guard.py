@@ -58,7 +58,7 @@ caddy = (REPO / "config" / "Caddyfile").read_text()
 for front, text in (("nginx", nginx), ("Caddy", caddy)):
     for area in ("public", "private"):
         i = text.index(f"cgitrc-{area}")
-        block = text[max(text.rfind("location", 0, i), text.rfind("handle", 0, i)):text.find("}", i) + 1]
+        block = text[max(text.rfind("location", 0, i), text.rfind("handle", 0, i)):text.find("\n\t}", i) + 3]
         if front == "Caddy":
             block = text[text.rfind("handle", 0, i):i]
         check(f"{front}: cgit ({area}) sends a CSP with script-src 'self' and object-src 'none', and nosniff",
