@@ -33,7 +33,6 @@ a world-readable file by name. Stdlib only.
 import json
 import os
 import re
-import secrets
 import shlex
 import stat
 import subprocess
@@ -776,12 +775,14 @@ def step_folders(ctx):
     else:
         out.append(F("folders-links", "Links inside the hub's folders", "ok",
                      "None in control/, zim/, library/, firmware/, git/, ci/ or notes/ (top levels).", ref="F3/F4/F5"))
+    # The quarantine is the hub's own since F4's fix: health.py moves a book there as the hub, so a
+    # link there leads only where the hub could write anyway. Still worth a look if it is one.
     q = _lstat(STATE / "zim" / "quarantine")
-    if q is not None and (stat.S_ISLNK(q.st_mode) or (hub_uid is not None and q.st_uid == hub_uid)):
-        out.append(F("folders-quarantine", "Kiwix quarantine folder", "problem" if stat.S_ISLNK(q.st_mode) else "warn",
-                     "zim/quarantine is " + ("a link" if stat.S_ISLNK(q.st_mode) else f"owned by '{_name_of(q.st_uid)}'") +
-                     "; the doctor's fix chowns it, and the hub chooses what it points at.",
-                     "Keep the quarantine folder root-owned, outside zim/.", "F4"))
+    if q is not None and stat.S_ISLNK(q.st_mode):
+        out.append(F("folders-quarantine", "Kiwix quarantine folder", "warn",
+                     "zim/quarantine is a link. The doctor's fix moves books there as the hub (not root), so it can only "
+                     "reach what the hub can, but nothing of the box's makes it a link.",
+                     "Look at where it points (ls -l), and remove it if you did not make it.", "F4"))
     ci = _lstat(STATE / "ci")
     if ci is not None and ci.st_uid != 0:
         out.append(F("folders-ci", "The build user owns its folders", "warn",
@@ -1530,21 +1531,11 @@ def audit(progress=None):
             "not_covered": NOT_COVERED}
 
 
-def write_report(report, path=REPORT, owner=None):
-    """The one thing the doctor writes: its report, to a file root creates itself. O_EXCL on a
-    fresh name, then rename over the old one, so a link planted at `path` is replaced, never
-    written through (the hub owns the folder this goes in)."""
-    path = Path(path)
-    # A random name: one the hub cannot guess and create first to block the report.
-    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
-    try:
-        os.write(fd, json.dumps(report, indent=2).encode())
-        if owner is not None:
-            os.fchown(fd, *owner)
-    finally:
-        os.close(fd)
-    os.replace(tmp, path)
+def write_report(report, path=REPORT):
+    """The one thing the doctor writes: its report, root's, 0644 (safeio: a fresh file renamed
+    over the old one, so a link planted at `path` is replaced, never written through)."""
+    from irate_box.root import safeio
+    safeio.write(path, json.dumps(report, indent=2))
 
 
 MARK = {"ok": "ok     ", "warn": "WARN   ", "problem": "PROBLEM"}

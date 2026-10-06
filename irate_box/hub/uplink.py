@@ -626,11 +626,10 @@ class DropWatcher(threading.Thread):
 
 
 def write_status(data):
+    # As root, in control/, which the hub can change: never through a link it planted (F13).
+    from irate_box.root import safeio
     STATUS.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STATUS.with_name(STATUS.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2))
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, STATUS)
+    safeio.write(STATUS, json.dumps(data, indent=2))
 
 
 def read_status():

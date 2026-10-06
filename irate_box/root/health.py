@@ -352,7 +352,8 @@ def kiwix_rebuild():
             skipped.append(b.name)
     if not new.exists():
         return "kiwix-manage made no library; the old one stays."
-    shutil.chown(new, HUB_USER, HUB_USER)
+    # Already the hub's (kiwix-manage made it as the hub): no chown, which would follow a link
+    # swapped in for it (F3). The rename replaces a link, never follows one.
     os.replace(new, LIBRARY)
     msg = f"Library rebuilt: {len(books) - len(skipped)} books" + (f" (skipped {', '.join(skipped)})" if skipped else "")
     if (UNIT_DIR / "kiwix.service").exists():
@@ -716,9 +717,14 @@ def fix(choice):
         src = ZIM / arg
         if not arg.endswith(".zim") or "/" in arg or not src.is_file():
             raise ValueError(f"{arg} is not a book in {ZIM}")
-        QUARANTINE.mkdir(exist_ok=True)
-        shutil.chown(QUARANTINE, HUB_USER, HUB_USER)
-        os.replace(src, QUARANTINE / arg)
+        # As the hub (F4): both folders are the hub's, so root has no business there. Done as
+        # root, a quarantine/ the hub had made a link was chowned to it, wherever it led.
+        hub = ("runuser", "-u", HUB_USER, "--") if os.geteuid() == 0 else ()
+        r = run(*hub, "mkdir", "-p", "--", str(QUARANTINE))
+        if r.returncode == 0:
+            r = run(*hub, "mv", "-n", "-T", "--", str(src), str(QUARANTINE / arg))
+        if r.returncode or src.exists():
+            raise ValueError(f"{arg} could not be moved to {QUARANTINE}/: {(r.stderr or '').strip()[-160:]}")
         msg = f"{arg} moved to {QUARANTINE}/. "
         if readable_books():
             return msg + kiwix_rebuild()

@@ -17,6 +17,7 @@ A stick the desktop has mounted already is used where it is and left mounted. St
 
 import json
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -24,6 +25,7 @@ import time
 from pathlib import Path
 
 from irate_box.library import zimcheck
+from irate_box.root import safeio
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
 FILESYSTEMS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "iso9660"}
@@ -86,7 +88,8 @@ class Mounted:
             raise ValueError("unexpected device name")
         self.path = MOUNT_ROOT / self.dev["name"]
         self.path.mkdir(parents=True, exist_ok=True)
-        opts = ("rw" if self.writable else "ro") + ",nosuid,nodev,noexec"
+        # nosymfollow: a stick's own links (ext4 can hold them) lead nowhere root follows.
+        opts = ("rw" if self.writable else "ro") + ",nosuid,nodev,noexec,nosymfollow"
         out = run("mount", "-o", opts, self.dev["path"], str(self.path))
         if out.returncode != 0:
             self.path.rmdir()
@@ -143,10 +146,11 @@ def _find(scan_state, name):
     raise ValueError(f"{name} is not plugged in now: scan again")
 
 
-def _copy(src, dest, report=None):
+def _copy(src, dest, report=None, out=None):
+    """src to dest, or to `out` (a file already open for it)."""
     size = os.path.getsize(src)
     done = 0
-    with open(src, "rb") as fi, open(dest, "wb") as fo:
+    with open(src, "rb") as fi, (out or open(dest, "wb")) as fo:
         while chunk := fi.read(CHUNK):
             fo.write(chunk)
             done += len(chunk)
@@ -182,9 +186,10 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
                              f"and {min_free >> 20} MB must stay free (Schedule and token)")
         tmp = Path(zim_dir) / f".{name}.zim.usb"
         try:
-            _copy(src, tmp, report)
-            shutil.chown(tmp, hub_user, hub_user)
-            os.chmod(tmp, 0o644)
+            # In the hub's folder: a new file, never through a link, the hub's through its fd (F3).
+            tmp.unlink(missing_ok=True)
+            hub = pwd.getpwnam(hub_user)
+            _copy(src, tmp, report, out=safeio.create(tmp, 0o644, hub.pw_uid, hub.pw_gid))
             why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root (F12)
             if why:
                 raise ValueError(f"{rel.name} was not added: the copy is {why}. It looked whole on the stick, "
@@ -217,7 +222,9 @@ def export_zim(device, book, zim_dir, report=None):
             raise ValueError("not enough room on the stick")
         tmp = folder / f".{book}.zim.part"
         try:
-            _copy(src, tmp, report)
+            tmp.unlink(missing_ok=True)
+            # Never through a link on the stick (one mounted elsewhere has no nosymfollow).
+            _copy(src, tmp, report, out=safeio.create(tmp, 0o644))
             os.replace(tmp, folder / f"{book}.zim")
         finally:
             tmp.unlink(missing_ok=True)

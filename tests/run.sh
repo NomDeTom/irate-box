@@ -28,6 +28,7 @@ run doctor_guard.py
 run sim_netinv.py
 run theme_guard.py
 run root_routes_guard.py
+run sim_root_links.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

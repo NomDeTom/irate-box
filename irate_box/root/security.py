@@ -21,6 +21,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.root import safeio
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RECORD = ETC / "security-changes.json"
 SSHD_DROPIN = Path(os.environ.get("HUB_SSHD_DROPIN", "/etc/ssh/sshd_config.d/01-irate-box.conf"))
@@ -461,7 +463,7 @@ def install_security_updates(log_path):
     if not pkgs:
         return "no security updates waiting"
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", HOME=os.environ.get("HOME", "/root"))
-    with open(log_path, "w") as log:
+    with safeio.open_new(log_path) as log:  # in control/, which the hub can change (F3)
         log.write("$ apt-get install --only-upgrade " + " ".join(pkgs) + "\n\n")
         log.flush()
         code = subprocess.run(["apt-get", "install", "-y", "--only-upgrade", "-o", "Dpkg::Options::=--force-confold",
