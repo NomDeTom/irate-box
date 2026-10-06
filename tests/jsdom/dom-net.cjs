@@ -56,6 +56,16 @@ setTimeout(() => {
   check('its conditions one per line, untested marked', conds.join(' ') === 'cond-how cond-limit cond-untested', conds.join(' '));
   const own = cards[0] ? [...cards[0].querySelectorAll('.admin-checks li')].length : 0;
   check('its own warnings on its card (3)', own === 3, own);
+  // Each labelled part a section, a hairline between them (inbox, 2026-10-06: the parts ran together).
+  const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
+  check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
+    && secs.every((n) => n.querySelector('.net-line, .admin-checks')), secs.length);
+  check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
+  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
+  check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
+    && /\.net-device h4 \{[^}]*border-bottom: 1px solid var\(--border\)/.test(css));
+  check('labels in a column, above their text on a phone', /\.net-line \{ display: grid; grid-template-columns: 11rem 1fr/.test(css)
+    && /max-width: 560px\) \{ \.net-line \{ grid-template-columns: 1fr/.test(css));
   const general = t('#net-hazards li');
   check('the rest in the general list, not repeated', general.length === 2 && !general.some((g) => /handshake/.test(g)), general.join(' | '));
   const evs = [...d.querySelectorAll('#up-events li')];
