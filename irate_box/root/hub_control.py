@@ -83,7 +83,6 @@ import hashlib
 import json
 import os
 import platform
-import pwd
 import re
 import secrets
 import shutil
@@ -102,7 +101,7 @@ from irate_box.hub import netinv
 from irate_box.root import secdoctor
 from irate_box.root import security
 from irate_box.hub import uplink
-from irate_box.root import usbstick
+from irate_box.root import safeio, usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -192,9 +191,8 @@ def run(*cmd, timeout=120, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
 
 
-def _for_hub(path):
-    hub = pwd.getpwnam(HUB_USER)
-    os.chown(path, hub.pw_uid, hub.pw_gid)
+# Root's files in control/ (F3, F13): safeio.write, a new file renamed into place, never through
+# a link the hub planted; left root's, 0644, which the hub reads. Nothing is chowned to the hub.
 
 
 def service(req):
@@ -443,12 +441,7 @@ def _access_files(state):
 def _access_record(state):
     """root's copy, and the hub's (in its control folder: a fresh name, never following a link)."""
     _write_root_file(ACCESS_FILE, json.dumps(state, indent=2) + "\n", 0o644)
-    tmp = ACCESS_STATE.with_name(f".access.{secrets.token_hex(6)}")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(json.dumps(state))
-    _for_hub(tmp)
-    os.replace(tmp, ACCESS_STATE)
+    safeio.write(ACCESS_STATE, json.dumps(state))
 
 
 def _access_apply(state, reload=True):
@@ -572,8 +565,7 @@ def _installed_commit():
 
 
 def _write_update_state(data):
-    UPDATE_STATE.write_text(json.dumps(data, indent=2))
-    _for_hub(UPDATE_STATE)
+    safeio.write(UPDATE_STATE, json.dumps(data, indent=2))
 
 
 def _read_update_state():
@@ -619,10 +611,7 @@ class Progress:
 
     def _write(self):
         self._last = time.monotonic()
-        tmp = self.path.with_name(self.path.name + ".tmp")
-        tmp.write_text(json.dumps(self.data))
-        _for_hub(tmp)
-        os.replace(tmp, self.path)
+        safeio.write(self.path, json.dumps(self.data))
 
 
 # --- verifying a fetched update -------------------------------------------------------
@@ -1013,8 +1002,7 @@ def _run_install(src, args, action, steps=None):
     # systemd gives the helper no HOME, and Caddy (the fallback) warns about it on every validate.
     env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
     with Progress(action, steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
-            open(UPDATE_LOG, "w") as log:
-        _for_hub(UPDATE_LOG)
+            safeio.open_new(UPDATE_LOG) as log:
         log.write("$ " + " ".join(cmd) + "\n\n")
         log.flush()
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
@@ -1236,8 +1224,7 @@ def doctor():
 
 def update_doctor(req):
     findings = doctor()
-    DOCTOR_STATE.write_text(json.dumps({"at": time.time(), "findings": findings}, indent=2))
-    _for_hub(DOCTOR_STATE)
+    safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
     problems = [f for f in findings if f["status"] == "problem"]
     if not problems:
         return "update doctor: no problems found"
@@ -1256,8 +1243,7 @@ def update_clear_cache(req):
 # --- the security page -----------------------------------------------------------------
 
 def _write_security(data):
-    SECURITY_STATE.write_text(json.dumps(data, indent=2))
-    _for_hub(SECURITY_STATE)
+    safeio.write(SECURITY_STATE, json.dumps(data, indent=2))
 
 
 def security_scan(req):
@@ -1268,9 +1254,8 @@ def security_scan(req):
 
 
 def security_audit(req):
-    hub = pwd.getpwnam(HUB_USER)
     report = secdoctor.audit()
-    secdoctor.write_report(report, AUDIT_STATE, (hub.pw_uid, hub.pw_gid))
+    secdoctor.write_report(report, AUDIT_STATE)
     c = report["counts"]
     return f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)"
 
@@ -1280,8 +1265,7 @@ def security_fix(req):
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@._-]+)?", choice):
         raise ValueError("not a Security page choice")
     if choice == "security-updates":
-        SECURITY_LOG.touch()
-        _for_hub(SECURITY_LOG)
+        safeio.write(SECURITY_LOG, "")
     try:
         msg = security.fix(choice, SECURITY_LOG)
     finally:
@@ -1292,8 +1276,7 @@ def security_fix(req):
 # --- books on a USB stick -----------------------------------------------------------------
 
 def _write_usb(data):
-    USB_STATE.write_text(json.dumps(data, indent=2))
-    _for_hub(USB_STATE)
+    safeio.write(USB_STATE, json.dumps(data, indent=2))
 
 
 def usb_scan(req):
@@ -1450,8 +1433,7 @@ HEALTH_STATE = CONTROL / "health.json"
 def _write_health():
     os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
     data = health.scan()
-    HEALTH_STATE.write_text(json.dumps(data, indent=2))
-    _for_hub(HEALTH_STATE)
+    safeio.write(HEALTH_STATE, json.dumps(data, indent=2))
     return data
 
 
@@ -1555,10 +1537,8 @@ ACTIONS = {"service": service, "password": password,
 
 
 def answer(rid, ok, message):
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    path = RESULTS / f"{rid}.json"
-    path.write_text(json.dumps({"id": rid, "ok": ok, "message": message, "at": time.time()}))
-    _for_hub(path)
+    safeio.mkdir(RESULTS)
+    safeio.write(RESULTS / f"{rid}.json", json.dumps({"id": rid, "ok": ok, "message": message, "at": time.time()}))
     # Keep the last 50 answers; the page only ever looks at recent ones.
     old = sorted(RESULTS.glob("*.json"), key=lambda p: p.stat().st_mtime)[:-50]
     for p in old:
@@ -1574,7 +1554,7 @@ def main():
         for path in pending:
             rid = path.stem if ID_RE.match(path.stem) else "invalid"
             try:
-                req = json.loads(path.read_text())
+                req = json.loads(safeio.read_request(path))  # never a link or a FIFO (F3)
                 path.unlink()
                 action = ACTIONS.get(req.get("action"))
                 if not action:

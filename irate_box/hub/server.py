@@ -766,7 +766,9 @@ def control_request(req):
     """Queue a request for hub_control.py; returns its id, which its answer will carry."""
     CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
     rid = secrets.token_hex(8)
-    tmp = CONTROL_DIR / f".{rid}.tmp"  # written beside, renamed in: never read half-written
+    # Written in the hub's own folder, renamed in: never read half-written. Not in control/,
+    # which is root's (F3), nor in requests/, whose path unit would start the helper for it.
+    tmp = STATE_DIR / f".request-{rid}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
         json.dump(dict(req, id=rid), fh)

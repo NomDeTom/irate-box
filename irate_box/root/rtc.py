@@ -51,6 +51,8 @@ import sys
 import time
 from pathlib import Path
 
+from irate_box.root import safeio
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 CONFIG = ETC / "rtc.json"
@@ -413,7 +415,7 @@ def find():
                                      "ambiguous": len(chips) > 1, "kernel": drv and f"{drv['module']} ({drv['kind']})",
                                      "supported": bool(drv) or CHIPS[chip][2]})
     STATUS.parent.mkdir(parents=True, exist_ok=True)
-    FOUND.write_text(json.dumps(out, indent=2))
+    safeio.write(FOUND, json.dumps(out, indent=2))  # control/: never through a link (F13)
     os.chmod(FOUND, 0o644)
     return out
 
@@ -512,7 +514,7 @@ def floor_time():
 def _status(data):
     STATUS.parent.mkdir(parents=True, exist_ok=True)
     data["at"] = time.time()
-    STATUS.write_text(json.dumps(data, indent=2))
+    safeio.write(STATUS, json.dumps(data, indent=2))
     os.chmod(STATUS, 0o644)
 
 

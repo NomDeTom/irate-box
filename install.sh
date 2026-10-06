@@ -250,6 +250,52 @@ problem() {
 }
 fail=0
 
+# Folders under $STATE (F5): the hub owns $STATE, so any folder in it may have been swapped for a
+# link, and `install -d -o/-m` (chown, chmod) would change wherever the link leads. Each path is
+# walked from $STATE one folder at a time with O_NOFOLLOW, made where missing, and owned and
+# moded through its own fd: a link anywhere below $STATE stops the install instead.
+#   state_dir OWNER GROUP MODE PATH...     (each PATH under $STATE)
+# control/ and control/results/ are root's, readable by the hub's group; only requests/ is the
+# hub's (F3). A box from before kept them the hub's, and may hold links the hub left there: they
+# go (root's writers never follow one, but nothing of root's should sit in a folder with them).
+control_dirs() {
+	state_dir root "$HUB_USER" 750 "$STATE/control" "$STATE/control/results"
+	state_dir "$HUB_USER" "$HUB_USER" 700 "$STATE/control/requests"
+	find "$STATE/control" "$STATE/control/results" -mindepth 1 -maxdepth 1 \( -type l -o \( -type f -links +1 \) \) -delete
+	# Files the hub was given before are root's again: root reads some back (update.json says
+	# which commit was verified), and the hub must not be able to edit them in place.
+	find "$STATE/control" "$STATE/control/results" -mindepth 1 -maxdepth 1 -type f -exec chown -h root:"$HUB_USER" {} + -exec chmod 644 {} +
+}
+state_dir() {
+	python3 - "$STATE" "$@" <<'PY' || die "a folder under $STATE is a link or cannot be made (see above): look at what made it, remove it, and run again"
+import grp, os, pwd, sys
+base, owner, group, mode, *paths = sys.argv[1:]
+uid, gid, mode = pwd.getpwnam(owner).pw_uid, grp.getgrnam(group).gr_gid, int(mode, 8)
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+for path in paths:
+    rel = os.path.relpath(path, base)
+    if rel == "." or rel.startswith(".."):
+        sys.exit(f"state_dir: {path} is not under {base}")
+    fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for part in rel.split("/"):
+            try:
+                os.mkdir(part, 0o700, dir_fd=fd)
+            except FileExistsError:
+                pass
+            try:
+                nfd = os.open(part, flags, dir_fd=fd)
+            except OSError as exc:
+                sys.exit(f"state_dir: {path}: {part} is a link or not a folder ({exc.strerror})")
+            os.close(fd)
+            fd = nfd
+        os.fchown(fd, uid, gid)
+        os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
+PY
+}
+
 # --- the install record and log ------------------------------------------------------------
 # /var/log/irate-box/install.log keeps this run's output (the previous run's in .1), and
 # install-state.json how far it got: the step, the problems, and if it stopped early, where.
@@ -754,7 +800,8 @@ fi
 # --- user and directories --------------------------------------------------------
 id -u "$HUB_USER" >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin "$HUB_USER"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE"  # /var/lib is root's: no link to fear here
+state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
 install -d -m 755 "$CODE" "$APPS"
 install -d -m 750 "$ETC"
 
@@ -857,7 +904,7 @@ if [ "$APPS_FROM_ACTIONS" = 1 ]; then
 fi
 [ "$WITH_TOOLS" = 1 ] && fetch_apps+=(tools)
 if [ ${#fetch_apps[@]} -gt 0 ]; then
-	install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/library"
+	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/library"
 	for app in "${fetch_apps[@]}"; do
 		say "Fetching the $app app"
 		if zip="$(runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian app-fetch "$app")"; then
@@ -1032,7 +1079,7 @@ nginx_config() {
 }
 # Who may open each app (/admin, Apps and Add-ons: public, private or off): the choices so far,
 # or the defaults, as the web server's part, before the web server's config is checked.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 700 "$STATE/control"
+control_dirs
 access_install() {
 	HUB_WEB_SERVER="$1" HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_CADDY_HASH="${HASH:-}" \
 		"$CODE/irate-box" hub_control access-install
@@ -1210,7 +1257,7 @@ EOF
 # them from /admin with no root. The socket is the web server's group only. Who may push is
 # the web server's call (irate-box.nginx, the Caddyfile), so repos take every push it passes.
 say "Setting up the git servers"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/git" "$STATE/git/public" "$STATE/git/private"
+state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/git" "$STATE/git/public" "$STATE/git/private"
 web_group=caddy
 [ "$WEB" = nginx ] && web_group="$ngx_group"
 for area in public private; do
@@ -1221,7 +1268,9 @@ for area in public private; do
 		desc="Private repositories, behind the admin login."
 		url=/git-private/
 	fi
-	cat >"$STATE/git/cgitrc-$area" <<EOF
+	# Written as the hub (F5): the folder is the hub's, which can change the file anyway; root
+	# writing there by name would follow a link put in its place.
+	runuser -u "$HUB_USER" -- sh -c 'umask 022 && cat >"$1.new" && mv -T "$1.new" "$1"' sh "$STATE/git/cgitrc-$area" <<EOF
 # Generated by irate-box install.sh. Edits are overwritten on reinstall.
 css=/git-static/cgit.css
 logo=/git-static/cgit.png
@@ -1240,7 +1289,6 @@ remove-suffix=0
 # Last: the settings above apply to every repository it finds.
 scan-path=$STATE/git/$area
 EOF
-	chmod 644 "$STATE/git/cgitrc-$area"
 done
 cat >/etc/systemd/system/irate-box-git.socket <<EOF
 [Unit]
@@ -1280,9 +1328,11 @@ EOF
 say "Setting up builds on push"
 id -u hubci >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE/ci/home" --shell /usr/sbin/nologin hubci
-install -d -o hubci -g hubci -m 755 "$STATE/ci" "$STATE/ci/runs" "$STATE/ci/work" "$STATE/ci/home"
+# ci/ itself is root's (F5): hubci owns only what is inside, so it cannot swap those for links.
+state_dir root root 755 "$STATE/ci"
+state_dir hubci hubci 755 "$STATE/ci/runs" "$STATE/ci/work" "$STATE/ci/home"
 # Written by the hub (the hook), read and emptied by hubci: shared through the group.
-install -d -o "$HUB_USER" -g hubci -m 2770 "$STATE/ci/queue"
+state_dir "$HUB_USER" hubci 2770 "$STATE/ci/queue"
 for repo in "$STATE"/git/private/*.git; do
 	[ -d "$repo" ] && runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks"
 done
@@ -1413,24 +1463,29 @@ fi
 # --- Kiwix -----------------------------------------------------------------------
 if [ ${#ZIMS[@]} -gt 0 ]; then
 	say "Adding ZIMs to the Kiwix library"
-	install -d -o "$HUB_USER" -g "$HUB_USER" "$STATE/zim"
+	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/zim"
 	for z in "${ZIMS[@]}"; do
 		case "$z" in
 		http://* | https://*)
 			f="$STATE/zim/$(basename "${z%%\?*}")"
 			if [ ! -s "$f" ]; then
-				# -C - resumes a .part left by an earlier, interrupted run.
-				curl -fL --retry 5 -C - -o "$f.part" "$z"
-				mv "$f.part" "$f"
+				# -C - resumes a .part left by an earlier, interrupted run. As the hub, in the
+				# hub's folder (F3: as root, a link at $f.part would be written through).
+				runuser -u "$HUB_USER" -- curl -fL --retry 5 -C - -o "$f.part" "$z"
+				runuser -u "$HUB_USER" -- mv -T "$f.part" "$f"
 			fi
 			;;
 		*)
 			[ -f "$z" ] || die "--zim: no such file: $z"
 			f="$STATE/zim/$(basename "$z")"
-			[ "$(realpath "$z")" = "$f" ] || cp "$z" "$f"
+			# Root reads the owner's file; the hub writes the copy in its own folder (F3).
+			if [ "$(realpath "$z")" != "$f" ]; then
+				runuser -u "$HUB_USER" -- sh -c 'cat >"$1.part" && mv -T "$1.part" "$1"' sh "$f" <"$z" ||
+					die "--zim: could not copy $z to $f"
+			fi
 			;;
 		esac
-		chown "$HUB_USER:$HUB_USER" "$f"
+		chown -h "$HUB_USER:$HUB_USER" "$f"
 	done
 fi
 
@@ -1604,8 +1659,7 @@ EOF
 # /admin starts and stops services and changes the admin password, which need root. The
 # hub only queues a request in $STATE/control/requests/; this path unit runs hub_control.py
 # as root, which acts on its own allow-list only and answers in $STATE/control/results/.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 700 "$STATE/control" "$STATE/control/requests"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/control/results"
+control_dirs
 cat >/etc/systemd/system/irate-box-control.service <<EOF
 [Unit]
 Description=Irate-Box: carry out /admin requests that need root (services, admin password)
@@ -1643,7 +1697,7 @@ say "Publishing this box's own source"
 src_ver="$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
 # No git version (installed from a copy without its history): name it after the install date.
 case "$src_ver" in "" | unknown) src_ver="local-$(date -u +%Y%m%d)" ;; esac
-install -d -o root -g root -m 755 "$STATE/source"
+state_dir root root 755 "$STATE/source"
 src_tar="$STATE/source/irate-box-source.tar.gz"
 src_tmp="$(mktemp "$STATE/source/.irate-box-source.XXXXXX")"
 if tar -C "$(dirname "$CODE")" --exclude=__pycache__ --exclude='*.pyc' \
@@ -1695,7 +1749,6 @@ fi
 # through the root helper, so an update keeps what the owner chose there.
 say "Looking at the network"
 "$CODE/irate-box" netinv --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
-chown "$HUB_USER:$HUB_USER" "$STATE/control/netinv.json" 2>/dev/null || true
 if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
 	up="${UPLINK:-patient,normal}"
 	if [ "$up" = "${up#*,}" ]; then
@@ -1735,7 +1788,7 @@ EOF
 # librarian.py keeps ZIM books current from the sources set on /admin (Library). It runs
 # as the hub user: a new version is swapped in under the same file name and library.xml is
 # rebuilt, which kiwix-serve's --monitorLibrary picks up. No restart, so no root needed.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library" "$STATE/firmware"
+state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/zim" "$STATE/library" "$STATE/firmware"
 cat >/etc/systemd/system/irate-box-librarian.service <<EOF
 [Unit]
 Description=Irate-Box librarian: update the ZIM books whose check is due (/admin, Library)
@@ -1777,9 +1830,9 @@ if systemctl cat tailscaled.service >/dev/null 2>&1; then
 	WITH_TAILSCALE=1
 	say "Putting Tailscale under the remote-access switch on /admin"
 	if [ ! -f "$STATE/tailscale.want" ]; then
-		if systemctl is-active --quiet tailscaled; then echo on; else echo off; fi \
-			>"$STATE/tailscale.want"
-		chown "$HUB_USER:$HUB_USER" "$STATE/tailscale.want"
+		# Written as the hub, in its folder (F13).
+		if systemctl is-active --quiet tailscaled; then echo on; else echo off; fi |
+			runuser -u "$HUB_USER" -- sh -c 'cat >"$1"' sh "$STATE/tailscale.want"
 	fi
 	install -d /etc/systemd/system/tailscaled.service.d
 	cat >/etc/systemd/system/tailscaled.service.d/irate-box.conf <<'EOF'
@@ -1794,7 +1847,7 @@ Description=Irate-Box: apply the remote-access switch ($STATE/tailscale.want)
 
 [Service]
 Type=oneshot
-Environment=HUB_STATE_DIR=$STATE
+Environment=HUB_STATE_DIR=$STATE HUB_USER=$HUB_USER
 ExecStart=$CODE/scripts/tailscale-apply.sh
 EOF
 	cat >/etc/systemd/system/irate-box-tailscale.path <<EOF
@@ -1815,7 +1868,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-Environment=HUB_STATE_DIR=$STATE
+Environment=HUB_STATE_DIR=$STATE HUB_USER=$HUB_USER
 ExecStart=$CODE/scripts/tailscale-apply.sh --boot
 
 [Install]

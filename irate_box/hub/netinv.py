@@ -738,11 +738,10 @@ def ap_verdicts(inv):
 
 def write(inv, path=OUT):
     path = Path(path)
+    # As root, in control/, which the hub can change: never through a link it planted (F13).
+    from irate_box.root import safeio
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(inv, indent=2))
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, path)
+    safeio.write(path, json.dumps(inv, indent=2))
 
 
 # --- plain text -------------------------------------------------------------------------
