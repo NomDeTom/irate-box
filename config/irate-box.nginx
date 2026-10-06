@@ -208,15 +208,14 @@ server {
 	# On its socket (silverbullet.service). Its capability endpoints are refused here whatever
 	# the unit says: the shell (F1), the HTTP proxy, which can reach the hub's loopback API
 	# past the /admin login (F31), and the runtime API. Notes themselves stay open.
-	location = /notes { return 301 /notes/; }
+	# Notes live on an origin of their own (the server block at the end, port @NOTES_PORT@):
+	# a note is written by anyone with notes access, and its pages run script, so on the hub's
+	# origin a note could act with the owner's login (S4; next-work plan step 11).
+	location = /notes { return 302 $scheme://$host:@NOTES_PORT@/notes/; }
 	location ~* ^/notes/\.(shell|proxy|runtime) { return 403; }
 	location /notes/ {
 		if ($irate_box_off_notes) { return 404; }
-		auth_basic $irate_box_auth_notes;
-		auth_basic_user_file @HTPASSWD@;
-		client_max_body_size 50m;  # attachments
-		proxy_read_timeout 1h;
-		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
+		return 302 $scheme://$host:@NOTES_PORT@$request_uri;
 	}
 
 	# --- /sync -> Syncthing web GUI (add-on, operator only) -------------------------
@@ -469,6 +468,40 @@ server {
 		add_header Referrer-Policy no-referrer always;
 		add_header Cache-Control "no-cache" always;
 		try_files $uri $uri/index.html =404;
+	}
+	location / { return 404; }
+}
+
+# --- the notes origin: SilverBullet (--with-notes), next-work plan step 11 -------------------
+# Its own port, so what a note runs is on an origin with no /admin and none of the hub's
+# storage. The same login switch as before (/admin, Apps: public, private or off), the same
+# refusals, the same socket.
+server {
+	listen @NOTES_PORT@;
+	listen [::]:@NOTES_PORT@;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	absolute_redirect off;
+	include @ACCESS@;
+	client_max_body_size 50m;  # attachments
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection $irate_box_connection;
+	proxy_set_header X-Irate-Front "";
+	location = / { return 302 /notes/; }
+	location = /notes { return 301 /notes/; }
+	location ~* ^/notes/\.(shell|proxy|runtime) { return 403; }
+	location /notes/ {
+		if ($irate_box_off_notes) { return 404; }
+		auth_basic $irate_box_auth_notes;
+		auth_basic_user_file @HTPASSWD@;
+		proxy_read_timeout 1h;
+		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
 	}
 	location / { return 404; }
 }
