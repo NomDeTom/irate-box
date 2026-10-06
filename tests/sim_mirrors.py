@@ -9,7 +9,8 @@ from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="mirrors-"))
-os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_GIT_ROOT=str(T / "state" / "git"))
+os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_GIT_ROOT=str(T / "state" / "git"), HUB_MIRRORS_TEST_FILE="1",
+                  HUB_MIRROR_URLS=str(T / "state" / "git" / "mirror-urls.json"), HUB_CI_ROOT=str(T / "state" / "ci"))
 for a in ("public", "private"):
     (T / "state" / "git" / a).mkdir(parents=True)
 (T / "state" / "library").mkdir(parents=True)
@@ -102,6 +103,63 @@ for body in ({"action": "delete"}, {"action": "preset", "preset": "public-everyt
     code, out = gitrepos.action(dict(body, area="public", name="fw"))
     check(f"a mirror refuses {body['action']} from the Git page", code == 400 and "is a mirror" in out.get("error", ""), out)
 check("gitrepos lists it as a mirror of its upstream", next(r for r in gitrepos.snapshot()["repos"] if r["name"] == "fw")["mirror_of"] == URL)
+
+# Submodules: each kept ref's submodule commits, mirrored; a build then needs no upstream.
+SUB = T / "sub"
+g("init", "-q", "-b", "main", str(SUB))
+subs = []
+for i in (1, 2, 3):
+    (SUB / "s").write_text(f"{i}\n"); g("add", "s", cwd=SUB); g("commit", "-qm", f"s{i}", cwd=SUB)
+    subs.append(g("rev-parse", "HEAD", cwd=SUB).stdout.strip())
+UP2 = T / "up2"
+g("init", "-q", "-b", "main", str(UP2))
+g("-c", "protocol.file.allow=always", "submodule", "add", "-q", f"file://{SUB}", "lib", cwd=UP2)
+for i, tag in ((0, "v1.0.0"), (1, "v1.1.0"), (2, None)):
+    g("-C", "lib", "checkout", "-q", subs[i], cwd=UP2); g("add", "lib", ".gitmodules", cwd=UP2)
+    g("commit", "-qm", f"lib at s{i + 1}", cwd=UP2)
+    if tag:
+        g("tag", tag, cwd=UP2)
+sm = dict(base, name="withsub", upstream=f"file://{UP2}", submodules=True,
+          groups=[{"name": "r", "kind": "tags", "pattern": "v*", "keep": 1}])
+with mock.patch.object(mirrors, "load", return_value=[sm]):
+    line = mirrors.sync(sm)
+    urls = json.loads((T / "state" / "git" / "mirror-urls.json").read_text())
+check("submodules: mirrored, and said", line.endswith("1 submodule mirrored"), line)
+sp = T / "state" / "git" / "public" / "withsub--lib.git"
+kept = sorted(r.rsplit("/", 1)[-1] for r in refs(sp))
+check("…exactly the commits the kept refs name (main's and v1.1.0's lib)", kept == sorted([subs[1], subs[2]]), kept)
+check("…read-only, and a mirror of the submodule's URL", g("config", "--get", "irate-box.write", cwd=sp).stdout.strip() == "nobody"
+      and g("config", "--get", "irate-box.mirror", cwd=sp).stdout.strip() == f"file://{SUB}")
+check("the URL map names the mirror and its submodule", urls.get(f"file://{SUB}") == f"file://{sp}" and urls.get(f"file://{UP2}") == f"file://{mirrors.repo_path(sm)}", urls)
+# ci.py, as hubci: the rewrites in its global config, then a checkout with the upstream gone.
+from irate_box.hub import ci  # noqa: E402
+os.environ["HOME"] = str(T / "hubci-home"); (T / "hubci-home").mkdir()
+ci.use_mirrors()
+HENV = dict(ENV, HOME=str(T / "hubci-home"))
+gl = subprocess.run(["git", "config", "--global", "--get-regexp", "^url"], env=HENV, capture_output=True, text=True).stdout
+check("ci: hubci's git config rewrites each mirrored URL", f"url.file://{sp}.insteadof file://{SUB}" in gl, gl)
+import shutil
+shutil.rmtree(SUB)  # the "internet" goes away
+W = T / "build"
+g("clone", "-q", "--no-checkout", str(mirrors.repo_path(sm)), str(W)); g("checkout", "-q", "v1.1.0", cwd=W)
+r = subprocess.run(["git", "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+                   cwd=W, env=dict(ENV, HOME=str(T / "hubci-home")), capture_output=True, text=True)
+check("ci: with the submodule's upstream gone, a checkout gets it from the box", r.returncode == 0 and (W / "lib" / "s").read_text() == "2\n", r.stderr[-300:])
+with mock.patch.object(mirrors, "load", return_value=[]):
+    mirrors.write_urls()
+ci.use_mirrors()
+check("ci: a removed mirror's rewrite goes too", "insteadof" not in subprocess.run(["git", "config", "--global", "--get-regexp", "^url"],
+      env=HENV, capture_output=True, text=True).stdout.lower())
+
+# Changing a mirror's settings in place.
+mirrors._write(mirrors.SETTINGS, {"mirrors": [mirrors.validate(dict(base, upstream="https://github.com/meshtastic/firmware"))]})
+mirrors.change(dict(base, upstream="https://github.com/meshtastic/firmware", submodules=True))
+check("change: submodules switched on in place", mirrors.load()[0]["submodules"] is True)
+try:
+    mirrors.change(dict(base, upstream="https://github.com/meshtastic/firmware", area="private")); moved = True
+except librarian.LibrarianError:
+    moved = False
+check("change: the area stays", not moved)
 
 # Settings are checked.
 def bad(**kw):

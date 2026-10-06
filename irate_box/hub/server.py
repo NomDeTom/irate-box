@@ -693,6 +693,8 @@ def git_action(payload):
     try:
         if action == "mirror-add":
             mirrors.add(payload.get("mirror") or {})
+        elif action == "mirror-change":
+            mirrors.change(payload.get("mirror") or {})
         elif action == "mirror-remove":
             mirrors.remove(str(payload.get("name", "")))
         elif action in ("mirror-check", "mirror-update"):
@@ -703,7 +705,7 @@ def git_action(payload):
             if not library_start(action, run):
                 return 409, {"error": "the librarian is already running"}
         else:
-            return 400, {"error": "action must be mirror-add, mirror-remove, mirror-check or mirror-update"}
+            return 400, {"error": "action must be mirror-add, mirror-change, mirror-remove, mirror-check or mirror-update"}
     except librarian.LibrarianError as exc:
         return 400, {"error": str(exc)}
     return 200, git_snapshot()

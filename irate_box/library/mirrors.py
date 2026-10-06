@@ -17,11 +17,14 @@ A mirror's settings ($HUB_STATE_DIR/library/mirrors.json, set on /admin's Git pa
                    commit or a tag)
   history          "shallow" (each kept tag and branch tip at depth 1) or "full"
   budget_mb        a size cap: a mirror over it says so (and the doctor does)
+  submodules       also mirror each submodule the kept refs name, at exactly those commits,
+                   as a read-only repository beside it (<name>--<submodule>.git); builds on the
+                   box then take them from here (URLS: ci.py rewrites the upstream URLs)
 
 Each update fetches exactly what the policy names, deletes refs that fell out of it, and lets
 git drop their objects. It is read-only on the box (public-read-only or private-read-only:
 gitrepos.py), and says it is a mirror in its description. Everything runs as the hub user, in
-the hub's own folder: no root. Submodules are not mirrored yet.
+the hub's own folder: no root. Nested submodules (a submodule's own) are not followed.
 
     ./irate-box mirrors [check|update] [NAME ...]
 """
@@ -41,6 +44,9 @@ from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 
 SETTINGS = librarian.LIB_DIR / "mirrors.json"
+# upstream URL -> the local bare repository, for every mirror and submodule mirror: what a build
+# on the box (ci.py, as hubci) fetches instead. In the git folder, which hubci can read.
+URLS = gitrepos.ROOT / "mirror-urls.json"
 STATUS = librarian.LIB_DIR / "mirrors-status.json"
 KINDS = ("tags", "release", "prerelease")
 MAX_KEEP = 20
@@ -119,11 +125,14 @@ def validate(m):
     history = m.get("history", "shallow")
     if history not in ("shallow", "full"):
         raise LibrarianError("history: shallow or full")
+    if type(m.get("submodules", False)) is not bool:
+        raise LibrarianError("submodules: true or false")
     budget = m.get("budget_mb", 2048)
     if type(budget) is not int or not 1 <= budget <= 1 << 20:
         raise LibrarianError("budget_mb: a number of MB")
     return {"name": name, "area": area, "upstream": upstream, "branches": branches, "groups": groups,
-            "follow": follow, "pin": pin if follow == "pinned" else "", "history": history, "budget_mb": budget}
+            "follow": follow, "pin": pin if follow == "pinned" else "", "history": history, "budget_mb": budget,
+            "submodules": bool(m.get("submodules", False))}
 
 
 def _github(url):
@@ -147,6 +156,19 @@ def add(m):
     return m
 
 
+def change(m):
+    """A mirror's settings replaced (same name and area: those are where it lives)."""
+    m = validate(m)
+    mirrors = load()
+    old = next((x for x in mirrors if x["name"] == m["name"]), None)
+    if not old:
+        raise LibrarianError(f"no mirror {m['name']}")
+    if old["area"] != m["area"]:
+        raise LibrarianError("a mirror's area stays as it was: remove it and add it again to move it")
+    _write(SETTINGS, {"mirrors": [m if x["name"] == m["name"] else x for x in mirrors]})
+    return m
+
+
 def remove(name, delete_repo=True):
     mirrors = load()
     m = next((x for x in mirrors if x["name"] == name), None)
@@ -154,10 +176,13 @@ def remove(name, delete_repo=True):
         raise LibrarianError(f"no mirror {name}")
     _write(SETTINGS, {"mirrors": [x for x in mirrors if x["name"] != name]})
     st = status()
-    st.pop(name, None)
+    subs = (st.pop(name, None) or {}).get("submodules", {})
     _write(STATUS, st)
-    if delete_repo and repo_path(m).is_dir():
-        shutil.rmtree(repo_path(m))
+    if delete_repo:
+        for p in [repo_path(m)] + [gitrepos.ROOT / m["area"] / f"{s['repo']}.git" for s in subs.values()]:
+            if p.is_dir():
+                shutil.rmtree(p)
+    write_urls()
 
 
 # --- what the policy names -------------------------------------------------------------------
@@ -216,8 +241,9 @@ def wanted(m, refs=None, releases=None):
 
 # --- keeping it --------------------------------------------------------------------------------
 
-def _ensure_repo(m):
-    path = repo_path(m)
+def _ensure_repo(m, path=None, upstream=None, what=None):
+    path = path or repo_path(m)
+    upstream = upstream or m["upstream"]
     if not (path / "HEAD").exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         out = _git("init", "--quiet", "--bare", f"--initial-branch={m['branches'][0]}", str(path))
@@ -225,10 +251,86 @@ def _ensure_repo(m):
             raise LibrarianError((out.stderr.strip().splitlines() or ["git init failed"])[-1])
     # Read-only on the box, whatever the area: a mirror is the upstream's, not anyone's here.
     gitrepos.set_write_level(path, "nobody")
-    _git("config", "irate-box.mirror", m["upstream"], cwd=path)
+    _git("config", "irate-box.mirror", upstream, cwd=path)
     _git("symbolic-ref", "HEAD", f"refs/heads/{m['branches'][0]}", cwd=path)
-    (path / "description").write_text(f"Mirror of {m['upstream']} (kept by the box; read-only here)\n")
+    (path / "description").write_text(f"{what or 'Mirror'} of {upstream} (kept by the box; read-only here)\n")
     return path
+
+
+def _sub_name(m, sub_path):
+    """<mirror>--<submodule's last path part>, within a repository name's 64 characters."""
+    tail = re.sub(r"[^A-Za-z0-9._-]", "-", sub_path.rstrip("/").rsplit("/", 1)[-1]).strip(".-") or "sub"
+    return f"{m['name']}--{tail}"[:64].rstrip(".-")
+
+
+def _submodules_at(path, ref):
+    """{submodule path: (url, commit)} that `ref` names (its .gitmodules and its gitlinks)."""
+    urls = {}
+    out = _git("config", "--blob", f"{ref}:.gitmodules", "--get-regexp", r"^submodule\..*\.(path|url)$", cwd=path)
+    entries = {}
+    for line in out.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        name, field = key[len("submodule."):].rsplit(".", 1)
+        entries.setdefault(name, {})[field] = value
+    for e in entries.values():
+        if "path" in e and "url" in e:
+            urls[e["path"]] = e["url"]
+    out = _git("ls-tree", "-r", ref, cwd=path)
+    found = {}
+    for line in out.stdout.splitlines():
+        meta, _, sub_path = line.partition("\t")
+        mode, kind, sha = meta.split()
+        if mode == "160000" and sub_path in urls:
+            found[sub_path] = (urls[sub_path], sha)
+    return found
+
+
+def _sync_submodules(m, path, kept_refs, log):
+    """Each submodule the kept refs name, at exactly those commits, in a mirror of its own."""
+    want = {}
+    for ref in kept_refs:
+        for sub_path, (url, sha) in _submodules_at(path, ref).items():
+            want.setdefault(sub_path, {"url": url, "shas": set()})["shas"].add(sha)
+    depth = ["--depth", "1"] if m["history"] == "shallow" else []
+    out = {}
+    for sub_path, w in sorted(want.items()):
+        u = urllib.parse.urlsplit(w["url"])
+        # https only (file:// in tests, where the "internet" is a folder).
+        if (u.scheme != "https" and not (u.scheme == "file" and os.environ.get("HUB_MIRRORS_TEST_FILE"))) or u.username or u.password:
+            log(f"mirror {m['name']}: submodule {sub_path} is not an https URL ({w['url']}); left out")
+            continue
+        name = _sub_name(m, sub_path)
+        spath = _ensure_repo(m, gitrepos.ROOT / m["area"] / f"{name}.git", w["url"], f"Submodule {sub_path} of mirror {m['name']}, a mirror")
+        have = {r.rsplit("/", 1)[-1] for r in _local_refs(spath) if r.startswith("refs/kept/")}
+        for sha in sorted(w["shas"] - have):
+            log(f"mirror {m['name']}: submodule {sub_path} at {sha[:7]}")
+            r = _git("fetch", "--quiet", "--no-tags", "--no-write-fetch-head", *depth, w["url"], f"+{sha}:refs/kept/{sha}",
+                     cwd=spath, timeout=FETCH_TIMEOUT)
+            if r.returncode != 0:
+                raise LibrarianError(f"submodule {sub_path} at {sha[:7]}: {(r.stderr.strip().splitlines() or ['git fetch failed'])[-1][:200]}")
+        stale = have - w["shas"]
+        for sha in stale:
+            _git("update-ref", "-d", f"refs/kept/{sha}", cwd=spath)
+        if stale:
+            _git("reflog", "expire", "--expire=now", "--all", cwd=spath)
+            _git("gc", "--quiet", "--prune=now", cwd=spath, timeout=FETCH_TIMEOUT)
+        out[sub_path] = {"repo": name, "url": w["url"], "kept": sorted(w["shas"]), "size": gitrepos._size(spath)}
+    return out
+
+
+def write_urls():
+    """mirror-urls.json: each mirrored upstream URL (with and without .git) -> its local repository."""
+    st, urls = status(), {}
+    for m in load():
+        pairs = [(m["upstream"], repo_path(m))]
+        pairs += [(s["url"], gitrepos.ROOT / m["area"] / f"{s['repo']}.git") for s in st.get(m["name"], {}).get("submodules", {}).values()]
+        for url, local in pairs:
+            if (local / "HEAD").exists():
+                base = url[:-4] if url.endswith(".git") else url
+                for u in (base, base + ".git"):
+                    urls[u] = f"file://{local}"
+    _write(URLS, urls)
+    return urls
 
 
 def _local_refs(path):
@@ -269,8 +371,13 @@ def sync(m, check_only=False, log=print):
                 _git("gc", "--quiet", "--prune=now", cwd=path, timeout=FETCH_TIMEOUT)
             entry.update(missing=[], extra=[], updated=time.time())
             line = f"{len(missing)} fetched, {len(extra)} dropped" if missing or extra else "up to date"
+            if m.get("submodules"):
+                entry["submodules"] = _sync_submodules(m, path, sorted(keep), log)
+                line += f"; {len(entry['submodules'])} submodule{'s' if len(entry['submodules']) != 1 else ''} mirrored"
+            else:
+                entry.pop("submodules", None)
         if (path / "HEAD").exists():
-            size = gitrepos._size(path)
+            size = gitrepos._size(path) + sum(s.get("size", 0) for s in entry.get("submodules", {}).values())
             entry["size"] = size
             over = size > m["budget_mb"] << 20
             entry["over_budget"] = over
@@ -282,6 +389,8 @@ def sync(m, check_only=False, log=print):
         line = f"error: {exc}"
     entry["outcome"] = line
     _write(STATUS, st)
+    if not check_only:
+        write_urls()
     return line
 
 
