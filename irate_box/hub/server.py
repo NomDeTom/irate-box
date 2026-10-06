@@ -1453,7 +1453,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
 
     def handle_one_request(self):
-        super().handle_one_request()
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, BrokenPipeError):
+            # The client went (a kept-alive connection reset while idle, or a client that
+            # closed without reading the answer): a closed connection, not the hub's error.
+            self.close_connection = True
+            return
         if not self.close_connection:
             self._discard_body()
 
