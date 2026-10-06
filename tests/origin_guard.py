@@ -14,11 +14,17 @@ def check(name, cond, info=""):
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
 tmpl = (REPO / "config" / "irate-box.nginx").read_text()
-text = tmpl.replace("@PORT@", "80").replace("@ADDON_PORT@", "8090").replace("@NOTES_PORT@", "8091")
+text = tmpl.replace("@PORT@", "80").replace("@ADDON_PORT@", "8090").replace("@NOTES_PORT@", "8091").replace("@WIKI_PORT@", "8092")
 servers = secdoctor._nginx_servers(text)
 by_port = {tuple(p): b for p, b in servers}
 hub, notes = by_port.get(("80",), ""), by_port.get(("8091",), "")
-check("three server blocks: the hub, add-ons, notes", sorted(by_port) == [("80",), ("8090",), ("8091",)], sorted(by_port))
+check("four server blocks: the hub, add-ons, notes, books", sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",)], sorted(by_port))
+wiki = by_port.get(("8092",), "")
+check("the hub's port does not proxy to Kiwix", "127.0.0.1:8081" not in hub)
+check("/wiki/ on the hub's port redirects to the books' port, and keeps the off switch",
+      re.search(r"location /wiki/ \{\s*if \(\$irate_box_off_wiki\) \{ return 404; \}\s*return 302 \$scheme://\$host:8092\$request_uri;", hub) is not None)
+check("the books' port: the login switch, Kiwix, and no-cache on book pages",
+      wiki.count("auth_basic $irate_box_auth_wiki;") == 2 and "proxy_pass http://127.0.0.1:8081;" in wiki and 'add_header Cache-Control "no-cache" always;' in wiki)
 check("the hub's port does not proxy to SilverBullet", "silverbullet" not in re.sub(r"(?m)^\s*#.*$", "", hub))
 check("/notes/ on the hub's port redirects to the notes port, and keeps the off switch",
       re.search(r"location /notes/ \{\s*if \(\$irate_box_off_notes\) \{ return 404; \}\s*return 302 \$scheme://\$host:8091\$request_uri;", hub) is not None)
@@ -32,6 +38,6 @@ inst = (REPO / "install.sh").read_text()
 check("install.sh fills in the notes port", "NOTES_PORT=8091" in inst and 's|@NOTES_PORT@|$NOTES_PORT|g' in inst)
 check("the updater's nginx -t fills it in too", '"@NOTES_PORT@": "8091"' in (REPO / "irate_box/root/hub_control.py").read_text())
 place = {k: next((tuple(p) for p, b in servers if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
-check("the doctor sees notes on their own origin", place["notes"] == ("8091",), place)
+check("the doctor sees notes and books on their own origins", place["notes"] == ("8091",) and place["wiki"] == ("8092",), place)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

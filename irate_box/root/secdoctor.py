@@ -1457,7 +1457,7 @@ def step_kernel(ctx):
 # Which apps run on an origin of their own (next-work plan step 11; S4): what an app's pages run
 # can act with the owner's login only where it shares the hub's origin.
 OWN_ORIGIN = (("notes", "Notes (SilverBullet)", r"proxy_pass\s+http://unix:/run/silverbullet/"),
-              ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8888|kiwix"),
+              ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8081"),
               ("git", "cgit and pushed content", r"cgit\.cgi"))
 
 
