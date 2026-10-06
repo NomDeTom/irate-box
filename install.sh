@@ -1233,6 +1233,26 @@ fi
 
 
 # --- hub service -----------------------------------------------------------------
+# The sandbox for every unit that runs as the hub user, guest-facing as they are (F19): the
+# whole system read-only but what each names in ReadWritePaths, no privilege gained through a
+# setuid program, a /tmp of its own, no home folders, other users' processes out of sight, no
+# devices, kernel settings or modules, no namespaces.
+HUB_SANDBOX="ProtectSystem=strict
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectProc=invisible
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native"
 cat >/etc/systemd/system/irate-box.service <<EOF
 [Unit]
 Description=Irate-Box hub
@@ -1246,7 +1266,7 @@ EnvironmentFile=$ETC/front-secret.env
 ExecStart=$CODE/irate-box server
 WorkingDirectory=$STATE
 Restart=on-failure
-ProtectSystem=full
+$HUB_SANDBOX
 ReadWritePaths=$STATE
 
 [Install]
@@ -1328,7 +1348,7 @@ User=$HUB_USER
 Group=$HUB_USER
 Environment=HOME=$STATE
 ExecStart=/usr/sbin/fcgiwrap -c 2
-ProtectSystem=full
+$HUB_SANDBOX
 # The post-receive hook of a private repository queues builds there (ci.py).
 ReadWritePaths=$STATE/git $STATE/ci/queue
 EOF
@@ -1818,7 +1838,7 @@ ExecStart=$CODE/irate-box librarian update --scheduled
 # A download competes with guests for the card and the CPU; let it lose.
 Nice=10
 IOSchedulingClass=idle
-ProtectSystem=full
+$HUB_SANDBOX
 ReadWritePaths=$STATE
 EOF
 cat >/etc/systemd/system/irate-box-librarian.timer <<EOF
