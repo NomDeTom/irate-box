@@ -35,9 +35,11 @@ checks, summary = da.parse_cis(CIS)
 check("debian-cis's batch lines read: status, check, messages", len(checks) == 9 and checks[1] == ("KO", "1.1.3_tmp_nodev", ["/tmp is a partition", "/tmp has no option nodev in fstab!"])
       and summary["PASSED_CHECKS"] == "2" and summary["CONFORMITY_PERCENTAGE"] == "22.22", (checks[:2], summary))
 fs = {f["id"]: f for f in da.cis_findings(checks, summary, 180)}
-check("failed checks grouped by section, a warning each", fs["cis-5.2"]["status"] == "warn" and "2 checks not met" in fs["cis-5.2"]["title"]
-      and "disable_root_login" in fs["cis-5.2"]["detail"] and fs["cis-4.1"]["about"] == {"kind": "setting", "key": "cis-4.1"}, fs.get("cis-5.2"))
-check("  sections in the benchmark's order", [k for k in fs if k.startswith("cis-") and k[4].isdigit()] == ["cis-4.1", "cis-5.2"], list(fs))
+check("failed checks grouped by section, a warning each", fs["cis-5.2"]["status"] == "warn" and "1 check not met" in fs["cis-5.2"]["title"]
+      and "sshd_maxauthtries" in fs["cis-5.2"]["detail"] and fs["cis-4.1"]["about"] == {"kind": "setting", "key": "cis-4.1"}, fs.get("cis-5.2"))
+check("a check another source asks too (secdoctor_xref): a finding of its own, about the shared key", fs["cis-5.2.10_disable_root_login"]["about"] == {"kind": "setting", "key": "ssh-root-login"}
+      and fs["cis-5.2.10_disable_root_login"]["title"] == "CIS 5.2.10: SSH: logging in as root")
+check("  sections in the benchmark's order, then the shared ones", [k for k in fs if k.startswith("cis-") and k[4].isdigit()] == ["cis-4.1", "cis-5.2", "cis-5.2.10_disable_root_login"], list(fs))
 acc = [f for f in fs.values() if f["accepted"]]
 check("the box's design accepted, not counted: one partition, the web server, no firewall yet",
       {f["accepted"] for f in acc} == {"one partition: the box runs from an SD card, with no separate /var, /tmp or /home",
@@ -80,14 +82,14 @@ subprocess.run(["git", "clone", "-q", "--bare", str(w), str(bare)], check=True)
 subprocess.run(["git", "--git-dir", str(bare), "config", "irate-box.mirror", "https://github.com/ovh/debian-cis"], check=True)
 work = T / "work"; work.mkdir()
 got = {f["id"]: f for f in da.run_cis(work)}
-check("from the mirror: exported, run with its paths, read", "cis-5.2" in got and "1 of 2 checks pass (50.00 %)" in got["cis-summary"]["detail"], got)
+check("from the mirror: exported, run with its paths, read", "cis-5.2.10_disable_root_login" in got and "1 of 2 checks pass (50.00 %)" in got["cis-summary"]["detail"], got)
 
 # The deep audit: both, kept in control/security-deep.json, shown by every regular audit.
 with mock.patch.object(da, "run_cis", return_value=da.cis_findings(checks, summary, 180)), \
      mock.patch.object(da, "run_lynis", return_value=da.lynis_findings(rep, 281)):
     line = da.deep()
 kept = da.load()
-check("the deep audit kept, with both sources and its time", set(kept["sources"]) == {"debian-cis", "lynis"} and "to look at: debian-cis 2, lynis 1" in line
+check("the deep audit kept, with both sources and its time", set(kept["sources"]) == {"debian-cis", "lynis"} and "to look at: debian-cis 3, lynis 1" in line
       and not da.PROGRESS.exists(), line)
 from irate_box.root import secdoctor as sd  # noqa: E402
 steps = {sid: fn for sid, _, _, fn in sd.STEPS}
@@ -95,7 +97,7 @@ cis_step = steps["debian-cis"]({})
 check("the regular audit shows them as steps, dated", any(f["id"] == "cis-5.2" and "(deep audit of " in f["detail"] for f in cis_step)
       and any(f["id"] == "lynis-SSH-7408" for f in steps["lynis"]({})))
 j = sd.joint([{"findings": cis_step}])
-check("  and they reach the joint report (accepted ones left out)", {i["about"]["key"] for i in j["items"]} == {"cis-4.1", "cis-5.2"}, j["items"])
+check("  and they reach the joint report (accepted ones left out)", {i["about"]["key"] for i in j["items"]} == {"cis-4.1", "cis-5.2", "ssh-root-login"}, j["items"])
 kept["sources"]["lynis"]["at"] -= 20 * 86400
 (T / "state" / "control" / "security-deep.json").write_text(json.dumps(kept))
 check("an old deep audit is a warning of its own", any(f["id"] == "lynis-old" and f["status"] == "warn" for f in steps["lynis"]({})))

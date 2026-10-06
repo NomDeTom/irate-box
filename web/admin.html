@@ -815,6 +815,32 @@
         </div>
         <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
+        <h3>What is what</h3>
+        <p class="setting-desc" id="joint-summary"></p>
+        <div class="card-grid" id="joint-items"></div>
+        <details class="admin-output" id="joint-alone" hidden>
+          <summary>Seen by one source only: worth a look, or a false positive</summary>
+          <ul class="admin-checks" id="joint-alone-list"></ul>
+        </details>
+        <details class="admin-output" id="joint-sources-box">
+          <summary>What each source covers, and how fresh it is</summary>
+          <table class="admin-table"><thead><tr><th>Source</th><th>Covers</th><th>From</th><th>To fix / to look at</th></tr></thead>
+            <tbody id="joint-sources"></tbody></table>
+        </details>
+        <h3>Import a scan</h3>
+        <p class="setting-desc">
+          OpenVAS (Greenbone) or nmap, run from a PC on the hotspot against the box: the outside view,
+          including software debsecan can't see. Export the report (OpenVAS: XML or CSV; nmap:
+          <code>nmap -sV -oX report.xml &lt;box&gt;</code>) and choose it here. It is read in this browser;
+          only what it found is sent to the box, and kept until the next import of the same kind.
+        </p>
+        <form id="import-form" class="library-form inline-form">
+          <label>Report <input type="file" name="file" accept=".xml,.csv,text/xml,text/csv" required></label>
+          <button type="submit">Import</button>
+        </form>
+        <p class="setting-desc action-note" id="import-note" role="status" hidden></p>
+        <ul class="admin-list" id="import-list"></ul>
+        <h3>Each source in detail</h3>
         <div id="audit-steps"></div>
         <details class="admin-output" id="audit-scope" hidden>
           <summary>What the doctor cannot see</summary>

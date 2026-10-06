@@ -970,7 +970,14 @@ def security_snapshot():
         deep["progress"] = json.loads((CONTROL_DIR / "security-deep-progress.json").read_text())
     except (OSError, ValueError):
         pass
-    return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "log": log, "pending": _pending_actions("security-"),
+    imports = {}
+    for kind in ("openvas", "nmap"):
+        try:
+            rep = json.loads((STATE_DIR / "security-imports" / f"{kind}.json").read_text())
+            imports[kind] = {"name": rep.get("name"), "ran": rep.get("ran"), "imported": rep.get("imported"), "results": len(rep.get("results", []))}
+        except (OSError, ValueError):
+            pass
+    return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "imports": imports, "log": log, "pending": _pending_actions("security-"),
             "results": control_results(5)}
 
 
@@ -2212,6 +2219,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "security-audit"})})
             elif payload.get("action") == "deep":
                 self.send_json(202, {"id": control_request({"action": "security-deep-audit"})})
+            elif payload.get("action") in ("import", "import-remove"):
+                # A scan report read in the owner's browser (secimports.py); the doctor runs again.
+                from irate_box.hub import secimports
+                try:
+                    msg = secimports.save(payload.get("report")) if payload["action"] == "import" else \
+                        (secimports.remove(str(payload.get("kind", ""))) or "Removed.")
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(202, {"id": control_request({"action": "security-audit"}), "message": msg})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
