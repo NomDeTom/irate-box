@@ -588,7 +588,7 @@ def _hub_on_80():
     return '"nginx"' in out.stdout or '"caddy"' in out.stdout
 
 
-UNIT_RE = re.compile(r"^[A-Za-z0-9@._-]+\.(service|socket)$")
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*\.(service|socket)$")  # no leading "-" (F14)
 
 
 def _unit(rec, unit, on, reason="from this page"):

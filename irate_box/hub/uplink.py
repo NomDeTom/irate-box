@@ -67,6 +67,9 @@ from irate_box.hub import netinv
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
+# The reboot history the daily cap counts, kept where only root writes (F14): not in the status
+# file under $STATE, whose folder the hub could swap for one with an empty history.
+REBOOTS = ETC / "uplink-reboots.json"
 SETTINGS = ETC / "uplink.json"
 RECORD = ETC / "uplink-changes.json"
 STATUS = STATE / "control" / "uplink.json"
@@ -111,7 +114,7 @@ FIELDS = {
     "flap_action": ("note", "pin", "repair"), "reboots_per_day": (0, 10), "reboot_gap": (600, 86400),
     "steps": {s: (0, 86400) for s in STEPS},
 }
-IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9._-]{1,15})$")
+IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leading "-" (F14)
 
 
 def effective(chosen):
@@ -630,6 +633,20 @@ def write_status(data):
     from irate_box.root import safeio
     STATUS.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(STATUS, json.dumps(data, indent=2))
+    if "reboots" in data and os.geteuid() == 0:
+        safeio.write(REBOOTS, json.dumps(data["reboots"]), 0o600)
+
+
+def _reboot_history(old):
+    """Root's own record when running as root; the status file only in a test or a dry run."""
+    if os.geteuid() != 0 or not REBOOTS.exists():
+        # Not root, or the first start since the record moved here: the status file's history.
+        return old.get("reboots")
+    try:
+        got = json.loads(REBOOTS.read_text())
+        return [float(t) for t in got if isinstance(t, (int, float))]
+    except (OSError, ValueError, TypeError):
+        return []
 
 
 def read_status():
@@ -664,7 +681,7 @@ def serve(dry=False):
     old = read_status()
     chosen = load_settings()
     mtime = _settings_mtime()
-    w = Watch(effective(chosen), old.get("events"), old.get("reboots"))
+    w = Watch(effective(chosen), old.get("events"), _reboot_history(old))
     now = time.time()
     if old.get("events") and old["events"][-1]["text"].startswith("Reboot"):
         w.log(now, "info", "Started again after the reboot.")

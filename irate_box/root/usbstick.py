@@ -150,7 +150,8 @@ def _copy(src, dest, report=None, out=None):
     """src to dest, or to `out` (a file already open for it)."""
     size = os.path.getsize(src)
     done = 0
-    with open(src, "rb") as fi, (out or open(dest, "wb")) as fo:
+    # O_NOFOLLOW: neither the hub's zim/ nor a stick may hand root a link to read through (F14).
+    with os.fdopen(os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC), "rb") as fi, (out or open(dest, "wb")) as fo:
         while chunk := fi.read(CHUNK):
             fo.write(chunk)
             done += len(chunk)
@@ -210,7 +211,9 @@ def export_zim(device, book, zim_dir, report=None):
     if not NAME_RE.match(book):
         raise ValueError("not a book name")
     src = Path(zim_dir) / f"{book}.zim"
-    if not src.is_file():
+    # A plain file, not a link (F14): zim/ is the hub's, and a link there would have root copy
+    # any file it can read onto the stick.
+    if src.is_symlink() or not src.is_file():
         raise ValueError(f"the hub has no book called {book}")
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
