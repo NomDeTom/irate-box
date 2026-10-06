@@ -47,11 +47,13 @@ server {
 	# level, so every location below can read them.
 	include @ACCESS@;
 
-	# Caddy logged warnings only and compressed nothing on the fly; the same here. Uploads
-	# are unlimited except the file drop (below); nginx's own default is 1 MB.
+	# Caddy logged warnings only and compressed nothing on the fly; the same here. Request
+	# bodies: 1 MB, nginx's own default, except where a route needs more and says so (the
+	# drawing store and gallery 50 MB, the file drop 25 MB, git pushes 64 MB, notes 50 MB). nginx
+	# buffers a body to the card before passing it on, so "unlimited" let one guest fill it (F15).
 	access_log off;
 	gzip off;
-	client_max_body_size 0;
+	client_max_body_size 1m;
 	# Redirects stay relative, so /draw -> /draw/ keeps whatever host and port the guest used.
 	absolute_redirect off;
 
@@ -79,6 +81,9 @@ server {
 		add_header Cache-Control "no-cache";
 	}
 	location @irate_box_hub { proxy_pass http://irate_box_hub; }
+	# The drawing store and the gallery take whole drawings (store.py MAX_BODY, 50 MB).
+	location ^~ /api/v2/ { client_max_body_size 50m; proxy_pass http://irate_box_hub; }
+	location ^~ /api/saves { client_max_body_size 50m; proxy_pass http://irate_box_hub; }
 	# The file drop's page and its files, behind the same switch as its upload.
 	location = /drop.html {
 		if ($irate_box_off_drop) { return 404; }
@@ -207,6 +212,7 @@ server {
 		if ($irate_box_off_notes) { return 404; }
 		auth_basic $irate_box_auth_notes;
 		auth_basic_user_file @HTPASSWD@;
+		client_max_body_size 50m;  # attachments
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
 	}

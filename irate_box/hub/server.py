@@ -1391,6 +1391,7 @@ class HubServer(ThreadingHTTPServer):
 # closed) after it answers, so the web server's kept-alive connection never carries it into the
 # next request. The doctor's F2 check looks for this marker.
 DRAINS_REQUEST_BODIES = True
+MAX_JSON = 256 * 1024  # the largest JSON body the hub reads (F15); the store and drop have their own
 # More unread than this, and the connection is closed rather than read. Closing early is the
 # rougher choice (a client still sending sees a reset, and may lose the answer), so it is kept
 # for bodies far over any the hub takes (the drop's are up to 25 MB by default).
@@ -1915,7 +1916,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(404)
 
     def _read_payload(self):
-        length = int(self.headers.get("Content-Length", 0))
+        """The request's JSON, or None. Larger than MAX_JSON is not read at all (F15): the
+        caller answers 413 and the drain reads it away or closes the connection."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            return None
+        if length > MAX_JSON:
+            self._too_large = True
+            return None
         try:
             return json.loads(self.rfile.read(length))
         except ValueError:
@@ -1933,8 +1942,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if self._admin_refused(path) or self._forged(path) or self._admin_locked(path):
             return
+        self._too_large = False
         payload = self._read_payload()
         if payload is None:
+            if self._too_large:
+                self.send_json(413, {"error": f"a request to the hub is at most {MAX_JSON >> 10} KB"})
+                return
             self.send_json(400, {"error": "bad request"})
             return
 

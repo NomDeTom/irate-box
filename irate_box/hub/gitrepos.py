@@ -35,6 +35,8 @@ MAX_PUSH = 64 * 2**20
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_DESC = 200
 HOOKS = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks"
+# Public repositories' own: guests may not rewrite or delete, and a size cap (F18).
+HOOKS_PUBLIC = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks-public"
 
 
 def _git(*args, cwd=None):
@@ -116,6 +118,9 @@ def action(payload):
             _git("config", "http.receivepack", "true", cwd=path)
             if path.parent.name == "private":
                 _git("config", "core.hooksPath", str(HOOKS), cwd=path)
+            else:
+                _git("config", "core.hooksPath", str(HOOKS_PUBLIC), cwd=path)
+            _git("config", "receive.fsckObjects", "true", cwd=path)  # no malformed objects stored
             (path / "description").write_text((desc.strip() or "") + "\n")
         elif what == "delete":
             path = _target(payload)

@@ -1370,6 +1370,13 @@ state_dir "$HUB_USER" hubci 2770 "$STATE/ci/queue"
 for repo in "$STATE"/git/private/*.git; do
 	[ -d "$repo" ] && runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks"
 done
+# Public repositories: guests may not rewrite or delete branches, nobody may push past the
+# size cap, and every object is checked as it arrives (F18; git-hooks-public/pre-receive).
+for repo in "$STATE"/git/public/*.git; do
+	[ -d "$repo" ] || continue
+	runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks-public"
+	runuser -u "$HUB_USER" -- git -C "$repo" config receive.fsckObjects true
+done
 cat >/etc/systemd/system/irate-box-ci.path <<EOF
 [Unit]
 Description=Irate-Box builds on push: watch the queue ($STATE/ci/queue)
