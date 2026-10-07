@@ -38,6 +38,7 @@ from irate_box.hub import linkhistory
 from irate_box.library import librarian
 from irate_box.hub import manifests
 from irate_box.hub import store
+from irate_box.hub import svchistory
 from irate_box.hub import uplink
 from irate_box.library import zimcheck
 
@@ -852,6 +853,7 @@ def admin_box(proxied):
     now = CLOCK.ticks()
     return {"system": system_status(), "uptime": now, "online": online_count(now),
             "joined": joined_count(), "services": services, "version": hub_version(),
+            "service_uptime": svchistory.summarize(svchistory.load()),
             "results": control_results(),
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
@@ -2447,6 +2449,8 @@ if __name__ == "__main__":
     for what in clear_on_new_boot():
         print(f"New boot: cleared the {what}, as set on /admin")
     CLOCK.start()
+    # The services' uptime (step 35): every unit's state every five minutes, for /admin's grid.
+    svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
     server = HubServer((BIND, PORT), Handler)
