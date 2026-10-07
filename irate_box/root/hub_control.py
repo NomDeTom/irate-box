@@ -322,10 +322,12 @@ def set_login(pw, keep=True):
 SYNCTHING_GUI = "http://127.0.0.1:8384"
 
 
-def syncthing_gui_password(pw):
+def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
     """Syncthing's GUI password, through its REST API with the API key from its own config: the
     password travels in the request body, never on a command line (F9: `syncthing cli … password
-    set` put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves."""
+    set` put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves.
+    Tried again for a while: install.sh's `gui user set` just before restarts the GUI's listener,
+    and a request in that gap finds nothing there (the Lyra, 2026-10-07: /sync/ kept its old one)."""
     cfg = next((t for t in (STATE / ".local/state/syncthing/config.xml", STATE / ".config/syncthing/config.xml")
                 if t.exists()), None)
     m = re.search(r"<apikey>([^<]+)</apikey>", cfg.read_text()) if cfg else None
@@ -334,11 +336,14 @@ def syncthing_gui_password(pw):
     req = urllib.request.Request(f"{SYNCTHING_GUI}/rest/config/gui", method="PATCH",
                                  data=json.dumps({"password": pw}).encode(),
                                  headers={"X-API-Key": m.group(1), "Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return resp.status == 200
-    except OSError:
-        return False
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return resp.status == 200
+        except OSError:
+            if attempt + 1 < tries:
+                sleep(1)
+    return False
 
 
 # --- an offline kit of this box (/admin, Backup) ------------------------------------------
