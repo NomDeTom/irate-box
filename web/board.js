@@ -14,6 +14,41 @@ const decayNote = document.getElementById('board-decay-note');
 const threadForm = document.getElementById('thread-form');
 const replyForm = document.getElementById('reply-form');
 
+// Who may post, as the box's admin set it (accounts step 16): the forms say so, and a logged-in
+// user posts under their account's name, marked ✓ where the admin shows marks.
+let marks = false;
+const notes = [threadForm, replyForm].map((f) => {
+  const n = document.createElement('p');
+  n.className = 'setting-desc board-post-note';
+  f.after(n);
+  return n;
+});
+function applyPosting(p) {
+  if (!p) return;
+  marks = p.marks;
+  const closed = p.who === 'off' || (p.who === 'users' && !p.me);
+  [threadForm, replyForm].forEach((f, i) => {
+    f.hidden = closed;
+    notes[i].replaceChildren();
+    if (p.who === 'off') notes[i].textContent = 'The forum is closed to new posts.';
+    else if (closed) {
+      const a = document.createElement('a'); a.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; a.textContent = 'Log in';
+      notes[i].append(a, ' to post here: the box\'s admin keeps the forum for its users.');
+    }
+  });
+  for (const id of ['t-name', 'r-name']) {
+    const el = document.getElementById(id);
+    el.readOnly = !!p.me;
+    if (p.me) el.value = p.me;
+  }
+}
+const mark = (x) => (x.account && marks ? '<span class="verified" title="Posted by the box\'s account of that name">✓</span>' : '');
+async function posted(r, i) {
+  if (r.ok) { notes[i].textContent = ''; return true; }
+  notes[i].textContent = (await r.json().catch(() => ({}))).error || `Not posted (HTTP ${r.status}).`;
+  return false;
+}
+
 // Which thread we are looking at, or null for the list. Kept in the hash so a thread
 // is linkable and survives a refresh.
 function currentId() {
@@ -29,6 +64,7 @@ function setDecayNote(ttl) {
 
 function renderThreads(data) {
   setDecayNote(data.ttl);
+  applyPosting(data.posting);
   if (!data.threads.length) {
     threadsEl.innerHTML = '<span class="empty">No threads yet. Start one.</span>';
     return;
@@ -38,7 +74,7 @@ function renderThreads(data) {
       <span class="t-title">${esc(t.title)}</span>
       <span class="t-excerpt">${mdInline(t.excerpt)}</span>
       <span class="t-meta">
-        <span class="author">${esc(t.author)}</span> &middot; ${t.replies} ${t.replies === 1 ? 'reply' : 'replies'}
+        <span class="author">${esc(t.author)}</span>${mark(t)} &middot; ${t.replies} ${t.replies === 1 ? 'reply' : 'replies'}
         &middot; active ${formatAge(data.now - t.active)} ago
       </span>
     </a>`).join('');
@@ -46,11 +82,12 @@ function renderThreads(data) {
 
 function renderThread(data) {
   setDecayNote(data.ttl);
+  applyPosting(data.posting);
   const t = data.thread;
   titleEl.textContent = t.title;
   postsEl.innerHTML = t.posts.map((p, i) => `
     <div class="post${i === 0 ? ' op' : ''}" style="--author-hue:${hueOf(p, 'author')}">
-      <span class="author">${esc(p.author)}</span>
+      <span class="author">${esc(p.author)}</span>${mark(p)}
       <span class="time">${formatAge(data.now - p.created)} ago</span>
       <div class="text">${mdInline(p.text)}</div>
     </div>`).join('');
@@ -91,7 +128,7 @@ threadForm.addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (r.ok) {
+    if (await posted(r, 0)) {
       const { thread } = await r.json();
       document.getElementById('t-title').value = '';
       document.getElementById('t-text').value = '';
@@ -108,11 +145,12 @@ replyForm.addEventListener('submit', async (e) => {
   const text = document.getElementById('r-text').value.trim();
   if (id === null || !name || !text) return;
   try {
-    await fetch(`/board/thread/${id}`, {
+    const r = await fetch(`/board/thread/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
+    if (!(await posted(r, 1))) return;
     document.getElementById('r-text').value = '';
     await refresh();
   } catch (_) {}

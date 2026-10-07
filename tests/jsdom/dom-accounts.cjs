@@ -62,6 +62,33 @@ function page(file, url, fetcher, scripts) {
     && d.getElementById('acct-login-form').hidden && d.getElementById('acct-signup-form').hidden);
   check('account page: no errors', !p.errors.length, p.errors.join(' | '));
 
+  // The shoutbox and forum on the home page (stage 5): as the admin set posting.
+  const nowT = 1000;
+  const shout = (posting) => ({ now: nowT, ttl: 86400, messages: [{ name: 'erin', text: 'hi', created: nowT - 5, account: 'erin' },
+    { name: 'Salty Parrot', text: 'ahoy', created: nowT - 3 }], posting });
+  const board = (posting) => ({ now: nowT, ttl: 604800, threads: [{ id: 1, title: 'T', author: 'erin', account: 'erin', created: 1, active: 1, replies: 0, excerpt: 'x' }], posting });
+  const home = async (posting) => {
+    const h = page('index.html', 'http://box.local/', async (u) => (u === '/messages' ? json(shout(posting)) : u === '/board/threads' ? json(board(posting)) : json({}, 404)),
+      ['age.js', 'ident.js', 'emoji.js', 'shoutbox.js', 'board.js']);
+    await wait(300);
+    return h;
+  };
+  let h = await home({ who: 'guests', marks: true, me: 'erin' });
+  d = h.d;
+  check('home: a user\'s posts marked ✓, a guest\'s not', [...d.querySelectorAll('#messages .msg')].map((m) => !!m.querySelector('.verified')).join() === 'true,false'
+    && !!d.querySelector('#threads .verified'));
+  check('  logged in: the name is the account\'s, fixed, no random names', d.getElementById('name-input').value === 'erin' && d.getElementById('name-input').readOnly
+    && d.getElementById('name-roll').hidden && d.getElementById('t-name').value === 'erin' && d.getElementById('t-name').readOnly);
+  h = await home({ who: 'users', marks: false, me: null });
+  d = h.d;
+  check('users only, a guest: the forms hidden, a link to log in; marks off: none shown', d.getElementById('shout-form').hidden
+    && /Log in to post here/.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
+    && !d.querySelector('.verified'));
+  h = await home({ who: 'off', marks: true, me: 'erin' });
+  check('  off: closed, even for a user', h.d.getElementById('shout-form').hidden && /closed/.test(t(h.d.querySelector('.shout-post-note')))
+    && /closed to new posts/.test(t(h.d.querySelector('.board-post-note'))));
+  check('home: no errors', !h.errors.length, h.errors.join(' | '));
+
   // /admin → Accounts.
   const now = Math.floor(Date.now() / 1000);
   let state = { settings: { signup: 'apply', http: 'warning' }, counts: { user: 1, admins: 1, asked: 1, disabled: 0 },

@@ -3471,6 +3471,25 @@ acctEl.make.addEventListener('submit', (e) => {
   acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
   f.name.value = '';
 });
+// Who may post on the shoutbox and forum, and the users' marks (the hub's settings).
+const acctPosting = document.getElementById('accounts-posting');
+const POSTING_KEYS = ['shout_who', 'shout_marks', 'board_who', 'board_marks'];
+async function loadPosting() {
+  try {
+    const st = await getJSON('/admin/settings');
+    POSTING_KEYS.forEach((k) => { const f = acctPosting.elements[k]; if (f.type === 'checkbox') f.checked = st[k] === true; else f.value = st[k]; });
+  } catch (_) { /* the rest of the pane says if the hub can't be read */ }
+}
+acctPosting.addEventListener('change', async (e) => {
+  const f = e.target;
+  try {
+    const st = await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value });
+    POSTING_KEYS.forEach((k) => { const g = acctPosting.elements[k]; if (g.type === 'checkbox') g.checked = st[k] === true; else g.value = st[k]; });
+    say('Saved.', true, acctEl.note);
+  } catch (err) { say(err.message, false, acctEl.note); loadPosting(); }
+});
+window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadPosting(); });
+if (location.hash === '#accounts') loadPosting();
 window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadAccounts(); });
 if (location.hash === '#accounts') loadAccounts();
 

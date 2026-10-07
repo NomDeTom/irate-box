@@ -401,12 +401,21 @@ DEFAULT_SETTINGS = {
     # The Firmware Factory's tile on the front page (step 36): its queue for anyone to follow, and
     # what it built to download. Off until the owner shows it.
     "factory_tile": False,
+    # The shoutbox and the forum (accounts step 16, Tom's answer 6): who may post, guests (and
+    # users), users only, or off; and whether a user's name carries a check mark.
+    "shout_who": "guests",
+    "shout_marks": True,
+    "board_who": "guests",
+    "board_marks": True,
 }
+POSTERS = ("guests", "users", "off")
 _settings_lock = threading.Lock()
 
 
 def valid_setting(key, value):
     want = type(DEFAULT_SETTINGS[key])
+    if key in ("shout_who", "board_who"):
+        return value in POSTERS
     return type(value) is want and (want is not int or value >= 0)
 
 
@@ -1937,11 +1946,11 @@ class Handler(BaseHTTPRequestHandler):
             now = CLOCK.ticks()
             with lock:
                 msgs = live_messages(now)
-            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs})
+            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout")})
             return
 
         if path == "/board/threads":
-            self.send_json(200, BOARD.list_threads())
+            self.send_json(200, dict(BOARD.list_threads(), posting=self._posting_view("board")))
             return
 
         if path == "/admin/settings":
@@ -2269,7 +2278,7 @@ class Handler(BaseHTTPRequestHandler):
             if result is None:
                 self.send_json(404, {"error": "no such thread"})
             else:
-                self.send_json(200, result)
+                self.send_json(200, dict(result, posting=self._posting_view("board")))
             return
 
         if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
@@ -2686,11 +2695,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/board/threads":
+            poster = self._poster("board", str(payload.get("name", "")))
+            if poster is None:
+                return
             try:
-                result = BOARD.create_thread(payload.get("name"),
+                result = BOARD.create_thread(poster[0],
                                              payload.get("title"),
                                              payload.get("text"),
-                                             payload.get("hue"))
+                                             payload.get("hue"), poster[1])
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -2699,9 +2711,12 @@ class Handler(BaseHTTPRequestHandler):
 
         tid = thread_id(path)
         if tid is not None:
+            poster = self._poster("board", str(payload.get("name", "")))
+            if poster is None:
+                return
             try:
-                result = BOARD.reply(tid, payload.get("name"), payload.get("text"),
-                                     payload.get("hue"))
+                result = BOARD.reply(tid, poster[0], payload.get("text"),
+                                     payload.get("hue"), poster[1])
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -2776,9 +2791,39 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(404, {"error": "not found"})
 
+    def _poster(self, kind, name):
+        """Who is posting to the shoutbox or forum (kind "shout" or "board"), as the admin allows:
+        (name, account), or None once the refusal is sent. A logged-in user posts under their
+        account's name; a guest (where guests may) under any name but an account's."""
+        what = "shoutbox" if kind == "shout" else "forum"
+        who = settings_snapshot()[f"{kind}_who"]
+        if who == "off":
+            self.send_json(403, {"error": f"the {what} is closed"})
+            return None
+        me = accounts.session(self._session_token())
+        if me:
+            return me["name"], me["name"]
+        if who == "users":
+            self.send_json(403, {"error": f"log in to post on the {what} (/account.html)", "login": True})
+            return None
+        if accounts.exists(name):
+            self.send_json(403, {"error": f"{name.strip()} is an account's name: log in to post as it"})
+            return None
+        return name, None
+
+    def _posting_view(self, kind):
+        """What a page needs to show the shoutbox or forum's posting as it is: who may post,
+        whether users' names are marked, and who this is."""
+        st = settings_snapshot()
+        me = accounts.session(self._session_token())
+        return {"who": st[f"{kind}_who"], "marks": st[f"{kind}_marks"], "me": me["name"] if me else None}
+
     def _post_message(self, payload):
-        name = str(payload.get("name", "")).strip()[:32]
         text = str(payload.get("text", "")).strip()[:200]
+        poster = self._poster("shout", str(payload.get("name", "")).strip()[:32])
+        if poster is None:
+            return
+        name, account = poster
         if not name or not text:
             self.send_json(400, {"error": "name and text required"})
             return
@@ -2804,6 +2849,8 @@ class Handler(BaseHTTPRequestHandler):
         }
         if hue is not None:
             entry["hue"] = hue
+        if account:
+            entry["account"] = account
         with lock:
             msgs = live_messages(now)
             msgs.append(entry)

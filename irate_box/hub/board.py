@@ -51,10 +51,12 @@ def _clean(value, limit):
     return str(value or "").strip()[:limit]
 
 
-def _post(author, text, now, hue):
+def _post(author, text, now, hue, account=None):
     post = {"author": author, "text": text, "created": now}
     if hue is not None:
         post["hue"] = hue
+    if account:
+        post["account"] = account  # posted by a logged-in account of that name (accounts.py)
     return post
 
 
@@ -133,6 +135,7 @@ class Board:
                 "replies": max(0, len(t["posts"]) - 1),
                 "excerpt": t["posts"][0]["text"][:140] if t["posts"] else "",
                 "hue": t["posts"][0].get("hue") if t["posts"] else None,
+                "account": t["posts"][0].get("account") if t["posts"] else None,
             }
             for t in self._visible(state, now)
         ]
@@ -148,7 +151,7 @@ class Board:
 
     # --- writes ------------------------------------------------------------
 
-    def create_thread(self, author, title, text, hue=None):
+    def create_thread(self, author, title, text, hue=None, account=None):
         author, title, text = (_clean(author, MAX_AUTHOR),
                                _clean(title, MAX_TITLE),
                                _clean(text, MAX_TEXT))
@@ -165,7 +168,7 @@ class Board:
                 "author": author,
                 "created": now,
                 "active": now,
-                "posts": [_post(author, text, now, hue)],
+                "posts": [_post(author, text, now, hue, account)],
             }
             state["next_id"] += 1
             state["threads"].append(thread)
@@ -173,7 +176,7 @@ class Board:
             self._save(state)
             return {"now": now, "thread": thread}
 
-    def reply(self, tid, author, text, hue=None):
+    def reply(self, tid, author, text, hue=None, account=None):
         author, text = _clean(author, MAX_AUTHOR), _clean(text, MAX_TEXT)
         hue = _clean_hue(hue)
         if not author or not text:
@@ -185,7 +188,7 @@ class Board:
             for t in state["threads"]:
                 if t["id"] != tid or now - t.get("active", 0) > self.ttl:
                     continue
-                post = _post(author, text, now, hue)
+                post = _post(author, text, now, hue, account)
                 t["posts"].append(post)
                 # Oldest replies fall off, but never the opening post -- losing it
                 # would leave a thread with a title and no subject.
