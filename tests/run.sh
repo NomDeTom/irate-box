@@ -22,6 +22,7 @@ run sim_svchistory.py
 run sim_rtc.py
 run sim_selfupdate.py
 run sim_configs.py
+run sim_books.py
 run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py

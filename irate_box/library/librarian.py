@@ -653,7 +653,7 @@ def remove_source(name, delete_book=False):
         with Lock():
             (ZIM_DIR / f"{name}.zim").unlink(missing_ok=True)
             shutil.rmtree(ARCHIVE_DIR / name, ignore_errors=True)
-            rebuild_library()
+            library_drop(f"{name}.zim")
 
 
 def set_policy(**changes):
@@ -879,19 +879,88 @@ def _safe(version):
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", version)[:80]
 
 
-def rebuild_library():
-    """library.xml from the .zim files actually present, as install.sh does. kiwix-serve's
-    --monitorLibrary notices the new file and serves the new versions."""
+# Kiwix's catalogue at hundreds of books (next-work plan step 14). Measured on the Lyra, 2026-10-07:
+# one kiwix-manage run per book, each rewriting the whole library.xml, took over 10 minutes for 300
+# small books, and ran again in full for every new one. One run takes many books (49 in 1.5 s),
+# but a single unreadable one makes it write nothing: so a failing batch is halved until that book
+# is alone, and left out. A new or removed book changes only its own entry.
+KIWIX_BATCH = 100
+
+
+def _kiwix(*args):
     manage = shutil.which("kiwix-manage")
     if not manage:
         raise LibrarianError("kiwix-manage is not installed (kiwix-tools)")
+    return subprocess.run([manage, *map(str, args)], check=False, stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode
+
+
+def _kiwix_add(lib, zims):
+    """Add zims to lib in as few runs as will go. Returns the books left out (unreadable)."""
+    if not zims:
+        return []
+    if _kiwix(lib, "add", *zims) == 0:
+        return []
+    if len(zims) == 1:
+        return list(zims)
+    mid = len(zims) // 2
+    return _kiwix_add(lib, zims[:mid]) + _kiwix_add(lib, zims[mid:])
+
+
+def _entries(lib, filename):
+    """The ids of lib's entries for a book file (kiwix-manage writes paths relative to lib)."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.parse(lib).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    return [b.get("id") for b in root.iter("book") if Path(b.get("path", "")).name == filename and b.get("id")]
+
+
+def rebuild_library():
+    """library.xml from the .zim files actually present, as install.sh does: in batches, the
+    unreadable ones left out (returned). kiwix-serve's --monitorLibrary notices the new file."""
     new = ZIM_DIR / "library.xml.new"
     new.unlink(missing_ok=True)
-    for zim in sorted(ZIM_DIR.glob("*.zim")):
-        subprocess.run([manage, str(new), "add", str(zim)], check=False,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    zims = sorted(ZIM_DIR.glob("*.zim"))
+    left = []
+    for i in range(0, len(zims), KIWIX_BATCH):
+        left += _kiwix_add(new, zims[i:i + KIWIX_BATCH])
     if new.exists():
         os.replace(new, LIBRARY_XML)
+    return left
+
+
+def library_put(book):
+    """One book added or replaced in Kiwix's catalogue: its old entry (by file name) removed, the
+    new one added, on a copy swapped in. A missing or unreadable catalogue is rebuilt instead."""
+    book = Path(book)
+    ids = _entries(LIBRARY_XML, book.name) if LIBRARY_XML.exists() else None
+    if ids is None:
+        return rebuild_library()
+    new = ZIM_DIR / "library.xml.new"
+    shutil.copyfile(LIBRARY_XML, new)
+    if ids and _kiwix(new, "remove", *ids) != 0:
+        new.unlink(missing_ok=True)
+        return rebuild_library()
+    left = _kiwix_add(new, [book]) if book.exists() else []
+    os.replace(new, LIBRARY_XML)
+    return left
+
+
+def library_drop(filename):
+    """A book's entries out of Kiwix's catalogue (its file already gone)."""
+    ids = _entries(LIBRARY_XML, filename) if LIBRARY_XML.exists() else None
+    if ids is None:
+        return rebuild_library()
+    if ids:
+        new = ZIM_DIR / "library.xml.new"
+        shutil.copyfile(LIBRARY_XML, new)
+        if _kiwix(new, "remove", *ids) != 0:
+            new.unlink(missing_ok=True)
+            return rebuild_library()
+        os.replace(new, LIBRARY_XML)
+    return []
 
 
 def _prune_archive(name, keep):
@@ -970,7 +1039,7 @@ def install(src, cand, policy, status_entry):
         staged.unlink(missing_ok=True)
         status_entry.pop("fetched", None)
 
-    rebuild_library()
+    library_put(book)
     archived = _prune_archive(name, policy["keep_old"])
     status_entry["current"] = {"version": cand["version"], "label": cand["label"],
                                "size": book.stat().st_size, "installed": now_iso()}
@@ -1010,7 +1079,7 @@ def rollback(name, version=None):
             raise
         os.replace(tmp, book)
         pick.unlink()
-        rebuild_library()
+        library_put(book)
         entry["current"] = {"version": pick.stem, "label": f"rolled back to {pick.stem}",
                             "size": book.stat().st_size, "installed": now_iso()}
         entry["archive"] = _prune_archive(name, max(load_config()["policy"]["keep_old"], 1))
