@@ -18,7 +18,8 @@ function page(running) {
   const posted = [], errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push(e.message); });
-  const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+  // Its script tags stay: jsdom loads no src and runs none of the page's own scripts (outside-only).
+  const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
   const dom = new JSDOM(html, { url: 'http://box.local/admin/#network', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
   dom.window.confirm = () => true;
   dom.window.fetch = async (u, o = {}) => {
