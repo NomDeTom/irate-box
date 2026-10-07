@@ -135,13 +135,24 @@ calls = []
 def fake_api(path, auth=None):
     calls.append(path)
     if "/runs?" in path:
-        return {"workflow_runs": [{"id": 1, "head_repository": {"full_name": "fork/excalidraw"}},
-                                  {"id": 2, "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
+        return {"workflow_runs": [{"id": 1, "event": "push", "head_repository": {"full_name": "fork/excalidraw"}},
+                                  {"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}},
+                                  {"id": 2, "event": "workflow_dispatch", "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
     return {"artifacts": [{"name": "irate-box-draw-x", "expired": False, "id": int(path.split("/")[-2])}]}
 with mock.patch.object(librarian, "_api", side_effect=fake_api):
     run_, art = librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
-check("F30: a fork's run is passed over for the repository's own", run_["id"] == 2, run_)
-check("F30: only push runs are asked for", "event=push" in calls[0], calls[0])
+check("F30: a fork's run and a pull request's are passed over; one started by hand is taken (mermaid-docs, 2026-10-07)", run_["id"] == 2, run_)
+check("F30: the trusted events: push, by hand, on schedule", librarian.TRUSTED_EVENTS == ("push", "workflow_dispatch", "schedule"))
+def only_untrusted(path, auth=None):
+    if "/runs?" in path:
+        return {"workflow_runs": [{"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
+    return {"artifacts": [{"name": "irate-box-draw-x", "expired": False, "id": 9}]}
+with mock.patch.object(librarian, "_api", side_effect=only_untrusted):
+    try:
+        librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
+        check("F30: only a pull request's run: refused, and said", False)
+    except librarian.LibrarianError as exc:
+        check("F30: only a pull request's run: refused, and said", "1 run from a pull request or a fork passed over" in str(exc), str(exc))
 inst = (REPO / "install.sh").read_text(); un = (REPO / "uninstall.sh").read_text(); ngx = (REPO / "config/irate-box.nginx").read_text()
 ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
 check("F30: install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)
