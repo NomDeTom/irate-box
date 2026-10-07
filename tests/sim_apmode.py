@@ -223,5 +223,32 @@ p7 = ap.start(fake_run, inv4, settings)
 check("  start: hostapd's configuration (600) and unit written, not a NetworkManager keyfile",
       ap.HOSTAPD_CONF.stat().st_mode & 0o777 == 0o600 and (ap.UNITS / ap.HOSTAPD_UNIT).exists() and ["systemctl", "restart", ap.HOSTAPD_UNIT] in calls)
 ap.stop(fake_run)
+
+# The box doctor's hotspot checks (health.check_hotspot).
+from irate_box.root import health  # noqa: E402
+inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up); inv["ap"] = v
+ap.start(fake_run, inv, settings)
+active = {"nm": True, "dns": True}
+def doc_run(*cmd, **kw):
+    if cmd[:2] == ("iw", "dev"):
+        return fake_run(*cmd)
+    if cmd[0] == "nmcli":
+        return subprocess.CompletedProcess(cmd, 0, "irate-box-ap\nnetplan-wlan0\n" if active["nm"] else "netplan-wlan0\n", "")
+    if cmd[:2] == ("systemctl", "is-active"):
+        return subprocess.CompletedProcess(cmd, 0 if active["dns"] else 3, "", "")
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+health.run = doc_run
+iw["ap0"] = 11
+f = {x["id"]: x for x in health.check_hotspot()}
+check("doctor: the hotspot on its channel, its connection and dnsmasq up: ok", f["hotspot-iface"]["status"] == "ok" and set(f) == {"hotspot-iface"}, f)
+active["dns"] = False; iw["ap0"] = 6
+f = {x["id"]: x for x in health.check_hotspot()}
+check("  dnsmasq down: a problem with a restart offered; on the wrong channel: a warning",
+      f["hotspot-dns"]["status"] == "problem" and f["hotspot-dns"]["actions"] and f["hotspot-iface"]["status"] == "warn", f)
+del iw["ap0"]
+f = {x["id"]: x for x in health.check_hotspot()}
+check("  its interface gone: a problem", f["hotspot-iface"]["status"] == "problem", f)
+iw["ap0"] = None; ap.stop(fake_run)
+check("  off: nothing to check", health.check_hotspot() == [])
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
