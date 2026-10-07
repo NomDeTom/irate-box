@@ -381,15 +381,23 @@ server {
 		add_header X-Content-Type-Options nosniff;
 	}
 	# The hub says whether this request needs no login (a fetch, or a push to a repository
-	# anyone may push to, while the git app is public); if not, the admin login is the other
-	# way in (satisfy any). The hub never sees a password.
+	# anyone may push to, while the git app is public), or whether its own credentials are an
+	# account's that may (accounts step 16); if not, the box's own login is the other way in
+	# (satisfy any), which the hub never sees. Every header set again, as setting one drops the
+	# server's (Connection above all: see /_irate_user).
 	location = /_irate_git_access {
 		internal;
+		proxy_method GET;
 		proxy_pass http://irate_box_hub/internal/git-access;
 		proxy_pass_request_body off;
 		proxy_set_header Content-Length "";
 		proxy_set_header X-Original-URI $request_uri;
 		proxy_set_header X-Original-Method $request_method;
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
 	}
 	location ~ ^/git/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
 		if ($irate_box_off_git) { return 404; }
@@ -415,6 +423,8 @@ server {
 		return 302 $scheme://$host:$irate_box_git_port$request_uri;
 	}
 	location ~ ^/git-private/(?<irate_box_git_path>[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$ {
+		satisfy any;
+		auth_request /_irate_git_access;
 		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
 		client_max_body_size 64m;
@@ -741,6 +751,7 @@ server {
 	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
 		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
+		include @ACCESS@.d/gate-admin.conf*;
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
 		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-private;

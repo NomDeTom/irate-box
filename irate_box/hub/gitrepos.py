@@ -9,18 +9,21 @@ by the hub user, who also runs git http-backend and cgit for them (irate-box-git
   private/  /git-private/  everything behind the admin login
 
 Who may push is each repository's own: its preset (next-work plan step 10), kept in its config
-as irate-box.write = everyone | admin | nobody. Reading follows the area (cgit lists a whole
-area), so the presets are:
+as irate-box.write = everyone | users | admin | nobody. Reading follows the area (cgit lists a
+whole area), so the presets are:
 
   public-everything    public   anyone pushes (security review F17, F18: the doctor warns)
+  public-users-write   public   any account pushes, with its name and password (accounts step 16)
   public-admin-writes  public   the admin pushes (the default)
   public-read-only     public   nobody pushes: content arrives by publishing or mirroring
   private-to-admin     private  the admin pushes (the default)
   private-read-only    private  nobody pushes
 
-nginx asks the hub on every push to /git/ (auth_request to /internal/git-access, decide()
-here): yes when anonymous is enough, otherwise its admin login decides (satisfy any). The hub
-never sees a password. http.receivepack follows the level, so git itself refuses a push to a
+nginx asks the hub on every push or fetch (auth_request to /internal/git-access, decide()
+here): yes when anonymous is enough, or when the request's own basic-auth credentials are an
+account's that may (accounts.py: a user where users push, an admin account where the admin
+does, the private area included); otherwise the box's own admin login decides (satisfy any),
+which the hub never sees. http.receivepack follows the level, so git itself refuses a push to a
 nobody-writes repository even with the login. (The old guest-push flag file was one switch for
 every public repository; install.sh turns it into public-everything on each.) Private ones also get the hub's own hooks (git-hooks/, core.hooksPath): a push
 whose commit has a .irate-ci.sh queues a build (ci.py). Public ones never do, since guests may
@@ -39,13 +42,14 @@ from pathlib import Path
 ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] / "git"))
 AREAS = {"public": "/git/", "private": "/git-private/"}
 GUEST_PUSH = ROOT / "guest-push"  # the old switch: read only as the default for repos from before
-WRITE_LEVELS = ("everyone", "admin", "nobody")
+WRITE_LEVELS = ("everyone", "users", "admin", "nobody")
 PRESETS = {
-    "public": {"public-everything": "everyone", "public-admin-writes": "admin", "public-read-only": "nobody"},
+    "public": {"public-everything": "everyone", "public-users-write": "users", "public-admin-writes": "admin", "public-read-only": "nobody"},
     "private": {"private-to-admin": "admin", "private-read-only": "nobody"},
 }
 PRESET_TEXT = {
     "public-everything": "anyone on the network can browse, clone and push",
+    "public-users-write": "anyone can browse and clone; the box's users push, with their account's name and password",
     "public-admin-writes": "anyone can browse and clone; pushing needs the admin login",
     "public-read-only": "anyone can browse and clone; nobody can push",
     "private-to-admin": "browse, clone and push with the admin login",
@@ -103,7 +107,7 @@ def write_level(path):
     """A repository's push level: its own setting, else its area's default."""
     out = _git("config", "--get", "irate-box.write", cwd=path)
     level = out.stdout.strip() if out.returncode == 0 else ""
-    if level in WRITE_LEVELS and (level != "everyone" or path.parent.name == "public"):
+    if level in WRITE_LEVELS and (level not in ("everyone", "users") or path.parent.name == "public"):
         return level
     return "everyone" if path.parent.name == "public" and GUEST_PUSH.exists() else "admin"
 
@@ -139,22 +143,32 @@ def set_write_level(path, level):
     _git("config", "http.receivepack", "false" if level == "nobody" else "true", cwd=path)
 
 
-def decide(uri, method="GET", git_mode="public"):
-    """For nginx's auth_request on /git/'s smart-HTTP paths: may this go ahead without a login?
-    True: yes. False: only with the admin login (nginx then asks for it). `git_mode` is the git
-    app's access switch (public, private; off never reaches here)."""
+def decide(uri, method="GET", git_mode="public", account=None):
+    """For nginx's auth_request on the smart-HTTP paths (/git/ and /git-private/): may this go
+    ahead without the box's own login? True: yes. False: only with that login (nginx then asks
+    for it). `git_mode` is the git app's access switch (public, users, private; off never reaches
+    here). account: {name, role} when the request's basic-auth credentials are an account's
+    (accounts.check_basic), else None."""
     from urllib.parse import unquote, urlsplit, parse_qs
     parts = urlsplit(uri or "")
     path = unquote(parts.path)
-    m = re.match(r"^/git/([^/]+)\.git/(.*)$", path)
-    if not m or git_mode != "public" or not NAME_RE.match(m.group(1)):
+    m = re.match(r"^/git(-private)?/([^/]+)\.git/(.*)$", path)
+    if not m or not NAME_RE.match(m.group(2)):
+        return False
+    admin = account is not None and account.get("role") == "admin"
+    if m.group(1) or git_mode == "private":
+        return admin  # the private area, or the git app kept for the admin: the admin's alone
+    if git_mode == "users" and account is None:
         return False
     service = (parse_qs(parts.query).get("service") or [""])[0]
-    writing = m.group(2).endswith("git-receive-pack") or service == "git-receive-pack"
+    writing = m.group(3).endswith("git-receive-pack") or service == "git-receive-pack"
     if not writing:
         return True
-    repo = ROOT / "public" / f"{m.group(1)}.git"
-    return (repo / "HEAD").exists() and write_level(repo) == "everyone"
+    repo = ROOT / "public" / f"{m.group(2)}.git"
+    if not (repo / "HEAD").exists():
+        return False
+    level = write_level(repo)
+    return level == "everyone" or (level == "users" and account is not None) or (level == "admin" and admin)
 
 
 def snapshot():
