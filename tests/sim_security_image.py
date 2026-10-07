@@ -38,10 +38,17 @@ for name, body in {
     "dpkg-query": f"import os\nprint('install ok installed' if os.path.exists('{T}/installed') else 'unknown ok not-installed', end='')",
     "apt-get": f"import sys, pathlib\nm = pathlib.Path('{T}/installed')\nopen('{T}/apt-log', 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
                "m.touch() if 'install' in sys.argv else m.unlink(missing_ok=True)",
+    "passwd": f"import sys, pathlib\nst = pathlib.Path('{T}/root-pw')\n"
+              "if sys.argv[1] == '-S': print('root ' + st.read_text().strip() + ' 2026-10-07 0 99999 7 -1')\n"
+              "elif sys.argv[1] == '-l': st.write_text('L')\n"
+              "elif sys.argv[1] == '-u': st.write_text('P')\n",
     "systemctl": f"import sys, os\nif sys.argv[1:] == ['restart', 'systemd-sysctl.service'] and os.path.exists('{T}/installed'):\n"
                  f"    [open('{PROC}/fs/' + k, 'w').write('1\\n') for k in ('protected_symlinks', 'protected_hardlinks')]",
 }.items():
     (BIN / name).write_text("#!/usr/bin/env python3\n" + body + "\n"); (BIN / name).chmod(0o755)
+(T / "root-pw").write_text("P")
+(T / "firstrun").write_text("armbian first login pending\n")
+os.environ.update(HUB_ARMBIAN_FIRSTRUN=str(T / "firstrun"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_PROC_SYS=str(PROC), HUB_GROUP_FILE=str(T / "group"),
                   HUB_PASSWD_FILE=str(T / "passwd"), HUB_SYSCTL_DROPIN=str(T / "sysctl.d" / "60-irate-box.conf"),
                   PATH=f"{BIN}:{os.environ['PATH']}")
@@ -98,6 +105,40 @@ check("  undone: the package removed, the old values back",
       and sysctl("fs.protected_symlinks") == "0")
 (T / "apt-candidate").unlink()
 
+# Root's own login.
+def rootf():
+    return {f["id"]: f for f in security.root_findings(security.load_record())}
+f = rootf()
+check("root with a password and Armbian's first login never run: a problem (the image's own), lock offered (lyra has sudo)",
+      f["root-password"]["status"] == "problem" and "1234" in f["root-password"]["detail"]
+      and [a["choice"] for a in f["root-password"]["actions"]] == ["root-lock"] and "lyra" in f["root-password"]["actions"][0]["confirm"], f["root-password"])
+check("  first login never run: a problem, with the marker put aside offered", f["root-firstrun"]["status"] == "problem"
+      and f["root-firstrun"]["actions"][0]["choice"] == "firstrun-off")
+(T / "etc").mkdir(exist_ok=True)
+print(security.fix("root-lock", None)); print(security.fix("firstrun-off", None))
+f = rootf()
+check("  locked, the marker aside (kept): both ok, each with its undo", (T / "root-pw").read_text() == "L" and not (T / "firstrun").exists()
+      and (T / "etc" / "armbian-firstrun.kept").read_text() == "armbian first login pending\n"
+      and f["root-password"]["status"] == "ok" and f["root-password"]["actions"][0]["choice"] == "root-lock-undo"
+      and f["root-firstrun"]["status"] == "ok" and f["root-firstrun"]["actions"][0]["choice"] == "firstrun-undo", f)
+print(security.fix("root-lock-undo", None)); print(security.fix("firstrun-undo", None))
+check("  undone: the password as it was, the marker back", (T / "root-pw").read_text() == "P" and (T / "firstrun").exists()
+      and not (T / "etc" / "armbian-firstrun.kept").exists())
+(T / "firstrun").unlink()
+check("root with a password of its own (first login done): a warning, lock offered", rootf()["root-password"]["status"] == "warn"
+      and "root-firstrun" not in rootf())
+(T / "root-pw").write_text("NP")
+check("root with no password: a problem", rootf()["root-password"]["status"] == "problem" and "no password" in rootf()["root-password"]["detail"])
+grp = (T / "group").read_text(); (T / "group").write_text(grp.replace("sudo:x:27:lyra", "sudo:x:27:"))
+check("  nobody else with sudo: no lock offered, and said why", rootf()["root-password"]["actions"] == []
+      and "add one first" in rootf()["root-password"]["fix"])
+try:
+    security.fix("root-lock", None); refused_ = False
+except ValueError:
+    refused_ = True
+check("  and refused if asked anyway", refused_ and (T / "root-pw").read_text() == "NP")
+(T / "group").write_text(grp); (T / "root-pw").write_text("L")
+
 print(security.fix("group-drop:lyra@docker", None))
 check("lyra out of docker", "lyra" not in (T / "group").read_text().split("docker:x:990:")[1].split("\n")[0])
 f = findings()
@@ -118,6 +159,6 @@ srv = (REPO / "irate_box" / "hub" / "server.py").read_text()
 import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
-      ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
+      ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "root-lock", "firstrun-off", "firstrun-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

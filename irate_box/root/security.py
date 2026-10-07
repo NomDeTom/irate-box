@@ -32,6 +32,9 @@ SYSCTL_DROPIN = Path(os.environ.get("HUB_SYSCTL_DROPIN", "/etc/sysctl.d/60-irate
 PROC_SYS = Path(os.environ.get("HUB_PROC_SYS", "/proc/sys"))
 GROUP_FILE = Path(os.environ.get("HUB_GROUP_FILE", "/etc/group"))
 PASSWD_FILE = Path(os.environ.get("HUB_PASSWD_FILE", "/etc/passwd"))
+# Armbian's first-login marker: present until someone logs in as root at the console and answers its
+# setup (a root password, a user). Left on a box set up some other way, its image's defaults stand.
+FIRSTRUN = Path(os.environ.get("HUB_ARMBIAN_FIRSTRUN", "/root/.not_logged_in_yet"))
 UPDATES_LOG_NAME = "security-updates.log"
 
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
@@ -543,6 +546,101 @@ def _group(rec, arg, on):
     return f"{user} is back in the {group} group"
 
 
+# --- root's own login (Tom, 2026-10-08: "is root being available as an unlocked user, or with no
+# first-run, a security checkpoint?") ------------------------------------------------------------
+
+def _root_password():
+    """P (a password), NP (none), L (locked), or None: from `passwd -S`, never the hash itself."""
+    if not _have("passwd"):
+        return None
+    f = (run("passwd", "-S", "root").stdout or "").split()
+    return f[1] if len(f) > 1 and f[0] == "root" and f[1] in ("P", "NP", "L") else None
+
+
+def _sudoers():
+    """The login accounts that can use sudo (the sudo or wheel group): who reaches root once it's locked."""
+    members = _group_members()
+    return sorted((members.get("sudo", set()) | members.get("wheel", set())) & _login_accounts())
+
+
+def root_findings(rec):
+    out, ours = [], rec.get("root", {})
+    state, firstrun, admins = _root_password(), FIRSTRUN.exists(), _sudoers()
+    lock = [{"choice": "root-lock", "label": "Lock root's password",
+             "confirm": f"Lock root's password? Root is then reached only through sudo ({', '.join(admins)}); "
+                        "the console's root login stops working."}] if admins else []
+    no_lock = "" if admins else " No other account here can use sudo, so it isn't locked from here: add one first."
+    undo = [{"choice": "root-lock-undo", "label": "Undo"}] if "lock" in ours else []
+    if state == "L":
+        out.append(_finding("root-password", "Root's password", "ok", "Locked: root is reached through sudo.", "", undo))
+    elif state == "NP":
+        out.append(_finding("root-password", "Root's password", "problem",
+                            "Root has no password: anyone at the console, or wherever root may log in, is root.",
+                            "Lock it, so root is reached only through sudo." + no_lock, lock))
+    elif state == "P" and firstrun:
+        out.append(_finding("root-password", "Root's password", "problem",
+                            "Root still has the image's own password: Armbian's first-login setup never ran, so it's "
+                            "the one every image of this kind ships with (usually 1234), and anyone who knows it is root.",
+                            "Lock it, so root is reached only through sudo." + no_lock, lock))
+    elif state == "P":
+        out.append(_finding("root-password", "Root's password", "warn",
+                            "Root has a password of its own: fine if you chose it, and know it's strong.",
+                            "Or lock it, so root is reached only through sudo." + no_lock, lock))
+    if firstrun:
+        out.append(_finding("root-firstrun", "First-login setup", "problem",
+                            "Armbian's first-login setup never ran (/root/.not_logged_in_yet): the image's defaults "
+                            "were never changed, and any root login starts it, asking for a new root password and user.",
+                            "This box was set up another way: put the marker aside (kept, to undo).",
+                            [{"choice": "firstrun-off", "label": "Put it aside"}]))
+    elif "firstrun" in ours:
+        out.append(_finding("root-firstrun", "First-login setup", "ok", "Its marker is put aside.", "",
+                            [{"choice": "firstrun-undo", "label": "Put it back"}]))
+    return out
+
+
+def _root(rec, what, on):
+    root = rec.setdefault("root", {})
+    if what == "lock":
+        if on:
+            if not _sudoers():
+                raise ValueError("no other account here can use sudo: locking root would leave nobody who can be root")
+            was = _root_password()
+            r = run("passwd", "-l", "root")
+            if r.returncode:
+                raise ValueError(f"passwd -l: {(r.stderr or r.stdout).strip()[:160]}")
+            root["lock"] = {"was": was, "at": time.strftime("%Y-%m-%d")}
+            msg = "root's password is locked: root is reached through sudo"
+        else:
+            entry = root.pop("lock", None)
+            if entry is None:
+                raise ValueError("root's password was not locked from this page")
+            if entry.get("was") in ("P", "NP"):
+                r = run("passwd", "-u", "root")
+                if r.returncode:
+                    root["lock"] = entry
+                    raise ValueError(f"passwd -u: {(r.stderr or r.stdout).strip()[:160]}")
+            msg = "root's password is as it was"
+    else:
+        kept = ETC / "armbian-firstrun.kept"
+        if on:
+            if not FIRSTRUN.exists():
+                raise ValueError("there is no first-login marker to put aside")
+            kept.write_bytes(FIRSTRUN.read_bytes())
+            kept.chmod(0o600)
+            FIRSTRUN.unlink()
+            root["firstrun"] = time.strftime("%Y-%m-%d")
+            msg = "the first-login marker is put aside: a root login no longer starts Armbian's setup"
+        else:
+            if root.pop("firstrun", None) is None or not kept.exists():
+                raise ValueError("the first-login marker was not put aside from this page")
+            FIRSTRUN.write_bytes(kept.read_bytes())
+            kept.unlink()
+            msg = "the first-login marker is back"
+    if not root:
+        rec.pop("root")
+    return msg
+
+
 def scan():
     rec = load_record()
     found = listeners()
@@ -550,6 +648,7 @@ def scan():
     findings += ssh_findings(sshd_settings(), keys_on_box(), rec)
     findings += kernel_findings(rec)
     findings += group_findings(rec)
+    findings += root_findings(rec)
     upd, _ = update_findings()
     findings += upd
     return {"at": time.time(), "listeners": found, "findings": findings}
@@ -695,6 +794,10 @@ def fix(choice, updates_log):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
         msg = _llmnr(rec, choice == "llmnr-off")
+    elif choice in ("root-lock", "root-lock-undo"):
+        msg = _root(rec, "lock", choice == "root-lock")
+    elif choice in ("firstrun-off", "firstrun-undo"):
+        msg = _root(rec, "firstrun", choice == "firstrun-off")
     elif choice == "kernel-links-debian":
         msg = _kernel_debian(rec)
     elif choice in [f"kernel-{n}-{w}" for n in KERNEL for w in ("on", "undo")]:
@@ -715,6 +818,8 @@ def undo_all():
     """Put back everything this page changed (uninstall.sh). Returns what was undone."""
     rec = load_record()
     done = []
+    # Not root's lock nor the first-login marker: undoing those would bring the image's known default
+    # password back. They stay as they are (the page's own Undo still puts them back before then).
     for choice in (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else []) + \
                   (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else []) + \
                   (["cockpit-undo"] if "cockpit" in rec else []) + (["llmnr-undo"] if rec.get("llmnr") else []) + \
