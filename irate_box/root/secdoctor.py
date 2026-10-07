@@ -1910,6 +1910,42 @@ def step_tls(ctx):
     return out
 
 
+MOSQUITTO = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
+
+
+def step_mqtt(ctx):
+    """The MQTT broker and the decoder bridge (next-work plan step 18's rules): never bridged to a
+    broker outside the box (mqtt.meshtastic.org above all: the mesh's traffic would leave the box,
+    and its downlink would come in); anonymous clients limited to msh/#; the bridge's channel keys
+    private to the hub."""
+    about = {"kind": "service", "key": "mosquitto"}
+    confs = sorted(MOSQUITTO.glob("conf.d/*.conf")) + ([MOSQUITTO / "mosquitto.conf"] if (MOSQUITTO / "mosquitto.conf").exists() else [])
+    if not confs:
+        return [F("mqtt", "MQTT broker", "ok", "Not installed.", about=about)]
+    out = []
+    lines = [(c.name, l.strip()) for c in confs for l in (_read(c) or "").splitlines() if l.strip() and not l.strip().startswith("#")]
+    bridges = [f"{name}: {l}" for name, l in lines if re.match(r"(connection|address)\s", l)]
+    out.append(F("mqtt-bridge", "The broker is not bridged anywhere", "problem" if bridges else "ok",
+                 ("Bridged out of the box: " + "; ".join(bridges[:3]) + ". The mesh's traffic leaves the box, and what the other broker sends comes in to the radios.")
+                 if bridges else "No connection to another broker: the mesh's traffic stays on the box.",
+                 "Remove the bridge (connection/address lines) from /etc/mosquitto." if bridges else "", "", about=about))
+    acl = next((l.split(None, 1)[1] for _, l in lines if l.startswith("acl_file ")), None)
+    anon = any(l == "allow_anonymous true" for _, l in lines)
+    acl_text = _read(Path(acl)) if acl else None
+    limited = bool(acl_text) and "topic readwrite msh/#" in acl_text and not re.search(r"^\s*topic\s+(readwrite|write|read)\s+#\s*$", acl_text, re.M)
+    out.append(F("mqtt-acl", "Anonymous clients limited to msh/#", "ok" if (not anon or limited) else "warn",
+                 "Anyone may publish and read only under msh/#." if anon and limited else "No anonymous access." if not anon
+                 else "Anonymous clients are not limited to msh/#: the broker is a free message bus for anything on the network.",
+                 "" if (not anon or limited) else "Reinstall the MQTT add-on (install.sh --with-mqtt) to restore its acl_file.", "S9", about=about))
+    keys = STATE / "mesh" / "channels.json"
+    if keys.exists():
+        private = (keys.stat().st_mode & 0o077) == 0
+        out.append(F("mqtt-keys", "The decoder's channel keys", "ok" if private else "problem",
+                     "Private to the hub." if private else "Readable by others than the hub: a private channel's key would be.",
+                     "" if private else f"chmod 600 {keys}", "", about=about))
+    return out
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
@@ -1931,6 +1967,7 @@ STEPS = [
     ("security-page", "The Security page's scan", "", step_security_page),
     ("imports", "Imported scans (OpenVAS, nmap)", "", step_imports),
     ("tls", "HTTPS: the certificate and the front", "S2", step_tls),
+    ("mqtt", "The MQTT broker and the mesh decoder", "S9", step_mqtt),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
