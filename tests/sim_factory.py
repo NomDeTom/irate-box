@@ -174,10 +174,26 @@ out = factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32s3")
 j = factory._jobs()[0]
 check("fetch tools: queued for one target of the family (a pr-level one), tools only", out["env"] == "heltec-v3" and j["tools_only"] is True
       and j["family"] == "esp32s3" and j["env"] == "heltec-v3", j)
+T_ = lambda env, fam, level="", support="": {"env": env, "family": fam, "level": level, "support": support}  # noqa: E731
+sug = factory.suggested([T_("ci-board", "esp32", "pr", "1"), T_("tbeam", "esp32"), T_("odd", "esp32s2", "pr", "1"), T_("good", "esp32s2", "", "1"),
+                         T_("x", "esp32c3", "pr"), T_("y", "esp32c3", "", "3"), T_("mine", "nrf52840"), T_("rak4631", "nrf52840")], flasher=["mine"])
+check("the suggested test target: the flasher's board, a common one, a best-supported non-CI one, a best-supported one, the first; never the CI's for its own sake",
+      sug == {"esp32": "tbeam", "esp32s2": "good", "esp32c3": "x", "nrf52840": "mine"}, sug)
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
+out = factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", env="rak4631-inkhud")
+check("  the owner's choice of target taken", out["env"] == "rak4631-inkhud" and factory._jobs()[0]["env"] == "rak4631-inkhud", out)
+try:
+    factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", env="heltec-v3"); check("  a target of another family: refused", False)
+except ValueError:
+    check("  a target of another family: refused", True)
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
 try:
     factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32p4"); check("  a family the source hasn't: refused", False)
 except ValueError:
     check("  a family the source hasn't: refused", True)
+factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32s3")  # the fetch the next lines run
 seen_env = {}
 ci.FIRMWARE_SCRIPT = 'echo "$FW_TOOLS_ONLY" > "$CI_ARTIFACTS/../tools-only.txt"\n'
 ci.run_queue()
