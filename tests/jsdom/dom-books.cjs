@@ -41,11 +41,18 @@ vc.on('error', (...a) => { if (!/HTTP 404/.test(a.join(' '))) errors.push('conso
 const dom = new JSDOM(html, { url: 'http://box.local/admin/#books', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 let libraryAsked = '';
+const catalogueAsked = [];
 w.fetch = async (u, opts = {}) => {
   const ok = (b) => new Response(JSON.stringify(b), { status: 200 });
   if (opts.method === 'POST' && u === '/admin/library') { posted.push(JSON.parse(opts.body)); return ok(snap); }
   if (u.startsWith('/admin/library')) { libraryAsked = u; return ok(snap); }
   if (u.startsWith('/admin/books?')) return ok(books(u.split('?')[1]));
+  if (u.startsWith('/admin/catalogue?')) {
+    catalogueAsked.push(u);
+    if (u.includes('q=offline')) return new Response(JSON.stringify({ error: "Kiwix's catalogue could not be read (no network). It needs the internet." }), { status: 502 });
+    return ok({ total: 25, start: 0, entries: [{ name: 'raspberrypi.stackexchange.com_en_all', title: 'Raspberry Pi Q&A', summary: 'Stack Exchange Q&A for Raspberry Pi',
+      language: 'eng', category: 'stack_exchange', flavour: '', updated: '2026-08-04', size: 298463232, articles: 77213, url: 'https://x/y.zim' }] });
+  }
   return new Response('{}', { status: 404 });
 };
 w.confirm = () => true;
@@ -94,6 +101,22 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   const hand = rows().find((r) => /book-050/.test(t(r)));
   hand.querySelector('.link-button').click(); await wait(50);
   check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB stick: the librarian leaves it alone/.test(t(d.querySelector('#books-table tr.book-card'))));
+  // Kiwix's catalogue.
+  const cf = d.getElementById('catalogue-form');
+  cf.elements.q.value = 'raspberry'; cf.elements.language.value = 'eng';
+  cf.dispatchEvent(new w.Event('submit', { cancelable: true })); await wait();
+  check('catalogue: asked of the hub with the search and language', /q=raspberry/.test(catalogueAsked[0]) && /language=eng/.test(catalogueAsked[0]));
+  const hit = d.querySelector('#catalogue-results .admin-item');
+  check('  a result: title, language, size, date, articles, summary', /Raspberry Pi Q&A eng, 284\.6 MB, 2026-08-04; 77213 articles\. Stack Exchange/.test(t(hit)), t(hit));
+  check('  and More, as there are more', !d.getElementById('catalogue-pager').hidden);
+  [...hit.querySelectorAll('button')].find((b) => t(b) === 'Keep current here').click(); await wait();
+  const added = posted.find((b) => b.action === 'add');
+  check('Keep current here: a kiwix source by its catalogue name', added && added.source.type === 'kiwix' && added.source.kiwix_name === 'raspberrypi.stackexchange.com_en_all'
+    && added.source.name === 'raspberrypi.stackexchange.com_en_all', JSON.stringify(added));
+  check('  and says how to fetch it', /Added Raspberry Pi Q&A: Update in the table above fetches it \(284\.6 MB\)\./.test(t(d.getElementById('catalogue-note'))));
+  cf.elements.q.value = 'offline'; cf.dispatchEvent(new w.Event('submit', { cancelable: true })); await wait();
+  check('offline: the hub\'s reason said', /could not be read .* It needs the internet\./.test(t(d.getElementById('catalogue-note'))), t(d.getElementById('catalogue-note')));
+  check('the budget field in the schedule', !!d.querySelector('#library-policy input[name="books_budget_mb"]'));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

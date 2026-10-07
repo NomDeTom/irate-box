@@ -286,6 +286,21 @@
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
+        <h3>Find books in Kiwix's catalogue</h3>
+        <p class="setting-desc">
+          Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
+          manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
+          as a source that follows its newest release; Update fetches it.
+        </p>
+        <form id="catalogue-form" class="books-tools">
+          <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
+          <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
+          <button type="submit">Search</button>
+        </form>
+        <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
+        <div id="catalogue-results" class="admin-list"></div>
+        <p class="books-pager" id="catalogue-pager" hidden><button type="button" id="catalogue-more">More</button></p>
+
         <h3>Add a book source</h3>
         <p class="setting-desc">
           Quick fill:
@@ -452,6 +467,7 @@
             </select>
           </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
+          <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256"></label>
           <button type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>

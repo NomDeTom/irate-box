@@ -1824,6 +1824,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, snap)
             return
 
+        if path == "/admin/catalogue":
+            # Kiwix's online catalogue, to pick books from (librarian.catalogue_search): online only.
+            query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+            try:
+                self.send_json(200, librarian.catalogue_search(q=query.get("q", ""), language=query.get("language", ""),
+                                                               category=query.get("category", ""), start=int(query.get("start") or 0)))
+            except ValueError:
+                self.send_json(400, {"error": "start is a number"})
+            except librarian.LibrarianError as exc:
+                self.send_json(502, {"error": f"Kiwix's catalogue could not be read ({exc}). It needs the internet."})
+            return
+
         if path == "/admin/books":
             query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
             try:

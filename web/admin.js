@@ -193,7 +193,7 @@ const el = (tag, props = {}, ...kids) => {
   return node;
 };
 const mb = (bytes) => (bytes ? `${Math.round(bytes / 2 ** 20)} MB` : '');
-const where = (s) => s.type === 'url' ? s.url
+const where = (s) => s.type === 'kiwix' ? `Kiwix's catalogue, ${s.kiwix_name}${s.flavour ? ` (${s.flavour})` : ''}` : s.type === 'url' ? s.url
   : `${s.repo}${s.workflow ? ` · ${s.workflow}` : ''}${s.branch ? ` @ ${s.branch}` : ''} · ${s.pattern}`;
 
 async function libPost(body) {
@@ -414,7 +414,7 @@ lib.add.addEventListener('submit', async (e) => {
 lib.policy.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = { action: 'policy' };
-  for (const k of ['keep_old', 'check_every_hours', 'min_free_mb', 'auto_install']) body[k] = Number(lib.policy.elements[k].value);
+  for (const k of ['keep_old', 'check_every_hours', 'min_free_mb', 'books_budget_mb', 'auto_install']) body[k] = Number(lib.policy.elements[k].value);
   const at = noteEl('library-policy-note');
   try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
@@ -462,7 +462,9 @@ function renderBooks(d) {
   const sm = d.summary;
   setupStep('books', sm.kept ? `${sm.kept} kept current by the librarian.` : 'None kept current yet: Kiwix serves only books copied in by hand.', sm.kept ? 'ok' : 'warn');
   const st = sm.states;
-  bk.summary.textContent = `${sm.count} book${sm.count === 1 ? '' : 's'}, ${size(sm.bytes)}; ${sm.kept} kept current.`
+  bk.summary.textContent = `${sm.count} book${sm.count === 1 ? '' : 's'}, ${size(sm.bytes)}`
+    + (sm.budget_mb ? ` of a ${size(sm.budget_mb * 2 ** 20)} budget (${Math.round((100 * sm.bytes) / (sm.budget_mb * 2 ** 20))} %)` : '')
+    + `; ${sm.kept} kept current.`
     + ['newer', 'failed', 'unreadable', 'not installed'].filter((k) => st[k]).map((k) => ` ${st[k]} ${STATE_WORDS[k]}.`).join('');
   const langs = Object.keys(sm.languages).sort();
   if (bk.language.dataset.langs !== langs.join(',')) {
@@ -536,6 +538,39 @@ document.querySelectorAll('[data-bulk]').forEach((b) => b.addEventListener('clic
   }
   libAct('all', { action: b.dataset.bulk, names });
 }));
+
+// --- Kiwix's catalogue (step 14: /admin/catalogue), online only ---------------------------------
+const cat = { form: document.getElementById('catalogue-form'), results: document.getElementById('catalogue-results'),
+  note: noteEl('catalogue-note'), pager: document.getElementById('catalogue-pager'), more: document.getElementById('catalogue-more') };
+let catStart = 0;
+async function searchCatalogue(more) {
+  const f = cat.form.elements;
+  catStart = more ? catStart + 20 : 0;
+  say('Asking Kiwix\'s catalogue…', true, cat.note);
+  try {
+    const r = await fetch(`/admin/catalogue?${new URLSearchParams({ q: f.q.value.trim(), language: f.language.value.trim(), start: String(catStart) })}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    say(`${d.total} book${d.total === 1 ? '' : 's'} in the catalogue match.`, true, cat.note);
+    const rows = d.entries.map((e) => {
+      const name = e.name.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 64);
+      return el('div', { className: 'admin-item' },
+        el('span', { className: 'setting-name', textContent: e.title }),
+        el('span', { className: 'setting-desc', textContent: ` ${e.language}, ${size(e.size)}, ${e.updated}${e.flavour ? `, ${e.flavour}` : ''}; ${e.articles} articles. ${e.summary}` }),
+        el('span', { className: 'library-buttons' }, actionButton('Keep current here', async () => {
+          try {
+            await libPost({ action: 'add', source: { name: e.flavour ? `${name}_${e.flavour}`.slice(0, 64) : name, type: 'kiwix', kiwix_name: e.name, flavour: e.flavour } });
+            say(`Added ${e.title}: Update in the table above fetches it (${size(e.size)}).`, true, cat.note);
+            loadBooks();
+          } catch (err) { say(err.message, false, cat.note); }
+        })));
+    });
+    if (more) cat.results.append(...rows); else cat.results.replaceChildren(...rows);
+    cat.pager.hidden = catStart + 20 >= d.total;
+  } catch (err) { say(err.message, false, cat.note); }
+}
+cat.form.addEventListener('submit', (e) => { e.preventDefault(); searchCatalogue(false); });
+cat.more.addEventListener('click', () => searchCatalogue(true));
 
 showTypeFields();
 loadLibrary();
