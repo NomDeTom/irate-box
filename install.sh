@@ -1460,6 +1460,9 @@ CPUWeight=10
 IOSchedulingClass=idle
 MemoryHigh=50%
 MemoryMax=65%
+# Counts what the builds send and receive: a firmware build that received nothing ran offline
+# (ci.py: resources).
+IPAccounting=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes

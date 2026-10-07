@@ -1,0 +1,390 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+"""The Firmware Factory (next-work plan step 36, git-ci-plan §4b): choose a source, a ref and
+targets; queue them; the builder (ci.py, as hubci) builds one at a time.
+
+Sources: the owner's mirrors (library/mirrors.json: meshtastic/firmware, its forks) and private
+repositories, any of them holding a platformio.ini. Never a public repository a guest can push to.
+
+Targets: a source's PlatformIO environments at a ref, read from its platformio.ini and the files
+its `extra_configs` globs name (meshtastic/firmware: variants/*/*/platformio.ini and the rest),
+all read in one `git cat-file --batch`, and cached per commit. Each target has its family (the
+folder under variants/ its section, or the section it extends, comes from: esp32s3, nrf52840,
+native …) and what the file says of it (custom_meshtastic_display_name, support level,
+board_level).
+
+The queue is ci.py's: one job per target, {"kind": "firmware", repo, ref, commit, env, family,
+batch, queued}. The builder takes them one at a time, a target moved up first, then the family it
+built last (so a toolchain stays warm), then the oldest. Pausing stops the builder taking
+firmware jobs (other builds go on: its jobs wait in HELD meanwhile); cancelling removes a waiting
+job. Each build records what it
+used (ci.py: resources), and the estimates here come from those records. Stdlib only.
+"""
+
+import configparser
+import fnmatch
+import json
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import time
+from pathlib import Path
+
+from irate_box.hub import ci, gitrepos
+
+STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
+CACHE = STATE / "factory-targets"            # {commit}.json: the targets at that commit
+# Paused, the factory's waiting jobs wait here, out of the builder's queue: the queue's path unit
+# starts the builder whenever the queue is not empty, so jobs it may not take must not be in it.
+PAUSED = STATE / "factory-paused"
+HELD = STATE / "factory-held"
+RUNS_NAME = "firmware-factory"              # ci.RUNS/firmware-factory/<n>: the factory's runs
+MIRRORS = STATE / "library" / "mirrors.json"
+REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
+ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
+MAX_PER_REQUEST = 50     # a sanity cap until the tracking says more (Tom: limits "played by ear")
+MAX_FILES = 2000
+MAX_BYTES = 8 << 20
+
+
+def _git(*args, cwd=None, inp=None, timeout=120):
+    return subprocess.run(["git", "-c", "safe.directory=*", *args], cwd=cwd, input=inp, capture_output=True,
+                          timeout=timeout)
+
+
+def sources():
+    """[{name, area, path, mirror}] the factory may build from: mirrors, then private repositories."""
+    out, seen = [], set()
+    try:
+        mirrors = json.loads(MIRRORS.read_text()).get("mirrors", [])
+    except (OSError, ValueError, AttributeError):
+        mirrors = []
+    for m in mirrors:
+        name, area = str(m.get("name", "")), m.get("area", "public")
+        path = gitrepos.ROOT / area / f"{name}.git"
+        if gitrepos.NAME_RE.match(name) and area in gitrepos.AREAS and (path / "HEAD").exists():
+            out.append({"name": name, "area": area, "path": str(path), "mirror": True, "upstream": m.get("upstream", "")})
+            seen.add(str(path))
+    private = gitrepos.ROOT / "private"
+    for p in sorted(private.glob("*.git")) if private.is_dir() else []:
+        if str(p) not in seen and gitrepos.NAME_RE.match(p.name[:-4]) and (p / "HEAD").exists():
+            out.append({"name": p.name[:-4], "area": "private", "path": str(p), "mirror": False, "upstream": ""})
+    return out
+
+
+def source(name):
+    """The source called `name`, or ValueError: only a mirror or a private repository."""
+    for s in sources():
+        if s["name"] == name:
+            return s
+    raise ValueError("source: a mirror or a private repository on this box")
+
+
+def refs(src):
+    """Its tags (newest first) and branches, each with its commit: what a build can use."""
+    out = _git("for-each-ref", "--sort=-creatordate", "--format=%(refname)%09%(objectname)%09%(*objectname)",
+               "refs/tags", "refs/heads", cwd=src["path"])
+    tags, branches = [], []
+    for line in out.stdout.decode("utf-8", "replace").splitlines():
+        ref, obj, peeled = (line.split("\t") + ["", ""])[:3]
+        commit = peeled or obj
+        if ref.startswith("refs/tags/"):
+            tags.append({"ref": ref[10:], "commit": commit})
+        elif ref.startswith("refs/heads/"):
+            branches.append({"ref": ref[11:], "commit": commit})
+    return {"tags": tags, "branches": branches}
+
+
+def resolve(src, ref):
+    if not REF_RE.match(ref or "") or ".." in ref:
+        raise ValueError("ref: a tag or a branch")
+    for kind in ("tags", "heads"):
+        out = _git("rev-parse", "--verify", "--quiet", f"refs/{kind}/{ref}^{{commit}}", cwd=src["path"])
+        if out.returncode == 0:
+            return out.stdout.decode().strip()
+    raise ValueError(f"{src['name']} keeps no tag or branch {ref}")
+
+
+def _seg_match(pattern, path):
+    """A glob from extra_configs against a path, segment by segment ('*' never crosses a '/')."""
+    p, q = pattern.strip("/").split("/"), path.split("/")
+    return len(p) == len(q) and all(fnmatch.fnmatchcase(b, a) for a, b in zip(p, q))
+
+
+def _read_blobs(repo, commit, paths):
+    """{path: text} for the given paths at commit, in one `git cat-file --batch`."""
+    out = _git("cat-file", "--batch", cwd=repo, inp="".join(f"{commit}:{p}\n" for p in paths).encode(), timeout=300).stdout
+    texts, i = {}, 0
+    for p in paths:
+        nl = out.index(b"\n", i)
+        head = out[i:nl].split()
+        i = nl + 1
+        if len(head) == 3 and head[1] == b"blob":
+            size = int(head[2])
+            texts[p] = out[i:i + size].decode("utf-8", "replace")
+            i += size + 1
+    return texts
+
+
+def _family(sec, where, parser, depth=0):
+    """The folder under variants/ the section (or what it extends) comes from, or None."""
+    f = where.get(sec, "")
+    m = re.match(r"^variants/([A-Za-z0-9_-]+)/", f)
+    if m:
+        return m.group(1)
+    if depth > 12 or not parser.has_section(sec):
+        return None
+    ext = parser.get(sec, "extends", fallback="").split(",")[0].strip()
+    return _family(ext, where, parser, depth + 1) if ext else None
+
+
+def targets(src, ref):
+    """{commit, families: {family: n}, targets: [{env, family, name, level, support, file}]}, cached per commit."""
+    commit = resolve(src, ref)
+    cached = CACHE / f"{commit}.json"
+    try:
+        return json.loads(cached.read_text())
+    except (OSError, ValueError):
+        pass
+    names = _git("ls-tree", "-r", "--name-only", commit, cwd=src["path"]).stdout.decode("utf-8", "replace").splitlines()
+    if "platformio.ini" not in names:
+        raise ValueError(f"{src['name']} has no platformio.ini at {ref}")
+    root = _read_blobs(src["path"], commit, ["platformio.ini"]).get("platformio.ini", "")
+    top = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
+    top.read_string(root)
+    globs = [g.strip() for g in top.get("platformio", "extra_configs", fallback="").splitlines() if g.strip()]
+    files = [n for n in names if any(_seg_match(g, n) for g in globs)][:MAX_FILES]
+    texts = _read_blobs(src["path"], commit, files)
+    parser = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
+    where = {}
+    for f in ["platformio.ini"] + files:
+        text = root if f == "platformio.ini" else texts.get(f, "")
+        if len(text) > MAX_BYTES:
+            continue
+        one = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
+        try:
+            one.read_string(text)
+        except configparser.Error:
+            continue
+        for sec in one.sections():
+            where.setdefault(sec, f)
+            if not parser.has_section(sec):
+                parser.add_section(sec)
+            for k, v in one.items(sec, raw=True):
+                parser.set(sec, k, v)
+    out = []
+    for sec in parser.sections():
+        if not sec.startswith("env:") or not ENV_RE.match(sec[4:]):
+            continue
+        g = lambda k: parser.get(sec, k, fallback="").strip()  # noqa: E731
+        out.append({"env": sec[4:], "family": _family(sec, where, parser) or "other", "file": where.get(sec, ""),
+                    "name": g("custom_meshtastic_display_name") or sec[4:], "level": g("board_level"),
+                    "support": g("custom_meshtastic_support_level")})
+    out.sort(key=lambda t: (t["family"], t["env"]))
+    fams = {}
+    for t in out:
+        fams[t["family"]] = fams.get(t["family"], 0) + 1
+    data = {"source": src["name"], "ref": ref, "commit": commit, "families": fams, "targets": out}
+    CACHE.mkdir(parents=True, exist_ok=True)
+    tmp = cached.with_name(cached.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, cached)
+    return data
+
+
+# --- the queue -------------------------------------------------------------------------------
+
+def _files():
+    return [p for d in (ci.QUEUE, HELD) if d.is_dir() for p in sorted(d.glob("*.json"))]
+
+
+def _put(job):
+    """Into the builder's queue, or held while paused."""
+    if not PAUSED.exists():
+        ci._put(job)
+        return
+    HELD.mkdir(parents=True, exist_ok=True)
+    name = f"{time.time_ns()}-{secrets.token_hex(3)}.json"
+    tmp = HELD / f".{name}"
+    tmp.write_text(json.dumps(job))
+    os.replace(tmp, HELD / name)
+
+
+def _jobs():
+    """The waiting firmware jobs (held ones too), in the order the builder would take them."""
+    jobs = []
+    for p in _files():
+        try:
+            j = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if j.get("kind") == "firmware":
+            j["id"] = p.name[:-5]
+            jobs.append(j)
+    return order(jobs, last_family())
+
+
+def order(jobs, last):
+    """The builder's order: moved up first, then the family it built last, then the oldest."""
+    return sorted(jobs, key=lambda j: (not j.get("up"), j.get("family") != last, j.get("queued", 0)))
+
+
+def last_family():
+    runs = ci.RUNS / RUNS_NAME
+    best = None
+    for st in runs.glob("*/status.json") if runs.is_dir() else []:
+        try:
+            s = json.loads(st.read_text())
+        except (OSError, ValueError):
+            continue
+        if best is None or s.get("started", 0) > best.get("started", 0):
+            best = s
+    return (best or {}).get("family")
+
+
+def free_bytes():
+    try:
+        return shutil.disk_usage(ci.ROOT).free
+    except OSError:
+        return 0
+
+
+def queue(name, ref, envs, floor_mb=512):
+    """Queue each of envs from source `name` at `ref`: one job per target, ordered by family."""
+    src = source(name)
+    if not isinstance(envs, list) or not envs:
+        raise ValueError("targets: one or more")
+    if len(envs) > MAX_PER_REQUEST:
+        raise ValueError(f"at most {MAX_PER_REQUEST} targets in one request, for now")
+    data = targets(src, ref)
+    known = {t["env"]: t for t in data["targets"]}
+    bad = [e for e in envs if e not in known]
+    if bad:
+        raise ValueError(f"not targets of {name} at {ref}: {', '.join(map(str, bad[:5]))}")
+    if free_bytes() < floor_mb << 20:
+        raise ValueError(f"the card has under {floor_mb} MB free: builds wait until there is room")
+    ci.QUEUE.mkdir(parents=True, exist_ok=True)
+    batch, now = secrets.token_hex(4), time.time()
+    picked = sorted(dict.fromkeys(envs), key=lambda e: (known[e]["family"], e))
+    for i, env in enumerate(picked):
+        _put({"kind": "firmware", "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
+                 "env": env, "family": known[env]["family"], "name": known[env]["name"], "batch": batch,
+                 "queued": now + i / 1000})
+    return {"batch": batch, "queued": len(picked), "commit": data["commit"]}
+
+
+def _job_path(job_id):
+    if not re.fullmatch(r"[0-9]{6,24}-[0-9a-f]{6}", job_id or ""):
+        raise ValueError("not a waiting build")
+    p = next((d / f"{job_id}.json" for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()), ci.QUEUE / f"{job_id}.json")
+    try:
+        j = json.loads(p.read_text())
+    except (OSError, ValueError):
+        raise ValueError("not a waiting build (it may have started)")
+    if j.get("kind") != "firmware":
+        raise ValueError("not a firmware build")
+    return p, j
+
+
+def cancel(job_id):
+    p, _ = _job_path(job_id)
+    p.unlink(missing_ok=True)
+
+
+def move_up(job_id):
+    p, j = _job_path(job_id)
+    j["up"] = time.time()
+    tmp = p.with_name("." + p.name)
+    tmp.write_text(json.dumps(j))
+    os.replace(tmp, p)
+
+
+def pause(on):
+    """Paused: the waiting firmware jobs move to HELD (the build under way finishes). Resumed:
+    they go back, and the queue's path unit wakes the builder."""
+    if on:
+        PAUSED.parent.mkdir(parents=True, exist_ok=True)
+        PAUSED.write_text(str(int(time.time())))
+        HELD.mkdir(parents=True, exist_ok=True)
+        for p in sorted(ci.QUEUE.glob("*.json")) if ci.QUEUE.is_dir() else []:
+            try:
+                if json.loads(p.read_text()).get("kind") == "firmware":
+                    os.replace(p, HELD / p.name)
+            except (OSError, ValueError):
+                continue
+    else:
+        PAUSED.unlink(missing_ok=True)
+        for p in sorted(HELD.glob("*.json")) if HELD.is_dir() else []:
+            try:
+                job = json.loads(p.read_text())
+            except (OSError, ValueError):
+                p.unlink(missing_ok=True)
+                continue
+            ci._put(job)
+            p.unlink(missing_ok=True)
+
+
+# --- what the page shows ----------------------------------------------------------------------
+
+def runs(limit=30):
+    out = []
+    base = ci.RUNS / RUNS_NAME
+    for st in base.glob("*/status.json") if base.is_dir() else []:
+        try:
+            s = json.loads(st.read_text())
+        except (OSError, ValueError):
+            continue
+        s["run"] = f"{RUNS_NAME}/{st.parent.name}"
+        out.append(s)
+    out.sort(key=lambda s: s.get("started", 0), reverse=True)
+    return out[:limit]
+
+
+def estimates(history):
+    """Per family, from its newest finished build here: how long, and how much disk it used."""
+    est = {}
+    for s in history:
+        f, res = s.get("family"), s.get("resources") or {}
+        if f and f not in est and s.get("state") == "passed" and s.get("duration") is not None:
+            est[f] = {"seconds": s["duration"], "disk": res.get("work_bytes"), "peak_memory": res.get("peak_memory"),
+                      "built": s.get("finished")}
+    return est
+
+
+def readiness(history):
+    """Per family: "built here" once one has passed, else "untested on this box"; a family whose
+    last build here downloaded nothing is "offline ready"."""
+    out = {}
+    for s in history:
+        f = s.get("family")
+        if not f or f in out or s.get("state") != "passed":
+            continue
+        out[f] = "offline ready" if (s.get("resources") or {}).get("offline") else "built here (needed the internet)"
+    return out
+
+
+def snapshot():
+    history = runs(200)
+    jobs = _jobs()
+    est = estimates(history)
+    running = next((s for s in history if s.get("state") == "running"), None)
+    # When each waiting build should start and finish: only while every build before it has an
+    # estimate (a family built here before); after the first unknown one, nothing is promised.
+    t, known = time.time(), True
+    if running:
+        e = est.get(running.get("family"), {}).get("seconds")
+        t, known = (max(t, running.get("started", t) + e), True) if e is not None else (t, False)
+    waiting = []
+    for j in jobs:
+        e = est.get(j.get("family"), {}).get("seconds")
+        waiting.append({k: j.get(k) for k in ("id", "source", "ref", "commit", "env", "family", "name", "queued", "up", "batch")}
+                       | {"start": round(t) if known else None, "finish": round(t + e) if known and e is not None else None})
+        if known and e is not None:
+            t += e
+        else:
+            known = False
+    return {"sources": [{k: s[k] for k in ("name", "area", "mirror", "upstream")} for s in sources()],
+            "paused": PAUSED.exists(), "running": running, "waiting": waiting, "runs": history[:30],
+            "estimates": est, "readiness": readiness(history), "free": free_bytes(), "max_per_request": MAX_PER_REQUEST}
