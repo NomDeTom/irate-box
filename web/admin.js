@@ -1534,6 +1534,41 @@ function signalWords(dbm) {
   return dbm >= -50 ? 'excellent' : dbm >= -60 ? 'good' : dbm >= -70 ? 'fair' : dbm >= -80 ? 'weak' : 'poor';
 }
 
+// A link's uptime (step 34): a folded part on its card, the week by hour and 35 days by day,
+// from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
+function uptimeSection(iface) {
+  const u = netData && netData.uptime && netData.uptime[iface];
+  const fold = el('details', { className: 'net-uptime' });
+  const sm = u && u.summary;
+  const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  const said = !sm || sm.up == null ? 'Not recorded yet.'
+    : `Up ${Heatmap.percent(sm.up)} over the last 7 days (${sm.hours_seen} hours recorded)`
+      + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
+      + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
+  fold.append(el('summary', {}, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: ` ${said}` })));
+  if (!u) {
+    fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
+      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 35 days.' }));
+    return fold;
+  }
+  const hours = Array.from({ length: 24 }, (_, h) => (h % 6 ? '' : String(h).padStart(2, '0')));
+  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 7 days, by hour:' }),
+    Heatmap.grid({ caption: `${iface}, the last 7 days by hour`, cols: hours,
+      rows: u.week.map((d) => ({ label: d.label, cells: d.hours,
+        where: (h) => `${d.label} ${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00` })) }));
+  const weeks = [];
+  for (let i = 0; i < u.month.length; i += 7) weeks.push(u.month.slice(i, i + 7));
+  const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 35 days, by day:' }),
+    Heatmap.grid({ caption: `${iface}, the last 35 days by day`, cols: Array.from({ length: 7 }, () => ''),
+      rows: weeks.map((w) => ({ label: day(w[0].date), cells: w.map((c) => (c.n ? c : null)), where: (i) => day(w[i].date) })) }),
+    Heatmap.legend());
+  fold.append(el('p', { className: 'setting-desc', textContent: u.kind === 'uplink'
+    ? 'Up means the link was up and the gateway answered. A drop is the link going down after being up; switched off by you is not counted.'
+    : 'Only whether the link was up (a cable in, or joined to a network): the gateway is checked on the box\'s link to your network.' }));
+  return fold;
+}
+
 function deviceCard(inv, d, wifi, hazards) {
   const line = (label, text) => el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: label }), el('span', { textContent: text }));
   // Each labelled part a section of its own, a hairline between them, so the parts don't run together.
@@ -1574,6 +1609,7 @@ function deviceCard(inv, d, wifi, hazards) {
           el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` }))))));
     }
   }
+  if (!(wifi && d.type === 'AP')) kids.push(section(uptimeSection(d.iface)));
   const mine = hazards.filter((h) => h.iface === d.iface);
   if (mine.length) kids.push(section(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix)))));
   return el('div', { className: 'net-device setting' }, ...kids);

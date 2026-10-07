@@ -34,6 +34,7 @@ from irate_box.hub import flasher
 from irate_box.hub import gitrepos
 from irate_box.hub import hotspot
 from irate_box.hub import hubclock
+from irate_box.hub import linkhistory
 from irate_box.library import librarian
 from irate_box.hub import manifests
 from irate_box.hub import store
@@ -1042,7 +1043,9 @@ def network_snapshot():
     if status:
         # A report the watchdog stopped writing is old news: say so rather than show it as live.
         status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
-    return {"inventory": load(NETINV_STATE), "uplink": status,
+    # Each link's uptime (step 34): hours for a week, days for 35, summed here from the watchdog's
+    # five-minute slots, so the page gets a few KB rather than the slots.
+    return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
             "levels": {"eagerness": list(uplink.EAGERNESS), "forgiveness": list(uplink.FORGIVENESS),
                        "describe": uplink.DESCRIBE, "presets": {"eagerness": uplink.EAGERNESS,
                                                                 "forgiveness": uplink.FORGIVENESS, "common": uplink.COMMON},

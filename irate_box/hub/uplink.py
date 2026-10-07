@@ -55,6 +55,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -63,7 +64,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from irate_box.hub import netinv
+from irate_box.hub import linkhistory, netinv
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -73,6 +74,7 @@ REBOOTS = ETC / "uplink-reboots.json"
 SETTINGS = ETC / "uplink.json"
 RECORD = ETC / "uplink-changes.json"
 STATUS = STATE / "control" / "uplink.json"
+HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
 SYS_NET = Path("/sys/class/net")
 # Running any of these, the box is busy with something a reboot would spoil.
 BUSY_UNITS = {"irate-box-ci.service": "a build", "irate-box-librarian.service": "a library update",
@@ -628,6 +630,79 @@ class DropWatcher(threading.Thread):
             time.sleep(5)
 
 
+def _clock_trusted():
+    try:
+        from irate_box.root import rtc
+        return bool(rtc.trusted())
+    except Exception:  # noqa: BLE001 - no module, no timedatectl: not known to be right
+        return False
+
+
+class History:
+    """The links' uptime history (linkhistory.py), for /admin's heatmaps: the watched link's full
+    state, and link only for the box's other wired and WiFi-client interfaces. Kept in memory and
+    written when a five-minute slot closes, so the card sees one small write in five minutes.
+    Nothing is recorded while the clock is not trusted (no network time, not set by hand)."""
+
+    def __init__(self, trusted=_clock_trusted):
+        try:
+            self.hist = json.loads(HISTORY.read_text())
+            if not isinstance(self.hist, dict):
+                raise ValueError
+        except (OSError, ValueError):
+            self.hist = {}
+        self.trusted, self.slot, self.ok, self.dirty = trusted, None, False, False
+        self.types, self.typed = {}, 0
+
+    def _turn(self, now):
+        idx = int(now // linkhistory.SLOT)
+        if idx != self.slot:
+            self.flush()
+            self.slot, self.ok = idx, self.trusted()
+        return self.ok
+
+    def note(self, now, watched, state, others=None):
+        """state: the watched link's (linkhistory's letters); others: {iface: "u" | "d"}."""
+        if not self._turn(now):
+            return
+        if watched and state:
+            self.dirty |= linkhistory.record(self.hist, watched, state, now, "uplink")
+        for iface, st in (others or {}).items():
+            self.dirty |= linkhistory.record(self.hist, iface, st, now, "link")
+
+    def flush(self):
+        if not self.dirty:
+            return
+        from irate_box.root import safeio
+        HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        safeio.write(HISTORY, json.dumps(self.hist, separators=(",", ":")))
+        self.dirty = False
+
+    def others(self, watched, now):
+        """The other wired and WiFi-client links, up or down (the hotspot's interface is not one)."""
+        if now - self.typed > 600:
+            self.types = {i: info.get("type") for i, info in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).items()}
+            self.typed = now
+        out = {}
+        try:
+            names = sorted(p.name for p in SYS_NET.iterdir())
+        except OSError:
+            return out
+        for name in names:
+            d = SYS_NET / name
+            if name in (watched, "lo") or not (d / "device").exists():
+                continue
+            if (d / "phy80211").exists() and self.types.get(name) != "managed":
+                continue
+            out[name] = "u" if link_up(name) else "d"
+        return out
+
+
+def history_state(state, link):
+    """The watched link's letter for linkhistory, from the status's state."""
+    return {"off": "o", "up": "u", "checking": "g"}.get(state, "g" if link else "d")
+
+
 def write_status(data):
     # As root, in control/, which the hub can change: never through a link it planted (F13).
     from irate_box.root import safeio
@@ -691,6 +766,12 @@ def serve(dry=False):
     watcher.start()
     iface, backend, actor, can, looked = None, None, None, set(), 0
     pinned = None
+    history = History()
+
+    def stop(*_):
+        history.flush()  # the slot under way, rather than lose up to five minutes of it
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, stop)
     while True:
         now = time.time()
         # Settings changed on /admin: take them, and give the owner a moment before acting.
@@ -718,6 +799,7 @@ def serve(dry=False):
                 actor.backend = backend
                 watcher.iface = iface
         if not iface:
+            history.note(now, None, None, history.others(None, now))
             write_status({"at": now, "state": "no-link", "iface": None, "events": list(w.events),
                           "chosen": chosen, "settings": w.eff, "reboots": w.reboots, "dry_run": dry})
             nap(wake, w.eff["check"], mtime)
@@ -743,7 +825,9 @@ def serve(dry=False):
                 pinned = None if step in ("reconnect", "restart", "radio") else pinned
             if result:
                 w.log(time.time(), "result", str(result)[:300])
-        write_status(_status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry))
+        report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
+        history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]))
+        write_status(report)
         # While a check or an outage is under way, look again sooner than the steady pace.
         wait = w.eff["check"] if not (w.misses or w.outage) else min(w.eff["check"], 15)
         nap(wake, wait, mtime)
