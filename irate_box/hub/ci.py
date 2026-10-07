@@ -112,10 +112,18 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
   fi
 fi
 """
-_PIO_BUILD = """case $PIO_FROM in
+_PIO_BUILD = """pio_ver() { "$1" --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -1; }
+case $PIO_FROM in
   pip) PIO_BIN=$(venv_pio) ;;
   debian) PIO_BIN=$PIO_DEBIAN ;;
-  *) if [ -x "$PIO_DEBIAN" ]; then PIO_BIN=$PIO_DEBIAN; else PIO_BIN=$(venv_pio); fi ;;
+  # Debian's first; but once the wheelhouse's has been installed (a fallback before) and is the
+  # newer, that one. Debian's 6.1.10 removes a platform that needs a newer PlatformIO before it
+  # refuses it (Meshtastic's espressif32 needs 6.1.19: found on the Lyra 2026-10-07), so going
+  # to it first would download the platform again every build.
+  *) if [ -x "$PIO_DEBIAN" ] && [ -x "$HOME/pio/bin/pio" ] \\
+        && [ "$(printf '%s\\n%s\\n' "$(pio_ver "$PIO_DEBIAN")" "$(pio_ver "$HOME/pio/bin/pio")" | sort -V | tail -1)" != "$(pio_ver "$PIO_DEBIAN")" ]; then
+       PIO_BIN=$HOME/pio/bin/pio
+     elif [ -x "$PIO_DEBIAN" ]; then PIO_BIN=$PIO_DEBIAN; else PIO_BIN=$(venv_pio); fi ;;
 esac
 # FW_TOOLS_ONLY=1 (the Firmware Factory's "Fetch tools"): what the environment needs (platform,
 # toolchain, framework, libraries) installed, nothing compiled.
@@ -492,6 +500,12 @@ set -euo pipefail
 """ + _PIO_PICK + 'PIO_ENV=$FW_ENV PIO_ENV_FAMILY=$FW_FAMILY\n' + _PIO_SEED + _PIO_BUILD
 
 
+# An offline build (the Firmware Factory's "Test offline"): the submodules and the build run in a
+# network namespace of their own, with only loopback (an unprivileged user namespace: hubci's own
+# uid, mapped to itself). Nothing can be downloaded, so a pass proves the box builds it offline.
+OFFLINE = ["unshare", "--user", "--map-current-user", "--net", "--"]
+
+
 def _mirror_paths():
     """The local copies the mirrors' URLs point at (mirror-urls.json): what the factory may build."""
     try:
@@ -504,7 +518,11 @@ def _mirror_paths():
 class Usage(threading.Thread):
     """What one build used: wall and CPU time, peak memory (its unit's cgroup, sampled every few
     seconds), disk read and written, the card's free space before and after, the hottest the board
-    got, and what the unit received over the network (IPAccounting: none means it ran offline)."""
+    got, and what the box received over the network meanwhile (its interfaces' counters, so
+    everything the box received, not only the build: an upper bound). Not IPAccounting: on the Lyra's
+    vendor kernel systemd cannot attach its cgroup programs (bpf-firewall, error 524), so it reads 0
+    whatever a build downloads, and IPAddressDeny blocks nothing (found 2026-10-07). Whether a build
+    ran offline is not inferred from this: an offline build runs with no network at all (OFFLINE)."""
 
     def __init__(self, every=5):
         super().__init__(daemon=True)
@@ -535,14 +553,12 @@ class Usage(threading.Thread):
 
     @staticmethod
     def network():
-        out = subprocess.run(["systemctl", "show", "-p", "IPIngressBytes", "-p", "IPEgressBytes", "irate-box-ci.service"],
-                             capture_output=True, text=True).stdout
-        vals = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+        """Bytes the box's interfaces (not loopback) have received, or None."""
         try:
-            got = int(vals.get("IPIngressBytes", ""))
-        except ValueError:
+            lines = Path("/proc/net/dev").read_text().splitlines()[2:]
+            return sum(int(l.split(":", 1)[1].split()[0]) for l in lines if l.split(":", 1)[0].strip() != "lo")
+        except (OSError, ValueError, IndexError):
             return None
-        return None if got >= 2 ** 63 else got   # unset: "[not set]" or UINT64_MAX
 
     def _sample(self):
         if self.cg:
@@ -580,8 +596,7 @@ class Usage(threading.Thread):
             "written_bytes": (r1.ru_oublock - self.r0.ru_oublock) * 512,
             "free_before": self.free0, "free_after": shutil.disk_usage(ROOT).free,
             "hottest": self.hottest,
-            "received": None if self.net0 is None or net1 is None else net1 - self.net0}
-        self.result["offline"] = self.result["received"] == 0
+            "received": None if self.net0 is None or net1 is None else max(0, net1 - self.net0)}
         return False
 
 
@@ -602,6 +617,8 @@ def build_firmware(job):
     started = time.time()
     keep = {k: job.get(k) for k in ("source", "ref", "commit", "env", "family", "name", "batch", "queued")}
     keep["tools_only"] = job.get("tools_only") is True
+    offline = keep["offline"] = job.get("offline") is True and not keep["tools_only"]
+    netns = OFFLINE if offline else []
     _write_status(run, kind="firmware", repo=FACTORY, branch=job.get("ref"), started=started, state="running", **keep)
     src = WORK / FACTORY
     shutil.rmtree(src, ignore_errors=True)
@@ -618,7 +635,15 @@ def build_firmware(job):
             out = _git("checkout", "--quiet", job["commit"], cwd=src)
             if out.returncode != 0:
                 raise RuntimeError(f"checkout failed: {out.stderr.strip()}")
-            _git("submodule", "update", "--init", "--recursive", "--depth", "1", cwd=src, timeout=3600)
+            if offline:
+                probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)
+                if probe.returncode != 0:
+                    raise RuntimeError(f"cannot run without the network here (unshare: {probe.stderr.strip()[:200]})")
+                say("offline: no network at all (a network namespace of its own), from the submodules on")
+            out = subprocess.run([*netns, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"], cwd=src,
+                                 capture_output=True, text=True, timeout=3600)
+            if offline and out.returncode != 0:
+                raise RuntimeError(f"the submodules need the network: {out.stderr.strip()[-300:]}")
             env = dict(os.environ, CI="1", CI_REPO=FACTORY, CI_BRANCH=str(job.get("ref")), CI_COMMIT=job["commit"],
                        CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family,
                        FW_TOOLS_ONLY="1" if keep["tools_only"] else "")
@@ -628,11 +653,15 @@ def build_firmware(job):
                 env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
             wheelhouse = _wheelhouse()
             if wheelhouse:
-                env["PIP_NO_INDEX"] = "1"
+                # Fetching tools is going online on purpose: the wheelhouse first, and PyPI for what
+                # it lacks (Meshtastic's espressif32 makes its own Python environment with uv, which
+                # the wheelhouse hasn't: refused with PIP_NO_INDEX on the Lyra, 2026-10-07).
+                if not keep["tools_only"]:
+                    env["PIP_NO_INDEX"] = "1"
                 env["PIP_FIND_LINKS"] = str(wheelhouse)
             say(f"{'fetching the tools for' if keep['tools_only'] else 'building'} {env_name} (time limit {TIME_LIMIT // 60} min)")
             with Usage() as usage:
-                proc = subprocess.run(["bash", "-c", FIRMWARE_SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
+                proc = subprocess.run([*netns, "bash", "-c", FIRMWARE_SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
             state = "passed" if proc.returncode == 0 else "failed"
             built = src / ".pio" / "build" / env_name

@@ -137,7 +137,7 @@ check("built: passed, its flash files kept (not the .elf or the map)", st["state
       "firmware-heltec-v3-2.8.1.bin", "firmware-heltec-v3-2.8.1.factory.bin", "firmware-heltec-v3.uf2"], st)
 res = st.get("resources") or {}
 check("  what it used: wall and CPU time, peak memory, disk, free space, heat, network", {"wall", "cpu", "peak_memory", "read_bytes", "written_bytes",
-      "free_before", "free_after", "hottest", "received", "offline", "work_bytes"} <= set(res) and res["work_bytes"] > 5000, res)
+      "free_before", "free_after", "hottest", "received", "work_bytes"} <= set(res) and res["work_bytes"] > 5000, res)
 check("  the source, ref, target and family on the run", (st["source"], st["ref"], st["env"], st["family"]) == ("meshtastic-firmware", "v2.8.1.abcdef0", "heltec-v3", "esp32s3"))
 check("  the work folder gone", not (ci.WORK / ci.FACTORY).exists())
 for _ in range(3):
@@ -187,10 +187,36 @@ check("  the build script told so (FW_TOOLS_ONLY=1), the run marked tools-only, 
 sn = factory.snapshot()
 check("  a family already built here stays built (a build says more); no estimate taken from the tools run",
       sn["readiness"]["esp32s3"].startswith("built here") and sn["estimates"]["esp32s3"]["built"] != st["finished"], (sn["readiness"], sn["estimates"]))
-r = factory.readiness([{"family": "rp2040", "tools_only": True, "state": "passed", "resources": {"received": 300 * 2 ** 20}},
+r = factory.readiness([{"family": "rp2040", "tools_only": True, "state": "passed", "resources": {"tools_bytes": 300 * 2 ** 20}},
                        {"family": "stm32", "tools_only": True, "state": "failed"}])
-check("  one not built: tools fetched with their size, or could not be", r == {"rp2040": "tools fetched (300 MB downloaded), not yet built",
+check("  one not built: tools fetched with their size, or could not be", r == {"rp2040": "tools fetched (PlatformIO's tools 300 MB), not yet built",
       "stm32": "its tools could not be fetched here: see the log"}, r)
+r = factory.readiness([{"family": "a", "state": "passed", "offline": True}, {"family": "a", "state": "passed"},
+                       {"family": "b", "state": "passed"}, {"family": "b", "state": "failed", "offline": True},
+                       {"family": "c", "state": "failed", "offline": True}, {"family": "d", "state": "passed"}])
+check("readiness: offline ready only from a build with no network; a build with it says so", r == {"a": "offline ready",
+      "b": "built here; failed offline: see its log", "c": "failed offline: see its log", "d": "built here; not yet tried offline"}, r)
+
+# Test offline: the same target, built with no network at all (ci.OFFLINE, stood in here).
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
+out = factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", offline=True)
+j = factory._jobs()[0]
+check("test offline: a build of one target, marked offline, not tools-only", j.get("offline") is True and "tools_only" not in j
+      and j["name"] == "nrf52840 offline (by rak4631)", j)
+ci.OFFLINE = ["env", "IRATE_NO_NETWORK=1"]
+ci.FIRMWARE_SCRIPT = 'echo "$IRATE_NO_NETWORK" > "$CI_ARTIFACTS/../netns.txt"\n'
+ci.run_queue()
+st = factory.runs()[0]
+check("  the build ran inside it, the run says offline", (ci.RUNS / st["run"] / "netns.txt").read_text().strip() == "1" and st["offline"] is True
+      and "offline: no network at all" in (ci.RUNS / st["run"] / "log.txt").read_text(), st)
+check("  and the family is offline ready", factory.snapshot()["readiness"]["nrf52840"] == "offline ready")
+ci.OFFLINE = ["false"]
+factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", offline=True)
+ci.run_queue()
+st = factory.runs()[0]
+check("  where the network can't be cut off: failed, and said, nothing built", st["state"] == "failed"
+      and "cannot run without the network here" in (ci.RUNS / st["run"] / "log.txt").read_text())
 
 # The web flasher (§4b item 5): a passed build published, as a release built on this box.
 for f in ci.QUEUE.glob("*.json"):

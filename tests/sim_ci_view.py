@@ -148,8 +148,8 @@ check("seeding another family: the download cache only", r.returncode == 0 and (
 # after one that compiled and failed.
 pio_part = (script[script.index("PIO_FROM=${PIO:-auto}"):script.index("venv_pio() {")]
             + 'venv_pio() { echo "$HOME/venvpio"; }\n'
-            + script[script.index("case $PIO_FROM in"):script.index('echo "== keeping the program"')])
-def pio_case(name, debian, debian_out, debian_rc, mode="auto"):
+            + script[script.index("pio_ver() {"):script.index('echo "== keeping the program"')])
+def pio_case(name, debian, debian_out, debian_rc, mode="auto", installed=None):
     home = T / f"pio-{name}"; home.mkdir()
     def fake(path, ver, out, rc):
         path.write_text(f'#!/bin/bash\n[ "$1" = --version ] && {{ echo "PlatformIO Core, version {ver}"; exit 0; }}\n'
@@ -157,6 +157,9 @@ def pio_case(name, debian, debian_out, debian_rc, mode="auto"):
     if debian:
         fake(home / "debpio", "6.1.10", debian_out, debian_rc)
     fake(home / "venvpio", "6.2.0", "Compiling .pio/x.o\\n", 0)
+    if installed:  # the wheelhouse's, installed by an earlier fallback, at this version
+        (home / "pio" / "bin").mkdir(parents=True)
+        fake(home / "pio" / "bin" / "pio", installed, "Compiling .pio/x.o\\n", 0)
     r = subprocess.run(["bash", "-c", "set -euo pipefail\n" + pio_part.replace("PIO_DEBIAN=/usr/bin/pio", f"PIO_DEBIAN={home / 'debpio'}")],
                        env=dict(os.environ, HOME=str(home), PIO=mode, PIO_ENV="native"), capture_output=True, text=True)
     calls = [Path(c.split()[0]).name for c in (home / "calls").read_text().splitlines()] if (home / "calls").exists() else []
@@ -175,6 +178,10 @@ rc, calls, out = pio_case("tools", True, "", 0)
 del os.environ["FW_TOOLS_ONLY"]
 check("  FW_TOOLS_ONLY=1: pkg install, not run (nothing compiled)", rc == 0 and "fetching the tools with" in out
       and "pkg install -e native" in (T / "pio-tools" / "calls").read_text(), (rc, out))
+rc, calls, out = pio_case("newer", True, "", 0, installed="6.2.0")
+check("  the wheelhouse's installed and newer than Debian's: it goes first (Debian's would remove the platform)", rc == 0 and calls == ["pio"], (rc, calls, out))
+rc, calls, out = pio_case("older", True, "Compiling .pio/x.o\\n", 0, installed="6.1.5")
+check("  installed but older: Debian's", rc == 0 and calls == ["debpio"], (rc, calls, out))
 rc, calls, out = pio_case("pip", True, "", 0, mode="pip")
 check("  PIO=pip: the wheelhouse's even with Debian's there", rc == 0 and calls == ["venvpio"], (rc, calls))
 from irate_box.library import firmware as FW  # noqa: E402

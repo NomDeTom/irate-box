@@ -20,8 +20,8 @@ const snap = (over = {}) => Object.assign({
     { id: '1792-bbbbbb', env: 'rak4631', name: 'RAK WisBlock 4631', family: 'nrf52840', source: 'meshtastic-firmware', ref: 'v2.8.1.8e6a88d', start: null, finish: null }],
   runs: [{ run: 'firmware-factory/7', state: 'running', env: 'native', family: 'native' },
     { run: 'firmware-factory/6', state: 'passed', env: 'native', name: 'native', family: 'native', source: 'meshtastic-firmware', ref: 'v2.8.1.8e6a88d',
-      commit: '8e6a88d0000000000000000000000000000000000', finished: now - 7200, duration: 9801,
-      resources: { cpu: 9400, peak_memory: 300 * 2 ** 20, work_bytes: 700 * 2 ** 20, hottest: 61.5, received: 0, offline: true },
+      commit: '8e6a88d0000000000000000000000000000000000', finished: now - 7200, duration: 9801, offline: true,
+      resources: { cpu: 9400, peak_memory: 300 * 2 ** 20, work_bytes: 700 * 2 ** 20, hottest: 61.5, received: 5 * 2 ** 20 },
       artifacts: ['meshtasticd'] },
     { run: 'firmware-factory/5', state: 'failed', env: 'tbeam', name: 'T-Beam', family: 'esp32', source: 'my-fork', ref: 'main', commit: 'abc', finished: now - 9000, duration: 60, artifacts: [] }],
   estimates: { native: { seconds: 9801 } }, readiness: { native: 'offline ready' },
@@ -45,7 +45,7 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/factory') {
     const b = JSON.parse(opts.body); posted.push(b);
     if (b.action === 'queue') return ok({ batch: 'x', queued: b.targets.length, commit: '8e6a88d00', snapshot: state }, 202);
-    if (b.action === 'tools') return ok({ queued: 1, env: 'rak4631', commit: '8e6a88d00', snapshot: state }, 202);
+    if (b.action === 'tools' || b.action === 'offline') return ok({ queued: 1, env: 'rak4631', commit: '8e6a88d00', snapshot: state }, 202);
     if (b.action === 'pause') state = snap({ paused: true });
     return ok(state);
   }
@@ -94,7 +94,7 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   await wait();
   check('  Up and Cancel ask the hub for that job', posted.some((b) => b.action === 'up' && b.id === '1792-bbbbbb') && posted.some((b) => b.action === 'cancel' && b.id === '1791-aaaaaa'));
   const built = [...d.querySelectorAll('#factory-runs .admin-item')];
-  check('built: what it used, offline said, its files and log', built.length === 2 && /Built native, native: .* \(8e6a88d\) 2 h ago; 2\.7 h, CPU 2\.6 h, peak memory 300 MB, disk 700 MB, hottest 62 °C, offline\./.test(t(built[0]))
+  check('built: what it used, offline said, its files and log', built.length === 2 && /Built offline native, native: .* \(8e6a88d\) 2 h ago; 2\.7 h, CPU 2\.6 h, peak memory 300 MB, disk 700 MB, hottest 62 °C, no network\./.test(t(built[0]))
     && [...built[0].querySelectorAll('a')].map((a) => a.getAttribute('href')).join(' ') === '/admin/ci/file?run=firmware-factory%2F6&name=meshtasticd /admin/ci/file?run=firmware-factory%2F6&name=log.txt',
     t(built[0]));
   check('  a failed one says so', /^failed T-Beam \(tbeam\)/.test(t(built[1])));
@@ -104,6 +104,10 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   const tq = posted.find((b) => b.action === 'tools');
   check('Fetch tools: the family asked for at this source and ref, and said', tq && tq.family === 'nrf52840' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
     && /Fetching nrf52840's tools \(by rak4631\): queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
+  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
+  await wait();
+  check('Test offline: asked for the family, and said', posted.some((b) => b.action === 'offline' && b.family === 'nrf52840')
+    && /Building rak4631 with no network at all: queued\. If it passes, nrf52840 is offline ready\./.test(t(d.getElementById('factory-note'))));
   d.getElementById('factory-pause').click();
   await wait();
   check('Pause: asked, then said, the button now Resume', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume');

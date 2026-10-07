@@ -2444,8 +2444,9 @@ class Handler(BaseHTTPRequestHandler):
                     out = factory.queue(str(payload.get("source", "")), str(payload.get("ref", "")), payload.get("targets"))
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
-                if action == "tools":
-                    out = factory.queue_tools(str(payload.get("source", "")), str(payload.get("ref", "")), str(payload.get("family", "")))
+                if action in ("tools", "offline"):
+                    out = factory.queue_tools(str(payload.get("source", "")), str(payload.get("ref", "")), str(payload.get("family", "")),
+                                              offline=action == "offline")
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
                 if action == "publish":
@@ -2457,7 +2458,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif action in ("pause", "resume"):
                     factory.pause(action == "pause")
                 else:
-                    raise ValueError("action must be queue, tools, publish, unpublish, cancel, up, pause or resume")
+                    raise ValueError("action must be queue, tools, offline, publish, unpublish, cancel, up, pause or resume")
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return

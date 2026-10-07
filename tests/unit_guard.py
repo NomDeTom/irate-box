@@ -36,7 +36,8 @@ EXEMPT = {
     "irate-box-ci.service": {"PrivateDevices=yes": "a build may need a board's serial port later (flashing from the box)",
                              "RestrictAddressFamilies=": "a build's tools reach the network as they choose (offline builds are kept so by IPAddressDeny, not this)",
                              "ProtectKernelLogs=yes": "", "ProtectClock=yes": "", "SystemCallArchitectures=native": "",
-                             "CapabilityBoundingSet=": "", "RestrictNamespaces=yes": "", "RestrictSUIDSGID=yes": "",
+                             "CapabilityBoundingSet=": "",
+                             "RestrictNamespaces=yes": "user and net only (RestrictNamespaces=user net): an offline build runs in a network namespace of its own", "RestrictSUIDSGID=yes": "",
                              "RestrictRealtime=yes": "", "LockPersonality=yes": "", "ProtectKernelTunables=yes": "",
                              "ProtectKernelModules=yes": "", "ProtectControlGroups=yes": ""},
 }
