@@ -191,6 +191,14 @@ h2 {
 }
 
 .qr-card { cursor: default; }
+/* The Firmware Factory's tile (hub.js): two cells wide, its downloads a short list that scrolls. */
+.factory-card { cursor: default; grid-column: span 2; text-align: left; align-items: flex-start; }
+.factory-card:hover { transform: none; border-color: var(--border); }
+.factory-card .bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.factory-card .bar[hidden] { display: none; }
+.factory-card .bar span { display: block; height: 100%; width: 0; background: var(--accent); }
+.factory-downloads { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.8rem; max-height: 9rem; overflow-y: auto; width: 100%; }
+.factory-build a { margin-right: 0.35rem; }
 .qr-card:hover { transform: none; border-color: var(--border); }
 .qr-card .qr { display: block; width: 96px; max-width: 100%; }
 .qr-card .qr svg { display: block; width: 100%; height: auto; background: #fff; border-radius: 6px; padding: 4px; box-sizing: border-box; }

@@ -96,7 +96,7 @@ LOCAL_PATH_RE = re.compile(r"^(?![./])(?!.*\.\.)[A-Za-z0-9._~/-]*(\?[A-Za-z0-9._
 # What an add-on's pages may connect to: {box} is the hub's own host.
 CONNECT_RE = re.compile(r"^(wss?|https?)://(\{box\}|[a-z0-9.-]+)(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-WIDGETS = ("people", "qr", "system")
+WIDGETS = ("people", "qr", "system", "factory")
 PAGE_RE = re.compile(r"^[A-Za-z0-9_-]+\.html$")
 
 

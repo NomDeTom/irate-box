@@ -187,6 +187,49 @@ if (grid || document.querySelector('[data-service]')) {
   setInterval(refreshStatus, 15000);
 }
 
+// The Firmware Factory's tile (the owner shows it: /admin → Firmware Factory): what is building and
+// how far along, what is waiting, and the newest builds' files to download (ESP32 images and zips,
+// UF2s). Download only: flashing stays with the web flasher.
+const factoryCard = document.getElementById('factory-card');
+if (factoryCard) {
+  const fNow = document.getElementById('factory-now');
+  const fBar = document.getElementById('factory-bar');
+  const fDone = document.getElementById('factory-progress');
+  const fFiles = document.getElementById('factory-downloads');
+  const kind = (f) => (f.endsWith('.uf2') ? 'UF2' : f.endsWith('.factory.bin') ? 'factory .bin' : f.endsWith('.zip') ? '.zip'
+    : f.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
+  const refreshFactory = async () => {
+    let d;
+    try {
+      const r = await fetch('/factory.json');
+      if (!r.ok) return;
+      d = await r.json();
+    } catch (_) { return; }
+    const run = d.running;
+    const waiting = d.waiting ? `; ${d.waiting} waiting` : '';
+    fNow.textContent = run ? `Building ${run.name} (${run.family})${run.done != null ? `, about ${Math.round(run.done * 100)} %` : ''}${waiting}`
+      : d.paused ? `Paused${waiting}` : d.waiting ? `${d.waiting} waiting` : 'Nothing building now';
+    fBar.hidden = !(run && run.done != null);
+    if (run && run.done != null) fDone.style.width = `${Math.round(run.done * 100)}%`;
+    fFiles.replaceChildren(...d.built.map((b) => {
+      const row = document.createElement('span');
+      row.className = 'factory-build';
+      row.append(document.createTextNode(`${b.name} `));
+      b.files.forEach((f) => {
+        const a = document.createElement('a');
+        a.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(f)}`;
+        a.download = f;
+        a.title = `${f} (${b.ref})`;
+        a.textContent = kind(f);
+        row.append(a, document.createTextNode(' '));
+      });
+      return row;
+    }));
+  };
+  refreshFactory();
+  setInterval(refreshFactory, 30000);
+}
+
 // Join tile: a QR of the address this page was loaded from -- 192.168.4.1 on the box,
 // whatever it is here -- so the next person joins from the first one's screen.
 const qrEl = document.getElementById('hub-qr');

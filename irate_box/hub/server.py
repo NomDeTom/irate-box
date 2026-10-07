@@ -200,6 +200,13 @@ WIDGET_HTML = {
         <span class="name">Join</span>
         <span class="desc" id="hub-qr-url">Scan to open this hub</span>
       </div>""",
+    "factory": """      <div class="service-card factory-card" id="factory-card">
+        <span class="icon">🏭</span>
+        <span class="name">Firmware Factory</span>
+        <span class="desc" id="factory-now">Built on this box</span>
+        <span class="bar" id="factory-bar" hidden><span id="factory-progress"></span></span>
+        <span class="factory-downloads" id="factory-downloads"></span>
+      </div>""",
     "system": """      <div class="service-card system-card" id="system-card">
         <span class="icon">💽💾</span>
         <span class="meter" id="mem-meter" hidden><span class="meter-label">Memory <b id="mem-text"></b></span><span class="bar"><span id="mem-bar"></span></span></span>
@@ -218,14 +225,16 @@ def hidden_apps():
     return {i for i in ids if access.mode_of(state, i) != "public"}
 
 
-def render_tiles(row="apps", hidden=frozenset()):
+def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
-    list page left with nothing on it."""
+    list page left with nothing on it. factory_tile: the owner's choice to show the factory's."""
     out = []
     for m in MANIFESTS:
         tile = m.get("tile")
         if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
+            continue
+        if tile.get("widget") == "factory" and not factory_tile:
             continue
         if m.get("menu") and not manifests.entries_for(m["id"], MANIFESTS, hidden):
             continue
@@ -261,11 +270,12 @@ def home_page():
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    mtime = (path.stat().st_mtime, chosen)
+    show_factory = settings_snapshot()["factory_tile"]
+    mtime = (path.stat().st_mtime, chosen, show_factory)
     if _home_page["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
         hidden = hidden_apps()
-        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden))
+        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden, show_factory))
         _home_page["body"] = text.encode()
         _home_page["mtime"] = mtime
     return _home_page["body"]
@@ -383,6 +393,9 @@ DEFAULT_SETTINGS = {
     # (a real boot, not the hub restarting for an update; see clear_on_new_boot).
     "shout_reset_on_boot": False,
     "board_reset_on_boot": False,
+    # The Firmware Factory's tile on the front page (step 36): its queue for anyone to follow, and
+    # what it built to download. Off until the owner shows it.
+    "factory_tile": False,
 }
 _settings_lock = threading.Lock()
 
@@ -1978,6 +1991,32 @@ class Handler(BaseHTTPRequestHandler):
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
             ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode)
             self.send_empty(204 if ok else 403)
+            return
+
+        if path in ("/factory.json", "/factory/file"):
+            # The Firmware Factory's tile (factory.py public_view): only while the owner shows it,
+            # and only its downloadable files (ESP32 images and zips, UF2s), never logs or sources.
+            if not settings_snapshot()["factory_tile"]:
+                self.send_json(404, {"error": "not shown"})
+                return
+            if path == "/factory.json":
+                self.send_json(200, factory.public_view())
+                return
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            name = unquote(query.get("name", ""))
+            f = factory.public_file(unquote(query.get("run", "")), name)
+            if not f:
+                self.send_json(404, {"error": "no such file"})
+                return
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if path == "/status":
