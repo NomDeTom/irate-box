@@ -32,6 +32,27 @@ function randomName() {
 
 let signature = '';
 let shown = [];
+let marks = false;
+// Who may post, as the box's admin set it (accounts step 16): the form says so, and a logged-in
+// user posts under their account's name, marked ✓ where the admin shows marks.
+const postNote = document.createElement('p');
+postNote.className = 'setting-desc shout-post-note';
+form.after(postNote);
+function applyPosting(p) {
+  if (!p) return;
+  marks = p.marks;
+  const closed = p.who === 'off' || (p.who === 'users' && !p.me);
+  form.hidden = closed;
+  postNote.replaceChildren();
+  if (p.who === 'off') postNote.textContent = 'The shoutbox is closed.';
+  else if (closed) {
+    const a = document.createElement('a'); a.href = '/account.html?next=/'; a.textContent = 'Log in';
+    postNote.append(a, ' to post here: the box\'s admin keeps the shoutbox for its users.');
+  }
+  nameInput.readOnly = !!p.me;
+  nameRoll.hidden = !!p.me;
+  if (p.me) nameInput.value = p.me;
+}
 
 function setDecayNote(ttl) {
   decayNote.textContent =
@@ -41,6 +62,7 @@ function setDecayNote(ttl) {
 
 function renderMessages(data) {
   setDecayNote(data.ttl);
+  applyPosting(data.posting);
   const slice = data.messages.slice(-MAX_DISPLAY);
   const sig = `${slice.length}:${slice.length ? slice[slice.length - 1].created : 0}`;
 
@@ -73,6 +95,7 @@ function renderMessages(data) {
     const hue = hueOf(m, 'name');
     div.innerHTML =
       `<span class="author" style="--author-hue:${hue}">${esc(m.name)}</span>` +
+      (m.account && marks ? '<span class="verified" title="Posted by the box\'s account of that name">✓</span>' : '') +
       `<span class="text">${mdInline(m.text)}</span>` +
       `<span class="time">${formatAge(data.now - m.created)} ago</span>`;
     messagesEl.appendChild(div);
@@ -95,11 +118,12 @@ form.addEventListener('submit', async (e) => {
   const text = msgInput.value.trim();
   if (!name || !text) return;
   try {
-    await fetch('/messages', {
+    const r = await fetch('/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
+    if (!r.ok) { postNote.textContent = (await r.json().catch(() => ({}))).error || `Not posted (HTTP ${r.status}).`; return; }
     msgInput.value = '';
     await poll();
   } catch (_) {}

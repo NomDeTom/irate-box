@@ -261,6 +261,35 @@ try:
     hc.close()
     check("  an admin account's: 204; the Accounts page knows it logged in over HTTPS", code == 204 and d["admin_login"]["on"] is True
           and d["admin_login"]["https_admins"] == ["gina"], (code, d.get("admin_login")))
+    # The shoutbox and forum (stage 5): who may post, and the users' marks.
+    utok = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2].get("Set-Cookie", "").split(";")[0]
+    code, d, _ = req("/messages", {"name": "Erin", "text": "hello"}, {"X-Irate-Account": ""})
+    check("shoutbox: a guest can't post under an account's name (any case)", code == 403 and "account's name" in d["error"], d)
+    code, d, _ = req("/messages", {"name": "Someone Else", "text": "as erin"}, {"Cookie": utok})
+    check("  a user posts under their account's name, marked as theirs", code == 201 and d["name"] == "erin" and d["account"] == "erin", d)
+    code, d, _ = req("/messages", {"name": "Salty Parrot", "text": "ahoy"})
+    check("  a guest under any other name, unmarked", code == 201 and "account" not in d, d)
+    code, d, _ = req("/messages", headers={"Cookie": utok})
+    check("  the page told who may post, the marks, and who this is", d["posting"] == {"who": "guests", "marks": True, "me": "erin"}, d.get("posting"))
+    req("/admin/settings", {"shout_who": "users", "board_who": "off", "board_marks": False, "shout_marks": "sometimes"}, {"X-Irate-Admin": "1"})
+    code, d, _ = req("/messages", {"name": "Salty Parrot", "text": "ahoy"})
+    check("users only: a guest refused, told to log in", code == 403 and d.get("login") is True, d)
+    code, d, _ = req("/messages", {"name": "x", "text": "still here"}, {"Cookie": utok})
+    check("  a user posts", code == 201)
+    code, d, _ = req("/board/threads", {"name": "erin", "title": "t", "text": "x"}, {"Cookie": utok})
+    check("forum off: no one posts, users neither", code == 403 and "closed" in d["error"], d)
+    code, d, _ = req("/board/threads")
+    check("  marks off told to the page; a setting that isn't one left as it was", d["posting"]["who"] == "off" and d["posting"]["marks"] is False
+          and req("/messages")[1]["posting"]["marks"] is True, d["posting"])
+    req("/admin/settings", {"board_who": "guests"}, {"X-Irate-Admin": "1"})
+    code, d, _ = req("/board/threads", {"name": "anyone", "title": "t", "text": "x"}, {"Cookie": utok})
+    tid = d["thread"]["id"]
+    code2, d2, _ = req(f"/board/thread/{tid}", {"name": "ERIN", "text": "me too"})
+    code3, d3, _ = req(f"/board/thread/{tid}", {"name": "Bosun", "text": "aye"})
+    th = req(f"/board/thread/{tid}")[1]
+    check("forum: a user's thread under their name and marked; a guest can't reply as them; a guest's reply unmarked",
+          d["thread"]["author"] == "erin" and d["thread"]["posts"][0]["account"] == "erin" and code2 == 403 and code3 == 201
+          and "account" not in d3["post"] and req("/board/threads")[1]["threads"][0]["account"] == "erin" and th["posting"]["who"] == "guests", (d, d2, d3))
 finally:
     hub.terminate()
     hub.wait()

@@ -188,6 +188,11 @@ def _public(acc):
     return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {"password_set": bool(acc.get("hash"))}
 
 
+def exists(name):
+    """Whether an account has this name (any case): a guest may not post under it."""
+    return isinstance(name, str) and name.strip().lower() in _load()["accounts"]
+
+
 def listing():
     data = _load()
     return sorted((_public(a) for a in data["accounts"].values()), key=lambda a: (a["state"] != "asked", a["name"].lower()))
