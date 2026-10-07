@@ -1780,8 +1780,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/_irate/admin" and ("soft=1" in query or "redirect=1" in query):
             if admin or "soft=1" in query:
                 self.send_response(204)
-                if admin:
-                    self.send_header("X-Irate-Session", "admin")
+                self.send_header("X-Irate-Session", "admin" if admin else "")   # always: see git-access
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -2238,6 +2237,20 @@ class Handler(BaseHTTPRequestHandler):
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
             account = accounts.check_basic(self.headers.get("Authorization", ""), self.headers.get("X-Forwarded-For", ""))
             ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode, account)
+            if "soft=1" in self.path.partition("?")[2].split("&"):
+                # Caddy's git routes (no satisfy any): always 204, saying "ok" when the box's own login
+                # isn't needed, and the account's name for the push hook's REMOTE_USER (nginx passes
+                # $remote_user). Credentials that aren't an account's (the box's own) aren't
+                # vouched for here: Caddy's login checks them, so a wrong password isn't let through.
+                # Both always sent, empty for nothing: Caddy 2.6's copy_headers otherwise sets the
+                # placeholder's own text ({http.reverse_proxy.header.…}) on the request.
+                vouched = ok and (account is not None or not self.headers.get("Authorization"))
+                self.send_response(204)
+                self.send_header("X-Irate-Session", "ok" if vouched else "")
+                self.send_header("X-Irate-User", account["name"] if vouched and account is not None else "")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             self.send_empty(204 if ok else 403)
             return
 

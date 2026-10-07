@@ -121,9 +121,9 @@ sn = access.caddy_snippets(access.clean({"tools": "private"}), "HASH", admin_log
 check("  with the box's own login off: a hard check (anyone else sent to log in), no login asked",
       "uri /_irate/admin?redirect=1" in sn["admin-gate.caddy"] and "redirect=1" in sn["tools.caddy"] and "basic_auth" not in sn["tools.caddy"], sn)
 cf = (REPO / "config" / "Caddyfile").read_text()
-check("  the Caddyfile: /admin, the shell and Syncthing take the gate before their own login, which stays (no gate file: the login alone)",
-      cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 3
-      and cf.count("basic_auth @irate_box_basic {") == 3
+check("  the Caddyfile: /admin, the shell, Syncthing and /git-private take the gate before their own login, which stays (no gate file: the login alone); git asks the hub",
+      cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 4
+      and cf.count("basic_auth @irate_box_basic {") == 6 and "try_files /guest-push" not in cf
       and all(cf.index("admin-gate.caddy*", cf.index(r)) < cf.index("basic_auth @irate_box_basic", cf.index(r)) < cf.index("reverse_proxy", cf.index(r))
               for r in ("handle_path /sync/* {", "handle /term/* {")))
 g2 = access.nginx_gates(access.clean({"tools": "private", "term": "private"}))
@@ -325,9 +325,9 @@ try:
         r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/admin?{q}", headers=dict({"X-Forwarded-Uri": "/term/"}, **({"Cookie": cookie} if cookie else {})))
         try:
             with urllib.request.build_opener(NoRedirect).open(r, timeout=5) as resp:
-                return resp.status, resp.headers.get("X-Irate-Session"), None
+                return resp.status, resp.headers.get("X-Irate-Session") or None, None
         except urllib.error.HTTPError as e:
-            return e.code, e.headers.get("X-Irate-Session"), e.headers.get("Location")
+            return e.code, e.headers.get("X-Irate-Session") or None, e.headers.get("Location")
     check("Caddy's admin gate, the own login on (soft): an admin's session says so; a user's and a guest's pass on to the login",
           caddy_ask("soft=1", gtok) == (204, "admin", None) and caddy_ask("soft=1", tok) == (204, None, None)
           and caddy_ask("soft=1") == (204, None, None), (caddy_ask("soft=1", gtok), caddy_ask("soft=1", tok)))
