@@ -5,7 +5,8 @@ login), users (an account), and admins (an account with the admin role, or the b
 `admin`, which the web server checks and the hub never sees).
 
 What the admin sets (/admin → Accounts):
-  signup   off (no accounts: the default) | open (anyone makes one, usable at once) |
+  signup   off (no accounts: the default; any made before can't log in, and their sessions
+           don't count, until it is on again) | open (anyone makes one, usable at once) |
            apply (anyone asks; an admin accepts) | assigned (an admin makes them, each with a
            one-time code to set its password)
   http     permitted | warning (the default: the pages say a password can be read off the air
@@ -221,6 +222,8 @@ def signup(name, password, addr=""):
 
 def login(name, password, addr=""):
     """A session for a user whose password is right: (cookie value, account)."""
+    if settings()["signup"] == "off":
+        raise AccountError("this box has no accounts")
     now = time.time()
     with _lock:
         _limited(name, addr, now)
@@ -249,6 +252,8 @@ def session(token):
         return None
     now = time.time()
     data = _load()
+    if data["settings"].get("signup", DEFAULTS["signup"]) == "off":
+        return None
     s = data["sessions"].get(_digest(token))
     if not s or s.get("expires", 0) <= now:
         return None
@@ -296,6 +301,8 @@ def use_code(code, password, addr=""):
     """Set an account's password with a one-time code (an admin's new account, or a reset).
     Returns the account's name."""
     _valid_password(password)
+    if settings()["signup"] == "off":
+        raise AccountError("this box has no accounts")
     now = time.time()
     with _lock:
         _limited("", addr, now)

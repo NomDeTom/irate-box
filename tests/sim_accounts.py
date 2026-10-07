@@ -78,10 +78,47 @@ check("change password: the old one wrong refused; done, its other sessions end"
       and refused(A.change_password, ta, "password1", "password8", says="not right"))
 A.logout(ta)
 check("logout: the session ends", A.session(ta) is None)
+tb, _ = A.login("bob", "password2")
+A.set_settings(signup="off")
+check("off again: no logins, no sessions count, no codes", A.session(tb) is None and refused(A.login, "bob", "password2", says="no accounts")
+      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="no accounts"))
+A.set_settings(signup="apply")
+check("  on again: the sessions count again", A.session(tb) is not None)
 A.change("x0x", "delete")
 check("delete: gone; the list shows no hash", "x0x" not in [a["name"] for a in A.listing()] and all("hash" not in a for a in A.listing()))
 check("counts", A.counts() == {"asked": 4, "user": 3, "disabled": 0, "admins": 1}, A.counts())
 check("bad settings refused", refused(A.set_settings, "everyone") and refused(A.set_settings, None, "sometimes"))
+
+# Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
+from irate_box.hub import access  # noqa: E402
+st_ = access.clean({"draw": "users", "flasher": "users", "term": "users", "my-addon": "users", "wiki": "users"})
+check("users mode: a built-in app may be for users; not the flasher (its page is cross-site), the shell, nor a local add-on",
+      st_["draw"] == "users" and st_["wiki"] == "users" and st_["flasher"] == "public" and st_["term"] == "public" and "my-addon" not in st_, st_)
+conf = access.nginx_conf(st_)
+check("  nginx: no basic auth for it (the gate asks the hub instead)", "set $irate_box_auth_draw off;" in conf)
+gates = access.nginx_gates(st_)
+check("  a gate for each app for users, and only those", sorted(gates) == ["gate-draw.conf", "gate-wiki.conf"]
+      and "auth_request /_irate_user;" in gates["gate-draw.conf"] and "error_page 401 = @irate_box_login;" in gates["gate-draw.conf"], gates)
+check("  Caddy: forward_auth to the hub's check, which redirects", "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
+      and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"])
+site = (REPO / "config" / "irate-box.nginx").read_text()
+import re as _re  # noqa: E402
+gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
+check("  the site: every app location with a login has its gate include",
+      all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
+      and site.count("location = /_irate_user") == 4 and site.count("location @irate_box_login") == 4, sorted(gated))
+os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx")
+(T / "etc").mkdir()
+from irate_box.root import hub_control as H  # noqa: E402
+H._access_files(st_)
+gd = T / "etc" / "nginx-access.conf.d"
+check("helper: the gates written beside the access include", sorted(p.name for p in gd.iterdir()) == ["gate-draw.conf", "gate-wiki.conf"])
+H._access_files(access.clean({"draw": "users"}))
+check("  and the one no longer for users removed", sorted(p.name for p in gd.iterdir()) == ["gate-draw.conf"])
+try:
+    H.access_set({"app": "flasher", "mode": "users"}); check("  the flasher for users: refused", False)
+except ValueError as exc:
+    check("  the flasher for users: refused", "not for users" in str(exc), exc)
 
 # The hub.
 st = T / "hub"
@@ -104,7 +141,7 @@ def req(path, body=None, headers=None, https=False):
     r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=None if body is None else json.dumps(body).encode(), headers=h)
     try:
         with urllib.request.urlopen(r, timeout=10) as resp:
-            return resp.status, json.loads(resp.read()), resp.headers
+            return resp.status, json.loads(resp.read() or b"{}"), resp.headers
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read() or b"{}"), e.headers
 
@@ -136,6 +173,35 @@ try:
     check("  the admin makes one: its code given once", code == 200 and len(d.get("code", "")) == 19 and any(a["name"] == "frank" and not a["password_set"] for a in d["accounts"]), d)
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "frank"})
     check("  an /admin change without the admin page's header: refused", code == 403)
+    # Users mode: the front's check, and the home page.
+    code, d, _ = req("/_irate/user")
+    check("  the front's check: a guest, 401", code == 401)
+    code, d, h = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})
+    tok = h.get("Set-Cookie", "").split(";")[0]
+    code, d, _ = req("/_irate/user", headers={"Cookie": tok})
+    check("  logged in: 204", code == 204, code)
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/user?redirect=1", headers={"X-Forwarded-Uri": "/draw/?x=1&y=2"})
+    try:
+        urllib.request.build_opener(NoRedirect).open(r, timeout=5); loc = None
+    except urllib.error.HTTPError as e:
+        loc = (e.code, e.headers.get("Location"))
+    check("  Caddy's (?redirect=1): to the account page, back to where they were going", loc == (302, "/account.html?next=/draw/%3Fx%3D1%26y%3D2"), loc)
+    r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/user?redirect=1", headers={"X-Forwarded-Uri": "//elsewhere.example/"})
+    try:
+        urllib.request.build_opener(NoRedirect).open(r, timeout=5); loc = None
+    except urllib.error.HTTPError as e:
+        loc = e.headers.get("Location")
+    check("  never back to another site", loc == "/account.html?next=/", loc)
+    (st / "control").mkdir(exist_ok=True)
+    (st / "control" / "access.json").write_text(json.dumps({"draw": "users"}))
+    def home(cookie=None):
+        r = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"Cookie": cookie} if cookie else {})
+        return urllib.request.urlopen(r, timeout=5).read().decode()
+    check("  the home page: an app for users shown to a user, not to a guest", "/app.html#/draw/" in home(tok) and "/app.html#/draw/" not in home())
 finally:
     hub.terminate()
     hub.wait()
