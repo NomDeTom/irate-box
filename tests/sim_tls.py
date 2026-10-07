@@ -147,5 +147,54 @@ os.chmod(tls.CA_KEY, 0o644)
 check("  a readable CA key: a problem", {x["id"]: x for x in secdoctor.step_tls({})}["tls-keys"]["status"] == "problem")
 os.chmod(tls.CA_KEY, 0o600)
 check("  in the doctor's steps", any(st[0] == "tls" for st in secdoctor.STEPS))
+# Bring your own (stage 4): a stand-in public CA, an intermediate, a leaf for box.example.org.
+ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0/24"}
+P = T / "public"; P.mkdir()
+def o(*a):
+    return tls.openssl(*a)
+def key(name):
+    o("genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256", "-out", str(P / f"{name}.key"))
+key("root"); key("inter"); key("leaf"); key("other")
+o("req", "-x509", "-new", "-key", str(P / "root.key"), "-days", "3650", "-subj", "/CN=Stand-in public root", "-out", str(P / "root.crt"),
+  "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign")
+(P / "ca.ext").write_text("basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign\n")
+o("req", "-new", "-key", str(P / "inter.key"), "-subj", "/CN=Stand-in intermediate", "-out", str(P / "inter.csr"))
+o("x509", "-req", "-in", str(P / "inter.csr"), "-CA", str(P / "root.crt"), "-CAkey", str(P / "root.key"), "-CAcreateserial", "-days", "3000",
+  "-extfile", str(P / "ca.ext"), "-out", str(P / "inter.crt"))
+(P / "leaf.ext").write_text("subjectAltName=DNS:box.example.org,DNS:*.box.example.org\nextendedKeyUsage=serverAuth\n")
+o("req", "-new", "-key", str(P / "leaf.key"), "-subj", "/CN=box.example.org", "-out", str(P / "leaf.csr"))
+o("x509", "-req", "-in", str(P / "leaf.csr"), "-CA", str(P / "inter.crt"), "-CAkey", str(P / "inter.key"), "-CAcreateserial", "-days", "90",
+  "-extfile", str(P / "leaf.ext"), "-out", str(P / "leaf.crt"))
+o("x509", "-req", "-in", str(P / "leaf.csr"), "-CA", str(P / "inter.crt"), "-CAkey", str(P / "inter.key"), "-CAcreateserial",
+  "-not_before", "20200101000000Z", "-not_after", "20210101000000Z", "-extfile", str(P / "leaf.ext"), "-out", str(P / "expired.crt"))
+tls.TRUST = str(P / "root.crt")
+r = lambda f: (P / f).read_text()  # noqa: E731
+def refused(chain, k, why):
+    try:
+        tls.import_own(chain, k); check(f"own certificate refused: {why}", False)
+    except ValueError as exc:
+        check(f"own certificate refused: {why}", True, str(exc))
+        return str(exc)
+before = tls.CHAIN.read_text()
+msg = refused(r("leaf.crt"), r("leaf.key"), "the intermediate missing")
+check("  saying to paste the intermediates", "intermediates" in msg, msg)
+refused(r("leaf.crt") + r("inter.crt"), r("other.key"), "a key that isn't its own")
+refused(r("expired.crt") + r("inter.crt"), r("leaf.key"), "expired")
+refused("not a certificate", r("leaf.key"), "no certificate")
+refused(r("leaf.crt") + r("inter.crt"), "", "no key")
+check("  and the box's own still in use after each", tls.CHAIN.read_text() == before)
+reloads.clear()
+out = tls.import_own(r("leaf.crt") + r("inter.crt"), r("leaf.key"))
+c = tls.status()["cert"]
+check("a good chain: in use, its names, its expiry, marked the owner's, nginx reloaded", c["own"] and c["names"] == ["box.example.org", "*.box.example.org"]
+      and 89 < (c["expires"] - time.time()) / 86400 < 91 and "box.example.org" in out and reloads and r("leaf.crt").strip() in tls.CHAIN.read_text(), (out, c))
+check("  the key private to root and the front", stat.S_IMODE(tls.KEY.stat().st_mode) == 0o640)
+check("  never replaced by the box: not due, renew leaves it", tls.due(time.time() + 80 * 86400) is None and "current" in tls.renew()
+      and tls.status()["cert"]["own"])
+print(tls.use_box_own())
+check("back to the box's own: its CA's certificate again", not tls.status()["cert"]["own"] and "irate.home.arpa" in tls.status()["cert"]["names"])
+hc = (REPO / "irate_box/root/hub_control.py").read_text()
+check("the helper reads the staged files without following a link, and removes them", 'safeio.read_request(staged / "chain.pem"' in hc
+      and '(staged / f).unlink(missing_ok=True)' in hc and '"tls-import": tls_import' in hc)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

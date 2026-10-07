@@ -3305,7 +3305,8 @@ if (location.hash === '#factory') loadFactory();
 
 // --- HTTPS (step 15: root/tls.py, /admin/tls) -------------------------------------------------------
 const tlsEl = { state: document.getElementById('tls-state'), make: document.getElementById('tls-make'), sw: document.getElementById('tls-switch'),
-  again: document.getElementById('tls-again'), note: noteEl('tls-note') };
+  again: document.getElementById('tls-again'), note: noteEl('tls-note'), box: document.getElementById('tls-box'),
+  own: document.getElementById('tls-own-form'), plain: document.getElementById('tls-own-plain') };
 let tlsWaiting = null;
 let tlsData = null;
 async function loadTls() {
@@ -3323,14 +3324,17 @@ function renderTls(d) {
   tlsEl.state.textContent = !d.set_up ? 'No certificate yet: pages are served over plain HTTP only.'
     : `${d.on ? `On: https://<this box>/ (port ${d.ports.main}) and each app's twin.` : 'Off: the certificate is kept, pages are plain HTTP only.'}`
       + ` The certificate covers ${[...(c.names || []), ...(c.addresses || [])].join(', ')}, until ${c.expires ? day(c.expires) : '?'}`
-      + `${c.own ? ' (your own)' : ', renewed by the box before then'}. The CA's fingerprint: ${(d.ca || {}).fingerprint || '?'}.`
+      + `${c.own ? ' (your own: renew it before then)' : ', renewed by the box before then'}.${d.ca ? ` The CA's fingerprint: ${d.ca.fingerprint}.` : ''}`
       + (d.outside && d.outside.length ? ` The box is now at ${d.outside.join(', ')}, outside what its CA may vouch for: make a new CA for that network.` : '');
   tlsEl.state.classList.toggle('bad', !!(d.outside && d.outside.length));
   tlsEl.make.hidden = !!d.set_up;
   tlsEl.sw.hidden = !d.set_up;
   tlsEl.sw.textContent = d.on ? 'Switch HTTPS off' : 'Switch HTTPS on';
   tlsEl.again.hidden = !d.set_up;
-  [tlsEl.make, tlsEl.sw, tlsEl.again].forEach((b) => { b.disabled = busy; });
+  tlsEl.box.hidden = !(c.own && d.ca);
+  tlsEl.make.hidden = !!(d.set_up && d.ca);
+  tlsEl.plain.hidden = location.protocol === 'https:';
+  [tlsEl.make, tlsEl.sw, tlsEl.again, tlsEl.box].forEach((b) => { b.disabled = busy; });
   if (busy) setTimeout(loadTls, 1500);
 }
 async function tlsAct(body) {
@@ -3342,6 +3346,13 @@ async function tlsAct(body) {
   } catch (err) { say(err.message, false, tlsEl.note); }
 }
 tlsEl.make.addEventListener('click', () => tlsAct({ action: 'make' }));
+tlsEl.box.addEventListener('click', () => tlsAct({ action: 'box' }));
+tlsEl.own.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = tlsEl.own.elements;
+  tlsAct({ action: 'import', chain: f.chain.value, key: f.key.value });
+  f.key.value = '';  // not left in the page
+});
 tlsEl.sw.addEventListener('click', () => tlsAct({ action: tlsData && tlsData.on ? 'off' : 'on' }));
 tlsEl.again.addEventListener('click', () => {
   if (confirm('Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it will warn about the box.')) {
