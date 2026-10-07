@@ -6,6 +6,12 @@
 // password at all and points at the certificate and the HTTPS page.
 const $ = (id) => document.getElementById(id);
 let view = null;
+// Where to go once logged in: an app in users mode sends people here with ?next=<its path>. Only
+// a path on this origin, never another site (an open redirect).
+const next = (() => {
+  const n = new URLSearchParams(location.search).get('next') || '';
+  return n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : '';
+})();
 
 function note(text, ok) {
   $('acct-note').textContent = text;
@@ -37,13 +43,15 @@ function render(d) {
     return;
   }
   const signup = d.signup === 'open' || d.signup === 'apply';
-  $('acct-subtitle').textContent = d.signup === 'off' ? 'This box has no accounts: everything here is open to guests, or kept for its admin.' : 'Log in, or make an account.';
+  $('acct-subtitle').textContent = d.signup === 'off' ? 'This box has no accounts: everything here is open to guests, or kept for its admin.'
+    : next ? 'That page is for the box\'s users: log in, or make an account.' : 'Log in, or make an account.';
   $('acct-signup-form').hidden = !signup;
   $('acct-signup-title').textContent = d.signup === 'apply' ? 'Ask for an account' : 'Make an account';
   $('acct-signup-button').textContent = d.signup === 'apply' ? 'Ask' : 'Make it';
-  $('acct-signup-desc').textContent = d.signup === 'apply' ? 'The box\'s admin accepts each one; until then it can\'t log in.' : 'Usable straight away. No e-mail, no real name.';
   $('acct-login-form').hidden = d.signup === 'off';
   $('acct-code-form').hidden = d.signup === 'off';
+  $('acct-signup-desc').textContent = d.signup === 'apply' ? 'The box\'s admin accepts each one; until then it can\'t log in.' : 'Usable straight away. No e-mail, no real name.';
+
 }
 
 async function load() {
@@ -62,7 +70,10 @@ function form(id, build, done) {
   });
 }
 
-form('acct-login-form', (f) => ({ action: 'login', name: f.elements.name.value, password: f.elements.password.value }), () => { note('Logged in.', true); load(); });
+form('acct-login-form', (f) => ({ action: 'login', name: f.elements.name.value, password: f.elements.password.value }), () => {
+  if (next) { location.assign(next); return; }
+  note('Logged in.', true); load();
+});
 form('acct-signup-form', (f) => ({ action: 'signup', name: f.elements.name.value, password: f.elements.password.value }), (d) => {
   note(d.state === 'asked' ? 'Asked: you can log in once the box\'s admin accepts it.' : 'Made, and logged in.', true);
   load();

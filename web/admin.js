@@ -2043,7 +2043,7 @@ loadKit();
 // (Add-ons) and the hub's own parts (Apps, Built into the hub). The root helper rewrites the
 // web server's part and answers; each switch keeps its node, so a list that re-renders moves
 // it rather than losing what it shows.
-const ACCESS_LABEL = { public: '🌐 Public', private: '🔒 Private', off: '⭘ Off' };
+const ACCESS_LABEL = { public: '🌐 Public', users: '👥 Users', private: '🔒 Private', off: '⭘ Off' };
 const accessNodes = new Map(); // id -> { node, app }
 let accessWaiting = null; // { id, app }
 let accessNote = null; // { app, text, ok }
@@ -2051,6 +2051,7 @@ let accessPoll = null;
 
 function accessDesc(a) {
   if (a.mode === 'public') return a.login ? 'Public: on the home page; it still asks for the admin login.' : 'Public: on the home page, open to everyone on the network.';
+  if (a.mode === 'users') return 'Users: on the home page for anyone logged in to an account (Accounts); anyone else is asked to log in.';
   if (a.mode === 'private') return 'Private: not on the home page; its address asks for the admin login.';
   return `Off: not on the home page; its address answers "not found"${a.unit ? ', and its service is stopped' : ''}.`;
 }
@@ -2086,7 +2087,7 @@ function renderAccess(data) {
   for (const a of data.apps) {
     const slot = accessSlot(a.id);
     const group = el('span', { className: 'access-toggle' },
-      ...['public', 'private', 'off'].map((mode) => {
+      ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
         const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
         b.setAttribute('role', 'radio');
         b.setAttribute('aria-checked', String(a.mode === mode));

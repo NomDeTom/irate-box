@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import html
 from irate_box.hub import access
@@ -217,14 +217,15 @@ WIDGET_HTML = {
 }
 
 
-def hidden_apps():
-    """The apps not on the home page or the list pages: private or off (access.py; the root
-    helper leaves its copy of the choices in the control folder)."""
+def hidden_apps(signed_in=False):
+    """The apps not on the home page or the list pages: private or off, and for users unless the
+    visitor is logged in (access.py; the root helper leaves its copy of the choices in the
+    control folder)."""
     state = access.read(ACCESS_STATE)
     # The switched apps (built-in, by their choice or default) and the local add-ons (off until
     # switched on). A built-in with no switch (a list page, the box row, About) is never hidden.
     ids = set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
-    return {i for i in ids if access.mode_of(state, i) != "public"}
+    return {i for i in ids if access.mode_of(state, i) != "public" and not (signed_in and access.mode_of(state, i) == "users")}
 
 
 def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
@@ -262,11 +263,12 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
 
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
-_home_page = {"mtime": None, "body": b""}
+_home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
-def home_page():
-    """index.html with the tiles in place, re-read when the file or the access choices change."""
+def home_page(signed_in=False):
+    """index.html with the tiles in place, re-read when the file or the access choices change;
+    one for guests and one for anyone logged in (who also sees the apps for users)."""
     path = STATIC / "index.html"
     try:
         chosen = ACCESS_STATE.stat().st_mtime
@@ -274,13 +276,14 @@ def home_page():
         chosen = None
     show_factory = settings_snapshot()["factory_tile"]
     mtime = (path.stat().st_mtime, chosen, show_factory)
-    if _home_page["mtime"] != mtime:
+    cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
+    if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
-        hidden = hidden_apps()
+        hidden = hidden_apps(signed_in)
         text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden, show_factory))
-        _home_page["body"] = text.encode()
-        _home_page["mtime"] = mtime
-    return _home_page["body"]
+        cached["body"] = text.encode()
+        cached["mtime"] = mtime
+    return cached["body"]
 
 
 # The list pages (a manifest with a "menu"), at their tile's href. Rendered on each request:
@@ -319,9 +322,9 @@ MENU_TEMPLATE = """<!DOCTYPE html>
 """
 
 
-def menu_page(m):
+def menu_page(m, signed_in=False):
     items = []
-    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps()):
+    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps(signed_in)):
         href = e["href"]
         if href.startswith("/app.html#"):
             # The hub bar then offers ↑ back to this list (app.js).
@@ -1696,6 +1699,9 @@ class Handler(BaseHTTPRequestHandler):
         guest's own). Run bare, the hub is plain HTTP."""
         return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
 
+    def _signed_in(self):
+        return accounts.session(self._session_token()) is not None if self._session_token() else False
+
     def _session_token(self):
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
@@ -1855,6 +1861,25 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/source", "/source/", "/source/irate-box-source.tar.gz"):
             self._send_source()
+            return
+
+        if path == "/_irate/user":
+            # The front's question for an app in users mode (access.py): is this visitor logged in?
+            # 204 yes; no: 401 for nginx (its gate sends them to log in), or for Caddy (?redirect=1)
+            # the redirect itself, back to where they were going on this origin.
+            if accounts.session(self._session_token()):
+                self.send_response(204)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif "redirect=1" in self.path.partition("?")[2].split("&"):
+                back = self.headers.get("X-Forwarded-Uri", "/")
+                nxt = back if back.startswith("/") and not back.startswith("//") else "/"
+                self.send_response(302)
+                self.send_header("Location", "/account.html?next=" + quote(nxt, safe="/"))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_json(401, {"error": "log in first"})
             return
 
         if path == "/api/account":
@@ -2214,7 +2239,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
-            body = menu_page(MENU_PAGES[path])
+            body = menu_page(MENU_PAGES[path], self._signed_in())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
@@ -2223,7 +2248,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/", "/index.html"):
-            body = home_page()
+            body = home_page(self._signed_in())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
@@ -2530,8 +2555,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             app, mode = str(payload.get("app", "")), payload.get("mode")
-            if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES:
-                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off"})
+            if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES \
+                    or (mode == "users" and not access.users_allowed(app)):
+                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off (or users, where it can be)"})
             else:
                 self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
             return

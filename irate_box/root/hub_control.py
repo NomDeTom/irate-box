@@ -453,9 +453,18 @@ def _access_files(state):
     """The web server's part, written; returns what it replaced, to put back on failure."""
     local, _ = manifests.load_local(builtin=MANIFESTS)
     if WEB_SERVER == "nginx":
-        old = {p: p.read_text() if p.exists() else None for p in (NGINX_ACCESS, NGINX_ADDON_ACCESS)}
+        gates_dir = NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d")   # the template's @ACCESS@.d/gate-<id>.conf*
+        gates = access.nginx_gates(state)
+        gates_dir.mkdir(mode=0o755, exist_ok=True)
+        paths = [NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
+        old = {p: p.read_text() if p.exists() else None for p in paths}
         _write_root_file(NGINX_ACCESS, access.nginx_conf(state))
         _write_root_file(NGINX_ADDON_ACCESS, access.addon_nginx_conf(state, local))
+        for p in gates_dir.glob("gate-*.conf"):
+            if p.name not in gates:
+                p.unlink()
+        for name, text in gates.items():
+            _write_root_file(gates_dir / name, text)
         return old
     login = _caddy_hash()
     if not login:
@@ -509,7 +518,7 @@ def _access_unit(app):
 
 
 def access_set(req):
-    """One app public, private or off. Off also stops (and disables) an add-on's service;
+    """One app public, users, private or off. Off also stops (and disables) an add-on's service;
     leaving off starts it again."""
     app, mode = str(req.get("app", "")), str(req.get("mode", ""))
     local = {m["id"] for m in manifests.load_local(builtin=MANIFESTS)[0]}
@@ -518,7 +527,9 @@ def access_set(req):
     if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
         raise ValueError(f"{app} is not an app whose access can be set")
     if mode not in access.MODES:
-        raise ValueError("mode: public, private or off")
+        raise ValueError("mode: public, users, private or off")
+    if mode == "users" and not access.users_allowed(app):
+        raise ValueError(f"{app} can be public, private or off: not for users")
     state = access.read(ACCESS_FILE)
     was = access.mode_of(state, app)
     state[app] = mode

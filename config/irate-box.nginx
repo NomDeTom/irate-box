@@ -58,6 +58,11 @@ server {
 	# and $irate_box_off_<id> (non-empty when the app is switched off). Set here, at server
 	# level, so every location below can read them.
 	include @ACCESS@;
+	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
+	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
+	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location @irate_box_login { return 302 /account.html?next=$uri; }
 
 	# Caddy logged warnings only and compressed nothing on the fly; the same here. Request
 	# bodies: 1 MB, nginx's own default, except where a route needs more and says so (the
@@ -102,6 +107,7 @@ server {
 	location = /drop.html {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
+		include @ACCESS@.d/gate-drop.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		add_header Cache-Control "no-cache";
 	}
@@ -110,12 +116,14 @@ server {
 	location = /themes.html {
 		if ($irate_box_off_themes) { return 404; }
 		auth_basic $irate_box_auth_themes;
+		include @ACCESS@.d/gate-themes.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		add_header Cache-Control "no-cache";
 	}
 	location ^~ /api/drop/ {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
+		include @ACCESS@.d/gate-drop.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_pass http://irate_box_hub;
 	}
@@ -125,6 +133,7 @@ server {
 	location = /api/drop {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
+		include @ACCESS@.d/gate-drop.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		client_max_body_size 25m;
 		proxy_pass http://irate_box_hub;
@@ -146,6 +155,7 @@ server {
 	location ^~ /draw/ {
 		if ($irate_box_off_draw) { return 404; }
 		auth_basic $irate_box_auth_draw;
+		include @ACCESS@.d/gate-draw.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		alias @APPS@/draw/;
 		try_files $uri /draw/index.html;
@@ -161,6 +171,7 @@ server {
 	location ^~ /mermaid/ {
 		if ($irate_box_off_mermaid) { return 404; }
 		auth_basic $irate_box_auth_mermaid;
+		include @ACCESS@.d/gate-mermaid.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		alias @APPS@/mermaid/;
 		try_files $uri $uri.html /mermaid/index.html;
@@ -176,6 +187,7 @@ server {
 	location ^~ /tools/ {
 		if ($irate_box_off_tools) { return 404; }
 		auth_basic $irate_box_auth_tools;
+		include @ACCESS@.d/gate-tools.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		alias @APPS@/tools/;
 		try_files $uri $uri/index.html =404;
@@ -187,6 +199,7 @@ server {
 	location ^~ /serial/ {
 		if ($irate_box_off_serial) { return 404; }
 		auth_basic $irate_box_auth_serial;
+		include @ACCESS@.d/gate-serial.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		alias @APPS@/serial/;
 		add_header Cache-Control "no-cache";
@@ -241,6 +254,7 @@ server {
 	location = /mqtt {
 		if ($irate_box_off_mqtt) { return 404; }
 		auth_basic $irate_box_auth_mqtt;
+		include @ACCESS@.d/gate-mqtt.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_read_timeout 1h;
 		proxy_pass http://127.0.0.1:9001;
@@ -260,18 +274,21 @@ server {
 	location = /flasher {
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
+		include @ACCESS@.d/gate-flasher.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_pass http://irate_box_hub;
 	}
 	location = /flasher/ {
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
+		include @ACCESS@.d/gate-flasher.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_pass http://irate_box_hub;
 	}
 	location = /flasher/flasher.html {
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
+		include @ACCESS@.d/gate-flasher.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_pass http://irate_box_hub;
 	}
@@ -473,6 +490,11 @@ server {
 	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
+	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
+	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
+	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	client_max_body_size 50m;  # attachments
 	proxy_http_version 1.1;
 	proxy_set_header Host $http_host;
@@ -487,6 +509,7 @@ server {
 	location /notes/ {
 		if ($irate_box_off_notes) { return 404; }
 		auth_basic $irate_box_auth_notes;
+		include @ACCESS@.d/gate-notes.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
@@ -508,6 +531,11 @@ server {
 	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
+	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
+	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
+	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	proxy_http_version 1.1;
 	proxy_set_header Host $http_host;
 	proxy_set_header X-Forwarded-For $remote_addr;
@@ -517,6 +545,7 @@ server {
 	location /wiki/ {
 		if ($irate_box_off_wiki) { return 404; }
 		auth_basic $irate_box_auth_wiki;
+		include @ACCESS@.d/gate-wiki.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_pass http://127.0.0.1:8081;
 	}
@@ -525,6 +554,7 @@ server {
 	location /wiki/content/ {
 		if ($irate_box_off_wiki) { return 404; }
 		auth_basic $irate_box_auth_wiki;
+		include @ACCESS@.d/gate-wiki.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		proxy_hide_header Cache-Control;
 		add_header Cache-Control "no-cache" always;
@@ -548,6 +578,11 @@ server {
 	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
+	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
+	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
+	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	root @STATIC@;
 	location = / { return 302 /git/; }
 	location = /git { return 301 /git/; }
@@ -573,6 +608,7 @@ server {
 	location ~ ^/git(?<irate_box_cgit_path>/.*)$ {
 		if ($irate_box_off_git) { return 404; }
 		auth_basic $irate_box_auth_git;
+		include @ACCESS@.d/gate-git.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
