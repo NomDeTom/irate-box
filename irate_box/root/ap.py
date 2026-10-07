@@ -26,6 +26,29 @@ LEASES = "/var/lib/misc/dnsmasq.leases"     # the hub counts guests from it (ser
 NETWORK = ipaddress.ip_network(f"{apmode.ADDRESS}/24", strict=False)
 DHCP_FIRST, DHCP_LAST = 10, 200
 DEFAULT_SSID = "Irate-Box"
+HOSTAPD_CONF = "/etc/hub/ap-hostapd.conf"
+HOSTAPD_UNIT = "irate-box-ap-hostapd.service"
+
+
+def hostapd_conf(plan, settings, ssid=DEFAULT_SSID, country=None):
+    """hostapd's configuration, for a box whose radio NetworkManager doesn't run (Pi OS Lite and the
+    like). One network, as the NetworkManager route; the security lines from hotspot.py."""
+    nets = hotspot.networks(settings, ssid)
+    _, net = nets[0]
+    lines = ["# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
+             f"interface={ap_iface(plan)}", "driver=nl80211", f"hw_mode={'a' if plan.get('band') == '5 GHz' else 'g'}",
+             f"channel={int(plan['channel'])}", "wmm_enabled=1", "ieee80211n=1"]
+    if country and len(country) == 2 and country.isalpha():
+        lines += [f"country_code={country.upper()}", "ieee80211d=1"]
+    lines += hotspot.hostapd_lines(settings, net["kind"], net["ssid"])
+    return "\n".join(lines) + "\n"
+
+
+def hostapd_unit():
+    return "\n".join([
+        "[Unit]", "Description=Irate-Box: the hotspot through hostapd (root/ap.py)", "After=network.target", "",
+        "[Service]", f"ExecStart=/usr/sbin/hostapd {HOSTAPD_CONF}", "Restart=on-failure", "",
+        "[Install]", "WantedBy=multi-user.target", ""])
 
 
 def ap_iface(plan):
@@ -75,9 +98,18 @@ def up_steps(plan):
     that waits on the owner, or has no channel."""
     if plan.get("needs_choice") or plan["kind"] == "none" or not plan.get("channel"):
         raise ValueError("this plan doesn't start a hotspot: " + plan.get("text", ""))
-    steps = []
-    if ap_iface(plan) == SHARED_IFACE:
+    steps, iface = [], ap_iface(plan)
+    if iface == SHARED_IFACE:
         steps.append(["iw", "dev", plan["iface"], "interface", "add", SHARED_IFACE, "type", "__ap"])
+    if plan.get("backend") == "hostapd":
+        # No NetworkManager: the address set by hand, hostapd runs the access point.
+        if plan.get("drops_uplink") and plan.get("uplink"):
+            raise ValueError("giving up the WiFi link for the hotspot needs NetworkManager here")
+        steps += [["ip", "addr", "replace", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
+                  ["ip", "link", "set", iface, "up"], ["systemctl", "restart", HOSTAPD_UNIT],
+                  ["systemctl", "restart", DNSMASQ_UNIT]]
+        return steps
+    if iface == SHARED_IFACE:
         steps.append(["nmcli", "device", "set", SHARED_IFACE, "managed", "yes"])
     if plan.get("drops_uplink") and plan.get("uplink"):
         steps.append(["nmcli", "device", "disconnect", plan["uplink"]])
@@ -88,7 +120,11 @@ def up_steps(plan):
 
 def down_steps(plan):
     """The commands that take it down again, leaving the box's own links as they were."""
-    steps = [["systemctl", "stop", DNSMASQ_UNIT], ["nmcli", "connection", "down", CONNECTION]]
+    if plan.get("backend") == "hostapd":
+        steps = [["systemctl", "stop", DNSMASQ_UNIT], ["systemctl", "stop", HOSTAPD_UNIT],
+                 ["ip", "addr", "flush", "dev", ap_iface(plan)]]
+    else:
+        steps = [["systemctl", "stop", DNSMASQ_UNIT], ["nmcli", "connection", "down", CONNECTION]]
     if ap_iface(plan) == SHARED_IFACE:
         steps.append(["iw", "dev", SHARED_IFACE, "del"])
     if plan.get("drops_uplink") and plan.get("uplink"):
@@ -194,12 +230,20 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
     old = _load(RECORD, {})
     if old.get("up"):
         _run_all(run, down_steps(old["plan"]), check=False)
-    _put(Path(keyfile_path or KEYFILE), keyfile(plan, settings, ssid), 0o600)
+    if plan.get("backend") == "hostapd":
+        # Following the link's channel needs NetworkManager's hook: here a following hotspot takes the
+        # link's channel when it starts (and after a reboot), not when the link roams.
+        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, inv.get("country")), 0o600)
+        units = {DNSMASQ_UNIT: dnsmasq_unit(), HOSTAPD_UNIT: hostapd_unit()}
+    else:
+        _put(Path(keyfile_path or KEYFILE), keyfile(plan, settings, ssid), 0o600)
+        units = {DNSMASQ_UNIT: dnsmasq_unit()}
     _put(Path(conf_path or DNSMASQ_CONF), dnsmasq_conf(plan))
-    unit = UNITS / DNSMASQ_UNIT
-    if not unit.exists() or unit.read_text() != dnsmasq_unit():
-        _put(unit, dnsmasq_unit())
-        run("systemctl", "daemon-reload")
+    for name, text in units.items():
+        unit = UNITS / name
+        if not unit.exists() or unit.read_text() != text:
+            _put(unit, text)
+            run("systemctl", "daemon-reload")
     _put(DISPATCHER, dispatcher_hook(), 0o755)
     boot = UNITS / BOOT_UNIT
     if not boot.exists() or boot.read_text() != boot_unit():

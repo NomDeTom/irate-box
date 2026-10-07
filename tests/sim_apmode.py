@@ -201,5 +201,27 @@ check("  a hotspot that took the link and was never confirmed: the link comes ba
 calls.clear()
 check("  off before: nothing", ap.boot(fake_run, inv, settings) == "the hotspot is off" and not calls)
 check("stop disables the boot unit", ["systemctl", "disable", ap.BOOT_UNIT] in (ap.stop(fake_run) and calls))
+
+# The hostapd route: a box whose radio NetworkManager doesn't run (wpa_supplicant, or nothing).
+ap.HOSTAPD_CONF = T / "hostapd.conf"
+wpa = radio(lyra, "wlan0", "phy0", 6, owner="wpa_supplicant")
+inv4 = {"radios": [wpa], "uplink": wifi_up, "country": "GB", "stacks": {"networkmanager": {"running": False}, "hostapd": {"installed": True}}}
+inv4["ap"] = netinv.ap_verdicts(inv4)
+p6 = apmode.plan(inv4, inv4["ap"])
+conf = ap.hostapd_conf(p6, {"mode": "owe", "password": "", "allow_wpa2": False, "second": "owe"}, country="GB")
+check("hostapd route: chosen where wpa_supplicant runs the radio; ap0, channel, country, OWE with management frames protected",
+      p6["backend"] == "hostapd" and "interface=ap0" in conf and "channel=6" in conf and "country_code=GB" in conf
+      and "wpa_key_mgmt=OWE" in conf and "ieee80211w=2" in conf and "ssid2=" in conf, (p6, conf))
+steps = ap.up_steps(p6)
+check("  up: ap0, the address by hand, hostapd, dnsmasq; no NetworkManager",
+      ["ip", "addr", "replace", "192.168.4.1/24", "dev", "ap0"] in steps and ["systemctl", "restart", ap.HOSTAPD_UNIT] in steps
+      and not any(s[0] == "nmcli" for s in steps), steps)
+check("  down: hostapd stopped, the address flushed, ap0 removed", ["systemctl", "stop", ap.HOSTAPD_UNIT] in ap.down_steps(p6)
+      and ap.down_steps(p6)[-1] == ["iw", "dev", "ap0", "del"])
+calls.clear()
+p7 = ap.start(fake_run, inv4, settings)
+check("  start: hostapd's configuration (600) and unit written, not a NetworkManager keyfile",
+      ap.HOSTAPD_CONF.stat().st_mode & 0o777 == 0o600 and (ap.UNITS / ap.HOSTAPD_UNIT).exists() and ["systemctl", "restart", ap.HOSTAPD_UNIT] in calls)
+ap.stop(fake_run)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
