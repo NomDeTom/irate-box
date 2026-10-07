@@ -106,3 +106,145 @@ def dnsmasq_unit():
         "Restart=on-failure", "",
         "[Install]", "WantedBy=multi-user.target", "",
     ])
+
+
+# --- running it (the root helper) ------------------------------------------------------------------
+
+import json  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
+RECORD = ETC / "ap.json"            # what is up, from which plan, since when, and the owner's choices
+TRIED = ETC / "ap-tried.json"       # {phy: True|False}: whether a channel of its own beside the link worked
+DISPATCHER = Path(os.environ.get("HUB_NM_DISPATCHER", "/etc/NetworkManager/dispatcher.d")) / "90-irate-box-ap"
+UNITS = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
+CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
+TRY_WAIT = 20                        # seconds the hotspot must hold its own channel in the try
+DEADMAN = 300                        # seconds before a hotspot that took the box's link undoes itself
+
+
+def _load(path, default):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def _put(path, text, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def dispatcher_hook():
+    """NetworkManager runs this on every link change: when the hotspot follows the link's channel
+    (rung 3), a link that came up somewhere new moves it."""
+    return "\n".join([
+        "#!/bin/sh", "# Written by irate-box (root/ap.py): the hotspot follows the WiFi link's channel when it must.",
+        '[ "$2" = up ] || exit 0', f'exec "{CODE}/irate-box" hub_control ap-follow "$1" >/dev/null 2>&1', ""])
+
+
+def _run_all(run, steps, check=True):
+    for s in steps:
+        out = run(*s)
+        if check and out.returncode != 0:
+            raise RuntimeError(f"{' '.join(s)}: {(out.stderr or out.stdout or '').strip()[-200:]}")
+
+
+def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, conf_path=None):
+    """Plan for this box and bring the hotspot up. Returns the plan; a plan that waits on the owner, or
+    none, is returned without starting anything. On a failed step, what was done is undone."""
+    owner = owner or {}
+    plan = apmode.plan(inv, inv.get("ap") or [], owner, _load(TRIED, {}))
+    if plan.get("needs_choice") or plan["kind"] == "none":
+        return plan
+    old = _load(RECORD, {})
+    if old.get("up"):
+        _run_all(run, down_steps(old["plan"]), check=False)
+    _put(Path(keyfile_path or KEYFILE), keyfile(plan, settings, ssid), 0o600)
+    _put(Path(conf_path or DNSMASQ_CONF), dnsmasq_conf(plan))
+    unit = UNITS / DNSMASQ_UNIT
+    if not unit.exists() or unit.read_text() != dnsmasq_unit():
+        _put(unit, dnsmasq_unit())
+        run("systemctl", "daemon-reload")
+    _put(DISPATCHER, dispatcher_hook(), 0o755)
+    try:
+        _run_all(run, up_steps(plan))
+    except RuntimeError:
+        _run_all(run, down_steps(plan), check=False)
+        raise
+    if plan.get("drops_uplink"):
+        # The owner gave up the box's link: unless confirmed from the hotspot in time, it comes back.
+        run("systemd-run", f"--on-active={DEADMAN}", "--unit=irate-box-ap-deadman", "--timer-property=AccuracySec=1s",
+            f"{CODE}/irate-box", "hub_control", "ap-revert")
+    _put(RECORD, json.dumps({"up": True, "plan": plan, "owner": owner, "since": time.time(),
+                             "confirmed": not plan.get("drops_uplink")}))
+    return plan
+
+
+def stop(run):
+    rec = _load(RECORD, {})
+    if rec.get("up"):
+        _run_all(run, down_steps(rec["plan"]), check=False)
+    run("systemctl", "stop", "irate-box-ap-deadman.timer")
+    DISPATCHER.unlink(missing_ok=True)
+    _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time()}))
+    return "the hotspot is off"
+
+
+def confirm(run):
+    """The owner reached the box through the hotspot after giving up its link: keep it so."""
+    run("systemctl", "stop", "irate-box-ap-deadman.timer")
+    rec = _load(RECORD, {})
+    rec["confirmed"] = True
+    _put(RECORD, json.dumps(rec))
+    return "kept: the hotspot stays, the box's WiFi link stays off"
+
+
+def channels_now(run):
+    """{iface: channel} from `iw dev`."""
+    from irate_box.hub import netinv
+    out = run("iw", "dev")
+    return {i: d.get("channel") for i, d in netinv.parse_iw_dev(out.stdout or "").items()}
+
+
+def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=time.sleep):
+    """Rung 2 or 3, tried on this box: the hotspot up on a channel other than the link's, held for a
+    while with the link still up there? Recorded per radio; the hotspot left running as the plan
+    then says. Returns (worked, plan)."""
+    plan = apmode.plan(inv, inv.get("ap") or [], {}, {})
+    if plan["kind"] != "own-channel":
+        return None, plan
+    link = plan.get("uplink")
+    link_ch = channels_now(run).get(link)
+    chans = apmode.allowed(next(r for r in inv["radios"] if r["phy"] == plan["phy"]), inv.get("country"))
+    other = next((c["channel"] for c in chans if c["channel"] in apmode.PREFERRED_24 and c["channel"] != link_ch), None) \
+        or next((c["channel"] for c in chans if c["channel"] != link_ch), None)
+    if other is None:
+        return None, plan
+    start(run, inv, settings, {"channel": other}, ssid)
+    sleep(wait)
+    now = channels_now(run)
+    worked = now.get(ap_iface(plan)) == other and now.get(link) == link_ch and link_ch is not None
+    tried = _load(TRIED, {})
+    tried[plan["phy"]] = worked
+    _put(TRIED, json.dumps(tried))
+    return worked, start(run, inv, settings, _load(RECORD, {}).get("owner") or {}, ssid)
+
+
+def follow(run, inv, settings, iface, ssid=DEFAULT_SSID):
+    """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel."""
+    rec = _load(RECORD, {})
+    if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink") or rec["plan"].get("uplink") != iface:
+        return "nothing to follow"
+    plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, _load(TRIED, {}))
+    if plan.get("channel") == rec["plan"].get("channel"):
+        return f"still on channel {plan.get('channel')}"
+    start(run, inv, settings, rec.get("owner") or {}, ssid)
+    return f"moved to channel {plan.get('channel')} with the link"
