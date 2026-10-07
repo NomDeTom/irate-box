@@ -1129,3 +1129,13 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .factory-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.15rem 1rem; padding: 0.4rem 0 0.4rem 1rem; }
 .factory-boards label { font-size: 0.9rem; }
 .factory-files { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; font-size: 0.85rem; }
+/* The books (step 14): the tools above the table, the table compact, a book's card under its row. */
+.books-tools { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.5rem 0; }
+.books-tools label { display: flex; gap: 0.35rem; align-items: center; }
+.books-bulk { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0.4rem 0; }
+.books-table td, .books-table th { padding: 0.25rem 0.5rem; }
+.books-table .link-button { text-align: left; }
+.books-table td.bad { color: #e5484d; }
+.book-card td { background: var(--surface); }
+.books-pager { display: flex; gap: 0.6rem; align-items: center; }
+.scroll-x { overflow-x: auto; }

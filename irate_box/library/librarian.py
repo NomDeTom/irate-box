@@ -1263,6 +1263,85 @@ def snapshot():
             "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
 
 
+# --- the books, a page at a time (next-work plan step 14) ---------------------------------------
+# What the Books page lists: every book in Kiwix's catalogue (its title, language and date), every
+# .zim in the folder (one Kiwix can't read has a row too), and every book source (one not installed
+# yet has a row). A book with a source is "kept current"; one without came by hand or USB.
+BOOK_STATES = ("ok", "newer", "failed", "not installed", "unreadable")
+PER_PAGE = 50
+_catalogue_cache = {"key": None, "rows": None}
+
+
+def _catalogue():
+    """{file name: {id, title, language, date, description, articles}} from library.xml, cached."""
+    import xml.etree.ElementTree as ET
+    try:
+        key = LIBRARY_XML.stat().st_mtime_ns
+    except OSError:
+        return {}
+    if _catalogue_cache["key"] != key:
+        rows = {}
+        try:
+            for b in ET.parse(LIBRARY_XML).getroot().iter("book"):
+                rows[Path(b.get("path", "")).name] = {"id": b.get("id"), "title": b.get("title") or "", "language": b.get("language") or "",
+                                                     "date": b.get("date") or "", "description": b.get("description") or "",
+                                                     "articles": int(b.get("articleCount") or 0)}
+        except (OSError, ET.ParseError):
+            rows = {}
+        _catalogue_cache.update(key=key, rows=rows)
+    return _catalogue_cache["rows"]
+
+
+def book_rows():
+    cat = _catalogue()
+    cfg = load_config()
+    status = load_status()
+    sources = {s["name"]: s for s in cfg["sources"] if s.get("kind") != "app"}
+    files = {p.stem: p for p in ZIM_DIR.glob("*.zim")} if ZIM_DIR.is_dir() else {}
+    rows = []
+    for name in sorted(set(files) | set(sources)):
+        f = files.get(name)
+        meta = cat.get(f"{name}.zim") or {}
+        st = status.get(name) or {}
+        cur, latest = st.get("current") or {}, st.get("latest") or {}
+        state = ("not installed" if not f else "unreadable" if not meta else "failed" if st.get("error")
+                 else "newer" if latest.get("version") and latest.get("version") != cur.get("version") else "ok")
+        try:
+            size = f.stat().st_size if f else 0
+        except OSError:
+            size = 0
+        rows.append({"name": name, "title": meta.get("title") or name, "language": meta.get("language", ""), "date": meta.get("date", ""),
+                     "description": meta.get("description", ""), "size": size, "state": state, "kept": name in sources})
+    return rows, sources, status
+
+
+def books_page(q="", language="", state="", kept="", sort="title", page=1, per_page=PER_PAGE, names_only=False):
+    """One page of the books, filtered and sorted, with a summary of all of them."""
+    rows, sources, status = book_rows()
+    summary = {"count": len(rows), "bytes": sum(r["size"] for r in rows), "languages": {}, "states": {}, "kept": sum(r["kept"] for r in rows)}
+    for r in rows:
+        if r["language"]:
+            summary["languages"][r["language"]] = summary["languages"].get(r["language"], 0) + 1
+        summary["states"][r["state"]] = summary["states"].get(r["state"], 0) + 1
+    q = (q or "").strip().lower()
+    hit = [r for r in rows if (not q or q in r["title"].lower() or q in r["name"].lower() or q in r["description"].lower())
+           and (not language or r["language"] == language) and (not state or r["state"] == state)
+           and (kept not in ("yes", "no") or r["kept"] == (kept == "yes"))]
+    key = {"title": lambda r: (r["title"].lower(), r["name"]), "size": lambda r: (-r["size"], r["name"]),
+           "date": lambda r: (r["date"], r["name"])}.get(sort, lambda r: (r["title"].lower(), r["name"]))
+    hit.sort(key=key, reverse=(sort == "date"))
+    if names_only:
+        return {"names": [r["name"] for r in hit], "matching": len(hit)}
+    per_page = max(10, min(int(per_page or PER_PAGE), 200))
+    pages = max(1, -(-len(hit) // per_page))
+    page = max(1, min(int(page or 1), pages))
+    out = hit[(page - 1) * per_page:page * per_page]
+    for r in out:  # a page's books carry their source and status, for the card that opens on demand
+        r["source"] = sources.get(r["name"])
+        r["status"] = status.get(r["name"]) or {}
+    return {"books": out, "page": page, "pages": pages, "per_page": per_page, "matching": len(hit), "summary": summary}
+
+
 # --- CLI ---------------------------------------------------------------------
 
 def main(argv=None):

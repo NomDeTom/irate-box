@@ -253,7 +253,32 @@
           hand, or by <code>install.sh --zim</code>, are left alone unless a source here has the same
           name.
         </p>
-        <div id="library-sources"></div>
+        <!-- The books, a page at a time (step 14: /admin/books); a book's card opens from its row. -->
+        <p class="setting-desc" id="books-summary"></p>
+        <div class="books-tools">
+          <label>Show <input type="search" id="books-q" placeholder="title or name" aria-label="Show books containing"></label>
+          <label>Language <select id="books-language"><option value="">any</option></select></label>
+          <label>State <select id="books-state"><option value="">any</option><option value="newer">newer available</option>
+            <option value="failed">check failed</option><option value="not installed">not installed</option><option value="unreadable">unreadable</option><option value="ok">up to date</option></select></label>
+          <label>Kept current <select id="books-kept"><option value="">either</option><option value="yes">yes</option><option value="no">no (by hand, or USB)</option></select></label>
+          <label>Sort <select id="books-sort"><option value="title">by title</option><option value="size">largest first</option><option value="date">newest first</option></select></label>
+        </div>
+        <div class="books-bulk" id="books-bulk" hidden>
+          <span id="books-selected"></span>
+          <button type="button" data-bulk="check">Check</button>
+          <button type="button" data-bulk="update">Update</button>
+          <button type="button" data-bulk="untrack">Stop tracking</button>
+          <button type="button" id="books-select-matching" class="link-button"></button>
+          <button type="button" id="books-select-none" class="link-button">Clear the selection</button>
+        </div>
+        <div class="scroll-x">
+          <table class="admin-table books-table" id="books-table">
+            <thead><tr><th><input type="checkbox" id="books-page-all" aria-label="Select this page"></th><th>Book</th><th>Language</th><th>Size</th><th>Date</th><th>Kept current</th><th>State</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="books-pager"><button type="button" id="books-prev">Previous</button> <span id="books-page"></span> <button type="button" id="books-next">Next</button></p>
+        <div id="library-sources" hidden></div>
         <div class="library-actions">
           <button type="button" data-all="check">Check all</button>
           <button type="button" data-all="fetch">Fetch all</button>
