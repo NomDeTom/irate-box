@@ -1473,9 +1473,10 @@ CPUWeight=10
 IOSchedulingClass=idle
 MemoryHigh=50%
 MemoryMax=65%
-# Counts what the builds send and receive: a firmware build that received nothing ran offline
-# (ci.py: resources).
-IPAccounting=yes
+# Only the namespaces an offline build needs (ci.py OFFLINE: a user namespace, and a network one
+# with only loopback). Not IPAccounting nor IPAddressDeny: the Lyra's vendor kernel can't attach
+# systemd's cgroup programs (bpf-firewall, error 524), so they count nothing and block nothing.
+RestrictNamespaces=user net
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes

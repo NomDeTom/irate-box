@@ -276,11 +276,13 @@ def queue(name, ref, envs, floor_mb=512):
     return {"batch": batch, "queued": len(picked), "commit": data["commit"]}
 
 
-def queue_tools(name, ref, family):
+def queue_tools(name, ref, family, offline=False):
     """Fetch a family's tools (git-ci-plan §4b item 7): PlatformIO installs what one of its targets
     needs (platform, toolchain, framework, libraries) with nothing compiled, so a later build of
     that family needs no internet; and whether PlatformIO has these tools for this board's processor
-    at all is known in minutes, not after hours of compiling."""
+    at all is known in minutes, not after hours of compiling.
+    offline: instead, build that target with no network at all (ci.OFFLINE): a pass is what makes
+    the family "offline ready"."""
     src = source(name)
     data = targets(src, ref)
     fam = [t for t in data["targets"] if t["family"] == family]
@@ -288,9 +290,10 @@ def queue_tools(name, ref, family):
         raise ValueError(f"no family {family} in {name} at {ref}")
     pick = next((t for t in fam if t["level"] == "pr"), fam[0])
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
-    _put({"kind": "firmware", "tools_only": True, "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
-          "env": pick["env"], "family": family, "name": f"{family}'s tools (by {pick['env']})", "batch": secrets.token_hex(4),
-          "queued": time.time()})
+    _put({"kind": "firmware", "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
+          "env": pick["env"], "family": family, "batch": secrets.token_hex(4), "queued": time.time()}
+         | ({"offline": True, "name": f"{family} offline (by {pick['env']})"} if offline
+            else {"tools_only": True, "name": f"{family}'s tools (by {pick['env']})"}))
     return {"queued": 1, "env": pick["env"], "commit": data["commit"]}
 
 
@@ -373,24 +376,30 @@ def estimates(history):
 
 
 def readiness(history):
-    """Per family: "built here" once one has passed, else "untested on this box"; a family whose
-    last build here downloaded nothing is "offline ready"; one whose tools were fetched (and not
-    yet built) says so, with their size; one whose tools could not be fetched says that."""
-    out, tools = {}, {}
-    for s in history:
-        f = s.get("family")
-        if not f:
+    """Per family: "offline ready" when its newest build with no network at all (Test offline)
+    passed; else "built here" once one has passed, saying whether it was tried offline; else whether
+    its tools were fetched (with PlatformIO's folder then) or could not be."""
+    tools, built, last_offline = {}, set(), {}
+    for s in history:  # newest first
+        f, state = s.get("family"), s.get("state")
+        if not f or state not in ("passed", "failed", "timed out"):
             continue
         if s.get("tools_only"):
-            if f not in tools and s.get("state") in ("passed", "failed"):
+            if f not in tools:
                 res = s.get("resources") or {}
-                tools[f] = (f"tools fetched ({round((res.get('received') or 0) / 2 ** 20)} MB downloaded), not yet built"
-                            if s["state"] == "passed" else "its tools could not be fetched here: see the log")
-            continue
-        if f in out or s.get("state") != "passed":
-            continue
-        out[f] = "offline ready" if (s.get("resources") or {}).get("offline") else "built here (needed the internet)"
-    return {**tools, **out}
+                tools[f] = (f"tools fetched (PlatformIO's tools {round((res.get('tools_bytes') or 0) / 2 ** 20)} MB), not yet built"
+                            if state == "passed" else "its tools could not be fetched here: see the log")
+        elif s.get("offline"):
+            last_offline.setdefault(f, state)
+        elif state == "passed":
+            built.add(f)
+    out = dict(tools)
+    for f in built | set(last_offline):
+        off = last_offline.get(f)
+        out[f] = "offline ready" if off == "passed" else \
+            ("built here; failed offline: see its log" if off else "built here; not yet tried offline") if f in built else \
+            "failed offline: see its log"
+    return out
 
 
 def snapshot():
