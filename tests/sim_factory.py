@@ -166,5 +166,64 @@ ci.build, ci.build_firmware = real_build, real_fw
 n = len(factory.runs(200))
 ci.build_firmware({"kind": "firmware", "repo": str(guest), "commit": "a" * 40, "env": "native", "family": "native", "ref": "main"})
 check("a public repository that is not a mirror is never built", len(factory.runs(200)) == n)
+# The front page's tile (the owner's choice): the view and the files a guest may have.
+for p in ci.QUEUE.glob("*.json"):
+    p.unlink()
+ci.FIRMWARE_SCRIPT = """set -eu
+mkdir -p ".pio/build/$FW_ENV"; cd ".pio/build/$FW_ENV"
+for f in firmware-$FW_ENV.bin firmware-$FW_ENV.factory.bin firmware-$FW_ENV.zip firmware-$FW_ENV.uf2 meshtasticd; do echo x > "$f"; done
+"""
+factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", ["heltec-v3", "rak4631", "native"])
+ci.run_queue()
+view = factory.public_view()
+files = {b["env"]: b["files"] for b in view["built"]}
+check("tile: an ESP32 build's images and zip; an nRF52's UF2 only; native's program never", files.get("heltec-v3") == [
+      "firmware-heltec-v3.bin", "firmware-heltec-v3.factory.bin", "firmware-heltec-v3.uf2", "firmware-heltec-v3.zip"]
+      and files.get("rak4631") == ["firmware-rak4631.uf2"] and "native" in files and files["native"] == ["firmware-native.uf2"], files)
+check("  nothing of the runs beyond what it shows", set(view) == {"running", "waiting", "next", "paused", "built"}
+      and all(set(b) == {"run", "env", "name", "family", "ref", "finished", "files"} for b in view["built"]))
+run_heltec = next(b["run"] for b in view["built"] if b["env"] == "heltec-v3")
+run_rak = next(b["run"] for b in view["built"] if b["env"] == "rak4631")
+check("  a file it lists: served", factory.public_file(run_heltec, "firmware-heltec-v3.factory.bin") is not None)
+check("  one it doesn't (the nRF52's .bin, a log, a path): not", factory.public_file(run_rak, "firmware-rak4631.bin") is None
+      and factory.public_file(run_heltec, "log.txt") is None and factory.public_file("../1", "x.bin") is None)
+# The hub: the tile and its routes only while the owner shows it.
+import socket, urllib.request, urllib.error  # noqa: E402
+def serve(show):
+    st = T / f"hub-{show}"; st.mkdir()
+    (st / "settings.json").write_text(json.dumps({"factory_tile": show}))
+    s_ = socket.socket(); s_.bind(("127.0.0.1", 0)); port = s_.getsockname()[1]; s_.close()
+    env = dict(os.environ, HUB_STATE_DIR=str(st), HUB_ETC_DIR=str(st), PORT=str(port), HUB_BIND="127.0.0.1", HUB_CI_ROOT=str(T / "ci"))
+    hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(100):
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=1); break
+        except OSError:
+            time.sleep(0.1)
+    return hub, port
+def get(port, path):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, b""
+hub, port = serve(True)
+try:
+    code, home = get(port, "/")
+    check("shown: the tile on the front page", code == 200 and b'id="factory-card"' in home)
+    code, body = get(port, "/factory.json")
+    check("  its view, to anyone", code == 200 and any(b["env"] == "heltec-v3" for b in json.loads(body)["built"]))
+    code, body = get(port, f"/factory/file?run={run_heltec}&name=firmware-heltec-v3.uf2")
+    check("  a file, as a download", code == 200 and body == b"x\n")
+    check("  a log or another file: no", get(port, f"/factory/file?run={run_heltec}&name=log.txt")[0] == 404)
+finally:
+    hub.terminate(); hub.wait()
+hub, port = serve(False)
+try:
+    code, home = get(port, "/")
+    check("not shown (the default): no tile, and both routes 404", b'id="factory-card"' not in home and get(port, "/factory.json")[0] == 404
+          and get(port, f"/factory/file?run={run_heltec}&name=firmware-heltec-v3.uf2")[0] == 404)
+finally:
+    hub.terminate(); hub.wait()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

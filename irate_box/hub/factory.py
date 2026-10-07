@@ -388,3 +388,59 @@ def snapshot():
     return {"sources": [{k: s[k] for k in ("name", "area", "mirror", "upstream")} for s in sources()],
             "paused": PAUSED.exists(), "running": running, "waiting": waiting, "runs": history[:30],
             "estimates": est, "readiness": readiness(history), "free": free_bytes(), "max_per_request": MAX_PER_REQUEST}
+
+
+# --- the front page's tile (the owner's choice: settings factory_tile) -------------------------------
+# What a guest may download: an ESP32 build's images and update zip, and any UF2 (nRF52, RP2040:
+# dragged onto the board's USB drive). Not native's program, nor a log.
+PUBLIC_RE = {"esp32": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|zip)$"), "any": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.uf2$")}
+
+
+def public_files(run):
+    fam = str(run.get("family") or "")
+    return [n for n in run.get("artifacts") or []
+            if PUBLIC_RE["any"].match(n) or (fam.startswith("esp32") and PUBLIC_RE["esp32"].match(n))]
+
+
+def public_view(limit=12):
+    """The tile's view: what is building and how far along, what is waiting, and each target's newest
+    good build with only what a guest may download. Nothing else of the runs (no logs, no sources
+    beyond the release or branch name)."""
+    history = runs(200)
+    est = estimates(history)
+    running = next((s for s in history if s.get("state") == "running"), None)
+    jobs = _jobs()
+    built, seen = [], set()
+    for s in history:
+        if s.get("state") != "passed" or s.get("env") in seen:
+            continue
+        seen.add(s.get("env"))
+        files = public_files(s)
+        if files:
+            built.append({"run": s["run"].split("/")[1], "env": s.get("env"), "name": s.get("name") or s.get("env"),
+                          "family": s.get("family"), "ref": s.get("ref"), "finished": s.get("finished"), "files": files})
+        if len(built) >= limit:
+            break
+    now_ = None
+    if running:
+        e = est.get(running.get("family"), {}).get("seconds")
+        now_ = {"name": running.get("name") or running.get("env"), "env": running.get("env"), "family": running.get("family"),
+                "ref": running.get("ref"), "started": running.get("started"),
+                "done": round(min(0.99, (time.time() - running["started"]) / e), 2) if e and running.get("started") else None}
+    return {"running": now_, "waiting": len(jobs), "next": [{"name": j.get("name") or j.get("env"), "family": j.get("family")} for j in jobs[:5]],
+            "paused": PAUSED.exists(), "built": built}
+
+
+def public_file(run_number, name):
+    """A built file a guest may download, or None."""
+    if not re.fullmatch(r"[0-9]{1,6}", run_number or ""):
+        return None
+    run = ci.RUNS / RUNS_NAME / run_number
+    try:
+        st = json.loads((run / "status.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if st.get("state") != "passed" or name not in public_files(st):
+        return None
+    f = run / "artifacts" / name
+    return f if f.is_file() and not f.is_symlink() else None

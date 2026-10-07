@@ -591,6 +591,16 @@
           <button type="submit" id="factory-queue" disabled>Queue</button>
           <p class="setting-desc action-note" id="factory-note" role="status" hidden></p>
         </form>
+        <div class="settings" data-note="factory-tile-note">
+          <label class="setting">
+            <input type="checkbox" id="factory_tile">
+            <span>
+              <span class="setting-name">Show the factory on the front page</span>
+              <span class="setting-desc">A tile anyone on the network can see: what is building and how far along, what is waiting, and the newest builds' ESP32 images and UF2 files to download. Never logs, nor anything else of the builds.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="factory-tile-note" role="status" hidden></p>
         <h3>The queue</h3>
         <p class="library-buttons"><button type="button" id="factory-pause">Pause</button></p>
         <div id="factory-waiting" class="admin-list"></div>
