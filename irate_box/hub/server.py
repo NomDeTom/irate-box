@@ -1945,6 +1945,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, factory.snapshot())
             return
 
+        if path == "/admin/tls":
+            # HTTPS (step 15): the root helper's copy of what it made (root/tls.py status).
+            try:
+                st = json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
+            except (OSError, ValueError):
+                st = {"set_up": False}
+            self.send_json(200, dict(st, pending=_pending_actions("tls-"), results=control_results(5)))
+            return
+
         if path == "/admin/factory/targets":
             # A source's refs, and its targets at one (factory.py): read from its local copy.
             query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
@@ -2219,6 +2228,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/tls":
+            action = payload.get("action")
+            if action not in ("make", "renew"):
+                self.send_json(400, {"error": "action must be make or renew"})
+                return
+            self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
             return
 
         if path == "/admin/factory":
