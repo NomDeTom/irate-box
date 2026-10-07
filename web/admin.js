@@ -1899,6 +1899,74 @@ net.save.addEventListener('click', () => {
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
 net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 0 }, 'up'));
 window.addEventListener('hashchange', () => { if (location.hash === '#network') loadNetwork(); });
+
+// --- the hotspot itself (item 2: root/ap.py, the plan from hub/apmode.py) -----------------------------
+const apEl = { state: document.getElementById('ap-state'), form: document.getElementById('ap-form'), radio: document.getElementById('ap-radio'),
+  channel: document.getElementById('ap-channel'), take: document.getElementById('ap-take'), takeLabel: document.getElementById('ap-take-label'),
+  sw: document.getElementById('ap-switch'), tryB: document.getElementById('ap-try'), confirmB: document.getElementById('ap-confirm'), note: noteEl('ap-note') };
+let apRun = null;
+let apWait = null; // {id, until}: a request to the root helper, and when to stop waiting for it
+function apFill(sel, values, keep) {
+  const want = keep !== undefined ? keep : sel.value;
+  sel.replaceChildren(el('option', { value: '', textContent: 'Automatic' }), ...values.map((v) => el('option', { value: String(v), textContent: String(v) })));
+  sel.value = values.map(String).includes(String(want)) ? String(want) : '';
+}
+function renderAp(run) {
+  apRun = run;
+  const p = run.up ? run.plan : run.preview;
+  const where = (q) => (q && q.channel ? ` on ${q.iface === 'ap0' || q.kind === 'own-channel' || q.kind === 'follow' ? 'a second interface beside ' + q.iface : q.iface}, channel ${q.channel}` : '');
+  apEl.state.textContent = run.up
+    ? `On${where(p)}. ${p.text}${run.confirmed === false ? ' Your WiFi link is off: press Keep it from the hotspot, or it comes back by itself.' : ''}`
+    : p ? `Off. Switched on, it would run${where(p)}. ${p.text}${p.to_try ? ' Whether it can keep a channel of its own here is still to be tried.' : ''}${p.why ? ` (${p.why})` : ''}`
+      : 'Off. The radios have not been looked at yet: Look again, above.';
+  if (run.note) say(run.note, true, apEl.note);
+  const radio = apEl.radio.value;
+  apFill(apEl.radio, (run.radios || []).map((r) => r.iface), (run.owner || {}).radio || radio);
+  const chans = ((run.radios || []).find((r) => r.iface === (apEl.radio.value || (p && p.iface))) || (run.radios || [])[0] || { channels: [] }).channels;
+  apFill(apEl.channel, chans, (run.owner || {}).channel);
+  apEl.sw.textContent = run.up ? 'Switch off' : 'Switch on';
+  apEl.takeLabel.hidden = run.up || !(p && p.needs_choice);
+  apEl.tryB.hidden = run.up || !(p && p.to_try);
+  apEl.confirmB.hidden = !(run.up && run.confirmed === false);
+  [apEl.sw, apEl.tryB, apEl.confirmB].forEach((b) => { b.disabled = !!apWait; });
+}
+async function loadAp() {
+  try {
+    const d = await getJSON('/admin/hotspot');
+    renderAp(d.running || {});
+    if (apWait) {
+      const done = ((d.running || {}).at || 0) * 1000 > apWait.since;
+      if (done || Date.now() > apWait.until) { apWait = null; renderAp(d.running || {}); } else setTimeout(loadAp, 2000);
+    }
+  } catch (_) { apEl.state.textContent = 'Could not read the hotspot.'; }
+}
+async function apAct(body) {
+  try {
+    await postJSON('/admin/hotspot', body);
+    apWait = { since: Date.now() - 1000, until: Date.now() + 90000 };
+    say('Asked: the box is doing it…', true, apEl.note);
+    renderAp(apRun || {});
+    setTimeout(loadAp, 2000);
+  } catch (err) { say(err.message, false, apEl.note); }
+}
+apEl.form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (apRun && apRun.up) { apAct({ action: 'off' }); return; }
+  const body = { action: 'on' };
+  if (apEl.radio.value) body.radio = apEl.radio.value;
+  if (apEl.channel.value) body.channel = Number(apEl.channel.value);
+  if (!apEl.takeLabel.hidden) {
+    if (!apEl.take.checked) { say('This radio can only do one thing at a time: tick the box to use it for the hotspot, or leave the hotspot off.', false, apEl.note); return; }
+    if (!confirm('The box will leave your WiFi while the hotspot runs. Open the hub from the hotspot within 5 minutes and press Keep it, or your WiFi comes back by itself.')) return;
+    body.take_radio = true;
+  }
+  apAct(body);
+});
+apEl.radio.addEventListener('change', () => renderAp(apRun || {}));
+apEl.tryB.addEventListener('click', () => apAct({ action: 'try' }));
+apEl.confirmB.addEventListener('click', () => apAct({ action: 'confirm' }));
+window.addEventListener('hashchange', () => { if (location.hash === '#network') loadAp(); });
+if (location.hash === '#network') loadAp();
 loadNetwork();
 
 // --- the hotspot's own WiFi ----------------------------------------------------------------

@@ -114,7 +114,7 @@ from irate_box.hub import netinv
 from irate_box.root import secdoctor
 from irate_box.root import security
 from irate_box.hub import uplink
-from irate_box.root import kits, safeio, usbstick
+from irate_box.root import ap, kits, safeio, usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -1909,6 +1909,92 @@ def net_scan(req):
             + (f", link {inv['uplink']['iface']} run by {inv['uplink']['backend']}" if inv["uplink"].get("iface") else ", no link"))
 
 
+# --- the hotspot (item 2: root/ap.py does the work, hub/apmode.py the plan) ------------------------
+
+AP_STATUS = CONTROL / "ap.json"      # the hub's copy: the plan, whether it's up, the tries
+
+
+def _ap_settings():
+    """The owner's security choice for the hotspot (the hub's hotspot.json), checked again here."""
+    from irate_box.hub import hotspot
+    try:
+        raw = json.loads((STATE / "hotspot.json").read_text())
+    except (OSError, ValueError):
+        raw = {}
+    try:
+        return hotspot.validate(raw, hotspot.capabilities())
+    except ValueError:
+        return dict(hotspot.DEFAULT)
+
+
+def _ap_owner(req):
+    """The owner's choices for the hotspot, checked: a radio by name, a band, a channel, and whether to
+    give the box's WiFi link up for it (only where a radio can't do both)."""
+    out = {}
+    if req.get("radio"):
+        if not IFACE_RE.match(str(req["radio"])):
+            raise ValueError("not an interface name")
+        out["radio"] = str(req["radio"])
+    if req.get("band") in ("2.4 GHz", "5 GHz"):
+        out["band"] = req["band"]
+    if req.get("channel") is not None:
+        if type(req["channel"]) is not int or not 1 <= req["channel"] <= 196:
+            raise ValueError("channel: a channel number")
+        out["channel"] = req["channel"]
+    if req.get("take_radio") is True:
+        out["take_radio"] = True
+    return out
+
+
+def _ap_record_status(plan=None, note=""):
+    rec = ap._load(ap.RECORD, {})
+    safeio.write(AP_STATUS, json.dumps({"up": bool(rec.get("up")), "plan": rec.get("plan") if rec.get("up") else plan,
+                                        "confirmed": rec.get("confirmed", True), "since": rec.get("since"),
+                                        "owner": rec.get("owner") or {}, "tried": ap._load(ap.TRIED, {}),
+                                        "note": note, "at": time.time()}))
+
+
+def _ap_inventory():
+    inv = netinv.scan()
+    netinv.write(inv, CONTROL / "netinv.json")
+    return inv
+
+
+def ap_on(req):
+    plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
+    if plan.get("needs_choice") or plan["kind"] == "none":
+        _ap_record_status(plan, plan["text"])
+        return plan["text"] + (f" ({plan['why']})" if plan.get("why") else "")
+    note = f"up on {ap.ap_iface(plan)}, channel {plan['channel']}: {plan['text']}"
+    if plan.get("drops_uplink"):
+        note += f" Your WiFi link is off: open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm, or it comes back by itself."
+    _ap_record_status(plan, note)
+    return note
+
+
+def ap_off(req):
+    note = ap.stop(run)
+    _ap_record_status(None, note)
+    return note
+
+
+def ap_try(req):
+    worked, plan = ap.try_own_channel(run, _ap_inventory(), _ap_settings())
+    if worked is None:
+        note = "nothing to try: " + plan["text"]
+    else:
+        note = ("it holds a channel of its own beside your WiFi: guests won't notice your WiFi roam" if worked
+                else "it can't hold a channel of its own here, so it follows your WiFi's channel")
+    _ap_record_status(plan, note)
+    return note
+
+
+def ap_confirm(req):
+    note = ap.confirm(run)
+    _ap_record_status(None, note)
+    return note
+
+
 def _uplink_running():
     if run("systemctl", "is-active", "--quiet", "irate-box-uplink.service").returncode:
         run("systemctl", "enable", "--now", "irate-box-uplink.service")
@@ -1995,7 +2081,7 @@ ACTIONS = {"service": service, "password": password,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "admin-login": admin_login, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
@@ -2042,6 +2128,21 @@ UPDATES = ("update-install", "update-force-install")
 
 
 if __name__ == "__main__":
+    # NetworkManager's dispatcher (root/ap.py's hook): a link came up; a following hotspot moves.
+    if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.match(sys.argv[2]):
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
+        _ap_record_status(None, note)
+        sys.exit(0)
+    # The dead-man timer: the owner didn't confirm a hotspot that took the box's own link.
+    if sys.argv[1:] == ["ap-revert"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        rec = ap._load(ap.RECORD, {})
+        if rec.get("up") and not rec.get("confirmed"):
+            _ap_record_status(None, ap.stop(run) + ": not confirmed in time, so the box's WiFi link is back")
+        sys.exit(0)
     if sys.argv[1:] == ["reset-password"]:
         if os.geteuid() != 0:
             sys.exit("run as root: sudo ./irate-box hub_control reset-password")

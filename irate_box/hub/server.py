@@ -2660,6 +2660,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
             return
 
+        if path == "/admin/hotspot" and payload.get("action") in ("on", "off", "try", "confirm"):
+            # The hotspot itself (root/ap.py through the root helper): on with the owner's choices,
+            # off, the try of a channel of its own beside the WiFi link, or keeping one that took it.
+            req = {"action": "ap-" + payload["action"]}
+            if payload["action"] == "on":
+                for k in ("radio", "band", "channel", "take_radio"):
+                    if payload.get(k) is not None:
+                        req[k] = payload[k]
+            self.send_json(202, {"id": control_request(req)})
+            return
+
         if path == "/admin/hotspot":
             try:
                 saved = hotspot.save(payload.get("settings"))
@@ -2667,7 +2678,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": str(exc)})
                 return
             self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
-                                 "It takes effect when the hotspot add-on is set up."})
+                                 "It takes effect the next time the hotspot is switched on (Network)."})
             return
 
         if path == "/admin/security":
