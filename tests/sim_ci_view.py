@@ -114,7 +114,7 @@ check("a build gets PIP_NO_INDEX and PIP_FIND_LINKS from the wheelhouse", env_ou
 # download cache without usage.db, the libraries of either layout; and builds the cache's release.
 script = ci.TEMPLATES["meshtasticd"]["script"]
 check("the template builds the cache's release, or develop", 'FW_REF=${CI_PIO_DEPS_TAG:-develop}' in script)
-seed = script[script.index('if [ -n "${CI_PIO_DEPS:-}" ]'):script.index('echo "== building"')]
+seed = script[script.index('if [ -n "${CI_PIO_DEPS:-}" ]'):script.index('case $PIO_FROM in')]
 for layout in ("native", "whole"):
     cache, home, fwd = T / f"cache-{layout}", T / f"home-{layout}", T / f"fw-{layout}"
     libs = cache / "libdeps" / ("native-tft" if layout == "whole" else "")
@@ -133,5 +133,34 @@ for layout in ("native", "whole"):
           and (pio / "packages/framework-portduino/package.json").read_text() == "kept", r.stderr)
     check(f"  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
           and (fwd / ".pio/libdeps/native/Crypto/library.json").read_text() == "kept", sorted(p.name for p in (fwd / ".pio/libdeps/native").iterdir()))
+# Which PlatformIO (step 33c): Debian's by default; the wheelhouse's in a venv that sees Debian's
+# protobuf when Debian's has none, is asked for, or stops before compiling; never a second build
+# after one that compiled and failed.
+pio_part = (script[script.index("PIO_FROM=${PIO:-auto}"):script.index("venv_pio() {")]
+            + 'venv_pio() { echo "$HOME/venvpio"; }\n'
+            + script[script.index("case $PIO_FROM in"):script.index('echo "== keeping the program"')])
+def pio_case(name, debian, debian_out, debian_rc, mode="auto"):
+    home = T / f"pio-{name}"; home.mkdir()
+    def fake(path, ver, out, rc):
+        path.write_text(f'#!/bin/bash\n[ "$1" = --version ] && {{ echo "PlatformIO Core, version {ver}"; exit 0; }}\n'
+                        f'echo "$0 $*" >> "{home}/calls"; printf "{out}"; exit {rc}\n'); path.chmod(0o755)
+    if debian:
+        fake(home / "debpio", "6.1.10", debian_out, debian_rc)
+    fake(home / "venvpio", "6.2.0", "Compiling .pio/x.o\\n", 0)
+    r = subprocess.run(["bash", "-c", "set -euo pipefail\n" + pio_part.replace("PIO_DEBIAN=/usr/bin/pio", f"PIO_DEBIAN={home / 'debpio'}")],
+                       env=dict(os.environ, HOME=str(home), PIO=mode), capture_output=True, text=True)
+    calls = [Path(c.split()[0]).name for c in (home / "calls").read_text().splitlines()] if (home / "calls").exists() else []
+    return r.returncode, calls, r.stdout + r.stderr
+rc, calls, out = pio_case("deb-ok", True, "Compiling .pio/x.o\\n", 0)
+check("PlatformIO: Debian's when the kit has it", rc == 0 and calls == ["debpio"] and "building with PlatformIO Core, version 6.1.10" in out, (rc, calls, out))
+rc, calls, out = pio_case("deb-early", True, "Error: platform needs PlatformIO 6.2\\n", 1)
+check("  Debian's stops before compiling: the wheelhouse's builds it, and the log says so", rc == 0 and calls == ["debpio", "venvpio"]
+      and "Debian's PlatformIO stopped before compiling" in out, (rc, calls, out))
+rc, calls, out = pio_case("deb-late", True, "Compiling .pio/x.o\\nerror: x.cpp\\n", 1)
+check("  Debian's fails while compiling: the build fails, no second try", rc != 0 and calls == ["debpio"], (rc, calls))
+rc, calls, out = pio_case("no-deb", False, "", 0)
+check("  no Debian PlatformIO: the wheelhouse's", rc == 0 and calls == ["venvpio"], (rc, calls))
+rc, calls, out = pio_case("pip", True, "", 0, mode="pip")
+check("  PIO=pip: the wheelhouse's even with Debian's there", rc == 0 and calls == ["venvpio"], (rc, calls))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

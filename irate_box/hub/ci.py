@@ -77,15 +77,25 @@ TEMPLATES = {
     "meshtasticd": {"title": "Meshtastic firmware: meshtasticd (native)", "script": """#!/bin/bash
 # .irate-ci.sh: build meshtasticd (PlatformIO env "native") on the box. The source is cloned from
 # GitHub's URL, which this box rewrites to its own mirror (Library -> Mirrors), so no internet is
-# needed once the mirror and PlatformIO are in place. Needs the Building kit (its wheelhouse, once
-# cached, is where `pip install platformio` below comes from: PIP_NO_INDEX, PIP_FIND_LINKS). A
-# first build on a small board takes hours (the Lyra: 2.8 h); later ones are incremental, as $HOME
-# is kept.
-set -eu
+# needed once the mirror and PlatformIO are in place. Needs the Building kit: its PlatformIO is
+# Debian's (/usr/bin/pio), with Debian's protobuf and protoc for nanopb, all signed like any
+# package. PIO=debian or PIO=pip chooses; by default Debian's, and if that fails before compiling
+# anything, one from the kit's wheelhouse in a venv of its own (PIP_NO_INDEX, PIP_FIND_LINKS).
+# A first build on a small board takes hours (the Lyra: 2.8 h); later ones are incremental, as
+# $HOME is kept.
+set -euo pipefail
 # What to build: the release the library's build cache is for, which needs no internet, or develop
 # (anything it needs that the cache lacks is downloaded). Set FW_REF to choose.
 FW_REF=${CI_PIO_DEPS_TAG:-develop}
-[ -x "$HOME/pio/bin/pio" ] || { python3 -m venv "$HOME/pio" && "$HOME/pio/bin/pip" install -q platformio; }
+PIO_FROM=${PIO:-auto}
+PIO_DEBIAN=/usr/bin/pio
+venv_pio() {  # PlatformIO from the wheelhouse (or PyPI), in a venv that sees Debian's protobuf
+  if ! grep -qs "include-system-site-packages = true" "$HOME/pio/pyvenv.cfg"; then
+    rm -rf "$HOME/pio" && python3 -m venv --system-site-packages "$HOME/pio" >&2
+  fi
+  [ -x "$HOME/pio/bin/pio" ] || "$HOME/pio/bin/pip" install -q --ignore-installed platformio >&2
+  echo "$HOME/pio/bin/pio"
+}
 [ -d "$HOME/fw/.git" ] || git clone -q --depth 50 https://github.com/meshtastic/firmware "$HOME/fw"
 cd "$HOME/fw"
 git fetch -q --depth 50 origin "$FW_REF" && git checkout -q FETCH_HEAD
@@ -106,8 +116,21 @@ if [ -n "${CI_PIO_DEPS:-}" ]; then
     [ -e ".pio/libdeps/native/$(basename "$d")" ] || cp -r "$d" .pio/libdeps/native/
   done
 fi
-echo "== building"
-"$HOME/pio/bin/pio" run -e native -j 1
+case $PIO_FROM in
+  pip) PIO_BIN=$(venv_pio) ;;
+  debian) PIO_BIN=$PIO_DEBIAN ;;
+  *) if [ -x "$PIO_DEBIAN" ]; then PIO_BIN=$PIO_DEBIAN; else PIO_BIN=$(venv_pio); fi ;;
+esac
+echo "== building with $("$PIO_BIN" --version) ($PIO_BIN)"
+if ! "$PIO_BIN" run -e native -j 1 2>&1 | tee "$HOME/pio-run.log"; then
+  if [ "$PIO_FROM" = auto ] && [ "$PIO_BIN" = "$PIO_DEBIAN" ] && ! grep -q "^Compiling " "$HOME/pio-run.log"; then
+    PIO_BIN=$(venv_pio)
+    echo "== Debian's PlatformIO stopped before compiling; building with $("$PIO_BIN" --version) from the wheelhouse"
+    "$PIO_BIN" run -e native -j 1
+  else
+    exit 1
+  fi
+fi
 echo "== keeping the program"
 cp .pio/build/native/meshtasticd "$CI_ARTIFACTS/" 2>/dev/null || cp .pio/build/native/program "$CI_ARTIFACTS/meshtasticd"
 """},
