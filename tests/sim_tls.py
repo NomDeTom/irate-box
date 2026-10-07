@@ -21,6 +21,9 @@ ADDRS = [{"iface": "wlan0", "address": "192.168.1.181", "network": "192.168.1.0/
          {"iface": "wlan1", "address": "192.168.4.1", "network": "192.168.4.0/24"},
          {"iface": "tailscale0", "address": "100.101.102.103", "network": "100.64.0.0/10"}]
 tls.addresses = lambda: list(ADDRS)
+reloads = []
+nginx_ok = {"ok": True}
+tls._nginx_check_and_reload = lambda: (reloads.append(sorted(p.name for p in tls.FRONT.glob("*.conf"))), (nginx_ok["ok"], "stood in"))[1]
 tls.hostname = lambda: "lyra"
 rec = tls.make_ca()
 check("the CA: its names, and the networks it may vouch for (the hotspot, the LAN's subnet; not Tailscale's)",
@@ -66,5 +69,32 @@ check("moved to another subnet: said (a new CA is needed), not re-made under a C
 pub = json.loads((tls.PUBLIC / "status.json").read_text())
 check("the hub's copy: the status and the CA's public certificate, never a key", pub["set_up"] and (tls.PUBLIC / "ca.crt").read_text() == tls.CA_CERT.read_text()
       and not any("PRIVATE KEY" in f.read_text() for f in tls.PUBLIC.iterdir()))
+# The front (certificates-plan stage 2): making the CA turned HTTPS on; each server block's TLS
+# twin written, nginx checked and reloaded; off takes them away; a refused config is undone.
+names = sorted(p.name for p in tls.FRONT.glob("*.conf"))
+check("making the CA turned HTTPS on: each origin's twin written, nginx reloaded", names == ["nginx-addons.conf", "nginx-git.conf", "nginx-main.conf",
+      "nginx-notes.conf", "nginx-wiki.conf"] and reloads and reloads[0] == names and tls.status()["on"], (names, reloads))
+main = (tls.FRONT / "nginx-main.conf").read_text()
+check("  443 for the hub, the certificate and key, TLS 1.2 and 1.3 only", "listen 443 ssl default_server;" in main and f"ssl_certificate {tls.CHAIN};" in main
+      and f"ssl_certificate_key {tls.KEY};" in main and "ssl_protocols TLSv1.2 TLSv1.3;" in main and "listen 8491 ssl;" in (tls.FRONT / "nginx-notes.conf").read_text())
+reloads.clear()
+ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0/24"}
+tls.renew()
+check("a renewed certificate: nginx reloaded to read it", reloads and "nginx-main.conf" in reloads[0])
+print(tls.front(False))
+check("off: the twins gone, nginx reloaded, the CA and certificate kept", not list(tls.FRONT.glob("*.conf")) and tls.CA_CERT.exists() and tls.CHAIN.exists()
+      and not tls.status()["on"])
+nginx_ok["ok"] = False
+try:
+    tls.front(True); check("nginx refusing the twins: undone, and said", False)
+except RuntimeError as exc:
+    check("nginx refusing the twins: undone, and said", not list(tls.FRONT.glob("*.conf")) and "taken away again" in str(exc) and not tls.status()["on"], str(exc))
+nginx_ok["ok"] = True
+os.environ["HUB_WEB_SERVER"] = "caddy"
+check("under Caddy: made, not yet served, and said so", "nginx only so far" in tls.front(True))
+os.environ["HUB_WEB_SERVER"] = "nginx"
+from irate_box.hub import access  # noqa: E402
+csp = access.addon_csp({"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}})
+check("an add-on's ws:// also as wss:// (the MQTT explorer over HTTPS)", "connect-src 'self' ws://$host/mqtt wss://$host/mqtt https://api.github.com;" in csp, csp)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

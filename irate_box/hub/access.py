@@ -74,7 +74,15 @@ def addon_csp(m):
     """A local add-on's Content-Security-Policy: its own origin, plus what its manifest says it
     connects to ({box} becomes the hub's host, $host to nginx). Built only from checked
     manifests (manifests.check_local), whose values cannot hold a quote or a semicolon."""
-    connect = " ".join(c.replace("{box}", "$host") for c in m.get("capabilities", {}).get("connect", []))
+    # Each ws:// or http:// it may reach, also as wss:// or https://: served over HTTPS (step 15),
+    # a page may not use the plain one (the MQTT explorer goes to wss://<box>/mqtt there).
+    allowed = []
+    for c in m.get("capabilities", {}).get("connect", []):
+        allowed.append(c)
+        for plain, secure in (("ws://", "wss://"), ("http://", "https://")):
+            if c.startswith(plain):
+                allowed.append(secure + c[len(plain):])
+    connect = " ".join(dict.fromkeys(c.replace("{box}", "$host") for c in allowed))
     return ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
             "script-src 'self' 'unsafe-inline'; connect-src 'self'" + (" " + connect if connect else "")
             + "; frame-ancestors 'self' http://$host:* https://$host:*; base-uri 'none'; form-action 'self'")
