@@ -726,15 +726,24 @@ def _resolve_release(src, auth):
     raise LibrarianError(f"no release of {src['repo']} has an asset matching {src['pattern']}")
 
 
+# Which runs' artifacts a book or an app may come from (F30): a push to the repository, a run
+# started by hand (workflow_dispatch) or on the workflow's own schedule. All three need write
+# access to the repository, so they build what its owner has taken. Never a pull request's run,
+# nor one from a fork. (Pushes only, until mermaid-docs' run started by hand on develop, the only
+# one there, was refused: 2026-10-07.)
+TRUSTED_EVENTS = ("push", "workflow_dispatch", "schedule")
+
+
 def _newest_artifact(src, auth):
-    # Pushes to the repository itself only (F30): a run for a pull request, or from a fork,
-    # builds code the repository's owner has not taken.
-    query = "status=success&event=push&per_page=10"
+    query = "status=success&per_page=30"
     if src.get("branch"):
         query += "&branch=" + urllib.parse.quote(src["branch"], safe="")
     runs = _api(f"/repos/{src['repo']}/actions/workflows/{src['workflow']}/runs?{query}", auth)
+    passed_over = 0
     for run in runs.get("workflow_runs", []):
-        if (run.get("head_repository") or {}).get("full_name", src["repo"]).lower() != src["repo"].lower():
+        if run.get("event", "push") not in TRUSTED_EVENTS or \
+                (run.get("head_repository") or {}).get("full_name", src["repo"]).lower() != src["repo"].lower():
+            passed_over += 1
             continue
         arts = _api(f"/repos/{src['repo']}/actions/runs/{run['id']}/artifacts", auth)
         for art in arts.get("artifacts", []):
@@ -743,7 +752,8 @@ def _newest_artifact(src, auth):
     where = f" on {src['branch']}" if src.get("branch") else ""
     raise LibrarianError(
         f"no successful {src['workflow']} run{where} in {src['repo']} has an unexpired "
-        f"artifact matching {src['pattern']} (artifacts expire after 90 days)")
+        f"artifact matching {src['pattern']} (artifacts expire after 90 days)"
+        + (f"; {passed_over} run{'s' if passed_over != 1 else ''} from a pull request or a fork passed over" if passed_over else ""))
 
 
 def _resolve_actions(src, auth):
