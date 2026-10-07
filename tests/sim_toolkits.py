@@ -35,7 +35,7 @@ ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.1
            "build-essential": ("12.10", []), "cmake": ("3.31.0-1", []), "pkg-config": ("1.8.1-4", []),
            "python3-dev": ("3.13.5-2", []), "python3-venv": ("3.13.5-2", []),
            "platformio": ("6.1.10-1", ["python3-click"]), "python3-click": ("8.2.0-1", []), "python3-protobuf": ("3.21.12-11", []),
-           "protobuf-compiler": ("3.21.12-11", [])}
+           "protobuf-compiler": ("3.21.12-11", []), "libffi-dev": ("3.4.8-2", [])}
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
 BOARD = {"arch": "armhf"}
