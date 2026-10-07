@@ -156,11 +156,33 @@ def save(raw, caps=None):
     return s
 
 
+AP_STATUS = STATE / "control" / "ap.json"   # the root helper's: the hotspot running or not (root/ap.py)
+
+
+def running():
+    """The root helper's last word on the hotspot, and the plan it would follow now (apmode.py),
+    from the last inventory: what the Network page shows before and after switching it on."""
+    from irate_box.hub import apmode
+    try:
+        st = json.loads(AP_STATUS.read_text())
+    except (OSError, ValueError):
+        st = {"up": False, "plan": None, "tried": {}, "owner": {}, "confirmed": True, "note": ""}
+    try:
+        inv = json.loads(NETINV.read_text())
+        preview = apmode.plan(inv, inv.get("ap") or [], st.get("owner") or {}, st.get("tried") or {})
+        radios = [{"iface": r["iface"], "channels": [c["channel"] for c in apmode.allowed(r, inv.get("country"))]}
+                  for r in inv.get("radios", []) if r.get("ap")]
+    except (OSError, ValueError, KeyError):
+        preview, radios = None, []
+    return dict(st, preview=preview, radios=radios)
+
+
 def snapshot():
     caps = capabilities()
+    run = running()
     return {"settings": load(), "capabilities": caps, "available": available(caps), "modes": list(MODES),
             "label": LABEL, "what": WHAT, "warnings": WARNINGS, "wpa2_warning": WPA2_WARNING, "always": ALWAYS,
-            "hotspot_exists": False}
+            "hotspot_exists": True, "running": run}
 
 
 # --- what the hotspot add-on applies -------------------------------------------------------
