@@ -345,13 +345,12 @@ function renderLibrary(snap) {
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
   lib.states.forEach((n) => { n.textContent = parts.join(' '); });
 
-  const books = snap.sources.filter((s) => s.kind !== 'app');
-  setupStep('books', books.length ? `${books.length} kept current by the librarian.`
-    : 'None kept current yet: Kiwix serves only books copied in by hand.', books.length ? 'ok' : 'warn');
-  lib.sources.replaceChildren(...(books.length
-    ? books.map((s) => sourceRow(s, snap.status[s.name] || {}, busy))
-    : [el('p', { className: 'setting-desc', textContent: 'No sources yet.' })]));
-  document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy || !snap.sources.length; });
+  // The books themselves are a page at a time (loadBooks): reread when the librarian finishes.
+  if (libWasBusy && !busy) loadBooks();
+  libWasBusy = busy;
+  libBusy = busy;
+  document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
+  document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
   if (allNote) { lib.allNote.textContent = allNote.textContent; lib.allNote.className = allNote.className; }
@@ -370,7 +369,7 @@ function renderLibrary(snap) {
 
 async function loadLibrary() {
   try {
-    const r = await fetch('/admin/library');
+    const r = await fetch('/admin/library?books=0');
     if (!r.ok) throw new Error(r.status);
     renderLibrary(await r.json());
   } catch (_) {
@@ -427,8 +426,114 @@ document.getElementById('library-token-clear').addEventListener('click', async (
 });
 document.querySelectorAll('[data-all]').forEach((b) => b.addEventListener('click', () => libAct('all', { action: b.dataset.all })));
 
+// --- the books, a page at a time (step 14: /admin/books) ----------------------------------------
+let libWasBusy = false;
+let libBusy = false;
+const bk = {
+  q: document.getElementById('books-q'), language: document.getElementById('books-language'), state: document.getElementById('books-state'),
+  kept: document.getElementById('books-kept'), sort: document.getElementById('books-sort'), body: document.querySelector('#books-table tbody'),
+  pageAll: document.getElementById('books-page-all'), summary: document.getElementById('books-summary'), page: document.getElementById('books-page'),
+  prev: document.getElementById('books-prev'), next: document.getElementById('books-next'), bulk: document.getElementById('books-bulk'),
+  selected: document.getElementById('books-selected'), matching: document.getElementById('books-select-matching'),
+  none: document.getElementById('books-select-none'),
+};
+const bookSel = new Set();
+let bookPage = 1;
+let bookData = null;
+let bookOpen = null;
+let bookTimer = null;
+const STATE_WORDS = { ok: 'up to date', newer: 'newer available', failed: 'check failed', 'not installed': 'not installed yet', unreadable: 'Kiwix cannot read it' };
+const bookQuery = (extra = {}) => new URLSearchParams({ q: bk.q.value.trim(), language: bk.language.value, state: bk.state.value,
+  kept: bk.kept.value, sort: bk.sort.value, page: String(bookPage), ...extra }).toString();
+
+async function loadBooks() {
+  try { renderBooks(await getJSON(`/admin/books?${bookQuery()}`)); } catch (_) { bk.summary.textContent = 'Could not read the books.'; }
+}
+
+function renderBooks(d) {
+  bookData = d;
+  bookPage = d.page;
+  const sm = d.summary;
+  setupStep('books', sm.kept ? `${sm.kept} kept current by the librarian.` : 'None kept current yet: Kiwix serves only books copied in by hand.', sm.kept ? 'ok' : 'warn');
+  const st = sm.states;
+  bk.summary.textContent = `${sm.count} book${sm.count === 1 ? '' : 's'}, ${size(sm.bytes)}; ${sm.kept} kept current.`
+    + ['newer', 'failed', 'unreadable', 'not installed'].filter((k) => st[k]).map((k) => ` ${st[k]} ${STATE_WORDS[k]}.`).join('');
+  const langs = Object.keys(sm.languages).sort();
+  if (bk.language.dataset.langs !== langs.join(',')) {
+    const was = bk.language.value;
+    bk.language.dataset.langs = langs.join(',');
+    bk.language.replaceChildren(el('option', { value: '', textContent: 'any' }), ...langs.map((l) => el('option', { value: l, textContent: `${l} (${sm.languages[l]})` })));
+    bk.language.value = langs.includes(was) ? was : '';
+  }
+  const rows = [];
+  for (const b of d.books) {
+    const box = el('input', { type: 'checkbox', checked: bookSel.has(b.name), ariaLabel: `Select ${b.title}`,
+      onchange: (e) => { if (e.target.checked) bookSel.add(b.name); else bookSel.delete(b.name); renderBookBulk(); } });
+    const open = bookOpen === b.name;
+    rows.push(el('tr', { className: `book-row state-${b.state.replace(' ', '-')}` },
+      el('td', {}, box),
+      el('td', {}, el('button', { type: 'button', className: 'link-button', textContent: b.title, ariaExpanded: String(open),
+        onclick: () => { bookOpen = open ? null : b.name; renderBooks(bookData); } }),
+        b.title !== b.name ? el('span', { className: 'setting-desc', textContent: ` ${b.name}.zim` }) : null),
+      el('td', { textContent: b.language || '—' }), el('td', { textContent: b.size ? size(b.size) : '—' }), el('td', { textContent: b.date || '—' }),
+      el('td', { textContent: b.kept ? `yes (${b.source.type})` : 'no' }),
+      el('td', { className: b.state === 'ok' ? '' : 'bad', textContent: STATE_WORDS[b.state] || b.state })));
+    if (open) {
+      rows.push(el('tr', { className: 'book-card' }, el('td', { colSpan: 7 }, b.source ? sourceRow(b.source, b.status || {}, libBusy)
+        : el('p', { className: 'setting-desc', textContent: `${b.name}.zim was put here by hand or from a USB stick: the librarian leaves it alone. `
+          + (b.description ? `“${b.description}”` : '') }))));
+    }
+  }
+  bk.body.replaceChildren(...(rows.length ? rows : [el('tr', {}, el('td', { colSpan: 7, className: 'setting-desc', textContent: sm.count ? 'No book matches.' : 'No books yet.' }))]));
+  bk.pageAll.checked = d.books.length > 0 && d.books.every((b) => bookSel.has(b.name));
+  bk.page.textContent = `Page ${d.page} of ${d.pages} (${d.matching} matching)`;
+  bk.prev.disabled = d.page <= 1;
+  bk.next.disabled = d.page >= d.pages;
+  renderBookBulk();
+}
+
+function renderBookBulk() {
+  const n = bookSel.size;
+  bk.bulk.hidden = !n && !(bookData && bookData.matching > bookData.books.length);
+  bk.selected.textContent = n ? `${n} selected:` : '';
+  bk.bulk.querySelectorAll('[data-bulk]').forEach((b) => { b.hidden = !n; });
+  bk.matching.textContent = bookData ? `Select all ${bookData.matching} matching` : '';
+  bk.matching.hidden = !bookData || bookData.matching <= n;
+  bk.none.hidden = !n;
+}
+
+const rebook = () => { bookPage = 1; clearTimeout(bookTimer); bookTimer = setTimeout(loadBooks, 250); };
+bk.q.addEventListener('input', rebook);
+[bk.language, bk.state, bk.kept, bk.sort].forEach((s) => s.addEventListener('change', rebook));
+bk.prev.addEventListener('click', () => { bookPage -= 1; loadBooks(); });
+bk.next.addEventListener('click', () => { bookPage += 1; loadBooks(); });
+bk.pageAll.addEventListener('change', () => {
+  (bookData ? bookData.books : []).forEach((b) => { if (bk.pageAll.checked) bookSel.add(b.name); else bookSel.delete(b.name); });
+  renderBooks(bookData);
+});
+bk.matching.addEventListener('click', async () => {
+  try { (await getJSON(`/admin/books?${bookQuery({ names: '1' })}`)).names.forEach((n) => bookSel.add(n)); renderBooks(bookData); } catch (err) { say(err.message, false, lib.allNote); }
+});
+bk.none.addEventListener('click', () => { bookSel.clear(); renderBooks(bookData); });
+document.querySelectorAll('[data-bulk]').forEach((b) => b.addEventListener('click', async () => {
+  // Every selected name, on any page: the librarian skips one with no source (put here by hand).
+  const names = [...bookSel];
+  if (b.dataset.bulk === 'untrack') {
+    if (!confirm(`Stop keeping ${names.length} book${names.length === 1 ? '' : 's'} current? The books themselves stay in the library.`)) return;
+    for (const name of names) {
+      try { await libPost({ action: 'remove', name }); } catch (_) { /* not tracked: nothing to stop */ }
+    }
+    bookSel.clear();
+    loadLibrary();
+    loadBooks();
+    return;
+  }
+  libAct('all', { action: b.dataset.bulk, names });
+}));
+
 showTypeFields();
 loadLibrary();
+loadBooks();
 
 // --- shared helpers for the sections below --------------------------------------
 const size = (bytes) => {

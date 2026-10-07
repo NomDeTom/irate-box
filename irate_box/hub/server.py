@@ -1816,7 +1816,24 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/library":
-            self.send_json(200, library_snapshot())
+            snap = library_snapshot()
+            if "books=0" in self.path.partition("?")[2].split("&"):
+                # The Books page asks for its books a page at a time (/admin/books): leave them out.
+                snap["sources"] = [x for x in snap["sources"] if x.get("kind") == "app"]
+                snap["status"] = {k: v for k, v in snap["status"].items() if k in {x["name"] for x in snap["sources"]}}
+            self.send_json(200, snap)
+            return
+
+        if path == "/admin/books":
+            query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+            try:
+                self.send_json(200, librarian.books_page(q=query.get("q", "")[:100], language=query.get("language", "")[:20],
+                                                         state=query.get("state", "") if query.get("state") in librarian.BOOK_STATES else "",
+                                                         kept=query.get("kept", ""), sort=query.get("sort", "title"),
+                                                         page=int(query.get("page") or 1), per_page=int(query.get("per_page") or librarian.PER_PAGE),
+                                                         names_only=query.get("names") == "1"))
+            except ValueError:
+                self.send_json(400, {"error": "page and per_page are numbers"})
             return
 
         if path == "/admin/box":

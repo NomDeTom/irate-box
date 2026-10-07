@@ -12,10 +12,10 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="books-"))
 BIN = T / "bin"; BIN.mkdir()
 LOG = T / "kiwix-calls.log"
-(BIN / "kiwix-manage").write_text(f"""#!{sys.executable}
+FAKE = """#!@PY@
 import os, struct, sys, uuid, xml.etree.ElementTree as ET
 lib, action, *rest = sys.argv[1:]
-open({str(LOG)!r}, "a").write(action + " " + str(len(rest)) + "\\n")
+open("@LOG@", "a").write(action + " " + str(len(rest)) + "\\n")
 root = ET.parse(lib).getroot() if os.path.exists(lib) else ET.Element("library", version="20110515")
 if action == "add":
     for z in rest:
@@ -25,16 +25,32 @@ if action == "add":
             sys.exit(1)
         if len(head) < 24 or struct.unpack("<I", head[:4])[0] != 72173914:
             print("Cannot add zim " + z + " to the library.", file=sys.stderr); sys.exit(1)
+    def meta(z):  # the M/ entries, from the one uncompressed cluster zimgen.py writes
+        d = open(z, "rb").read()
+        n, _, urlp, _, clp = struct.unpack("<IIQQQ", d[24:56])
+        cl = struct.unpack("<Q", d[clp:clp + 8])[0] + 1
+        out = {}
+        for i in range(n):
+            o = struct.unpack("<Q", d[urlp + 8 * i:urlp + 8 * i + 8])[0]
+            ns, blob = chr(d[o + 3]), struct.unpack("<I", d[o + 12:o + 16])[0]
+            url = d[o + 16:d.index(b"\\0", o + 16)].decode()
+            a, b = struct.unpack("<II", d[cl + 4 * blob:cl + 4 * blob + 8])
+            if ns == "M":
+                out[url] = d[cl + a:cl + b].decode()
+        return out
     for z in rest:
         bid = str(uuid.UUID(bytes=open(z, "rb").read(24)[8:24]))
         for b in [b for b in root if b.get("id") == bid]:
             root.remove(b)
-        ET.SubElement(root, "book", id=bid, path=os.path.relpath(z, os.path.dirname(os.path.abspath(lib))))
+        m = meta(z)
+        ET.SubElement(root, "book", id=bid, path=os.path.relpath(z, os.path.dirname(os.path.abspath(lib))), title=m.get("Title", ""),
+                      language=m.get("Language", ""), date=m.get("Date", ""), description=m.get("Description", ""), name=m.get("Name", ""))
 elif action == "remove":
     for b in [b for b in root if b.get("id") in rest]:
         root.remove(b)
 ET.ElementTree(root).write(lib)
-""")
+"""
+(BIN / "kiwix-manage").write_text(FAKE.replace("@PY@", sys.executable).replace("@LOG@", str(LOG)))
 (BIN / "kiwix-manage").chmod(0o755)
 os.environ["PATH"] = f"{BIN}:{os.environ['PATH']}"
 os.environ["HUB_STATE_DIR"] = str(T / "state")
@@ -81,5 +97,31 @@ check("an unreadable catalogue: rebuilt in full instead", len(books()) == 250)
 calls()
 health_src = (REPO / "irate_box/root/health.py").read_text()
 check("the Services doctor's rebuild batches too", '"kiwix-manage", str(new), "add", *map(str, batch)' in health_src)
+# The books a page at a time (/admin/books): the catalogue, the files and the sources together.
+L.rebuild_library()
+srcs = [{"name": f"testbook-{i:04d}", "type": "url", "url": f"https://example.invalid/{i}.zim"} for i in range(1, 41)]
+srcs += [{"name": "coming-soon", "type": "url", "url": "https://example.invalid/soon.zim"}, {"name": "draw", "kind": "app", "type": "git"}]
+L.save_config({"policy": L.load_config()["policy"], "sources": srcs})
+L.save_status({"testbook-0002": {"current": {"version": "a"}, "latest": {"version": "b"}}, "testbook-0003": {"error": "HTTP 404"}})
+pg = L.books_page()
+sm = pg["summary"]
+check("summary: every book (files, sources not yet installed), sizes, languages, states", sm["count"] == 252 and sm["kept"] == 41
+      and sm["states"] == {"ok": 248, "newer": 1, "failed": 1, "unreadable": 1, "not installed": 1} and sm["languages"]["fra"] > 20, sm)
+check("  an app's source is not a book", all(r["name"] != "draw" for r in L.book_rows()[0]))
+check("a page of 50, sorted by title, with its sources and status", len(pg["books"]) == 50 and pg["pages"] == 6 and pg["matching"] == 252
+      and [r["title"] for r in pg["books"]] == sorted((r["title"] for r in pg["books"]), key=str.lower) and "source" in pg["books"][0])
+by = {r["name"]: r for r in L.book_rows()[0]}
+check("  each book's state: newer, failed, unreadable, not installed, its title from Kiwix", by["testbook-0002"]["state"] == "newer"
+      and by["testbook-0003"]["state"] == "failed" and by["testbook-0137"]["state"] == "unreadable" and by["coming-soon"]["state"] == "not installed"
+      and by["testbook-0005"]["title"] == "Test book 5" and by["testbook-0005"]["kept"] and not by["testbook-0099"]["kept"])
+check("search: in the title, name or description", L.books_page(q="book number 77")["matching"] == 1 and L.books_page(q="TESTBOOK-01")["matching"] == 100)
+check("filters: language, state, kept current or not", L.books_page(language="fra")["matching"] == sm["languages"]["fra"]
+      and L.books_page(state="failed")["books"][0]["name"] == "testbook-0003" and L.books_page(kept="yes")["matching"] == 41
+      and L.books_page(kept="no")["matching"] == 211)
+check("sort: size (largest first), date (newest first)", L.books_page(sort="size")["books"][0]["size"] >= L.books_page(sort="size")["books"][-1]["size"]
+      and L.books_page(sort="date")["books"][0]["date"] >= L.books_page(sort="date")["books"][-1]["date"])
+check("pages: the last one, past the end clamped", len(L.books_page(page=6)["books"]) == 2 and L.books_page(page=99)["page"] == 6)
+check("every matching name, for a bulk action on all of them", L.books_page(kept="yes", names_only=True)["matching"] == 41
+      and len(L.books_page(kept="yes", names_only=True)["names"]) == 41)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
