@@ -1940,8 +1940,10 @@ def main():
             return 0
         for path in pending:
             rid = path.stem if ID_RE.match(path.stem) else "invalid"
+            what = None
             try:
                 req = json.loads(safeio.read_request(path))  # never a link or a FIFO (F3)
+                what = req.get("action")
                 path.unlink()
                 action = ACTIONS.get(req.get("action"))
                 if not action:
@@ -1950,7 +1952,15 @@ def main():
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 path.unlink(missing_ok=True)
                 answer(rid, False, str(exc))
+            if what in UPDATES:
+                # The code on disk is new now; this process still has the old in memory. Stop, and
+                # the path unit starts a fresh helper for what is still queued (the Lyra,
+                # 2026-10-07: a kit fetched just after an update ran with the old kits.py).
+                return 0
     return 0
+
+
+UPDATES = ("update-install", "update-force-install")
 
 
 if __name__ == "__main__":
