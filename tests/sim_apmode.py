@@ -128,5 +128,60 @@ except ValueError:
 p = apmode.plan(inv, v, owner={"take_radio": True})
 check("  the owner took the radio: the link disconnected on the way up, reconnected on the way down",
       ["nmcli", "device", "disconnect", "wlan0"] in ap.up_steps(p) and ap.down_steps(p)[-1] == ["nmcli", "device", "connect", "wlan0"])
+
+# Running it (root/ap.py's executor), with the commands stood in and the files in a temp folder.
+import json, os, subprocess, tempfile  # noqa: E401,E402
+T = Path(tempfile.mkdtemp(prefix="ap-"))
+ap.RECORD, ap.TRIED, ap.DISPATCHER, ap.UNITS = T / "ap.json", T / "ap-tried.json", T / "90-irate-box-ap", T / "units"
+ap.KEYFILE, ap.DNSMASQ_CONF = T / "kf", T / "dns.conf"
+calls, iw = [], {"wlan0": 11, "ap0": None}
+def fake_run(*cmd, **kw):
+    calls.append(list(cmd))
+    if cmd[:2] == ("iw", "dev"):
+        text = "phy#0\n" + "".join(f"\tInterface {i}\n\t\ttype {'AP' if i == 'ap0' else 'managed'}\n" + (f"\t\tchannel {c} (2462 MHz), width: 20 MHz\n" if c else "")
+                                   for i, c in iw.items())
+        return subprocess.CompletedProcess(cmd, 0, text, "")
+    if cmd[:3] == ("nmcli", "connection", "up"):
+        kf = (T / "kf").read_text()
+        iw["ap0"] = int(next(l for l in kf.splitlines() if l.startswith("channel=")).split("=")[1])
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+settings = {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"}
+inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up); inv["ap"] = v
+plan = ap.start(fake_run, inv, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+rec = json.loads(ap.RECORD.read_text())
+check("start: the files written (the keyfile 600), the unit installed, the hook in place, the steps run, recorded",
+      (T / "kf").stat().st_mode & 0o777 == 0o600 and (ap.UNITS / ap.DNSMASQ_UNIT).exists() and os.access(ap.DISPATCHER, os.X_OK)
+      and ["nmcli", "connection", "up", "irate-box-ap"] in calls and rec["up"] and rec["confirmed"] and rec["plan"]["channel"] == 11, rec)
+calls.clear()
+worked, p2 = ap.try_own_channel(fake_run, inv, settings, wait=0, sleep=lambda s: None)
+check("the try: the hotspot on a channel other than the link's (1), held, so it works; recorded; then back to the plan",
+      worked is True and json.loads(ap.TRIED.read_text()) == {"phy0": True} and p2["kind"] == "own-channel", (worked, p2))
+iw_force = {"wlan0": 11}
+def forced_run(*cmd, **kw):
+    out = fake_run(*cmd, **kw)
+    if cmd[:3] == ("nmcli", "connection", "up"):
+        iw["ap0"] = iw["wlan0"]   # a driver that drags the AP onto the link's channel
+    return out
+worked, p3 = ap.try_own_channel(forced_run, inv, settings, wait=0, sleep=lambda s: None)
+check("  a driver that drags the hotspot onto the link's channel: the try fails, recorded, the plan becomes following",
+      worked is False and json.loads(ap.TRIED.read_text()) == {"phy0": False} and p3["kind"] == "follow", (worked, p3))
+inv2, v2 = box([radio(lyra, "wlan0", "phy0", 6)], wifi_up); inv2["ap"] = v2
+calls.clear()
+out = ap.follow(fake_run, inv2, settings, "wlan0")
+check("follow: the link came up on channel 6, the hotspot moves there", "moved to channel 6" in out and json.loads(ap.RECORD.read_text())["plan"]["channel"] == 6, out)
+check("  the same channel again: nothing done", "still on channel 6" in ap.follow(fake_run, inv2, settings, "wlan0"))
+inv3, v3 = box([radio(lyra, "wlan0", "phy0", 11, ap_beside_client=False)], wifi_up); inv3["ap"] = v3
+calls.clear()
+p4 = ap.start(fake_run, inv3, settings, {"take_radio": True}, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+check("the owner gave up the link: a dead-man timer set, not confirmed until the owner says so from the hotspot",
+      any(c[0] == "systemd-run" and "ap-revert" in c for c in calls) and json.loads(ap.RECORD.read_text())["confirmed"] is False)
+ap.confirm(fake_run)
+check("  confirmed: the timer stopped, kept", ["systemctl", "stop", "irate-box-ap-deadman.timer"] in calls and json.loads(ap.RECORD.read_text())["confirmed"])
+calls.clear()
+ap.stop(fake_run)
+check("stop: down, the link reconnected, the hook removed, recorded off", ["nmcli", "device", "connect", "wlan0"] in calls
+      and not ap.DISPATCHER.exists() and json.loads(ap.RECORD.read_text())["up"] is False)
+p5 = ap.start(fake_run, inv3, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+check("a plan that waits on the owner starts nothing", p5["needs_choice"] and json.loads(ap.RECORD.read_text())["up"] is False)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
