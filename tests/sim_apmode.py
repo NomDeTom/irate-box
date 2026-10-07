@@ -94,5 +94,39 @@ check("a one-channel radio whose link is on a radar (DFS) channel: can't follow 
 
 inv, v = box([], {})
 check("no radios at all: rung 5", apmode.plan(inv, v)["rung"] == 5)
+
+# Applied (root/ap.py): the NetworkManager keyfile, dnsmasq, and the steps, from a plan.
+from irate_box.root import ap  # noqa: E402
+inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up)
+p = apmode.plan(inv, v)
+kf = ap.keyfile(p, {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"})
+check("applied, sharing the radio: ap0 beside the link, open, channel 11, 192.168.4.1/24, never the default route",
+      "interface-name=ap0" in kf and "mode=ap" in kf and "channel=11" in kf and "band=bg" in kf and "address1=192.168.4.1/24" in kf
+      and "never-default=true" in kf and "[wifi-security]" not in kf, kf)
+kf = ap.keyfile(p, {"mode": "sae", "password": "correct horse", "allow_wpa2": False, "second": "owe"})
+check("  WPA3: SAE with management frames protected, the password in the keyfile (root's, 600)",
+      "[wifi-security]\nkey-mgmt=sae\npsk=correct horse\npmf=3" in kf, kf)
+d = ap.dnsmasq_conf(p)
+check("  dnsmasq on ap0 alone: DHCP .10-.200, every name the hub's, the leases where the hub counts guests",
+      "interface=ap0" in d and "dhcp-range=192.168.4.10,192.168.4.200,255.255.255.0,12h" in d and "address=/#/192.168.4.1" in d
+      and "dhcp-leasefile=/var/lib/misc/dnsmasq.leases" in d and "no-resolv" in d, d)
+steps = ap.up_steps(p)
+check("  up: ap0 added on the link's radio, managed, the connection up, dnsmasq restarted; the link untouched",
+      steps[0] == ["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"] and ["nmcli", "connection", "up", "irate-box-ap"] in steps
+      and not any("disconnect" in s for s in steps), steps)
+check("  down: dnsmasq, the connection, ap0 removed", ap.down_steps(p)[-1] == ["iw", "dev", "ap0", "del"])
+inv, v = box([radio(lyra, "wlan0", "phy0")], {"iface": "eth0", "kind": "ethernet"})
+p = apmode.plan(inv, v)
+check("applied, a radio to itself: on wlan0 directly, no ap0", "interface-name=wlan0" in ap.keyfile(p, {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"})
+      and not any("__ap" in " ".join(s) for s in ap.up_steps(p)))
+inv, v = box([radio(lyra, "wlan0", "phy0", 11, ap_beside_client=False)], wifi_up)
+p = apmode.plan(inv, v)
+try:
+    ap.up_steps(p); check("  a plan waiting on the owner: refused", False)
+except ValueError:
+    check("  a plan waiting on the owner: refused", True)
+p = apmode.plan(inv, v, owner={"take_radio": True})
+check("  the owner took the radio: the link disconnected on the way up, reconnected on the way down",
+      ["nmcli", "device", "disconnect", "wlan0"] in ap.up_steps(p) and ap.down_steps(p)[-1] == ["nmcli", "device", "connect", "wlan0"])
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
