@@ -38,6 +38,7 @@ from irate_box.hub import hubclock
 from irate_box.hub import linkhistory
 from irate_box.library import librarian
 from irate_box.hub import manifests
+from irate_box.hub import meshbridge
 from irate_box.hub import store
 from irate_box.hub import svchistory
 from irate_box.hub import uplink
@@ -1045,6 +1046,7 @@ def health_snapshot():
 
 NETINV_STATE = CONTROL_DIR / "netinv.json"
 UPLINK_STATE = CONTROL_DIR / "uplink.json"
+MESH = meshbridge.Bridge()  # started in main; idle (retrying now and then) where there is no broker
 
 
 def network_snapshot():
@@ -1945,6 +1947,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, factory.snapshot())
             return
 
+        if path == "/admin/mesh":
+            # The decoder bridge (step 18): everything it heard, the messages too, and the channels
+            # by name (never their keys).
+            self.send_json(200, dict(MESH.heard.view(texts=True), state=MESH.state, error=MESH.error,
+                                     channels=meshbridge.channels_view()))
+            return
+
         if path == "/admin/tls":
             # HTTPS (step 15): the root helper's copy of what it made (root/tls.py status).
             try:
@@ -2029,6 +2038,15 @@ class Handler(BaseHTTPRequestHandler):
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
             ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode)
             self.send_empty(204 if ok else 403)
+            return
+
+        if path == "/mesh.json":
+            # The mesh heard through the box's broker (meshbridge.py): nodes and traffic, never the
+            # messages; only while the MQTT app is public (/admin → Access).
+            if access.mode_of(access.read(ACCESS_STATE), "mqtt") != "public":
+                self.send_json(404, {"error": "not shown"})
+                return
+            self.send_json(200, dict(MESH.heard.view(texts=False), state=MESH.state))
             return
 
         if path in ("/certificate", "/certificate.json", "/certificate/ca.crt"):
@@ -2261,6 +2279,21 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/mesh":
+            action = payload.get("action")
+            try:
+                if action == "add-channel":
+                    meshbridge.add_channel(payload.get("name"), payload.get("key"))
+                elif action == "remove-channel":
+                    meshbridge.remove_channel(str(payload.get("name", "")))
+                else:
+                    raise ValueError("action must be add-channel or remove-channel")
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, {"channels": meshbridge.channels_view()})
             return
 
         if path == "/admin/tls":
@@ -2637,6 +2670,8 @@ if __name__ == "__main__":
     for what in clear_on_new_boot():
         print(f"New boot: cleared the {what}, as set on /admin")
     CLOCK.start()
+    # The mesh heard through the box's MQTT broker (step 18): decoded with the owner's channel keys.
+    MESH.start()
     # The services' uptime (step 35): every unit's state every five minutes, for /admin's grid.
     svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
