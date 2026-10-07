@@ -1563,6 +1563,10 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 n = -1
             self._close_after = bool(self.headers.get("Transfer-Encoding")) or not 0 <= n <= DRAIN_MAX
+            # Asked to close (an nginx location that sets its own headers sends Connection: close):
+            # Python closes, but says nothing, and the web server would keep the connection for
+            # its next request, which then fails (found with the accounts' session check).
+            self._close_after = self._close_after or self.headers.get("Connection", "").strip().lower() == "close"
         return ok
 
     def send_response(self, code, message=None):

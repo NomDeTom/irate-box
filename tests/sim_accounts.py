@@ -252,6 +252,13 @@ try:
     except (urllib.error.HTTPError, OSError) as e:
         pc = getattr(e, "code", str(e))
     check("  asked as a POST whose body never comes (a gated POST): answered at once, not waited on", pc == 204 and time.time() - t0 < 2, pc)
+    import http.client  # noqa: E402
+    hc = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    hc.request("GET", "/_irate/admin", headers={"Connection": "close"})
+    rr = hc.getresponse()
+    check("  a request that asks to close: the answer says it closes (the web server must not reuse it)",
+          (rr.getheader("Connection") or "").lower() == "close", rr.getheaders())
+    hc.close()
     check("  an admin account's: 204; the Accounts page knows it logged in over HTTPS", code == 204 and d["admin_login"]["on"] is True
           and d["admin_login"]["https_admins"] == ["gina"], (code, d.get("admin_login")))
 finally:

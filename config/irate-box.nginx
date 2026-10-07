@@ -61,10 +61,35 @@ server {
 	# Users mode (access.py, accounts step 16): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops the server's, so X-Irate-Front is blanked
-	# again here; the check reads only the cookie.
-	location = /_irate_user { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/user; }
-	location = /_irate_admin { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/admin; }
+	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
+	# keeps for the next request (upstream keepalive), which fails.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
 	location @irate_box_login { return 302 /account.html?next=$uri; }
 
 	# Caddy logged warnings only and compressed nothing on the fly; the same here. Request
@@ -500,10 +525,35 @@ server {
 	# Users mode (access.py, accounts step 16): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops the server's, so X-Irate-Front is blanked
-	# again here; the check reads only the cookie.
-	location = /_irate_user { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/user; }
-	location = /_irate_admin { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/admin; }
+	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
+	# keeps for the next request (upstream keepalive), which fails.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	client_max_body_size 50m;  # attachments
 	proxy_http_version 1.1;
@@ -544,10 +594,35 @@ server {
 	# Users mode (access.py, accounts step 16): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops the server's, so X-Irate-Front is blanked
-	# again here; the check reads only the cookie.
-	location = /_irate_user { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/user; }
-	location = /_irate_admin { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/admin; }
+	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
+	# keeps for the next request (upstream keepalive), which fails.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	proxy_http_version 1.1;
 	proxy_set_header Host $http_host;
@@ -594,10 +669,35 @@ server {
 	# Users mode (access.py, accounts step 16): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops the server's, so X-Irate-Front is blanked
-	# again here; the check reads only the cookie.
-	location = /_irate_user { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/user; }
-	location = /_irate_admin { internal; proxy_method GET; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header X-Irate-Front ""; proxy_pass http://irate_box_hub/_irate/admin; }
+	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
+	# keeps for the next request (upstream keepalive), which fails.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	root @STATIC@;
 	location = / { return 302 /git/; }
