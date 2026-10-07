@@ -360,11 +360,18 @@ def kiwix_rebuild():
         return "No readable book, so the library was left as it was."
     new = LIBRARY.with_name("library.xml.new")
     new.unlink(missing_ok=True)
+
+    def add(batch):
+        # As librarian.rebuild_library: many books a run, a failing run halved until the
+        # unreadable book is alone (one bad book makes kiwix-manage write nothing).
+        if run("runuser", "-u", HUB_USER, "--", "kiwix-manage", str(new), "add", *map(str, batch), timeout=900).returncode == 0:
+            return []
+        if len(batch) == 1:
+            return [batch[0].name]
+        return add(batch[:len(batch) // 2]) + add(batch[len(batch) // 2:])
     skipped = []
-    for b in books:
-        r = run("runuser", "-u", HUB_USER, "--", "kiwix-manage", str(new), "add", str(b), timeout=300)
-        if r.returncode:
-            skipped.append(b.name)
+    for i in range(0, len(books), 100):
+        skipped += add(books[i:i + 100])
     if not new.exists():
         return "kiwix-manage made no library; the old one stays."
     # Already the hub's (kiwix-manage made it as the hub): no chown, which would follow a link
