@@ -1,0 +1,130 @@
+{
+  "id": "eliza",
+  "order": 65,
+  "tile": {
+    "icon": "🗨️🛋️",
+    "name": "ELIZA",
+    "desc": "Eliza - small language model"
+  },
+  "menu": {
+    "title": "ELIZA",
+    "subtitle": "Weizenbaum's 1966 program with every script that survives, and one for the mesh. Runs in your browser; type *help in any of them for the commands.",
+    "about": "Anthony and Max Hay's recreation of ELIZA, fetched from github.com/anthay/ELIZA and adapted by adapt_eliza.py; each entry opens eliza.html?script=NAME. The banner is the one in its source (eliza.cpp, eliza.html).",
+    "banner": [
+      "//////// //       //// ////////    ///    //        ///////   //////   ////  //////",
+      "//       //        //       //    // //   //       //     // //    //   //  //    //",
+      "//       //        //      //    //   //  //       //     // //         //  //",
+      "//////   //        //     //    //     // //       //     // //   ////  //  //",
+      "//       //        //    //     ///////// //       //     // //    //   //  //",
+      "//       //        //   //      //     // //       //     // //    //   //  //    //",
+      "//////// //////// //// //////// //     // ////////  ///////   //////   ////  //////"
+    ]
+  },
+  "entries": [
+    {
+      "menus": {
+        "eliza": 10
+      },
+      "name": "DOCTOR, 1966",
+      "desc": "The famous one, as printed in the January 1966 CACM paper. Type *cacm to replay the paper's conversation",
+      "path": "eliza.html"
+    },
+    {
+      "menus": {
+        "eliza": 20
+      },
+      "name": "DOCTOR, 1965 (MIT archive, tape 100)",
+      "desc": "The earlier DOCTOR, from a listing printed on 6 March 1965 in Weizenbaum's papers",
+      "path": "eliza.html?script=ELIZA-script-02-000311051-1965-03-06-TAPE-100"
+    },
+    {
+      "menus": {
+        "eliza": 30
+      },
+      "name": "DOCTOR on the mesh",
+      "desc": "The 1965 DOCTOR with the box's own keywords: mesh, node, LoRa, antenna, battery, firmware, signal",
+      "path": "eliza.html?script=ELIZA-script-02-000311051-1965-03-06-TAPE-100&add=box"
+    },
+    {
+      "menus": {
+        "eliza": 40
+      },
+      "name": "DOCTOR, 1965 (tape 102), as printed",
+      "desc": "The other script in that listing. It does not run as printed: one line is out of place, and ELIZA says where",
+      "path": "eliza.html?script=ELIZA-script-02-000311051-1965-03-06-TAPE-102"
+    },
+    {
+      "menus": {
+        "eliza": 50
+      },
+      "name": "DOCTOR en français",
+      "desc": "The 1966 DOCTOR translated for the Jeu de Paume's 2025 exhibition, Le monde selon l'IA",
+      "path": "eliza.html?script=ELIZA-script-DOCTOR-French-Jeu-de-Paume"
+    },
+    {
+      "menus": {
+        "eliza": 60
+      },
+      "name": "YAPYAP",
+      "desc": "From a 1965 pilot study by Quarton, McGuire and Lorch, adapted to run on 1966 ELIZA",
+      "path": "eliza.html?script=ELIZA-script-YAPYAP-modified-for-1966-CACM-ELIZA"
+    },
+    {
+      "menus": {
+        "eliza": 70
+      },
+      "name": "YAPYAP, as printed",
+      "desc": "The study's script before adaptation. It needs features 1966 ELIZA lacks, so it does not run",
+      "path": "eliza.html?script=ELIZA-script-YAPYAP-original"
+    },
+    {
+      "menus": {
+        "eliza": 80
+      },
+      "name": "Turing machine: equal As and Bs",
+      "desc": "ELIZA as a computer. Type EQUAL A B B A (YES) or EQUAL A A A B B (NO)",
+      "path": "eliza.html?script=ELIZA-script-equal-number-Turing-machine"
+    },
+    {
+      "menus": {
+        "eliza": 90
+      },
+      "name": "Turing machine: palindromes",
+      "desc": "Type PALP A B B A (TRUE) or PALP A A A B B (FALSE)",
+      "path": "eliza.html?script=ELIZA-script-palindrome-Turing-machine"
+    },
+    {
+      "menus": {
+        "eliza": 100
+      },
+      "name": "Turing's Example I (1936)",
+      "desc": "Computes 010101… as in On Computable Numbers, and never stops. Type *tracepre to watch the tape, then EX1; *maxtran 0 lifts the 500-step limit, Escape stops it",
+      "path": "eliza.html?script=ELIZA-script-Turing-example1"
+    },
+    {
+      "menus": {
+        "eliza": 110
+      },
+      "name": "Turing's Example II (1936)",
+      "desc": "Computes 001011011101111…, and never stops. Type *tracepre, then EX2; *maxtran 0 lifts the 500-step limit, Escape stops it",
+      "path": "eliza.html?script=ELIZA-script-Turing-example2"
+    }
+  ],
+  "source": {
+    "type": "git",
+    "repo": "https://github.com/anthay/ELIZA",
+    "branch": "master",
+    "pin": "4ac38e6694526f2a5c849014d3312a20cdddf842",
+    "adapt": "adapt_eliza.py"
+  },
+  "needs": "eliza.html",
+  "addon": {
+    "title": "ELIZA (chatbot)",
+    "summary": "Weizenbaum's 1966 ELIZA, with every script that survives and a few Irate-Box keywords, from Anthony and Max Hay's github.com/anthay/ELIZA at the commit this hub pins. It runs in the visitor's browser: about 250 KB on disk, no service and no memory use on the box.",
+    "consent": "This downloads ELIZA from github.com/anthay/ELIZA, where its authors publish it, and serves it to everyone on the box's network. Some of its scripts are not openly licensed: the 1966 DOCTOR is (c) ACM, its French translation is based on it, and YAPYAP is reproduced with the Harold Garfinkel Archive's permission. The copy on this box is yours. Add it?"
+  },
+  "capabilities": {
+    "connect": [],
+    "storage": false
+  }
+}

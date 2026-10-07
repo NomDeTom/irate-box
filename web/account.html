@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your account · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+</head>
+<body class="help account">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>👤 Your account</h1>
+    <p class="subtitle" id="acct-subtitle">Looking…</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <section id="acct-http" hidden>
+    <p class="bad" id="acct-http-text"></p>
+    <p><a href="/certificate.html">The box's certificate</a>, so your device trusts its HTTPS pages · <a id="acct-https-link" href="#">this page over HTTPS</a></p>
+  </section>
+
+  <section id="acct-me" hidden>
+    <p id="acct-me-text"></p>
+    <form id="acct-password-form" class="acct-form">
+      <h2>Change your password</h2>
+      <label>Current password <input type="password" name="old" autocomplete="current-password" required></label>
+      <label>New password <input type="password" name="new" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+      <button type="submit">Change it</button>
+    </form>
+    <p><button type="button" id="acct-logout">Log out</button></p>
+  </section>
+
+  <section id="acct-guest" hidden>
+    <form id="acct-login-form" class="acct-form">
+      <h2>Log in</h2>
+      <label>Name <input name="name" autocomplete="username" required></label>
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <button type="submit">Log in</button>
+    </form>
+    <form id="acct-signup-form" class="acct-form" hidden>
+      <h2 id="acct-signup-title">Make an account</h2>
+      <p class="setting-desc" id="acct-signup-desc"></p>
+      <label>Name <input name="name" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" title="3–32 letters, digits, dots, dashes or underscores" required></label>
+      <label>Password <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+      <button type="submit" id="acct-signup-button">Make it</button>
+    </form>
+    <form id="acct-code-form" class="acct-form">
+      <h2>Set your password with a code</h2>
+      <p class="setting-desc">The box's admin gives one with a new account, or to reset a password. It works once, for a day.</p>
+      <label>Code <input name="code" autocomplete="one-time-code" required></label>
+      <label>New password <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+      <button type="submit">Set it</button>
+    </form>
+  </section>
+  <p id="acct-note" role="status"></p>
+
+  <script src="/account.js"></script>
+</body>
+</html>

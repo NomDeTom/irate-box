@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Themes · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+</head>
+<body>
+  <!-- The Themes tile's page (apps.d/27-themes.json). The admin switches it public, private or
+       off on /admin; the 🎨 in every page's header stays either way. The list is themes.js's. -->
+  <header class="sub-header">
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <h1>🎨 Themes</h1>
+    <p class="subtitle">How the hub looks on this device. Your choice stays in this browser and changes nothing for anyone else.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <section class="item-section">
+    <ul class="item-list" id="theme-list" role="radiogroup" aria-label="Themes"></ul>
+  </section>
+
+  <script src="/themes-page.js"></script>
+  <script src="/hub.js"></script>
+</body>
+</html>

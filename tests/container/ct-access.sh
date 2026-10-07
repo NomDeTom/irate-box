@@ -15,7 +15,7 @@ result() { local f=/var/lib/hub/control/results/$1.json; for _ in $(seq 60); do 
 	python3 -c "import json; d=json.load(open('$f')); print(('OK ' if d['ok'] else 'ERR ') + d['message'])"; }
 set_access() {
 	local id r
-	id="$(curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -d "{\"app\":\"$1\",\"mode\":\"$2\"}" "http://$H/admin/access" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+	id="$(curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"app\":\"$1\",\"mode\":\"$2\"}" "http://$H/admin/access" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 	r="$(result "$id")"; [[ $r == OK* ]] && ok "$1 $2: $r" || bad "$1 $2: $r"
 	sleep 2 # nginx reloads at once; Caddy restarts a second later
 	for _ in $(seq 20); do code "http://$H/status" | grep -q 200 && break; sleep 0.5; done
@@ -58,9 +58,9 @@ want 404 -u "admin:$PW" "http://$H/term/"
 [ "$(systemctl is-enabled ttyd 2>/dev/null)" != enabled ] && ok "ttyd disabled ($(systemctl is-enabled ttyd 2>&1))" || bad "ttyd still enabled"
 
 echo "== refused"
-c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -d '{"app":"room","mode":"off"}' "http://$H/admin/access")"
+c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"app":"room","mode":"off"}' "http://$H/admin/access")"
 [ "$c" = 400 ] && ok "an app with no route: 400" || bad "room -> $c"
-c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -d '{"app":"draw","mode":"secret"}' "http://$H/admin/access")"
+c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"app":"draw","mode":"secret"}' "http://$H/admin/access")"
 [ "$c" = 400 ] && ok "an unknown mode: 400" || bad "mode -> $c"
 
 echo "== back to the defaults"

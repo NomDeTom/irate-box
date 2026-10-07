@@ -1,0 +1,6 @@
+{"id": "capture", "title": "Capture",
+ "summary": "Record and read network traffic: tcpdump and tshark, a part of Debugging for network work.",
+ "packages": ["tcpdump", "tshark"],
+ "consent": "These tools can see every packet the box sends or receives, guests' included. Install them only while you need them.",
+ "notes": [],
+ "remove_after_hours": 24}

@@ -1,0 +1,34 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# Irate-Box: the hook every public repository uses (core.hooksPath, set by gitrepos.py and
+# install.sh). When guests may push (/admin, Git), a guest is anyone (REMOTE_USER empty: the web
+# server sets it only when the admin login was given). Security review F18:
+#   - a guest may not delete a branch or tag, nor rewrite one (a force push); the owner may;
+#   - nobody may take the public repositories past their share of the card: 1024 MB, or the
+#     number of MB in git/public-quota-mb. The pushed objects are already counted here (git
+#     keeps them aside until this hook says yes), and a refused push leaves nothing behind.
+set -u
+root=${GIT_PROJECT_ROOT:-$(dirname "$PWD")}
+quota_mb=1024
+if [ -r "$root/../public-quota-mb" ]; then
+	q=$(tr -cd 0-9 <"$root/../public-quota-mb")
+	[ -n "$q" ] && quota_mb=$q
+fi
+used_kb=$(du -sk "$root" 2>/dev/null | cut -f1)
+if [ "${used_kb:-0}" -gt $((quota_mb * 1024)) ]; then
+	echo "irate-box: this push would take the public repositories to $((used_kb / 1024)) MB, past the box's $quota_mb MB for them. Nothing was changed." >&2
+	exit 1
+fi
+[ -n "${REMOTE_USER:-}" ] && exit 0
+while read -r old new ref; do
+	case "$new" in
+	*[!0]*) ;;
+	*) echo "irate-box: guests may not delete $ref. Ask the box's owner." >&2; exit 1 ;;
+	esac
+	case "$old" in
+	*[!0]*) git merge-base --is-ancestor "$old" "$new" 2>/dev/null ||
+		{ echo "irate-box: guests may not rewrite $ref (a force push). Ask the box's owner." >&2; exit 1; } ;;
+	esac
+done
+exit 0

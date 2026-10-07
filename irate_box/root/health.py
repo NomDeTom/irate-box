@@ -24,7 +24,7 @@ asked. Three ways in:
     sudo /opt/irate-box/irate-box health            the report, with what to do
     sudo /opt/irate-box/irate-box health summary    problems only (install.sh's closing lines)
     sudo /opt/irate-box/irate-box health fix CHOICE one repair, as offered in the report
-    /admin → Health → Services doctor (the clock: Box → Clock), the same, through hub_control.py
+    /admin → Health → Box doctor (the clock: Box → Clock), the same, through hub_control.py
 
 The shell is the way in when /admin itself is stuck (the root helper is what runs this for
 the page). "rerun-install" is the root helper's own (it needs the update machinery). Stdlib only.
@@ -58,7 +58,7 @@ CONTROL = STATE / "control"
 UNIT_DIR = Path("/etc/systemd/system")
 # Units this page may restart or enable: irate-box's own and the add-ons'.
 OUR_UNIT = re.compile(r"^(irate-box(-[a-z]+)*\.(service|socket|path|timer)|nginx\.service|caddy\.service|kiwix\.service|"
-                      r"silverbullet\.service|syncthing@[a-z_][a-z0-9_-]*\.service|mosquitto\.service|ngircd\.service|"
+                      r"silverbullet\.service|syncthing@" + re.escape(HUB_USER) + r"\.service|mosquitto\.service|ngircd\.service|"
                       r"excalidraw-room\.service|ttyd\.service)$")
 ADDON_UNITS = {"--with-notes": "silverbullet.service", "--with-sync": f"syncthing@{HUB_USER}.service",
                "--with-mqtt": "mosquitto.service", "--with-irc": "ngircd.service", "--with-collab": "excalidraw-room.service",
@@ -212,6 +212,21 @@ def check_units():
                           f"systemctl enable {unit}", [_act(f"unit-enable:{unit}", "Start it at boot")]))
         else:
             out.append(_f(f"unit:{unit}", title, "ok", f"Running{', restarted ' + p['NRestarts'] + ' times' if p.get('NRestarts', '0') not in ('0', '') else ''}."))
+    # A timer's service: the timer stays "running" while every run of it fails, and a one-shot
+    # service's failure shows only in its result (the librarian's did, unseen, 2026-10-06).
+    for unit, why in expected_units():
+        if not unit.endswith(".timer"):
+            continue
+        svc = unit[:-len(".timer")] + ".service"
+        p = unit_props(svc)
+        result = p.get("Result")
+        if p.get("LoadState") == "not-found" or result in ("success", None, ""):
+            continue
+        tail = journal_tail(svc, 8)
+        out.append(_f(f"unit:{svc}", f"{svc} (each run of {why})", "problem",
+                      f"Its last run failed ({result})." + (f" Last lines of its log: {' | '.join(tail)}" if tail else ""),
+                      f"See why: journalctl -u {svc} -n 80. The timer starts it again within the hour; "
+                      f"systemctl reset-failed {svc} clears the mark once fixed.", [_act(f"unit-restart:{svc}", "Run it now")]))
     # The root helper: a request nobody has answered means /admin buttons go nowhere.
     reqs = sorted((CONTROL / "requests").glob("*.json"), key=lambda q: q.stat().st_mtime) if (CONTROL / "requests").is_dir() else []
     me = os.environ.get("HUB_CONTROL_RUNNING") == "1"
@@ -249,7 +264,8 @@ def zim_header_problem(path):
 
 
 def kiwix_reads(path):
-    return zimcheck.kiwix_problem(path, timeout=120)
+    # As the hub, not root (F12): the books are the hub's, and may be anyone's download.
+    return zimcheck.kiwix_problem(path, timeout=120, user=HUB_USER)
 
 
 def readable_books():
@@ -344,14 +360,22 @@ def kiwix_rebuild():
         return "No readable book, so the library was left as it was."
     new = LIBRARY.with_name("library.xml.new")
     new.unlink(missing_ok=True)
+
+    def add(batch):
+        # As librarian.rebuild_library: many books a run, a failing run halved until the
+        # unreadable book is alone (one bad book makes kiwix-manage write nothing).
+        if run("runuser", "-u", HUB_USER, "--", "kiwix-manage", str(new), "add", *map(str, batch), timeout=900).returncode == 0:
+            return []
+        if len(batch) == 1:
+            return [batch[0].name]
+        return add(batch[:len(batch) // 2]) + add(batch[len(batch) // 2:])
     skipped = []
-    for b in books:
-        r = run("runuser", "-u", HUB_USER, "--", "kiwix-manage", str(new), "add", str(b), timeout=300)
-        if r.returncode:
-            skipped.append(b.name)
+    for i in range(0, len(books), 100):
+        skipped += add(books[i:i + 100])
     if not new.exists():
         return "kiwix-manage made no library; the old one stays."
-    shutil.chown(new, HUB_USER, HUB_USER)
+    # Already the hub's (kiwix-manage made it as the hub): no chown, which would follow a link
+    # swapped in for it (F3). The rename replaces a link, never follows one.
     os.replace(new, LIBRARY)
     msg = f"Library rebuilt: {len(books) - len(skipped)} books" + (f" (skipped {', '.join(skipped)})" if skipped else "")
     if (UNIT_DIR / "kiwix.service").exists():
@@ -431,6 +455,59 @@ def check_space():
     return out
 
 
+def check_builds(now=None):
+    """The builds (ci.py) and the Firmware Factory (factory.py): builds waiting over a day, a
+    factory family failing every time here, and what builds take on the card."""
+    now = time.time() if now is None else now
+    ci_root, out = STATE / "ci", []
+    waiting = []
+    for d in (ci_root / "queue", STATE / "factory-held"):
+        for p in d.glob("*.json") if d.is_dir() else []:
+            try:
+                job = json.loads(p.read_text())
+            except (OSError, ValueError):
+                continue
+            if not job.get("change") and now - float(job.get("queued", now)) > 86400:
+                waiting.append(job)
+    if waiting:
+        held = (STATE / "factory-paused").exists()
+        out.append(_f("builds-waiting", "Builds waiting", "warn",
+                      f"{len(waiting)} build{'s have' if len(waiting) != 1 else ' has'} waited over a day"
+                      + (" (the Firmware Factory is paused)." if held else "."),
+                      "Firmware Factory: resume, or cancel what is no longer wanted." if held else
+                      "Is the builder running (irate-box-ci)? A long build delays the rest: Git → Builds and the Firmware Factory say what is under way."))
+    families = {}
+    runs = ci_root / "runs" / "firmware-factory"
+    for st in sorted(runs.glob("*/status.json"), key=lambda p: int(p.parent.name) if p.parent.name.isdigit() else 0) if runs.is_dir() else []:
+        try:
+            r = json.loads(st.read_text())
+        except (OSError, ValueError):
+            continue
+        if r.get("family") and r.get("state") in ("passed", "failed", "timed out"):
+            families.setdefault(r["family"], []).append(r["state"])
+    for fam, states in sorted(families.items()):
+        if len(states) >= 2 and "passed" not in states:
+            out.append(_f(f"builds-family:{fam}", f"Firmware builds: {fam}", "warn",
+                          f"Every {fam} build here has failed ({len(states)} of them).",
+                          "Open a failed one's log (Firmware Factory, Built): a toolchain PlatformIO has no build of for this board's "
+                          "processor, or one it could not download, fails every target of the family."))
+    used = 0
+    for f in ci_root.rglob("*") if ci_root.is_dir() else []:
+        try:
+            if f.is_file() and not f.is_symlink():
+                used += f.stat().st_size
+        except OSError:
+            pass
+    total = shutil.disk_usage(STATE).total if STATE.exists() else 0
+    if used and total:
+        share = used / total
+        out.append(_f("builds-disk", "What builds take", "warn" if share > 0.2 else "ok",
+                      f"{used >> 20} MB ({share:.0%} of the card): runs, and the builder's tools and caches.",
+                      "Git → Builds: delete old runs (the Firmware Factory keeps each target's two newest). "
+                      "The builder's PlatformIO tools are in /var/lib/hub/ci/home." if share > 0.2 else ""))
+    return out
+
+
 # --- the clock ---------------------------------------------------------------------------------
 # These boards have no clock that keeps time while they are off (the Lyra has no RTC at all),
 # and the hub is meant to run offline. fake-hwclock restores the last time it saved, so a box
@@ -499,12 +576,12 @@ def latest_known_time():
     for key in ("at", "started"):
         if isinstance(st.get(key), (int, float)):
             marks.append((st[key], "the last install"))
+    # Root's own files only (F14): the hub could touch its clock.json, or plant files of its own.
     for path, what in ((CODE / "VERSION", "the installed code"), (CONTROL / "health.json", "the last health check"),
-                       (CONTROL / "uplink.json", "the watchdog's report"), (STATE / "clock.json", "the hub's clock file")):
-        try:
-            marks.append((path.stat().st_mtime, what))
-        except OSError:
-            pass
+                       (CONTROL / "uplink.json", "the watchdog's report")):
+        m = rtc.root_mtime(path)
+        if m:
+            marks.append((m, what))
     return max(marks) if marks else (None, None)
 
 
@@ -648,6 +725,10 @@ def set_clock(epoch):
         raise ValueError(f"that time is before {what} was written, so this device's clock looks wrong; nothing changed")
     if epoch > now + 10 * 365 * 86400 or epoch < 1735689600:  # 2025-01-01
         raise ValueError("that time is not plausible; nothing changed")
+    # Not years past anything the box has seen (F14): a forged request could otherwise move the
+    # clock far forward, after which it is trusted, saved to the module, and hard to bring back.
+    if epoch > max(newest or 0, now) + 2 * 365 * 86400:
+        raise ValueError("that is more than two years past the newest time this box has seen; nothing changed")
     if abs(epoch - now) < 30:
         return "The box's clock already agrees with this device (within 30 s); nothing changed."
     r = run("date", "-u", "-s", f"@{int(epoch)}")
@@ -675,7 +756,7 @@ def set_clock(epoch):
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_space):
+                  check_space, check_builds):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
@@ -715,9 +796,14 @@ def fix(choice):
         src = ZIM / arg
         if not arg.endswith(".zim") or "/" in arg or not src.is_file():
             raise ValueError(f"{arg} is not a book in {ZIM}")
-        QUARANTINE.mkdir(exist_ok=True)
-        shutil.chown(QUARANTINE, HUB_USER, HUB_USER)
-        os.replace(src, QUARANTINE / arg)
+        # As the hub (F4): both folders are the hub's, so root has no business there. Done as
+        # root, a quarantine/ the hub had made a link was chowned to it, wherever it led.
+        hub = ("runuser", "-u", HUB_USER, "--") if os.geteuid() == 0 else ()
+        r = run(*hub, "mkdir", "-p", "--", str(QUARANTINE))
+        if r.returncode == 0:
+            r = run(*hub, "mv", "-n", "-T", "--", str(src), str(QUARANTINE / arg))
+        if r.returncode or src.exists():
+            raise ValueError(f"{arg} could not be moved to {QUARANTINE}/: {(r.stderr or '').strip()[-160:]}")
         msg = f"{arg} moved to {QUARANTINE}/. "
         if readable_books():
             return msg + kiwix_rebuild()

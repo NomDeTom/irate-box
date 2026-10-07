@@ -5,14 +5,27 @@
 Two areas of bare repositories under $HUB_GIT_ROOT (install.sh: /var/lib/hub/git), both owned
 by the hub user, who also runs git http-backend and cgit for them (irate-box-git.socket):
 
-  public/   /git/          browse (cgit) and clone for everyone; push needs the admin login,
-                           unless guest push is on
+  public/   /git/          browse (cgit) and clone for everyone
   private/  /git-private/  everything behind the admin login
 
-The web server does the gating (irate-box.nginx, or the Caddyfile). Guest push is one flag
-file, guest-push, which the web server checks on each push; this module sets and clears it.
-Repositories are created with http.receivepack on, since the web server has already decided
-who may push. Private ones also get the hub's own hooks (git-hooks/, core.hooksPath): a push
+Who may push is each repository's own: its preset (next-work plan step 10), kept in its config
+as irate-box.write = everyone | users | admin | nobody. Reading follows the area (cgit lists a
+whole area), so the presets are:
+
+  public-everything    public   anyone pushes (security review F17, F18: the doctor warns)
+  public-users-write   public   any account pushes, with its name and password (accounts step 16)
+  public-admin-writes  public   the admin pushes (the default)
+  public-read-only     public   nobody pushes: content arrives by publishing or mirroring
+  private-to-admin     private  the admin pushes (the default)
+  private-read-only    private  nobody pushes
+
+nginx asks the hub on every push or fetch (auth_request to /internal/git-access, decide()
+here): yes when anonymous is enough, or when the request's own basic-auth credentials are an
+account's that may (accounts.py: a user where users push, an admin account where the admin
+does, the private area included); otherwise the box's own admin login decides (satisfy any),
+which the hub never sees. http.receivepack follows the level, so git itself refuses a push to a
+nobody-writes repository even with the login. (The old guest-push flag file was one switch for
+every public repository; install.sh turns it into public-everything on each.) Private ones also get the hub's own hooks (git-hooks/, core.hooksPath): a push
 whose commit has a .irate-ci.sh queues a build (ci.py). Public ones never do, since guests may
 be pushing there. Nothing here needs root.
 
@@ -28,13 +41,28 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] / "git"))
 AREAS = {"public": "/git/", "private": "/git-private/"}
-GUEST_PUSH = ROOT / "guest-push"
+GUEST_PUSH = ROOT / "guest-push"  # the old switch: read only as the default for repos from before
+WRITE_LEVELS = ("everyone", "users", "admin", "nobody")
+PRESETS = {
+    "public": {"public-everything": "everyone", "public-users-write": "users", "public-admin-writes": "admin", "public-read-only": "nobody"},
+    "private": {"private-to-admin": "admin", "private-read-only": "nobody"},
+}
+PRESET_TEXT = {
+    "public-everything": "anyone on the network can browse, clone and push",
+    "public-users-write": "anyone can browse and clone; the box's users push, with their account's name and password",
+    "public-admin-writes": "anyone can browse and clone; pushing needs the admin login",
+    "public-read-only": "anyone can browse and clone; nobody can push",
+    "private-to-admin": "browse, clone and push with the admin login",
+    "private-read-only": "browse and clone with the admin login; nobody can push",
+}
 # The largest single push the web server takes (irate-box.nginx, the Caddyfile): said on the page.
 MAX_PUSH = 64 * 2**20
 # A name as typed, without ".git"; it becomes <name>.git, which is what URLs and cgit show.
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_DESC = 200
 HOOKS = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks"
+# Public repositories' own: guests may not rewrite or delete, and a size cap (F18).
+HOOKS_PUBLIC = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks-public"
 
 
 def _git(*args, cwd=None):
@@ -63,9 +91,84 @@ def _repo_info(path, area):
     # The newest commit's own date (set by whoever made it), and how many branches there are.
     out = _git("for-each-ref", "--sort=-committerdate", "--format=%(committerdate:unix)", "refs/heads", cwd=path)
     dates = out.stdout.split() if out.returncode == 0 else []
+    level = write_level(path)
+    mirror = mirror_of(path)
     return {"name": path.name[:-4], "area": area, "url": AREAS[area] + path.name + "/",
+            "write": level, "preset": preset_of(area, level), "preset_text": PRESET_TEXT[preset_of(area, level)],
+            "mirror_of": mirror,
+            # Build on push (ci.py): offered only where only the admin pushes (git-ci-plan §2).
+            "can_build": area == "private" and level == "admin" and not mirror, "build": build_on(path),
+            "has_script": bool(dates) and _git("cat-file", "-e", "HEAD:.irate-ci.sh", cwd=path).returncode == 0,
             "description": desc, "size": _size(path), "branches": len(dates),
             "last_commit": int(dates[0]) if dates else None}
+
+
+def write_level(path):
+    """A repository's push level: its own setting, else its area's default."""
+    out = _git("config", "--get", "irate-box.write", cwd=path)
+    level = out.stdout.strip() if out.returncode == 0 else ""
+    if level in WRITE_LEVELS and (level not in ("everyone", "users") or path.parent.name == "public"):
+        return level
+    return "everyone" if path.parent.name == "public" and GUEST_PUSH.exists() else "admin"
+
+
+def build_on(path):
+    """The repository's build-on-push switch (irate-box.ci): on unless set off, so repositories
+    that built before the switch existed still do (Tom, 2026-10-06). ci.py also needs it private,
+    only the admin pushing, and a .irate-ci.sh in the pushed commit."""
+    out = _git("config", "--get", "irate-box.ci", cwd=path)
+    return not (out.returncode == 0 and out.stdout.strip() == "off")
+
+
+def mirror_of(path):
+    """The upstream a mirror is kept from (mirrors.py), or None for the box's own repository."""
+    out = _git("config", "--get", "irate-box.mirror", cwd=path)
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def _not_a_mirror(path):
+    if mirror_of(path):
+        raise ValueError(f"{path.name} is a mirror, kept read-only by the librarian: remove it under Mirrors instead")
+
+
+def preset_of(area, level):
+    return next(name for name, lv in PRESETS[area].items() if lv == level)
+
+
+def set_write_level(path, level):
+    """The level, and http.receivepack to match (git's own refusal, if the front ever let a push by)."""
+    if level not in PRESETS[path.parent.name].values():
+        raise ValueError(f"{path.parent.name} repositories take: {', '.join(PRESETS[path.parent.name])}")
+    _git("config", "irate-box.write", level, cwd=path)
+    _git("config", "http.receivepack", "false" if level == "nobody" else "true", cwd=path)
+
+
+def decide(uri, method="GET", git_mode="public", account=None):
+    """For nginx's auth_request on the smart-HTTP paths (/git/ and /git-private/): may this go
+    ahead without the box's own login? True: yes. False: only with that login (nginx then asks
+    for it). `git_mode` is the git app's access switch (public, users, private; off never reaches
+    here). account: {name, role} when the request's basic-auth credentials are an account's
+    (accounts.check_basic), else None."""
+    from urllib.parse import unquote, urlsplit, parse_qs
+    parts = urlsplit(uri or "")
+    path = unquote(parts.path)
+    m = re.match(r"^/git(-private)?/([^/]+)\.git/(.*)$", path)
+    if not m or not NAME_RE.match(m.group(2)):
+        return False
+    admin = account is not None and account.get("role") == "admin"
+    if m.group(1) or git_mode == "private":
+        return admin  # the private area, or the git app kept for the admin: the admin's alone
+    if git_mode == "users" and account is None:
+        return False
+    service = (parse_qs(parts.query).get("service") or [""])[0]
+    writing = m.group(3).endswith("git-receive-pack") or service == "git-receive-pack"
+    if not writing:
+        return True
+    repo = ROOT / "public" / f"{m.group(2)}.git"
+    if not (repo / "HEAD").exists():
+        return False
+    level = write_level(repo)
+    return level == "everyone" or (level == "users" and account is not None) or (level == "admin" and admin)
 
 
 def snapshot():
@@ -80,11 +183,15 @@ def snapshot():
     except OSError:
         free = None
     return {"installed": all((ROOT / a).is_dir() for a in AREAS), "repos": repos,
-            "guest_push": GUEST_PUSH.exists(), "max_push": MAX_PUSH, "free": free,
+            "presets": {a: [{"name": n, "write": lv, "text": PRESET_TEXT[n]} for n, lv in ps.items()]
+                        for a, ps in PRESETS.items()},
+            "max_push": MAX_PUSH, "free": free,
             "now": int(time.time())}
 
 
 def _target(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("name a repository: area and name")
     area, name = payload.get("area"), payload.get("name")
     if area not in AREAS:
         raise ValueError("area must be public or private")
@@ -113,14 +220,18 @@ def action(payload):
             out = _git("init", "--quiet", "--bare", "--initial-branch=main", str(path))
             if out.returncode != 0:
                 raise ValueError((out.stderr.strip().splitlines() or ["git init failed"])[-1])
-            _git("config", "http.receivepack", "true", cwd=path)
+            set_write_level(path, "admin")  # the area's default; the page changes it
             if path.parent.name == "private":
                 _git("config", "core.hooksPath", str(HOOKS), cwd=path)
+            else:
+                _git("config", "core.hooksPath", str(HOOKS_PUBLIC), cwd=path)
+            _git("config", "receive.fsckObjects", "true", cwd=path)  # no malformed objects stored
             (path / "description").write_text((desc.strip() or "") + "\n")
         elif what == "delete":
             path = _target(payload)
             if not (path / "HEAD").exists():
                 raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
             shutil.rmtree(path)
         elif what == "describe":
             path = _target(payload)
@@ -130,15 +241,69 @@ def action(payload):
             if not isinstance(desc, str) or len(desc) > MAX_DESC or "\n" in desc:
                 raise ValueError(f"a description is one line, up to {MAX_DESC} characters")
             (path / "description").write_text(desc.strip() + "\n")
-        elif what == "guest-push":
-            if type(payload.get("on")) is not bool:
-                raise ValueError("on must be true or false")
-            if payload["on"]:
-                GUEST_PUSH.write_text("guests may push to the public repositories (set on /admin)\n")
-            else:
-                GUEST_PUSH.unlink(missing_ok=True)
+        elif what == "move":
+            path = _target(payload)
+            if not (path / "HEAD").exists():
+                raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
+            to = payload.get("to")
+            if to not in AREAS or to == path.parent.name:
+                raise ValueError("to: the other area, public or private")
+            dest = ROOT / to / path.name
+            if dest.exists():
+                raise ValueError(f"{path.name} already exists in {to}")
+            level = write_level(path)
+            os.rename(path, dest)
+            # Its hooks and level as the new area has them: anyone-may-push is public-only, and
+            # builds run only for private repositories.
+            _git("config", "core.hooksPath", str(HOOKS if to == "private" else HOOKS_PUBLIC), cwd=dest)
+            set_write_level(dest, "admin" if level == "everyone" else level)
+        elif what == "publish":
+            src, dst = _target(payload.get("from") or {}), _target(payload.get("to") or {})
+            if src == dst:
+                raise ValueError("publish to another repository")
+            for r in (src, dst):
+                if not (r / "HEAD").exists():
+                    raise ValueError(f"no repository {r.name} in {r.parent.name}")
+            refs = payload.get("refs") or ["main"]
+            if not isinstance(refs, list) or not refs or len(refs) > 20 or not all(
+                    isinstance(r, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$", r) and ".." not in r for r in refs):
+                raise ValueError("refs: up to 20 branch or tag names")
+            specs = []
+            for r in refs:
+                if _git("show-ref", "--verify", "--quiet", f"refs/heads/{r}", cwd=src).returncode == 0:
+                    specs.append(f"+refs/heads/{r}:refs/heads/{r}")
+                elif _git("show-ref", "--verify", "--quiet", f"refs/tags/{r}", cwd=src).returncode == 0:
+                    specs.append(f"+refs/tags/{r}:refs/tags/{r}")
+                else:
+                    raise ValueError(f"{src.name} has no branch or tag {r}")
+            # The hub's own copy between its own repositories: not a push, so the destination's
+            # preset (read-only, say) does not apply; the owner chose this on /admin.
+            out = _git("fetch", "--quiet", "--no-write-fetch-head", str(src), *specs, cwd=dst)
+            if out.returncode != 0:
+                raise ValueError((out.stderr.strip().splitlines() or ["git fetch failed"])[-1])
+        elif what == "preset":
+            path = _target(payload)
+            if not (path / "HEAD").exists():
+                raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
+            preset = payload.get("preset")
+            if preset not in PRESETS[path.parent.name]:
+                raise ValueError(f"{path.parent.name} repositories take: {', '.join(PRESETS[path.parent.name])}")
+            set_write_level(path, PRESETS[path.parent.name][preset])
+        elif what == "build":
+            path = _target(payload)
+            if not (path / "HEAD").exists():
+                raise ValueError(f"no repository {path.name} in {path.parent.name}")
+            _not_a_mirror(path)
+            on = payload.get("on")
+            if type(on) is not bool:
+                raise ValueError("on: true or false")
+            if on and (path.parent.name != "private" or write_level(path) != "admin"):
+                raise ValueError("builds are only for private repositories that only the admin can push to")
+            _git("config", "irate-box.ci", "on" if on else "off", cwd=path)
         else:
-            raise ValueError("action must be create, delete, describe or guest-push")
+            raise ValueError("action must be create, delete, describe, preset, move, publish or build")
     except ValueError as exc:
         return 400, {"error": str(exc)}
     except OSError as exc:

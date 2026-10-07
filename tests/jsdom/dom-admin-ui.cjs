@@ -29,6 +29,30 @@ const update = { state: { up_to_date: false, available: 'a4aad09', available_dat
   progress: null, pending: 0, results: [], log: [], doctor: null,
   auto: { hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5,
     state: { last: { step: 'check', ok: true, message: 'update available: 1 new commit', at: 1790950000 }, note: 'a4aad09 is ready; installs between 02:00 and 05:00' } } };
+const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 1790950000,
+  presets: { public: [{ name: 'public-everything', write: 'everyone', text: 'anyone on the network can browse, clone and push' },
+    { name: 'public-admin-writes', write: 'admin', text: 'anyone can browse and clone; pushing needs the admin login' },
+    { name: 'public-read-only', write: 'nobody', text: 'anyone can browse and clone; nobody can push' }],
+  private: [{ name: 'private-to-admin', write: 'admin', text: 'browse, clone and push with the admin login' },
+    { name: 'private-read-only', write: 'nobody', text: 'browse and clone with the admin login; nobody can push' }] },
+  repos: [{ name: 'demo', area: 'public', url: '/git/demo.git/', write: 'admin', preset: 'public-admin-writes',
+    preset_text: 'anyone can browse and clone; pushing needs the admin login', description: '', size: 1000, branches: 1, last_commit: 1790950000 },
+  { name: 'mirror', area: 'public', url: '/git/mirror.git/', write: 'nobody', preset: 'public-read-only',
+    preset_text: 'anyone can browse and clone; nobody can push', description: '', size: 1000, branches: 1, last_commit: null },
+  { name: 'secret', area: 'private', url: '/git-private/secret.git/', write: 'admin', preset: 'private-to-admin',
+    preset_text: 'browse, clone and push with the admin login', description: '', size: 1000, branches: 1, last_commit: null },
+  { name: 'firmware', area: 'public', url: '/git/firmware.git/', write: 'nobody', preset: 'public-read-only', mirror_of: 'https://github.com/meshtastic/firmware',
+    preset_text: 'anyone can browse and clone; nobody can push', description: '', size: 5e8, branches: 1, last_commit: null }],
+  mirrors: [{ name: 'firmware', area: 'public', upstream: 'https://github.com/meshtastic/firmware', branches: ['master'],
+    groups: [{ name: 'release', kind: 'release', pattern: '*', keep: 2 }, { name: 'prerelease', kind: 'prerelease', pattern: '*', keep: 2 }],
+    follow: 'latest', pin: '', history: 'shallow', budget_mb: 2048,
+    status: { outcome: '5 fetched, 0 dropped', size: 5e8, checked: 1790950000,
+      releases: { list: [['v2.8.1', true, false], ['v2.8.0.47db0e3', true, true]], fetched: 1790940000 },
+      releases_cached: { since: 1790940000, why: 'GitHub API rate limit reached (60/hour without a token)' } } }], running: false };
+// Firmware (step 23): the source not mirrored yet; the build cache kept, its control on the Git page.
+const fwFix = { settings: { enabled: false, boards: [], keep_alpha: 2, keep_beta: 1, cache: 'native', configs: true },
+  status: { last_check: '2026-10-06T15:00:00Z', outcome: 'build cache 215 MB', cache: { version: '2.8.1.8e6a88d', mode: 'native', bytes: 215 * 2 ** 20 } },
+  targets: [], free_mb: 9000, source: null };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -36,8 +60,18 @@ const dom = new JSDOM(html, { url: 'http://box/admin/#clock', runScripts: 'outsi
 const w = dom.window;
 const posted = [];
 w.fetch = async (u, opts = {}) => {
-  if (opts.method === 'POST') { posted.push([u, JSON.parse(opts.body)]); return new Response('{"id":"x"}', { status: 202 }); }
+  if (opts.method === 'POST') {
+    posted.push([u, JSON.parse(opts.body)]);
+    if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
+    if (u === '/admin/firmware') {
+      if (posted[posted.length - 1][1].action === 'flush-cache') return new Response(JSON.stringify({ ...fwFix, status: { ...fwFix.status, cache: null } }), { status: 200 });
+      return new Response(JSON.stringify(fwFix), { status: 200 });
+    }
+    return new Response('{"id":"x"}', { status: 202 });
+  }
+  if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
+  if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
   if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
@@ -53,13 +87,13 @@ setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   const side = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
   const hi = side.indexOf('Health');
-  check('sidebar: a Health group last, with the three doctors', hi > 0 && side.slice(hi + 1).join('|') === 'Services doctor|Security doctor|Updates doctor', side.join('|'));
+  check('sidebar: a Health group last, with the three doctors', hi > 0 && side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
   check('sidebar: Clock under Box', side.indexOf('Clock') > side.indexOf('Box') && side.indexOf('Clock') < side.indexOf('Library'));
   check('the Clock pane is the one shown', !d.getElementById('clock').hidden && d.getElementById('health').hidden);
   check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));
   check('no clock findings in the services doctor', !t('#health-findings li').some((x) => x.startsWith('🔴 Clock') || /Clock module|^.{0,3}Clock —/.test(x)), t('#health-findings li'));
   check('the clock\'s badge counts its problem', d.querySelector('a[href="#clock"]').dataset.badge === '1');
-  check('the services doctor is titled so', t('#health-title')[0] === 'Services doctor');
+  check('the box doctor is titled so', t('#health-title')[0] === 'Box doctor');
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
@@ -76,6 +110,9 @@ setTimeout(() => {
   check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
+  w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
+    && /\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp[^}]*width: min\(46vw, 34rem\)/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
   check('the desk has its lamp host and crab layer, lit by krab-desk.js', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-lit', '-mask', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && fs.existsSync(`${WEB}/krab-desk.js`));
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const af = d.getElementById('auto-form');
@@ -89,14 +126,61 @@ setTimeout(() => {
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
+  check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
+    && /5 fetched, 0 dropped/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
+  check('git: a mirror says which revoked releases it leaves out', /revoked, left out: v2\.8\.0\.47db0e3/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
+  check('git: a release list from the cache says so, and why', /release list from the cache of .*rate limit/.test(t('#git-mirrors')[0])
+    && d.querySelector('#git-mirrors .setting-desc.warn'), t('#git-mirrors')[0]);
+  w.confirm = () => true;
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
+  // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
+  check('mirrors: the list and its form are in Library → Mirrors', d.querySelector('#mirrors #git-mirrors') && d.querySelector('#mirrors #git-mirror-add')
+    && [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#firmware #mirrors #toolkits #sources'));
+  // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.
+  check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
+  const cacheForm = d.getElementById('ci-cache-form');
+  check('git: the build cache is under Builds, showing the setting and what is kept', d.querySelector('#git #ci-cache-form')
+    && cacheForm.elements.cache.value === 'native' && /Kept: 2\.8\.1\.8e6a88d's, headless, 215/.test(t('#ci-cache-status')[0]), t('#ci-cache-status')[0]);
+  check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
+    && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
+  [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
+  cacheForm.elements.cache.value = 'whole';
+  cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  const mf = d.getElementById('git-mirror-add').elements;
+  mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
+  d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   force.click();
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
   [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
   setTimeout(() => {
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
+    check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));
+    const keepRev = posted.find((p) => p[1].action === 'mirror-change');
+    check('git: Keep revoked switches it off on the release groups only', keepRev && keepRev[1].mirror.groups.every((g) => g.skip_revoked === false)
+      && keepRev[1].mirror.status === undefined, JSON.stringify(keepRev));
+    const fwm = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'meshtastic-firmware');
+    check('firmware: Mirror the source adds meshtastic/firmware with its submodules', fwm && fwm[1].mirror.submodules === true
+      && fwm[1].mirror.upstream === 'https://github.com/meshtastic/firmware' && fwm[1].mirror.groups.length === 2, JSON.stringify(fwm));
+    const cs = posted.find((p) => p[0] === '/admin/firmware' && p[1].action === 'settings');
+    check('git: saving the build cache sends only the cache', cs && JSON.stringify(cs[1]) === JSON.stringify({ action: 'settings', cache: 'whole' }), JSON.stringify(cs));
+    const add = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'fw2');
+    check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
+      && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));
     check('no page errors', !errors.length, errors);
-    console.log('\nfailures:', fails);
-    process.exit(fails ? 1 : 0);
+    // A null handed to replaceChildren or append shows as the word itself (the access slots did,
+    // 2026-10-06): no text node on the page may be just that.
+    const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
+    const stray = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.tagName);
+    check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
+    [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
+    setTimeout(() => {
+      check('git: Flush asks the hub, and the cache is gone from the page', posted.some((p) => p[0] === '/admin/firmware' && p[1].action === 'flush-cache')
+        && !/Kept:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);
+      console.log('\nfailures:', fails);
+      process.exit(fails ? 1 : 0);
+    }, 100);
   }, 300);
 }, 2500);

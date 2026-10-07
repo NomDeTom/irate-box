@@ -1,0 +1,201 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* SPDX-FileCopyrightText: 2026 NomDeTom */
+/* cgit (/git/, /git-private/) in the hub's look: loaded after cgit's own cgit.css by
+   config/cgit-head.html, with palette.css for the colours and themes.js for the chosen theme.
+   Colours only from the palette's variables, so every theme applies. Also: the highlighted code
+   (web/cgit-hub.js with Debian's highlight.js, classes hljs-*), the rendered README (scripts/cgit-about.py), and a
+   phone layout. */
+
+html { color-scheme: inherit; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 0.75rem;
+}
+div#cgit { font-family: inherit; font-size: 0.9rem; max-width: 1100px; margin: 0 auto; padding: 0; color: var(--text); }
+div#cgit a { color: var(--accent); }
+div#cgit a:hover { color: var(--accent); text-decoration: underline; }
+
+/* The hub's bar (cgit-hub.js): Hub and Repositories, kept in view while scrolling. */
+nav.hub-bar {
+  position: sticky; top: 0; z-index: 10; display: flex; gap: 0.5rem; flex-wrap: wrap;
+  max-width: 1100px; margin: -0.75rem auto 0.5rem; padding: 0.5rem 0;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+nav.hub-bar a {
+  color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.35rem 0.75rem; text-decoration: none; min-height: 1.4rem;
+}
+nav.hub-bar a:hover { color: var(--accent); border-color: var(--accent); }
+
+/* The header: no cgit logo; the title in the hub's accent. */
+div#cgit table#header { margin-bottom: 0.5rem; }
+div#cgit table#header td.logo { display: none; }
+div#cgit table#header td.main { font-size: 1.6rem; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
+div#cgit table#header td.main a { color: var(--accent); }
+div#cgit table#header td.sub { color: var(--muted); border-top: 1px solid var(--border); padding-top: 0.3rem; }
+div#cgit table#header td.form select, div#cgit table.tabs td.form input,
+div#cgit table.tabs td.form select, div#cgit input, div#cgit select {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.4rem;
+}
+
+/* Tabs */
+div#cgit table.tabs { border-bottom: 1px solid var(--border); margin-top: 0.5rem; }
+div#cgit table.tabs td a { color: var(--muted); padding: 0.3rem 0.6rem; border-radius: 6px 6px 0 0; }
+div#cgit table.tabs td a.active { color: var(--accent-ink); background: var(--accent); }
+
+/* Content: lists, the tree, commits, diffs */
+div#cgit div.content { border-bottom: 1px solid var(--border); padding: 0.75rem 0; }
+div#cgit div.path { color: var(--muted); background: transparent; }
+div#cgit table.list tr:nth-child(even), div#cgit table.list tr:nth-child(odd) { background: transparent; }
+div#cgit table.list tr:hover { background: var(--surface); }
+div#cgit table.list tr.nohover:hover, div#cgit table.list tr.nohover-highlight:hover:nth-child(even) { background: transparent; }
+div#cgit table.list th { color: var(--muted); border-bottom: 1px solid var(--border); }
+div#cgit table.list td { color: var(--text); }
+div#cgit table.list td.commitgraph, div#cgit table.list td.sublevel-repo,
+div#cgit table.list td a.ls-dir { color: var(--accent); }
+div#cgit table.list td.reposection { color: var(--muted); }
+div#cgit div.cgit-panel table, div#cgit table.commit-info, div#cgit div.commit-subject,
+div#cgit div.commit-msg, div#cgit div.notes, div#cgit table.diffstat, div#cgit div.diffstat-summary {
+  color: var(--text); background: transparent; border-color: var(--border);
+}
+div#cgit div.commit-subject { font-weight: 600; }
+div#cgit table.diffstat td.graph span.add { background: var(--ok); }
+div#cgit table.diffstat td.graph span.rem { background: #e5484d; }
+div#cgit table.diff td div.head { color: var(--text); }
+div#cgit table.diff td div.hunk { color: var(--accent); }
+div#cgit table.diff td div.add { color: var(--ok); }
+div#cgit table.diff td div.del { color: #e5484d; }
+div#cgit table.ssdiff td.add, div#cgit table.ssdiff td.add_dark, div#cgit table.ssdiff td.del,
+div#cgit table.ssdiff td.del_dark, div#cgit table.ssdiff td.changed, div#cgit table.ssdiff td.changed_dark {
+  color: var(--text); border-color: var(--border);
+}
+div#cgit table.ssdiff td.lineno, div#cgit table.ssdiff td.hunk, div#cgit table.ssdiff td.head {
+  background: transparent; color: var(--text); border-color: var(--border);
+}
+div#cgit span.age-mins, div#cgit span.age-hours { color: var(--ok); font-weight: 600; }
+div#cgit span.age-days, div#cgit span.age-weeks, div#cgit span.age-months, div#cgit span.age-years { color: var(--muted); }
+div#cgit a.branch-deco, div#cgit a.tag-deco, div#cgit a.tag-annotated-deco, div#cgit a.remote-deco, div#cgit a.deco,
+div#cgit table.list td a.branch-deco, div#cgit table.list td a.tag-deco, div#cgit table.list td a.tag-annotated-deco,
+div#cgit table.list td a.remote-deco, div#cgit table.list td a.deco {
+  color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 4px; padding: 0 0.3em;
+}
+
+/* Code: the blob view, its line numbers, and the highlight classes */
+div#cgit table.blob { border-top: 1px solid var(--border); }
+div#cgit table.blob td.linenumbers { border-right: 1px solid var(--border); }
+div#cgit table.blob td.linenumbers a, div#cgit table.blob td.linenumbers a:hover { color: var(--muted); }
+div#cgit table.blob pre, div#cgit div.content pre, div#cgit div.content code {
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; color: var(--text);
+}
+div#cgit .hljs-comment, div#cgit .hljs-quote, div#cgit .hljs-meta { color: var(--muted); font-style: italic; }
+div#cgit .hljs-keyword, div#cgit .hljs-selector-tag, div#cgit .hljs-literal, div#cgit .hljs-built_in,
+div#cgit .hljs-type, div#cgit .hljs-section { color: var(--accent); font-weight: 600; }
+div#cgit .hljs-string, div#cgit .hljs-regexp, div#cgit .hljs-symbol, div#cgit .hljs-template-variable,
+div#cgit .hljs-addition, div#cgit .hljs-meta-string { color: var(--ok); }
+div#cgit .hljs-number, div#cgit .hljs-variable, div#cgit .hljs-template-tag, div#cgit .hljs-link { color: var(--warn); }
+div#cgit .hljs-title, div#cgit .hljs-name, div#cgit .hljs-function .hljs-title, div#cgit .hljs-class .hljs-title { color: var(--text); font-weight: 600; }
+div#cgit .hljs-attr, div#cgit .hljs-attribute, div#cgit .hljs-tag, div#cgit .hljs-params, div#cgit .hljs-bullet { color: var(--accent); }
+div#cgit .hljs-deletion { color: #e5484d; }
+div#cgit .hljs-emphasis { font-style: italic; }
+div#cgit .hljs-strong { font-weight: 700; }
+
+/* The about page: the README */
+div#cgit div.readme-md { max-width: 48rem; line-height: 1.55; }
+div#cgit div.readme-md h1, div#cgit div.readme-md h2, div#cgit div.readme-md h3 { margin: 1.2em 0 0.4em; color: var(--text); }
+div#cgit div.readme-md h1 { font-size: 1.6rem; }
+div#cgit div.readme-md h2 { font-size: 1.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+div#cgit div.readme-md p, div#cgit div.readme-md ul, div#cgit div.readme-md ol { margin: 0.6em 0; }
+div#cgit div.readme-md ul, div#cgit div.readme-md ol { padding-left: 1.5em; }
+div#cgit div.readme-md pre, div#cgit pre.readme-text {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.6em 0.8em; overflow-x: auto;
+}
+div#cgit div.readme-md code { background: var(--surface); border-radius: 4px; padding: 0 0.25em; }
+div#cgit div.readme-md pre code { background: transparent; padding: 0; }
+div#cgit div.readme-md table { border-collapse: collapse; }
+div#cgit div.readme-md th, div#cgit div.readme-md td { border: 1px solid var(--border); padding: 0.25em 0.6em; }
+div#cgit div.readme-md img { max-width: 100%; }
+div#cgit div.readme-md blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--muted); }
+div#cgit div.footer { color: var(--muted); }
+
+/* The rest of cgit.css's fixed colours (white rows, black links, pastel diffs), each restated
+   from the palette so no theme is left with light-mode colours. tests/cgit_guard.py lists every
+   cgit.css rule with a fixed colour and fails if one is not restated here, so a Debian update that
+   adds more is caught. Additions and deletions: the palette's ok and the hub's red, as a tint for
+   backgrounds so the text on them stays readable on dark and light. */
+div#cgit {
+  --cg-del: #e5484d;
+  --cg-add-bg: color-mix(in srgb, var(--ok) 22%, transparent);
+  --cg-del-bg: color-mix(in srgb, #e5484d 22%, transparent);
+  --cg-chg-bg: color-mix(in srgb, var(--warn) 18%, transparent);
+  --cg-add-strong: color-mix(in srgb, var(--ok) 40%, transparent);
+  --cg-del-strong: color-mix(in srgb, #e5484d 40%, transparent);
+  background: transparent;
+}
+div#cgit div.error { color: var(--cg-del); }
+div#cgit div.footer a, div#cgit ul.pager a { color: var(--muted); }
+div#cgit span.insertions, div#cgit table.diffstat td.add a { color: var(--ok); }
+div#cgit span.deletions, div#cgit table.diffstat td.del a, div#cgit table.diffstat td span.modechange { color: var(--cg-del); }
+div#cgit table.diffstat td.upd a { color: var(--accent); }
+div#cgit table.diffstat td.graph td.add { background: var(--ok); }
+div#cgit table.diffstat td.graph td.rem { background: var(--cg-del); }
+
+/* Lists: every row transparent (cgit makes them white), links in the accent. */
+div#cgit table.list tr, div#cgit table.list tr.nohover,
+div#cgit table.list tr.nohover-highlight:hover:nth-child(odd) { background: transparent; }
+div#cgit table.list tr.logheader { background: var(--surface); }
+div#cgit table.list td a { color: var(--accent); }
+div#cgit table.list td a:hover { color: var(--accent); }
+/* The commit graph's six columns: the palette's colours, then the same at half strength. */
+div#cgit table.list td.commitgraph .column1 { color: var(--accent); }
+div#cgit table.list td.commitgraph .column2 { color: var(--ok); }
+div#cgit table.list td.commitgraph .column3 { color: var(--warn); }
+div#cgit table.list td.commitgraph .column4 { color: var(--cg-del); }
+div#cgit table.list td.commitgraph .column5 { color: var(--muted); }
+div#cgit table.list td.commitgraph .column6 { color: var(--text); }
+
+/* Blame, blobs: alternating blocks as a faint surface; cgit's own highlight classes (unused
+   since highlight.js does the colouring, but still in cgit.css) from the palette. */
+div#cgit table.blame div.alt:nth-child(even) { background: var(--surface); }
+div#cgit table.blame div.alt:nth-child(odd) { background: transparent; }
+div#cgit div#blob, div#cgit table.bin-blob, div#cgit table.bin-blob td, div#cgit table.bin-blob th { border-color: var(--border); }
+div#cgit table.blob td.hashes, div#cgit table.blob td.lines { color: var(--text); }
+div#cgit table.blob .com, div#cgit table.blob .lin { color: var(--muted); }
+div#cgit table.blob .kwa, div#cgit table.blob .kwb, div#cgit table.blob .kwc, div#cgit table.blob .kwd { color: var(--accent); }
+div#cgit table.blob .str, div#cgit table.blob .esc { color: var(--ok); }
+div#cgit table.blob .num, div#cgit table.blob .opt { color: var(--warn); }
+div#cgit table.blob .ppc, div#cgit table.blob .pps, div#cgit table.blob .slc { color: var(--muted); }
+
+/* Side-by-side diffs: tints, not cgit's pastels with black text. */
+div#cgit table.ssdiff td, div#cgit table.ssdiff td.foot { border-color: var(--border); }
+div#cgit table.ssdiff td.add, div#cgit table.ssdiff td.add_dark { background: var(--cg-add-bg); }
+div#cgit table.ssdiff td.del, div#cgit table.ssdiff td.del_dark { background: var(--cg-del-bg); }
+div#cgit table.ssdiff td.changed, div#cgit table.ssdiff td.changed_dark { background: var(--cg-chg-bg); }
+div#cgit table.ssdiff span.add { background: var(--cg-add-strong); }
+div#cgit table.ssdiff span.del { background: var(--cg-del-strong); }
+div#cgit table.ssdiff td.head div.head { color: var(--text); }
+div#cgit table.ssdiff td.lineno a { color: var(--muted); }
+div#cgit table.ssdiff td.lineno a:hover { color: var(--accent); }
+
+/* Downloads, stats and the commit graphs (stats page). */
+div#cgit table#downloads, div#cgit table.stats, div#cgit table.stats td, div#cgit table.stats th,
+div#cgit table.hgraph, div#cgit table.hgraph th, div#cgit table.vgraph, div#cgit table.vgraph th { border-color: var(--border); }
+div#cgit table#downloads th, div#cgit table.stats th, div#cgit table.hgraph th, div#cgit table.vgraph th { background: var(--surface); }
+div#cgit table.stats td.sum { color: var(--text); }
+div#cgit table.hgraph div.bar, div#cgit table.vgraph div.bar { background: var(--accent); }
+
+/* A phone: wide tables scroll inside the page rather than the page sideways. */
+@media (max-width: 640px) {
+  body { padding: 0.5rem; }
+  div#cgit { font-size: 0.85rem; }
+  div#cgit table#header td.main { font-size: 1.25rem; }
+  div#cgit table.tabs, div#cgit table.list, div#cgit table.blob, div#cgit table.diff,
+  div#cgit table.commit-info, div#cgit table.diffstat, div#cgit table.ssdiff {
+    display: block; max-width: 100%; overflow-x: auto;
+  }
+  div#cgit table.tabs td.form { display: none; }
+  div#cgit table.list td, div#cgit table.list th { white-space: nowrap; }
+}

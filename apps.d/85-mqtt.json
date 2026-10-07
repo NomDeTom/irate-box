@@ -1,6 +1,12 @@
 {
   "id": "mqtt",
   "order": 85,
+  "tile": {
+    "icon": "📡",
+    "name": "Mesh",
+    "desc": "The Meshtastic nodes heard through this box",
+    "href": "/mesh.html"
+  },
   "status": {
     "path": "/mqtt",
     "name": "MQTT broker (mosquitto)",

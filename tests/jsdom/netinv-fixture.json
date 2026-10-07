@@ -1,0 +1,293 @@
+{
+ "at": 1791257023.574313,
+ "host": "luckfox-lyra-zero-w",
+ "os": "mPWRD-OS (mPWRD-OS 26.05.0-trunk trixie)",
+ "root": true,
+ "focus": null,
+ "iw": true,
+ "stacks": {
+  "networkmanager": {
+   "running": true,
+   "version": "1.52.1",
+   "devices": {
+    "wlan0": {
+     "type": "wifi",
+     "state": "connected",
+     "connection": "netplan-wlan0-ExampleWiFi1"
+    },
+    "lo": {
+     "type": "loopback",
+     "state": "connected (externally)",
+     "connection": "lo"
+    },
+    "p2p-dev-wlan0": {
+     "type": "wifi-p2p",
+     "state": "disconnected",
+     "connection": null
+    },
+    "tailscale0": {
+     "type": "tun",
+     "state": "unmanaged",
+     "connection": null
+    }
+   },
+   "wifi_profiles": [
+    {
+     "name": "netplan-wlan0-ExampleWiFi1",
+     "uuid": "0c3bb1fa-0f6a-3707-8c8d-4e23598253db",
+     "autoconnect": true,
+     "priority": 0,
+     "autoconnect_retries": -1,
+     "auth_retries": -1,
+     "ssid": "ExampleWiFi1",
+     "mode": "infrastructure",
+     "bssid_lock": null,
+     "band_lock": null,
+     "powersave": 0,
+     "dhcp_timeout": 0,
+     "ipv4": "auto",
+     "iface": "wlan0",
+     "netplan": true
+    },
+    {
+     "name": "Hotspot",
+     "uuid": "33564e5b-5cb3-4b45-ac5f-a092c4f7ddba",
+     "autoconnect": false,
+     "priority": 0,
+     "autoconnect_retries": -1,
+     "auth_retries": -1,
+     "ssid": "ExampleWiFi",
+     "mode": "ap",
+     "bssid_lock": null,
+     "band_lock": null,
+     "powersave": 0,
+     "dhcp_timeout": 0,
+     "ipv4": "shared",
+     "iface": "wlan0",
+     "netplan": false
+    }
+   ]
+  },
+  "iwd": null,
+  "connman": null,
+  "wpa_supplicant": {
+   "version": "2.10",
+   "on": [],
+   "dbus": true
+  },
+  "systemd_networkd": {
+   "running": false,
+   "manages": []
+  },
+  "ifupdown": null,
+  "dhcpcd": null,
+  "netplan": {
+   "files": [
+    "00-default-use-network-manager.yaml",
+    "30-ethernets-dhcp.yaml",
+    "30-wifis-dhcp.yaml"
+   ],
+   "renderers": [
+    "NetworkManager"
+   ],
+   "readable": true
+  },
+  "hostapd": {
+   "installed": false,
+   "running": false
+  },
+  "dnsmasq": {
+   "installed": true
+  }
+ },
+ "radios": [
+  {
+   "iface": "wlan0",
+   "phy": "phy0",
+   "type": "managed",
+   "driver": "aic8800_fdrv",
+   "bus": "usb",
+   "usb": {
+    "id": "a69c:88dc",
+    "port": "1-1.1",
+    "product": "AIC8800DC",
+    "autosuspend": false
+   },
+   "params": {
+    "ps_on": "Y",
+    "dpsm": "N",
+    "ant_div": "Y",
+    "tx_lft": "1000"
+   },
+   "modes": [
+    "managed",
+    "AP",
+    "AP/VLAN",
+    "monitor",
+    "mesh point",
+    "P2P-client",
+    "P2P-GO",
+    "P2P-device"
+   ],
+   "ap": true,
+   "ap_beside_client": true,
+   "channels_at_once": 3,
+   "bands": [
+    "2.4 GHz"
+   ],
+   "combinations": [
+    {
+     "groups": [
+      {
+       "modes": [
+        "managed",
+        "mesh point"
+       ],
+       "max": 1
+      },
+      {
+       "modes": [
+        "AP"
+       ],
+       "max": 1
+      },
+      {
+       "modes": [
+        "P2P-client",
+        "P2P-GO"
+       ],
+       "max": 1
+      },
+      {
+       "modes": [
+        "P2P-device"
+       ],
+       "max": 1
+      }
+     ],
+     "total": 4,
+     "channels": 3
+    }
+   ],
+   "sched_scan": false,
+   "sae": true,
+   "owner": "networkmanager",
+   "manager": null,
+   "rfkill": {
+    "soft": false,
+    "hard": false
+   },
+   "link": {
+    "bssid": "02:00:00:00:00:01",
+    "ssid": "ExampleWiFi1",
+    "freq": 2437,
+    "signal": -9,
+    "bitrate": "65.0 MBit/s",
+    "channel": 6
+   },
+   "power_save": "off",
+   "profile": {
+    "name": "netplan-wlan0-ExampleWiFi1",
+    "uuid": "0c3bb1fa-0f6a-3707-8c8d-4e23598253db",
+    "autoconnect": true,
+    "priority": 0,
+    "autoconnect_retries": -1,
+    "auth_retries": -1,
+    "ssid": "ExampleWiFi1",
+    "mode": "infrastructure",
+    "bssid_lock": null,
+    "band_lock": null,
+    "powersave": 0,
+    "dhcp_timeout": 0,
+    "ipv4": "auto",
+    "iface": "wlan0",
+    "netplan": true
+   }
+  }
+ ],
+ "wired": [],
+ "default_route": {
+  "gateway": "192.168.1.10",
+  "iface": "wlan0"
+ },
+ "country": "GB",
+ "hazards": [
+  {
+   "id": "wifisync",
+   "status": "ok",
+   "title": "mPWRD-OS wifisync",
+   "detail": "Installed, disabled: it switches the WiFi radio off (rfkill) whenever meshtasticd's WiFi setting is off. meshtasticd's WiFi is off.",
+   "fix": ""
+  },
+  {
+   "id": "auth-retries:0c3bb1fa-0f6a-3707-8c8d-4e23598253db",
+   "status": "warn",
+   "title": "WiFi profile netplan-wlan0-ExampleWiFi1: gives up on repeated handshake failures",
+   "detail": "After 3 failed handshakes (a flaky link looks like a wrong password) NetworkManager stops trying until someone reconnects it by hand, which a headless box cannot ask for.",
+   "fix": "Network page: \"Keep retrying\" sets auth-retries to 0 on this profile, with your say-so.",
+   "iface": "wlan0"
+  },
+  {
+   "id": "other-ap:33564e5b-5cb3-4b45-ac5f-a092c4f7ddba",
+   "status": "ok",
+   "title": "Another hotspot profile: Hotspot",
+   "detail": "SSID 'ExampleWiFi' on wlan0, autoconnect off. Not irate-box's; left as it is.",
+   "fix": ""
+  },
+  {
+   "id": "driver-ps:wlan0",
+   "status": "ok",
+   "title": "wlan0: driver loaded with ps_on",
+   "detail": "aic8800_fdrv has its own power-save option on, while iw reports power save off. Which one wins is not known yet (a test in the AP research).",
+   "fix": "",
+   "iface": "wlan0"
+  },
+  {
+   "id": "netplan:wlan0",
+   "status": "ok",
+   "title": "wlan0: profile written by netplan",
+   "detail": "netplan-wlan0-ExampleWiFi1 is generated from /etc/netplan; a change made to it with nmcli may be put back by netplan apply or at boot (not tested yet).",
+   "fix": "",
+   "iface": "wlan0"
+  }
+ ],
+ "uplink": {
+  "iface": "wlan0",
+  "kind": "wifi",
+  "backend": "networkmanager",
+  "gateway": "192.168.1.10",
+  "profile": "netplan-wlan0-ExampleWiFi1",
+  "repairs": [
+   "reconnect",
+   "restart",
+   "pin",
+   "radio",
+   "reboot"
+  ],
+  "detail": ""
+ },
+ "ap": [
+  {
+   "phy": "phy0",
+   "iface": "wlan0",
+   "possible": true,
+   "mode": "beside-client",
+   "backend": "networkmanager",
+   "detail": "A second interface beside the client link, which stays up. Up to 3 channels at once (whether the hotspot can stay put when the client link roams to another channel is untested).",
+   "conditions": [
+    {
+     "kind": "how",
+     "text": "It can run the hotspot and stay on your WiFi at the same time, as a second interface beside the link."
+    },
+    {
+     "kind": "limit",
+     "text": "It can use up to 3 channels at once, so the hotspot need not follow your WiFi's channel."
+    },
+    {
+     "kind": "untested",
+     "text": "Whether the hotspot stays put when your WiFi roams to another channel."
+    }
+   ]
+  }
+ ]
+}

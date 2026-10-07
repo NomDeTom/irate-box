@@ -30,11 +30,11 @@ check 200 code http://$H/flasher/img/devices/unknown-new-light.svg
 check 204 code -X OPTIONS http://$H/flasher/img/devices/unknown-new-light.svg
 HDR=access-control-allow-origin check '*' hdr http://$H/flasher/nightly/index.json
 echo "== firmware: settings, a sync of two boards"
-A() { curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -d "$1" http://$H/admin/firmware; }
+A() { curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" http://$H/admin/firmware; }
 check 401 code http://$H/admin/firmware
 A '{"action":"settings","enabled":true,"boards":["rak4631","heltec-v3"],"cache":"discard"}' >/dev/null
 check "True ['heltec-v3', 'rak4631'] discard" sh -c "curl -s -u admin:$PW http://$H/admin/firmware | python3 -c 'import json,sys; c=json.load(sys.stdin)[\"settings\"]; print(c[\"enabled\"], c[\"boards\"], c[\"cache\"])'"
-check 400 code -u admin:$PW -X POST -H 'Content-Type: application/json' -d '{"action":"settings","boards":["../x"]}' http://$H/admin/firmware
+check 400 code -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"action":"settings","boards":["../x"]}' http://$H/admin/firmware
 A '{"action":"update"}' >/dev/null
 for _ in $(seq 180); do r=$(curl -s -u admin:$PW http://$H/admin/firmware | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["running"], d["status"].get("outcome",""))'); [ "${r%% *}" = False ] && [ -n "${r#* }" ] && break; sleep 2; done
 echo "  outcome: ${r#* }"

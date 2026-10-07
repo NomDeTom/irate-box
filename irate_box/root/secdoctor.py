@@ -33,13 +33,14 @@ a world-readable file by name. Stdlib only.
 import json
 import os
 import re
-import secrets
 import shlex
 import stat
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+from irate_box.root import secdoctor_xref
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -122,8 +123,13 @@ def _list(names, limit=MAX_LISTED):
     return ", ".join(names[:limit]) + ("…" if len(names) > limit else "")
 
 
-def F(fid, title, status, detail, fix="", ref=""):
-    return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": ref}
+def F(fid, title, status, detail, fix="", ref="", source="doctor", about=None):
+    """One finding, in the shape every source shares (security-doctor-plan §4): which source said
+    it, what it is about ({kind: package | service | setting | file | kit, key}), so the joint
+    report can merge what several sources say about one thing; accepted is the reason when the
+    box's design accepts it (stage 2)."""
+    return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": ref,
+            "source": source, "about": about, "accepted": None}
 
 
 def _cannot(fid, title, why, ref=""):
@@ -271,14 +277,10 @@ def front_has(ctx, *prefixes):
 # --- the steps ---------------------------------------------------------------------------
 # Each takes the shared context and returns findings. A step never raises: run_step wraps it.
 
-def step_notes(ctx):
-    """F1: SilverBullet's shell backend and its login."""
-    unit = "silverbullet.service"
-    sh = _show(unit, "LoadState", "ActiveState", "UnitFileState", "User", "DynamicUser", "Environment", "EnvironmentFiles")
-    if not sh:
-        return [_cannot("notes-shell", "Notes add-on", "systemctl is not answering", "F1")]
-    if sh.get("LoadState") != "loaded":
-        return [F("notes-shell", "Notes add-on (SilverBullet)", "ok", "Not installed.", ref="F1")]
+def _sb_env(sh):
+    """SilverBullet's environment as systemd builds it: Environment= lines, then the
+    EnvironmentFile (which wins over them), then `env K=V` on the command line (which wins
+    over both, and is where install.sh puts what the owner's file must not undo)."""
     env = {}
     try:
         for tok in shlex.split(sh.get("Environment", "")):
@@ -287,46 +289,267 @@ def step_notes(ctx):
                 env[k] = v
     except ValueError:
         pass
-    from_file = {}
     for part in sh.get("EnvironmentFiles", "").split():
         if part.startswith("/"):
             for line in (_read(part) or "").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    from_file.setdefault(k.strip(), v.strip().strip("'\""))
-    merged = {**from_file, **env}
+                    env[k.strip()] = v.strip().strip("'\"")
+    m = re.search(r"argv\[\]=(.*?)\s;", sh.get("ExecStart", ""))
+    if m:
+        argv = m.group(1).split()
+        if argv and argv[0].endswith("/env"):
+            for tok in argv[1:]:
+                if "=" not in tok or tok.startswith("-"):
+                    break
+                k, v = tok.split("=", 1)
+                env[k] = v
+    return env
+
+
+def _front_refuses_notes_capabilities(ctx):
+    """Whether the front refuses /notes/.shell, .proxy and .runtime itself (install.sh's
+    regex location in nginx, or the @capability matcher in Caddy)."""
+    if ctx["front_kind"] == "caddy":
+        text = json.dumps(ctx["front"]) if not isinstance(ctx["front"], str) else ctx["front"]
+        return bool(re.search(r"notes/\\+\.\(shell\|proxy\|runtime\)", text)) and "403" in text
+    for stack, d in ctx["front"] or []:
+        if (len(stack) >= 2 and stack[0] == "server" and stack[1].startswith("location")
+                and re.search(r"notes/\\\.\(shell\|proxy\|runtime\)", stack[1]) and d.startswith("return 403")):
+            return True
+    return False
+
+
+def step_notes(ctx):
+    """F1: SilverBullet's shell backend and its login. F31: its HTTP proxy, which reaches the
+    hub's loopback API (no login there: the front asks for it) unless SilverBullet has no IP
+    networking or the front refuses /notes/.proxy."""
+    unit = "silverbullet.service"
+    sh = _show(unit, "LoadState", "ActiveState", "UnitFileState", "User", "DynamicUser", "Environment", "EnvironmentFiles",
+               "ExecStart", "RestrictAddressFamilies", "IPAddressDeny", "ProtectSystem", "ReadWritePaths")
+    if not sh:
+        return [_cannot("notes-shell", "Notes add-on", "systemctl is not answering", "F1")]
+    if sh.get("LoadState") != "loaded":
+        return [F("notes-shell", "Notes add-on (SilverBullet)", "ok", "Not installed.", ref="F1")]
+    merged = _sb_env(sh)
     running = sh.get("ActiveState") == "active"
-    shell_off = merged.get("SB_SHELL_BACKEND", "").lower() in ("off", "false", "0")
-    read_only = merged.get("SB_READ_ONLY", "").lower() in ("true", "1", "yes", "on")
+    # SilverBullet 2.11 (server/src/shell.rs): the shell runs when SB_SHELL_BACKEND is unset,
+    # empty or "local"; any other value turns it off. Read-only mode turns it off too.
+    shell_on = merged.get("SB_SHELL_BACKEND", "").strip().lower() in ("", "local")
+    read_only = bool(merged.get("SB_READ_ONLY", "").strip())
     sb_login = bool(merged.get("SB_USER"))
     front_login = bool(ctx["front"] and front_gated(ctx, "/notes"))
     login = sb_login or front_login
     state = "running" if running else f"installed but {sh.get('ActiveState', 'not running')} (it starts at boot if enabled)"
+    front_blocks = _front_refuses_notes_capabilities(ctx)
     out = []
-    if shell_off or read_only:
+    if not shell_on or read_only:
         out.append(F("notes-shell", "Notes: server-side shell", "ok",
-                     f"Off ({'SB_SHELL_BACKEND=off' if shell_off else 'read-only mode'}); the add-on is {state}.", ref="F1"))
+                     f"Off ({'read-only mode' if read_only else 'SB_SHELL_BACKEND=' + merged['SB_SHELL_BACKEND']})"
+                     f"{'; the front refuses /notes/.shell as well' if front_blocks else ''}; the add-on is {state}.", ref="F1"))
+    elif front_blocks:
+        out.append(F("notes-shell", "Notes: server-side shell on, refused by the front", "warn",
+                     f"SilverBullet is {state} with its shell on; the web server refuses /notes/.shell, so it cannot be reached through it.",
+                     "Rerun install.sh: it sets SB_SHELL_BACKEND=off on the unit's command line.", "F1"))
     elif not login:
         out.append(F("notes-shell", "Notes: server-side shell with no login", "problem",
                      f"SilverBullet is {state}. Its shell endpoint is on and /notes/ has no login, so anyone who can reach "
                      "the box runs commands as the hub user, which can queue root-helper requests (password change included).",
-                     "Now: sudo systemctl stop silverbullet. Fix: Environment=SB_SHELL_BACKEND=off in the unit (not the editable env file), "
-                     "plus a login or read-only mode.", "F1"))
+                     "Now: sudo systemctl stop silverbullet. Fix: rerun install.sh (shell off on the command line, "
+                     "and the web server refuses /notes/.shell).", "F1"))
     else:
         out.append(F("notes-shell", "Notes: server-side shell on, behind a login", "warn",
                      f"SilverBullet is {state}. The shell endpoint is on; whoever holds the login runs commands as the hub user.",
-                     "Set Environment=SB_SHELL_BACKEND=off in the unit.", "F1"))
+                     "Rerun install.sh: it sets SB_SHELL_BACKEND=off on the unit's command line.", "F1"))
+    # F31: the proxy. Two layers, either of which stops it: no IP networking for the unit, and
+    # the front refusing /notes/.proxy. Read-only mode turns the proxy off as well.
+    families = sh.get("RestrictAddressFamilies", "")
+    no_ip = (families and not families.startswith("~") and "AF_INET" not in families) or "0.0.0.0/0" in sh.get("IPAddressDeny", "")
+    if read_only or (no_ip and front_blocks):
+        out.append(F("notes-proxy", "Notes: HTTP proxy to the hub's loopback API", "ok",
+                     "Read-only mode." if read_only else "SilverBullet has no IP networking, and the web server refuses /notes/.proxy.", ref="F31"))
+    elif no_ip or front_blocks:
+        out.append(F("notes-proxy", "Notes: HTTP proxy, one of two guards", "warn",
+                     ("SilverBullet has no IP networking, but the web server passes /notes/.proxy through." if no_ip else
+                      "The web server refuses /notes/.proxy, but SilverBullet itself can still reach loopback (anything local that talks to it can use the proxy)."),
+                     "Rerun install.sh: it sets both.", "F31"))
+    elif not login:
+        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin with no login", "problem",
+                     f"SilverBullet is {state}. Its /notes/.proxy/127.0.0.1:<port>/ forwards any request to the hub's loopback "
+                     "port, which has no login of its own, so any guest can read and change /admin's settings and the password.",
+                     "Now: sudo systemctl stop silverbullet. Fix: rerun install.sh (SilverBullet on a socket with no IP networking, "
+                     "and the web server refuses /notes/.proxy).", "F31"))
+    else:
+        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin, behind the notes login", "warn",
+                     "Whoever holds the notes login can reach the hub's loopback API through /notes/.proxy, past the admin login.",
+                     "Rerun install.sh.", "F31"))
     if not login and not read_only:
         out.append(F("notes-login", "Notes: no login", "warn",
                      "Guests can edit notes, and notes can carry scripts (Space Lua, widgets) that run on the hub's origin, "
                      "next to /admin.", "SB_USER, read-only mode, or /notes/ behind the admin login.", "F1/S4"))
-    if sh.get("DynamicUser") != "yes" and sh.get("User") in (HUB_USER, "", "root"):
+    confined = sh.get("ProtectSystem") == "strict" and all(
+        p.startswith(str(STATE / "notes")) for p in sh.get("ReadWritePaths", "").split()) and sh.get("ReadWritePaths")
+    if sh.get("DynamicUser") != "yes" and sh.get("User") in (HUB_USER, "", "root") and not confined:
         who = sh.get("User") or "root"
         out.append(F("notes-user", "Notes: runs as a user that owns the hub's state", "warn",
                      f"silverbullet.service runs as '{who}', the same user that can write the root helper's request queue, "
                      "so a flaw in the add-on is a takeover of /admin.",
-                     "Run it as its own DynamicUser with only the notes folder writable.", "F1"))
+                     "Rerun install.sh: it confines the unit to the notes folder (ProtectSystem=strict).", "F1"))
+    return out
+
+
+def _hub_port():
+    for line in (_read(ETC / "hub.env") or "").splitlines():
+        if line.startswith("PORT="):
+            try:
+                return int(line.split("=", 1)[1].strip())
+            except ValueError:
+                pass
+    return 8000
+
+
+def _hub_ask(method, path, headers, body=None):
+    """One request straight to the hub's loopback port, past the front: the status code, or
+    None when it does not answer."""
+    import http.client
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", _hub_port(), timeout=5)
+        conn.request(method, path, body=body, headers=headers)
+        resp = conn.getresponse()
+        resp.read()  # read to the end, so closing is not a reset the hub logs
+        code = resp.status
+        conn.close()
+        return code
+    except OSError:
+        return None
+
+
+def step_admin_gate(ctx):
+    """F27/F31/F8 and S3, by behaviour: what the hub itself does with an /admin request that did
+    not come through the front's /admin route (no secret), and with an /admin change that did
+    not come from the /admin page (no X-Irate-Admin). Both are asked of the hub directly, on
+    loopback, as anything else on the box could; neither changes anything."""
+    out = []
+    secret = ""
+    for line in (_read(ETC / "front-secret.env") or "").splitlines():
+        if line.startswith("HUB_FRONT_SECRET="):
+            secret = line.split("=", 1)[1].strip()
+    code = _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"})
+    if code is None:
+        return [_cannot("admin-loopback", "/admin from loopback", "the hub does not answer on its port", "F27")]
+    if code == 200:
+        out.append(F("admin-loopback", "/admin answers anything on the box", "problem",
+                     f"GET /admin/settings straight to the hub's port {_hub_port()}, with no login and no word from the front, "
+                     "answered 200: anything that can send a request to loopback (a build, a proxy such as SilverBullet's "
+                     "used to be, another user) is the admin.",
+                     "Rerun install.sh: it makes the front's secret (/etc/hub/front-secret.env), and the hub refuses /admin without it.",
+                     "F27"))
+    else:
+        out.append(F("admin-loopback", "/admin only through the front", "ok",
+                     f"Straight to the hub's port with no word from the front: {code}.", ref="F27"))
+    if secret:
+        st = (ETC / "front-secret.env").stat()
+        if st.st_uid != 0 or st.st_mode & 0o077:
+            out.append(F("admin-secret-file", "The front's secret is readable beyond root", "problem",
+                         f"{ETC / 'front-secret.env'} is mode {oct(st.st_mode & 0o777)}, owner uid {st.st_uid}.",
+                         f"chown root:root {ETC / 'front-secret.env'}; chmod 600 {ETC / 'front-secret.env'}", "F27"))
+        code = _hub_ask("POST", "/admin/settings", {"Host": "127.0.0.1", "X-Irate-Front": secret,
+                                                    "Content-Type": "application/json", "Content-Length": "2"}, b"{}")
+        if code == 200:
+            out.append(F("admin-csrf", "/admin changes accepted without the /admin page's header", "problem",
+                         "A POST to /admin with no X-Irate-Admin was accepted: a page elsewhere that the owner visits could "
+                         "change settings with the owner's cached login.", "Update the hub (server.py _forged).", "S3"))
+        elif code is not None:
+            out.append(F("admin-csrf", "/admin changes need the /admin page's header", "ok",
+                         f"A POST with the front's secret but no X-Irate-Admin: {code}.", ref="S3"))
+    return out
+
+
+def _addon_ask(path):
+    """(status, headers) from the add-on origin on loopback, or (None, {})."""
+    import http.client
+    port = 8090
+    for line in (_read(ETC / "hub.env") or "").splitlines():
+        if line.startswith("HUB_ADDON_PORT="):
+            try:
+                port = int(line.split("=", 1)[1])
+            except ValueError:
+                pass
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", path, headers={"Host": "127.0.0.1"})
+        resp = conn.getresponse()
+        resp.read()
+        out = (resp.status, {k.lower(): v for k, v in resp.getheaders()})
+        conn.close()
+        return out
+    except OSError:
+        return None, {}
+
+
+def step_web_addons(ctx):
+    """The local add-ons (plans/no-root-addons-plan): their folder holds only plain files and
+    folders (the hub writes it; nginx follows no links there, Caddy would), each one switched on
+    was agreed to, and the add-on origin serves nothing of the hub's and sends each its CSP."""
+    from irate_box.hub import access as acc, manifests as man
+    out = []
+    root = STATE / "addons"
+    if not root.is_dir():
+        return [F("addons", "Web add-ons", "ok", "None: no add-on folder on this box.")]
+    odd = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            p = Path(dirpath) / name
+            if p.is_symlink() or not (p.is_dir() or p.is_file()):
+                odd.append(str(p))
+    if odd:
+        out.append(F("addons-files", "Links or special files among the web add-ons", "problem",
+                     f"{len(odd)} in {root}, e.g. {odd[0]}. The hub writes this folder; under Caddy a link would be followed.",
+                     "Remove the add-on on /admin and add it again; if they come back, the hub user is not to be trusted.", ""))
+    else:
+        out.append(F("addons-files", "Web add-ons' files", "ok", f"Plain files and folders only, in {root}."))
+    local, errors = man.load_local()
+    for name, why in errors.items():
+        out.append(F(f"addons-bad-{name}", "A web add-on's manifest is left out", "warn", why,
+                     "Remove it on /admin (or the file in /var/lib/hub/apps.d).", ""))
+    state = acc.read(ETC / "access.json")
+    try:
+        consents = json.loads(_read(STATE / "addons-consent.json") or "{}")
+    except ValueError:
+        consents = {}
+    on = [m for m in local if acc.mode_of(state, m["id"]) != "off"]
+    for m in on:
+        if m["id"] not in consents:
+            out.append(F(f"addons-consent-{m['id']}", f"{m['addon']['title']} is on with no consent recorded", "warn",
+                         "It is switched on, but /admin has no record of the owner agreeing to it (added by hand?).",
+                         "Remove it and add it again from /admin.", ""))
+    try:
+        cat_state = json.loads(_read(STATE / "addons-catalogue.json") or "{}")
+    except ValueError:
+        cat_state = {}
+    for m in local:
+        c = cat_state.get(m["id"]) or {}
+        if c.get("status") == "held":
+            out.append(F(f"addons-held-{m['id']}", f"{m['addon']['title']}: a newer catalogue version waits for you", "warn",
+                         "It changes what you agreed to: " + "; ".join(c.get("held", [])) + ". The agreed version keeps running.",
+                         "Read it, then accept it (or remove the add-on) on /admin, Add-ons, Web add-ons.", ""))
+    code, _ = _addon_ask("/admin/settings")
+    if code is None:
+        out.append(F("addons-origin", "The add-on origin", "warn" if local else "ok",
+                     "Nothing answers on the add-on port." + (" Added add-ons cannot be opened." if local else ""),
+                     "Rerun install.sh: it sets up the add-on server." if local else ""))
+    elif code == 200:
+        out.append(F("addons-origin", "The add-on origin serves the hub's pages", "problem",
+                     "/admin/settings answered 200 on the add-on port: it should serve nothing but the add-ons' folder.",
+                     "Restore the add-on server block of irate-box.nginx (reinstall).", ""))
+    else:
+        out.append(F("addons-origin", "The add-on origin", "ok", f"Serves none of the hub's pages (/admin/settings: {code})."))
+    for m in on:
+        code, headers = _addon_ask(f"/{m['id']}/")
+        if code not in (None, 404) and "content-security-policy" not in headers:
+            out.append(F(f"addons-csp-{m['id']}", f"{m['addon']['title']} is served with no Content-Security-Policy", "problem",
+                         "Its pages could load or send anything, anywhere.", "Rerun install.sh (the add-on server block).", ""))
     return out
 
 
@@ -396,8 +619,8 @@ def step_front(ctx):
                      "Restore the /admin block of irate-box.nginx (reinstall).", "F27"))
     else:
         out.append(F("front-admin", "/admin login", "ok",
-                     "The front asks for the login on /admin. (The hub trusts the front completely: F27 asks it to refuse "
-                     "requests that did not come with the front's header.)", ref="F27"))
+                     "The front asks for the login on /admin. (Whether the hub refuses /admin that did not come through "
+                     "it: the next step, \'/admin from inside the box\'.)", ref="F27"))
     for pfx, name in (("/term", "/term (the web terminal)"), ("/git-private", "/git-private/")):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
@@ -464,8 +687,8 @@ def step_front_caddy(ctx):
                      "Restore the /admin block of the Caddyfile (reinstall).", "F27"))
     else:
         out.append(F("front-admin", "/admin login", "ok",
-                     "Caddy asks for the login on /admin. (The hub trusts the front completely: F27 asks it to refuse "
-                     "requests that did not come with the front's header.)", ref="F27"))
+                     "Caddy asks for the login on /admin. (Whether the hub refuses /admin that did not come through "
+                     "it: the next step, \'/admin from inside the box\'.)", ref="F27"))
     for pfx, name in (("/term", "/term (the web terminal)"), ("/git-private", "/git-private/")):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
@@ -559,12 +782,14 @@ def step_folders(ctx):
     else:
         out.append(F("folders-links", "Links inside the hub's folders", "ok",
                      "None in control/, zim/, library/, firmware/, git/, ci/ or notes/ (top levels).", ref="F3/F4/F5"))
+    # The quarantine is the hub's own since F4's fix: health.py moves a book there as the hub, so a
+    # link there leads only where the hub could write anyway. Still worth a look if it is one.
     q = _lstat(STATE / "zim" / "quarantine")
-    if q is not None and (stat.S_ISLNK(q.st_mode) or (hub_uid is not None and q.st_uid == hub_uid)):
-        out.append(F("folders-quarantine", "Kiwix quarantine folder", "problem" if stat.S_ISLNK(q.st_mode) else "warn",
-                     "zim/quarantine is " + ("a link" if stat.S_ISLNK(q.st_mode) else f"owned by '{_name_of(q.st_uid)}'") +
-                     "; the doctor's fix chowns it, and the hub chooses what it points at.",
-                     "Keep the quarantine folder root-owned, outside zim/.", "F4"))
+    if q is not None and stat.S_ISLNK(q.st_mode):
+        out.append(F("folders-quarantine", "Kiwix quarantine folder", "warn",
+                     "zim/quarantine is a link. The doctor's fix moves books there as the hub (not root), so it can only "
+                     "reach what the hub can, but nothing of the box's makes it a link.",
+                     "Look at where it points (ls -l), and remove it if you did not make it.", "F4"))
     ci = _lstat(STATE / "ci")
     if ci is not None and ci.st_uid != 0:
         out.append(F("folders-ci", "The build user owns its folders", "warn",
@@ -689,6 +914,13 @@ def step_units(ctx):
         if blocks_loopback:
             out.append(F("units-ci-loopback", "Builds and the hub's loopback", "ok",
                          "irate-box-ci.service cannot connect to 127.0.0.1" + (" (private network)." if private else f" (IPAddressDeny={deny})."), ref="F8"))
+        elif _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"}) == 403:
+            # The hub refuses /admin without the front's secret (step admin-gate), so what builds
+            # reach on loopback is what any guest reaches.
+            out.append(F("units-ci-loopback", "Builds can reach the hub on loopback (not /admin)", "warn",
+                         "irate-box-ci.service can connect to 127.0.0.1, so builds reach the hub's guest API, as any guest "
+                         "can; /admin refuses them (it needs the front's secret, which builds cannot read).",
+                         "IPAddressDeny=localhost on the unit, to keep builds off loopback altogether.", "F8"))
         else:
             out.append(F("units-ci-loopback", "Builds can reach the hub's admin API on loopback", "problem",
                          "irate-box-ci.service has no IPAddressDeny, PrivateNetwork or RestrictAddressFamilies"
@@ -876,7 +1108,13 @@ def probe_ttyd(ctx, a, show):
         out.append(("problem", f"it runs a bare shell ({argv[-1]}), so the login is the only barrier to a shell as "
                     f"{show.get('User') or 'root'}", "run /bin/login, which asks for a real account"))
     if "--interface" not in argv and "-i" not in argv:
-        out.append(("problem", "no --interface: ttyd listens on every interface", "--interface lo"))
+        out.append(("problem", "no --interface: ttyd listens on every interface", "--interface /run/ttyd/ttyd.sock"))
+    else:
+        i = argv.index("--interface") if "--interface" in argv else argv.index("-i")
+        iface = argv[i + 1] if i + 1 < len(argv) else ""
+        if not iface.startswith("/"):
+            out.append(("warn", f"on a TCP port ({iface}): anything on the box can reach the login prompt",
+                        "a socket only the web server's group can open (install.sh does this)"))
     return out
 
 
@@ -1065,52 +1303,59 @@ def step_secrets(ctx):
     return out
 
 
+def _git_cfg(cfg, section, key):
+    """A value from a repository's config text: [section] key = value (git's own case rules)."""
+    m = re.search(rf"(?ims)^\s*\[{re.escape(section)}\]\s*$(.*?)(?=^\s*\[|\Z)", cfg)
+    v = m and re.search(rf"(?im)^\s*{re.escape(key)}\s*=\s*(\S+)\s*$", m.group(1))
+    return v.group(1).lower() if v else None
+
+
 def step_git(ctx):
-    """F17, F18: what pushed content can do, when guests may push."""
+    """F17, F18 and the push presets (next-work plan step 10): what pushed content can do."""
     root = STATE / "git"
-    guest = _lstat(root / "guest-push") is not None
-    out = []
-    missing = []
-    for area in ("public", "private"):
-        text = _read(root / f"cgitrc-{area}")
-        if text is None:
-            continue
-        if not all(re.search(rf"(?m)^mimetype\.{ext}\s*=\s*text/plain\s*$", text) for ext in ("html", "svg")):
-            missing.append(area)
     if _lstat(root / "cgitrc-public") is None and _lstat(root / "cgitrc-private") is None:
         return [F("git", "Git servers", "ok", "Not set up.", ref="F17/F18")]
-    if missing:
+    out = []
+    # cgit 1.2.3 serves /plain/ as text/plain with its own CSP, unless cgitrc maps a type.
+    loose = [a for a in ("public", "private")
+             if re.search(r"(?m)^(mimetype-file\s*=|mimetype\.(html?|xhtml|svg)\s*=\s*(?!text/plain))", _read(root / f"cgitrc-{a}") or "")]
+    if loose:
         out.append(F("git-mimetype", "cgit serves pushed HTML as HTML", "warn",
-                     f"cgitrc-{_list(missing)} does not map .html and .svg to text/plain, so cgit's /plain/ view serves a pushed "
-                     "page on the hub's origin, next to /admin"
-                     + (" — and guest push is ON, so a guest's page is one link away from the owner's login." if guest
-                        else " (guest push is off, so only pages the owner pushes)."),
-                     "mimetype.html=text/plain, mimetype.svg=text/plain (also .htm, .xhtml) in cgitrc, or Content-Security-Policy: sandbox.", "F17"))
+                     f"cgitrc-{_list(loose)} maps .html or .svg to a type that runs, so a pushed page runs on the hub's origin.",
+                     "Remove the mimetype lines, or map them to text/plain.", "F17"))
     else:
-        out.append(F("git-mimetype", "cgit's /plain/ view", "ok", "HTML and SVG are served as text/plain.", ref="F17"))
-    weak = []
-    pub = root / "public"
-    try:
-        repos = [p for p in sorted(pub.iterdir()) if (p / "HEAD").exists() and not p.is_symlink()][:200]
-    except OSError:
-        repos = []
-    for r in repos:
-        cfg = _read(r / "config") or ""
-        miss = [k for k in ("denyNonFastForwards", "denyDeletes", "fsckObjects")
-                if not re.search(rf"(?im)^\s*{k}\s*=\s*(true|yes|on|1)\s*$", cfg)]
-        if miss:
-            weak.append(f"{r.name} ({', '.join(miss)})")
-    if weak:
-        out.append(F("git-public", "Public repositories can be rewritten", "warn",
-                     f"{_list(weak)} lack receive.deny* / fsckObjects"
-                     + (": with guest push on, any guest can force-push or delete a branch, and repeated pushes fill the card"
-                        " (the 64 MB limit is per push)." if guest else " (guest push is off, so only the owner can push)."),
-                     "git config receive.denyNonFastForwards true; receive.denyDeletes true; receive.fsckObjects true; add a total-size quota.", "F18"))
-    elif repos:
-        out.append(F("git-public", "Public repositories", "ok", f"{len(repos)} protected against rewrites.", ref="F18"))
-    if guest and not weak and not missing:
-        out.append(F("git-guest", "Guest push", "warn", "Guests may push to the public repositories. Disk fill is the remaining risk (no total quota).",
-                     "A pre-receive size check.", "F18"))
+        out.append(F("git-mimetype", "cgit's /plain/ view", "ok", "Pushed files are served as text, with cgit's own CSP.", ref="F17"))
+    everyone, unhooked, leaky = [], [], []
+    for area in ("public", "private"):
+        try:
+            repos = [p for p in sorted((root / area).iterdir()) if (p / "HEAD").exists() and not p.is_symlink()][:200]
+        except OSError:
+            repos = []
+        for r in repos:
+            cfg = _read(r / "config") or ""
+            level = _git_cfg(cfg, "irate-box", "write") or "admin"
+            if area == "public" and level == "everyone":
+                everyone.append(r.name)
+            if area == "public" and not ((_git_cfg(cfg, "core", "hookspath") or "").endswith("git-hooks-public")
+                                         and _git_cfg(cfg, "receive", "fsckobjects") in ("true", "yes", "on", "1")):
+                unhooked.append(r.name)
+            if level == "nobody" and _git_cfg(cfg, "http", "receivepack") not in ("false", "no", "off", "0"):
+                leaky.append(r.name)
+    if everyone:
+        out.append(F("git-everyone", "Public repositories anyone may push to", "warn",
+                     f"{_list(everyone)} {'is' if len(everyone) == 1 else 'are'} public-everything: anyone on the network may push "
+                     "(no rewrites or deletions, and a size cap, by the public hook).",
+                     "On /admin's Git page, public-admin-writes unless guests are meant to push.", "F17/F18"))
+    if unhooked:
+        out.append(F("git-public", "Public repositories without their hook", "warn",
+                     f"{_list(unhooked)} lack the public pre-receive hook or receive.fsckObjects, so a push could rewrite "
+                     "history or fill the card.", "Rerun install.sh, which sets both.", "F18"))
+    if leaky:
+        out.append(F("git-readonly", "Read-only repositories that still take pushes", "problem",
+                     f"{_list(leaky)} {'is' if len(leaky) == 1 else 'are'} read-only by preset, but http.receivepack is not false.",
+                     "Set the preset again on /admin's Git page (it sets both).", "F18"))
+    if not (everyone or unhooked or leaky):
+        out.append(F("git-public", "Who may push", "ok", "Every repository's preset is held, and the public ones have their hook.", ref="F18"))
     return out
 
 
@@ -1238,9 +1483,506 @@ def step_kernel(ctx):
     return out
 
 
+# Which apps run on an origin of their own (next-work plan step 11; S4): what an app's pages run
+# can act with the owner's login only where it shares the hub's origin.
+OWN_ORIGIN = (("notes", "Notes (SilverBullet)", r"proxy_pass\s+http://unix:/run/silverbullet/"),
+              ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8081"),
+              ("git", "cgit and pushed content", r"cgit\.cgi"))
+
+
+def _nginx_servers(text):
+    """[(listen ports, the server block's text)] for each top-level server block."""
+    out, depth, start = [], 0, None
+    for m in re.finditer(r"(?m)^\s*server\s*\{|[{}]", text):
+        tok = m.group(0)
+        if tok.strip().startswith("server") and depth == 0:
+            start, depth = m.start(), 1
+        elif tok == "{" and start is not None:
+            depth += 1
+        elif tok == "}" and start is not None:
+            depth -= 1
+            if depth == 0:
+                block = text[start:m.end()]
+                out.append((sorted(set(re.findall(r"(?m)^\s*listen\s+(?:\[::\]:)?(\d+)", block))), block))
+                start = None
+    return out
+
+
+def step_origins(ctx):
+    """Which origin each app is on: the hub's own port, or one of its own (S4)."""
+    if ctx["front_kind"] != "nginx":
+        return [_cannot("origins", "Apps' origins", "only read from nginx's config", "S4")]
+    servers = _nginx_servers(_read(NGINX_CONF) or "")
+    if not servers:
+        return [_cannot("origins", "Apps' origins", f"{NGINX_CONF} could not be read", "S4")]
+    hub_ports = servers[0][0]
+    out = []
+    for key, name, pattern in OWN_ORIGIN:
+        where = [ports for ports, block in servers if re.search(pattern, block)]
+        if not where:
+            continue
+        ports = where[0]
+        if ports == hub_ports:
+            out.append(F(f"origin-{key}", f"{name}: the hub's own origin", "warn",
+                         f"Served on port {', '.join(hub_ports)} with /admin, so what its pages run could act with the owner's login.",
+                         "Its own origin (next-work plan step 11).", "S4"))
+        else:
+            out.append(F(f"origin-{key}", f"{name}: an origin of its own", "ok", f"Port {', '.join(ports)}; the hub is on {', '.join(hub_ports)}.", ref="S4"))
+    return out
+
+
+# --- debsecan: Debian's packages against Debian's security tracker (step 29) -----------------
+# Run from the security kit: installed if it is, otherwise unpacked from its cache (debsecan and
+# python3-apt's apt_pkg, a module over libapt-pkg, which every Debian has), with the tracker's
+# data the librarian keeps (library/debsecan/). Nothing is installed for it, nothing fetched.
+
+DEBSECAN_FEED = STATE / "library" / "debsecan" / "release" / "1"
+KITS_ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
+SUMMARY_RE = re.compile(r"^(\S+) (\S+)(?: \((.*)\))?$")
+
+
+def _codename():
+    for line in (_read(Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))) or "").splitlines():
+        if line.startswith("VERSION_CODENAME="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def _debsecan_command(work):
+    """[argv...] and the environment to run debsecan with, or (None, why)."""
+    if Path("/usr/bin/debsecan").exists():
+        try:
+            import apt_pkg  # noqa: F401
+            return ["/usr/bin/debsecan"], {}
+        except ImportError:
+            pass
+    pool = KITS_ROOT / "pool"
+    debs = {}
+    for name in ("debsecan", "python3-apt", "python-apt-common"):
+        found = sorted(pool.glob(f"{name}_*.deb")) if pool.is_dir() else []
+        if not found:
+            return None, "debsecan is not on the box, and the security kit's cache doesn't hold it"
+        debs[name] = found[-1]
+    # Run as root: only files that are still what the kit's manifest says was fetched.
+    from irate_box.root import kits
+    damaged = {Path(p.split(" ", 1)[0]).name for p in kits.verify()}
+    for d in debs.values():
+        if d.name in damaged:
+            return None, f"{d.name} in the security kit's cache fails its check"
+        r = subprocess.run(["dpkg-deb", "-x", str(d), str(work)], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return None, f"unpacking {d.name}: {r.stderr.strip()[:200]}"
+    return [sys.executable, str(work / "usr" / "bin" / "debsecan")], {"PYTHONPATH": str(work / "usr" / "lib" / "python3" / "dist-packages")}
+
+
+def _debsecan(cmd, env, suite, status=None, timeout=900):
+    """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary. Fifteen
+    minutes: on the Lyra with a firmware build and the deep audit running (load 25 on four cores,
+    2026-10-07) five were not enough, and a busy box is not a failed check."""
+    args = [*cmd, "--suite", suite, "--source", f"file://{DEBSECAN_FEED}/", "--format", "summary"]
+    if status:
+        args += ["--status", str(status)]
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **env))
+    except subprocess.TimeoutExpired:
+        try:
+            load = Path("/proc/loadavg").read_text().split()[1]
+        except OSError:
+            load = "?"
+        raise RuntimeError(f"debsecan took over {timeout // 60} minutes (the box's load: {load}); run the doctor again when it is quieter")
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300])
+    out = {}
+    for line in r.stdout.splitlines():
+        m = SUMMARY_RE.match(line.strip())
+        if not m:
+            continue
+        notes = [n.strip() for n in (m.group(3) or "").split(",") if n.strip()]
+        urgency = next((n.split()[0] for n in notes if n.endswith(" urgency")), "")
+        out.setdefault(m.group(2), []).append((m.group(1), {"fixed": "fixed" in notes, "remote": "remotely exploitable" in notes,
+                                                            "urgency": urgency}))
+    return out
+
+
+def _sources():
+    """{binary package: its source package}, from dpkg."""
+    r = subprocess.run(["dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n"], capture_output=True, text=True, timeout=60)
+    return dict(l.split("\t", 1) for l in r.stdout.splitlines() if "\t" in l)
+
+
+def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
+    """Findings from debsecan's two runs. A fix Debian has released but the box hasn't installed:
+    a problem when remotely exploitable or high urgency (Tom, 2026-10-06), else a warning; one
+    finding per package. Unfixed ones are listed, not counted. A kit's cache holding a version
+    with a released fix: a warning on that kit (refresh it while online)."""
+    out = []
+    age = f" Tracker data of {time.strftime('%Y-%m-%d', time.localtime(feed_date))}." if feed_date else ""
+    # One finding per source package (perl, perl-base, libperl5.40… are one fix), naming its binaries.
+    source_of = source_of or {}
+    groups = {}
+    for pkg, vulns in installed.items():
+        fixed = [(c, n) for c, n in vulns if n["fixed"]]
+        if fixed:
+            g = groups.setdefault(source_of.get(pkg) or pkg, {"bins": set(), "cves": {}})
+            g["bins"].add(pkg)
+            for c, n in fixed:
+                g["cves"][c] = n
+    for src, g in sorted(groups.items()):
+        fixed = sorted(g["cves"].items())
+        bad = [c for c, n in fixed if n["remote"] or n["urgency"] == "high"]
+        bins = sorted(g["bins"])
+        out.append(F(f"debsecan-{src}", f"{src}: Debian has released a fix that isn't installed", "problem" if bad else "warn",
+                     (f"In {', '.join(bins)}. " if bins != [src] else "") +
+                     f"{len(fixed)} fixed: " + ", ".join(c + (" (remotely exploitable)" if n["remote"] else "") +
+                                                         (f" ({n['urgency']} urgency)" if n["urgency"] else "") for c, n in fixed[:8])
+                     + ("…" if len(fixed) > 8 else "") + "." + age,
+                     "Install the security updates: the Security page, or apt-get upgrade while online.", "",
+                     source="debsecan", about={"kind": "package", "key": src}))
+    unfixed = sorted(p for p, v in installed.items() if not any(n["fixed"] for _, n in v))
+    out.append(F("debsecan-unfixed", "Known vulnerabilities with no fix released yet", "ok",
+                 (f"{len(unfixed)} installed packages have CVEs Debian hasn't fixed yet (listed, not counted): " + _list(unfixed, 20) + "."
+                  if unfixed else "None.") + age, "", "", source="debsecan"))
+    per_kit = {}
+    for pkg, vulns in cached.items():
+        if any(n["fixed"] for _, n in vulns):
+            for kid in kit_of.get(pkg, []):
+                per_kit.setdefault(kid, set()).add(pkg)
+    for kid, pkgs in sorted(per_kit.items()):
+        out.append(F(f"debsecan-kit-{kid}", f"The {kid} kit's cache has packages with fixes released since", "warn",
+                     f"Cached versions of {_list(sorted(pkgs))} have fixes Debian has released.{age}",
+                     "Refresh the kit while the box has internet (Library → Toolkits); installing it now would bring those versions.",
+                     "", source="debsecan", about={"kind": "kit", "key": kid}))
+    return out
+
+
+def step_debsecan(ctx):
+    suite = _codename()
+    feed = DEBSECAN_FEED / suite if suite else None
+    if not feed or not feed.is_file():
+        return [F("debsecan-data", "Debian's security tracker data", "warn",
+                  "Not on the box yet: the librarian fetches it daily while the security kit is kept current and the box is online.",
+                  "Library → Toolkits: keep the Security kit current, and let the box reach the internet once.", "", source="debsecan")]
+    import tempfile
+    import shutil as _sh
+    work = Path(tempfile.mkdtemp(prefix="debsecan-"))
+    try:
+        cmd, env = _debsecan_command(work)
+        if cmd is None:
+            return [F("debsecan-tool", "debsecan", "warn", f"Could not run it: {env}.",
+                      "Library → Toolkits: refresh the Security kit while online (it is not installed for this; its cache is enough).",
+                      "", source="debsecan")]
+        installed = _debsecan(cmd, env, suite)
+        kit_of = {}
+        for m in sorted((KITS_ROOT / "manifests").glob("*.json")) if (KITS_ROOT / "manifests").is_dir() else []:
+            if m.name.endswith(".previous.json"):
+                continue
+            for p in (json.loads(_read(m) or "{}") or {}).get("packages", []):
+                kit_of.setdefault(p["name"], []).append(m.stem)
+        status = KITS_ROOT / "kits-status"
+        cached = _debsecan(cmd, env, suite, status) if status.is_file() else {}
+        return debsecan_findings(installed, cached, kit_of, feed.stat().st_mtime, _sources())
+    finally:
+        _sh.rmtree(work, ignore_errors=True)
+
+
+def step_deep_cis(ctx):
+    return _deep_findings("debian-cis")
+
+
+def step_deep_lynis(ctx):
+    return _deep_findings("lynis")
+
+
+def _deep_findings(source):
+    """The deep audit's kept findings for one source, dated; a warning when it is old."""
+    from irate_box.root import deepaudit
+    rep = deepaudit.load()
+    got = (rep or {}).get("sources", {}).get(source)
+    if not got:
+        return [F(f"{source}-none", f"{source}: not run yet", "ok",
+                  "It runs in the deep audit: weekly, or Deep audit on this page (about 8 minutes on a small board).", "", "", source=source)]
+    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(got["at"]))
+    out = [dict(f) for f in got["findings"]]
+    if time.time() - got["at"] > 14 * 86400:
+        out.append(F(f"{source}-old", f"{source}: the last deep audit is old", "warn", f"From {when}.", "Run the deep audit again.", "", source=source))
+    for f in out:
+        f["detail"] = f"{f['detail']} (deep audit of {when})"
+    return out
+
+
+def step_security_page(ctx):
+    """The Security page's own scan (security.py, control/security.json), as a source of its own,
+    so the joint report can say where it and the doctor (or nmap) agree."""
+    try:
+        scan = json.loads(_read(CONTROL / "security.json") or "")
+    except ValueError:
+        scan = None
+    if not scan:
+        return [F("security-page-none", "The Security page's scan", "ok", "Not run yet: it runs when the Security page is opened.", "", "",
+                  source="security-page")]
+    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(scan.get("at") or 0))
+    out = []
+    for f in scan.get("findings", []):
+        out.append(F(f"page-{f['id']}", f["title"], f["status"], f"{f['detail']} (scan of {when})", f.get("fix", ""), "",
+                     source="security-page", about=secdoctor_xref.about("security-page", f["id"])))
+    return out
+
+
+IMPORTS = STATE / "security-imports"
+
+
+def step_imports(ctx):
+    """OpenVAS and nmap reports imported on the page (secimports.py), kept until replaced: OpenVAS's
+    results by port, a problem from CVSS 7, a warning from 4; nmap's open ports, a warning for one
+    the box was not listening on when the report came in; and either one old, or from before the
+    box's ports changed, a warning of its own."""
+    out = []
+    try:
+        now_ports = sorted({f"{l['proto']}/{l['port']}" for l in json.loads(_read(CONTROL / "security.json") or "{}").get("listeners", [])})
+    except (ValueError, KeyError, TypeError):
+        now_ports = None
+    for kind in ("openvas", "nmap"):
+        try:
+            rep = json.loads(_read(IMPORTS / f"{kind}.json", limit=4 << 20) or "")
+        except ValueError:
+            rep = None
+        if not rep:
+            continue
+        when = time.strftime("%Y-%m-%d", time.localtime(rep.get("ran") or rep.get("imported") or 0))
+        by_port = {}
+        for r in rep.get("results", []):
+            if kind == "openvas" and r.get("cvss", 0) <= 0:
+                continue
+            by_port.setdefault((r["proto"], r["port"]), []).append(r)
+        for (proto, port), rs in sorted(by_port.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+            about = {"kind": "service", "key": f"{proto}/{port}"} if isinstance(port, int) else None
+            where = f"{proto.upper()} {port}" if isinstance(port, int) else "the box as a whole"
+            if kind == "openvas":
+                worst = max(r["cvss"] for r in rs)
+                status = "problem" if worst >= 7 else "warn" if worst >= 4 else "ok"
+                names = "; ".join(f"{r['name']} (CVSS {r['cvss']:g})" for r in sorted(rs, key=lambda r: -r["cvss"])[:5])
+                fix = next((r["solution"] for r in sorted(rs, key=lambda r: -r["cvss"]) if r.get("solution")), "")
+                out.append(F(f"openvas-{proto}-{port}", f"OpenVAS on {where}: {len(rs)} result{'s' if len(rs) != 1 else ''}", status,
+                             f"{names}. (Scan of {when}.)", fix, "", source="openvas", about=about))
+            else:
+                seen = f"{proto}/{port}"
+                listening = rep.get("box_ports")
+                status = "warn" if listening is not None and seen not in listening else "ok"
+                svc = next((r["service"] for r in rs if r.get("service")), "")
+                out.append(F(f"nmap-{proto}-{port}", f"nmap found {where} open" + (f" ({svc})" if svc else ""), status,
+                             ("The box was not listening there when the report came in: worth a look." if status == "warn" else "Open, as the box serves it.")
+                             + f" (Scan of {when}.)", "", "", source="nmap", about=about))
+        age = (time.time() - (rep.get("ran") or rep.get("imported") or 0)) / 86400
+        changed = now_ports is not None and rep.get("box_ports") is not None and sorted(rep["box_ports"]) != now_ports
+        if changed:
+            gained = sorted(set(now_ports) - set(rep["box_ports"]))
+            out.append(F(f"{kind}-ports-changed", f"The {kind} report is from before the box's ports changed", "warn",
+                         f"Since it was imported the box also listens on {', '.join(gained) or 'nothing new'}; "
+                         f"no longer on {', '.join(sorted(set(rep['box_ports']) - set(now_ports))) or 'nothing'}.",
+                         f"Run {kind} against the box again and import it.", "", source=kind))
+        elif age > 90:
+            out.append(F(f"{kind}-old", f"The {kind} report is {int(age)} days old", "warn", f"From {when}.",
+                         f"Run {kind} against the box again and import it.", "", source=kind))
+    if not out:
+        out.append(F("imports-none", "Imported scans", "ok",
+                     "None yet. Run OpenVAS (Greenbone) or nmap from a PC on the hotspot against the box, and import its report here: "
+                     "the outside view, including software debsecan can't see.", "", "", source="openvas"))
+    return out
+
+
+KIND_SOURCES = {"service": ("security-page", "nmap", "openvas")}
+
+
+def freshness():
+    """Each source's date and its data's date (§5.6)."""
+    out = {"doctor": time.time()}
+    try:
+        out["security-page"] = json.loads(_read(CONTROL / "security.json") or "{}").get("at")
+    except ValueError:
+        pass
+    suite = _codename()
+    feed = DEBSECAN_FEED / suite if suite else None
+    if feed and feed.is_file():
+        out["debsecan"] = feed.stat().st_mtime
+    try:
+        deep = json.loads(_read(CONTROL / "security-deep.json", limit=8 << 20) or "{}")
+        for src, v in (deep.get("sources") or {}).items():
+            out[src] = v.get("at")
+    except ValueError:
+        pass
+    for kind in ("openvas", "nmap"):
+        try:
+            rep = json.loads(_read(IMPORTS / f"{kind}.json", limit=4 << 20) or "{}")
+            if rep:
+                out[kind] = rep.get("ran") or rep.get("imported")
+        except ValueError:
+            pass
+    return {k: v for k, v in out.items() if v}
+
+
+def joint(steps, freshness=None):
+    """The joint report (security-doctor-plan §5): findings merged by what they are about, each
+    item saying which sources agree, the worst status and its fix; items only one source saw where
+    others could have (worth a look, or a false positive); each source's counts, what it covers,
+    and how fresh it is; and the counts after merging, which the page's badge shows, so four tools
+    saying the same thing count once."""
+    rank = {"ok": 0, "warn": 1, "problem": 2}
+    items, sources, loose = {}, {}, {"problem": 0, "warn": 0}
+    for f in (f for s in steps for f in s["findings"]):
+        src = f.get("source", "doctor")
+        c = sources.setdefault(src, {"problem": 0, "warn": 0, "ok": 0})
+        c[f["status"]] = c.get(f["status"], 0) + 1
+        a = f.get("about")
+        if f.get("accepted"):
+            continue
+        if not a:
+            if f["status"] in loose:
+                loose[f["status"]] += 1
+            continue
+        key = f"{a['kind']}:{a['key']}"
+        label = secdoctor_xref.title(a["key"]) if a["kind"] == "setting" else \
+            " ".join(x.upper() if i == 0 else x for i, x in enumerate(a["key"].split("/"))) if a["kind"] == "service" else a["key"]
+        it = items.setdefault(key, {"about": a, "title": label,
+                                    "sources": [], "status": "ok", "titles": [], "fix": ""})
+        if src not in it["sources"]:
+            it["sources"].append(src)
+        it["titles"].append(f"{src}: {f['title']}")
+        if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
+            it["status"], it["fix"] = max((it["status"], f["status"]), key=rank.get), f["fix"] or it["fix"]
+    # A source ran when it said something real, not only "not run yet" / "none imported".
+    ran = {f.get("source", "doctor") for s in steps for f in s["findings"] if not f["id"].endswith("-none")}
+    for it in items.values():
+        # Who could have said the same: any port-seeing source for a port; for a setting, the
+        # sources the cross-reference table lists for it; a package or a kit, debsecan alone.
+        a = it["about"]
+        could = set(KIND_SOURCES["service"]) if a["kind"] == "service" else \
+            {k for k, v in secdoctor_xref.XREF.get(a["key"], {}).items() if isinstance(v, list)} if a["kind"] == "setting" else set()
+        could &= ran
+        it["alone"] = len(it["sources"]) == 1 and len(could - set(it["sources"])) > 0
+        it["could_see"] = sorted(could - set(it["sources"]))
+    merged = sorted((i for i in items.values() if i["status"] != "ok"), key=lambda i: (-rank[i["status"]], i["about"]["kind"], i["about"]["key"]))
+    agreed = [i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1]
+    after = {"problem": loose["problem"] + sum(1 for i in merged if i["status"] == "problem"),
+             "warn": loose["warn"] + sum(1 for i in merged if i["status"] == "warn")}
+    return {"items": merged, "agreed_ok": len(agreed), "sources": sources, "after": after,
+            "coverage": {s: secdoctor_xref.COVERAGE.get(s, "") for s in sources}, "freshness": freshness or {}}
+
+def _local_headers(url):
+    """A local request's status and headers (the box's own front), or None. Certificates unchecked:
+    this asks what the front sends, not whether it is trusted. A GET whose body is never read: the
+    hub answers HEAD with 501 (found on the Lyra, 2026-10-07), which is not "not answering"."""
+    import ssl
+    import urllib.error
+    import urllib.request
+    ctx = ssl.create_default_context()
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=5, context=ctx) as r:
+            return r.status, dict(r.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers or {})
+    except (OSError, ValueError):
+        return None
+
+
+def step_tls(ctx):
+    """HTTPS (next-work plan step 15, certificates-plan stage 6): the certificate's expiry, that it
+    covers the box's addresses, the CA's name constraints, the keys private, and, while HTTPS is
+    on, no HSTS and port 80 still answering (the captive portal needs it)."""
+    from irate_box.root import tls
+    about = {"kind": "setting", "key": "tls"}
+    st = tls.status()
+    if not st.get("set_up"):
+        return [F("tls", "HTTPS", "warn", "No certificate: every page is plain HTTP, so the admin password crosses the WiFi in clear.",
+                  "/admin → Security → HTTPS: Make the box's certificate, then install it from /certificate on your own devices.", "S2", about=about)]
+    out = []
+    c = st.get("cert") or {}
+    days = (c.get("expires", 0) - time.time()) / 86400
+    out.append(F("tls-expiry", "The HTTPS certificate's expiry", "problem" if days < 7 else "warn" if days < 30 else "ok",
+                 f"{'Expired' if days < 0 else f'{days:.0f} days left'}" + ("" if c.get("own") else "; the box renews its own at two-thirds of its life") + ".",
+                 "" if days >= 30 else ("Bring a renewed one (/admin → Security → HTTPS)." if c.get("own") else "Renew it: /admin → Security → HTTPS, or ./irate-box tls renew as root."),
+                 "", about=about))
+    if st.get("outside"):
+        out.append(F("tls-covers", "What the certificate covers", "problem",
+                     f"The box is at {', '.join(st['outside'])}, which its CA may not vouch for: HTTPS there is refused.",
+                     "Make a new CA for this network (/admin → Security → HTTPS), and install it again on each device.", "", about=about))
+    else:
+        out.append(F("tls-covers", "What the certificate covers", "warn" if st.get("due") else "ok",
+                     f"{', '.join(c.get('names', []) + c.get('addresses', []))}" + (f"; due to be re-made: {st['due']}" if st.get("due") else "."),
+                     "The uplink watchdog renews it within six hours, or: ./irate-box tls renew." if st.get("due") else "", "", about=about))
+    text = ""
+    try:
+        text = tls.openssl("x509", "-in", str(tls.CA_CERT), "-noout", "-text")
+    except (RuntimeError, OSError):
+        pass
+    out.append(F("tls-constraints", "The CA can vouch only for the box", "ok" if "X509v3 Name Constraints: critical" in text else "problem",
+                 "Its name constraints are in place: installed, it is trusted for nothing else." if "X509v3 Name Constraints: critical" in text
+                 else "The CA has no name constraints: a device that installs it would trust it for any site.",
+                 "" if "X509v3 Name Constraints: critical" in text else "Make a new CA (/admin → Security → HTTPS).", "", about=about))
+    private = st.get("keys_private") and tls.KEY.exists() and (tls.KEY.stat().st_mode & 0o007) == 0
+    out.append(F("tls-keys", "The certificate keys", "ok" if private else "problem",
+                 "The CA's key root's only, the server key not readable by everyone." if private else "A key is readable by more than it should be.",
+                 "" if private else "chmod 600 /etc/hub/tls/ca/ca.key; chmod 640 /etc/hub/tls/server.key", "", about=about))
+    if st.get("on"):
+        got = _local_headers(f"https://127.0.0.1:{(st.get('ports') or {}).get('main', 443)}/")
+        if got is None:
+            out.append(F("tls-hsts", "HTTPS at the front", "warn", "HTTPS is on, but the box's HTTPS port did not answer.",
+                         "nginx -t; systemctl reload nginx", "", about=about))
+        else:
+            hsts = any(k.lower() == "strict-transport-security" for k in got[1])
+            out.append(F("tls-hsts", "No HSTS", "problem" if hsts else "ok",
+                         "The front sends Strict-Transport-Security: a phone that saw it could never reach the plain pages again, the captive portal's among them."
+                         if hsts else "The front sends no Strict-Transport-Security, so plain HTTP keeps working.",
+                         "Remove the Strict-Transport-Security header from the web server's config." if hsts else "", "", about=about))
+        plain = _local_headers("http://127.0.0.1/")
+        out.append(F("tls-plain", "Plain HTTP still answers", "ok" if plain and plain[0] < 500 else "problem",
+                     "Port 80 answers, as the captive portal's sign-in sheet needs." if plain and plain[0] < 500 else "Port 80 does not answer: phones on the hotspot get no sign-in sheet.",
+                     "" if plain and plain[0] < 500 else "systemctl status nginx", "", about=about))
+    return out
+
+
+MOSQUITTO = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
+
+
+def step_mqtt(ctx):
+    """The MQTT broker and the decoder bridge (next-work plan step 18's rules): never bridged to a
+    broker outside the box (mqtt.meshtastic.org above all: the mesh's traffic would leave the box,
+    and its downlink would come in); anonymous clients limited to msh/#; the bridge's channel keys
+    private to the hub."""
+    about = {"kind": "service", "key": "mosquitto"}
+    confs = sorted(MOSQUITTO.glob("conf.d/*.conf")) + ([MOSQUITTO / "mosquitto.conf"] if (MOSQUITTO / "mosquitto.conf").exists() else [])
+    if not confs:
+        return [F("mqtt", "MQTT broker", "ok", "Not installed.", about=about)]
+    out = []
+    lines = [(c.name, l.strip()) for c in confs for l in (_read(c) or "").splitlines() if l.strip() and not l.strip().startswith("#")]
+    bridges = [f"{name}: {l}" for name, l in lines if re.match(r"(connection|address)\s", l)]
+    out.append(F("mqtt-bridge", "The broker is not bridged anywhere", "problem" if bridges else "ok",
+                 ("Bridged out of the box: " + "; ".join(bridges[:3]) + ". The mesh's traffic leaves the box, and what the other broker sends comes in to the radios.")
+                 if bridges else "No connection to another broker: the mesh's traffic stays on the box.",
+                 "Remove the bridge (connection/address lines) from /etc/mosquitto." if bridges else "", "", about=about))
+    acl = next((l.split(None, 1)[1] for _, l in lines if l.startswith("acl_file ")), None)
+    anon = any(l == "allow_anonymous true" for _, l in lines)
+    acl_text = _read(Path(acl)) if acl else None
+    limited = bool(acl_text) and "topic readwrite msh/#" in acl_text and not re.search(r"^\s*topic\s+(readwrite|write|read)\s+#\s*$", acl_text, re.M)
+    out.append(F("mqtt-acl", "Anonymous clients limited to msh/#", "ok" if (not anon or limited) else "warn",
+                 "Anyone may publish and read only under msh/#." if anon and limited else "No anonymous access." if not anon
+                 else "Anonymous clients are not limited to msh/#: the broker is a free message bus for anything on the network.",
+                 "" if (not anon or limited) else "Reinstall the MQTT add-on (install.sh --with-mqtt) to restore its acl_file.", "S9", about=about))
+    keys = STATE / "mesh" / "channels.json"
+    if keys.exists():
+        private = (keys.stat().st_mode & 0o077) == 0
+        out.append(F("mqtt-keys", "The decoder's channel keys", "ok" if private else "problem",
+                     "Private to the hub." if private else "Readable by others than the hub: a private channel's key would be.",
+                     "" if private else f"chmod 600 {keys}", "", about=about))
+    return out
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
+    ("admin-gate", "/admin from inside the box", "F27 F31 S3", step_admin_gate),
+    ("web-addons", "Web add-ons", "", step_web_addons),
+    ("origins", "Which origin each app is on", "S4", step_origins),
     ("folders", "Links and root-written files in hub-owned folders", "F3 F4 F5 F13", step_folders),
     ("code", "Installed code and allow-lists", "F3 F6 F20", step_code),
     ("units", "Unit sandboxing and the build unit", "F8 F19", step_units),
@@ -1250,6 +1992,13 @@ STEPS = [
     ("git", "Git servers and pushed content", "F17 F18", step_git),
     ("accounts", "Sudo rules and accounts", "", step_accounts),
     ("kernel", "Kernel protections", "F3 F9", step_kernel),
+    ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
+    ("debian-cis", "The CIS benchmark (debian-cis, in the deep audit)", "", step_deep_cis),
+    ("lynis", "Lynis (in the deep audit)", "", step_deep_lynis),
+    ("security-page", "The Security page's scan", "", step_security_page),
+    ("imports", "Imported scans (OpenVAS, nmap)", "", step_imports),
+    ("tls", "HTTPS: the certificate and the front", "S2", step_tls),
+    ("mqtt", "The MQTT broker and the mesh decoder", "S9", step_mqtt),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
@@ -1279,10 +2028,9 @@ def make_context():
     drains = None
     caps = None
     if server:
-        # The F2 fix declares itself (DRAINS_REQUEST_BODIES = True in server.py); the function names
-        # are a fallback for a fix written without the marker.
-        drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server)
-                      or re.search(r"def _drain|_discard_body|drain_body|def _read_body", server))
+        # The F2 fix declares itself (DRAINS_REQUEST_BODIES = True in server.py). Only the marker
+        # counts: hub versions before it had _discard_body, but drained only refused requests.
+        drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server))
         m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
         caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
     units = {u: _show(u, *UNIT_PROPS) for u in _our_units()}
@@ -1314,28 +2062,21 @@ def audit(progress=None):
         steps.append({"id": sid, "title": title, "ref": ref, "findings": found})
         if progress:
             progress(n, len(STEPS), steps[-1])
+    for f in (f for s in steps for f in s["findings"]):
+        if not f.get("about") and f.get("source", "doctor") in ("doctor", "debian-cis", "lynis"):
+            f["about"] = secdoctor_xref.about(f.get("source", "doctor"), f["id"].removeprefix("cis-").removeprefix("lynis-"))
     flat = [f for s in steps for f in s["findings"]]
     version = (_read(CODE / "VERSION") or "unknown").strip()
-    return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps,
+    return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps, "joint": joint(steps, freshness()),
             "counts": {k: sum(1 for f in flat if f["status"] == k) for k in ("problem", "warn", "ok")},
             "not_covered": NOT_COVERED}
 
 
-def write_report(report, path=REPORT, owner=None):
-    """The one thing the doctor writes: its report, to a file root creates itself. O_EXCL on a
-    fresh name, then rename over the old one, so a link planted at `path` is replaced, never
-    written through (the hub owns the folder this goes in)."""
-    path = Path(path)
-    # A random name: one the hub cannot guess and create first to block the report.
-    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
-    try:
-        os.write(fd, json.dumps(report, indent=2).encode())
-        if owner is not None:
-            os.fchown(fd, *owner)
-    finally:
-        os.close(fd)
-    os.replace(tmp, path)
+def write_report(report, path=REPORT):
+    """The one thing the doctor writes: its report, root's, 0644 (safeio: a fresh file renamed
+    over the old one, so a link planted at `path` is replaced, never written through)."""
+    from irate_box.root import safeio
+    safeio.write(path, json.dumps(report, indent=2))
 
 
 MARK = {"ok": "ok     ", "warn": "WARN   ", "problem": "PROBLEM"}

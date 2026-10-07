@@ -6,8 +6,12 @@
 # irate-box.nginx, is the default. A route changed here is changed there too.
 #
 # Rules from §5 "Two listeners":
-#   - :80 only, always plain. Captive-portal probes are HTTP; an HTTPS listener
-#     appears only when a cert file exists, and never as a redirect target.
+#   - :80 always plain. Captive-portal probes are HTTP; an HTTPS listener appears only
+#     when the box has a certificate (next-work plan step 15: root/tls.py writes its
+#     sites, imported at the end), and never as a redirect target.
+#   - The routes are snippets, (irate_box_hub) and (irate_box_addons), so the plain
+#     sites and their HTTPS twins serve the same: Caddy can't put TLS on one port of a
+#     site block whose other port is plain.
 #   - never a blanket HTTP→HTTPS redirect, never HSTS. auto_https off keeps Caddy
 #     from adding either on its own.
 #
@@ -23,7 +27,10 @@
 	admin off
 }
 
-:80 {
+(irate_box_hub) {
+	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
+	request_header -X-Irate-Front
+
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
 	# Host header passes through untouched, so server.py's probe-host check
 	# (captive.apple.com, connectivitycheck.gstatic.com, …) still fires here.
@@ -53,6 +60,15 @@
 			max_size 25MB
 		}
 		reverse_proxy 127.0.0.1:8000
+	}
+
+	# The themes page (its tile): public, private or off like the apps. Off hides only the
+	# page; the 🎨 in every page's header stays.
+	handle /themes.html {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/themes.caddy*
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
 	}
 
 	# The file drop's page and its files, behind the same switch as its upload.
@@ -155,13 +171,22 @@
 	}
 	redir /serial /serial/ permanent
 
+	# --- /addons/<id>/ → the add-on origin (below): the local add-ons' own address ----------
+	# Tiles and list pages link here, so a link stays on the hub's port and name.
+	@addon path_regexp addon ^/addons/([a-z0-9-]+/.*)$
+	redir @addon http://{host}:{$HUB_ADDON_PORT:8090}/{re.addon.1}{uri.query_string_with_question_mark} 302
+
 	# --- /notes → SilverBullet (optional add-on) ------------------------------------
 	# Markdown notes in a plain folder. Not in any profile: 502 and a greyed card until
 	# installed. Official builds are ARMv7/ARM64 only, so never on the Zero W.
-	# Path passes through — run it with  SB_URL_PREFIX=/notes  SB_PORT=3000  (binds 127.0.0.1)
+	# Path passes through (SB_URL_PREFIX=/notes), to its socket (silverbullet.service). Its
+	# capability endpoints are refused whatever the unit says: the shell (F1), the HTTP proxy,
+	# which can reach the hub's loopback API past the /admin login (F31), and the runtime API.
 	handle /notes/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
-		reverse_proxy 127.0.0.1:3000
+		@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
+		respond @capability 403
+		reverse_proxy unix//run/silverbullet/silverbullet.sock
 	}
 	redir /notes /notes/ permanent
 
@@ -257,14 +282,25 @@
 	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
 	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
 	# paths in @smart) goes to git http-backend; every other path is cgit's web view. Public:
-	# anyone may browse and clone, a push needs the admin login unless guest-push exists in
-	# $HUB_GIT_ROOT (/admin's Git page). Private: all of it behind the login. Pushes up to 64 MB.
+	# anyone may browse and clone, a push needs the admin login. Caddy does not ask the hub
+	# about each repository's preset yet (nginx does: auth_request), so public-everything works
+	# on nginx only; read-only presets hold here too, through http.receivepack. Private: all of
+	# it behind the login. Pushes up to 64 MB.
 	# Pushes go through git-http-guard.py: Caddy streams the body, and a push it cuts off at
 	# max_size would otherwise leave git waiting forever (the guard says why).
 	redir /git /git/ permanent
 	redir /git-private /git-private/ permanent
+	# Debian's highlight.js, for cgit's code view (web/cgit-hub.js).
+	handle_path /git-hl/* {
+		root * /usr/share/javascript/highlight.js
+		encode gzip
+		header Cache-Control "public, max-age=86400"
+		header X-Content-Type-Options nosniff
+		file_server
+	}
 	handle_path /git-static/* {
 		root * /usr/share/cgit
+		header X-Content-Type-Options nosniff
 		file_server
 	}
 	handle_path /git/* {
@@ -297,6 +333,9 @@
 		}
 		handle {
 			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
+			# As on nginx: scripts only the box's own; a README's HTML is already text.
+			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
+			header X-Content-Type-Options nosniff
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
@@ -327,6 +366,9 @@
 			}
 		}
 		handle {
+			# As on nginx: scripts only the box's own; a README's HTML is already text.
+			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
+			header X-Content-Type-Options nosniff
 			reverse_proxy unix//run/irate-box-git.sock {
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
@@ -348,33 +390,44 @@
 	# when the password is set; from then on the login applies. Root-owned, so the hub
 	# cannot bring it back.
 	handle /admin/* {
+		# The owner's "admin over HTTPS only" (step 15, root/tls.py): plain requests sent to
+		# the HTTPS twin, before any login. Present only while that switch is on.
+		import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-admin*.caddy
 		@unclaimed file {
 			root {$HUB_CADDY_DIR:/etc/caddy}
 			try_files /irate-box-unclaimed
 		}
 		handle @unclaimed {
-			reverse_proxy 127.0.0.1:8000
+			reverse_proxy 127.0.0.1:8000 {
+				# The hub's proof this came through here (server.py FRONT_SECRET), read
+				# from the environment at request time, so never in Caddy's saved config.
+				header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+			}
 		}
 		handle {
 			basic_auth {
 				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
 			}
-			reverse_proxy 127.0.0.1:8000
+			reverse_proxy 127.0.0.1:8000 {
+				# The hub's proof this came through here (server.py FRONT_SECRET), read
+				# from the environment at request time, so never in Caddy's saved config.
+				header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+			}
 		}
 	}
 	redir /admin /admin/ permanent
 
 	# --- /term → ttyd (the escape hatch) -------------------------------------------
 	# Shipped disabled: unit off ⇒ this returns 502 and the card is not rendered.
-	# Credential-gated in Caddy as well as ttyd's own -c, so a stray unit start is
-	# not an open root shell. Replace the hash:  caddy hash-password --plaintext …
-	# Path passes through — run ttyd with  --base-path /term  -i 127.0.0.1  -p 7681
+	# Gated here only: ttyd has no credential (F9), and listens on a socket only Caddy's
+	# group can open, so a stray unit start is not an open root shell. Replace the hash:
+	# caddy hash-password. Path passes through: ttyd runs with --base-path /term.
 	handle /term/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/term-off.caddy*
 		basic_auth {
 			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
 		}
-		reverse_proxy 127.0.0.1:7681
+		reverse_proxy unix//run/ttyd/ttyd.sock
 	}
 	redir /term /term/ permanent
 
@@ -385,3 +438,34 @@
 		level WARN
 	}
 }
+
+:80 {
+	import irate_box_hub
+}
+
+# --- the add-on origin: the local add-ons (plans/no-root-addons-plan) ------------------
+# Their own origin, a second port, so nothing they serve can reach /admin with the owner's
+# login, read the hub's storage, or script its pages. Their files are the hub user's
+# ($HUB_STATE_DIR/addons/<id>/, from the librarian, no root); nothing here runs anything or
+# proxies anywhere. The routes, one per add-on that is not off with its login and
+# Content-Security-Policy, are the root helper's (addons-routes.caddy). Caddy follows links,
+# unlike nginx's disable_symlinks: the security doctor looks for any in the folder.
+(irate_box_addons) {
+	root * {$HUB_ADDONS_ROOT:/var/lib/hub/addons}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Cache-Control "no-cache"
+		-Server
+	}
+	import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/addons-routes.caddy*
+}
+
+:{$HUB_ADDON_PORT:8090} {
+	import irate_box_addons
+}
+
+# HTTPS (next-work plan step 15): https://:443 and the add-ons' twin, each importing the same
+# snippet as its plain site, with the box's certificate. Written by root/tls.py only while HTTPS
+# is on; with none, this matches nothing and the box serves plain HTTP only.
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-site-*.caddy

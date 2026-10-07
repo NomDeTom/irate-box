@@ -7,20 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hub admin</title>
   <link rel="stylesheet" href="/style.css">
-  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='cybercore')document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <script src="/themes.js"></script>
 </head>
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>Admin</h1>
     <p class="subtitle">Options for whoever owns the box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme">
-      <span class="theme-label" aria-hidden="true">Theme</span>
-      <button type="button" data-theme-choice="light" title="Light">☀️</button>
-      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
-      <button type="button" data-theme-choice="cybercore" title="Cybercore">🏴‍☠️</button>
-      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
-    </div>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <div class="admin-layout">
@@ -34,23 +28,28 @@
         <a href="#overview">Overview</a>
         <a href="#addons">Add-ons</a>
         <a href="#access">Access</a>
+        <a href="#accounts">Accounts</a>
         <a href="#clock">Clock</a>
         <p class="admin-side-group">Library</p>
         <a href="#apps">Apps</a>
         <a href="#books">Books</a>
         <a href="#firmware">Firmware</a>
+        <a href="#mirrors">Mirrors</a>
+        <a href="#toolkits">Toolkits</a>
         <a href="#sources">Schedule and token</a>
         <p class="admin-side-group">Hub content</p>
         <a href="#saved">Saved work</a>
         <a href="#moderation">Moderation</a>
         <a href="#git">Git</a>
+        <a href="#factory">Firmware Factory</a>
+        <a href="#mesh">Mesh</a>
         <p class="admin-side-group">System</p>
         <a href="#network">Network</a>
         <a href="#security">Security</a>
         <a href="#updates">Updates</a>
         <a href="#backup">Backup</a>
         <p class="admin-side-group">Health</p>
-        <a href="#health">Services doctor</a>
+        <a href="#health">Box doctor</a>
         <a href="#secdoctor">Security doctor</a>
         <a href="#updoctor">Updates doctor</a>
       </div>
@@ -58,7 +57,7 @@
 
     <main class="admin-main">
       <!-- Background art by side-bar group (admin.js sets data-art on main). The controller's
-           desk lights are made by krab-desk.js from art/krab-controller-lit.webp and -mask.webp. -->
+           desk lights, and the Firmware Factory's, are made by krab-desk.js from art/krab-*-lit.webp and -mask.webp. -->
       <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
       <div class="helper-banner" id="helper-banner" role="alert" hidden>
         <strong>The box's root helper is not answering.</strong>
@@ -80,6 +79,8 @@
           <tbody></tbody>
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
+        <!-- The services' uptime (step 35, svchistory.py): closed by default, its inside redrawn by admin.js. -->
+        <details class="svc-uptime" id="svc-uptime"><summary>Uptime, last 7 days</summary><div id="svc-uptime-body"></div></details>
         <div id="control-results"></div>
         <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps again</a></p>
       </section>
@@ -123,6 +124,36 @@
           <summary>Installer output</summary>
           <pre class="admin-log" id="addons-log"></pre>
         </details>
+
+        <h3>Web add-ons</h3>
+        <p class="setting-desc">
+          Apps that run in the visitor's browser, added here in a minute with no installer and no
+          restart. Each is served on its own address (this box, port <span id="local-port">8090</span>),
+          so it cannot reach this page, the hub's settings or anything else on the box. An added one
+          starts <strong>off</strong>: switch it public or private when you are ready. The Library
+          pane's Apps keeps it current, at the commit the hub's code checked unless you choose the newest.
+        </p>
+        <div id="local-added"></div>
+        <h4>The catalogue</h4>
+        <p class="setting-desc">Add-ons this hub's code offers, each pinned to a commit that was checked.</p>
+        <div id="local-catalogue"></div>
+        <details class="admin-output" id="local-paste">
+          <summary>Add one by pasting its manifest</summary>
+          <div class="danger-box" role="note">
+            <p><strong>⚠️ Only do this with a manifest you have read and from someone you trust.</strong></p>
+            <p>A pasted manifest is not checked by anyone but you. It downloads someone else's code and
+            serves it to everyone on this box's network who opens it, under this box's name. That code
+            can show them anything, ask them for anything, and send what they type to wherever its
+            manifest lets it connect. It cannot reach this page or the box itself: that much the hub
+            enforces. If you are not sure, use the catalogue instead.</p>
+          </div>
+          <textarea id="local-paste-text" rows="10" spellcheck="false" placeholder='{"id": "...", "order": 70, "tile": {...}, "source": {...}, "needs": "index.html", "addon": {...}}'></textarea>
+          <label class="setting"><input type="checkbox" id="local-paste-ok">
+            <span class="setting-desc">I understand this runs someone else's code on this box's address</span></label>
+          <span class="library-buttons"><button type="button" id="local-paste-go">Add it</button></span>
+          <span class="setting-desc" id="local-paste-note" role="status"></span>
+        </details>
+        <div id="local-errors"></div>
       </section>
 
       <section class="admin-pane" id="access" aria-labelledby="access-title">
@@ -224,13 +255,53 @@
           hand, or by <code>install.sh --zim</code>, are left alone unless a source here has the same
           name.
         </p>
-        <div id="library-sources"></div>
+        <!-- The books, a page at a time (step 14: /admin/books); a book's card opens from its row. -->
+        <p class="setting-desc" id="books-summary"></p>
+        <div class="books-tools">
+          <label>Show <input type="search" id="books-q" placeholder="title or name" aria-label="Show books containing"></label>
+          <label>Language <select id="books-language"><option value="">any</option></select></label>
+          <label>State <select id="books-state"><option value="">any</option><option value="newer">newer available</option>
+            <option value="failed">check failed</option><option value="not installed">not installed</option><option value="unreadable">unreadable</option><option value="ok">up to date</option></select></label>
+          <label>Kept current <select id="books-kept"><option value="">either</option><option value="yes">yes</option><option value="no">no (by hand, or USB)</option></select></label>
+          <label>Sort <select id="books-sort"><option value="title">by title</option><option value="size">largest first</option><option value="date">newest first</option></select></label>
+        </div>
+        <div class="books-bulk" id="books-bulk" hidden>
+          <span id="books-selected"></span>
+          <button type="button" data-bulk="check">Check</button>
+          <button type="button" data-bulk="update">Update</button>
+          <button type="button" data-bulk="untrack">Stop tracking</button>
+          <button type="button" id="books-select-matching" class="link-button"></button>
+          <button type="button" id="books-select-none" class="link-button">Clear the selection</button>
+        </div>
+        <div class="scroll-x">
+          <table class="admin-table books-table" id="books-table">
+            <thead><tr><th><input type="checkbox" id="books-page-all" aria-label="Select this page"></th><th>Book</th><th>Language</th><th>Size</th><th>Date</th><th>Kept current</th><th>State</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="books-pager"><button type="button" id="books-prev">Previous</button> <span id="books-page"></span> <button type="button" id="books-next">Next</button></p>
+        <div id="library-sources" hidden></div>
         <div class="library-actions">
           <button type="button" data-all="check">Check all</button>
           <button type="button" data-all="fetch">Fetch all</button>
           <button type="button" data-all="update">Update all</button>
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
+
+        <h3>Find books in Kiwix's catalogue</h3>
+        <p class="setting-desc">
+          Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
+          manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
+          as a source that follows its newest release; Update fetches it.
+        </p>
+        <form id="catalogue-form" class="books-tools">
+          <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
+          <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
+          <button type="submit">Search</button>
+        </form>
+        <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
+        <div id="catalogue-results" class="admin-list"></div>
+        <p class="books-pager" id="catalogue-pager" hidden><button type="button" id="catalogue-more">More</button></p>
 
         <h3>Add a book source</h3>
         <p class="setting-desc">
@@ -278,22 +349,20 @@
       <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
         <h2 id="firmware-title">Firmware</h2>
         <p class="setting-desc">
-          Meshtastic firmware kept on the box for the web flasher, so a radio can be flashed with no
-          internet. Only the boards you tick are kept (a few MB each, per release); "all boards" is
-          about 600 MB a release. Checked on the library's schedule, whenever the box has internet.
+          Meshtastic's release files kept on the box for the web flasher, so a radio can be flashed
+          with no internet. Only the boards you tick are kept (a few MB each, per release); "all
+          boards" is about 600 MB a release. Checked on the library's schedule, whenever the box has
+          internet. The firmware's source code is a mirror like any other repository (Git → Mirrors);
+          the build cache is with the builds (Git → Builds). To build your own from the mirror, for
+          boards a release doesn't cover or from a fork: the <a href="#factory">Firmware Factory</a>.
         </p>
+        <p class="setting-desc" id="fw-source"></p>
         <p class="setting-desc" id="fw-status"></p>
         <form id="fw-form" class="library-form">
           <label class="inline"><input type="checkbox" name="enabled"> Keep firmware on this box</label>
           <label class="inline"><input type="checkbox" name="configs"> Keep meshtasticd's board configs (<code>bin/config.d</code>, a few hundred KB), so the calculators' pinout map lists them with no internet — even with no firmware kept</label>
           <label>Alphas to keep <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
           <label>Betas to keep <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
-          <label>Build cache, for building firmware on the box with no internet
-            <select name="cache">
-              <option value="discard">Don't keep it</option>
-              <option value="native">Keep what a headless build needs (~215 MB)</option>
-              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
-            </select></label>
           <label class="inline"><input type="checkbox" name="all_boards"> All boards</label>
           <label>Boards <input id="fw-filter" type="search" placeholder="filter: rak, heltec, t-deck…"></label>
           <div id="fw-boards" class="fw-boards"></div>
@@ -306,6 +375,76 @@
         </p>
         <h3>Kept</h3>
         <div id="fw-kept" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="mirrors" aria-labelledby="mirrors-title">
+        <h2 id="mirrors-title">Mirrors</h2>
+        <p class="setting-desc">
+          Repositories the box keeps from an upstream on the internet, by a policy: which branches,
+          how many releases, how much history, and their submodules. The librarian checks them on
+          its schedule (Schedule and token). Each is read-only on the box, and shows on the Git page
+          as a card of its own. New mirrors are public (anyone on the network can browse and clone
+          them, as on the internet); choose Private to keep one behind the admin login.
+        </p>
+        <div id="git-mirrors" class="admin-list"></div>
+        <h3>Add a mirror</h3>
+        <form id="git-mirror-add" class="library-form">
+          <label>Upstream <input name="upstream" type="url" required placeholder="https://github.com/meshtastic/firmware"></label>
+          <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" placeholder="firmware"></label>
+          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Branches <input name="branches" value="main" placeholder="main develop"></label>
+          <label>Releases to keep <input name="releases" type="number" min="0" max="20" value="2" title="GitHub releases (github.com upstreams)"></label>
+          <label>Pre-releases to keep <input name="prereleases" type="number" min="0" max="20" value="0" title="GitHub pre-releases (github.com upstreams)"></label>
+          <label>Or tags matching <input name="pattern" placeholder="v*.*.*" title="For other upstreams: a tag glob, the newest kept"></label>
+          <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
+          <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
+          <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too (so builds here need no internet)</label>
+          <button type="submit">Add mirror</button>
+        </form>
+        <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
+      </section>
+
+      <section class="admin-pane" id="toolkits" aria-labelledby="toolkits-title">
+        <h2 id="toolkits-title">Toolkits</h2>
+        <p class="setting-desc">
+          Sets of tools the box keeps in a local repository of its own, fetched while it has
+          internet and installed from there with none: for debugging, building, capturing traffic
+          and checking its security. Each installs only when you ask, with its services left
+          stopped, and is removed again after the time you choose (a day, unless you change it).
+          The library keeps each one current on its schedule (Schedule and token).
+        </p>
+        <p class="setting-desc" id="kits-summary"></p>
+        <form id="kits-budget" class="library-form inline-form">
+          <label>The cache's budget, MB <input name="budget" type="number" min="10" max="65536" step="10"></label>
+          <button type="submit">Save</button>
+          <button type="button" id="kits-refresh-all">Refresh all now</button>
+        </form>
+        <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
+        <ul class="admin-checks" id="kits-problems"></ul>
+        <div class="card-grid" id="kits-grid"></div>
+        <h3>By USB stick</h3>
+        <p class="setting-desc">
+          Carry kits to a box that never goes online: copy a cached kit onto a stick here, then import
+          it there. The stick also carries Debian's signed indexes for its packages, and an import
+          checks every package against them with the box's own keys before anything is kept.
+        </p>
+        <p class="library-buttons"><button type="button" id="kits-usb-scan">Look for USB sticks</button></p>
+        <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
+        <div id="kits-usb"></div>
+        <h3 id="kits-form-title">Add a toolkit of your own</h3>
+        <p class="setting-desc">
+          Any Debian packages this box's package lists know, kept, refreshed and removed like the
+          kits above. Each name is checked before the kit is kept.
+        </p>
+        <form id="kits-add" class="library-form">
+          <input type="hidden" name="id">
+          <label>Name <input name="title" required maxlength="60" placeholder="Radio tools"></label>
+          <label>What it is for <input name="summary" maxlength="200" placeholder="optional, one line"></label>
+          <label>Packages <textarea name="packages" rows="2" required placeholder="rtl-sdr gqrx-sdr sox"></textarea></label>
+          <label>Removed after <select name="hours"><option value="1">an hour</option><option value="4">4 hours</option><option value="24" selected>a day</option><option value="168">a week</option><option value="720">a month</option><option value="never">never</option></select></label>
+          <button type="submit">Add toolkit</button>
+          <button type="button" id="kits-add-cancel" hidden>Cancel</button>
+        </form>
       </section>
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
@@ -330,6 +469,7 @@
             </select>
           </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
+          <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256"></label>
           <button type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>
@@ -415,42 +555,185 @@
       <section class="admin-pane" id="git" aria-labelledby="git-title">
         <h2 id="git-title">Git</h2>
         <p class="setting-desc">
-          Two git servers on this box. <a href="/git/">/git/</a> is public: anyone on the network can
-          browse and clone, and pushing needs the admin login unless guests may push.
-          <a href="/git-private/">/git-private/</a> is behind the admin login for everything.
-          Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git asks for the
-          login when it is needed.
+          The repositories on this box, a card each. <a href="/git/">/git/</a> is public: anyone on
+          the network can browse and clone. <a href="/git-private/">/git-private/</a> is behind the
+          admin login. Who may push, and whether a push is built, is each repository's own: Manage
+          on its card. Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git
+          asks for the login when it is needed.
         </p>
+        <details class="git-glossary" id="git-glossary">
+          <summary>What the words mean</summary>
+          <dl>
+            <dt>Public, Private</dt><dd>Where it lives: /git/ (anyone on the network sees it) or /git-private/ (only with the admin login). Moving it changes its clone URL.</dd>
+            <dt>Who pushes</dt><dd>Anyone; only the admin; or nobody (read-only). The hub decides each push; git's own setting is the backstop.</dd>
+            <dt>Mirror</dt><dd>A copy of a repository on the internet, kept to a policy by the librarian (Library → Mirrors). Read-only here.</dd>
+            <dt>Builds</dt><dd>A push to a private repository that only the admin pushes to, whose commit has a .irate-ci.sh, is built on the box (Builds, below), if its switch is on.</dd>
+          </dl>
+        </details>
         <p class="setting-desc" id="git-usage"></p>
-        <!-- Not .settings: this switch has its own endpoint, not /admin/settings. -->
-        <div class="git-settings">
-          <label class="setting">
-            <input type="checkbox" id="git-guest-push">
-            <span><span class="setting-name">Guests may push to the public repositories</span>
-              <span class="setting-desc">Without the admin login. Anyone on the network could then
-                change or overwrite what is there; the private ones stay behind the login.</span></span>
-          </label>
-        </div>
         <p class="setting-desc action-note" id="git-note" role="status" hidden></p>
-        <h3>New repository</h3>
-        <form id="git-create" class="library-form">
+        <div class="git-filter" role="group" aria-label="Show">
+          <input id="git-search" type="search" placeholder="Search names and descriptions" aria-label="Search">
+          <span class="chips" id="git-chips-kind"></span>
+          <span class="chips" id="git-chips-area"></span>
+          <label class="git-manage-as">Manage opens <select id="git-manage-as"><option value="drawer">under the card</option><option value="side">beside the grid</option></select></label>
+        </div>
+        <div class="git-layout" id="git-layout">
+          <div class="card-grid git-grid" id="git-grid"></div>
+          <aside class="git-side" id="git-side" aria-label="Manage" hidden></aside>
+        </div>
+        <div hidden id="git-forms">
+        <form id="git-create" class="library-form git-create">
           <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
           <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
           <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
           <button type="submit">Create</button>
         </form>
         <p class="setting-desc action-note" id="git-create-note" role="status" hidden></p>
-        <h3>Public</h3>
-        <div id="git-public" class="admin-list"></div>
-        <h3>Private</h3>
-        <div id="git-private" class="admin-list"></div>
+        </div>
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
+        <form id="ci-cache-form" class="library-form">
+          <label>Firmware build cache (PlatformIO's packages for the newest Meshtastic release), so firmware builds here need no internet
+            <select name="cache">
+              <option value="discard">Don't keep it</option>
+              <option value="native">Keep what a headless build needs (~215 MB)</option>
+              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
+            </select></label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc" id="ci-cache-status"></p>
+        <p class="setting-desc action-note" id="ci-cache-note" role="status" hidden></p>
+        <p class="setting-desc" id="ci-limits"></p>
+        <form id="ci-keep-form" class="library-form inline-form">
+          <label>Runs kept per repository <input name="keep" type="number" min="1" max="50"></label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc" id="ci-offline"></p>
         <div id="ci-runs" class="admin-list"></div>
+        <div id="ci-run-view" class="git-manage" hidden></div>
+      </section>
+
+      <section class="admin-pane" id="accounts" aria-labelledby="accounts-title">
+        <h2 id="accounts-title">Accounts</h2>
+        <p class="setting-desc">
+          Who may have an account on the box. A user logs in at <a href="/account.html">/account.html</a>;
+          an admin account can do what this page does. Off, the box has guests and its admin only,
+          as before.
+        </p>
+        <form id="accounts-settings" class="library-form">
+          <label>Sign-up
+            <select name="signup">
+              <option value="off">Off: no accounts</option>
+              <option value="open">Open: anyone makes one, usable at once</option>
+              <option value="apply">Apply: anyone asks; an admin accepts</option>
+              <option value="assigned">Assigned: an admin makes them</option>
+            </select>
+          </label>
+          <label>Over plain HTTP
+            <select name="http">
+              <option value="prevented">Prevented: passwords only over HTTPS</option>
+              <option value="warning">Warning: allowed, and the page says it can be read off the air</option>
+              <option value="permitted">Permitted: allowed, nothing said</option>
+            </select>
+          </label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="accounts-note" role="status" hidden></p>
+        <p class="setting-desc" id="accounts-counts"></p>
+        <h3>Make an account</h3>
+        <form id="accounts-make" class="library-form">
+          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required></label>
+          <label>Role <select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
+          <button type="submit">Make it</button>
+        </form>
+        <p class="setting-desc">Each comes with a one-time code, for a day, for its person to set their password at /account.html.</p>
+        <p class="acct-code" id="accounts-code" hidden></p>
+        <h3>The accounts</h3>
+        <div id="accounts-list" class="admin-list"></div>
+        <h3>Shoutbox and forum</h3>
+        <form id="accounts-posting" class="library-form">
+          <label>Shoutbox: who may post
+            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          </label>
+          <label class="inline"><input type="checkbox" name="shout_marks"> A user's name marked ✓</label>
+          <label>Forum: who may post
+            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          </label>
+          <label class="inline"><input type="checkbox" name="board_marks"> A user's name marked ✓</label>
+        </form>
+        <p class="setting-desc">A logged-in user always posts under their account's name, and a guest can't use an account's name.</p>
+        <h3>The box's own admin login</h3>
+        <p class="setting-desc" id="accounts-admin-login">Looking…</p>
+        <p class="library-buttons"><button type="button" id="accounts-admin-login-switch" hidden></button></p>
+      </section>
+
+      <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">
+        <h2 id="mesh-title">Mesh</h2>
+        <p class="setting-desc">
+          The Meshtastic packets nodes and phones send to the box's MQTT broker, decoded here with
+          the channel keys below: which nodes there are, where, how they're doing, and what they
+          said. Without a channel's key its packets stay encrypted, and only that they were sent is
+          shown. Messages appear only on this page; <a href="/mesh.html">/mesh.html</a> shows
+          guests the nodes and the traffic, while the MQTT broker is public (Access).
+        </p>
+        <p class="setting-desc" id="mesh-admin-state">Looking…</p>
+        <h3>Channels</h3>
+        <div id="mesh-channels" class="admin-list"></div>
+        <form id="mesh-channel-form" class="library-form">
+          <label>Name <input name="name" maxlength="11" placeholder="LongFast" autocomplete="off"></label>
+          <label>Key <input name="key" placeholder="the channel's key, base64, as Meshtastic shows it" autocomplete="off" spellcheck="false"></label>
+          <button type="submit">Add</button>
+          <button type="button" id="mesh-longfast" class="link-button">Add Meshtastic's public LongFast</button>
+        </form>
+        <p class="setting-desc action-note" id="mesh-note" role="status" hidden></p>
+        <h3>Heard</h3>
+        <p class="setting-desc" id="mesh-admin-counts"></p>
+        <ol class="mesh-packets" id="mesh-admin-packets"></ol>
+      </section>
+
+      <section class="admin-pane" id="factory" aria-labelledby="factory-title">
+        <h2 id="factory-title">Firmware Factory</h2>
+        <p class="setting-desc">
+          Build Meshtastic firmware here, from the box's own copy of its source (a mirror, or a
+          private repository such as a fork): choose a release or a branch, then the boards. Builds
+          run one at a time, at the lowest priority, as the builder (Git → Builds), and each one's
+          use of time, memory, disk and heat is recorded, so the estimates below come from this box.
+          A family's first build here downloads its toolchain; after that it can build offline.
+        </p>
+        <p class="setting-desc bad" id="factory-paused" hidden>Paused: nothing new starts until you resume (a build under way finishes).</p>
+        <h3>Build</h3>
+        <form id="factory-form" class="factory-form">
+          <label>Source <select name="source" id="factory-source"></select></label>
+          <label>Release or branch <select name="ref" id="factory-ref"></select></label>
+          <label>Show <input type="search" id="factory-search" placeholder="board or target" aria-label="Show targets containing"></label>
+          <div id="factory-targets" class="factory-targets"></div>
+          <p class="setting-desc" id="factory-chosen"></p>
+          <button type="submit" id="factory-queue" disabled>Queue</button>
+          <p class="setting-desc action-note" id="factory-note" role="status" hidden></p>
+        </form>
+        <div class="settings" data-note="factory-tile-note">
+          <label class="setting">
+            <input type="checkbox" id="factory_tile">
+            <span>
+              <span class="setting-name">Show the factory on the front page</span>
+              <span class="setting-desc">A tile anyone on the network can see: what is building and how far along, what is waiting, and the newest builds' ESP32 images and UF2 files to download. Never logs, nor anything else of the builds.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="factory-tile-note" role="status" hidden></p>
+        <h3>The queue</h3>
+        <p class="library-buttons"><button type="button" id="factory-pause">Pause</button></p>
+        <div id="factory-waiting" class="admin-list"></div>
+        <h3>Built</h3>
+        <div id="factory-runs" class="admin-list"></div>
+        <h3>In the web flasher</h3>
+        <p class="setting-desc">Builds published from the list above, offered in the web flasher (<a href="/admin/#firmware">Firmware</a>) as a release built on this box, beside the ones the librarian keeps.</p>
+        <div id="factory-flasher" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="health" aria-labelledby="health-title">
-        <h2 id="health-title">Services doctor</h2>
+        <h2 id="health-title">Box doctor</h2>
         <p class="setting-desc">
           The box doctor: is everything the installer set up still there and working — the last
           install, the root helper, every service, Kiwix and its books, the uplink watchdog, the web
@@ -490,21 +773,28 @@
           <button type="button" id="net-scan">Look again</button>
         </div>
         <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
-        <table class="admin-table" id="net-radios">
-          <thead><tr><th>Device</th><th>Run by</th><th>Its own hotspot</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <details class="net-glossary" id="net-glossary">
+          <summary>What these words mean</summary>
+          <dl>
+            <dt>Client</dt><dd>The box joined to your WiFi, as a laptop would: its way to your network and the internet.</dd>
+            <dt>Hotspot</dt><dd>The box's own WiFi network, which guests join (an "access point").</dd>
+            <dt>Beside the client</dt><dd>Some radios can be both at once: on your WiFi, and running the hotspot as a second network.</dd>
+            <dt>Takes the radio</dt><dd>A radio that can only do one: running the hotspot means leaving your WiFi.</dd>
+            <dt>Channel</dt><dd>The slice of the WiFi band a network uses. A radio that can only use one channel at a time makes its hotspot follow your WiFi's.</dd>
+            <dt>Managed by</dt><dd>The program on the box that looks after a device's connection (NetworkManager, wpa_supplicant, …). irate-box asks it, and doesn't take over.</dd>
+            <dt>Signal</dt><dd>How strongly your WiFi is heard, in dBm: closer to 0 is stronger. About −50 is excellent, −70 weak, −80 barely there.</dd>
+          </dl>
+        </details>
+        <div class="net-devices" id="net-devices"></div>
         <ul class="admin-checks" id="net-hazards"></ul>
 
         <h3>Staying on the network</h3>
         <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
         <div class="net-settings">
-          <label class="setting-name" for="up-eager">Eagerness</label>
-          <select id="up-eager"></select>
-          <p class="setting-desc" id="up-eager-desc"></p>
-          <label class="setting-name" for="up-forgive">Forgiveness</label>
-          <select id="up-forgive"></select>
-          <p class="setting-desc" id="up-forgive-desc"></p>
+          <span class="setting-name" id="up-eager-label">Eagerness: how hard it works to get back on</span>
+          <div class="up-ladder" id="up-eager" role="radiogroup" aria-labelledby="up-eager-label"></div>
+          <span class="setting-name" id="up-forgive-label">Forgiveness: how much it puts up with first</span>
+          <div class="up-ladder" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
           <label class="setting-name" for="up-iface">Watch</label>
           <select id="up-iface"><option value="auto">The box's route to its network</option></select>
           <details id="up-custom">
@@ -512,6 +802,7 @@
             <div class="net-fields" id="up-fields"></div>
           </details>
         </div>
+        <p class="setting-desc up-will" id="up-will" role="status"></p>
         <div class="library-buttons">
           <button type="button" id="up-save">Save</button>
           <button type="button" id="up-hold">Hold repairs for an hour</button>
@@ -536,6 +827,40 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <ul class="admin-checks" id="security-findings"></ul>
+        <h3>HTTPS</h3>
+        <p class="setting-desc">
+          The box can serve every page over HTTPS too, with a certificate of its own: phones and
+          computers that install the box's certificate (from <a href="/certificate">/certificate</a>)
+          then talk to it privately, and the admin login can't be read off the WiFi. It can vouch
+          only for this box. Plain HTTP stays as it is, for everyone else and the hotspot's sign-in.
+        </p>
+        <p class="setting-desc" id="tls-state">Looking…</p>
+        <p class="library-buttons">
+          <button type="button" id="tls-make">Make the box's certificate</button>
+          <button type="button" id="tls-switch" hidden></button>
+          <button type="button" id="tls-again" hidden>Make a new CA</button>
+          <button type="button" id="tls-box" hidden>Go back to the box's own certificate</button>
+          <button type="button" id="tls-admin-only" hidden></button>
+        </p>
+        <p class="setting-desc" id="tls-admin-only-note" hidden></p>
+        <p class="setting-desc action-note" id="tls-note" role="status" hidden></p>
+        <details class="tls-own">
+          <summary>Use your own certificate</summary>
+          <p class="setting-desc">
+            For a domain you hold, minted elsewhere (the box has no public address, so a DNS
+            challenge: <code>certbot certonly --manual --preferred-challenges dns</code>, or your DNS
+            host's own tool). Devices then trust the box with nothing to install. Paste the full
+            chain (the certificate, then its intermediates) and its unencrypted private key. The
+            box checks that they match, that it hasn't expired and that the chain reaches a known CA,
+            and never replaces it on its own: renew it before it expires.
+          </p>
+          <p class="setting-desc bad" id="tls-own-plain" hidden>This page is on plain HTTP: the private key would cross the network in clear. Paste it over HTTPS, or from a device on a cable.</p>
+          <form id="tls-own-form" class="library-form">
+            <label>Certificate chain <textarea name="chain" rows="5" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
+            <label>Private key <textarea name="key" rows="4" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></label>
+            <button type="submit">Use it</button>
+          </form>
+        </details>
         <h3>The hotspot's own WiFi</h3>
         <p class="setting-desc">
           How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
@@ -701,8 +1026,36 @@
         <p class="setting-desc" id="audit-when">Not run yet.</p>
         <div class="library-buttons">
           <button type="button" id="audit-run">Run the doctor</button>
+          <button type="button" id="audit-deep">Deep audit</button>
         </div>
+        <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
+        <h3>What is what</h3>
+        <p class="setting-desc" id="joint-summary"></p>
+        <div class="card-grid" id="joint-items"></div>
+        <details class="admin-output" id="joint-alone" hidden>
+          <summary>Seen by one source only: worth a look, or a false positive</summary>
+          <ul class="admin-checks" id="joint-alone-list"></ul>
+        </details>
+        <details class="admin-output" id="joint-sources-box">
+          <summary>What each source covers, and how fresh it is</summary>
+          <table class="admin-table"><thead><tr><th>Source</th><th>Covers</th><th>From</th><th>To fix / to look at</th></tr></thead>
+            <tbody id="joint-sources"></tbody></table>
+        </details>
+        <h3>Import a scan</h3>
+        <p class="setting-desc">
+          OpenVAS (Greenbone) or nmap, run from a PC on the hotspot against the box: the outside view,
+          including software debsecan can't see. Export the report (OpenVAS: XML or CSV; nmap:
+          <code>nmap -sV -oX report.xml &lt;box&gt;</code>) and choose it here. It is read in this browser;
+          only what it found is sent to the box, and kept until the next import of the same kind.
+        </p>
+        <form id="import-form" class="library-form inline-form">
+          <label>Report <input type="file" name="file" accept=".xml,.csv,text/xml,text/csv" required></label>
+          <button type="submit">Import</button>
+        </form>
+        <p class="setting-desc action-note" id="import-note" role="status" hidden></p>
+        <ul class="admin-list" id="import-list"></ul>
+        <h3>Each source in detail</h3>
         <div id="audit-steps"></div>
         <details class="admin-output" id="audit-scope" hidden>
           <summary>What the doctor cannot see</summary>
@@ -716,7 +1069,7 @@
           The update doctor looks at what an update depends on — the network, names, the clock,
           GitHub, free space, the cached copy, the package sources — and says what is wrong and what
           to do about it. For the box itself (services, Kiwix, an install that stopped), see the
-          <a href="#health">Services doctor</a>; to check for and install updates, <a href="#updates">Updates</a>.
+          <a href="#health">Box doctor</a>; to check for and install updates, <a href="#updates">Updates</a>.
         </p>
         <div class="library-buttons">
           <button type="button" id="update-doctor">Run the update doctor</button>
@@ -747,6 +1100,7 @@
   <script src="/hub.js"></script>
 
   <script src="/krab-desk.js"></script>
+  <script src="/heatmap.js"></script>
   <script src="/admin.js"></script>
 </body>
 </html>

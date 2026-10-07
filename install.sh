@@ -7,16 +7,17 @@
 # What it sets up:
 #   /opt/irate-box            the hub (irate_box/, web/, config/), copied from a checkout or cloned
 #   /var/lib/hub              state: messages, board, store, clock; notes/ for the add-ons
-#   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, tools/, serial/ (optional)
+#   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, tools/, serial/
+#   /var/lib/hub/addons/      the local add-ons (from /admin, Add-ons), on their own port: 8090
 #   /var/lib/hub/zim/         --zim: ZIM files and the Kiwix library.xml
 #   /etc/hub/                 hub.env, admin-password
 #   /etc/nginx/conf.d/irate-box.conf   the front on :80, from the repo's irate-box.nginx
 #                             (--web caddy: /etc/caddy/Caddyfile from the repo's Caddyfile)
 #   irate-box.service         server.py on 127.0.0.1:8000 as the `hub` user
-#   silverbullet.service      --with-notes: SilverBullet on 127.0.0.1:3000 under /notes/
+#   silverbullet.service      --with-notes: SilverBullet on a socket in /run/silverbullet, under /notes/
 #   syncthing@hub.service     --with-sync: Syncthing GUI on 127.0.0.1:8384 under /sync/
 #   kiwix.service             --zim: kiwix-serve on 127.0.0.1:8081 under /wiki/
-#   ttyd.service              ttyd on 127.0.0.1:7681 under /term/; enabled by --with-term only
+#   ttyd.service              ttyd on /run/ttyd/ttyd.sock under /term/; enabled by --with-term only
 #   mosquitto.service         --with-mqtt: MQTT on :1883, and WebSockets on 127.0.0.1:9001 at /mqtt
 #   ngircd.service            --with-irc: an IRC server on :6667 (ngIRCd), for chat in any IRC app
 #   excalidraw-room.service   --with-collab: live Excalidraw sessions on 127.0.0.1:3002 (/socket.io/)
@@ -141,6 +142,9 @@ while [ $# -gt 0 ]; do
 	--with-sync) WITH_SYNC=1; shift ;;
 	--zim) ZIMS+=("$2"); shift 2 ;;
 	--with-term) WITH_TERM=1; shift ;;
+	# ELIZA was an option here (2026-10-05); it is an add-on from /admin's catalogue now. Still
+	# accepted, so an older install record replays.
+	--with-eliza) shift ;;
 	--with-mqtt) WITH_MQTT=1; shift ;;
 	--with-irc) WITH_IRC=1; shift ;;
 	--with-collab) WITH_COLLAB=1; shift ;;
@@ -163,7 +167,7 @@ while [ $# -gt 0 ]; do
 		case "$UPLINK" in *,*) case "${UPLINK#*,}" in tolerant | normal | strict) ;; *) echo "--uplink: forgiveness is tolerant, normal or strict" >&2; exit 2 ;; esac ;; esac
 		shift 2 ;;
 	--remove)
-		case "$2" in notes | sync | mqtt | irc | term | collab) REMOVE+=("$2") ;; *) die "--remove takes notes, sync, mqtt, irc, term or collab" ;; esac
+   	case "$2" in notes | sync | mqtt | irc | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term or collab" ;; esac
 		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
@@ -171,6 +175,11 @@ while [ $# -gt 0 ]; do
 	-h | --help) usage; exit 0 ;;
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
+done
+# Books from the network over HTTPS only (F22): a book swapped on the way has its pages served
+# on the hub's own origin.
+for z in ${ZIMS[@]+"${ZIMS[@]}"}; do
+	case "$z" in http://*) echo "install.sh: --zim $z: use https:// (a book fetched over plain HTTP can be swapped on the way)" >&2; exit 2 ;; esac
 done
 
 # An add-on being removed is not installed by this run, whatever else asks for it.
@@ -184,9 +193,30 @@ HUB_USER=hub
 CODE=/opt/irate-box
 STATE=/var/lib/hub
 APPS=/usr/share/hub/apps
+SB_SOCKET=/run/silverbullet/silverbullet.sock  # --with-notes: SilverBullet listens here
+TTYD_SOCKET=/run/ttyd/ttyd.sock  # --with-term: ttyd listens here
+# The local add-ons (plans/no-root-addons-plan): their own origin, this port of the web server,
+# serving $STATE/addons/<id>/; their manifests in $STATE/apps.d/. Both the hub's, so adding one
+# from /admin needs no root.
+ADDON_PORT=8090
+GIT_PORT=8093  # cgit's web view, its own origin (step 11); clones and pushes stay on the hub's port
+WIKI_PORT=8092  # Kiwix's own origin (step 11); /wiki/ on the hub's port redirects there
+NOTES_PORT=8091  # SilverBullet's own origin (next-work plan step 11); /notes/ on the hub's port redirects there
+# HTTPS (next-work plan step 15): each origin's TLS twin, listening only once the box has a
+# certificate (/admin → Security, HTTPS; root/tls.py writes the includes in $ETC/tls/front).
+TLS_PORT=443
+ADDON_TLS_PORT=8490
+NOTES_TLS_PORT=8491
+WIKI_TLS_PORT=8492
+GIT_TLS_PORT=8493
 ROOM=/usr/share/hub/room
 ETC=/etc/hub
 SB_VERSION=2.11.1
+# SilverBullet's release zips, as GitHub records them (the release's asset digests; F30: there
+# was no check at all). A new SB_VERSION needs these from: gh api repos/silverbulletmd/silverbullet/releases/tags/VERSION
+SB_SHA256_x86_64=82af0d5d008c377cdb4b49dbd21db0d21f8d14619efa40b0fdeae1dce778d018
+SB_SHA256_aarch64=4ca826b88431fcbe8d4c8f4d7d3f8cc3b076d42f724a40b6dc4d45a676d9dd87
+SB_SHA256_armv7=fb27b0cf7af3d95d03ccfbeb25c4260ce5228d6b8402d531f84535bafbe25855
 TTYD_VERSION=1.7.7
 
 # Add-ons already on this box stay added on a rerun that does not name them (an update, the
@@ -246,6 +276,52 @@ problem() {
 }
 fail=0
 
+# Folders under $STATE (F5): the hub owns $STATE, so any folder in it may have been swapped for a
+# link, and `install -d -o/-m` (chown, chmod) would change wherever the link leads. Each path is
+# walked from $STATE one folder at a time with O_NOFOLLOW, made where missing, and owned and
+# moded through its own fd: a link anywhere below $STATE stops the install instead.
+#   state_dir OWNER GROUP MODE PATH...     (each PATH under $STATE)
+# control/ and control/results/ are root's, readable by the hub's group; only requests/ is the
+# hub's (F3). A box from before kept them the hub's, and may hold links the hub left there: they
+# go (root's writers never follow one, but nothing of root's should sit in a folder with them).
+control_dirs() {
+	state_dir root "$HUB_USER" 750 "$STATE/control" "$STATE/control/results"
+	state_dir "$HUB_USER" "$HUB_USER" 700 "$STATE/control/requests"
+	find "$STATE/control" "$STATE/control/results" -mindepth 1 -maxdepth 1 \( -type l -o \( -type f -links +1 \) \) -delete
+	# Files the hub was given before are root's again: root reads some back (update.json says
+	# which commit was verified), and the hub must not be able to edit them in place.
+	find "$STATE/control" "$STATE/control/results" -mindepth 1 -maxdepth 1 -type f -exec chown -h root:"$HUB_USER" {} + -exec chmod 644 {} +
+}
+state_dir() {
+	python3 - "$STATE" "$@" <<'PY' || die "a folder under $STATE is a link or cannot be made (see above): look at what made it, remove it, and run again"
+import grp, os, pwd, sys
+base, owner, group, mode, *paths = sys.argv[1:]
+uid, gid, mode = pwd.getpwnam(owner).pw_uid, grp.getgrnam(group).gr_gid, int(mode, 8)
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+for path in paths:
+    rel = os.path.relpath(path, base)
+    if rel == "." or rel.startswith(".."):
+        sys.exit(f"state_dir: {path} is not under {base}")
+    fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for part in rel.split("/"):
+            try:
+                os.mkdir(part, 0o700, dir_fd=fd)
+            except FileExistsError:
+                pass
+            try:
+                nfd = os.open(part, flags, dir_fd=fd)
+            except OSError as exc:
+                sys.exit(f"state_dir: {path}: {part} is a link or not a folder ({exc.strerror})")
+            os.close(fd)
+            fd = nfd
+        os.fchown(fd, uid, gid)
+        os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
+PY
+}
+
 # --- the install record and log ------------------------------------------------------------
 # /var/log/irate-box/install.log keeps this run's output (the previous run's in .1), and
 # install-state.json how far it got: the step, the problems, and if it stopped early, where.
@@ -294,6 +370,15 @@ on_exit() {
 # Whatever it gets is kept in the box's own cache too, so an offline kit made from this box later
 # (/admin, Backup) can hand it on.
 OWN_CACHE=/var/cache/irate-box/downloads
+# SilverBullet's zip ($1) for $2 (its arch) is the release's, by the pinned digest; or, from an
+# offline kit, the box-made copy the kit lists in its own SHA256SUMS (as ttyd's).
+sb_sum_ok() {
+	local got want
+	got="$(sha256sum <"$1" | cut -d' ' -f1)"
+	want="$(eval "echo \${SB_SHA256_$2:-}")"
+	[ -n "$want" ] && [ "$got" = "$want" ] && return 0
+	[ -n "$DL_CACHE" ] && grep -qx "$got  silverbullet-server-linux-$2.zip" "$DL_CACHE/silverbullet-$SB_VERSION-SHA256SUMS" 2>/dev/null
+}
 fetch() {
 	local name="${3:-$(basename "$1")}"
 	if [ -n "$DL_CACHE" ] && [ -s "$DL_CACHE/$name" ]; then
@@ -399,10 +484,13 @@ make_bundle() {
 			z="silverbullet-$SB_VERSION-silverbullet-server-linux-$sb_arch.zip"
 			if kit_get "$z" "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$sb_arch.zip"; then
 				unzip -tq "$KIT_DL/$z" >/dev/null || die "$z is not a whole zip"
+				sb_sum_ok "$KIT_DL/$z" "$sb_arch" || die "$z does not match SilverBullet's published digest"
 				echo "    $a: SilverBullet $SB_VERSION"
 			elif [ "$sb_arch" = "$(own_sb_arch)" ] && /usr/local/bin/silverbullet --version 2>/dev/null | grep -q "$SB_VERSION"; then
 				# This box's installed SilverBullet, the same version, zipped as its release ships it.
 				python3 -c 'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED); z.write("/usr/local/bin/silverbullet", "silverbullet"); z.close()' "$KIT_DL/$z"
+				# Not the release's zip, so not its digest: the kit lists this one's sum itself.
+				printf '%s  silverbullet-server-linux-%s.zip\n' "$(sha256sum <"$KIT_DL/$z" | cut -d' ' -f1)" "$sb_arch" >>"$KIT_DL/silverbullet-$SB_VERSION-SHA256SUMS"
 				echo "    $a: SilverBullet $SB_VERSION (this box's installed copy; no internet for the release)"
 			else
 				echo "    $a: no SilverBullet (not in the download cache, and no internet): only needed for notes"
@@ -513,6 +601,8 @@ all_installed() {
 # own web server is the one the hub fits into, and a bare box gets nginx.
 NGINX_SITE=/etc/nginx/conf.d/irate-box.conf
 NGINX_LOGINS=/etc/nginx/irate-box.htpasswd
+# The front's secret header for /admin (server.py FRONT_SECRET), as an nginx include: root's.
+NGINX_FRONT=/etc/nginx/irate-box-front.conf
 # irate-box installed the package (so uninstall.sh --purge-packages may remove it), and it
 # turned off the package's default site (so uninstall.sh turns it back on).
 NGINX_OURS_MARK=/etc/hub/nginx-ours
@@ -600,9 +690,11 @@ CADDY_MARK=/etc/hub/caddy-from-release
 CADDY_FROM_RELEASE=0
 [ -f "$CADDY_MARK" ] && CADDY_FROM_RELEASE=1
 # fcgiwrap and cgit: the git servers (/git/, /git-private/), part of every install: ~2 MB,
-# and nothing runs until someone browses, clones or pushes.
+# and nothing runs until someone browses, clones or pushes. python3-markdown: READMEs rendered
+# on cgit's about pages (scripts/cgit-about.py), ~1 MB. libjs-highlight.js: code highlighted
+# in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit iw)
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -751,7 +843,8 @@ fi
 # --- user and directories --------------------------------------------------------
 id -u "$HUB_USER" >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin "$HUB_USER"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" "$STATE/notes"
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE"  # /var/lib is root's: no link to fear here
+state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
 install -d -m 755 "$CODE" "$APPS"
 install -d -m 750 "$ETC"
 
@@ -766,7 +859,10 @@ if [ -n "$SRC" ]; then
 		--exclude=./store --exclude=./messages.json --exclude=./board.json \
 		--exclude=./clock.json --exclude=./settings.json --exclude='./tailscale.want*' --exclude='./*.code-workspace' . |
 		tar -C "$CODE" -xf -
+	# Root's alone, whatever modes the source carried (a checkout made with umask 002 would leave
+	# files group-writable): the root helper, the doctors and this script run from here.
 	chown -R root:root "$CODE"
+	chmod -R go-w "$CODE"
 elif [ -d "$CODE/.git" ]; then
 	say "Updating $CODE"
 	git -C "$CODE" pull --ff-only
@@ -782,7 +878,7 @@ fi
 if ver="$(git -C "${SRC:-$CODE}" describe --always --dirty --tags 2>/dev/null)"; then
 	printf '%s (installed %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
 elif [ -n "$SRC" ] && [ -f "$SRC/VERSION" ]; then
-	cp "$SRC/VERSION" "$CODE/VERSION"
+	install -m 644 -o root -g root "$SRC/VERSION" "$CODE/VERSION"
 else
 	printf 'unknown (installed %s)\n' "$(date -u +%Y-%m-%d)" >"$CODE/VERSION"
 fi
@@ -799,9 +895,15 @@ fi
 rec_repo="$REPO" rec_branch="$BRANCH"
 if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 	rec_repo="$(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$REPO")"
+	# A token in the remote's URL is not recorded (install-options is world-readable: F30).
+	rec_repo="$(printf '%s' "$rec_repo" | sed -E 's#^([a-z+]+://)[^/@]*@#\1#')"
 	rec_branch="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH")"
 	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
 fi
+case "$rec_repo" in
+http://* | git://*)
+	notice "updates come from $rec_repo, a plain-text transport: the box's updater refuses it (anyone on the way could hand it code that root runs). Rerun with --repo https://… to have updates." ;;
+esac
 {
 	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch" --web "$WEB"
 	[ "$WITH_NOTES" = 1 ] && echo --with-notes
@@ -830,6 +932,16 @@ if [ -n "$APPS_SRC" ]; then
 		chown -R root:root "$APPS/$app"
 	done
 fi
+# ELIZA was a built-in add-on here (--with-eliza, 2026-10-05). It is a local add-on now, from
+# /admin's catalogue (addons/eliza.json), installed in $STATE/addons/ with no root. The old copy
+# goes, and so does its librarian source unless the local add-on has taken the name.
+if [ -d "$APPS/eliza" ] || [ -d "$APPS/.eliza.prev" ]; then
+	rm -rf "${APPS:?}/eliza" "$APPS/.eliza.prev"
+	notice "ELIZA has moved: it is an add-on in /admin's catalogue now (Add-ons). The old copy is removed; add it again there."
+	if [ ! -f "$STATE/apps.d/eliza.json" ] && grep -qs '"name": "eliza"' "$STATE/library/sources.json"; then
+		runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian remove eliza || true
+	fi
+fi
 # Prebuilt apps from the forks' irate-box-bundle.yml artifacts. The librarian downloads and
 # checks each as the hub user; hub_control.py checks it again and unpacks it as root -- the
 # same path /admin's Apps section uses later, which also keeps them current.
@@ -842,7 +954,7 @@ if [ "$APPS_FROM_ACTIONS" = 1 ]; then
 fi
 [ "$WITH_TOOLS" = 1 ] && fetch_apps+=(tools)
 if [ ${#fetch_apps[@]} -gt 0 ]; then
-	install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/library"
+	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/library"
 	for app in "${fetch_apps[@]}"; do
 		say "Fetching the $app app"
 		if zip="$(runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian app-fetch "$app")"; then
@@ -881,6 +993,17 @@ else
 	ADMIN_PW="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 fi
 
+# The front's secret for /admin (server.py FRONT_SECRET): the web server adds it to what comes
+# through its /admin route, where it asked for the login, and the hub refuses /admin without
+# it, so nothing else on the box that can reach the hub's loopback port is the admin. Made
+# once, kept across reinstalls; root's alone (systemd reads it for the hub and Caddy).
+if ! grep -qs '^HUB_FRONT_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
+	( umask 077; printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >"$ETC/front-secret.env" )
+fi
+chown root:root "$ETC/front-secret.env"
+chmod 600 "$ETC/front-secret.env"
+FRONT_SECRET="$(sed -n 's/^HUB_FRONT_SECRET=//p' "$ETC/front-secret.env")"
+
 cat >"$ETC/hub.env" <<EOF
 # Read by irate-box.service. Changes take effect on: systemctl restart irate-box
 PORT=8000
@@ -902,6 +1025,12 @@ HUB_CI_ROOT=$STATE/ci
 # The web flasher's bundle, and the firmware the librarian keeps for it (/flasher/).
 HUB_FLASHER_ROOT=$APPS/flasher
 HUB_FIRMWARE_ROOT=$STATE/firmware
+# The local add-ons' own origin: the web server's second port (/addons/<id>/ redirects there).
+HUB_ADDON_PORT=$ADDON_PORT
+# The notes' own origin (/notes/ redirects there).
+HUB_NOTES_PORT=$NOTES_PORT
+HUB_WIKI_PORT=$WIKI_PORT
+HUB_GIT_PORT=$GIT_PORT
 EOF
 
 # When :80 is the owner's, the hub takes a port of its own (8080 first); recorded, so
@@ -946,7 +1075,7 @@ if hub_site_in "$OTHER"; then
 		rm -f /etc/caddy/irate-box-unclaimed /etc/systemd/system/caddy.service.d/irate-box.conf
 		rmdir /etc/systemd/system/caddy.service.d 2>/dev/null || true
 	else
-		rm -f "$NGINX_SITE" "$NGINX_SITE.prev" "$NGINX_LOGINS" /etc/nginx/irate-box-unclaimed
+		rm -f "$NGINX_SITE" "$NGINX_SITE.prev" "$NGINX_LOGINS" "$NGINX_FRONT" /etc/nginx/irate-box-unclaimed
 		if [ -f "$NGINX_DEFAULT_MARK" ]; then
 			ln -sf ../sites-available/default /etc/nginx/sites-enabled/default
 			rm -f "$NGINX_DEFAULT_MARK"
@@ -996,13 +1125,17 @@ nginx_serves_port() {
 nginx_config() {
 	echo "# Generated by irate-box install.sh from $CODE/config/irate-box.nginx. Edits are overwritten on reinstall."
 	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/web|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" -e "s|@FIRMWARE@|$STATE/firmware|g" \
-		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" -e "s|@ACCESS@|$ETC/nginx-access.conf|g" "$CODE/config/irate-box.nginx" |
+		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" -e "s|@ACCESS@|$ETC/nginx-access.conf|g" \
+		-e "s|@FRONT@|$NGINX_FRONT|g" -e "s|@ADDON_PORT@|$ADDON_PORT|g" -e "s|@NOTES_PORT@|$NOTES_PORT|g" -e "s|@WIKI_PORT@|$WIKI_PORT|g" -e "s|@GIT_PORT@|$GIT_PORT|g" -e "s|@ADDONS@|$STATE/addons|g" \
+		-e "s|@ADDON_ACCESS@|$ETC/nginx-addons.conf|g" -e "s|@TLS@|$ETC/tls/front|g" -e "s|@TLS_PORT@|$TLS_PORT|g" \
+		-e "s|@ADDON_TLS_PORT@|$ADDON_TLS_PORT|g" -e "s|@NOTES_TLS_PORT@|$NOTES_TLS_PORT|g" -e "s|@WIKI_TLS_PORT@|$WIKI_TLS_PORT|g" \
+		-e "s|@GIT_TLS_PORT@|$GIT_TLS_PORT|g" "$CODE/config/irate-box.nginx" |
 		# A kernel without IPv6: the [::] listener would stop nginx from starting at all.
 		if [ -f /proc/net/if_inet6 ]; then cat; else sed '/listen \[::\]:/d'; fi
 }
 # Who may open each app (/admin, Apps and Add-ons: public, private or off): the choices so far,
 # or the defaults, as the web server's part, before the web server's config is checked.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 700 "$STATE/control"
+control_dirs
 access_install() {
 	HUB_WEB_SERVER="$1" HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_CADDY_HASH="${HASH:-}" \
 		"$CODE/irate-box" hub_control access-install
@@ -1029,6 +1162,8 @@ if [ "$WEB" = nginx ]; then
 	fi
 	[ -f "$NGINX_SITE" ] && cp "$NGINX_SITE" "$NGINX_SITE.prev"
 	access_install nginx >/dev/null
+	( umask 077; printf '# Generated by irate-box install.sh from %s. Root only.\nproxy_set_header X-Irate-Front "%s";\n' \
+		"$ETC/front-secret.env" "$FRONT_SECRET" >"$NGINX_FRONT" )
 	nginx_config "$HUB_PORT" >"$NGINX_SITE"
 	if ! out="$(nginx -t 2>&1)"; then
 		printf '%s\n' "$out" | tail -3 >&2
@@ -1045,7 +1180,7 @@ fi
 # --- the web server: Caddy (the fallback) ----------------------------------------------
 if [ "$WEB" = caddy ]; then
 	say "Configuring Caddy"
-	HASH="$(caddy hash-password --plaintext "$ADMIN_PW")"
+	HASH="$(printf '%s\n' "$ADMIN_PW" | caddy hash-password)"  # on stdin, not in /proc (F9)
 	CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
 	CADDY_SITE=/etc/caddy/irate-box.caddy
 	IMPORT_LINE="import $CADDY_SITE"
@@ -1067,7 +1202,7 @@ if [ "$WEB" = caddy ]; then
 		local part="$1" port="$2"
 		if [ "$part" = site ]; then
 			echo "# Generated by irate-box install.sh from $CODE/config/Caddyfile and imported by /etc/caddy/Caddyfile. Edits are overwritten on reinstall."
-			sed -n '/^:80 {/,$p' "$CODE/config/Caddyfile"
+			sed -n '/^(irate_box_hub) {/,$p' "$CODE/config/Caddyfile"
 		else
 			echo "# Generated by irate-box install.sh from $CODE/config/Caddyfile. Edits are overwritten on reinstall."
 			cat "$CODE/config/Caddyfile"
@@ -1132,6 +1267,10 @@ if [ "$WEB" = caddy ]; then
 	Environment=HUB_CODE_DIR=$CODE
 	Environment=HUB_FLASHER_ROOT=$APPS/flasher
 	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
+	Environment=HUB_ADDON_PORT=$ADDON_PORT
+	Environment=HUB_ADDONS_ROOT=$STATE/addons
+	# HUB_FRONT_SECRET, for /admin (header_up {env.HUB_FRONT_SECRET}): root's file, read by systemd.
+	EnvironmentFile=$ETC/front-secret.env
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi
@@ -1148,6 +1287,30 @@ fi
 
 
 # --- hub service -----------------------------------------------------------------
+# The sandbox for every unit that runs as the hub user, guest-facing as they are (F19): the
+# whole system read-only but what each names in ReadWritePaths, no privilege gained through a
+# setuid program, a /tmp of its own, no home folders, other users' processes out of sight, no
+# devices, kernel settings or modules, no namespaces.
+HUB_SANDBOX="ProtectSystem=strict
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectProc=invisible
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK"
+# The baseline every unprivileged unit carries (next-work plan step 17; tests/unit_guard.py fails on
+# a missing line). AF_NETLINK: glibc's name lookup asks the kernel's addresses through it.
 cat >/etc/systemd/system/irate-box.service <<EOF
 [Unit]
 Description=Irate-Box hub
@@ -1157,10 +1320,11 @@ After=network.target
 User=$HUB_USER
 Group=$HUB_USER
 EnvironmentFile=$ETC/hub.env
+EnvironmentFile=$ETC/front-secret.env
 ExecStart=$CODE/irate-box server
 WorkingDirectory=$STATE
 Restart=on-failure
-ProtectSystem=full
+$HUB_SANDBOX
 ReadWritePaths=$STATE
 
 [Install]
@@ -1173,7 +1337,7 @@ EOF
 # them from /admin with no root. The socket is the web server's group only. Who may push is
 # the web server's call (irate-box.nginx, the Caddyfile), so repos take every push it passes.
 say "Setting up the git servers"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/git" "$STATE/git/public" "$STATE/git/private"
+state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/git" "$STATE/git/public" "$STATE/git/private"
 web_group=caddy
 [ "$WEB" = nginx ] && web_group="$ngx_group"
 for area in public private; do
@@ -1184,10 +1348,24 @@ for area in public private; do
 		desc="Private repositories, behind the admin login."
 		url=/git-private/
 	fi
-	cat >"$STATE/git/cgitrc-$area" <<EOF
+	# Written as the hub (F5): the folder is the hub's, which can change the file anyway; root
+	# writing there by name would follow a link put in its place.
+	runuser -u "$HUB_USER" -- sh -c 'umask 022 && cat >"$1.new" && mv -T "$1.new" "$1"' sh "$STATE/git/cgitrc-$area" <<EOF
 # Generated by irate-box install.sh. Edits are overwritten on reinstall.
 css=/git-static/cgit.css
 logo=/git-static/cgit.png
+js=/git-static/cgit.js
+favicon=/git-static/favicon.ico
+# The hub's colours and theme, and a phone layout (config/cgit-head.html, web/cgit-hub.css).
+head-include=$CODE/config/cgit-head.html
+# READMEs shown on a repository's about page, Markdown rendered with any HTML in it shown as
+# text (the web server also forbids scripts here but the box's own). Code is highlighted in
+# the browser (cgit-head.html).
+about-filter=$CODE/scripts/cgit-about.py
+readme=:README.md
+readme=:readme.md
+readme=:README
+readme=:README.txt
 root-title=Irate-Box git ($area)
 root-desc=$desc
 virtual-root=$url
@@ -1203,7 +1381,6 @@ remove-suffix=0
 # Last: the settings above apply to every repository it finds.
 scan-path=$STATE/git/$area
 EOF
-	chmod 644 "$STATE/git/cgitrc-$area"
 done
 cat >/etc/systemd/system/irate-box-git.socket <<EOF
 [Unit]
@@ -1229,7 +1406,7 @@ User=$HUB_USER
 Group=$HUB_USER
 Environment=HOME=$STATE
 ExecStart=/usr/sbin/fcgiwrap -c 2
-ProtectSystem=full
+$HUB_SANDBOX
 # The post-receive hook of a private repository queues builds there (ci.py).
 ReadWritePaths=$STATE/git $STATE/ci/queue
 EOF
@@ -1243,12 +1420,40 @@ EOF
 say "Setting up builds on push"
 id -u hubci >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE/ci/home" --shell /usr/sbin/nologin hubci
-install -d -o hubci -g hubci -m 755 "$STATE/ci" "$STATE/ci/runs" "$STATE/ci/work" "$STATE/ci/home"
+# ci/ itself is root's (F5): hubci owns only what is inside, so it cannot swap those for links.
+state_dir root root 755 "$STATE/ci"
+state_dir hubci hubci 755 "$STATE/ci/runs" "$STATE/ci/work" "$STATE/ci/home"
 # Written by the hub (the hook), read and emptied by hubci: shared through the group.
-install -d -o "$HUB_USER" -g hubci -m 2770 "$STATE/ci/queue"
+state_dir "$HUB_USER" hubci 2770 "$STATE/ci/queue"
 for repo in "$STATE"/git/private/*.git; do
 	[ -d "$repo" ] && runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks"
 done
+# Public repositories: guests may not rewrite or delete branches, nobody may push past the
+# size cap, and every object is checked as it arrives (F18; git-hooks-public/pre-receive).
+# Each repository's push level (next-work plan step 10; gitrepos.py): a repository from before
+# gets the one that keeps its behaviour, public-everything where guest push was on, the
+# area's default otherwise. Then the old one-switch flag file goes. http.receivepack follows.
+git_level() {  # REPO DEFAULT
+	local lv
+	lv="$(runuser -u "$HUB_USER" -- git -C "$1" config --get irate-box.write 2>/dev/null)" || lv=""
+	[ -n "$lv" ] || { lv="$2"; runuser -u "$HUB_USER" -- git -C "$1" config irate-box.write "$lv"; }
+	runuser -u "$HUB_USER" -- git -C "$1" config http.receivepack "$([ "$lv" = nobody ] && echo false || echo true)"
+}
+pub_default=admin
+[ -f "$STATE/git/guest-push" ] && pub_default=everyone
+for repo in "$STATE"/git/public/*.git; do
+	[ -d "$repo" ] || continue
+	runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks-public"
+	runuser -u "$HUB_USER" -- git -C "$repo" config receive.fsckObjects true
+	git_level "$repo" "$pub_default"
+done
+for repo in "$STATE"/git/private/*.git; do
+	[ -d "$repo" ] && git_level "$repo" admin
+done
+if [ -f "$STATE/git/guest-push" ]; then
+	rm -f "$STATE/git/guest-push"
+	notice "guest push was on, so each public repository is now public-everything (anyone may push); change them one by one on /admin's Git page"
+fi
 cat >/etc/systemd/system/irate-box-ci.path <<EOF
 [Unit]
 Description=Irate-Box builds on push: watch the queue ($STATE/ci/queue)
@@ -1278,6 +1483,10 @@ CPUWeight=10
 IOSchedulingClass=idle
 MemoryHigh=50%
 MemoryMax=65%
+# Only the namespaces an offline build needs (ci.py OFFLINE: a user namespace, and a network one
+# with only loopback). Not IPAccounting nor IPAddressDeny: the Lyra's vendor kernel can't attach
+# systemd's cgroup programs (bpf-firewall, error 524), so they count nothing and block nothing.
+RestrictNamespaces=user net
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
@@ -1292,6 +1501,7 @@ if [ "$WITH_NOTES" = 1 ]; then
 		tmp="$(mktemp -d)"
 		fetch "https://github.com/silverbulletmd/silverbullet/releases/download/$SB_VERSION/silverbullet-server-linux-$SB_ARCH.zip" \
 			"$tmp/sb.zip" "silverbullet-$SB_VERSION-silverbullet-server-linux-$SB_ARCH.zip"
+		sb_sum_ok "$tmp/sb.zip" "$SB_ARCH" || die "the SilverBullet zip does not match its published digest (SB_SHA256_$SB_ARCH)"
 		unzip -q -o "$tmp/sb.zip" -d "$tmp"
 		bin="$(find "$tmp" -type f -name silverbullet | head -1)"
 		[ -n "$bin" ] || die "no silverbullet binary in the release zip"
@@ -1304,6 +1514,9 @@ if [ "$WITH_NOTES" = 1 ]; then
 #SB_READ_ONLY=true
 #SB_USER=user:password
 EOF
+	# The socket's group: the web server's, so it (and the hub, its owner) can connect, and
+	# nothing else can.
+	if [ "$WEB" = nginx ]; then sb_group="$ngx_group"; else sb_group="$(id -gn caddy 2>/dev/null || echo root)"; fi
 	cat >/etc/systemd/system/silverbullet.service <<EOF
 [Unit]
 Description=SilverBullet notes for Irate-Box (/notes/)
@@ -1312,15 +1525,45 @@ After=network.target
 [Service]
 User=$HUB_USER
 Group=$HUB_USER
-# Must match the web server's route, which passes /notes through unstripped.
-Environment=SB_URL_PREFIX=/notes
-Environment=SB_HOSTNAME=127.0.0.1
-Environment=SB_PORT=3000
-Environment=SB_FOLDER=$STATE/notes
+# silverbullet.env (the owner's: SB_USER, SB_READ_ONLY) cannot undo what is set on the command
+# line below, as it could an Environment= line here (an EnvironmentFile wins over those):
+#   - SB_SHELL_BACKEND=off: no shell commands at /notes/.shell (F1);
+#   - a socket, not a port: with no IP networking at all (RestrictAddressFamilies), its HTTP
+#     proxy (/notes/.proxy) cannot reach the hub's loopback API, which trusts the web server
+#     in front to have asked for the login (F31). The web server also refuses /notes/.shell,
+#     .proxy and .runtime outright.
+#   - the prefix must match the web server's route, which passes /notes through unstripped.
 EnvironmentFile=-$ETC/silverbullet.env
-ExecStart=/usr/local/bin/silverbullet
-WorkingDirectory=$STATE
+ExecStart=/usr/bin/env SB_SHELL_BACKEND=off SB_UNIX_SOCKET=$SB_SOCKET SB_URL_PREFIX=/notes SB_FOLDER=$STATE/notes /usr/local/bin/silverbullet
+# As root (+): the socket to the web server's group, once SilverBullet has made it (the start
+# timeout bounds the wait).
+ExecStartPost=+/bin/sh -c 'until [ -S $SB_SOCKET ]; do sleep 0.1; done; chgrp $sb_group $SB_SOCKET && chmod 660 $SB_SOCKET'
+RuntimeDirectory=silverbullet
+RuntimeDirectoryMode=0755
+WorkingDirectory=$STATE/notes
 Restart=on-failure
+# Writes only its notes folder: never the root helper's queue or anything else the hub owns.
+ProtectSystem=strict
+ReadWritePaths=$STATE/notes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
 
 [Install]
 WantedBy=multi-user.target
@@ -1343,24 +1586,29 @@ fi
 # --- Kiwix -----------------------------------------------------------------------
 if [ ${#ZIMS[@]} -gt 0 ]; then
 	say "Adding ZIMs to the Kiwix library"
-	install -d -o "$HUB_USER" -g "$HUB_USER" "$STATE/zim"
+	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/zim"
 	for z in "${ZIMS[@]}"; do
 		case "$z" in
 		http://* | https://*)
 			f="$STATE/zim/$(basename "${z%%\?*}")"
 			if [ ! -s "$f" ]; then
-				# -C - resumes a .part left by an earlier, interrupted run.
-				curl -fL --retry 5 -C - -o "$f.part" "$z"
-				mv "$f.part" "$f"
+				# -C - resumes a .part left by an earlier, interrupted run. As the hub, in the
+				# hub's folder (F3: as root, a link at $f.part would be written through).
+				runuser -u "$HUB_USER" -- curl -fL --retry 5 -C - -o "$f.part" "$z"
+				runuser -u "$HUB_USER" -- mv -T "$f.part" "$f"
 			fi
 			;;
 		*)
 			[ -f "$z" ] || die "--zim: no such file: $z"
 			f="$STATE/zim/$(basename "$z")"
-			[ "$(realpath "$z")" = "$f" ] || cp "$z" "$f"
+			# Root reads the owner's file; the hub writes the copy in its own folder (F3).
+			if [ "$(realpath "$z")" != "$f" ]; then
+				runuser -u "$HUB_USER" -- sh -c 'cat >"$1.part" && mv -T "$1.part" "$1"' sh "$f" <"$z" ||
+					die "--zim: could not copy $z to $f"
+			fi
 			;;
 		esac
-		chown "$HUB_USER:$HUB_USER" "$f"
+		chown -h "$HUB_USER:$HUB_USER" "$f"
 	done
 fi
 
@@ -1384,6 +1632,8 @@ Group=$HUB_USER
 Environment=ZIM_CLUSTERCACHE=4
 ExecStart=/usr/bin/kiwix-serve --threads 2 --library --monitorLibrary --blockexternal --nodatealiases --address 127.0.0.1 --port 8081 --urlRootLocation /wiki $STATE/zim/library.xml
 Restart=on-failure
+# It reads the books and writes nothing (step 17: tried on the Lyra, 2026-10-07).
+$HUB_SANDBOX
 
 [Install]
 WantedBy=multi-user.target
@@ -1558,9 +1808,7 @@ ExecStart=/usr/bin/node --max-old-space-size=48 $ROOM/dist/index.js
 Restart=on-failure
 MemoryHigh=80M
 MemoryMax=128M
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
+$HUB_SANDBOX
 
 [Install]
 WantedBy=multi-user.target
@@ -1579,17 +1827,23 @@ if ! /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
 	install -m 755 "$tmp/ttyd.$TTYD_ARCH" /usr/local/bin/ttyd
 	rm -rf "$tmp"
 fi
-# Same credential as the web server's gate, so the Basic-auth header it passes on
-# satisfies ttyd too; the terminal itself is /bin/login, so a real account is still needed.
-( umask 077; printf 'TTYD_CREDENTIAL=admin:%s\n' "$ADMIN_PW" >"$ETC/ttyd.env" )
+# No credential of its own (F9: ttyd's was the admin password, on its command line, readable
+# in /proc by every process for as long as it ran). It listens on a socket only the web
+# server's group can open, so the web server's admin login is the gate, and a stray start is
+# not a root shell on loopback. The terminal itself is /bin/login: a real account is needed.
+rm -f "$ETC/ttyd.env"
+if [ "$WEB" = nginx ]; then term_group="$ngx_group"; else term_group="$(id -gn caddy 2>/dev/null || echo root)"; fi
 cat >/etc/systemd/system/ttyd.service <<EOF
 [Unit]
 Description=ttyd terminal for Irate-Box (/term/), off unless install.sh --with-term
 After=network.target
 
 [Service]
-EnvironmentFile=$ETC/ttyd.env
-ExecStart=/usr/local/bin/ttyd --interface lo --port 7681 --base-path /term --credential \${TTYD_CREDENTIAL} --writable /bin/login
+ExecStart=/usr/local/bin/ttyd --interface $TTYD_SOCKET --base-path /term --check-origin --writable /bin/login
+# As root (+): the socket to the web server's group, once ttyd has made it.
+ExecStartPost=+/bin/sh -c 'until [ -S $TTYD_SOCKET ]; do sleep 0.1; done; chgrp $term_group $TTYD_SOCKET && chmod 660 $TTYD_SOCKET'
+RuntimeDirectory=ttyd
+RuntimeDirectoryMode=0755
 Restart=on-failure
 
 [Install]
@@ -1600,8 +1854,7 @@ EOF
 # /admin starts and stops services and changes the admin password, which need root. The
 # hub only queues a request in $STATE/control/requests/; this path unit runs hub_control.py
 # as root, which acts on its own allow-list only and answers in $STATE/control/results/.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 700 "$STATE/control" "$STATE/control/requests"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/control/results"
+control_dirs
 cat >/etc/systemd/system/irate-box-control.service <<EOF
 [Unit]
 Description=Irate-Box: carry out /admin requests that need root (services, admin password)
@@ -1639,7 +1892,7 @@ say "Publishing this box's own source"
 src_ver="$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
 # No git version (installed from a copy without its history): name it after the install date.
 case "$src_ver" in "" | unknown) src_ver="local-$(date -u +%Y%m%d)" ;; esac
-install -d -o root -g root -m 755 "$STATE/source"
+state_dir root root 755 "$STATE/source"
 src_tar="$STATE/source/irate-box-source.tar.gz"
 src_tmp="$(mktemp "$STATE/source/.irate-box-source.XXXXXX")"
 if tar -C "$(dirname "$CODE")" --exclude=__pycache__ --exclude='*.pyc' \
@@ -1660,6 +1913,7 @@ if [ -f "$src_tar" ] && runuser -u "$HUB_USER" -- sh -c '
 	repo="$1" tar="$2" ver="$3"
 	[ -d "$repo" ] || git init -q --bare -b main "$repo"
 	git -C "$repo" config http.receivepack false
+	git -C "$repo" config irate-box.write nobody  # public-read-only on the Git page: the box writes it, nobody pushes
 	printf "This box'"'"'s own source: irate-box %s, as installed (AGPL-3.0-or-later; see LICENSES/)\n" "$ver" >"$repo/description"
 	scratch="$(mktemp -d)"; trap "rm -rf \"$scratch\"" EXIT
 	# The tarball, unpacked: the same files as /source, root/ included (unreadable in $CODE here).
@@ -1691,7 +1945,6 @@ fi
 # through the root helper, so an update keeps what the owner chose there.
 say "Looking at the network"
 "$CODE/irate-box" netinv --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
-chown "$HUB_USER:$HUB_USER" "$STATE/control/netinv.json" 2>/dev/null || true
 if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
 	up="${UPLINK:-patient,normal}"
 	if [ "$up" = "${up#*,}" ]; then
@@ -1731,7 +1984,7 @@ EOF
 # librarian.py keeps ZIM books current from the sources set on /admin (Library). It runs
 # as the hub user: a new version is swapped in under the same file name and library.xml is
 # rebuilt, which kiwix-serve's --monitorLibrary picks up. No restart, so no root needed.
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/zim" "$STATE/library" "$STATE/firmware"
+state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/zim" "$STATE/library" "$STATE/firmware"
 cat >/etc/systemd/system/irate-box-librarian.service <<EOF
 [Unit]
 Description=Irate-Box librarian: update the ZIM books whose check is due (/admin, Library)
@@ -1742,12 +1995,16 @@ Wants=network-online.target
 Type=oneshot
 User=$HUB_USER
 Group=$HUB_USER
+# The hub's own settings (hub.env): the git, firmware and other roots it keeps. Without them the
+# mirrors' repositories resolved under $CODE (read-only), and every scheduled run stopped there,
+# before the books' and the hub's own updates (2026-10-06).
+EnvironmentFile=$ETC/hub.env
 Environment=HUB_STATE_DIR=$STATE
 ExecStart=$CODE/irate-box librarian update --scheduled
 # A download competes with guests for the card and the CPU; let it lose.
 Nice=10
 IOSchedulingClass=idle
-ProtectSystem=full
+$HUB_SANDBOX
 ReadWritePaths=$STATE
 EOF
 cat >/etc/systemd/system/irate-box-librarian.timer <<EOF
@@ -1773,9 +2030,9 @@ if systemctl cat tailscaled.service >/dev/null 2>&1; then
 	WITH_TAILSCALE=1
 	say "Putting Tailscale under the remote-access switch on /admin"
 	if [ ! -f "$STATE/tailscale.want" ]; then
-		if systemctl is-active --quiet tailscaled; then echo on; else echo off; fi \
-			>"$STATE/tailscale.want"
-		chown "$HUB_USER:$HUB_USER" "$STATE/tailscale.want"
+		# Written as the hub, in its folder (F13).
+		if systemctl is-active --quiet tailscaled; then echo on; else echo off; fi |
+			runuser -u "$HUB_USER" -- sh -c 'cat >"$1"' sh "$STATE/tailscale.want"
 	fi
 	install -d /etc/systemd/system/tailscaled.service.d
 	cat >/etc/systemd/system/tailscaled.service.d/irate-box.conf <<'EOF'
@@ -1790,7 +2047,7 @@ Description=Irate-Box: apply the remote-access switch ($STATE/tailscale.want)
 
 [Service]
 Type=oneshot
-Environment=HUB_STATE_DIR=$STATE
+Environment=HUB_STATE_DIR=$STATE HUB_USER=$HUB_USER
 ExecStart=$CODE/scripts/tailscale-apply.sh
 EOF
 	cat >/etc/systemd/system/irate-box-tailscale.path <<EOF
@@ -1811,7 +2068,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-Environment=HUB_STATE_DIR=$STATE
+Environment=HUB_STATE_DIR=$STATE HUB_USER=$HUB_USER
 ExecStart=$CODE/scripts/tailscale-apply.sh --boot
 
 [Install]
@@ -1879,7 +2136,9 @@ if [ "$WITH_SYNC" = 1 ]; then
 	st config options raw-max-folder-concurrency set 1
 	# Same credentials as the web server's gate, so the one Basic-auth prompt satisfies both.
 	st config gui user set admin
-	st config gui password set "$ADMIN_PW"
+	# Through Syncthing's REST API, the password on stdin: never on a command line (F9).
+	printf '%s\n' "$ADMIN_PW" | HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" hub_control syncthing-gui-password ||
+		problem "could not set Syncthing's GUI password (/sync/ keeps its old one)"
 	if [ "$WITH_NOTES" = 1 ] && ! st config folders list | grep -qx hub-notes; then
 		st config folders add --id hub-notes --label "Hub notes" --path "$STATE/notes"
 	fi

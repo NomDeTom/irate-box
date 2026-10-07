@@ -13,10 +13,15 @@
 set -eu
 
 WANT=${HUB_STATE_DIR:-/var/lib/hub}/tailscale.want
+HUB_USER=${HUB_USER:-hub}
+# The file is the hub's, in the hub's folder: root writes it only as the hub, so a link the hub
+# put there leads nowhere the hub could not write already (F13).
+want_off="runuser -u $HUB_USER -- sh -c 'printf \"off\\n\" >\"\$1\"' sh $WANT"
 OFF_TIMER=irate-box-tailscale-off
 
 mode=off secs=
-if [ -r "$WANT" ]; then
+# A plain file only: not a link, nor a FIFO that would hang this.
+if [ -f "$WANT" ] && [ ! -L "$WANT" ]; then
 	read -r mode secs <"$WANT" || true
 fi
 # Written by the hub, so parsed strictly: anything unexpected means off.
@@ -24,8 +29,7 @@ case "$mode" in on | off) ;; *) mode=off ;; esac
 case "$secs" in *[!0-9]*) mode=off secs= ;; esac
 
 if [ "${1:-}" = --boot ] && [ -n "$secs" ]; then
-	# Truncate rather than replace, so the file stays the hub's.
-	printf 'off\n' >"$WANT"
+	eval "$want_off"
 	mode=off secs=
 fi
 
@@ -38,7 +42,7 @@ if [ "$mode" = on ]; then
 	if [ -n "$secs" ]; then
 		# Writing "off" re-triggers the path unit, which stops tailscaled.
 		systemd-run --quiet --unit="$OFF_TIMER" --on-active="${secs}s" \
-			/bin/sh -c "printf 'off\\n' >'$WANT'"
+			/bin/sh -c "$want_off"
 	fi
 else
 	systemctl stop tailscaled.service

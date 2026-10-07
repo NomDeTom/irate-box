@@ -7,22 +7,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Set up the hub</title>
   <link rel="stylesheet" href="/style.css">
-  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='cybercore')document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <script src="/themes.js"></script>
 </head>
 <!-- Served at /admin/ while no admin password has been chosen (server.py, unclaimed()).
      Nothing else under /admin answers until one is. -->
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>Set up</h1>
     <p class="subtitle">Step 1 of 5: choose the admin password for this box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme">
-      <span class="theme-label" aria-hidden="true">Theme</span>
-      <button type="button" data-theme-choice="light" title="Light">☀️</button>
-      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
-      <button type="button" data-theme-choice="cybercore" title="Cybercore">🏴‍☠️</button>
-      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
-    </div>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section>
@@ -82,7 +76,7 @@
       form.querySelector('button').disabled = true;
       try {
         const r = await fetch('/admin/setup', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' }, body: JSON.stringify({ password: pw }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);

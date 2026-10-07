@@ -1,63 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* SPDX-FileCopyrightText: 2026 NomDeTom */
+@import url("palette.css");
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  color-scheme: dark;
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --border: #2a2d3a;
-  --accent: #7c6af7;
-  /* Text drawn on top of --accent. Every palette sets its own; white only
-     works while the accent is dark enough to carry it. */
-  --accent-ink: #fff;
-  /* Author colours carry only a hue (see shoutbox.js); each palette supplies the
-     saturation and lightness that stay legible on its own surface. */
-  --author-s: 70%;
-  --author-l: 72%;
-  --text: #e2e4ef;
-  --muted: #6b6f8a;
-  --shadow: rgba(0, 0, 0, 0.4);
-  /* Service states (services.html) and the memory/disk bars. */
-  --ok: #4ade80;
-  --warn: #fbbf24;
-  --radius: 10px;
-}
-
-/* Light palette: applied when the OS asks for it and the user has not overridden,
-   or when the user picked "light" explicitly. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --bg: #f4f5f9;
-    --surface: #ffffff;
-    --border: #d9dbe6;
-    --accent: #5b4bd6;
-    --accent-ink: #fff;
-    --author-s: 55%;
-    --author-l: 38%;
-    --text: #1b1d27;
-    --muted: #6b6f8a;
-    --shadow: rgba(20, 20, 40, 0.15);
-    --ok: #15803d;
-    --warn: #b45309;
-  }
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f4f5f9;
-  --surface: #ffffff;
-  --border: #d9dbe6;
-  --accent: #5b4bd6;
-  --accent-ink: #fff;
-  --author-s: 55%;
-  --author-l: 38%;
-  --text: #1b1d27;
-  --muted: #6b6f8a;
-  --shadow: rgba(20, 20, 40, 0.15);
-  --ok: #15803d;
-  --warn: #b45309;
-}
 
 body {
   background: var(--bg);
@@ -116,6 +62,40 @@ header .subtitle {
   background: var(--accent);
   color: var(--accent-ink);
 }
+/* 🎨: the themes other than light and dark (themes.js), in a menu under the picker. */
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 15rem;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.theme-menu[hidden] { display: none; }
+.theme-picker .theme-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--text);
+  text-align: left;
+  line-height: 1.3;
+}
+.theme-picker .theme-menu button:hover { background: var(--bg); }
+.theme-picker .theme-menu button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.theme-menu-name { font-size: 0.9rem; }
+.theme-menu-desc { font-size: 0.75rem; opacity: 0.8; white-space: normal; }
 
 h2 {
   font-size: 0.75rem;
@@ -179,6 +159,9 @@ h2 {
 .service-card {
   display: flex;
   flex-direction: column;
+  /* Emoji, name and description centred in the card. */
+  align-items: center;
+  text-align: center;
   gap: 0.3rem;
   padding: 1.2rem 1rem;
   background: var(--surface);
@@ -208,6 +191,14 @@ h2 {
 }
 
 .qr-card { cursor: default; }
+/* The Firmware Factory's tile (hub.js): two cells wide, its downloads a short list that scrolls. */
+.factory-card { cursor: default; grid-column: span 2; text-align: left; align-items: flex-start; }
+.factory-card:hover { transform: none; border-color: var(--border); }
+.factory-card .bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.factory-card .bar[hidden] { display: none; }
+.factory-card .bar span { display: block; height: 100%; width: 0; background: var(--accent); }
+.factory-downloads { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.8rem; max-height: 9rem; overflow-y: auto; width: 100%; }
+.factory-build a { margin-right: 0.35rem; }
 .qr-card:hover { transform: none; border-color: var(--border); }
 .qr-card .qr { display: block; width: 96px; max-width: 100%; }
 .qr-card .qr svg { display: block; width: 100%; height: auto; background: #fff; border-radius: 6px; padding: 4px; box-sizing: border-box; }
@@ -599,6 +590,10 @@ body.app-frame { margin: 0; padding: 0; max-width: none; height: 100dvh; display
 @media (prefers-reduced-motion: reduce) { .app-bar { transition: none; } }
 .app-bar a { color: var(--text); text-decoration: none; }
 .app-home { font-weight: 600; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--accent); color: var(--accent-ink) !important; }
+/* ↑ the list page an app was opened from (app.js, ?from=). */
+.app-up { padding: 0.15rem 0.6rem; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap;
+  max-width: 40vw; overflow: hidden; text-overflow: ellipsis; color: var(--text) !important; }
+.app-up[hidden] { display: none; }
 .app-title { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-out { color: var(--muted) !important; padding: 0 0.25rem; }
 body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
@@ -607,7 +602,8 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .box-grid { margin-top: 1rem; }
 .system-card { cursor: default; justify-content: center; gap: 0.55rem; }
 .system-card:hover { transform: none; border-color: var(--border); }
-.meter { display: flex; flex-direction: column; gap: 0.25rem; }
+/* Full width in the card, which centres its other contents. */
+.meter { display: flex; flex-direction: column; gap: 0.25rem; align-self: stretch; }
 .meter[hidden] { display: none; }
 .meter-label { font-size: 0.8rem; color: var(--muted); }
 .meter-label b { color: var(--text); font-weight: 600; }
@@ -619,6 +615,16 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .sub-header { margin-bottom: 1.5rem; }
 .sub-header h1 { font-size: 1.8rem; color: var(--accent); }
 .sub-header .subtitle { color: var(--muted); margin-top: 0.25rem; }
+/* menu.banner: a list page's text art (e.g. ELIZA's), as a faint ident in the bottom-right corner
+   behind the list, like the krabs (.admin-art). Left-aligned, no wrapping, and no ligatures:
+   coding fonts (Cascadia Code, Fira Code…) would join its "//" into one glyph. */
+.menu-ident {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none; margin: 0;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0;
+  font-size: clamp(5px, 1.05vw, 10px); line-height: 1.1; letter-spacing: 0;
+  white-space: pre; text-align: left; color: var(--text); opacity: 0.12;
+}
 .item-section { margin-bottom: 1.75rem; }
 .item-section h2 { margin-bottom: 0.6rem; }
 .item-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -628,16 +634,25 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
   border-radius: var(--radius); color: var(--text); text-decoration: none;
 }
 .item-list a:hover { border-color: var(--accent); }
+/* The Themes page's choices (themes-page.js): list items that are buttons. */
+.item-list .theme-choice {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.75rem; width: 100%;
+  padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.item-list .theme-choice:hover { border-color: var(--accent); }
+.item-list .theme-choice[aria-checked="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.item-list .theme-choice[aria-checked="true"] .name::after { content: " ✓"; color: var(--accent); }
 .item-list a.down { opacity: 0.4; pointer-events: none; }
 .item-list .name { font-weight: 600; }
 .item-list .desc { font-size: 0.8rem; color: var(--muted); }
 .service-row .desc { font-family: ui-monospace, monospace; flex: 1; }
-.state { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid currentColor; }
+.state { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .state-running { color: var(--ok); }
 .state-stopped { color: var(--warn); }
 .state-missing { color: var(--muted); }
 /* The same picker as the home page header, sitting in the hub bar instead. */
-.app-bar .theme-picker { position: static; padding: 1px; }
+.app-bar .theme-picker { position: relative; padding: 1px; }
 .app-bar .theme-picker button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }
 
 /* Library (admin): sources, the add form and the policy. */
@@ -667,6 +682,13 @@ body.admin button.link-button {
   text-decoration: underline;
 }
 .setting-desc.bad { color: #e5484d; }
+.setting-desc.warn { color: var(--warn); }
+/* The heavy warning before a pasted add-on (admin.html, Web add-ons). */
+.danger-box { margin: 0.75rem 0; padding: 0.75rem 1rem; border: 2px solid #e5484d; border-radius: var(--radius);
+  background: color-mix(in srgb, #e5484d 8%, var(--surface)); display: flex; flex-direction: column; gap: 0.5rem; }
+#local-paste textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.8rem; padding: 0.5rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
+#local-added, #local-catalogue, #local-errors { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 
 
 /* Admin: a sidebar of pages beside one pane at a time (PatternFly's vertical navigation,
@@ -699,16 +721,30 @@ body.admin button.link-button {
 .art-page { scrollbar-gutter: stable; }
 /* The same art on a public page (Services: data-art on its body), behind its sections. */
 body[data-art] > header, body[data-art] > section { position: relative; z-index: 1; }
+/* The header one layer above: with both on 1, a later section painted over the header's open
+   🎨 theme menu (Tom, 2026-10-06). */
+body[data-art] > header { z-index: 2; }
 [data-art-side="left"] .admin-art { right: auto; left: 1rem; background-position: left bottom; }
 .admin-art {
   display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;
   width: min(30vw, 22rem); aspect-ratio: 520 / 539; background: no-repeat center / contain; opacity: 0.16;
 }
-[data-art="doctor"] .admin-art { display: block; background-image: url("art/krab-doctor.webp"); }
+[data-art="doctor"] .admin-art {
+  display: block; background-image: url("art/krab-doctor.webp"); aspect-ratio: 1;
+}
+[data-art="welcome-controller"] .admin-art {
+  display: block; background-image: url("art/krab-controller-clipboard.webp"); aspect-ratio: 1;
+}
 [data-art="librarian"] .admin-art { display: block; background-image: url("art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
 [data-art="electronics"] .admin-art { display: block; background-image: url("art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
+/* The workbench (Toolkits) is a desk too: shown the controller desk's size. */
+[data-art="workbench"] .admin-art { display: block; background-image: url("art/krab-workbench.webp");
+  width: min(46vw, 34rem); aspect-ratio: 900 / 315; opacity: 0.22; }
 [data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp");
   width: min(46vw, 34rem); aspect-ratio: 900 / 317; opacity: 0.22; }
+/* The Firmware Factory's production line: the desk's size, with lights of its own (krab-desk.js). */
+[data-art="factory"] .admin-art { display: block; background-image: url("art/krab-factory.webp");
+  width: min(46vw, 34rem); aspect-ratio: 900 / 266; opacity: 0.22; }
 /* The desk's lights: the picture above is the desk dark (krab-controller.webp). krab-desk.js reads
    the colour mask (krab-controller-mask.webp; each blob is one light, pink the yellow ones, green
    the blue ones), shares the blobs out into groups, and adds each group as an <i> in .art-lamps:
@@ -716,16 +752,35 @@ body[data-art] > header, body[data-art] > section { position: relative; z-index:
    grown from them (the first canvas) that flutters on its own. The yellow groups blink in
    patterns of their own; the blue ones glow up and down. The crab is over them all. */
 .art-lamps, .art-krab { display: none; position: absolute; inset: 0; }
-[data-art="controller"] .art-lamps, [data-art="controller"] .art-krab { display: block; }
+[data-art="controller"] .art-lamps, [data-art="controller"] .art-krab, [data-art="factory"] .art-lamps { display: block; }
 .art-lamps i, .art-lamps canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .art-lamps i { will-change: opacity; }
 .art-krab { background: url("art/krab-controller-krab.webp") no-repeat center / contain; }
 /* No motion asked for: krab-desk.js leaves every light on, as in the picture. */
 @media (max-width: 760px) {
   .admin-art { width: 45vw; opacity: 0.12; }
-  [data-art="controller"] .admin-art { width: 70vw; opacity: 0.16; }
+  [data-art="controller"] .admin-art, [data-art="workbench"] .admin-art, [data-art="factory"] .admin-art { width: 70vw; opacity: 0.16; }
 }
 @media print { .admin-art { display: none !important; } }
+/* The uptime heatmaps (heatmap.js): a label column, then the cells; colours from the palette. */
+.heatmap { display: grid; gap: 2px; margin: 0.5rem 0; overflow-x: auto; }
+.hm-row { display: grid; grid-template-columns: 4.5rem repeat(var(--hm-cols), minmax(0.55rem, 1fr)); gap: 2px; align-items: center; }
+.hm-label, .hm-col { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.hm-col { text-align: left; }
+.hm-cell { display: block; aspect-ratio: 1; min-height: 0.55rem; border-radius: 2px; position: relative; }
+.hm-full { background: var(--ok); }
+.hm-most { background: color-mix(in srgb, var(--ok) 55%, var(--warn)); }
+.hm-part { background: var(--warn); }
+.hm-down { background: #e5484d; }
+.hm-off { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.hm-none { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+.hm-mark::after { content: ""; position: absolute; inset: 35%; border-radius: 50%; background: var(--bg); opacity: 0.8; }
+.hm-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.75rem; color: var(--muted); }
+.hm-key { display: inline-flex; align-items: center; gap: 0.3rem; }
+.hm-key .hm-cell { width: 0.7rem; min-height: 0.7rem; }
+.net-uptime summary, .svc-uptime summary { cursor: pointer; }
+.svc-uptime { margin: 0.75rem 0; }
+.svc-uptime .hm-row { grid-template-columns: 9rem repeat(var(--hm-cols), minmax(0.45rem, 1fr)); }
 .admin-pane > h2 {
   margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;
   text-transform: none; color: var(--text);
@@ -791,7 +846,7 @@ body.admin section button:disabled { opacity: 0.5; cursor: default; }
   border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
 }
 .head-btn:hover { border-color: var(--accent); }
-/* A button with its name beside the emoji: Help, Admin. */
+/* A button with its name beside the emoji: Hub, Help, Admin. */
 .head-btn.labelled { width: auto; padding: 0 0.75rem 0 0.55rem; gap: 0.35rem; font-family: inherit;
   font-size: 0.85rem; color: var(--text); }
 .head-emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; font-size: 1.05rem; }
@@ -881,7 +936,13 @@ body.home.full { max-width: 960px; padding-top: 1rem; }
 body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* --- File drop (drop.html) --- */
-.drop-name { display: flex; flex-direction: column; gap: 0.25rem; margin: 1rem 0; font-size: 0.85rem; max-width: 20rem; }
+/* The upload section is a column with one gap between its blocks (Tom, 2026-10-06: they were
+   1rem, 0.75rem and none, and the capture buttons touched the lock box). */
+body.drop > section:first-of-type { display: flex; flex-direction: column; gap: 1rem; }
+body.drop > section:first-of-type > * { margin-top: 0; margin-bottom: 0; }
+body.drop > section + section { margin-top: 2.5rem; }
+.drop-uploads:empty { display: none; }
+.drop-name { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; max-width: 20rem; }
 .drop-name input {
   padding: 0.45rem 0.6rem; font: inherit; color: inherit; background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px;
@@ -905,7 +966,7 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .drop-item a { color: var(--accent); font-weight: 600; }
 .usb-book { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
 .usb-book .action-note { flex-basis: 100%; }
-.drop-capture { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.drop-capture { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .drop-capture-btn {
   position: relative; padding: 0.45rem 0.9rem; font-size: 0.9rem; cursor: pointer;
   background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
@@ -921,10 +982,49 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* Network page: the uplink settings, and the watchdog's custom values in a compact grid */
 .net-settings { display: flex; flex-direction: column; gap: 0.4rem; max-width: 40rem; }
+/* The Network pane's devices: a card each, labelled lines, the hotspot's conditions one per line. */
+.net-devices { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
+.net-device { display: flex; flex-direction: column; gap: 0; }
+.net-device h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding-bottom: 0.45rem; font-size: 1rem;
+  border-bottom: 1px solid var(--border); }
+/* A hairline between the card's parts, and a little room above each label. */
+.net-section { padding: 0.5rem 0 0.4rem; }
+.net-section + .net-section { border-top: 1px solid var(--border); }
+.net-section:last-child { padding-bottom: 0; }
+.net-section .net-conditions { margin-top: 0.35rem; }
+.net-device h4 .state { color: var(--muted); }
+.net-line { display: grid; grid-template-columns: 11rem 1fr; gap: 0.6rem; margin: 0; font-size: 0.88rem; }
+.net-label { color: var(--muted); }
+@media (max-width: 560px) { .net-line { grid-template-columns: 1fr; gap: 0; } .net-label { font-size: 0.78rem; } }
+.net-conditions { list-style: none; margin: 0.1rem 0 0.2rem; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
+.net-conditions li { display: flex; gap: 0.5rem; }
+.net-conditions .cond-mark { width: 1rem; flex: none; text-align: center; color: var(--muted); }
+.net-conditions .cond-untested .cond-mark, .net-conditions .cond-needs .cond-mark { color: var(--warn); font-weight: 700; }
+.net-glossary { margin: 0.5rem 0; font-size: 0.85rem; }
+.net-glossary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 0.8rem; margin: 0.5rem 0 0; }
+.net-glossary dt { font-weight: 600; }
+.net-glossary dd { margin: 0; color: var(--muted); }
+@media (max-width: 560px) { .net-glossary dl { grid-template-columns: 1fr; } .net-glossary dd { margin-bottom: 0.3rem; } }
+
+/* Staying on the network: eagerness as a ladder of cards, each with what it means and does. */
+.up-ladder { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
+.up-rung { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.up-rung:hover { border-color: var(--accent); }
+.up-rung.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.up-rung input { margin-top: 0.25rem; accent-color: var(--accent); }
+.up-rung-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.up-does { font-style: italic; }
+.up-will { margin: 0.6rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--surface); }
 .net-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem 1rem; margin-top: 0.5rem; }
 .net-fields label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.9em; }
 .net-fields input, .net-fields select { width: 100%; box-sizing: border-box; }
-.net-events li { overflow-wrap: anywhere; }
+/* The watchdog's events: one line each, the time then what happened; no bullets. */
+.net-events { list-style: none; margin: 0.5rem 0; padding: 0; gap: 0; font-size: 0.85rem; }
+.net-events li { display: flex; gap: 0.75rem; align-items: baseline; padding: 0.2rem 0; border-top: 1px solid var(--border); }
+.net-events li:first-child { border-top: 0; }
+.net-events .ev-time { flex: none; min-width: 7.5rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.net-events .ev-text { min-width: 0; overflow-wrap: anywhere; }
 
 /* Health: the banner shown on every pane when the root helper stops answering */
 .helper-banner { border: 2px solid #e5484d; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; line-height: 1.5; }
@@ -948,113 +1048,112 @@ body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 .access-toggle button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
 .access-toggle button:disabled { cursor: progress; opacity: 0.7; }
 
+/* The Git page as cards (git-ci-plan §1, Kiwix's library as the model): a filter bar, a grid,
+   and Manage opening under the card (a drawer across the grid) or beside it (a side panel). */
+.git-filter { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; margin: 0.75rem 0; }
+.git-filter input[type=search] { flex: 1 1 14rem; min-width: 0; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip { font: inherit; font-size: 0.82rem; padding: 0.2rem 0.65rem; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.git-manage-as { font-size: 0.82rem; color: var(--muted); margin-left: auto; }
+.git-layout { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+.git-layout.with-side { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); align-items: start; }
+@media (max-width: 900px) { .git-layout.with-side { grid-template-columns: 1fr; } }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.75rem; }
+.git-card { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.75rem 0.9rem; min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); text-align: left; color: var(--text); }
+.git-card.open { border-color: var(--accent); }
+.git-card h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.git-card p { margin: 0; }
+.git-new { font: inherit; cursor: pointer; align-items: flex-start; border-style: dashed; }
+.git-new:hover, .git-new:focus-visible { border-color: var(--accent); }
+.git-new-plus { font-size: 1.4rem; line-height: 1; color: var(--accent); }
+.badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.badge { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.badge-public { color: var(--ok); border-color: var(--ok); }
+.badge-private { color: var(--warn); border-color: var(--warn); }
+.badge-mirror { color: var(--accent); border-color: var(--accent); }
+.badge.bad { color: #e5484d; border-color: #e5484d; }
+.git-about { font-size: 0.88rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.git-label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.git-card .library-buttons { margin-top: auto; padding-top: 0.3rem; }
+.button-link { display: inline-block; padding: 0.3rem 0.7rem; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); text-decoration: none; font-size: 0.9rem; }
+.button-link.small { font-size: 0.82rem; padding: 0.15rem 0.55rem; }
+.button-link:hover { border-color: var(--accent); }
+.git-manage { padding: 0.75rem 1rem; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--bg);
+  display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.git-drawer { grid-column: 1 / -1; }
+.git-sidepanel { position: sticky; top: 0.75rem; max-height: calc(100vh - 1.5rem); overflow-y: auto; }
+.git-manage-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.git-manage section { border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.git-manage h4 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+.git-q { border: 0; padding: 0; margin: 0.4rem 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.git-q legend { font-weight: 600; font-size: 0.88rem; padding: 0; margin-bottom: 0.15rem; }
+.git-desc { width: 100%; box-sizing: border-box; font: inherit; }
+.git-publish-refs { width: 8rem; }
+.git-danger h4 { color: #e5484d; }
+button.danger { border-color: #e5484d; color: #e5484d; }
+.git-glossary { margin: 0.5rem 0; font-size: 0.85rem; }
+.git-glossary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 0.8rem; margin: 0.5rem 0 0; }
+.git-glossary dt { font-weight: 600; }
+.git-glossary dd { margin: 0; color: var(--muted); }
+@media (max-width: 560px) {
+  .git-glossary dl { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
+  .git-manage-as { margin-left: 0; }
+}
 
-/* Cybercore theme (from the PirateBox skin). Add AFTER your light/dark palettes.
-   Select with data-theme="cybercore".
-   Uses system fonts only (no downloads), so it works offline. */
-:root[data-theme="cybercore"] {
-  color-scheme: dark;
-  --bg:#05070b; --surface:#0b1119; --border:#131b26;
-  --accent:#00f0ff; --accent-ink:#05070b;
-  --text:#d8f4ff; --muted:#7d94a8; --shadow:rgba(0,0,0,.5);
-  --ok:#39ff88; --warn:#f4c542; --radius:2px;
-  --author-s:100%; --author-l:60%;
-  --magenta:#ff2e88; --danger:#ff3b5c; --text-low:#45566a;
-  --font-head:system-ui,'Segoe UI',sans-serif;
-  --font-body:ui-monospace,Consolas,monospace;
-}
-[data-theme="cybercore"] body {
-  font-family:var(--font-body);
-  background-color:var(--bg);
-  background-image:
-    linear-gradient(rgba(0,240,255,.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,240,255,.06) 1px, transparent 1px),
-    radial-gradient(ellipse at 20% 0%, rgba(0,240,255,.08), transparent 55%),
-    radial-gradient(ellipse at 90% 100%, rgba(255,46,136,.07), transparent 55%);
-  background-size:42px 42px, 42px 42px, cover, cover;
-  background-attachment:fixed;
-}
-/* scanlines */
-[data-theme="cybercore"] body::before {
-  content:""; position:fixed; inset:0; pointer-events:none; z-index:999;
-  background:repeating-linear-gradient(to bottom, rgba(255,255,255,.02), rgba(255,255,255,.02) 1px, transparent 2px, transparent 4px);
-}
-[data-theme="cybercore"] ::selection { background:var(--magenta); color:var(--bg); }
-[data-theme="cybercore"] ::-webkit-scrollbar { width:10px; height:10px; }
-[data-theme="cybercore"] ::-webkit-scrollbar-track { background:var(--surface); }
-[data-theme="cybercore"] ::-webkit-scrollbar-thumb { background:var(--border); border:1px solid var(--accent); }
-[data-theme="cybercore"] ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+/* Library → Toolkits: the kits as cards (the Git page's), the consent step, the details. */
+.kit-consent { border: 1px solid var(--warn); border-radius: var(--radius); padding: 0.5rem 0.7rem; font-size: 0.88rem; }
+.kit-consent p { margin: 0.2rem 0; }
+.kit-details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+.kit-notes { margin: 0.3rem 0; padding-left: 1.2rem; font-size: 0.85rem; color: var(--muted); }
+.inline-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; }
+.kit-flag { color: var(--warn); font-weight: 600; }
 
-[data-theme="cybercore"] a { color:var(--magenta); transition:color .15s, text-shadow .15s; }
-[data-theme="cybercore"] a:hover { color:var(--accent); text-shadow:0 0 6px rgba(0,240,255,.7); }
+/* The security doctor's joint report: an item per thing, which sources agree. */
+.joint-item.joint-problem { border-color: #e5484d; }
+.joint-item.joint-warn { border-color: var(--warn); }
+.joint-titles { margin: 0.2rem 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--muted); }
 
-/* Headings */
-[data-theme="cybercore"] header h1 {
-  font-family:var(--font-head); font-weight:800; letter-spacing:.06em; text-transform:uppercase;
-  text-shadow:0 0 10px rgba(0,240,255,.55);
-}
-[data-theme="cybercore"] header .subtitle { color:var(--muted); letter-spacing:.12em; text-transform:uppercase; font-size:.8rem; }
-[data-theme="cybercore"] h2 {
-  font-family:var(--font-head); font-weight:800; color:var(--accent); letter-spacing:.04em;
-  text-shadow:0 0 10px rgba(0,240,255,.45); border-bottom:1px solid var(--border); padding-bottom:.5em; text-transform:none; font-size:1.05rem;
-}
+/* Builds: a run's own view, and the templates. */
+.ci-log { max-height: 24rem; overflow: auto; white-space: pre-wrap; font-size: 0.78rem; }
+.ci-steps { margin: 0.2rem 0; padding-left: 1.4rem; font-size: 0.85rem; }
+.ci-env { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.7rem; font-size: 0.82rem; }
+.ci-env dd { margin: 0; color: var(--muted); }
+.ci-template pre { max-height: 14rem; overflow: auto; font-size: 0.75rem; }
+/* The Firmware Factory (admin.js): the targets by family, a fold each; a build's files as links. */
+.factory-form { display: grid; gap: 0.6rem; }
+.factory-form label { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.factory-targets { display: grid; gap: 0.35rem; }
+.factory-family summary { cursor: pointer; }
+.factory-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.15rem 1rem; padding: 0.4rem 0 0.4rem 1rem; }
+.factory-boards label { font-size: 0.9rem; }
+.factory-files { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; font-size: 0.85rem; }
+/* The books (step 14): the tools above the table, the table compact, a book's card under its row. */
+.books-tools { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.5rem 0; }
+.books-tools label { display: flex; gap: 0.35rem; align-items: center; }
+.books-bulk { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0.4rem 0; }
+.books-table td, .books-table th { padding: 0.25rem 0.5rem; }
+.books-table .link-button { text-align: left; }
+.books-table td.bad { color: #e5484d; }
+.book-card td { background: var(--surface); }
+.books-pager { display: flex; gap: 0.6rem; align-items: center; }
+.scroll-x { overflow-x: auto; }
+/* The mesh (step 18): the traffic a line each; a message set apart. */
+.mesh-packets { padding-left: 1.4rem; font-size: 0.9rem; }
+.mesh-text { color: var(--text); font-style: italic; }
+.mesh-map { width: 100%; max-width: 600px; height: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.mesh-map-bg { fill: var(--surface); }
+.mesh-map-node circle { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+.mesh-map-label { fill: var(--text); font-size: 12px; }
+.mesh-map-scale { stroke: var(--text); stroke-width: 2; }
 
-/* Nav, tabs, header buttons */
-[data-theme="cybercore"] .tabs { border-bottom-color:var(--border); }
-[data-theme="cybercore"] .tabs a, [data-theme="cybercore"] .head-btn, [data-theme="cybercore"] .theme-picker button, [data-theme="cybercore"] .tab-expand {
-  font-family:var(--font-head); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:.75rem;
-}
-[data-theme="cybercore"] .tabs a { color:var(--muted); }
-[data-theme="cybercore"] .tabs a:hover, [data-theme="cybercore"] .tabs a.active { color:var(--accent); text-shadow:0 0 8px rgba(0,240,255,.6); }
-[data-theme="cybercore"] .tabs a.active { border-bottom-color:var(--accent); }
-[data-theme="cybercore"] .head-btn, [data-theme="cybercore"] .theme-picker, [data-theme="cybercore"] .tab-expand { border-radius:2px; border-color:var(--border); background:var(--surface); }
-[data-theme="cybercore"] .theme-picker button { border-radius:2px; }
-[data-theme="cybercore"] .head-btn:hover, [data-theme="cybercore"] .tab-expand:hover { border-color:var(--accent); color:var(--accent); box-shadow:0 0 8px rgba(0,240,255,.4); }
-[data-theme="cybercore"] .theme-picker button[aria-pressed="true"] { box-shadow:0 0 10px rgba(0,240,255,.6); }
-
-/* Cards: square panels with the magenta corner notch */
-[data-theme="cybercore"] .service-card, [data-theme="cybercore"] .setting, [data-theme="cybercore"] .post, [data-theme="cybercore"] .thread-row, [data-theme="cybercore"] .help-item {
-  position:relative; background:var(--surface); border:1px solid var(--border); border-radius:2px;
-  box-shadow:0 0 0 1px rgba(0,240,255,.05), 0 8px 24px rgba(0,0,0,.5);
-}
-[data-theme="cybercore"] .service-card::before, [data-theme="cybercore"] .setting::before, [data-theme="cybercore"] .post::before, [data-theme="cybercore"] .thread-row::before {
-  content:""; position:absolute; top:0; left:0; width:18px; height:18px; pointer-events:none;
-  border-top:2px solid var(--magenta); border-left:2px solid var(--magenta);
-}
-[data-theme="cybercore"] .service-card:hover { border-color:var(--accent); transform:none; box-shadow:0 0 14px rgba(0,240,255,.25), 0 8px 24px rgba(0,0,0,.5); }
-[data-theme="cybercore"] .people-card:hover, [data-theme="cybercore"] .system-card:hover { box-shadow:0 0 0 1px rgba(0,240,255,.05), 0 8px 24px rgba(0,0,0,.5); border-color:var(--border); }
-[data-theme="cybercore"] .service-card .name { font-family:var(--font-head); font-weight:600; letter-spacing:.06em; text-transform:uppercase; font-size:.85rem; color:var(--accent); }
-[data-theme="cybercore"] .service-card .desc { color:var(--muted); }
-[data-theme="cybercore"] .service-card .icon { filter:drop-shadow(0 0 6px rgba(0,240,255,.5)); }
-[data-theme="cybercore"] .people-card .name { font-size:1.8rem; color:var(--accent); text-shadow:0 0 10px rgba(0,240,255,.6); }
-
-/* Meters: the cyan to magenta bar */
-[data-theme="cybercore"] .meter-label { letter-spacing:.06em; }
-[data-theme="cybercore"] .meter-label b { color:var(--accent); }
-[data-theme="cybercore"] .meter .bar { height:8px; border-radius:2px; background:var(--bg); border:1px solid var(--border); box-shadow:inset 0 0 6px rgba(0,0,0,.6); }
-[data-theme="cybercore"] .meter .bar > span { background-image:linear-gradient(90deg, var(--accent), var(--magenta)); box-shadow:0 0 10px rgba(0,240,255,.6); }
-[data-theme="cybercore"] .meter .bar > span.high { background-image:linear-gradient(90deg, var(--warn), var(--magenta)); box-shadow:0 0 10px rgba(244,197,66,.6); }
-
-/* Shoutbox and forms */
-[data-theme="cybercore"] #messages { background:var(--bg); border:1px solid var(--border); border-radius:2px; }
-[data-theme="cybercore"] .msg { padding-bottom:.3em; border-bottom:1px dashed var(--border); }
-[data-theme="cybercore"] .msg .author { text-shadow:0 0 6px currentColor; }
-[data-theme="cybercore"] .msg .time { color:var(--text-low); }
-[data-theme="cybercore"] .msg code { background:var(--surface); border-color:var(--border); }
-[data-theme="cybercore"] #shout-form input, [data-theme="cybercore"] #thread-form input, [data-theme="cybercore"] #thread-form textarea,
-[data-theme="cybercore"] #reply-form input, [data-theme="cybercore"] #reply-form textarea, [data-theme="cybercore"] .hue-swatch, [data-theme="cybercore"] #name-roll {
-  font-family:var(--font-body); background:var(--surface); border-radius:2px; border-color:var(--border); color:var(--text);
-}
-[data-theme="cybercore"] #name-input { border-radius:2px 0 0 2px !important; }
-[data-theme="cybercore"] input::placeholder, [data-theme="cybercore"] textarea::placeholder { color:var(--text-low); }
-[data-theme="cybercore"] input:focus, [data-theme="cybercore"] textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 8px rgba(0,240,255,.35); }
-[data-theme="cybercore"] #shout-form button:not(.emoji-toggle):not(#name-roll), [data-theme="cybercore"] #thread-form button:not(.emoji-toggle), [data-theme="cybercore"] #reply-form button:not(.emoji-toggle),
-[data-theme="cybercore"] body.admin section button {
-  background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:2px;
-  font-family:var(--font-head); letter-spacing:.08em; text-transform:uppercase; font-size:.8rem; transition:background .15s, box-shadow .15s, color .15s;
-}
-[data-theme="cybercore"] #shout-form button:not(.emoji-toggle):not(#name-roll):hover, [data-theme="cybercore"] body.admin section button:hover:not(:disabled) { background:rgba(0,240,255,.1); box-shadow:0 0 12px rgba(0,240,255,.5); opacity:1; }
-[data-theme="cybercore"] #shout-form button:not(.emoji-toggle):not(#name-roll):active { background:var(--accent); color:var(--bg); box-shadow:0 0 16px rgba(0,240,255,.8); }
-[data-theme="cybercore"] .decay-note { color:var(--text-low); }
-[data-theme="cybercore"] .state, [data-theme="cybercore"] .access-toggle { border-radius:2px; }
-@media (prefers-reduced-motion: reduce) { [data-theme="cybercore"] * { transition:none !important; } }
+/* /account.html (step 16): the forms, one column. */
+.acct-form { margin: 1.2em 0; max-width: 28em; }
+.acct-form label { display: block; margin: 0.5em 0; }
+.acct-form input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2em; }
+/* A post by an account of that name (accounts step 16), where the admin shows marks. */
+.verified { color: var(--accent); font-weight: 700; margin: 0 0.25em 0 0.15em; }

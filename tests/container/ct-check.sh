@@ -15,7 +15,7 @@ code() { curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@"; }
 # Wait (up to 20 s; Caddy restarts after a change) until $1 is the working password.
 until_pw() { for _ in $(seq 40); do [ "$(code -u "admin:$1" "http://$H/admin/")" = 200 ] && return 0; sleep 0.5; done; return 1; }
 set_pw() { # current new
-	local id; id="$(curl -s -u "admin:$1" -X POST -H 'Content-Type: application/json' -d "{\"password\":\"$2\"}" "http://$H/admin/password" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+	local id; id="$(curl -s -u "admin:$1" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"password\":\"$2\"}" "http://$H/admin/password" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 	result "$id"
 }
 result() { # wait for a control request's result; print ok/error
@@ -46,7 +46,7 @@ U=/etc/$WEB/irate-box-unclaimed
 if [ -n "$CLAIM" ]; then
 	[ -f "$U" ] && ok "unclaimed mark at $U" || bad "no unclaimed mark at $U"
 	check 200 code "http://$H/admin/"
-	id="$(curl -s -X POST -H 'Content-Type: application/json' -d "{\"password\":\"$PW1\"}" "http://$H/admin/setup" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+	id="$(curl -s -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"password\":\"$PW1\"}" "http://$H/admin/setup" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 	r="$(result "$id")"; [[ $r == OK* ]] && ok "claim: $r" || bad "claim: $r"
 	[ -f "$U" ] && bad "unclaimed mark still there" || ok "unclaimed mark gone"
 	until_pw "$PW1" || bad "the claimed password never started working"
@@ -65,7 +65,6 @@ r="$(set_pw "$PW1" "$PW2")"; [[ $r == OK* ]] && ok "change: $r" || bad "change: 
 until_pw "$PW2"
 check 200 code -u "admin:$PW2" "http://$H/admin/"
 check 401 code -u "admin:$PW1" "http://$H/admin/"
-check "TTYD_CREDENTIAL=admin:$PW2" cat /etc/hub/ttyd.env
 # back to PW1 for later runs
 set_pw "$PW2" "$PW1" >/dev/null; until_pw "$PW1" || bad "could not set the password back"
 

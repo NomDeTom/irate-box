@@ -11,45 +11,104 @@ if (services) {
   });
 }
 
-// Theme: "light" / "dark" pin the palette via data-theme; "auto" removes it and lets
-// prefers-color-scheme decide. Applied before first paint by the inline snippet in <head>.
+// Theme picker, built from themes.js (window.HubThemes, loaded in every page's <head>, which
+// has already drawn the page in the saved theme). Light, Dark and Auto (the OS's choice) are
+// the main row; 🎨 opens the other themes. app.html carries a change into the framed app
+// through the hub-theme event (app.js).
 const picker = document.querySelector('.theme-picker');
-if (picker) {
-  const buttons = picker.querySelectorAll('[data-theme-choice]');
-  function showTheme() {
-    let t = 'auto';
-    try { t = localStorage.getItem('theme') || 'auto'; } catch (_) {}
-    if (t !== 'light' && t !== 'dark') t = 'auto';
-    buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === t)));
+const themes = window.HubThemes;
+if (picker && themes) {
+  const btn = (attrs, text) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
+    b.textContent = text;
+    return b;
+  };
+  const main = themes.list.filter((t) => t.main);
+  const others = themes.list.filter((t) => !t.main);
+  const label = document.createElement('span');
+  label.className = 'theme-label';
+  label.setAttribute('aria-hidden', 'true');
+  label.textContent = 'Theme';
+  const row = [label,
+    ...main.map((t) => btn({ 'data-theme-choice': t.id, title: t.label }, t.emoji)),
+    btn({ 'data-theme-choice': 'auto', title: 'Follow this device (light or dark)' }, 'Auto')];
+  let more = null;
+  let menu = null;
+  if (others.length) {
+    more = btn({ class: 'theme-more', title: 'More themes', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '🎨');
+    menu = document.createElement('div');
+    menu.className = 'theme-menu';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    for (const t of others) {
+      const item = btn({ role: 'menuitemradio', 'data-theme-choice': t.id }, '');
+      const name = document.createElement('span');
+      name.className = 'theme-menu-name';
+      name.textContent = `${t.emoji} ${t.label}`;
+      item.append(name);
+      if (t.desc) {
+        const desc = document.createElement('span');
+        desc.className = 'theme-menu-desc';
+        desc.textContent = t.desc;
+        item.append(desc);
+      }
+      menu.append(item);
+    }
+    row.push(more, menu);
   }
+  picker.replaceChildren(...row);
+
+  const openMenu = (open) => {
+    if (!menu) return;
+    menu.hidden = !open;
+    more.setAttribute('aria-expanded', String(open));
+    if (open) (menu.querySelector('[aria-checked="true"]') || menu.querySelector('button')).focus();
+  };
+  const showChoice = () => {
+    const cur = themes.current();
+    picker.querySelectorAll('[data-theme-choice]').forEach((b) => {
+      const on = b.dataset.themeChoice === cur;
+      b.setAttribute(b.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', String(on));
+    });
+    if (more) {
+      const other = others.find((t) => t.id === cur);
+      more.textContent = other ? other.emoji : '🎨';
+      more.title = other ? `Theme: ${other.label} (more themes)` : 'More themes';
+      more.setAttribute('aria-pressed', String(!!other));
+    }
+  };
   picker.addEventListener('click', (e) => {
+    if (more && e.target.closest('.theme-more')) { openMenu(menu.hidden); return; }
     const b = e.target.closest('[data-theme-choice]');
     if (!b) return;
-    const t = b.dataset.themeChoice;
-    if (t === 'auto') delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = t;
-    try {
-      if (t === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', t);
-    } catch (_) {}
-    showTheme();
-    // app.html carries this choice into the framed app (app.js).
-    document.dispatchEvent(new CustomEvent('hub-theme', { detail: t }));
+    themes.choose(b.dataset.themeChoice);
+    openMenu(false);
+    showChoice();
   });
-  showTheme();
+  if (menu) {
+    document.addEventListener('click', (e) => { if (!picker.contains(e.target)) openMenu(false); });
+    picker.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !menu.hidden) { openMenu(false); more.focus(); }
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !menu.hidden) {
+        const items = [...menu.querySelectorAll('button')];
+        const i = items.indexOf(document.activeElement);
+        items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+        e.preventDefault();
+      }
+    });
+  }
+  showChoice();
+  document.addEventListener('hub-theme', showChoice);
 }
 
 // A choice made in another tab arrives as a storage event: follow it live, so an open
 // admin page (or app) does not stay in the old theme until it is reloaded.
 window.addEventListener('storage', (e) => {
-  if (e.key !== 'theme' && e.key !== null) return;
-  let t = 'auto';
-  try { t = localStorage.getItem('theme') || 'auto'; } catch (_) {}
-  if (t === 'light' || t === 'dark' || t === 'cybercore') document.documentElement.dataset.theme = t;
-  else { t = 'auto'; delete document.documentElement.dataset.theme; }
-  if (picker) {
-    picker.querySelectorAll('[data-theme-choice]').forEach(
-      (b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === t)));
-  }
+  if (!themes || (e.key !== 'theme' && e.key !== 'hub-theme' && e.key !== null)) return;
+  const t = themes.current();
+  themes.show(t);
   document.dispatchEvent(new CustomEvent('hub-theme', { detail: t }));
 });
 
@@ -126,6 +185,49 @@ if (grid || document.querySelector('[data-service]')) {
   }
   refreshStatus();
   setInterval(refreshStatus, 15000);
+}
+
+// The Firmware Factory's tile (the owner shows it: /admin → Firmware Factory): what is building and
+// how far along, what is waiting, and the newest builds' files to download (ESP32 images and zips,
+// UF2s). Download only: flashing stays with the web flasher.
+const factoryCard = document.getElementById('factory-card');
+if (factoryCard) {
+  const fNow = document.getElementById('factory-now');
+  const fBar = document.getElementById('factory-bar');
+  const fDone = document.getElementById('factory-progress');
+  const fFiles = document.getElementById('factory-downloads');
+  const kind = (f) => (f.endsWith('.uf2') ? 'UF2' : f.endsWith('.factory.bin') ? 'factory .bin' : f.endsWith('.zip') ? '.zip'
+    : f.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
+  const refreshFactory = async () => {
+    let d;
+    try {
+      const r = await fetch('/factory.json');
+      if (!r.ok) return;
+      d = await r.json();
+    } catch (_) { return; }
+    const run = d.running;
+    const waiting = d.waiting ? `; ${d.waiting} waiting` : '';
+    fNow.textContent = run ? `Building ${run.name} (${run.family})${run.done != null ? `, about ${Math.round(run.done * 100)} %` : ''}${waiting}`
+      : d.paused ? `Paused${waiting}` : d.waiting ? `${d.waiting} waiting` : 'Nothing building now';
+    fBar.hidden = !(run && run.done != null);
+    if (run && run.done != null) fDone.style.width = `${Math.round(run.done * 100)}%`;
+    fFiles.replaceChildren(...d.built.map((b) => {
+      const row = document.createElement('span');
+      row.className = 'factory-build';
+      row.append(document.createTextNode(`${b.name} `));
+      b.files.forEach((f) => {
+        const a = document.createElement('a');
+        a.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(f)}`;
+        a.download = f;
+        a.title = `${f} (${b.ref})`;
+        a.textContent = kind(f);
+        row.append(a, document.createTextNode(' '));
+      });
+      return row;
+    }));
+  };
+  refreshFactory();
+  setInterval(refreshFactory, 30000);
 }
 
 // Join tile: a QR of the address this page was loaded from -- 192.168.4.1 on the box,

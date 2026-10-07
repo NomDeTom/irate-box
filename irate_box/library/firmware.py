@@ -24,16 +24,25 @@ Settings ($HUB_STATE_DIR/library/firmware.json, /admin's Firmware page):
   enabled      off by default
   boards       a list of PlatformIO targets ("rak4631"), or "all"
   keep_alpha   alphas kept (2) ;  keep_beta  betas kept (1)
-  configs      on by default: keep config.d.json (above), mirror or not. From, in order: the
-               release's own source package (meshtasticd-*-src.zip) if the box holds it; a
-               sparse git fetch of that one folder at the release's tag (a few hundred KB); or
-               that source package streamed from the release, stopping once the folder has
-               gone past (it comes 0.3 MB into the 465 MB at 2.8.1)
-  cache        "discard" (default) | "native" | "whole": the newest kept release's
+  configs      on by default: keep config.d.json (above), mirror or not. From, in order: a
+               mirror of meshtastic/firmware on this box (mirrors.py) that holds the release's
+               tag, read with git, offline and instant; the release's own source package
+               (meshtasticd-*-src.zip) if the box holds it; a sparse git fetch of that one
+               folder at the release's tag (a few hundred KB); or that source package streamed
+               from the release, stopping once the folder has gone past (it comes 0.3 MB into
+               the 465 MB at 2.8.1)
+  cache        "discard" (default) | "native" | "whole": the newest release's
                platformio-deps zip (484 MB, for native-tft), kept so builds on push (ci.py,
                CI_PIO_DEPS) need no internet. "native" keeps what a headless meshtasticd uses
-               (~215 MB unpacked): not lvgl and meshtastic-device-ui, not PlatformIO's copy of
-               the archives. Only the newest kept release keeps one.
+               (~250 MB unpacked): not lvgl and meshtastic-device-ui, and of PlatformIO's
+               download cache only the small archives (36 MB at 2.8.1), as the platform itself
+               (platform-native) is only there; the big ones are the UI libraries'. Only the
+               newest kept release keeps one. A build matter, not the
+               flasher's (git-ci-plan 4a): set on the Git page's Builds, and kept whether or
+               not flash files are.
+
+The firmware's source is not kept here: it is a mirror like any other repository (mirrors.py,
+the Git page's Mirrors), and source_mirror() finds it.
 
 Runs inside the librarian (its lock, schedule and progress): librarian.py firmware [--check].
 Stdlib only.
@@ -72,6 +81,10 @@ BOARD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 FILE_RE = re.compile(r"^[A-Za-z0-9_.+-]{1,128}$")
 # In the deps zip, what only the touchscreen build (native-tft) uses.
 UI_LIBS = {"lvgl", "meshtastic-device-ui", "SdFat", "PNGdec", "libdeflate"}
+# PlatformIO's download cache (core/.cache/downloads, each archive named by the SHA-1 of its URL)
+# is where an offline build finds the platform, which the zip has nowhere else. At 2.8.1 its
+# three archives over this size are the UI libraries' (207 MB); the rest come to 36 MB.
+BIG_ARCHIVE = 16 << 20
 
 
 def _publish(path, data):
@@ -132,7 +145,7 @@ def _releases(cfg):
     data = librarian._api(f"/repos/{REPO}/releases?per_page=40", librarian.token())
     alphas, betas = [], []
     for rel in data:
-        if rel.get("draft") or "revoked" in (rel.get("name") or "").lower():
+        if rel.get("draft") or librarian.revoked(rel):
             continue
         version = rel["tag_name"].lstrip("v")
         names = {a["name"]: a for a in rel.get("assets", [])}
@@ -180,14 +193,40 @@ def _mirror_version(rel, cfg, policy, log):
     _publish(vdir / f"firmware-{version}.json", board_list)
     targets = sorted({t["board"] for t in board_list.get("targets", []) if BOARD_RE.match(t.get("board", ""))})
     wanted = targets if cfg["boards"] == "all" else [b for b in targets if b in cfg["boards"]]
-    got, files, size = [], 0, 0
+    got, files, size, unavailable = [], 0, 0, []
     for board in wanted:
         try:
             mt = _get_json(f"{base}/firmware-{board}-{version}.mt.json")
         except (OSError, ValueError) as exc:
             log(f"firmware {version}: no manifest for {board} ({exc})")
             continue
-        for entry in mt.get("files", []):
+        try:
+            n, b = _mirror_board(base, vdir, version, mt, policy)
+        except _Unavailable as exc:
+            # One board's file missing from the release (2.8.1's canaryone .hex: HTTP 404, found
+            # 2026-10-07) stopped every board after it, and the build cache. Now only that board
+            # is left out, unoffered (its manifest is not published), and said.
+            log(f"firmware {version}: {board} left out: {exc}")
+            unavailable.append({"board": board, "why": str(exc)[:200]})
+            continue
+        files += n
+        size += b
+        _publish(vdir / f"firmware-{board}-{version}.mt.json", mt)
+        got.append(board)
+    missing = [b for b in (cfg["boards"] if cfg["boards"] != "all" else []) if b not in targets]
+    return {"channel": rel["channel"], "boards": got, "files": files, "bytes": size,
+            "missing": missing, "unavailable": unavailable, "fetched": librarian.now_iso()}
+
+
+class _Unavailable(LibrarianError):
+    """One board's file cannot be had (not found, or not what its manifest says)."""
+
+
+def _mirror_board(base, vdir, version, mt, policy):
+    """A board's flash files, as its manifest lists them: (files, bytes). Running out of room
+    stops the whole run (LibrarianError); a file that cannot be had stops only this board."""
+    files = size = 0
+    for entry in mt.get("files", []):
             name = entry.get("name", "")
             if not FILE_RE.match(name) or name.endswith(".elf"):
                 continue
@@ -197,25 +236,31 @@ def _mirror_version(rel, cfg, policy, log):
                 if librarian._free_bytes(ROOT) < need:
                     raise LibrarianError(f"not enough space for {name}: keep {policy['min_free_mb']} MB free")
                 tmp = dest.with_name(dest.name + ".part")
-                librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
-                                    expected=entry.get("bytes", 0))
+                try:
+                    librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
+                                        expected=entry.get("bytes", 0))
+                except LibrarianError as exc:
+                    tmp.unlink(missing_ok=True)
+                    if "cannot reach" in str(exc):
+                        raise  # the network, not this board: the whole run stops
+                    raise _Unavailable(str(exc))
                 if not _have(tmp, entry):
                     tmp.unlink(missing_ok=True)
-                    raise LibrarianError(f"{name}: size or MD5 does not match the manifest")
+                    raise _Unavailable(f"{name}: size or MD5 does not match the manifest")
                 os.replace(tmp, dest)
             files += 1
             size += entry.get("bytes", 0)
-        _publish(vdir / f"firmware-{board}-{version}.mt.json", mt)
-        got.append(board)
-    missing = [b for b in (cfg["boards"] if cfg["boards"] != "all" else []) if b not in targets]
-    return {"channel": rel["channel"], "boards": got, "files": files, "bytes": size,
-            "missing": missing, "fetched": librarian.now_iso()}
+    return files, size
 
 
-def _subset(name, mode):
+DEPS_RESERVE = 512 << 20  # free space the deps extraction leaves on the card
+
+def _subset(name, mode, size=0):
     """Where a deps-zip entry goes under pio-deps/, or None to leave it out."""
     parts = name.split("/")
-    if len(parts) < 3 or ".." in parts:
+    # No empty part (a "//" made the rest absolute, and joining that discarded the folder: F10),
+    # no "." or "..", no backslash.
+    if len(parts) < 3 or any(p in ("", ".", "..") for p in parts[:-1]) or parts[-1] in (".", "..") or "\\" in name:
         return None
     _, area, *rest = parts            # pio-deps-<env>/<area>/...
     if mode == "whole":
@@ -224,7 +269,9 @@ def _subset(name, mode):
         return "/".join(["packages", *rest])
     if area == "libdeps" and len(rest) >= 2 and rest[1] not in UI_LIBS:
         return "/".join(["libdeps", *rest[1:]])  # libdeps/<env>/<lib>/... -> libdeps/<lib>/...
-    return None                        # core/.cache (the archives again), and the UI libraries
+    if area == "core" and rest[:2] == [".cache", "downloads"] and len(rest) == 3 and rest[2] != "usage.db" and size < BIG_ARCHIVE:
+        return "/".join(["core", *rest])
+    return None                        # the big archives, the rest of core/.cache, the UI libraries
 
 
 def _carry_cache(rel, cfg, policy, log):
@@ -232,6 +279,10 @@ def _carry_cache(rel, cfg, policy, log):
     for other in ROOT.glob("*/pio-deps"):
         if other.parent.name != rel["version"] or cfg["cache"] == "discard":
             shutil.rmtree(other, ignore_errors=True)
+            try:
+                other.parent.rmdir()  # a release kept only for its cache (no flash files)
+            except OSError:
+                pass
     if cfg["cache"] == "discard" or not rel.get("deps"):
         return None
     dest = ROOT / rel["version"] / "pio-deps"
@@ -244,16 +295,25 @@ def _carry_cache(rel, cfg, policy, log):
     tmp = librarian.TMP_DIR / deps["name"]
     tmp.parent.mkdir(parents=True, exist_ok=True)
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
-    librarian._download(deps["url"], tmp, name=f"build cache {rel['version']}", expected=deps["size"])
+    if not (tmp.is_file() and tmp.stat().st_size == deps["size"]):
+        librarian._download(deps["url"], tmp, name=f"build cache {rel['version']}", expected=deps["size"], resume=True)
     work = dest.with_name("pio-deps.new")
     shutil.rmtree(work, ignore_errors=True)
     try:
         with zipfile.ZipFile(tmp) as zf:
+            # What it unpacks to must fit, with room left (F30): a small zip can claim gigabytes.
+            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir())
+            free = shutil.disk_usage(ROOT).free
+            if wanted > free - DEPS_RESERVE:
+                raise LibrarianError(f"{deps['name']} unpacks to {wanted >> 20} MB; {free >> 20} MB are free, "
+                                     f"and {DEPS_RESERVE >> 20} MB must stay free")
             for info in zf.infolist():
-                rel_path = _subset(info.filename, cfg["cache"])
+                rel_path = _subset(info.filename, cfg["cache"], info.file_size)
                 if not rel_path or info.is_dir():
                     continue
                 target = work / rel_path
+                if not target.resolve().is_relative_to(work.resolve()):
+                    raise LibrarianError(f"{deps['name']} names a file outside its folder: {info.filename[:80]}")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
@@ -265,6 +325,25 @@ def _carry_cache(rel, cfg, policy, log):
     shutil.rmtree(dest, ignore_errors=True)
     os.replace(work, dest)
     return {"version": rel["version"], "mode": cfg["cache"], "bytes": _du(dest)}
+
+
+def flush_cache(log=print):
+    """Git -> Builds, Flush: the build cache is gone now, whatever the policy. The next check or
+    update re-fetches it if the policy still wants one (git-ci-plan: "a Flush per cache beside
+    it", so flushing is the builds' call, not only the librarian's schedule)."""
+    gone = 0
+    for other in ROOT.glob("*/pio-deps"):
+        gone += _du(other)
+        shutil.rmtree(other, ignore_errors=True)
+        try:
+            other.parent.rmdir()
+        except OSError:
+            pass
+    st = status()
+    st["cache"] = None
+    _save_status(st)
+    log(f"the build cache is gone ({gone >> 20} MB freed)" if gone else "no build cache was kept")
+    return gone
 
 
 def _du(path):
@@ -331,6 +410,43 @@ def _configs_from_package(open_at):
     return sorted(files, key=lambda f: f["path"])
 
 
+def source_mirror():
+    """The mirror of meshtastic/firmware on this box (mirrors.py), or None: the first whose
+    upstream is it on github.com and whose repository exists."""
+    from irate_box.library import mirrors
+    for m in mirrors.load():
+        if (mirrors._github(m.get("upstream", "")) or "").lower() == REPO and (mirrors.repo_path(m) / "HEAD").exists():
+            return m
+    return None
+
+
+def _configs_from_mirror(rel):
+    """bin/config.d at the release's tag, read from the mirror with git: no network."""
+    from irate_box.library import mirrors
+    m = source_mirror()
+    if not m:
+        raise LibrarianError("no mirror of meshtastic/firmware on this box")
+    path = str(mirrors.repo_path(m))
+    try:
+        librarian._git("-C", path, "rev-parse", "--verify", "--quiet", f"refs/tags/{rel['tag']}^{{commit}}")
+    except LibrarianError:
+        raise LibrarianError(f"the mirror {m['name']} does not hold {rel['tag']}")
+    files, total = [], 0
+    for line in librarian._git("-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/").split("\0"):
+        if not line:
+            continue
+        meta, _, name = line.partition("\t")
+        mode, kind, sha = meta.split()
+        if kind != "blob" or mode == "120000" or not name.endswith((".yaml", ".yml")):
+            continue
+        text = librarian._git("-C", path, "cat-file", "blob", sha)
+        total += len(text)
+        if total > CONFIGS_MAX:
+            raise LibrarianError("bin/config.d is larger than expected; not kept")
+        files.append({"path": name[len("bin/config.d/"):], "text": text})
+    return sorted(files, key=lambda f: f["path"]), m["name"]
+
+
 def _configs_from_git(rel, work):
     librarian._git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", rel["tag"],
                    f"https://github.com/{REPO}.git", str(work / "repo"))
@@ -365,7 +481,12 @@ def sync_configs(rel, log=print):
     held = ROOT / rel["version"] / src["name"] if src else None
     tried = []
     files, method = None, None
-    if held and held.is_file():
+    try:
+        files, name = _configs_from_mirror(rel)
+        method = f"the mirror {name}.git, at the tag {rel['tag']}"
+    except LibrarianError as exc:
+        tried.append(f"the mirror: {exc}")
+    if not files and held and held.is_file():
         try:
             files = _configs_from_package(lambda off: _seek(open(held, "rb"), off))
             method = "the release's source package, held on this box"
@@ -422,9 +543,17 @@ def sync(check_only=False, log=print):
                 configs = f"configs: {exc}"
             st["configs"] = configs
         if not cfg["enabled"]:
+            # The build cache is the builds' (git-ci-plan 4a): kept whether or not flash files are.
+            # Flash files already held go: they are what "Keep firmware on this box" keeps.
+            gone = _drop_flash_files()
+            st.pop("versions", None)
+            st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
             st.pop("error", None)
+            outcome = "; ".join(x for x in (configs, f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None,
+                                            f"flash files removed ({gone >> 20} MB)" if gone else None) if x) or "flash files off"
+            st["outcome"] = outcome
             _save_status(st)
-            return configs or "mirror off"
+            return outcome
         versions = {}
         for rel in kept:
             log(f"firmware {rel['version']}: {len(cfg['boards']) if cfg['boards'] != 'all' else 'all'} boards")
@@ -446,6 +575,23 @@ def sync(check_only=False, log=print):
     st["outcome"] = outcome
     _save_status(st)
     return outcome
+
+
+def _drop_flash_files():
+    """Every release folder's flash files and manifests, leaving the build cache (pio-deps/);
+    a folder left empty goes too. Returns the bytes freed."""
+    gone = 0
+    for d in ROOT.iterdir() if ROOT.is_dir() else []:
+        if not (d.is_dir() and VERSION_RE.match(d.name)):
+            continue
+        for f in d.iterdir():
+            if f.name == "pio-deps" or f.is_dir():
+                continue
+            gone += f.stat().st_size
+            f.unlink()
+        if not any(d.iterdir()):
+            d.rmdir()
+    return gone
 
 
 def due(hours):
@@ -470,5 +616,7 @@ def targets():
 
 
 def snapshot():
+    m = source_mirror()
     return {"settings": settings(), "status": status(), "targets": targets(),
+            "source": m and {"name": m["name"], "area": m["area"]},
             "free_mb": librarian._free_bytes(ROOT) >> 20 if ROOT.exists() else None}

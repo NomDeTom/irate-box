@@ -11,30 +11,37 @@ import ipaddress
 import json
 import os
 import re
+import hmac
 import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import html
 from irate_box.hub import access
+from irate_box.hub import accounts
 from irate_box.hub import board
 from irate_box.hub import ci
 from irate_box.library import firmware
+from irate_box.hub import factory
 from irate_box.hub import flasher
 from irate_box.hub import gitrepos
 from irate_box.hub import hotspot
 from irate_box.hub import hubclock
+from irate_box.hub import linkhistory
 from irate_box.library import librarian
 from irate_box.hub import manifests
+from irate_box.hub import meshbridge
 from irate_box.hub import store
+from irate_box.hub import svchistory
 from irate_box.hub import uplink
 from irate_box.library import zimcheck
 
@@ -127,25 +134,60 @@ TAILSCALE_NAME = "Remote access (Tailscale)"
 # The web server in front (install.sh --web): nginx, or Caddy, the fallback.
 WEB_SERVER = os.environ.get("HUB_WEB_SERVER", "nginx")
 WEB_SERVER_NAME = {"nginx": "nginx", "caddy": "Caddy"}.get(WEB_SERVER, WEB_SERVER)
-MANIFESTS = manifests.load()
+# The built-in manifests and the local add-ons' (manifests.py), which the owner adds and removes
+# from /admin while the hub runs: refresh_manifests() reads them again when their folder changes.
+MANIFESTS = manifests.load_all()
 
 
 def _service_entry(status):
     entry = {"path": status.get("path"), "name": status["name"]}
     if "root_env" in status:
         entry["root"] = status["root_env"]
-    for key in ("port", "unit", "note"):
+    for key in ("port", "socket", "unit", "note", "local_dir"):
         if key in status:
             entry[key] = status[key]
     return entry
 
 
-SERVICES = [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
-    {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
-     "active": True, "note": "switched on and off from /admin"},
-    {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
-    {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
-]
+def _services():
+    return [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
+        {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
+         "active": True, "note": "switched on and off from /admin"},
+        {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
+        {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
+    ]
+
+
+SERVICES = _services()
+_local_stamp = {"at": None}
+
+
+def refresh_manifests():
+    """Read the manifests again when the local add-ons' folder has changed (the hub writes it
+    by renaming into place, which changes the folder's time): the tiles, /status, the list
+    pages and the librarian's apps follow."""
+    global MANIFESTS, SERVICES, MENU_PAGES
+    stamp = []
+    for p in [manifests.LOCAL_D, manifests.CATALOGUE, *sorted(manifests.CATALOGUE.glob("*.json"))]:
+        try:
+            stamp.append(p.stat().st_mtime_ns)
+        except OSError:
+            stamp.append(None)
+    if stamp == _local_stamp["at"]:
+        return
+    # The catalogue may have changed under added add-ons (a hub update): bring them along first.
+    # A copy it rewrites changes the folder again, and the next call finds nothing more to do.
+    try:
+        catalogue_sync()
+    except (OSError, ValueError, manifests.ManifestError) as exc:
+        print(f"catalogue sync: {exc}", file=sys.stderr)
+    _local_stamp["at"] = [p.stat().st_mtime_ns if p.exists() else None
+                          for p in [manifests.LOCAL_D, manifests.CATALOGUE, *sorted(manifests.CATALOGUE.glob("*.json"))]]
+    MANIFESTS = manifests.load_all()
+    SERVICES = _services()
+    MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
+    librarian.reload_apps()
+    _home_page["mtime"] = None
 
 
 # The hub's live tiles (a manifest names one with "widget"); hub.js and home.js fill them in.
@@ -160,6 +202,13 @@ WIDGET_HTML = {
         <span class="name">Join</span>
         <span class="desc" id="hub-qr-url">Scan to open this hub</span>
       </div>""",
+    "factory": """      <div class="service-card factory-card" id="factory-card">
+        <span class="icon">🏭</span>
+        <span class="name">Firmware Factory</span>
+        <span class="desc" id="factory-now">Built on this box</span>
+        <span class="bar" id="factory-bar" hidden><span id="factory-progress"></span></span>
+        <span class="factory-downloads" id="factory-downloads"></span>
+      </div>""",
     "system": """      <div class="service-card system-card" id="system-card">
         <span class="icon">💽💾</span>
         <span class="meter" id="mem-meter" hidden><span class="meter-label">Memory <b id="mem-text"></b></span><span class="bar"><span id="mem-bar"></span></span></span>
@@ -168,21 +217,27 @@ WIDGET_HTML = {
 }
 
 
-def hidden_apps():
-    """The apps not on the home page or the list pages: private or off (access.py; the root
-    helper leaves its copy of the choices in the control folder)."""
+def hidden_apps(signed_in=False):
+    """The apps not on the home page or the list pages: private or off, and for users unless the
+    visitor is logged in (access.py; the root helper leaves its copy of the choices in the
+    control folder)."""
     state = access.read(ACCESS_STATE)
-    return {i for i, mode in state.items() if mode != "public"}
+    # The switched apps (built-in, by their choice or default) and the local add-ons (off until
+    # switched on). A built-in with no switch (a list page, the box row, About) is never hidden.
+    ids = set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
+    return {i for i in ids if access.mode_of(state, i) != "public" and not (signed_in and access.mode_of(state, i) == "users")}
 
 
-def render_tiles(row="apps", hidden=frozenset()):
+def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
-    list page left with nothing on it."""
+    list page left with nothing on it. factory_tile: the owner's choice to show the factory's."""
     out = []
     for m in MANIFESTS:
         tile = m.get("tile")
         if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
+            continue
+        if tile.get("widget") == "factory" and not factory_tile:
             continue
         if m.get("menu") and not manifests.entries_for(m["id"], MANIFESTS, hidden):
             continue
@@ -208,24 +263,27 @@ def render_tiles(row="apps", hidden=frozenset()):
 
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
-_home_page = {"mtime": None, "body": b""}
+_home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
-def home_page():
-    """index.html with the tiles in place, re-read when the file or the access choices change."""
+def home_page(signed_in=False):
+    """index.html with the tiles in place, re-read when the file or the access choices change;
+    one for guests and one for anyone logged in (who also sees the apps for users)."""
     path = STATIC / "index.html"
     try:
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    mtime = (path.stat().st_mtime, chosen)
-    if _home_page["mtime"] != mtime:
+    show_factory = settings_snapshot()["factory_tile"]
+    mtime = (path.stat().st_mtime, chosen, show_factory)
+    cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
+    if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
-        hidden = hidden_apps()
-        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden))
-        _home_page["body"] = text.encode()
-        _home_page["mtime"] = mtime
-    return _home_page["body"]
+        hidden = hidden_apps(signed_in)
+        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden, show_factory))
+        cached["body"] = text.encode()
+        cached["mtime"] = mtime
+    return cached["body"]
 
 
 # The list pages (a manifest with a "menu"), at their tile's href. Rendered on each request:
@@ -238,7 +296,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title} · Hub</title>
   <link rel="stylesheet" href="style.css">
-  <script>try{{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='cybercore')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
+  <script src="/themes.js"></script>
 </head>
 <body{art_attrs}>
   <!-- {about}
@@ -246,16 +304,10 @@ MENU_TEMPLATE = """<!DOCTYPE html>
        "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
        out when data-service is down. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>{title}</h1>
     <p class="subtitle">{subtitle}</p>
-    <div class="theme-picker" role="group" aria-label="Theme">
-      <span class="theme-label" aria-hidden="true">Theme</span>
-      <button type="button" data-theme-choice="light" title="Light">☀️</button>
-      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
-      <button type="button" data-theme-choice="cybercore" title="Cybercore">🏴‍☠️</button>
-      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
-    </div>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section class="item-section">
@@ -264,16 +316,20 @@ MENU_TEMPLATE = """<!DOCTYPE html>
     </ul>
   </section>
 
-{art}  <script src="hub.js"></script>
+{art}{banner}  <script src="hub.js"></script>
 </body>
 </html>
 """
 
 
-def menu_page(m):
+def menu_page(m, signed_in=False):
     items = []
-    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps()):
-        attrs = f'href="{html.escape(e["href"])}"'
+    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps(signed_in)):
+        href = e["href"]
+        if href.startswith("/app.html#"):
+            # The hub bar then offers ↑ back to this list (app.js).
+            href = f"/app.html?from={m['id']}#" + href[len("/app.html#"):]
+        attrs = f'href="{html.escape(href)}"'
         if service:
             attrs += f' data-service="{html.escape(service)}"'
         if e.get("new_tab", True):
@@ -283,9 +339,13 @@ def menu_page(m):
     menu = m["menu"]
     # A krab in the bottom-left corner, if the manifest names one (style.css: data-art).
     art = menu.get("art")
-    art_attrs = f' data-art="{art}" data-art-side="left"' if art else ""
+    lines = menu.get("banner")
+    # Text art instead, if the manifest has it (e.g. ELIZA's, from its source): the same kind of
+    # faint ident in the bottom-right corner, behind the list (style.css: .menu-ident).
+    art_attrs = f' data-art="{art}" data-art-side="left"' if art else (' data-art="ident"' if lines else "")
     art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
-    return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html,title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
+    banner = f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n' if lines else ""
+    return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html, banner=banner, title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
                                 about=html.escape(menu.get("about", "")).replace("--", "-"),
                                 items="\n".join(items)).encode()
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
@@ -338,12 +398,24 @@ DEFAULT_SETTINGS = {
     # (a real boot, not the hub restarting for an update; see clear_on_new_boot).
     "shout_reset_on_boot": False,
     "board_reset_on_boot": False,
+    # The Firmware Factory's tile on the front page (step 36): its queue for anyone to follow, and
+    # what it built to download. Off until the owner shows it.
+    "factory_tile": False,
+    # The shoutbox and the forum (accounts step 16, Tom's answer 6): who may post, guests (and
+    # users), users only, or off; and whether a user's name carries a check mark.
+    "shout_who": "guests",
+    "shout_marks": True,
+    "board_who": "guests",
+    "board_marks": True,
 }
+POSTERS = ("guests", "users", "off")
 _settings_lock = threading.Lock()
 
 
 def valid_setting(key, value):
     want = type(DEFAULT_SETTINGS[key])
+    if key in ("shout_who", "board_who"):
+        return value in POSTERS
     return type(value) is want and (want is not int or value >= 0)
 
 
@@ -415,6 +487,21 @@ def port_listening(port):
         return False
 
 
+def socket_listening(path):
+    """A service on a UNIX socket (SilverBullet's: no TCP port at all, F31; ttyd's, F9)."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(0.2)
+            s.connect(path)
+            return True
+    except PermissionError:
+        # There, but not the hub's to open (ttyd's is root's and the web server's group's).
+        # Its folder is the unit's RuntimeDirectory, gone when the unit stops, so it is live.
+        return True
+    except OSError:
+        return False
+
+
 def unit_states(units):
     """{unit: (installed?, active?, enabled?)} from one `systemctl show`, or {} where there
     is no systemd to ask (a dev machine): the caller then treats every unit as installed."""
@@ -464,6 +551,9 @@ def service_status(proxied):
         _status_cache["ports"] = {
             svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
         }
+        _status_cache["sockets"] = {
+            svc["socket"]: socket_listening(svc["socket"]) for svc in SERVICES if "socket" in svc
+        }
         _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
         _status_cache["why"] = {}
         _status_cache["at"] = now
@@ -471,7 +561,10 @@ def service_status(proxied):
     out = []
     for svc in SERVICES:
         installed, active, _ = units.get(svc["unit"], (True, False, False)) if "unit" in svc else (True, False, False)
-        if "root" in svc:
+        if "local_dir" in svc:
+            installed = Path(svc["local_dir"]).is_dir()
+            running = installed and proxied
+        elif "root" in svc:
             root = os.environ.get(svc["root"])
             installed = root is None or Path(root).is_dir()
             running = installed and proxied
@@ -481,6 +574,8 @@ def service_status(proxied):
             running = proxied
         elif svc.get("active"):
             running = installed and active
+        elif "socket" in svc:
+            running = _status_cache["sockets"].get(svc["socket"], False)
         else:
             running = _status_cache["ports"].get(svc["port"], False)
         state = "running" if running else "stopped" if installed else "missing"
@@ -610,6 +705,55 @@ def library_action(payload):
     return 200, library_snapshot()
 
 
+def git_snapshot():
+    """The Git page: the repositories, and the mirrors with what each keeps (mirrors.py)."""
+    from irate_box.library import mirrors
+    snap = gitrepos.snapshot()
+    mirror_list = mirrors.snapshot()
+    # Each repository's newest build, and which mirror a submodule mirror belongs to (the Git
+    # page leaves those out of its grid; Library → Mirrors lists them under their parent).
+    last = {}
+    for r in ci.snapshot(limit=500)["runs"]:
+        last.setdefault(r["run"].split("/")[0], {k: r.get(k) for k in ("run", "state", "started", "duration", "branch", "commit")})
+    parent = {}
+    for m in mirror_list:
+        for sub in (m.get("status") or {}).get("submodules", {}).values():
+            parent[(m["area"], sub["repo"])] = m["name"]
+    for r in snap["repos"]:
+        r["last_build"] = last.get(r["name"]) if r["area"] == "private" else None
+        r["submodule_of"] = parent.get((r["area"], r["name"]))
+    snap.update(mirrors=mirror_list, running=librarian.is_running(), progress=librarian.progress())
+    return snap
+
+
+def git_action(payload):
+    """(status, body) for POST /admin/git: a repository change (gitrepos.py), or a mirror's."""
+    from irate_box.library import mirrors
+    action = payload.get("action")
+    if not str(action).startswith("mirror-"):
+        code, body = gitrepos.action(payload)
+        return (code, git_snapshot()) if code == 200 else (code, body)
+    try:
+        if action == "mirror-add":
+            mirrors.add(payload.get("mirror") or {})
+        elif action == "mirror-change":
+            mirrors.change(payload.get("mirror") or {})
+        elif action == "mirror-remove":
+            mirrors.remove(str(payload.get("name", "")))
+        elif action in ("mirror-check", "mirror-update"):
+            names = [str(payload["name"])] if payload.get("name") else None
+            def run():
+                with librarian.Lock():
+                    return {"mirrors": mirrors.sync_all(names, check_only=(action == "mirror-check"), log=lambda *_: None)}
+            if not library_start(action, run):
+                return 409, {"error": "the librarian is already running"}
+        else:
+            return 400, {"error": "action must be mirror-add, mirror-change, mirror-remove, mirror-check or mirror-update"}
+    except librarian.LibrarianError as exc:
+        return 400, {"error": str(exc)}
+    return 200, git_snapshot()
+
+
 def firmware_action(payload):
     """(status, body) for POST /admin/firmware: the settings, or a run (firmware.py)."""
     action = payload.get("action")
@@ -623,8 +767,10 @@ def firmware_action(payload):
                     return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
             if not library_start(f"firmware-{action}", run):
                 return 409, {"error": "the librarian is already running"}
+        elif action == "flush-cache":
+            firmware.flush_cache(log=lambda *_: None)
         else:
-            return 400, {"error": "action must be settings, check or update"}
+            return 400, {"error": "action must be settings, check, update or flush-cache"}
     except librarian.LibrarianError as exc:
         return 400, {"error": str(exc)}
     snap = firmware.snapshot()
@@ -655,8 +801,36 @@ UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/i
 SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
 
 
+# The front's word that a request came through its /admin route, where it asked for the
+# login: a secret it adds there and nowhere else (install.sh makes it, root-only, and hands it
+# to the web server and to this unit). Without it, anything that can send a request to the
+# hub's loopback port is the admin: a build (F8), a proxy like SilverBullet's (F31), a path
+# the front did not normalise (F27). Unset, as when the hub runs bare in development, /admin
+# is as open as it always was.
+FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
+FRONT_HEADER = "X-Irate-Front"
+SESSION_COOKIE = "irate_session"
+
+
 def unclaimed():
     return UNCLAIMED_FILE.exists()
+
+
+def admin_login_on():
+    """Whether the box's own admin login (basic auth) is on: the root helper's record (on unless
+    it says off)."""
+    try:
+        return json.loads((CONTROL_DIR / "admin-login.json").read_text()).get("on") is not False
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
+def accounts_view():
+    listing = accounts.listing()
+    return {"settings": accounts.settings(), "accounts": listing, "counts": accounts.counts(),
+            "admin_login": {"on": admin_login_on(), "results": control_results(10),
+                            "https_admins": [a["name"] for a in listing if a["role"] == "admin" and a["state"] == "user"
+                                             and a["password_set"] and a.get("https_login")]}}
 
 
 def setup_status(rid):
@@ -691,7 +865,9 @@ def control_request(req):
     """Queue a request for hub_control.py; returns its id, which its answer will carry."""
     CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
     rid = secrets.token_hex(8)
-    tmp = CONTROL_DIR / f".{rid}.tmp"  # written beside, renamed in: never read half-written
+    # Written in the hub's own folder, renamed in: never read half-written. Not in control/,
+    # which is root's (F3), nor in requests/, whose path unit would start the helper for it.
+    tmp = STATE_DIR / f".request-{rid}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
         json.dump(dict(req, id=rid), fh)
@@ -723,6 +899,7 @@ def admin_box(proxied):
     now = CLOCK.ticks()
     return {"system": system_status(), "uptime": now, "online": online_count(now),
             "joined": joined_count(), "services": services, "version": hub_version(),
+            "service_uptime": svchistory.summarize(svchistory.load()),
             "results": control_results(),
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
@@ -795,7 +972,7 @@ SECURITY_STATE = CONTROL_DIR / "security.json"
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
-SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@._-]+)?$")
+SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?$")
 
 
 def security_snapshot():
@@ -834,7 +1011,24 @@ def security_snapshot():
         log = [ANSI_RE.sub("", line) for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]]
     except OSError:
         log = []
-    return {"hub": hub, "scan": scan, "audit": audit, "log": log, "pending": _pending_actions("security-"),
+    deep = {}
+    try:
+        d = json.loads((CONTROL_DIR / "security-deep.json").read_text())
+        deep = {"at": d.get("at"), "took": d.get("took")}
+    except (OSError, ValueError):
+        pass
+    try:
+        deep["progress"] = json.loads((CONTROL_DIR / "security-deep-progress.json").read_text())
+    except (OSError, ValueError):
+        pass
+    imports = {}
+    for kind in ("openvas", "nmap"):
+        try:
+            rep = json.loads((STATE_DIR / "security-imports" / f"{kind}.json").read_text())
+            imports[kind] = {"name": rep.get("name"), "ran": rep.get("ran"), "imported": rep.get("imported"), "results": len(rep.get("results", []))}
+        except (OSError, ValueError):
+            pass
+    return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "imports": imports, "log": log, "pending": _pending_actions("security-"),
             "results": control_results(5)}
 
 
@@ -883,6 +1077,7 @@ def health_snapshot():
 
 NETINV_STATE = CONTROL_DIR / "netinv.json"
 UPLINK_STATE = CONTROL_DIR / "uplink.json"
+MESH = meshbridge.Bridge()  # started in main; idle (retrying now and then) where there is no broker
 
 
 def network_snapshot():
@@ -897,7 +1092,9 @@ def network_snapshot():
     if status:
         # A report the watchdog stopped writing is old news: say so rather than show it as live.
         status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
-    return {"inventory": load(NETINV_STATE), "uplink": status,
+    # Each link's uptime (step 34): hours for a week, days for 35, summed here from the watchdog's
+    # five-minute slots, so the page gets a few KB rather than the slots.
+    return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
             "levels": {"eagerness": list(uplink.EAGERNESS), "forgiveness": list(uplink.FORGIVENESS),
                        "describe": uplink.DESCRIBE, "presets": {"eagerness": uplink.EAGERNESS,
                                                                 "forgiveness": uplink.FORGIVENESS, "common": uplink.COMMON},
@@ -933,6 +1130,222 @@ def addons_snapshot():
     snap = update_snapshot()
     return {"addons": out, "known": opts is not None, "progress": snap["progress"], "log": snap["log"],
             "pending": _pending_actions("addon"), "results": control_results(5)}
+
+
+# --- local add-ons (plans/no-root-addons-plan) ---------------------------------
+# Added, kept current and removed by the hub itself: their manifests in manifests.LOCAL_D, their
+# files in manifests.ADDONS (the librarian's), served by the web server's add-on origin. The
+# owner's agreement to each is kept in CONSENTS. Switching one on is the access switch (root's).
+CONSENTS = STATE_DIR / "addons-consent.json"
+# Each added add-on against the catalogue (catalogue_sync): {id: {status, at, changed, held}}.
+CATALOGUE_STATE = STATE_DIR / "addons-catalogue.json"
+LOCAL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+
+def _read_consents():
+    try:
+        data = json.loads(CONSENTS.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_atomic(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+def _agreed_changes(old, new):
+    """What changed in the part the owner agreed to, in words, for /admin."""
+    a, b = manifests.agreed_part(old), manifests.agreed_part(new)
+    out = []
+    if a["consent"] != b["consent"]:
+        out.append("its consent text")
+    added = [c for c in b["connect"] if c not in a["connect"]]
+    gone = [c for c in a["connect"] if c not in b["connect"]]
+    if added:
+        out.append("now connects to " + ", ".join(added))
+    if gone:
+        out.append("no longer connects to " + ", ".join(gone))
+    if a["storage"] != b["storage"]:
+        out.append("now keeps data in the visitor's browser" if b["storage"] else "no longer keeps data in the browser")
+    if a["source"] != b["source"]:
+        out.append(f"comes from {b['source'].get('repo')} (was {a['source'].get('repo')})")
+    return out
+
+
+def catalogue_sync():
+    """Bring each add-on added from the catalogue up to the catalogue's entry, as far as the owner's
+    consent allows (next-work-plan step 19). The added copy (manifests.LOCAL_D) is what the owner
+    agreed to; a newer catalogue entry with the same agreed part (manifests.agreed_part: consent
+    text, what it connects to, browser storage, where it comes from) replaces it: the tile, its
+    list, a moved pin. One that changes the agreed part waits for the owner to accept it (/admin);
+    the agreed copy keeps running. Pasted add-ons have no catalogue entry and are left alone."""
+    try:
+        cat = manifests.catalogue()
+    except (manifests.ManifestError, OSError, ValueError):
+        return {}
+    consents = _read_consents()
+    try:
+        state = json.loads(CATALOGUE_STATE.read_text())
+    except (OSError, ValueError):
+        state = {}
+    now = int(time.time())
+    kick = []
+    for path in sorted(manifests.LOCAL_D.glob("*.json")) if manifests.LOCAL_D.is_dir() else []:
+        i = path.stem
+        if (consents.get(i) or {}).get("how") != "catalogue":
+            continue
+        try:
+            copy = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        entry = cat.get(i)
+        if entry is None:
+            if (state.get(i) or {}).get("status") != "gone":
+                state[i] = {"status": "gone", "at": now}
+            continue
+        if entry == copy:
+            if (state.get(i) or {}).get("status") == "held":
+                state[i] = {"status": "current", "at": now}
+            continue
+        held = _agreed_changes(copy, entry)
+        if held:
+            state[i] = {"status": "held", "at": now, "held": held}
+            continue
+        changed = sorted(k for k in set(copy) | set(entry) if copy.get(k) != entry.get(k))
+        if (copy.get("source") or {}).get("pin") != (entry.get("source") or {}).get("pin"):
+            kick.append(i)
+        _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+        state[i] = {"status": "updated", "at": now, "changed": changed}
+    _write_atomic(CATALOGUE_STATE, json.dumps(state, indent=2) + "\n")
+    if kick:
+        # A moved pin: fetch it now rather than at the librarian's next turn.
+        librarian.reload_apps()
+        library_start("update", lambda: librarian.update(kick, mode="update", log=lambda *_: None))
+    return state
+
+
+def local_addons_snapshot():
+    """/admin's local add-ons: the catalogue, what is added (and installed, and how it is
+    switched), and any local manifest that was left out and why."""
+    refresh_manifests()
+    try:
+        cat = manifests.catalogue()
+        cat_error = None
+    except (manifests.ManifestError, OSError, ValueError) as exc:
+        cat, cat_error = {}, str(exc)
+    local, errors = manifests.load_local(builtin=manifests.load())
+    state = access.read(ACCESS_STATE)
+    consents = _read_consents()
+    status = librarian.load_status()
+    try:
+        cat_state = json.loads(CATALOGUE_STATE.read_text())
+    except (OSError, ValueError):
+        cat_state = {}
+    added = []
+    for m in local:
+        i = m["id"]
+        added.append({"id": i, "title": m["addon"]["title"], "summary": m["addon"]["summary"],
+                      "mode": access.mode_of(state, i), "installed": librarian.installed_app(i),
+                      "status": status.get(i, {}), "pin": m["source"].get("pin"), "repo": m["source"].get("repo"),
+                      "capabilities": m["capabilities"], "from_catalogue": i in cat,
+                      "consent": consents.get(i), "href": m["tile"]["href"], "catalogue": cat_state.get(i)})
+    have = {m["id"] for m in local}
+    offered = [{"id": i, "title": c["addon"]["title"], "summary": c["addon"]["summary"],
+                "consent": c["addon"]["consent"], "repo": c["source"].get("repo"), "pin": c["source"].get("pin"),
+                "capabilities": c.get("capabilities", {}), "added": i in have} for i, c in cat.items()]
+    job = {k: _library_job.get(k) for k in ("action", "result")}
+    return {"catalogue": offered, "catalogue_error": cat_error, "added": added, "errors": errors,
+            "addon_port": int(os.environ.get("HUB_ADDON_PORT", "8090")), "job": job,
+            "running": librarian.is_running()}
+
+
+def _local_add(m, how):
+    """Write a checked local manifest, record the consent, and fetch it in the background."""
+    i = m["id"]
+    path = manifests.LOCAL_D / f"{i}.json"
+    if path.exists():
+        raise ValueError(f"{i} is already added")
+    _write_atomic(path, json.dumps(m, indent=2) + "\n")
+    consents = _read_consents()
+    consents[i] = {"at": int(time.time()), "how": how, "consent": m["addon"]["consent"]}
+    _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+    refresh_manifests()
+    # Off until the owner switches it on, whatever was chosen for that name before (a removed
+    # add-on, or the built-in ELIZA of 2026-10-05): root's, which also puts it in the web
+    # server's add-on maps.
+    rid = control_request({"action": "access", "app": i, "mode": "off"})
+    librarian.add_source(librarian.default_app_source(i))
+    started = library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+    return {"added": i, "fetching": started, "access": rid}
+
+
+def local_addons_action(payload):
+    """(status code, body) for one POST /admin/local-addons."""
+    action = payload.get("action")
+    try:
+        if action == "add":
+            i = str(payload.get("id", ""))
+            cat = manifests.catalogue()
+            if i not in cat:
+                return 400, {"error": "id must name an add-on in the catalogue"}
+            if payload.get("agree") is not True:
+                return 400, {"error": "agree to its consent text first"}
+            return 202, _local_add(cat[i], "catalogue")
+        if action == "paste":
+            m = payload.get("manifest")
+            # Pasted: anyone's manifest, not one this hub's code offers. The page shows the
+            # heavy warning; the request must say it was read.
+            if payload.get("understood") != "I understand this runs someone else's code on this box's address":
+                return 400, {"error": "a pasted add-on needs its warning acknowledged"}
+            manifests.check_local(m, "the pasted manifest", {x["id"] for x in manifests.load()})
+            return 202, _local_add(m, "pasted")
+        if action == "accept":
+            # The catalogue's newer entry, whose agreed part changed: the owner has read the
+            # changes on /admin and takes it. It replaces the copy, with a new consent record.
+            i = str(payload.get("id", ""))
+            cat = manifests.catalogue()
+            path = manifests.LOCAL_D / f"{i}.json"
+            if not LOCAL_ID_RE.match(i) or i not in cat or not path.exists():
+                return 400, {"error": "id must name an add-on added from the catalogue"}
+            if payload.get("agree") is not True:
+                return 400, {"error": "agree to its consent text first"}
+            entry = cat[i]
+            _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+            consents = _read_consents()
+            consents[i] = {"at": int(time.time()), "how": "catalogue", "consent": entry["addon"]["consent"]}
+            _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+            refresh_manifests()
+            librarian.reload_apps()
+            library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+            return 200, {"accepted": i}
+        if action == "remove":
+            i = str(payload.get("id", ""))
+            if not LOCAL_ID_RE.match(i) or not (manifests.LOCAL_D / f"{i}.json").exists():
+                return 400, {"error": "id must name an added add-on"}
+            try:
+                librarian.remove_source(i)
+            except librarian.LibrarianError:
+                pass
+            for p in (manifests.ADDONS / i, manifests.ADDONS / f".{i}.prev", manifests.ADDONS / f".{i}.new"):
+                shutil.rmtree(p, ignore_errors=True)
+            # Off first (root's, while the manifest is still there to name it), then gone.
+            control_request({"action": "access", "app": i, "mode": "off"})
+            (manifests.LOCAL_D / f"{i}.json").unlink(missing_ok=True)
+            consents = _read_consents()
+            consents.pop(i, None)
+            _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+            refresh_manifests()
+            return 200, {"removed": i}
+        return 400, {"error": "action: add, paste, accept or remove"}
+    except manifests.ManifestError as exc:
+        return 400, {"error": str(exc)}
+    except (ValueError, librarian.LibrarianError) as exc:
+        return 409 if "already" in str(exc) else 400, {"error": str(exc)}
 
 
 def kit_snapshot():
@@ -1094,20 +1507,103 @@ class HubServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
+# F2: whatever part of a request's body a route leaves unread is read away (or the connection
+# closed) after it answers, so the web server's kept-alive connection never carries it into the
+# next request. The doctor's F2 check looks for this marker.
+DRAINS_REQUEST_BODIES = True
+MAX_JSON = 256 * 1024  # the largest JSON body the hub reads (F15); the store and drop have their own
+# More unread than this, and the connection is closed rather than read. Closing early is the
+# rougher choice (a client still sending sees a reset, and may lose the answer), so it is kept
+# for bodies far over any the hub takes (the drop's are up to 25 MB by default).
+DRAIN_MAX = 64 << 20
+
+
+class _Counted:
+    """The connection's reader, counting the bytes read since the request's headers."""
+
+    def __init__(self, f):
+        self._f = f
+        self.count = 0
+
+    def read(self, n=-1):
+        b = self._f.read(n)
+        self.count += len(b)
+        return b
+
+    def read1(self, n=-1):
+        b = self._f.read1(n)
+        self.count += len(b)
+        return b
+
+    def readline(self, n=-1):
+        b = self._f.readline(n)
+        self.count += len(b)
+        return b
+
+    def readinto(self, b):
+        n = self._f.readinto(b)
+        self.count += n or 0
+        return n
+
+    def __getattr__(self, name):
+        return getattr(self._f, name)
+
+
 class Handler(BaseHTTPRequestHandler):
     # Socket timeout per request. A phone that stalls mid-upload releases its thread
     # instead of pinning it; the web server in front already shields the listener itself.
     timeout = 30
     protocol_version = "HTTP/1.1"
 
+    def setup(self):
+        super().setup()
+        self.rfile = _Counted(self.rfile)
+
+    def parse_request(self):
+        ok = super().parse_request()
+        self.rfile.count = 0  # the body starts here
+        # A body that will not be read away (chunked: the hub reads none; or too large) means
+        # closing after the answer, so the answer says so, and the web server does not send its
+        # next request down a connection about to close.
+        self._close_after = False
+        if ok:
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = -1
+            self._close_after = bool(self.headers.get("Transfer-Encoding")) or not 0 <= n <= DRAIN_MAX
+            # Asked to close (an nginx location that sets its own headers sends Connection: close):
+            # Python closes, but says nothing, and the web server would keep the connection for
+            # its next request, which then fails (found with the accounts' session check).
+            self._close_after = self._close_after or self.headers.get("Connection", "").strip().lower() == "close"
+        return ok
+
+    def send_response(self, code, message=None):
+        super().send_response(code, message)
+        if getattr(self, "_close_after", False):
+            self.send_header("Connection", "close")
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, BrokenPipeError):
+            # The client went (a kept-alive connection reset while idle, or a client that
+            # closed without reading the answer): a closed connection, not the hub's error.
+            self.close_connection = True
+            return
+        if not self.close_connection:
+            self._discard_body()
+
     def log_message(self, fmt, *args):
         pass  # quiet
 
-    def send_json(self, code, data):
+    def send_json(self, code, data, headers=()):
         body = json.dumps(data).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", len(body))
+        for k, v in headers:
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -1192,9 +1688,158 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _discard_body(self):
+        """Read away what is left unread of this request's body when it is small, or close the
+        connection. Left in the stream, the web server's kept-alive connection would carry it
+        into the next request (F2's mechanism: the next request fails, or is another). Runs
+        after every request (handle_one_request), and before a refusal that reads nothing."""
+        headers = getattr(self, "headers", None)
+        if headers is None:
+            return
+        try:
+            n = int(headers.get("Content-Length") or 0) - self.rfile.count
+        except ValueError:
+            n = -1
+        if getattr(self, "_close_after", False) or n < 0:
+            self.close_connection = True
+        else:
+            try:
+                while n > 0:
+                    got = len(self.rfile.read(min(n, 1 << 16)))
+                    if not got:
+                        break
+                    n -= got
+            except OSError:  # it never came: the socket timed out
+                self.close_connection = True
+
+    def _admin_refused(self, path):
+        """An /admin request that did not come through the front's /admin route: 403."""
+        if not FRONT_SECRET or not path.startswith("/admin"):
+            return False
+        if hmac.compare_digest(self.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode()):
+            return False
+        self._discard_body()
+        self.send_json(403, {"error": "/admin only through the web server in front"})
+        return True
+
+    # --- accounts (accounts.py, step 16): the session cookie, and whether the request came over HTTPS
+
+    def _https(self):
+        """Over HTTPS: the web server says so (X-Forwarded-Proto, which it always sets, replacing a
+        guest's own). Run bare, the hub is plain HTTP."""
+        return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
+
+    def _irate_check(self, path):
+        """The front's questions (nginx auth_request, Caddy forward_auth), never with a body.
+        /_irate/admin: is this an admin account's session? (Asked beside the box's own login for
+        /admin, the shell, Syncthing and private apps: either will do.) Yes too while the box is
+        unclaimed, when /admin shows only the set-the-password page and asks no login (nginx's
+        satisfy any would otherwise refuse it).
+        /_irate/user: is this visitor logged in? (An app in users mode, access.py.) No: 401 for
+        nginx (its gate sends them to log in), or for Caddy (?redirect=1) the redirect itself,
+        back to where they were going on this origin."""
+        me = accounts.session(self._session_token())
+        if path == "/_irate/admin":
+            ok = unclaimed() or (me is not None and me.get("role") == "admin")
+        else:
+            ok = me is not None
+        if ok:
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif path == "/_irate/user" and "redirect=1" in self.path.partition("?")[2].split("&"):
+            back = self.headers.get("X-Forwarded-Uri", "/")
+            nxt = back if back.startswith("/") and not back.startswith("//") else "/"
+            self.send_response(302)
+            self.send_header("Location", "/account.html?next=" + quote(nxt, safe="/"))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            self.send_json(401, {"error": "an admin's login" if path == "/_irate/admin" else "log in first"})
+
+    def _signed_in(self):
+        return accounts.session(self._session_token()) is not None if self._session_token() else False
+
+    def _session_token(self):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == SESSION_COOKIE:
+                return v
+        return ""
+
+    def _session_cookie(self, token, max_age):
+        return ("Set-Cookie", f"{SESSION_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict"
+                + ("; Secure" if self._https() else ""))
+
+    def _client_addr(self):
+        fwd = self.headers.get("X-Forwarded-For", "")
+        return fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
+
+    def _account_post(self, payload):
+        """/api/account: sign up, log in or out, change a password, set one with a code. A page
+        elsewhere can't make these (the header, as /admin's), nor is a password taken over plain
+        HTTP when the admin has prevented it."""
+        site = self.headers.get("Sec-Fetch-Site")
+        origin = self.headers.get("Origin")
+        if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")) \
+                or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
+            self.send_json(403, {"error": "this must come from the box's own account page"})
+            return
+        action, addr = payload.get("action"), self._client_addr()
+        if action == "logout":
+            accounts.logout(self._session_token())
+            self.send_json(200, {"me": None}, [self._session_cookie("", 0)])
+            return
+        if action in ("signup", "login", "password", "code") and not self._https() and accounts.settings()["http"] == "prevented":
+            self.send_json(403, {"error": "this box takes passwords only over HTTPS: open this page with https://", "https": False})
+            return
+        try:
+            if action == "signup":
+                state = accounts.signup(payload.get("name"), payload.get("password"), addr)
+                if state == "asked":
+                    self.send_json(200, {"state": "asked"})
+                    return
+                action = "login"
+            if action == "login":
+                token, me = accounts.login(payload.get("name"), payload.get("password"), addr, https=self._https())
+                self.send_json(200, {"me": me}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
+            elif action == "password":
+                accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr)
+                self.send_json(200, {"changed": True})
+            elif action == "code":
+                name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
+                self.send_json(200, {"name": name})
+            else:
+                self.send_json(400, {"error": "action is signup, login, logout, password or code"})
+        except accounts.Wait as exc:
+            self.send_json(429, {"error": str(exc)})
+        except accounts.AccountError as exc:
+            self.send_json(400, {"error": str(exc)})
+
+    def _forged(self, path):
+        """An /admin POST a page elsewhere could have made (S3): it must carry X-Irate-Admin,
+        which a cross-site form cannot send and a cross-site fetch cannot without a preflight
+        the hub never answers; and when the browser says where it came from (Origin,
+        Sec-Fetch-Site), that must be this host. Browsers send a cached login with a forged
+        form, so the login alone does not stop it."""
+        if not path.startswith("/admin"):
+            return False
+        ok = self.headers.get("X-Irate-Admin") == "1"
+        site = self.headers.get("Sec-Fetch-Site")
+        if site and site not in ("same-origin", "none"):
+            ok = False
+        origin = self.headers.get("Origin")
+        if origin and urlparse(origin).netloc != self.headers.get("Host", ""):
+            ok = False
+        if not ok:
+            self._discard_body()
+            self.send_json(403, {"error": "an /admin change must come from the /admin page itself"})
+        return not ok
+
     def _admin_locked(self, path):
         """On an unclaimed box, every admin path but the setup page answers 403."""
         if path.startswith("/admin") and unclaimed() and path not in SETUP_PATHS:
+            self._discard_body()
             self.send_json(403, {"error": "no admin password has been chosen yet: open /admin/"})
             return True
         return False
@@ -1259,12 +1904,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         note_client(self)
+        refresh_manifests()
         if self._is_captive_probe() or self._off_hub_name():
             self._redirect_to_hub()
             return
 
         path = self.path.split("?")[0]
-        if self._admin_locked(path):
+        if self._admin_refused(path) or self._admin_locked(path):
             return
 
         if path.startswith("/flasher/") or path == "/flasher":
@@ -1273,6 +1919,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/source", "/source/", "/source/irate-box-source.tar.gz"):
             self._send_source()
+            return
+
+        if path in ("/_irate/admin", "/_irate/user"):
+            self._irate_check(path)
+            return
+
+        if path == "/api/account":
+            # The account page's view: what the admin allows, and who this is (accounts.py).
+            self.send_json(200, dict(accounts.settings(), https=self._https(), me=accounts.session(self._session_token())))
+            return
+
+        if path == "/admin/accounts":
+            self.send_json(200, accounts_view())
             return
 
         if path == "/admin/setup":
@@ -1287,11 +1946,11 @@ class Handler(BaseHTTPRequestHandler):
             now = CLOCK.ticks()
             with lock:
                 msgs = live_messages(now)
-            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs})
+            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout")})
             return
 
         if path == "/board/threads":
-            self.send_json(200, BOARD.list_threads())
+            self.send_json(200, dict(BOARD.list_threads(), posting=self._posting_view("board")))
             return
 
         if path == "/admin/settings":
@@ -1303,7 +1962,36 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/library":
-            self.send_json(200, library_snapshot())
+            snap = library_snapshot()
+            if "books=0" in self.path.partition("?")[2].split("&"):
+                # The Books page asks for its books a page at a time (/admin/books): leave them out.
+                snap["sources"] = [x for x in snap["sources"] if x.get("kind") == "app"]
+                snap["status"] = {k: v for k, v in snap["status"].items() if k in {x["name"] for x in snap["sources"]}}
+            self.send_json(200, snap)
+            return
+
+        if path == "/admin/catalogue":
+            # Kiwix's online catalogue, to pick books from (librarian.catalogue_search): online only.
+            query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+            try:
+                self.send_json(200, librarian.catalogue_search(q=query.get("q", ""), language=query.get("language", ""),
+                                                               category=query.get("category", ""), start=int(query.get("start") or 0)))
+            except ValueError:
+                self.send_json(400, {"error": "start is a number"})
+            except librarian.LibrarianError as exc:
+                self.send_json(502, {"error": f"Kiwix's catalogue could not be read ({exc}). It needs the internet."})
+            return
+
+        if path == "/admin/books":
+            query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+            try:
+                self.send_json(200, librarian.books_page(q=query.get("q", "")[:100], language=query.get("language", "")[:20],
+                                                         state=query.get("state", "") if query.get("state") in librarian.BOOK_STATES else "",
+                                                         kept=query.get("kept", ""), sort=query.get("sort", "title"),
+                                                         page=int(query.get("page") or 1), per_page=int(query.get("per_page") or librarian.PER_PAGE),
+                                                         names_only=query.get("names") == "1"))
+            except ValueError:
+                self.send_json(400, {"error": "page and per_page are numbers"})
             return
 
         if path == "/admin/box":
@@ -1346,6 +2034,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, addons_snapshot())
             return
 
+        if path == "/admin/local-addons":
+            self.send_json(200, local_addons_snapshot())
+            return
+
         if path == "/admin/kit":
             self.send_json(200, kit_snapshot())
             return
@@ -1356,7 +2048,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             state = access.read(ACCESS_STATE)
-            self.send_json(200, {"apps": [dict(a, mode=state[a["id"]]) for a in access.apps(MANIFESTS)],
+            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"])) for a in access.apps(MANIFESTS)],
                                  "results": control_results()})
             return
 
@@ -1365,17 +2057,78 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/git":
-            self.send_json(200, gitrepos.snapshot())
+            self.send_json(200, git_snapshot())
             return
 
         if path == "/admin/ci":
             self.send_json(200, ci.snapshot())
             return
 
+        if path == "/admin/kits":
+            from irate_box.library import toolkits
+            snap = toolkits.snapshot()
+            snap["results"] = [r for r in control_results(20)]
+            # What the security doctor flags about a kit's cache, shown before an install (Tom,
+            # 2026-10-06: upgrades are fine "unless it's a flagged issue").
+            try:
+                audit = json.loads((CONTROL_DIR / "security-audit.json").read_text())
+                snap["flags"] = {i["about"]["key"]: i["titles"] for i in (audit.get("joint") or {}).get("items", [])
+                                 if i["about"]["kind"] == "kit"}
+                snap["flag_details"] = {f["about"]["key"]: f["detail"] for st in audit.get("steps", []) for f in st["findings"]
+                                        if (f.get("about") or {}).get("kind") == "kit" and f["status"] != "ok"}
+            except (OSError, ValueError, KeyError, TypeError):
+                snap["flags"], snap["flag_details"] = {}, {}
+            self.send_json(200, snap)
+            return
+
         if path == "/admin/firmware":
             snap = firmware.snapshot()
             snap.update(running=librarian.is_running(), progress=librarian.progress())
             self.send_json(200, snap)
+            return
+
+        if path == "/admin/factory":
+            self.send_json(200, factory.snapshot())
+            return
+
+        if path == "/admin/mesh":
+            # The decoder bridge (step 18): everything it heard, the messages too, and the channels
+            # by name (never their keys).
+            self.send_json(200, dict(MESH.heard.view(texts=True), state=MESH.state, error=MESH.error,
+                                     channels=meshbridge.channels_view()))
+            return
+
+        if path == "/admin/tls":
+            # HTTPS (step 15): the root helper's copy of what it made (root/tls.py status).
+            try:
+                st = json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
+            except (OSError, ValueError):
+                st = {"set_up": False}
+            self.send_json(200, dict(st, pending=_pending_actions("tls-"), results=control_results(5)))
+            return
+
+        if path == "/admin/factory/targets":
+            # A source's refs, and its targets at one (factory.py): read from its local copy.
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            try:
+                src = factory.source(unquote(query.get("source", "")))
+                out = {"source": src["name"], "refs": factory.refs(src)}
+                if query.get("ref"):
+                    out.update(factory.targets(src, unquote(query["ref"])))
+                    out["suggested"] = factory.suggested(out["targets"], factory._flasher_boards())
+                self.send_json(200, out)
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            return
+
+        if path == "/admin/ci/run":
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            try:
+                offset = int(query.get("from", "0"))
+            except ValueError:
+                offset = 0
+            view = ci.run_view(unquote(query.get("run", "")), offset)
+            self.send_json(*((200, view) if view else (404, {"error": "no such build"})))
             return
 
         if path == "/admin/ci/file":
@@ -1416,6 +2169,92 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/menus.json":
+            # The list pages, for the hub bar's ↑ (app.js): {id: {title, href}}, public ones only.
+            hidden = hidden_apps()
+            self.send_json(200, {i: {"title": mm["menu"]["title"], "href": mm["tile"]["href"]}
+                                 for i, mm in manifests.menus(MANIFESTS).items() if i not in hidden})
+            return
+
+        if path == "/internal/git-access":
+            # nginx's auth_request for a push or fetch (gitrepos.decide): 204 if no login is needed
+            # or the request's own credentials are an account's that may; 403 if only the box's own
+            # login will do (nginx then asks for it). Anything on loopback may ask what a guest may
+            # do; an account's answer needs its password.
+            mode = access.mode_of(access.read(ACCESS_STATE), "git")
+            account = accounts.check_basic(self.headers.get("Authorization", ""), self.headers.get("X-Forwarded-For", ""))
+            ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode, account)
+            self.send_empty(204 if ok else 403)
+            return
+
+        if path == "/mesh.json":
+            # The mesh heard through the box's broker (meshbridge.py): nodes and traffic, never the
+            # messages; only while the MQTT app is public (/admin → Access).
+            if access.mode_of(access.read(ACCESS_STATE), "mqtt") != "public":
+                self.send_json(404, {"error": "not shown"})
+                return
+            self.send_json(200, dict(MESH.heard.view(texts=False), state=MESH.state))
+            return
+
+        if path in ("/certificate", "/certificate.json", "/certificate/ca.crt"):
+            # HTTPS (step 15): the box's CA for guests to install, and what the page says of it.
+            # Public: only the CA's public certificate and facts about it, never a key.
+            if path == "/certificate":
+                self.send_response(302)
+                self.send_header("Location", "/certificate.html")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            try:
+                st = json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
+            except (OSError, ValueError):
+                st = {"set_up": False}
+            if path == "/certificate.json":
+                cert = st.get("cert") or {}
+                self.send_json(200, {"set_up": bool(st.get("set_up")), "on": bool(st.get("on")), "port": (st.get("ports") or {}).get("main", 443),
+                                     "fingerprint": (st.get("ca") or {}).get("fingerprint"), "names": cert.get("names", []),
+                                     "expires": cert.get("expires")})
+                return
+            try:
+                body = (CONTROL_DIR / "tls" / "ca.crt").read_bytes()
+            except OSError:
+                self.send_json(404, {"error": "no certificate yet"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-x509-ca-cert")
+            self.send_header("Content-Disposition", 'attachment; filename="irate-box-ca.crt"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path in ("/factory.json", "/factory/file"):
+            # The Firmware Factory's tile (factory.py public_view): only while the owner shows it,
+            # and only its downloadable files (ESP32 images and zips, UF2s), never logs or sources.
+            if not settings_snapshot()["factory_tile"]:
+                self.send_json(404, {"error": "not shown"})
+                return
+            if path == "/factory.json":
+                self.send_json(200, factory.public_view())
+                return
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            name = unquote(query.get("name", ""))
+            f = factory.public_file(unquote(query.get("run", "")), name)
+            if not f:
+                self.send_json(404, {"error": "no such file"})
+                return
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/status":
             # The web server's proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
@@ -1442,11 +2281,11 @@ class Handler(BaseHTTPRequestHandler):
             if result is None:
                 self.send_json(404, {"error": "no such thread"})
             else:
-                self.send_json(200, result)
+                self.send_json(200, dict(result, posting=self._posting_view("board")))
             return
 
-        if path in MENU_PAGES:
-            body = menu_page(MENU_PAGES[path])
+        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
+            body = menu_page(MENU_PAGES[path], self._signed_in())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
@@ -1455,7 +2294,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/", "/index.html"):
-            body = home_page()
+            body = home_page(self._signed_in())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
@@ -1479,7 +2318,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(404)
 
     def _read_payload(self):
-        length = int(self.headers.get("Content-Length", 0))
+        """The request's JSON, or None. Larger than MAX_JSON is not read at all (F15): the
+        caller answers 413 and the drain reads it away or closes the connection."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            return None
+        if length > MAX_JSON:
+            self._too_large = True
+            return None
         try:
             return json.loads(self.rfile.read(length))
         except ValueError:
@@ -1487,6 +2334,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         note_client(self)
+        refresh_manifests()
         path = self.path.split("?")[0]
 
         # Delegated before the body is read: the store takes raw bytes, and the
@@ -1494,11 +2342,49 @@ class Handler(BaseHTTPRequestHandler):
         if store.handle(self, "POST", path, STORE, DROP):
             return
 
-        if self._admin_locked(path):
+        if path in ("/_irate/admin", "/_irate/user"):
+            # The front's checks, whatever the method: never a body to read.
+            self._irate_check(path)
             return
+
+        if self._admin_refused(path) or self._forged(path) or self._admin_locked(path):
+            return
+        self._too_large = False
         payload = self._read_payload()
-        if payload is None:
+        if not isinstance(payload, dict):  # None, or a JSON array or string (F26)
+            if self._too_large:
+                self.send_json(413, {"error": f"a request to the hub is at most {MAX_JSON >> 10} KB"})
+                return
             self.send_json(400, {"error": "bad request"})
+            return
+
+        if path == "/api/account":
+            self._account_post(payload)
+            return
+
+        if path == "/admin/accounts":
+            # Accounts (accounts.py): the sign-up level and the HTTP stance; accept, disable,
+            # enable, delete, the role; a new account or a reset, each with a one-time code.
+            action = payload.get("action")
+            try:
+                keep = not admin_login_on()
+                if action == "admin-login":
+                    # The box's own login on or off: root's (the web server's login file), checked there too.
+                    self.send_json(202, {"id": control_request({"action": "admin-login", "on": payload.get("on") is True})})
+                    return
+                if action == "settings":
+                    out = {"settings": accounts.set_settings(payload.get("signup"), payload.get("http"), keep_admin=keep)}
+                elif action == "make":
+                    out = {"code": accounts.make(payload.get("name"), payload.get("role", "user"))}
+                elif action == "reset":
+                    out = {"code": accounts.reset(payload.get("name"))}
+                else:
+                    accounts.change(payload.get("name"), action, keep_admin=keep)
+                    out = {}
+            except accounts.AccountError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, dict(out, **accounts_view()))
             return
 
         if path == "/admin/setup":
@@ -1569,11 +2455,135 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/git":
-            self.send_json(*gitrepos.action(payload))
+            self.send_json(*git_action(payload))
             return
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/mesh":
+            action = payload.get("action")
+            try:
+                if action == "add-channel":
+                    meshbridge.add_channel(payload.get("name"), payload.get("key"))
+                elif action == "remove-channel":
+                    meshbridge.remove_channel(str(payload.get("name", "")))
+                else:
+                    raise ValueError("action must be add-channel or remove-channel")
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, {"channels": meshbridge.channels_view()})
+            return
+
+        if path == "/admin/tls":
+            action = payload.get("action")
+            if action in ("on", "off"):
+                self.send_json(202, {"id": control_request({"action": "tls-switch", "on": action == "on"})})
+                return
+            if action == "import":
+                # The owner's own certificate and key, staged for the root helper (hub-only, 0600),
+                # which checks and installs them and removes these copies.
+                chain, key = payload.get("chain"), payload.get("key")
+                if not isinstance(chain, str) or not isinstance(key, str) or len(chain) > 64 << 10 or len(key) > 16 << 10:
+                    self.send_json(400, {"error": "chain and key: the PEM text of each"})
+                    return
+                staged = STATE_DIR / "tls-import"
+                staged.mkdir(mode=0o700, exist_ok=True)
+                for name, text in (("chain.pem", chain), ("key.pem", key)):
+                    f = staged / name
+                    f.unlink(missing_ok=True)
+                    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "w") as fh:
+                        fh.write(text)
+                self.send_json(202, {"id": control_request({"action": "tls-import"})})
+                return
+            if action == "box":
+                self.send_json(202, {"id": control_request({"action": "tls-box"})})
+                return
+            if action == "admin-only":
+                on = payload.get("on") is True
+                # Only from a page that came over HTTPS: proof the owner's device trusts the box,
+                # so turning it on can't lock them out of /admin.
+                if on and self.headers.get("X-Forwarded-Proto") != "https":
+                    self.send_json(409, {"error": "open /admin over HTTPS first (https://<this box>/admin/): only then is it safe to make it HTTPS only"})
+                    return
+                self.send_json(202, {"id": control_request({"action": "tls-admin-only", "on": on})})
+                return
+            if action not in ("make", "renew"):
+                self.send_json(400, {"error": "action must be make, renew, on, off, import, box or admin-only"})
+                return
+            self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
+            return
+
+        if path == "/admin/factory":
+            # The Firmware Factory's queue (factory.py): queue targets, cancel or move one up, pause.
+            action = payload.get("action")
+            try:
+                if action == "queue":
+                    out = factory.queue(str(payload.get("source", "")), str(payload.get("ref", "")), payload.get("targets"))
+                    self.send_json(202, dict(out, snapshot=factory.snapshot()))
+                    return
+                if action in ("tools", "offline"):
+                    out = factory.queue_tools(str(payload.get("source", "")), str(payload.get("ref", "")), str(payload.get("family", "")),
+                                              offline=action == "offline", env=str(payload.get("env") or "") or None)
+                    self.send_json(202, dict(out, snapshot=factory.snapshot()))
+                    return
+                if action == "publish":
+                    factory.publish(str(payload.get("run", "")))
+                elif action == "unpublish":
+                    factory.unpublish(str(payload.get("version", "")), str(payload.get("env", "")))
+                elif action in ("cancel", "up"):
+                    (factory.cancel if action == "cancel" else factory.move_up)(str(payload.get("id", "")))
+                elif action in ("pause", "resume"):
+                    factory.pause(action == "pause")
+                else:
+                    raise ValueError("action must be queue, tools, offline, publish, unpublish, cancel, up, pause or resume")
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, factory.snapshot())
+            return
+
+        if path == "/admin/ci":
+            # Build now, keep or delete a run, how many runs to keep (ci.py).
+            action = payload.get("action")
+            try:
+                if action == "build":
+                    name = str(payload.get("repo", ""))
+                    if not gitrepos.NAME_RE.match(name):
+                        raise ValueError("repo: a private repository's name")
+                    branch = payload.get("branch")
+                    out = ci.queue_build(gitrepos.ROOT / "private" / f"{name}.git", str(branch) if branch else None)
+                    self.send_json(202, dict(out, queued=True, snapshot=ci.snapshot()))
+                elif action in ("keep", "unkeep", "delete"):
+                    ci.queue_run_change(str(payload.get("run", "")), action)
+                    self.send_json(202, {"queued": True})
+                elif action == "settings":
+                    keep = payload.get("keep_runs")
+                    if type(keep) is not int or not 1 <= keep <= 50:
+                        raise ValueError("keep_runs: 1 to 50")
+                    ci.SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+                    ci.SETTINGS.write_text(json.dumps({"keep_runs": keep}))
+                    self.send_json(200, ci.snapshot())
+                else:
+                    raise ValueError("action must be build, keep, unkeep, delete or settings")
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            return
+
+        if path == "/admin/kits":
+            from irate_box.library import toolkits
+            try:
+                rid = toolkits.action(payload)
+            except librarian.LibrarianError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            snap = toolkits.snapshot()
+            if rid:
+                snap["id"] = rid
+            self.send_json(202 if rid else 200, snap)
             return
 
         if path == "/admin/usb":
@@ -1586,8 +2596,10 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "export" and USB_DEVICE_RE.match(device) and isinstance(payload.get("book"), str):
                 self.send_json(202, {"id": control_request({"action": "usb-export", "device": device,
                                                             "book": payload["book"][:64]})})
+            elif action in ("kit-import", "kit-export") and USB_DEVICE_RE.match(device) and isinstance(payload.get("kit"), str):
+                self.send_json(202, {"id": control_request({"action": f"usb-{action}", "device": device, "kit": payload["kit"][:32]})})
             else:
-                self.send_json(400, {"error": "action must be scan, import (device, file) or export (device, book)"})
+                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export (device, kit)"})
             return
 
         if path == "/admin/kit":
@@ -1599,10 +2611,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             app, mode = str(payload.get("app", "")), payload.get("mode")
-            if app not in access.ROUTED or mode not in access.MODES:
-                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off"})
+            if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES \
+                    or (mode == "users" and not access.users_allowed(app)):
+                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off (or users, where it can be)"})
             else:
                 self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
+            return
+
+        if path == "/admin/local-addons":
+            code, body = local_addons_action(payload)
+            self.send_json(code, body)
             return
 
         if path == "/admin/addons":
@@ -1657,6 +2675,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "security-scan"})})
             elif payload.get("action") == "audit":
                 self.send_json(202, {"id": control_request({"action": "security-audit"})})
+            elif payload.get("action") == "deep":
+                self.send_json(202, {"id": control_request({"action": "security-deep-audit"})})
+            elif payload.get("action") in ("import", "import-remove"):
+                # A scan report read in the owner's browser (secimports.py); the doctor runs again.
+                from irate_box.hub import secimports
+                try:
+                    msg = secimports.save(payload.get("report")) if payload["action"] == "import" else \
+                        (secimports.remove(str(payload.get("kind", ""))) or "Removed.")
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(202, {"id": control_request({"action": "security-audit"}), "message": msg})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
@@ -1668,11 +2698,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/board/threads":
+            poster = self._poster("board", str(payload.get("name", "")))
+            if poster is None:
+                return
             try:
-                result = BOARD.create_thread(payload.get("name"),
+                result = BOARD.create_thread(poster[0],
                                              payload.get("title"),
                                              payload.get("text"),
-                                             payload.get("hue"))
+                                             payload.get("hue"), poster[1])
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -1681,9 +2714,12 @@ class Handler(BaseHTTPRequestHandler):
 
         tid = thread_id(path)
         if tid is not None:
+            poster = self._poster("board", str(payload.get("name", "")))
+            if poster is None:
+                return
             try:
-                result = BOARD.reply(tid, payload.get("name"), payload.get("text"),
-                                     payload.get("hue"))
+                result = BOARD.reply(tid, poster[0], payload.get("text"),
+                                     payload.get("hue"), poster[1])
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -1758,9 +2794,39 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(404, {"error": "not found"})
 
+    def _poster(self, kind, name):
+        """Who is posting to the shoutbox or forum (kind "shout" or "board"), as the admin allows:
+        (name, account), or None once the refusal is sent. A logged-in user posts under their
+        account's name; a guest (where guests may) under any name but an account's."""
+        what = "shoutbox" if kind == "shout" else "forum"
+        who = settings_snapshot()[f"{kind}_who"]
+        if who == "off":
+            self.send_json(403, {"error": f"the {what} is closed"})
+            return None
+        me = accounts.session(self._session_token())
+        if me:
+            return me["name"], me["name"]
+        if who == "users":
+            self.send_json(403, {"error": f"log in to post on the {what} (/account.html)", "login": True})
+            return None
+        if accounts.exists(name):
+            self.send_json(403, {"error": f"{name.strip()} is an account's name: log in to post as it"})
+            return None
+        return name, None
+
+    def _posting_view(self, kind):
+        """What a page needs to show the shoutbox or forum's posting as it is: who may post,
+        whether users' names are marked, and who this is."""
+        st = settings_snapshot()
+        me = accounts.session(self._session_token())
+        return {"who": st[f"{kind}_who"], "marks": st[f"{kind}_marks"], "me": me["name"] if me else None}
+
     def _post_message(self, payload):
-        name = str(payload.get("name", "")).strip()[:32]
         text = str(payload.get("text", "")).strip()[:200]
+        poster = self._poster("shout", str(payload.get("name", "")).strip()[:32])
+        if poster is None:
+            return
+        name, account = poster
         if not name or not text:
             self.send_json(400, {"error": "name and text required"})
             return
@@ -1786,6 +2852,8 @@ class Handler(BaseHTTPRequestHandler):
         }
         if hue is not None:
             entry["hue"] = hue
+        if account:
+            entry["account"] = account
         with lock:
             msgs = live_messages(now)
             msgs.append(entry)
@@ -1831,6 +2899,10 @@ if __name__ == "__main__":
     for what in clear_on_new_boot():
         print(f"New boot: cleared the {what}, as set on /admin")
     CLOCK.start()
+    # The mesh heard through the box's MQTT broker (step 18): decoded with the owner's channel keys.
+    MESH.start()
+    # The services' uptime (step 35): every unit's state every five minutes, for /admin's grid.
+    svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
     server = HubServer((BIND, PORT), Handler)

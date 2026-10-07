@@ -1,0 +1,10 @@
+{"id": "symbols", "title": "Debug symbols",
+ "summary": "Debian's debug symbols for the box's own programs (nginx, Kiwix, mosquitto), so gdb's backtraces name functions and lines. Only for what is installed here; about 14 MB for all of them.",
+ "packages": ["nginx-dbgsym", "kiwix-tools-dbgsym", "libkiwix14-dbgsym", "libzim9-dbgsym", "mosquitto-dbgsym", "libmosquitto1-dbgsym",
+              "libwebsockets19t64-dbgsym"],
+ "debug_archive": true,
+ "consent": "These come from Debian's debug archive (debian-debug), signed with the same keys as the rest of Debian. They change nothing that runs; they only let a debugger read the programs.",
+ "notes": ["From Debian's debug archive, checked with Debian's own keys; its index is kept apart from the box's lists.",
+           "A program's symbols must match its version exactly: after an update of the program, fetch the kit again.",
+           "Use with the Debugging kit's gdb. Larger extras, on request: libicu76-dbgsym and libxapian30-dbgsym (25 MB, Kiwix's search), systemd-dbgsym (7 MB)."],
+ "remove_after_hours": 24}

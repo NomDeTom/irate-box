@@ -1,0 +1,8 @@
+{
+  "id": "box-factory",
+  "order": 98,
+  "tile": {
+    "row": "box",
+    "widget": "factory"
+  }
+}

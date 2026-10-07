@@ -21,11 +21,17 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.root import safeio
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RECORD = ETC / "security-changes.json"
 SSHD_DROPIN = Path(os.environ.get("HUB_SSHD_DROPIN", "/etc/ssh/sshd_config.d/01-irate-box.conf"))
 RESOLVED_DROPIN = Path(os.environ.get("HUB_RESOLVED_DROPIN", "/etc/systemd/resolved.conf.d/irate-box.conf"))
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
+SYSCTL_DROPIN = Path(os.environ.get("HUB_SYSCTL_DROPIN", "/etc/sysctl.d/60-irate-box.conf"))
+PROC_SYS = Path(os.environ.get("HUB_PROC_SYS", "/proc/sys"))
+GROUP_FILE = Path(os.environ.get("HUB_GROUP_FILE", "/etc/group"))
+PASSWD_FILE = Path(os.environ.get("HUB_PASSWD_FILE", "/etc/passwd"))
 UPDATES_LOG_NAME = "security-updates.log"
 
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
@@ -334,11 +340,164 @@ def update_findings():
 
 # --- scan ---------------------------------------------------------------------------------
 
+# --- the kernel's settings, and accounts in root's groups (plan §9 step 4) ----------------------
+
+# Each set is one button. The values are the ones Debian ships in its own kernels; the image's
+# vendor kernel leaves them off.
+KERNEL = {
+    "links": {"title": "Kernel link protections", "status": "problem",
+              "keys": {"fs.protected_symlinks": "1", "fs.protected_hardlinks": "1"},
+              "why": "Links in shared folders such as /tmp are followed across users, so a program that writes "
+                     "there as root can be made to write elsewhere (one way local attacks become root).",
+              "label": "Turn link protections on"},
+    "info": {"title": "Kernel addresses and log", "status": "warn",
+             "keys": {"kernel.kptr_restrict": "1", "kernel.dmesg_restrict": "1"},
+             "why": "Any account can read the kernel's log and the addresses of its code, which help an attacker "
+                    "aim an exploit.",
+             "label": "Hide them from ordinary accounts"},
+}
+
+
+def _sysctl_path(key):
+    return PROC_SYS / key.replace(".", "/")
+
+
+def _sysctl(key):
+    try:
+        return _sysctl_path(key).read_text().strip()
+    except OSError:
+        return None
+
+
+def kernel_findings(rec):
+    out, ours = [], rec.get("kernel", {})
+    for name, k in KERNEL.items():
+        now = {key: _sysctl(key) for key in k["keys"]}
+        if any(v is None for v in now.values()):
+            continue  # not this kernel's to set (or not readable here)
+        shown = ", ".join(f"{key.split('.', 1)[1]}={v}" for key, v in now.items())
+        if all(now[key] == want for key, want in k["keys"].items()):
+            out.append(_finding(f"kernel-{name}", k["title"], "ok", shown + ".", "",
+                                [{"choice": f"kernel-{name}-undo", "label": "Undo"}] if name in ours else []))
+        else:
+            out.append(_finding(f"kernel-{name}", k["title"], k["status"], f"{shown}. {k['why']}",
+                                "Set them, now and at every boot (a file in /etc/sysctl.d).",
+                                [{"choice": f"kernel-{name}-on", "label": k["label"]}]))
+    return out
+
+
+def _write_sysctl_dropin(kernel):
+    keys = {key: want for name in kernel for key, want in KERNEL[name]["keys"].items()}
+    if not keys:
+        SYSCTL_DROPIN.unlink(missing_ok=True)
+        return
+    SYSCTL_DROPIN.parent.mkdir(parents=True, exist_ok=True)
+    SYSCTL_DROPIN.write_text("# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
+                             + "".join(f"{key} = {v}\n" for key, v in keys.items()))
+
+
+def _kernel(rec, name, on):
+    if name not in KERNEL:
+        raise ValueError(f"{name} is not a kernel setting this page changes")
+    kernel = rec.setdefault("kernel", {})
+    if on:
+        old = kernel.get(name, {}).get("old") or {key: _sysctl(key) for key in KERNEL[name]["keys"]}
+        for key, want in KERNEL[name]["keys"].items():
+            _sysctl_path(key).write_text(want + "\n")
+        kernel[name] = {"old": old, "at": time.strftime("%Y-%m-%d")}
+        _write_sysctl_dropin(kernel)
+        return f"{KERNEL[name]['title']}: on, now and at every boot"
+    entry = kernel.pop(name, None)
+    if entry is None:
+        raise ValueError(f"{KERNEL[name]['title']} were not changed from this page")
+    for key, v in (entry.get("old") or {}).items():
+        if v is not None:
+            _sysctl_path(key).write_text(v + "\n")
+    _write_sysctl_dropin(kernel)
+    if not kernel:
+        rec.pop("kernel")
+    return f"{KERNEL[name]['title']}: back as they were"
+
+
+# Groups that are root by another name: docker runs containers as root with any folder mounted;
+# disk reads and writes the raw card, password file and all.
+ROOTISH_GROUPS = ("docker", "disk")
+NAME_RE = re.compile(r"^[a-z_][a-z0-9_.-]{0,31}$")
+
+
+def _login_accounts():
+    out = set()
+    for line in (PASSWD_FILE.read_text(errors="replace") if PASSWD_FILE.exists() else "").splitlines():
+        f = line.split(":")
+        if len(f) >= 7 and f[2].isdigit() and int(f[2]) >= 1000 and f[0] != "nobody" \
+                and not f[6].endswith(("nologin", "false")):
+            out.add(f[0])
+    return out
+
+
+def _group_members():
+    out = {}
+    for line in (GROUP_FILE.read_text(errors="replace") if GROUP_FILE.exists() else "").splitlines():
+        f = line.split(":")
+        if len(f) >= 4:
+            out[f[0]] = {m for m in f[3].split(",") if m}
+    return out
+
+
+def group_findings(rec):
+    out, ours = [], rec.get("groups", {})
+    members, logins = _group_members(), _login_accounts()
+    for group in ROOTISH_GROUPS:
+        if group not in members:
+            continue
+        risky = sorted(members[group] & logins)
+        undo = [{"choice": f"group-undo:{k}", "label": f"Put {k.split('@')[0]} back"} for k in ours if k.endswith("@" + group)]
+        if not risky:
+            out.append(_finding(f"group-{group}", f"The {group} group", "ok", "No login account is in it.", "", undo))
+            continue
+        what = ("runs containers as root with any folder mounted" if group == "docker"
+                else "reads and writes the raw storage, password file included")
+        out.append(_finding(f"group-{group}", f"The {group} group", "warn",
+                            f"{', '.join(risky)} {'is' if len(risky) == 1 else 'are'} in it. The {group} group {what}: "
+                            "the same as root, without a password.",
+                            "Take the account out unless it needs it (it applies from its next login).",
+                            [{"choice": f"group-drop:{u}@{group}", "label": f"Take {u} out",
+                              "confirm": f"Take {u} out of the {group} group? It applies from {u}'s next login."}
+                             for u in risky] + undo))
+    return out
+
+
+def _group(rec, arg, on):
+    user, _, group = arg.partition("@")
+    if group not in ROOTISH_GROUPS or not NAME_RE.match(user):
+        raise ValueError(f"{arg} is not an account and group this page changes")
+    groups = rec.setdefault("groups", {})
+    if on:
+        if user not in _group_members().get(group, set()):
+            raise ValueError(f"{user} is not in the {group} group")
+        r = run("gpasswd", "-d", user, group)
+        if r.returncode:
+            raise ValueError(f"gpasswd: {(r.stderr or r.stdout).strip()[:160]}")
+        groups[arg] = time.strftime("%Y-%m-%d")
+        return f"{user} is out of the {group} group (from its next login)"
+    if arg not in groups:
+        raise ValueError(f"{user} was not taken out of {group} from this page")
+    r = run("gpasswd", "-a", user, group)
+    if r.returncode:
+        raise ValueError(f"gpasswd: {(r.stderr or r.stdout).strip()[:160]}")
+    groups.pop(arg)
+    if not groups:
+        rec.pop("groups")
+    return f"{user} is back in the {group} group"
+
+
 def scan():
     rec = load_record()
     found = listeners()
     findings = listener_findings(found, rec)
     findings += ssh_findings(sshd_settings(), keys_on_box(), rec)
+    findings += kernel_findings(rec)
+    findings += group_findings(rec)
     upd, _ = update_findings()
     findings += upd
     return {"at": time.time(), "listeners": found, "findings": findings}
@@ -430,7 +589,7 @@ def _hub_on_80():
     return '"nginx"' in out.stdout or '"caddy"' in out.stdout
 
 
-UNIT_RE = re.compile(r"^[A-Za-z0-9@._-]+\.(service|socket)$")
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*\.(service|socket)$")  # no leading "-" (F14)
 
 
 def _unit(rec, unit, on, reason="from this page"):
@@ -462,7 +621,7 @@ def install_security_updates(log_path):
     if not pkgs:
         return "no security updates waiting"
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", HOME=os.environ.get("HOME", "/root"))
-    with open(log_path, "w") as log:
+    with safeio.open_new(log_path) as log:  # in control/, which the hub can change (F3)
         log.write("$ apt-get install --only-upgrade " + " ".join(pkgs) + "\n\n")
         log.flush()
         code = subprocess.run(["apt-get", "install", "-y", "--only-upgrade", "-o", "Dpkg::Options::=--force-confold",
@@ -484,6 +643,10 @@ def fix(choice, updates_log):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
         msg = _llmnr(rec, choice == "llmnr-off")
+    elif choice in [f"kernel-{n}-{w}" for n in KERNEL for w in ("on", "undo")]:
+        msg = _kernel(rec, choice.split("-")[1], choice.endswith("-on"))
+    elif choice.startswith(("group-drop:", "group-undo:")):
+        msg = _group(rec, choice.split(":", 1)[1], choice.startswith("group-drop:"))
     elif choice.startswith(("unit-off:", "unit-undo:")):
         msg = _unit(rec, choice.split(":", 1)[1], choice.startswith("unit-off:"))
     elif choice == "security-updates":
@@ -501,7 +664,8 @@ def undo_all():
     for choice in (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else []) + \
                   (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else []) + \
                   (["cockpit-undo"] if "cockpit" in rec else []) + (["llmnr-undo"] if rec.get("llmnr") else []) + \
-                  [f"unit-undo:{u}" for u in rec.get("units", {})]:
+                  [f"unit-undo:{u}" for u in rec.get("units", {})] + \
+                  [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})]:
         try:
             done.append(fix(choice, None))
         except (ValueError, OSError, subprocess.SubprocessError) as exc:

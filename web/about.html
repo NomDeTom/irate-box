@@ -7,20 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>About · Hub</title>
   <link rel="stylesheet" href="/style.css">
-  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='cybercore')document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <script src="/themes.js"></script>
 </head>
 <body class="drop about" data-art="doctor" data-art-side="left">
   <header>
-    <nav class="head-nav"><a class="head-btn" href="/" title="Back to the hub" aria-label="Back to the hub">🏠</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>ℹ️ About this box</h1>
     <p class="subtitle">Irate-Box: an offline hub, in the spirit of PirateBox.</p>
-    <div class="theme-picker" role="group" aria-label="Theme">
-      <span class="theme-label" aria-hidden="true">Theme</span>
-      <button type="button" data-theme-choice="light" title="Light">☀️</button>
-      <button type="button" data-theme-choice="dark" title="Dark">🌙</button>
-      <button type="button" data-theme-choice="cybercore" title="Cybercore">🏴‍☠️</button>
-      <button type="button" data-theme-choice="auto" title="Follow system">Auto</button>
-    </div>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section>
@@ -97,6 +91,14 @@
       <li class="drop-item"><span class="setting-name">ngIRCd</span><span class="setting-desc"> The IRC server for chat. GPL-2.0-or-later</span></li>
       <li class="drop-item"><span class="setting-name">excalidraw-room</span><span class="setting-desc"> Live collaboration on the whiteboard. MIT</span></li>
       <li class="drop-item"><span class="setting-name">Node.js</span><span class="setting-desc"> Runs the collaboration relay. MIT</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>With thanks to</h2>
+    <ul class="drop-list">
+      <li class="drop-item"><span class="setting-name">The krabs</span><span class="setting-desc"> The artwork is Kredited to Krab, courtesy of neonx (<a href="http://canadaverse.org" rel="noopener">canadaverse.org</a>).</span></li>
+      <li class="drop-item"><span class="setting-name">The Cybercore theme</span><span class="setting-desc"> By WillP (willp618), from the PirateBox skin.</span></li>
     </ul>
   </section>
 

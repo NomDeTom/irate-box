@@ -1,0 +1,10 @@
+{"id": "build", "title": "Building",
+ "summary": "Compilers, make and the rest, so builds on push and builds by hand work offline.",
+ "packages": ["build-essential", "cmake", "pkg-config", "python3-dev", "python3-venv", "platformio", "python3-protobuf", "protobuf-compiler", "libffi-dev"],
+ "pip": ["platformio", "protobuf", "grpcio-tools"],
+ "consent": "A compiler on the box lets anyone with a shell build and run programs here. The builds on push need it.",
+ "notes": ["Kept until removed by default: builds on push need it.",
+           "PlatformIO, and protobuf and protoc for Meshtastic's nanopb, are Debian's, checked like every package.",
+           "libffi-dev: Meshtastic's ESP32 platform makes a Python environment of its own, and on armv7 PyPI has no wheel for cffi (cryptography needs it), so it is compiled, and needs libffi's headers (found on the Lyra, 2026-10-07).",
+           "Also carries a wheelhouse (a newer PlatformIO from PyPI, protobuf and grpcio-tools, as wheels): the fallback when Debian's PlatformIO cannot build, still with no internet. PyPI signs none of them."],
+ "remove_after_hours": null}

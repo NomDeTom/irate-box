@@ -88,6 +88,18 @@ check("kernel: no DS3231 driver → own driver", rtc.kernel_driver("ds3231") is 
 fake({"1": {"0x68": ds}})
 d = rtc.open_i2c(1, 0x68); d.write(0x0F, [0]); rtc.write_user("ds3231", d, int(time.time()) - 3600)  # an hour slow
 (T / "ntp").write_text("no\n")
+for bad in (("ds3231", 1, "0x10"), ("ds3231", 2, "0x68"), ("pcf8563", 1, "0x51")):
+    try:
+        rtc.setup(*bad); refused = False
+    except rtc.RtcError:
+        refused = True
+    check(f"setup: refused before a search found it, or at an address no clock uses: {bad}", refused)
+rtc.find()  # setup takes only what the last search found (F14)
+try:
+    rtc.setup("ds3231", 2, "0x68"); refused = False
+except rtc.RtcError:
+    refused = True
+check("setup: after a search, a bus it did not find the clock on is still refused", refused)
 msg = rtc.setup("ds3231", 1, "0x68")
 print("   setup:", msg)
 check("setup: config and units written", (T / "etc/rtc.json").exists() and (T / "units/irate-box-rtc.service").exists())
@@ -107,7 +119,8 @@ check("save with network time: module now matches", abs(e - time.time()) < 3, e 
 (T / "ntp").write_text("no\n")
 # a module behind the floor (a time the box certainly reached) is not used
 os.utime(T / "state/control/rtc-status.json")
-cl = T / "state/clock.json"; cl.write_text("{}"); os.utime(cl, (time.time() + 86400 * 30, time.time() + 86400 * 30))
+# The floor is root's own files only (F14): health.json in control/, not the hub's clock.json.
+cl = T / "state/control/health.json"; cl.write_text("{}"); os.utime(cl, (time.time() + 86400 * 30, time.time() + 86400 * 30))
 (T / "date.log").unlink(missing_ok=True)
 r = rtc.boot(); print("   boot behind floor:", r)
 check("boot: a module earlier than the box has been is not used", "not used" in r and not (T / "date.log").exists(), r)
@@ -129,6 +142,7 @@ check("auto: two possibilities → nothing set up, owner asked", not (T / "etc/r
 # 8. The doctor: the browser's time sets the system clock, marks it trusted, and writes the module
 from irate_box.root import health  # noqa: E402
 fake({"1": {"0x68": ds}})
+rtc.find()
 rtc.setup("ds3231", 1, "0x68")
 (T / "date.log").unlink(missing_ok=True)
 target = int(time.time()) + 7200

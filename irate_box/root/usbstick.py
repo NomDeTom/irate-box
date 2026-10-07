@@ -11,12 +11,15 @@ import_zim()   one of those books copied into the hub's ZIM folder as the hub us
                min_free_mb.
 export_zim()   a book from the hub onto the stick, under irate-box/, mounted read-write only
                for the copy.
+export_kit(), import_kit()   a toolkit to or from the stick's irate-box/kits/ (kits.py: the
+               import checks every .deb against Debian's signatures first).
 
 A stick the desktop has mounted already is used where it is and left mounted. Stdlib only.
 """
 
 import json
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -24,6 +27,7 @@ import time
 from pathlib import Path
 
 from irate_box.library import zimcheck
+from irate_box.root import safeio
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
 FILESYSTEMS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "iso9660"}
@@ -86,7 +90,8 @@ class Mounted:
             raise ValueError("unexpected device name")
         self.path = MOUNT_ROOT / self.dev["name"]
         self.path.mkdir(parents=True, exist_ok=True)
-        opts = ("rw" if self.writable else "ro") + ",nosuid,nodev,noexec"
+        # nosymfollow: a stick's own links (ext4 can hold them) lead nowhere root follows.
+        opts = ("rw" if self.writable else "ro") + ",nosuid,nodev,noexec,nosymfollow"
         out = run("mount", "-o", opts, self.dev["path"], str(self.path))
         if out.returncode != 0:
             self.path.rmdir()
@@ -130,8 +135,10 @@ def scan():
         try:
             with Mounted(dev) as root:
                 dev["zims"] = _zims(root)
+                from irate_box.root import kits
+                dev["kits"] = kits.stick_kits(root)
         except (ValueError, OSError) as exc:
-            dev["zims"], dev["error"] = [], str(exc)
+            dev["zims"], dev["kits"], dev["error"] = [], [], str(exc)
         out.append(dev)
     return {"at": time.time(), "devices": out}
 
@@ -143,10 +150,12 @@ def _find(scan_state, name):
     raise ValueError(f"{name} is not plugged in now: scan again")
 
 
-def _copy(src, dest, report=None):
+def _copy(src, dest, report=None, out=None):
+    """src to dest, or to `out` (a file already open for it)."""
     size = os.path.getsize(src)
     done = 0
-    with open(src, "rb") as fi, open(dest, "wb") as fo:
+    # O_NOFOLLOW: neither the hub's zim/ nor a stick may hand root a link to read through (F14).
+    with os.fdopen(os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC), "rb") as fi, (out or open(dest, "wb")) as fo:
         while chunk := fi.read(CHUNK):
             fo.write(chunk)
             done += len(chunk)
@@ -182,10 +191,11 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
                              f"and {min_free >> 20} MB must stay free (Schedule and token)")
         tmp = Path(zim_dir) / f".{name}.zim.usb"
         try:
-            _copy(src, tmp, report)
-            shutil.chown(tmp, hub_user, hub_user)
-            os.chmod(tmp, 0o644)
-            why = zimcheck.problem(tmp)
+            # In the hub's folder: a new file, never through a link, the hub's through its fd (F3).
+            tmp.unlink(missing_ok=True)
+            hub = pwd.getpwnam(hub_user)
+            _copy(src, tmp, report, out=safeio.create(tmp, 0o644, hub.pw_uid, hub.pw_gid))
+            why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root (F12)
             if why:
                 raise ValueError(f"{rel.name} was not added: the copy is {why}. It looked whole on the stick, "
                                  "so the stick may be failing, or was pulled out; nothing on the hub changed.")
@@ -200,12 +210,35 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
     return name
 
 
+def export_kit(device, kit, budget_report=None):
+    """A toolkit onto the stick's irate-box/kits/ (kits.export_usb), mounted read-write for it."""
+    from irate_box.root import kits
+    dev = _find(None, device)
+    if dev["fstype"] == "iso9660":
+        raise ValueError("that is a read-only disc")
+    with Mounted(dev, writable=True) as root:
+        folder = root / "irate-box" / "kits"
+        folder.mkdir(parents=True, exist_ok=True)
+        return kits.export_usb(kit, folder, budget_report)
+
+
+def import_kit(device, kit, budget_mb, report=None):
+    """A toolkit from the stick into the local repository, every .deb checked against Debian's
+    signed indexes (kits.import_usb); the stick read-only."""
+    from irate_box.root import kits
+    dev = _find(None, device)
+    with Mounted(dev) as root:
+        return kits.import_usb(root / "irate-box" / "kits", kit, budget_mb, report)
+
+
 def export_zim(device, book, zim_dir, report=None):
     """Copy the hub's <book>.zim to the stick's irate-box/ folder; returns where it went."""
     if not NAME_RE.match(book):
         raise ValueError("not a book name")
     src = Path(zim_dir) / f"{book}.zim"
-    if not src.is_file():
+    # A plain file, not a link (F14): zim/ is the hub's, and a link there would have root copy
+    # any file it can read onto the stick.
+    if src.is_symlink() or not src.is_file():
         raise ValueError(f"the hub has no book called {book}")
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
@@ -217,7 +250,9 @@ def export_zim(device, book, zim_dir, report=None):
             raise ValueError("not enough room on the stick")
         tmp = folder / f".{book}.zim.part"
         try:
-            _copy(src, tmp, report)
+            tmp.unlink(missing_ok=True)
+            # Never through a link on the stick (one mounted elsewhere has no nosymfollow).
+            _copy(src, tmp, report, out=safeio.create(tmp, 0o644))
             os.replace(tmp, folder / f"{book}.zim")
         finally:
             tmp.unlink(missing_ok=True)

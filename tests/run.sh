@@ -18,9 +18,38 @@ run() {
 	[ "$rc" = 0 ] || failed=$((failed + 1))
 }
 run sim_uplink.py
+run sim_svchistory.py
 run sim_rtc.py
+run sim_tls.py
+run sim_mesh.py
+run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py
+run sim_books.py
+run sim_pin.py
+run sim_local_addons.py
+run api_admin_gate.py
+run doctor_guard.py
+run sim_netinv.py
+run sim_apmode.py
+run theme_guard.py
+run root_routes_guard.py
+run sim_root_links.py
+run cgit_guard.py
+run sim_security_image.py
+run sim_forged_requests.py
+run sim_git_public.py
+run sim_git_levels.py
+run origin_guard.py
+run unit_guard.py
+run sim_mirrors.py
+run sim_ci_view.py
+run sim_factory.py
+run sim_toolkits.py
+run sim_kits_usb.py
+run sim_secdoctor_debsecan.py
+run sim_deepaudit.py
+run sim_secdoctor_joint.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

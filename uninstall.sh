@@ -122,7 +122,8 @@ rm -rf /etc/caddy/irate-box-access
 # package's, and stays.
 if [ -f /etc/nginx/conf.d/irate-box.conf ] || [ -f "$ETC/nginx-default-site-off" ]; then
 	rm -f /etc/nginx/conf.d/irate-box.conf /etc/nginx/conf.d/irate-box.conf.prev \
-		/etc/nginx/irate-box.htpasswd /etc/nginx/irate-box.htpasswd.new /etc/nginx/irate-box-unclaimed
+		/etc/nginx/irate-box.htpasswd /etc/nginx/irate-box.htpasswd.new /etc/nginx/irate-box-unclaimed \
+		/etc/nginx/irate-box-front.conf
 	if [ -f "$ETC/nginx-default-site-off" ] && [ -f /etc/nginx/sites-available/default ]; then
 		ln -sf ../sites-available/default /etc/nginx/sites-enabled/default
 	fi
@@ -139,7 +140,11 @@ else
 	say "Removing $STATE"
 	rm -rf "$STATE"
 fi
-if id -u "$HUB_USER" >/dev/null 2>&1; then
+# With --keep-state the users stay: their files stay, and a user made later with the same uid
+# would own them (F30).
+if [ "$KEEP_STATE" = 1 ]; then
+	say "Keeping the $HUB_USER and hubci users, who own $STATE"
+elif id -u "$HUB_USER" >/dev/null 2>&1; then
 	say "Removing the $HUB_USER user"
 	pkill -u "$HUB_USER" 2>/dev/null || true
 	sleep 1
@@ -147,7 +152,7 @@ if id -u "$HUB_USER" >/dev/null 2>&1; then
 	getent group "$HUB_USER" >/dev/null && groupdel "$HUB_USER" 2>/dev/null || true
 fi
 # The builds' user (ci.py): it owns nothing outside $STATE/ci.
-if id -u hubci >/dev/null 2>&1; then
+if [ "$KEEP_STATE" != 1 ] && id -u hubci >/dev/null 2>&1; then
 	say "Removing the hubci user"
 	pkill -u hubci 2>/dev/null || true
 	sleep 1

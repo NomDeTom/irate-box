@@ -1,0 +1,26 @@
+{
+  "id": "nomdetom-calculators",
+  "order": 75,
+  "tile": {
+    "icon": "🧮📐",
+    "name": "Calculators (plain copy)",
+    "desc": "nomdetom.github.io as published, as a web add-on",
+    "path": "index.html"
+  },
+  "source": {
+    "type": "git",
+    "repo": "https://github.com/nomdetom/nomdetom.github.io",
+    "branch": "main",
+    "pin": "283687fca9fe77400ea81b79dc88d431a849c150"
+  },
+  "needs": "index.html",
+  "addon": {
+    "title": "Calculators (plain copy)",
+    "summary": "The RF, electronics and Meshtastic calculators of nomdetom.github.io, exactly as published (not adapted to the hub's look), from its own index page. About 41 MB, nearly all of it the Meshtasticatom explorer page.",
+    "consent": "This downloads nomdetom.github.io from GitHub and serves it to everyone on the box's network. One page (the meshtasticd pinout map) asks GitHub for the firmware's file list when it is online. Add it?"
+  },
+  "capabilities": {
+    "connect": ["https://api.github.com"],
+    "storage": true
+  }
+}

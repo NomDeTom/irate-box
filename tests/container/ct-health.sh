@@ -9,7 +9,7 @@ ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 j() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 get() { curl -s -u "admin:$PW" "http://$H/admin/health"; }
-post() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -d "$1" -w '\n%{http_code}' "http://$H/admin/health"; }
+post() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" -w '\n%{http_code}' "http://$H/admin/health"; }
 result() { local f=/var/lib/hub/control/results/$1.json; for _ in $(seq ${2:-120}); do [ -s "$f" ] && break; sleep 1; done
 	[ -s "$f" ] && python3 -c "import json; d=json.load(open('$f')); print(('OK ' if d['ok'] else 'ERR ') + d['message'])" || echo "NO ANSWER"; }
 idof() { head -1 | j 'd["id"]'; }
