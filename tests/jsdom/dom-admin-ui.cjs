@@ -87,13 +87,13 @@ setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   const side = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
   const hi = side.indexOf('Health');
-  check('sidebar: a Health group last, with the three doctors', hi > 0 && side.slice(hi + 1).join('|') === 'Services doctor|Security doctor|Updates doctor', side.join('|'));
+  check('sidebar: a Health group last, with the three doctors', hi > 0 && side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
   check('sidebar: Clock under Box', side.indexOf('Clock') > side.indexOf('Box') && side.indexOf('Clock') < side.indexOf('Library'));
   check('the Clock pane is the one shown', !d.getElementById('clock').hidden && d.getElementById('health').hidden);
   check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));
   check('no clock findings in the services doctor', !t('#health-findings li').some((x) => x.startsWith('🔴 Clock') || /Clock module|^.{0,3}Clock —/.test(x)), t('#health-findings li'));
   check('the clock\'s badge counts its problem', d.querySelector('a[href="#clock"]').dataset.badge === '1');
-  check('the services doctor is titled so', t('#health-title')[0] === 'Services doctor');
+  check('the box doctor is titled so', t('#health-title')[0] === 'Box doctor');
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));

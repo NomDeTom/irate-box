@@ -97,7 +97,7 @@ L.library_put(L.ZIM_DIR / "after.zim")
 check("an unreadable catalogue: rebuilt in full instead", len(books()) == 250)
 calls()
 health_src = (REPO / "irate_box/root/health.py").read_text()
-check("the Services doctor's rebuild batches too", '"kiwix-manage", str(new), "add", *map(str, batch)' in health_src)
+check("the box doctor's rebuild batches too", '"kiwix-manage", str(new), "add", *map(str, batch)' in health_src)
 # The books a page at a time (/admin/books): the catalogue, the files and the sources together.
 L.rebuild_library()
 srcs = [{"name": f"testbook-{i:04d}", "type": "url", "url": f"https://example.invalid/{i}.zim"} for i in range(1, 41)]
