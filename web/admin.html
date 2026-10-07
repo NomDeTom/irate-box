@@ -744,6 +744,20 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <ul class="admin-checks" id="security-findings"></ul>
+        <h3>HTTPS</h3>
+        <p class="setting-desc">
+          The box can serve every page over HTTPS too, with a certificate of its own: phones and
+          computers that install the box's certificate (from <a href="/certificate">/certificate</a>)
+          then talk to it privately, and the admin login can't be read off the WiFi. It can vouch
+          only for this box. Plain HTTP stays as it is, for everyone else and the hotspot's sign-in.
+        </p>
+        <p class="setting-desc" id="tls-state">Looking…</p>
+        <p class="library-buttons">
+          <button type="button" id="tls-make">Make the box's certificate</button>
+          <button type="button" id="tls-switch" hidden></button>
+          <button type="button" id="tls-again" hidden>Make a new CA</button>
+        </p>
+        <p class="setting-desc action-note" id="tls-note" role="status" hidden></p>
         <h3>The hotspot's own WiFi</h3>
         <p class="setting-desc">
           How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
