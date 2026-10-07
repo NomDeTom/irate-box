@@ -116,6 +116,45 @@ with mock.patch.object(firmware, "_releases", return_value=[dict(rel, channel="a
     out = firmware.sync(log=lambda *a: None)
     check("flash files off, cache on: the cache is still carried", carry.called and "build cache 215 MB" in out
           and firmware.status()["cache"]["mode"] == "native", out)
+# A board whose file the release lacks (2.8.1's canaryone .hex, HTTP 404) is left out, not every
+# board after it; the network gone stops the run; flash files off removes those held, not the cache.
+from unittest import mock as _m  # noqa: E402
+import hashlib  # noqa: E402
+FV = "2.8.1.8e6a88d"
+files = {"a.bin": b"a" * 100, "c.bin": b"c" * 50}
+mts = {"alpha": {"files": [{"name": "a.bin", "bytes": 100, "md5": hashlib.md5(files["a.bin"]).hexdigest()}]},
+       "canary": {"files": [{"name": "gone.hex", "bytes": 10, "md5": "0" * 32}]},
+       "zeta": {"files": [{"name": "c.bin", "bytes": 50, "md5": hashlib.md5(files["c.bin"]).hexdigest()}]}}
+def gj(url):
+    if url.endswith(f"firmware-{FV}.json"):
+        return {"targets": [{"board": b} for b in mts]}
+    return mts[url.rsplit("/", 1)[1].split("-")[1]]
+net = {"down": False}
+def dl(url, dest, auth=None, name=None, expected=0, resume=False):
+    if net["down"]:
+        raise librarian.LibrarianError("cannot reach release.meshtastic.org: down")
+    fname = url.rsplit("/", 1)[1]
+    if fname not in files:
+        raise librarian.LibrarianError(f"{url}: HTTP 404")
+    dest.write_bytes(files[fname])
+policy = {"min_free_mb": 1}
+with _m.patch.object(firmware, "_get_json", gj), _m.patch.object(librarian, "_download", dl), _m.patch.object(firmware, "_publish", lambda p, d: p.write_text(json.dumps(d))):
+    v = firmware._mirror_version({"version": FV, "channel": "alpha"}, {"boards": "all"}, policy, lambda *a: None)
+    check("a board's file missing from the release: that board left out, the rest kept", v["boards"] == ["alpha", "zeta"]
+          and [u["board"] for u in v["unavailable"]] == ["canary"] and "404" in v["unavailable"][0]["why"], v)
+    check("  and not offered: its manifest not published", not (firmware.ROOT / FV / f"firmware-canary-{FV}.mt.json").exists()
+          and (firmware.ROOT / FV / f"firmware-zeta-{FV}.mt.json").exists())
+    net["down"] = True; (firmware.ROOT / FV / "a.bin").unlink()
+    try:
+        firmware._mirror_version({"version": FV, "channel": "alpha"}, {"boards": "all"}, policy, lambda *a: None)
+        check("the network gone: the run stops", False)
+    except librarian.LibrarianError as exc:
+        check("the network gone: the run stops", "cannot reach" in str(exc) and not isinstance(exc, firmware._Unavailable), str(exc))
+(firmware.ROOT / FV / "pio-deps").mkdir(parents=True, exist_ok=True); (firmware.ROOT / FV / "pio-deps" / "x").write_text("cache")
+gone = firmware._drop_flash_files()
+check("flash files off: those held go, the build cache stays", gone > 0 and (firmware.ROOT / FV / "pio-deps" / "x").exists()
+      and sorted(p.name for p in (firmware.ROOT / FV).iterdir()) == ["pio-deps"], sorted(p.name for p in (firmware.ROOT / FV).iterdir()))
+
 # A download cut off part way resumes with a range request (librarian._download, step 33b).
 class Resp(io.BytesIO):
     def __init__(self, data, status):

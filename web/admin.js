@@ -2686,6 +2686,7 @@ function renderFirmware(data) {
     el('span', {}, el('strong', { textContent: `${v} (${info.channel})` }),
       el('span', { className: 'setting-desc', textContent: `${info.boards.length} board${info.boards.length === 1 ? '' : 's'}, ` +
         `${info.files} files, ${size(info.bytes)}` + (info.missing && info.missing.length ? `; not in this release: ${info.missing.join(', ')}` : '') +
+        (info.unavailable && info.unavailable.length ? `; left out, a file missing from the release: ${info.unavailable.map((u) => u.board).join(', ')}` : '') +
         (st.cache && st.cache.version === v ? `; build cache (${st.cache.mode}) ${size(st.cache.bytes)}` : '') }))))
     : [el('p', { className: 'setting-desc', textContent: 'Nothing kept yet.' })]));
   clearTimeout(fwPoll);
