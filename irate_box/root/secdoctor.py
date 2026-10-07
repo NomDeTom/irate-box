@@ -1838,14 +1838,15 @@ def joint(steps, freshness=None):
 
 def _local_headers(url):
     """A local request's status and headers (the box's own front), or None. Certificates unchecked:
-    this asks what the front sends, not whether it is trusted."""
+    this asks what the front sends, not whether it is trusted. A GET whose body is never read: the
+    hub answers HEAD with 501 (found on the Lyra, 2026-10-07), which is not "not answering"."""
     import ssl
     import urllib.error
     import urllib.request
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=5, context=ctx) as r:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=5, context=ctx) as r:
             return r.status, dict(r.headers)
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {})
