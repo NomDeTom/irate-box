@@ -200,5 +200,46 @@ check("back to the box's own: its CA's certificate again", not tls.status()["cer
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the helper reads the staged files without following a link, and removes them", 'safeio.read_request(staged / "chain.pem"' in hc
       and '(staged / f).unlink(missing_ok=True)' in hc and '"tls-import": tls_import' in hc)
+# /admin over HTTPS only (stage 5).
+tls.front(True); reloads.clear()
+print(tls.admin_only(True))
+adm = (tls.FRONT / "nginx-admin.conf").read_text()
+check("admin over HTTPS only: plain requests sent to the HTTPS twin, nginx reloaded", "if ($scheme = http) { return 302 https://$host$request_uri; }" in adm
+      and reloads and tls.status()["admin_only"])
+tls.front(False)
+check("  HTTPS off takes it away too (never a redirect to a dead port)", not (tls.FRONT / "nginx-admin.conf").exists() and not tls.status()["admin_only"])
+try:
+    tls.admin_only(True); check("  not while HTTPS is off", False)
+except ValueError:
+    check("  not while HTTPS is off", True)
+tls.front(True)
+# The hub: turned on only from an admin page that came over HTTPS; the own-certificate upload staged privately.
+import http.client  # noqa: E402
+SECRET = "e" * 64
+s_ = socket.socket(); s_.bind(("127.0.0.1", 0)); port = s_.getsockname()[1]; s_.close()
+env = dict(os.environ, HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), PORT=str(port), HUB_BIND="127.0.0.1")
+hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def post(body, proto):
+    for _ in range(100):
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request("POST", "/admin/tls", body=json.dumps(body), headers={"X-Irate-Front": SECRET, "X-Irate-Admin": "1", "X-Forwarded-Proto": proto,
+                                                                             "Content-Type": "application/json", "Host": f"127.0.0.1:{port}"})
+            r = c.getresponse(); return r.status, r.read()
+        except OSError:
+            time.sleep(0.1)
+try:
+    code, body = post({"action": "admin-only", "on": True}, "http")
+    check("hub: HTTPS only refused from a plain-HTTP admin page, saying why", code == 409 and b"open /admin over HTTPS first" in body, (code, body))
+    code, _ = post({"action": "admin-only", "on": True}, "https")
+    check("  accepted from an HTTPS one", code == 202)
+    code, _ = post({"action": "admin-only", "on": False}, "http")
+    check("  turning it off: from anywhere", code == 202)
+    code, _ = post({"action": "import", "chain": "C", "key": "K"}, "https")
+    staged = T / "state" / "tls-import"
+    check("  an own certificate staged for the helper, private to the hub", code == 202 and stat.S_IMODE((staged / "key.pem").stat().st_mode) == 0o600
+          and stat.S_IMODE(staged.stat().st_mode) == 0o700)
+finally:
+    hub.terminate(); hub.wait()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

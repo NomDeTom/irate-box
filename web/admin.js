@@ -3306,7 +3306,8 @@ if (location.hash === '#factory') loadFactory();
 // --- HTTPS (step 15: root/tls.py, /admin/tls) -------------------------------------------------------
 const tlsEl = { state: document.getElementById('tls-state'), make: document.getElementById('tls-make'), sw: document.getElementById('tls-switch'),
   again: document.getElementById('tls-again'), note: noteEl('tls-note'), box: document.getElementById('tls-box'),
-  own: document.getElementById('tls-own-form'), plain: document.getElementById('tls-own-plain') };
+  own: document.getElementById('tls-own-form'), plain: document.getElementById('tls-own-plain'),
+  adminOnly: document.getElementById('tls-admin-only'), adminOnlyNote: document.getElementById('tls-admin-only-note') };
 let tlsWaiting = null;
 let tlsData = null;
 async function loadTls() {
@@ -3334,7 +3335,16 @@ function renderTls(d) {
   tlsEl.box.hidden = !(c.own && d.ca);
   tlsEl.make.hidden = !!(d.set_up && d.ca);
   tlsEl.plain.hidden = location.protocol === 'https:';
-  [tlsEl.make, tlsEl.sw, tlsEl.again, tlsEl.box].forEach((b) => { b.disabled = busy; });
+  // /admin over HTTPS only: offered while HTTPS is on, and turned on only from a page that came
+  // over HTTPS (this device trusts the box, so it can't lock its owner out).
+  const secure = location.protocol === 'https:';
+  tlsEl.adminOnly.hidden = !d.on;
+  tlsEl.adminOnly.textContent = d.admin_only ? 'Let /admin answer on plain HTTP too' : 'Make /admin HTTPS only';
+  tlsEl.adminOnlyNote.hidden = !d.on;
+  tlsEl.adminOnlyNote.textContent = d.admin_only ? 'On: /admin answers only over HTTPS, so the password never crosses the network in clear.'
+    : secure ? 'Off: /admin also answers on plain HTTP.' : 'To make /admin HTTPS only, open it over HTTPS first (once this device trusts the box): then it is safe.';
+  [tlsEl.make, tlsEl.sw, tlsEl.again, tlsEl.box, tlsEl.adminOnly].forEach((b) => { b.disabled = busy; });
+  if (!d.admin_only && !secure) tlsEl.adminOnly.disabled = true;
   if (busy) setTimeout(loadTls, 1500);
 }
 async function tlsAct(body) {
@@ -3347,6 +3357,7 @@ async function tlsAct(body) {
 }
 tlsEl.make.addEventListener('click', () => tlsAct({ action: 'make' }));
 tlsEl.box.addEventListener('click', () => tlsAct({ action: 'box' }));
+tlsEl.adminOnly.addEventListener('click', () => tlsAct({ action: 'admin-only', on: !(tlsData && tlsData.admin_only) }));
 tlsEl.own.addEventListener('submit', (e) => {
   e.preventDefault();
   const f = tlsEl.own.elements;

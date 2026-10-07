@@ -2288,8 +2288,17 @@ class Handler(BaseHTTPRequestHandler):
             if action == "box":
                 self.send_json(202, {"id": control_request({"action": "tls-box"})})
                 return
+            if action == "admin-only":
+                on = payload.get("on") is True
+                # Only from a page that came over HTTPS: proof the owner's device trusts the box,
+                # so turning it on can't lock them out of /admin.
+                if on and self.headers.get("X-Forwarded-Proto") != "https":
+                    self.send_json(409, {"error": "open /admin over HTTPS first (https://<this box>/admin/): only then is it safe to make it HTTPS only"})
+                    return
+                self.send_json(202, {"id": control_request({"action": "tls-admin-only", "on": on})})
+                return
             if action not in ("make", "renew"):
-                self.send_json(400, {"error": "action must be make, renew, on, off, import or box"})
+                self.send_json(400, {"error": "action must be make, renew, on, off, import, box or admin-only"})
                 return
             self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
             return

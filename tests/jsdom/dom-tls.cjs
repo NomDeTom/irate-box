@@ -57,6 +57,11 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   admin.w.eval('loadTls()'); await wait();
   check('moved to another subnet: said, as needing a new CA', /now at 10\.0\.0\.5, outside what its CA may vouch for: make a new CA/.test(t(d.getElementById('tls-state')))
     && d.getElementById('tls-state').classList.contains('bad'));
+  // /admin over HTTPS only.
+  state = Object.assign({}, ON);
+  admin.w.eval('loadTls()'); await wait();
+  check('admin HTTPS only: offered while on, but not from a plain-HTTP page, saying why', !d.getElementById('tls-admin-only').hidden && d.getElementById('tls-admin-only').disabled
+    && /open it over HTTPS first/.test(t(d.getElementById('tls-admin-only-note'))));
   // Bring your own.
   check('own certificate: a warning on plain HTTP (the key would cross the network in clear)', !d.getElementById('tls-own-plain').hidden);
   const of = d.getElementById('tls-own-form');

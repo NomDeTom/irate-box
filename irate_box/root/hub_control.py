@@ -1503,6 +1503,12 @@ def tls_box(req):
 
 
 @_tls_answer
+def tls_admin_only(req):
+    from irate_box.root import tls
+    return tls.admin_only(req.get("on") is True)
+
+
+@_tls_answer
 def tls_switch(req):
     """HTTPS on or off at the front, the CA and certificate kept either way."""
     from irate_box.root import tls
@@ -1908,7 +1914,7 @@ ACTIONS = {"service": service, "password": password,
            "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
-           "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
+           "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
