@@ -193,14 +193,40 @@ def _mirror_version(rel, cfg, policy, log):
     _publish(vdir / f"firmware-{version}.json", board_list)
     targets = sorted({t["board"] for t in board_list.get("targets", []) if BOARD_RE.match(t.get("board", ""))})
     wanted = targets if cfg["boards"] == "all" else [b for b in targets if b in cfg["boards"]]
-    got, files, size = [], 0, 0
+    got, files, size, unavailable = [], 0, 0, []
     for board in wanted:
         try:
             mt = _get_json(f"{base}/firmware-{board}-{version}.mt.json")
         except (OSError, ValueError) as exc:
             log(f"firmware {version}: no manifest for {board} ({exc})")
             continue
-        for entry in mt.get("files", []):
+        try:
+            n, b = _mirror_board(base, vdir, version, mt, policy)
+        except _Unavailable as exc:
+            # One board's file missing from the release (2.8.1's canaryone .hex: HTTP 404, found
+            # 2026-10-07) stopped every board after it, and the build cache. Now only that board
+            # is left out, unoffered (its manifest is not published), and said.
+            log(f"firmware {version}: {board} left out: {exc}")
+            unavailable.append({"board": board, "why": str(exc)[:200]})
+            continue
+        files += n
+        size += b
+        _publish(vdir / f"firmware-{board}-{version}.mt.json", mt)
+        got.append(board)
+    missing = [b for b in (cfg["boards"] if cfg["boards"] != "all" else []) if b not in targets]
+    return {"channel": rel["channel"], "boards": got, "files": files, "bytes": size,
+            "missing": missing, "unavailable": unavailable, "fetched": librarian.now_iso()}
+
+
+class _Unavailable(LibrarianError):
+    """One board's file cannot be had (not found, or not what its manifest says)."""
+
+
+def _mirror_board(base, vdir, version, mt, policy):
+    """A board's flash files, as its manifest lists them: (files, bytes). Running out of room
+    stops the whole run (LibrarianError); a file that cannot be had stops only this board."""
+    files = size = 0
+    for entry in mt.get("files", []):
             name = entry.get("name", "")
             if not FILE_RE.match(name) or name.endswith(".elf"):
                 continue
@@ -210,19 +236,21 @@ def _mirror_version(rel, cfg, policy, log):
                 if librarian._free_bytes(ROOT) < need:
                     raise LibrarianError(f"not enough space for {name}: keep {policy['min_free_mb']} MB free")
                 tmp = dest.with_name(dest.name + ".part")
-                librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
-                                    expected=entry.get("bytes", 0))
+                try:
+                    librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
+                                        expected=entry.get("bytes", 0))
+                except LibrarianError as exc:
+                    tmp.unlink(missing_ok=True)
+                    if "cannot reach" in str(exc):
+                        raise  # the network, not this board: the whole run stops
+                    raise _Unavailable(str(exc))
                 if not _have(tmp, entry):
                     tmp.unlink(missing_ok=True)
-                    raise LibrarianError(f"{name}: size or MD5 does not match the manifest")
+                    raise _Unavailable(f"{name}: size or MD5 does not match the manifest")
                 os.replace(tmp, dest)
             files += 1
             size += entry.get("bytes", 0)
-        _publish(vdir / f"firmware-{board}-{version}.mt.json", mt)
-        got.append(board)
-    missing = [b for b in (cfg["boards"] if cfg["boards"] != "all" else []) if b not in targets]
-    return {"channel": rel["channel"], "boards": got, "files": files, "bytes": size,
-            "missing": missing, "fetched": librarian.now_iso()}
+    return files, size
 
 
 DEPS_RESERVE = 512 << 20  # free space the deps extraction leaves on the card
@@ -516,11 +544,16 @@ def sync(check_only=False, log=print):
             st["configs"] = configs
         if not cfg["enabled"]:
             # The build cache is the builds' (git-ci-plan 4a): kept whether or not flash files are.
+            # Flash files already held go: they are what "Keep firmware on this box" keeps.
+            gone = _drop_flash_files()
+            st.pop("versions", None)
             st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
             st.pop("error", None)
+            outcome = "; ".join(x for x in (configs, f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None,
+                                            f"flash files removed ({gone >> 20} MB)" if gone else None) if x) or "flash files off"
+            st["outcome"] = outcome
             _save_status(st)
-            return "; ".join(x for x in (configs, f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None) if x) \
-                or "flash files off"
+            return outcome
         versions = {}
         for rel in kept:
             log(f"firmware {rel['version']}: {len(cfg['boards']) if cfg['boards'] != 'all' else 'all'} boards")
@@ -542,6 +575,23 @@ def sync(check_only=False, log=print):
     st["outcome"] = outcome
     _save_status(st)
     return outcome
+
+
+def _drop_flash_files():
+    """Every release folder's flash files and manifests, leaving the build cache (pio-deps/);
+    a folder left empty goes too. Returns the bytes freed."""
+    gone = 0
+    for d in ROOT.iterdir() if ROOT.is_dir() else []:
+        if not (d.is_dir() and VERSION_RE.match(d.name)):
+            continue
+        for f in d.iterdir():
+            if f.name == "pio-deps" or f.is_dir():
+                continue
+            gone += f.stat().st_size
+            f.unlink()
+        if not any(d.iterdir()):
+            d.rmdir()
+    return gone
 
 
 def due(hours):
