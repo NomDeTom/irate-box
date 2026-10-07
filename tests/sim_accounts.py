@@ -134,7 +134,8 @@ check("  with the box's own login off: anyone without an admin session sent to l
 site = (REPO / "config" / "irate-box.nginx").read_text()
 check("  the site: /admin/, /term/ and /sync/ include it; each server block can ask",
       all(site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc)) for loc in ("location /admin/ {", "location /term/ {", "location /sync/ {"))
-      and site.count("location = /_irate_admin") == 4)
+      and site.count("location = /_irate_admin") == 4
+      and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;") == 4)
 import re as _re  # noqa: E402
 gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check("  the site: every app location with a login has its gate include",
@@ -218,7 +219,8 @@ finally:
 st = T / "hub"
 st.mkdir()
 s_ = socket.socket(); s_.bind(("127.0.0.1", 0)); port = s_.getsockname()[1]; s_.close()
-env = dict(os.environ, HUB_STATE_DIR=str(st), HUB_ETC_DIR=str(st), PORT=str(port), HUB_BIND="127.0.0.1")
+env = dict(os.environ, HUB_STATE_DIR=str(st), HUB_ETC_DIR=str(st), PORT=str(port), HUB_BIND="127.0.0.1",
+           HUB_UNCLAIMED_FILE=str(st / "unclaimed"))
 hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 for _ in range(100):
     try:
@@ -298,6 +300,11 @@ try:
     check("  the home page: an app for users shown to a user, not to a guest", "/app.html#/draw/" in home(tok) and "/app.html#/draw/" not in home())
     code, _, _ = req("/_irate/admin", headers={"Cookie": tok})
     check("  the admin check: a user's session, 401", code == 401, code)
+    (st / "unclaimed").write_text("no password yet\n")
+    seen = {u: req("/_irate/admin", headers={"X-Original-URI": u})[0] for u in ("/admin/", "/admin/settings?x=1", "/term/", "/sync/", "/tools/", "/administer")}
+    (st / "unclaimed").unlink()
+    check("  an unclaimed box: /admin opens (the set-the-password page); the shell, Syncthing and private apps don't",
+          seen == {"/admin/": 204, "/admin/settings?x=1": 204, "/term/": 401, "/sync/": 401, "/tools/": 401, "/administer": 401}, seen)
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "gina", "role": "admin"}, {"X-Irate-Admin": "1"})
     req("/api/account", {"action": "code", "code": d["code"], "password": "password9"})
     _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
