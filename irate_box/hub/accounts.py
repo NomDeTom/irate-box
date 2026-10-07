@@ -261,6 +261,42 @@ def login(name, password, addr="", https=False):
     return token, _public(acc)
 
 
+_basic_ok = {}   # (name, sha256 of the password) -> when it was last right: a push is several requests
+
+
+def check_basic(header, addr=""):
+    """An HTTP Basic Authorization header that is an account's name and password (git over HTTP:
+    a client sends no cookie): {name, role}, or None. Limited as logins are; a right one is
+    remembered for a minute, as git asks several times a push and a check takes half a second on
+    the Lyra."""
+    import base64
+    if not isinstance(header, str) or not header.startswith("Basic ") or settings()["signup"] == "off":
+        return None
+    try:
+        name, _, password = base64.b64decode(header[6:].strip(), validate=True).decode().partition(":")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not name or name.lower() in RESERVED:
+        return None  # "admin" is the box's own login, for the web server to check
+    now = time.time()
+    key = (name.lower(), hashlib.sha256(password.encode()).hexdigest())
+    acc = _load()["accounts"].get(name.lower())
+    if not acc or acc.get("state") != "user" or not acc.get("hash"):
+        return None
+    if now - _basic_ok.get(key, 0) > 60:
+        with _lock:
+            try:
+                _limited(name, addr, now)
+            except Wait:
+                return None
+        if not check_password(password, acc["hash"]):
+            with _lock:
+                _failed(name, addr, now)
+            return None
+        _basic_ok[key] = now
+    return {"name": acc["name"], "role": acc.get("role", "user")}
+
+
 def session(token):
     """The account a session cookie belongs to, or None: only while the session is current and
     the account a user (not waiting, not switched off). Renewed once a day while in use."""

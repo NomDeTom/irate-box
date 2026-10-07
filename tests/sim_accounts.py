@@ -89,6 +89,17 @@ check("delete: gone; the list shows no hash", "x0x" not in [a["name"] for a in A
 check("counts", A.counts() == {"asked": 4, "user": 3, "disabled": 0, "admins": 1}, A.counts())
 check("bad settings refused", refused(A.set_settings, "everyone") and refused(A.set_settings, None, "sometimes"))
 
+# git over HTTP (stage 4): an account by its basic-auth credentials.
+import base64  # noqa: E402
+basic = lambda n, pw: "Basic " + base64.b64encode(f"{n}:{pw}".encode()).decode()  # noqa: E731
+A.set_settings(signup="apply")
+check("check_basic: an account's name and password, its role", A.check_basic(basic("carol", "password6"), "10.9.9.9") == {"name": "carol", "role": "admin"})
+t0 = time.time(); A.check_basic(basic("carol", "password6")); quick = time.time() - t0
+check("  a wrong password, the box's own 'admin', garbage, a cookie-less nothing: none", A.check_basic(basic("carol", "nope-nope"), "10.9.9.9") is None
+      and A.check_basic(basic("admin", "whatever"), "") is None and A.check_basic("Basic !!!", "") is None and A.check_basic("", "") is None)
+check("  a right one remembered for a minute (git asks several times a push)", quick < 0.01, quick)
+A._fails.clear()
+
 # Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
 from irate_box.hub import access  # noqa: E402
 st_ = access.clean({"draw": "users", "flasher": "users", "term": "users", "my-addon": "users", "wiki": "users"})

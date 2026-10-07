@@ -2588,7 +2588,7 @@ function managePanel(r, data, cls) {
       `Move ${r.name}.git to /git-private/? Only the admin login will see or clone it, and its clone URL changes.`, `${r.name}.git is private now.`)),
     el('p', { className: 'setting-desc', textContent: 'Moving it changes its clone URL; clones elsewhere need git remote set-url.' }));
   const presets = (data.presets || {})[r.area] || [];
-  const WHO = { everyone: 'Anyone', admin: 'Only the admin', nobody: 'Nobody (read-only)' };
+  const WHO = { everyone: 'Anyone', users: 'The box\'s users (their account\'s name and password)', admin: 'Only the admin', nobody: 'Nobody (read-only)' };
   const push = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can push?' }),
     ...presets.map((p) => radio('push', p.name, WHO[p.write], p.name === r.preset, act({ action: 'preset', area: r.area, name: r.name, preset: p.name },
       p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git, without the login? They cannot rewrite or delete its history, and the public repositories have a size cap, but anything they push is served from this box.` : null,

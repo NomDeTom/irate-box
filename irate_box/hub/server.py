@@ -2176,11 +2176,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/internal/git-access":
-            # nginx's auth_request for a push or fetch on /git/ (gitrepos.decide): 204 if no login
-            # is needed, 403 if only the admin login will do (nginx then asks for it). Nothing
-            # here is secret: anything on loopback may ask what a guest may do.
+            # nginx's auth_request for a push or fetch (gitrepos.decide): 204 if no login is needed
+            # or the request's own credentials are an account's that may; 403 if only the box's own
+            # login will do (nginx then asks for it). Anything on loopback may ask what a guest may
+            # do; an account's answer needs its password.
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
-            ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode)
+            account = accounts.check_basic(self.headers.get("Authorization", ""), self.headers.get("X-Forwarded-For", ""))
+            ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode, account)
             self.send_empty(204 if ok else 403)
             return
 

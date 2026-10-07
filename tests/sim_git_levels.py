@@ -56,6 +56,28 @@ cases = [
 for uri, mode, want in cases:
     check(f"decide {uri or '(empty)'} with git {mode}: {'no login' if want else 'login'}", D(uri, "GET", mode) is want)
 
+# With an account's credentials (accounts step 16: accounts.check_basic gives {name, role}).
+check("public-users-write", act(action="preset", area="public", name="ro", preset="public-users-write")[0] == 200
+      and cfg("public", "ro", "irate-box.write") == "users" and cfg("public", "ro", "http.receivepack") == "true")
+check("a private repository cannot be public-users-write", act(action="preset", area="private", name="secret", preset="public-users-write")[0] == 400)
+user, admin = {"name": "erin", "role": "user"}, {"name": "carol", "role": "admin"}
+acases = [
+    ("/git/ro.git/git-receive-pack", "public", None, False),
+    ("/git/ro.git/git-receive-pack", "public", user, True),
+    ("/git/admins.git/git-receive-pack", "public", user, False),
+    ("/git/admins.git/git-receive-pack", "public", admin, True),
+    ("/git-private/secret.git/info/refs?service=git-upload-pack", "public", user, False),
+    ("/git-private/secret.git/git-receive-pack", "public", admin, True),
+    ("/git/open.git/info/refs?service=git-upload-pack", "users", None, False),
+    ("/git/open.git/info/refs?service=git-upload-pack", "users", user, True),
+    ("/git/open.git/git-receive-pack", "private", user, False),
+    ("/git/open.git/git-receive-pack", "private", admin, True),
+    ("/git-private/../public/open.git/git-receive-pack", "public", user, False),
+]
+for uri, mode, acc, want in acases:
+    check(f"decide {uri} with git {mode}, {acc['role'] if acc else 'no'} account: {'yes' if want else 'login'}", D(uri, "GET", mode, acc) is want)
+act(action="preset", area="public", name="ro", preset="public-read-only")
+
 snap = gitrepos.snapshot()
 pre = {r["name"]: r["preset"] for r in snap["repos"]}
 check("the page sees each repository's preset", pre == {"open": "public-everything", "admins": "public-admin-writes",
