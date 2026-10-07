@@ -124,5 +124,28 @@ try:
     check("/certificate: to its page", code in (200, 302))
 finally:
     hub.terminate(); hub.wait()
+# The security doctor (stage 6).
+from irate_box.root import secdoctor  # noqa: E402
+answers = {"https": (200, {"Content-Type": "text/html"}), "http": (200, {})}
+secdoctor._local_headers = lambda url: answers["https" if url.startswith("https") else "http"]
+ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0/24"}
+f = {x["id"]: x for x in secdoctor.step_tls({})}
+check("doctor: expiry, coverage, constraints, keys, no HSTS, port 80, all fine; about the tls setting",
+      [f[k]["status"] for k in ("tls-expiry", "tls-covers", "tls-constraints", "tls-keys", "tls-hsts", "tls-plain")] == ["ok"] * 6
+      and all(x["about"] == {"kind": "setting", "key": "tls"} for x in f.values()), {k: (v["status"], v["detail"]) for k, v in f.items()})
+answers["https"] = (200, {"Strict-Transport-Security": "max-age=1"})
+answers["http"] = None
+f = {x["id"]: x for x in secdoctor.step_tls({})}
+check("  HSTS sent, port 80 silent: both problems", f["tls-hsts"]["status"] == "problem" and f["tls-plain"]["status"] == "problem")
+rec = json.loads(tls.RECORD.read_text()); rec["cert"]["expires"] = time.time() + 5 * 86400; tls.RECORD.write_text(json.dumps(rec))
+check("  five days left: a problem", {x["id"]: x for x in secdoctor.step_tls({})}["tls-expiry"]["status"] == "problem")
+rec["cert"]["expires"] = time.time() + 20 * 86400; tls.RECORD.write_text(json.dumps(rec))
+check("  twenty days left: a warning", {x["id"]: x for x in secdoctor.step_tls({})}["tls-expiry"]["status"] == "warn")
+ADDRS[0] = {"iface": "wlan0", "address": "10.0.0.5", "network": "10.0.0.0/24"}
+check("  moved to another subnet: a problem, saying to make a new CA", "Make a new CA" in {x["id"]: x for x in secdoctor.step_tls({})}["tls-covers"]["fix"])
+os.chmod(tls.CA_KEY, 0o644)
+check("  a readable CA key: a problem", {x["id"]: x for x in secdoctor.step_tls({})}["tls-keys"]["status"] == "problem")
+os.chmod(tls.CA_KEY, 0o600)
+check("  in the doctor's steps", any(st[0] == "tls" for st in secdoctor.STEPS))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

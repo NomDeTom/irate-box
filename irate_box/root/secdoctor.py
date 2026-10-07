@@ -1836,6 +1836,79 @@ def joint(steps, freshness=None):
     return {"items": merged, "agreed_ok": len(agreed), "sources": sources, "after": after,
             "coverage": {s: secdoctor_xref.COVERAGE.get(s, "") for s in sources}, "freshness": freshness or {}}
 
+def _local_headers(url):
+    """A local request's status and headers (the box's own front), or None. Certificates unchecked:
+    this asks what the front sends, not whether it is trusted."""
+    import ssl
+    import urllib.error
+    import urllib.request
+    ctx = ssl.create_default_context()
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=5, context=ctx) as r:
+            return r.status, dict(r.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers or {})
+    except (OSError, ValueError):
+        return None
+
+
+def step_tls(ctx):
+    """HTTPS (next-work plan step 15, certificates-plan stage 6): the certificate's expiry, that it
+    covers the box's addresses, the CA's name constraints, the keys private, and, while HTTPS is
+    on, no HSTS and port 80 still answering (the captive portal needs it)."""
+    from irate_box.root import tls
+    about = {"kind": "setting", "key": "tls"}
+    st = tls.status()
+    if not st.get("set_up"):
+        return [F("tls", "HTTPS", "warn", "No certificate: every page is plain HTTP, so the admin password crosses the WiFi in clear.",
+                  "/admin → Security → HTTPS: Make the box's certificate, then install it from /certificate on your own devices.", "S2", about=about)]
+    out = []
+    c = st.get("cert") or {}
+    days = (c.get("expires", 0) - time.time()) / 86400
+    out.append(F("tls-expiry", "The HTTPS certificate's expiry", "problem" if days < 7 else "warn" if days < 30 else "ok",
+                 f"{'Expired' if days < 0 else f'{days:.0f} days left'}" + ("" if c.get("own") else "; the box renews its own at two-thirds of its life") + ".",
+                 "" if days >= 30 else ("Bring a renewed one (/admin → Security → HTTPS)." if c.get("own") else "Renew it: /admin → Security → HTTPS, or ./irate-box tls renew as root."),
+                 "", about=about))
+    if st.get("outside"):
+        out.append(F("tls-covers", "What the certificate covers", "problem",
+                     f"The box is at {', '.join(st['outside'])}, which its CA may not vouch for: HTTPS there is refused.",
+                     "Make a new CA for this network (/admin → Security → HTTPS), and install it again on each device.", "", about=about))
+    else:
+        out.append(F("tls-covers", "What the certificate covers", "warn" if st.get("due") else "ok",
+                     f"{', '.join(c.get('names', []) + c.get('addresses', []))}" + (f"; due to be re-made: {st['due']}" if st.get("due") else "."),
+                     "The uplink watchdog renews it within six hours, or: ./irate-box tls renew." if st.get("due") else "", "", about=about))
+    text = ""
+    try:
+        text = tls.openssl("x509", "-in", str(tls.CA_CERT), "-noout", "-text")
+    except (RuntimeError, OSError):
+        pass
+    out.append(F("tls-constraints", "The CA can vouch only for the box", "ok" if "X509v3 Name Constraints: critical" in text else "problem",
+                 "Its name constraints are in place: installed, it is trusted for nothing else." if "X509v3 Name Constraints: critical" in text
+                 else "The CA has no name constraints: a device that installs it would trust it for any site.",
+                 "" if "X509v3 Name Constraints: critical" in text else "Make a new CA (/admin → Security → HTTPS).", "", about=about))
+    private = st.get("keys_private") and tls.KEY.exists() and (tls.KEY.stat().st_mode & 0o007) == 0
+    out.append(F("tls-keys", "The certificate keys", "ok" if private else "problem",
+                 "The CA's key root's only, the server key not readable by everyone." if private else "A key is readable by more than it should be.",
+                 "" if private else "chmod 600 /etc/hub/tls/ca/ca.key; chmod 640 /etc/hub/tls/server.key", "", about=about))
+    if st.get("on"):
+        got = _local_headers(f"https://127.0.0.1:{(st.get('ports') or {}).get('main', 443)}/")
+        if got is None:
+            out.append(F("tls-hsts", "HTTPS at the front", "warn", "HTTPS is on, but the box's HTTPS port did not answer.",
+                         "nginx -t; systemctl reload nginx", "", about=about))
+        else:
+            hsts = any(k.lower() == "strict-transport-security" for k in got[1])
+            out.append(F("tls-hsts", "No HSTS", "problem" if hsts else "ok",
+                         "The front sends Strict-Transport-Security: a phone that saw it could never reach the plain pages again, the captive portal's among them."
+                         if hsts else "The front sends no Strict-Transport-Security, so plain HTTP keeps working.",
+                         "Remove the Strict-Transport-Security header from the web server's config." if hsts else "", "", about=about))
+        plain = _local_headers("http://127.0.0.1/")
+        out.append(F("tls-plain", "Plain HTTP still answers", "ok" if plain and plain[0] < 500 else "problem",
+                     "Port 80 answers, as the captive portal's sign-in sheet needs." if plain and plain[0] < 500 else "Port 80 does not answer: phones on the hotspot get no sign-in sheet.",
+                     "" if plain and plain[0] < 500 else "systemctl status nginx", "", about=about))
+    return out
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
@@ -1856,6 +1929,7 @@ STEPS = [
     ("lynis", "Lynis (in the deep audit)", "", step_deep_lynis),
     ("security-page", "The Security page's scan", "", step_security_page),
     ("imports", "Imported scans (OpenVAS, nmap)", "", step_imports),
+    ("tls", "HTTPS: the certificate and the front", "S2", step_tls),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
