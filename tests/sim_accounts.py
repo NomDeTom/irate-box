@@ -97,28 +97,63 @@ check("users mode: a built-in app may be for users; not the flasher (its page is
 conf = access.nginx_conf(st_)
 check("  nginx: no basic auth for it (the gate asks the hub instead)", "set $irate_box_auth_draw off;" in conf)
 gates = access.nginx_gates(st_)
-check("  a gate for each app for users, and only those", sorted(gates) == ["gate-draw.conf", "gate-wiki.conf"]
+check("  a gate for each app for users, and the admin's", sorted(gates) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"]
       and "auth_request /_irate_user;" in gates["gate-draw.conf"] and "error_page 401 = @irate_box_login;" in gates["gate-draw.conf"], gates)
 check("  Caddy: forward_auth to the hub's check, which redirects", "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
       and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"])
+g2 = access.nginx_gates(access.clean({"tools": "private", "term": "private"}))
+check("admin gate: the box's own login or an admin's session; a private app gets it, the shell needs none of its own",
+      g2["gate-admin.conf"].endswith("satisfy any;\nauth_request /_irate_admin;\n") and g2["gate-tools.conf"] == g2["gate-admin.conf"] and "gate-term.conf" not in g2, g2)
+check("  with the box's own login off: anyone without an admin session sent to log in",
+      "error_page 401 = @irate_box_login;" in access.nginx_gates({}, admin_login=False)["gate-admin.conf"])
 site = (REPO / "config" / "irate-box.nginx").read_text()
+check("  the site: /admin/, /term/ and /sync/ include it; each server block can ask",
+      all(site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc)) for loc in ("location /admin/ {", "location /term/ {", "location /sync/ {"))
+      and site.count("location = /_irate_admin") == 4)
 import re as _re  # noqa: E402
 gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check("  the site: every app location with a login has its gate include",
       all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
       and site.count("location = /_irate_user") == 4 and site.count("location @irate_box_login") == 4, sorted(gated))
-os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx")
+os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))
 (T / "etc").mkdir()
 from irate_box.root import hub_control as H  # noqa: E402
 H._access_files(st_)
 gd = T / "etc" / "nginx-access.conf.d"
-check("helper: the gates written beside the access include", sorted(p.name for p in gd.iterdir()) == ["gate-draw.conf", "gate-wiki.conf"])
+check("helper: the gates written beside the access include", sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"])
 H._access_files(access.clean({"draw": "users"}))
-check("  and the one no longer for users removed", sorted(p.name for p in gd.iterdir()) == ["gate-draw.conf"])
+check("  and the one no longer for users removed", sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf"])
 try:
     H.access_set({"app": "flasher", "mode": "users"}); check("  the flasher for users: refused", False)
 except ValueError as exc:
     check("  the flasher for users: refused", "not for users" in str(exc), exc)
+
+# The box's own admin login switched off and on (stage 3).
+(T / "etc" / "htpasswd").write_text("admin:$6$hash\n")
+H.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")   # no systemctl here
+H.CONTROL = T / "control"; H.CONTROL.mkdir(exist_ok=True); H.ADMIN_LOGIN_STATE = H.CONTROL / "admin-login.json"
+H.STATE = T / "state"
+A.set_settings(signup="apply")
+try:
+    H.admin_login({"on": False}); check("off: refused until an admin account has logged in over HTTPS", False)
+except ValueError as exc:
+    check("off: refused until an admin account has logged in over HTTPS", "over HTTPS" in str(exc), exc)
+A.login("carol", "password6", https=True)
+out = H.admin_login({"on": False})
+check("  then off: the login file emptied, its hash kept aside, the gates send people to log in, the hub told",
+      "admin:" not in (T / "etc" / "htpasswd").read_text() and (T / "etc" / "admin-login.off").read_text() == "admin:$6$hash\n"
+      and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False}
+      and "carol" in out, out)
+check("  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
+      refused(A.change, "carol", "user", True, says="last admin") and refused(A.change, "carol", "delete", True, says="last admin")
+      and refused(A.set_settings, "off", None, True, says="switch it on first"))
+H.admin_login({"on": True})
+check("on again: the login as it was, the gates ask for it again", (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n"
+      and not (T / "etc" / "admin-login.off").exists() and "error_page" not in (gd / "gate-admin.conf").read_text())
+H.admin_login({"on": False})
+H.set_login("a-new-password", keep=False)
+check("  a new password (reset-password at the console): on again", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
+      and not (T / "etc" / "admin-login.off").exists() and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": True})
 
 # The hub.
 st = T / "hub"
@@ -202,6 +237,15 @@ try:
         r = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"Cookie": cookie} if cookie else {})
         return urllib.request.urlopen(r, timeout=5).read().decode()
     check("  the home page: an app for users shown to a user, not to a guest", "/app.html#/draw/" in home(tok) and "/app.html#/draw/" not in home())
+    code, _, _ = req("/_irate/admin", headers={"Cookie": tok})
+    check("  the admin check: a user's session, 401", code == 401, code)
+    code, d, _ = req("/admin/accounts", {"action": "make", "name": "gina", "role": "admin"}, {"X-Irate-Admin": "1"})
+    req("/api/account", {"action": "code", "code": d["code"], "password": "password9"})
+    _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
+    code, _, _ = req("/_irate/admin", headers={"Cookie": h.get("Set-Cookie", "").split(";")[0]})
+    _, d, _ = req("/admin/accounts")
+    check("  an admin account's: 204; the Accounts page knows it logged in over HTTPS", code == 204 and d["admin_login"]["on"] is True
+          and d["admin_login"]["https_admins"] == ["gina"], (code, d.get("admin_login")))
 finally:
     hub.terminate()
     hub.wait()

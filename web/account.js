@@ -39,7 +39,11 @@ function render(d) {
   $('acct-guest').hidden = !!d.me;
   if (d.me) {
     $('acct-subtitle').textContent = `Logged in as ${d.me.name}.`;
-    $('acct-me-text').textContent = d.me.role === 'admin' ? `${d.me.name}: an admin of this box.` : `${d.me.name}: a user of this box.`;
+    $('acct-me-text').replaceChildren(d.me.role === 'admin' ? `${d.me.name}: an admin of this box. ` : `${d.me.name}: a user of this box.`);
+    if (d.me.role === 'admin') {
+      const a = document.createElement('a'); a.href = '/admin/'; a.textContent = 'Open /admin';
+      $('acct-me-text').append(a);
+    }
     return;
   }
   const signup = d.signup === 'open' || d.signup === 'apply';

@@ -3402,11 +3402,31 @@ if (location.hash === '#security') loadTls();
 
 // --- accounts (step 16: accounts.py, /admin/accounts) ------------------------------------------------
 const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
-  make: document.getElementById('accounts-make'), code: document.getElementById('accounts-code'), list: document.getElementById('accounts-list') };
+  make: document.getElementById('accounts-make'), code: document.getElementById('accounts-code'), list: document.getElementById('accounts-list'),
+  login: document.getElementById('accounts-admin-login'), loginSwitch: document.getElementById('accounts-admin-login-switch') };
+let acctWaiting = null; // the root helper's request for the box's own login
 async function loadAccounts() {
   try { renderAccounts(await getJSON('/admin/accounts')); } catch (_) { acctEl.counts.textContent = 'Could not read the accounts.'; }
 }
 function renderAccounts(d) {
+  const al = d.admin_login || { on: true, https_admins: [], results: [] };
+  if (acctWaiting) {
+    const done = (al.results || []).find((r) => r.id === acctWaiting);
+    if (done) { acctWaiting = null; say(done.message, done.ok, acctEl.note); }
+    else setTimeout(loadAccounts, 1000);
+  }
+  const admins = al.https_admins.join(', ');
+  acctEl.login.textContent = al.on
+    ? `On: "admin" and its password open /admin${admins ? `, as do the admin accounts (${admins})` : ''}. ${admins ? 'It can be switched off: the admin accounts then are the way in.' : 'To switch it off, first make an admin account and log in with it over HTTPS.'}`
+    : `Off: only admin accounts (${admins || 'none!'}) open /admin. A new admin password, or reset-password at the box's console, turns it on again.`;
+  acctEl.loginSwitch.hidden = al.on && !admins;
+  acctEl.loginSwitch.disabled = !!acctWaiting;
+  acctEl.loginSwitch.textContent = acctWaiting ? 'Changing…' : al.on ? 'Switch it off' : 'Switch it on';
+  acctEl.loginSwitch.onclick = async () => {
+    if (al.on && !confirm(`Switch the box's own admin login off? Only ${admins} can then open /admin.`)) return;
+    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', on: !al.on })).id; loadAccounts(); }
+    catch (err) { say(err.message, false, acctEl.note); }
+  };
   acctEl.settings.elements.signup.value = d.settings.signup;
   acctEl.settings.elements.http.value = d.settings.http;
   const c = d.counts;

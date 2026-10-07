@@ -184,6 +184,10 @@ UNITS.update({f"{WEB_SERVER}.service": ("restart",), "irate-box.service": ("rest
 # and the copy the hub reads for its tiles.
 ACCESS_FILE = ETC / "access.json"
 ACCESS_STATE = CONTROL / "access.json"
+# The box's own admin login switched off (accounts step 16, stage 3): its hash kept here, root's,
+# and the login file emptied. The hub's copy of whether it is on, for /admin → Accounts.
+ADMIN_LOGIN_OFF = ETC / "admin-login.off"
+ADMIN_LOGIN_STATE = CONTROL / "admin-login.json"
 ACCESS_STOPPED = ETC / "access-stopped.json"  # the services "off" stopped, to start again
 NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"))
 # The add-on server's maps (http level), and Caddy's add-on routes: from access.json and the
@@ -265,7 +269,8 @@ def _set_nginx_login(pw):
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(f"admin:{hashed}\n")
-    os.chown(tmp, 0, gid)
+    if os.geteuid() == 0:  # always, but in the tests
+        os.chown(tmp, 0, gid)
     os.chmod(tmp, 0o640)
     os.replace(tmp, NGINX_LOGINS)
     return "nginx (1 login)"
@@ -304,9 +309,16 @@ def _set_caddy_login(pw):
 
 def set_login(pw, keep=True):
     """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
-    out (removed): a random placeholder nobody is meant to know."""
+    out (removed): a random placeholder nobody is meant to know. A new password turns the box's
+    own login back on if it was off (reset-password at the console is the way back in)."""
     # The web server first: if its new login cannot be written, nothing else has changed.
     web = _set_nginx_login(pw) if WEB_SERVER == "nginx" else _set_caddy_login(pw)
+    if ADMIN_LOGIN_OFF.exists():
+        ADMIN_LOGIN_OFF.unlink()
+        _access_files(access.read(ACCESS_FILE))
+        run("systemctl", "reload", "nginx")
+        web += ", the box's own login on again"
+    _admin_login_record()
 
     secret = ETC / "admin-password"
     if keep:
@@ -454,7 +466,7 @@ def _access_files(state):
     local, _ = manifests.load_local(builtin=MANIFESTS)
     if WEB_SERVER == "nginx":
         gates_dir = NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d")   # the template's @ACCESS@.d/gate-<id>.conf*
-        gates = access.nginx_gates(state)
+        gates = access.nginx_gates(state, admin_login=not ADMIN_LOGIN_OFF.exists())
         gates_dir.mkdir(mode=0o755, exist_ok=True)
         paths = [NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
         old = {p: p.read_text() if p.exists() else None for p in paths}
@@ -572,7 +584,62 @@ def access_install():
             pass
     _access_files(state)
     _access_record(state)
+    _admin_login_record()
     return ", ".join(f"{k} {v}" for k, v in state.items() if v != "public") or "every app public"
+
+
+def _admin_login_record():
+    safeio.write(ADMIN_LOGIN_STATE, json.dumps({"on": not ADMIN_LOGIN_OFF.exists()}))
+
+
+def _https_admins():
+    """The admin accounts that could stand in for the box's own login: switched on, with a
+    password, and logged in over HTTPS at least once (accounts.py records it), while the box has
+    accounts at all. Read here, not taken from the hub's word."""
+    try:
+        data = json.loads((STATE / "accounts.json").read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict) or (data.get("settings") or {}).get("signup", "off") == "off":
+        return []
+    return sorted(a.get("name", "?") for a in (data.get("accounts") or {}).values()
+                  if isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash") and a.get("https_login"))
+
+
+def admin_login(req):
+    """The box's own admin login (basic auth) on or off. Off only while an admin account has
+    logged in over HTTPS, so the box can't be locked out from /admin; reset-password at the
+    console (or a new password) turns it on again. nginx only: Caddy's routes have no gate yet."""
+    if WEB_SERVER != "nginx":
+        raise ValueError("switching the box's own login off needs nginx in front (Caddy can't yet)")
+    on = req.get("on") is True
+    if on == (not ADMIN_LOGIN_OFF.exists()):
+        return f"the box's own admin login is already {'on' if on else 'off'}"
+    if not on:
+        admins = _https_admins()
+        if not admins:
+            raise ValueError("first make an admin account, and log in with it over HTTPS: then it can stand in for this login")
+        fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(NGINX_LOGINS.read_text())
+        text = "# The box's own admin login is off (/admin → Accounts); reset-password at the console turns it on.\n"
+    else:
+        text = ADMIN_LOGIN_OFF.read_text()
+    gid = NGINX_LOGINS.stat().st_gid
+    tmp = NGINX_LOGINS.with_name(NGINX_LOGINS.name + ".new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+    if os.geteuid() == 0:  # always, but in the tests
+        os.chown(tmp, 0, gid)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, NGINX_LOGINS)
+    if on:
+        ADMIN_LOGIN_OFF.unlink()
+    _access_files(access.read(ACCESS_FILE))
+    run("systemctl", "reload", "nginx")
+    _admin_login_record()
+    return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
 
 
 # --- updates ---------------------------------------------------------------------
@@ -1928,7 +1995,7 @@ ACTIONS = {"service": service, "password": password,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "access": access_set, "admin-login": admin_login, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
