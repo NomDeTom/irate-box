@@ -3263,6 +3263,19 @@ async function loadFactoryTargets() {
   } catch (err) { fac.targets.replaceChildren(el('p', { className: 'setting-desc bad', textContent: err.message })); }
 }
 
+// Each family's test target for Fetch tools and Test offline: a board people use (the hub suggests
+// one: the flasher's, a common board, a best-supported one), not the project's CI target; the
+// owner may pick another, kept while the page is open.
+const facTest = {};
+function facTestSelect(f) {
+  const all = facTargets.targets.filter((t) => t.family === f);
+  if (!all.some((t) => t.env === facTest[f])) facTest[f] = (facTargets.suggested || {})[f] || all[0].env;
+  const sel = el('select', { onchange: (e) => { facTest[f] = e.target.value; } },
+    ...all.map((t) => el('option', { value: t.env, textContent: t.name !== t.env ? `${t.name} (${t.env})` : t.env })));
+  sel.value = facTest[f];
+  return sel;
+}
+
 function renderFactoryTargets() {
   if (!facTargets) return;
   const q = fac.search.value.trim().toLowerCase();
@@ -3276,16 +3289,17 @@ function renderFactoryTargets() {
     const fold = el('details', { className: 'factory-family', open: !!q || picked > 0 },
       el('summary', {}, el('strong', { textContent: f }),
         el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}${picked ? `, ${picked} chosen` : ''}; ${facReady(f)}; ${facEst(f)}.` })),
-      el('p', { className: 'library-buttons' }, actionButton('Fetch tools', async () => {
+      el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(f)),
+      actionButton('Fetch tools', async () => {
         try {
-          const r = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f });
+          const r = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
           say(`Fetching ${f}'s tools (by ${r.env}): queued. Nothing is compiled; once fetched, its builds need no internet.`, true, fac.note);
           renderFactory(r.snapshot);
         } catch (err) { say(err.message, false, fac.note); }
       }, { title: 'Install what this family needs (toolchain, framework, libraries) without building: a later build needs no internet' }),
       actionButton('Test offline', async () => {
         try {
-          const r = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: f });
+          const r = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
           say(`Building ${r.env} with no network at all: queued. If it passes, ${f} is offline ready.`, true, fac.note);
           renderFactory(r.snapshot);
         } catch (err) { say(err.message, false, fac.note); }

@@ -27,6 +27,7 @@ const snap = (over = {}) => Object.assign({
   estimates: { native: { seconds: 9801 } }, readiness: { native: 'offline ready' },
 }, over);
 const targets = { source: 'meshtastic-firmware', ref: 'v2.8.1.8e6a88d', commit: '8e6a88d', families: { esp32s3: 2, native: 1, nrf52840: 1 },
+  suggested: { esp32s3: 'heltec-v3', native: 'native', nrf52840: 'rak4631' },
   targets: [{ env: 'heltec-v3', family: 'esp32s3', name: 'Heltec V3', level: 'pr', support: '1', file: 'variants/esp32s3/heltec_v3/platformio.ini' },
     { env: 'tlora-t3s3-v1', family: 'esp32s3', name: 'LILYGO T3-S3', level: '', support: '1', file: 'x' },
     { env: 'native', family: 'native', name: 'native', level: 'extra', support: '', file: 'y' },
@@ -102,12 +103,19 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   [...fold.querySelectorAll('button')].find((b) => t(b) === 'Fetch tools').click();
   await wait();
   const tq = posted.find((b) => b.action === 'tools');
-  check('Fetch tools: the family asked for at this source and ref, and said', tq && tq.family === 'nrf52840' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
+  check('Fetch tools: the family asked for at this source and ref, with its test target, and said', tq && tq.family === 'nrf52840' && tq.env === 'rak4631' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
     && /Fetching nrf52840's tools \(by rak4631\): queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
   [...fold.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
   await wait();
   check('Test offline: asked for the family, and said', posted.some((b) => b.action === 'offline' && b.family === 'nrf52840')
     && /Building rak4631 with no network at all: queued\. If it passes, nrf52840 is offline ready\./.test(t(d.getElementById('factory-note'))));
+  const s3 = [...d.querySelectorAll('.factory-family')].find((x) => t(x.querySelector('summary strong')) === 'esp32s3');
+  const sel = s3.querySelector('.factory-test-target select');
+  check('the test target: the suggested board to start with, any of the family to choose', sel.value === 'heltec-v3' && sel.options.length === 2);
+  sel.value = [...sel.options].find((o) => o.value !== 'heltec-v3').value; sel.dispatchEvent(new w.Event('change'));
+  [...s3.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
+  await wait();
+  check('  the one chosen is the one asked for', posted.some((b) => b.action === 'offline' && b.family === 'esp32s3' && b.env === sel.value), JSON.stringify(posted.slice(-1)));
   d.getElementById('factory-pause').click();
   await wait();
   check('Pause: asked, then said, the button now Resume', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume');

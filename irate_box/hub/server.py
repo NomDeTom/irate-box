@@ -2115,6 +2115,7 @@ class Handler(BaseHTTPRequestHandler):
                 out = {"source": src["name"], "refs": factory.refs(src)}
                 if query.get("ref"):
                     out.update(factory.targets(src, unquote(query["ref"])))
+                    out["suggested"] = factory.suggested(out["targets"], factory._flasher_boards())
                 self.send_json(200, out)
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
@@ -2526,7 +2527,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if action in ("tools", "offline"):
                     out = factory.queue_tools(str(payload.get("source", "")), str(payload.get("ref", "")), str(payload.get("family", "")),
-                                              offline=action == "offline")
+                                              offline=action == "offline", env=str(payload.get("env") or "") or None)
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
                 if action == "publish":

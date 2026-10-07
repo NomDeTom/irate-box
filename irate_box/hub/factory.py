@@ -276,19 +276,54 @@ def queue(name, ref, envs, floor_mb=512):
     return {"batch": batch, "queued": len(picked), "commit": data["commit"]}
 
 
-def queue_tools(name, ref, family, offline=False):
+# A family's test target (Fetch tools, Test offline), when the owner hasn't chosen one: a board
+# people use, not the project's CI choice (board_level = pr: Tom, 2026-10-07, "the PR-level
+# targets are for the project CI tests, not for the common user"). First a board the owner keeps
+# for the web flasher, then these, then one Meshtastic supports best (support level 1).
+COMMON = ("rak4631", "heltec-v3", "tbeam", "t-echo", "heltec-v4", "tbeam-s3-core", "station-g2", "picow", "pico2w", "rak3172")
+
+
+def suggested(targets_list, flasher=()):
+    """{family: env}: each family's test target unless the owner picks another."""
+    out = {}
+    for fam in sorted({t["family"] for t in targets_list}):
+        ts = [t for t in targets_list if t["family"] == fam]
+        envs = {t["env"] for t in ts}
+        pick = next((e for e in flasher if e in envs), None) or next((e for e in COMMON if e in envs), None) \
+            or next((t["env"] for t in ts if str(t.get("support")) == "1" and t.get("level") != "pr"), None) \
+            or next((t["env"] for t in ts if str(t.get("support")) == "1"), None) or ts[0]["env"]
+        out[fam] = pick
+    return out
+
+
+def _flasher_boards():
+    try:
+        from irate_box.library import firmware
+        b = firmware.settings().get("boards")
+        return b if isinstance(b, list) else []
+    except Exception:  # noqa: BLE001 - only a preference
+        return []
+
+
+def queue_tools(name, ref, family, offline=False, env=None):
     """Fetch a family's tools (git-ci-plan §4b item 7): PlatformIO installs what one of its targets
     needs (platform, toolchain, framework, libraries) with nothing compiled, so a later build of
     that family needs no internet; and whether PlatformIO has these tools for this board's processor
     at all is known in minutes, not after hours of compiling.
     offline: instead, build that target with no network at all (ci.OFFLINE): a pass is what makes
-    the family "offline ready"."""
+    the family "offline ready". env: the target, the owner's choice; else suggested()'s."""
     src = source(name)
     data = targets(src, ref)
     fam = [t for t in data["targets"] if t["family"] == family]
     if not fam:
         raise ValueError(f"no family {family} in {name} at {ref}")
-    pick = next((t for t in fam if t["level"] == "pr"), fam[0])
+    if env:
+        pick = next((t for t in fam if t["env"] == env), None)
+        if pick is None:
+            raise ValueError(f"{env} is not a {family} target in {name} at {ref}")
+    else:
+        want = suggested(fam, _flasher_boards())[family]
+        pick = next(t for t in fam if t["env"] == want)
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"kind": "firmware", "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
           "env": pick["env"], "family": family, "batch": secrets.token_hex(4), "queued": time.time()}
