@@ -144,6 +144,14 @@ def parse_phy(text):
                 continue
             in_modes = False
     freqs = [int(f) for f in re.findall(r"^\t\t\t\* (\d+)(?:\.\d+)? MHz(?! \[\d+\] \(disabled\))", text, re.M)]
+    # Each channel the driver lists, with what stops an access point there: disabled, no initiating
+    # radiation ("no IR": a client may answer, never start), or radar detection (DFS: an AP must
+    # listen first and leave when radar appears, so not for a hotspot that has to stay up).
+    chan_list = []
+    for m in re.finditer(r"^\t\t\t\* (\d+)(?:\.\d+)? MHz \[(\d+)\](.*)$", text, re.M):
+        flags = m.group(3)
+        chan_list.append({"freq": int(m.group(1)), "channel": int(m.group(2)),
+                         "ap_ok": not any(f in flags for f in ("disabled", "no IR", "radar detection", "passive scan"))})
     combo_lines, in_combos = [], False
     for line in text.splitlines():
         if line.strip() == "valid interface combinations:":
@@ -165,6 +173,7 @@ def parse_phy(text):
                           "total": c["total"], "channels": c["channels"]} for c in combos],
         "sched_scan": bool(sched and int(sched.group(1)) > 0),
         "sae": "SAE" in text and "Device supports SAE" in text,
+        "channels": chan_list,
     }
 
 
