@@ -1768,17 +1768,33 @@ class Handler(BaseHTTPRequestHandler):
         satisfy any would otherwise refuse it).
         /_irate/user: is this visitor logged in? (An app in users mode, access.py.) No: 401 for
         nginx (its gate sends them to log in), or for Caddy (?redirect=1) the redirect itself,
-        back to where they were going on this origin."""
+        back to where they were going on this origin.
+        Caddy's admin gate (access.caddy_admin_gate) asks /_irate/admin?soft=1 (the box's own login
+        on: always 204, and X-Irate-Session: admin for an admin account's session, which skips the
+        login after it) or ?redirect=1 (the own login off: the same, or the redirect). Not "yes" for
+        an unclaimed box there: Caddy's /admin lets that through itself, and the shell and Syncthing
+        must not be."""
         me = accounts.session(self._session_token())
-        if path == "/_irate/admin":
-            ok = unclaimed() or (me is not None and me.get("role") == "admin")
+        query = self.path.partition("?")[2].split("&")
+        admin = me is not None and me.get("role") == "admin"
+        if path == "/_irate/admin" and ("soft=1" in query or "redirect=1" in query):
+            if admin or "soft=1" in query:
+                self.send_response(204)
+                if admin:
+                    self.send_header("X-Irate-Session", "admin")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            ok = False
+        elif path == "/_irate/admin":
+            ok = unclaimed() or admin
         else:
             ok = me is not None
         if ok:
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self.end_headers()
-        elif path == "/_irate/user" and "redirect=1" in self.path.partition("?")[2].split("&"):
+        elif "redirect=1" in query:
             back = self.headers.get("X-Forwarded-Uri", "/")
             nxt = back if back.startswith("/") and not back.startswith("//") else "/"
             self.send_response(302)

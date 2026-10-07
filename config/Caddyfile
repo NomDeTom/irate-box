@@ -196,8 +196,16 @@
 	# (:21027/udp) do not go through Caddy; the sole-listener rule has this one exception.
 	handle_path /sync/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/sync-off.caddy*
-		basic_auth {
-			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		# The login, or an admin account's session (access.py caddy_admin_gate): the hub's answer,
+		# copied onto the request, skips the login. A guest's own X-Irate-Session never counts.
+		route {
+			request_header -X-Irate-Session
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+			@irate_box_basic not header X-Irate-Session admin
+			basic_auth @irate_box_basic {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_header -X-Irate-Session
 		}
 		reverse_proxy 127.0.0.1:8384 {
 			header_up Host {upstream_hostport}
@@ -405,8 +413,16 @@
 			}
 		}
 		handle {
-			basic_auth {
-				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			# The login, or an admin account's session (access.py caddy_admin_gate): the hub's answer,
+			# copied onto the request, skips the login. A guest's own X-Irate-Session never counts.
+			route {
+				request_header -X-Irate-Session
+				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+				@irate_box_basic not header X-Irate-Session admin
+				basic_auth @irate_box_basic {
+					admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+				}
+				request_header -X-Irate-Session
 			}
 			reverse_proxy 127.0.0.1:8000 {
 				# The hub's proof this came through here (server.py FRONT_SECRET), read
@@ -424,8 +440,16 @@
 	# caddy hash-password. Path passes through: ttyd runs with --base-path /term.
 	handle /term/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/term-off.caddy*
-		basic_auth {
-			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		# The login, or an admin account's session (access.py caddy_admin_gate): the hub's answer,
+		# copied onto the request, skips the login. A guest's own X-Irate-Session never counts.
+		route {
+			request_header -X-Irate-Session
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+			@irate_box_basic not header X-Irate-Session admin
+			basic_auth @irate_box_basic {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_header -X-Irate-Session
 		}
 		reverse_proxy unix//run/ttyd/ttyd.sock
 	}

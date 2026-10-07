@@ -112,6 +112,20 @@ check("  a gate for each app for users, and the admin's", sorted(gates) == ["gat
       and "auth_request /_irate_user;" in gates["gate-draw.conf"] and "error_page 401 = @irate_box_login;" in gates["gate-draw.conf"], gates)
 check("  Caddy: forward_auth to the hub's check, which redirects", "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
       and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"])
+sn = access.caddy_snippets(access.clean({"tools": "private"}), "HASH")
+check("  Caddy's admin gate: the hub asked (soft), its answer copied onto the request; a private app: the session, else the login",
+      "uri /_irate/admin?soft=1" in sn["admin-gate.caddy"] and "copy_headers X-Irate-Session" in sn["admin-gate.caddy"]
+      and sn["tools.caddy"].index("request_header -X-Irate-Session") < sn["tools.caddy"].index("forward_auth")
+      < sn["tools.caddy"].index("basic_auth @irate_box_basic {\n\t\tadmin HASH") and "not header X-Irate-Session admin" in sn["tools.caddy"], sn["tools.caddy"])
+sn = access.caddy_snippets(access.clean({"tools": "private"}), "HASH", admin_login=False)
+check("  with the box's own login off: a hard check (anyone else sent to log in), no login asked",
+      "uri /_irate/admin?redirect=1" in sn["admin-gate.caddy"] and "redirect=1" in sn["tools.caddy"] and "basic_auth" not in sn["tools.caddy"], sn)
+cf = (REPO / "config" / "Caddyfile").read_text()
+check("  the Caddyfile: /admin, the shell and Syncthing take the gate before their own login, which stays (no gate file: the login alone)",
+      cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 3
+      and cf.count("basic_auth @irate_box_basic {") == 3
+      and all(cf.index("admin-gate.caddy*", cf.index(r)) < cf.index("basic_auth @irate_box_basic", cf.index(r)) < cf.index("reverse_proxy", cf.index(r))
+              for r in ("handle_path /sync/* {", "handle /term/* {")))
 g2 = access.nginx_gates(access.clean({"tools": "private", "term": "private"}))
 check("admin gate: the box's own login or an admin's session; a private app gets it, the shell needs none of its own",
       g2["gate-admin.conf"].endswith("satisfy any;\nauth_request /_irate_admin;\n") and g2["gate-tools.conf"] == g2["gate-admin.conf"] and "gate-term.conf" not in g2, g2)
@@ -165,6 +179,40 @@ H.admin_login({"on": False})
 H.set_login("a-new-password", keep=False)
 check("  a new password (reset-password at the console): on again", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
       and not (T / "etc" / "admin-login.off").exists() and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": True})
+
+# The same under Caddy: its hashes swapped for an unknown one and back; the gate hard while off.
+CF = T / "Caddyfile"
+REAL = "$2a$14$" + "r" * 53
+CF.write_text(f":80 {{\n\thandle /admin/* {{\n\t\tbasic_auth @irate_box_basic {{\n\t\t\tadmin {REAL}\n\t\t}}\n\t}}\n"
+              f"\thandle /term/* {{\n\t\tbasic_auth {{\n\t\t\tadmin {REAL}\n\t\t}}\n\t}}\n}}\n")
+caddy_calls = []
+def caddy_run(*a, **k):
+    caddy_calls.append(a)
+    if a[:2] == ("caddy", "hash-password"):
+        return subprocess.CompletedProcess(a, 0, "$2a$14$" + "u" * 53 + "\n", "")
+    if a[:2] == ("caddy", "version"):
+        return subprocess.CompletedProcess(a, 0, "v2.6.2\n", "")
+    return subprocess.CompletedProcess(a, 0, "", "")
+H.run, H.WEB_SERVER, H.CADDYFILE, H.CADDY_SITE = caddy_run, "caddy", CF, T / "no-site.caddy"
+H.CADDY_ACCESS = T / "caddy-access"
+popen = H.subprocess.Popen; H.subprocess.Popen = lambda *a, **k: caddy_calls.append(a[0])
+try:
+    out = H.admin_login({"on": False})
+    gate = (H.CADDY_ACCESS / "admin-gate.caddy").read_text()
+    check("Caddy, off: every hash swapped for one nobody knows, the real one kept aside, the gate hard, Caddy restarted, the hub told",
+          REAL not in CF.read_text() and CF.read_text().count("$2a$14$" + "u" * 53) == 2
+          and (T / "etc" / "admin-login.off").read_text().strip() == REAL and "redirect=1" in gate
+          and any(c[-2:] == ["restart", "caddy"] for c in caddy_calls if isinstance(c, list))
+          and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False} and "carol" in out, (out, CF.read_text()))
+    H.admin_login({"on": True})
+    check("  on again: the real hash back everywhere, the gate soft", CF.read_text().count(REAL) == 2
+          and not (T / "etc" / "admin-login.off").exists() and "soft=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
+    H.admin_login({"on": False})
+    H.set_login("another-password", keep=False)
+    check("  a new password while off: on again, the new hash everywhere", not (T / "etc" / "admin-login.off").exists()
+          and CF.read_text().count("$2a$14$" + "u" * 53) == 2 and "soft=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
+finally:
+    H.subprocess.Popen, H.WEB_SERVER = popen, "nginx"
 
 # The hub.
 st = T / "hub"
@@ -272,6 +320,20 @@ try:
     hc.close()
     check("  an admin account's: 204; the Accounts page knows it logged in over HTTPS", code == 204 and d["admin_login"]["on"] is True
           and d["admin_login"]["https_admins"] == ["gina"], (code, d.get("admin_login")))
+    gtok = h.get("Set-Cookie", "").split(";")[0]
+    def caddy_ask(q, cookie=None):
+        r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/admin?{q}", headers=dict({"X-Forwarded-Uri": "/term/"}, **({"Cookie": cookie} if cookie else {})))
+        try:
+            with urllib.request.build_opener(NoRedirect).open(r, timeout=5) as resp:
+                return resp.status, resp.headers.get("X-Irate-Session"), None
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("X-Irate-Session"), e.headers.get("Location")
+    check("Caddy's admin gate, the own login on (soft): an admin's session says so; a user's and a guest's pass on to the login",
+          caddy_ask("soft=1", gtok) == (204, "admin", None) and caddy_ask("soft=1", tok) == (204, None, None)
+          and caddy_ask("soft=1") == (204, None, None), (caddy_ask("soft=1", gtok), caddy_ask("soft=1", tok)))
+    check("  the own login off (redirect): an admin's session in; anyone else sent to log in, back to where they were going",
+          caddy_ask("redirect=1", gtok) == (204, "admin", None) and caddy_ask("redirect=1", tok) == (302, None, "/account.html?next=/term/"),
+          (caddy_ask("redirect=1", gtok), caddy_ask("redirect=1", tok)))
     # The shoutbox and forum (stage 5): who may post, and the users' marks.
     utok = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2].get("Set-Cookie", "").split(";")[0]
     code, d, _ = req("/messages", {"name": "Erin", "text": "hello"}, {"X-Irate-Account": ""})

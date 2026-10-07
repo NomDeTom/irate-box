@@ -282,26 +282,10 @@ def _set_caddy_login(pw):
     hashed = run("caddy", "hash-password", input=pw + "\n")
     if hashed.returncode != 0:
         raise ValueError("caddy hash-password failed")
-    new_hash = hashed.stdout.strip()
-    target = _login_file()
-    text = target.read_text()
-    updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
-    if not count:
-        raise ValueError(f"no admin login found in {target}")
-    candidate = target.with_name(target.name + ".new")
-    candidate.write_text(updated)
-    check = run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate))
-    if check.returncode != 0:
-        candidate.unlink(missing_ok=True)
-        raise ValueError("the new Caddy config did not validate; nothing was changed")
-    os.replace(candidate, target)
+    count = _caddy_login_swap(hashed.stdout.strip())
     # The private apps' snippets carry the hash too.
     if CADDY_ACCESS.is_dir():
         _access_files(access.read(ACCESS_FILE))
-    # The hub's site inside the owner's config: the whole of it must still validate.
-    if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
-        target.write_text(text)
-        raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
     subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
     return f"Caddy ({count} logins)"
@@ -316,7 +300,7 @@ def set_login(pw, keep=True):
     if ADMIN_LOGIN_OFF.exists():
         ADMIN_LOGIN_OFF.unlink()
         _access_files(access.read(ACCESS_FILE))
-        run("systemctl", "reload", "nginx")
+        _reload_web()
         web += ", the box's own login on again"
     _admin_login_record()
 
@@ -484,7 +468,7 @@ def _access_files(state):
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
-    files = dict(access.caddy_snippets(state, login, _caddy_directive()))
+    files = dict(access.caddy_snippets(state, login, _caddy_directive(), admin_login=not ADMIN_LOGIN_OFF.exists()))
     files["addons-routes.caddy"] = access.addon_caddy_routes(state, local, login, _caddy_directive())
     for name, text in files.items():
         path = CADDY_ACCESS / name
@@ -606,12 +590,58 @@ def _https_admins():
                   if isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash") and a.get("https_login"))
 
 
+def _reload_web():
+    if WEB_SERVER == "nginx":
+        run("systemctl", "reload", "nginx")
+    else:
+        # The Caddyfile turns Caddy's admin API off, which reload needs.
+        subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+
+
+def _caddy_login_swap(new_hash):
+    """Every admin hash in the hub's Caddy config replaced by new_hash, checked before it's kept
+    (the owner's whole Caddyfile too, when the hub's site is imported into it)."""
+    target = _login_file()
+    text = target.read_text()
+    updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
+    if not count:
+        raise ValueError(f"no admin login found in {target}")
+    candidate = target.with_name(target.name + ".new")
+    candidate.write_text(updated)
+    if run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate)).returncode != 0:
+        candidate.unlink(missing_ok=True)
+        raise ValueError("the new Caddy config did not validate; nothing was changed")
+    os.replace(candidate, target)
+    if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
+        target.write_text(text)
+        raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
+    return count
+
+
+def _caddy_login_off():
+    """Caddy: the login's hashes swapped for one of a password nobody knows (as nginx's login file
+    is emptied); the real one kept in ADMIN_LOGIN_OFF to put back."""
+    real = _caddy_hash()
+    if not real:
+        raise ValueError(f"no admin login found in {_login_file()}")
+    hashed = run("caddy", "hash-password", input=secrets.token_urlsafe(32) + "\n")
+    if hashed.returncode != 0 or not hashed.stdout.strip().startswith("$2"):
+        raise ValueError("caddy hash-password failed")
+    fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(real + "\n")
+    try:
+        _caddy_login_swap(hashed.stdout.strip())
+    except ValueError:
+        ADMIN_LOGIN_OFF.unlink()
+        raise
+
+
 def admin_login(req):
     """The box's own admin login (basic auth) on or off. Off only while an admin account has
     logged in over HTTPS, so the box can't be locked out from /admin; reset-password at the
-    console (or a new password) turns it on again. nginx only: Caddy's routes have no gate yet."""
-    if WEB_SERVER != "nginx":
-        raise ValueError("switching the box's own login off needs nginx in front (Caddy can't yet)")
+    console (or a new password) turns it on again. nginx: its login file emptied; Caddy: its
+    hashes swapped for an unknown one, and its admin gate made a hard one (access.py)."""
     on = req.get("on") is True
     if on == (not ADMIN_LOGIN_OFF.exists()):
         return f"the box's own admin login is already {'on' if on else 'off'}"
@@ -619,6 +649,17 @@ def admin_login(req):
         admins = _https_admins()
         if not admins:
             raise ValueError("first make an admin account, and log in with it over HTTPS: then it can stand in for this login")
+    if WEB_SERVER != "nginx":
+        if not on:
+            _caddy_login_off()
+        else:
+            _caddy_login_swap(ADMIN_LOGIN_OFF.read_text().strip())
+            ADMIN_LOGIN_OFF.unlink()
+        _access_files(access.read(ACCESS_FILE))
+        _reload_web()
+        _admin_login_record()
+        return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
+    if not on:
         fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as fh:
             fh.write(NGINX_LOGINS.read_text())
@@ -637,7 +678,7 @@ def admin_login(req):
     if on:
         ADMIN_LOGIN_OFF.unlink()
     _access_files(access.read(ACCESS_FILE))
-    run("systemctl", "reload", "nginx")
+    _reload_web()
     _admin_login_record()
     return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
 
