@@ -62,7 +62,11 @@ def run(cmd, timeout=1800, check=True, env=None):
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **APT_ENV, **(env or {})))
     if check and out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
-        raise ValueError(f"{Path(cmd[0]).name} {cmd[1] if len(cmd) > 1 else ''}: {lines[-1][:300] if lines else 'failed'}")
+        # apt's reason is in its E: and "Depends:" lines; its last line is often only the solver's
+        # "[no choices]" (the symbols kit on the Lyra, 2026-10-07).
+        why = [l.strip() for l in lines if l.startswith("E: ") or "Depends:" in l][:3] or lines[-1:]
+        verb = next((a for a in cmd[1:] if not a.startswith("-") and "=" not in a and "::" not in a), "")
+        raise ValueError(f"{Path(cmd[0]).name} {verb}: {'; '.join(why)[:400] if why else 'failed'}")
     return out
 
 
@@ -101,7 +105,7 @@ def _packages(kit):
     return pkgs, left
 
 
-# Debian's debug archive (toolkits-plan §6): the -dbgsym packages, signed with the same keys as the
+# Debian's debug archives (toolkits-plan §6): the -dbgsym packages, signed with the same keys as the
 # rest of Debian. A kit that asks for it is fetched from it alone, its index kept apart from the
 # box's own lists (so the box's apt never sees it), and that index vouches for it on a USB stick.
 DEBUG_LISTS = ROOT / "lists-debug"
@@ -123,7 +127,13 @@ def _debug_apt():
     DEBUG_LISTS.mkdir(parents=True, exist_ok=True)
     (DEBUG_LISTS / "partial").mkdir(exist_ok=True)
     src = ROOT / "debug.list"
-    src.write_text(f"deb [signed-by={DEBIAN_KEYRING}] http://deb.debian.org/debian-debug {_codename()}-debug main\n")
+    # Where Debian publishes symbols: the release's, the proposed updates', and the security
+    # updates' (their own archive). A box with security updates (nginx +deb13u9 on the Lyra) finds
+    # its versions' symbols only in the last.
+    c, signed = _codename(), f"[signed-by={DEBIAN_KEYRING}]"
+    src.write_text(f"deb {signed} http://deb.debian.org/debian-debug {c}-debug main\n"
+                   f"deb {signed} http://deb.debian.org/debian-debug {c}-proposed-updates-debug main\n"
+                   f"deb {signed} http://deb.debian.org/debian-security-debug {c}-security-debug main\n")
     return ["-o", f"Dir::Etc::sourcelist={src}", "-o", "Dir::Etc::sourceparts=-", "-o", f"Dir::State::Lists={DEBUG_LISTS}",
             "-o", "APT::Get::List-Cleanup=0"]
 

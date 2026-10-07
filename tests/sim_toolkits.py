@@ -524,7 +524,10 @@ dl = [c for c in calls if c[0].endswith("apt-get") and "--download-only" in c]
 check("symbols: only for what is installed here (nginx), mosquitto's said as left out", [p["name"] for p in man["packages"]] == ["nginx-dbgsym"]
       and "mosquitto-dbgsym" in man["left_out"], man)
 src = (kits.ROOT / "debug.list").read_text()
-check("  from Debian's debug archive alone, for this release, with Debian's keyring", src.strip() == f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-debug main"
+check("  from Debian's debug archives alone (the release's, proposed updates', security updates'), with Debian's keyring", src.splitlines() == [
+      f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-debug main",
+      f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-proposed-updates-debug main",
+      f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-security-debug trixie-security-debug main"]
       and upd and all(c[c.index("-o") + 1:].count(f"Dir::Etc::sourcelist={kits.ROOT / 'debug.list'}") for c in upd + dl), src)
 check("  its index kept apart from the box's own lists", all(f"Dir::State::Lists={kits.DEBUG_LISTS}" in c for c in upd + dl)
       and all("Dir::Etc::sourceparts=-" in c for c in upd + dl))
