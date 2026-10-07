@@ -3372,3 +3372,42 @@ tlsEl.again.addEventListener('click', () => {
 });
 window.addEventListener('hashchange', () => { if (location.hash === '#security') loadTls(); });
 if (location.hash === '#security') loadTls();
+
+// --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
+const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
+  form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note'),
+  counts: document.getElementById('mesh-admin-counts'), packets: document.getElementById('mesh-admin-packets') };
+let meshPoll = null;
+async function loadMesh() {
+  try { renderMesh(await getJSON('/admin/mesh')); } catch (_) { meshEl.state.textContent = 'Could not read the mesh.'; }
+}
+function renderMesh(d) {
+  meshEl.state.textContent = d.state === 'listening' ? `Listening to the broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} heard in the last 7 days.`
+    : `Not connected to the broker${d.error ? ` (${d.error})` : ''}: is it installed (Add-ons, MQTT broker) and running? It tries again by itself.`;
+  meshEl.channels.replaceChildren(...(d.channels.length ? d.channels.map((c) => el('div', { className: 'admin-item' },
+    el('span', { className: 'setting-name', textContent: c.name }),
+    el('span', { className: 'setting-desc', textContent: c.public_key ? ' Meshtastic\'s public default key: anyone can read this channel.' : c.no_key ? ' No key: unencrypted.' : ' Its own key (not shown).' }),
+    el('span', { className: 'library-buttons' }, actionButton('Remove', () => meshAct({ action: 'remove-channel', name: c.name })))))
+    : [el('p', { className: 'setting-desc', textContent: 'None yet: every packet stays encrypted. Add a channel and its key, as your Meshtastic app shows them.' })]));
+  const names = Object.fromEntries(d.nodes.map((n) => [n.id, n.long_name || n.id]));
+  const counts = Object.entries(d.counts || {}).map(([k, n]) => `${n} ${k}`);
+  meshEl.counts.textContent = counts.length ? `Since the hub started: ${counts.join(', ')}.` : 'Nothing heard yet.';
+  meshEl.packets.replaceChildren(...d.packets.map((p) => el('li', {},
+    el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} from ${names[p.from] || p.from}${p.channel ? ` on ${p.channel}` : ''}` }),
+    p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
+  clearTimeout(meshPoll);
+  if (location.hash === '#mesh') meshPoll = setTimeout(loadMesh, 15000);
+}
+async function meshAct(body) {
+  try { await postJSON('/admin/mesh', body); say(body.action === 'add-channel' ? `Added ${body.name}.` : `Removed ${body.name}.`, true, meshEl.note); loadMesh(); }
+  catch (err) { say(err.message, false, meshEl.note); }
+}
+meshEl.form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = meshEl.form.elements;
+  meshAct({ action: 'add-channel', name: f.name.value.trim(), key: f.key.value.trim() });
+  f.key.value = '';
+});
+meshEl.longfast.addEventListener('click', () => meshAct({ action: 'add-channel', name: 'LongFast', key: 'AQ==' }));
+window.addEventListener('hashchange', () => { if (location.hash === '#mesh') loadMesh(); });
+if (location.hash === '#mesh') loadMesh();
