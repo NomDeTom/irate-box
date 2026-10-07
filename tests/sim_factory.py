@@ -265,6 +265,37 @@ check("  the offline test: the libraries kept, the target's earlier objects remo
       "libraries already here" in off_log and "compiled everything" in off_log and "earlier build output removed" in off_log
       and factory.runs(1)[0]["artifacts"] == [f"firmware-{E}.uf2"], off_log)
 
+# The build cache (PLATFORMIO_BUILD_CACHE_DIR): an ordinary build uses it; an offline proof and a
+# tools fetch don't; it is pruned, oldest first, past its limit.
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
+ci.FIRMWARE_SCRIPT = r"""set -eu
+echo "cache=${PLATFORMIO_BUILD_CACHE_DIR:-none}"
+mkdir -p "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"; echo x > "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV/firmware-$FW_ENV.uf2"
+if [ -n "${PLATFORMIO_BUILD_CACHE_DIR:-}" ]; then head -c 3000 /dev/zero > "$PLATFORMIO_BUILD_CACHE_DIR/obj-$RANDOM"; fi
+echo "Compiling a.o"; echo "Compiling b.o"; echo "Retrieved \`c.o' from cache"
+"""
+logs = {}
+for kind in ("build", "offline", "tools"):
+    if kind == "build":
+        factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", ["heltec-v3"])
+    else:
+        factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32s3", env="heltec-v3", offline=kind == "offline")
+    ci.run_queue()
+    r = factory.runs(1)[0]
+    logs[kind] = ((ci.RUNS / r["run"] / "log.txt").read_text(), r.get("resources") or {})
+cache = T / "home" / "pio-build-cache"
+check("build cache: an ordinary build uses it (kept in the builder's home); counted what was compiled and what came from it",
+      f"cache={cache}" in logs["build"][0] and logs["build"][1].get("compiled") == 2 and logs["build"][1].get("from_cache") == 1
+      and logs["build"][1].get("build_cache_bytes", 0) >= 3000, (logs["build"][0], logs["build"][1]))
+check("  an offline proof and a tools fetch don't", "cache=none" in logs["offline"][0] and "no build cache either" in logs["offline"][0]
+      and "cache=none" in logs["tools"][0], (logs["offline"][0], logs["tools"][0]))
+import os as _os, time as _t  # noqa: E402
+for i in range(5):
+    f = cache / f"old-{i}"; f.write_bytes(b"x" * 1000); _os.utime(f, (_t.time() - 1000 + i, _t.time() - 1000 + i))
+before, after = ci.prune_build_cache(limit=3500)
+check("  pruned past its limit, oldest first", after <= 3500 and not (cache / "old-0").exists() and before > after, (before, after, sorted(p.name for p in cache.iterdir())))
+
 # The web flasher (§4b item 5): a passed build published, as a release built on this box.
 for f in ci.QUEUE.glob("*.json"):
     f.unlink()

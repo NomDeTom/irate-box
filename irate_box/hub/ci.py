@@ -498,6 +498,31 @@ def run_queue():
 # --- the Firmware Factory's builds (factory.py queues them) ------------------------------------
 
 FACTORY = "firmware-factory"     # runs/firmware-factory/<n>
+# PlatformIO's build cache (PLATFORMIO_BUILD_CACHE_DIR, SCons' CacheDir): an object whose source and
+# whole command line were compiled before, by any target, is copied rather than compiled again, so
+# a run of builds goes faster than each alone (Tom, 2026-10-07). Meshtastic's flags are stable for a
+# day (BUILD_EPOCH is midnight's) but name the target (APP_ENV), so most sharing is the same target
+# again, and whatever of the framework and libraries compiles alike for boards of one family.
+# Nothing prunes it, so the builder does, oldest first, past the limit. Never for an offline proof.
+BUILD_CACHE_MAX = int(os.environ.get("HUB_CI_BUILD_CACHE_MB", 2048)) << 20
+
+
+def build_cache():
+    return Path(os.environ.get("HOME", "/nonexistent")) / "pio-build-cache"
+
+
+def prune_build_cache(limit=None):
+    """Oldest files out until the cache is under its limit. Returns (bytes before, bytes after)."""
+    limit = BUILD_CACHE_MAX if limit is None else limit
+    root = build_cache()
+    files = [(f.stat().st_mtime, f.stat().st_size, f) for f in root.rglob("*") if f.is_file() and not f.is_symlink()] if root.is_dir() else []
+    before = total = sum(sz for _, sz, _ in files)
+    for _, sz, f in sorted(files):
+        if total <= limit:
+            break
+        f.unlink(missing_ok=True)
+        total -= sz
+    return before, total
 FACTORY_KEEP = 2                 # each target's newest runs kept (and any marked keep)
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 FAMILY_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -679,6 +704,12 @@ def build_firmware(job):
             env = dict(os.environ, CI="1", CI_REPO=FACTORY, CI_BRANCH=str(job.get("ref")), CI_COMMIT=job["commit"],
                        CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family,
                        FW_TOOLS_ONLY="1" if keep["tools_only"] else "", PLATFORMIO_WORKSPACE_DIR=str(ws))
+            env.pop("PLATFORMIO_BUILD_CACHE_DIR", None)
+            if offline:
+                say("offline: no build cache either, so every object is compiled here and now")
+            elif not keep["tools_only"]:
+                build_cache().mkdir(parents=True, exist_ok=True)
+                env["PLATFORMIO_BUILD_CACHE_DIR"] = str(build_cache())
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
@@ -717,6 +748,15 @@ def build_firmware(job):
         # PlatformIO's own folder afterwards: the toolchains and platforms every build shares.
         pio_home = Path(os.environ.get("HOME", "/nonexistent")) / ".platformio"
         res["tools_bytes"] = sum(f.stat().st_size for f in pio_home.rglob("*") if f.is_file() and not f.is_symlink()) if pio_home.is_dir() else 0
+        # The objects found in the build cache rather than compiled (PlatformIO says "Retrieved"),
+        # and the cache's size after pruning.
+        try:
+            log_text = (run / "log.txt").read_text(errors="replace")
+            res["compiled"] = log_text.count("\nCompiling ")
+            res["from_cache"] = log_text.count("Retrieved `")
+        except OSError:
+            pass
+        res["build_cache_bytes"] = prune_build_cache()[1]
     _write_status(run, state=state, finished=time.time(), duration=round(time.time() - started), resources=res,
                   artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()))
     prune_factory(runs)
