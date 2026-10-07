@@ -767,6 +767,7 @@ def serve(dry=False):
     iface, backend, actor, can, looked = None, None, None, set(), 0
     pinned = None
     history = History()
+    tls_at = 0  # HTTPS (step 15): the certificate renewed when due, looked at every six hours
 
     def stop(*_):
         history.flush()  # the slot under way, rather than lose up to five minutes of it
@@ -825,6 +826,14 @@ def serve(dry=False):
                 pinned = None if step in ("reconnect", "restart", "radio") else pinned
             if result:
                 w.log(time.time(), "result", str(result)[:300])
+        if not dry and os.geteuid() == 0 and now - tls_at > 6 * 3600:
+            tls_at = now
+            try:
+                from irate_box.root import tls
+                if tls.status().get("set_up"):
+                    tls.renew()
+            except Exception as exc:  # noqa: BLE001 - the watchdog goes on whatever happens here
+                w.log(now, "info", f"HTTPS certificate renewal failed: {exc}")
         report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
         history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]))
         write_status(report)

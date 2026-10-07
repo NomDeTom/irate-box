@@ -1444,6 +1444,21 @@ def _write_usb(data):
     safeio.write(USB_STATE, json.dumps(data, indent=2))
 
 
+def tls_make(req):
+    """HTTPS (step 15): the box's own CA and its certificate. A second CA only when asked: every
+    device that installed the first would have to install the new one."""
+    from irate_box.root import tls
+    if tls.status().get("set_up") and req.get("again") is not True:
+        return "HTTPS is already set up: making a new CA means every device installs it again (ask for that explicitly)"
+    rec = tls.make_ca()
+    return f"made the box's CA ({rec['ca']['fingerprint'][:23]}…) and its certificate"
+
+
+def tls_renew(req):
+    from irate_box.root import tls
+    return tls.renew()
+
+
 def usb_scan(req):
     data = usbstick.scan()
     _write_usb(data)
@@ -1841,7 +1856,7 @@ ACTIONS = {"service": service, "password": password,
            "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
-           "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
+           "tls-make": tls_make, "tls-renew": tls_renew, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
