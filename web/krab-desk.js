@@ -134,9 +134,10 @@ const KD = (() => {
     const pixels = (img) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
       const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, W, H); return x.getImageData(0, 0, W, H).data; };
     const layer = (lit, alpha) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
-      const id = new ImageData(new Uint8ClampedArray(lit), W, H), d = id.data;
+      const x = c.getContext('2d'), id = x.createImageData(W, H), d = id.data;  // not new ImageData: jsdom has none
+      d.set(lit);
       for (let i = 0; i < W * H; i++) d[i * 4 + 3] = Math.min(d[i * 4 + 3], alpha[i]);
-      c.getContext('2d').putImageData(id, 0, 0); return c; };
+      x.putImageData(id, 0, 0); return c; };
     const [lit, mask] = imgs.map(pixels);
     const kind = KD.classify(mask, W * H), { labels, list } = KD.blobs(kind, W, H);
     let np = sc.np, ng = sc.ng, groupOf;

@@ -111,6 +111,7 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   d.getElementById('factory-pause').click();
   await wait();
   check('Pause: asked, then said, the button now Resume', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume');
+  check('the production line behind the pane (krab-desk.js lights it)', d.querySelector('.admin-main').dataset.art === 'factory');
   const walker = d.createTreeWalker(d.getElementById('factory'), w.NodeFilter.SHOW_TEXT);
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/\b(undefined|NaN|null)\b|\[object/.test(n.textContent)) stray.push(n.textContent.trim());
