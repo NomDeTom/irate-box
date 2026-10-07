@@ -3,6 +3,7 @@
 """The uplink watchdog's decisions against a simulated clock: every level, flapping, the guards,
 overrides. No network is touched. python3 tests/sim_uplink.py"""
 import sys
+from pathlib import Path
 REPO = str(__import__("pathlib").Path(__file__).resolve().parents[1])
 sys.path.insert(0, REPO)
 from irate_box.hub import uplink as U  # noqa: E402
@@ -117,5 +118,64 @@ acts = []
 for t in range(3010, 3200, 10):
     acts += w.tick(t, {"link": False, "drops": [], "can": ALL, "owner_off": False})
 check("after reconnecting, a real drop is repaired again", "reconnect" in acts, acts)
+# The links' uptime history (step 34, linkhistory.py): five-minute slots, the worst state in each,
+# gaps as no data, the clock going back, 35 days kept; the hour and day buckets the page draws.
+import os, json, tempfile, time  # noqa: E402
+from irate_box.hub import linkhistory as LH  # noqa: E402
+os.environ["TZ"] = "UTC"; time.tzset()
+D0 = 1791331200  # 2026-10-07 00:00 UTC
+h = {}
+LH.record(h, "wlan0", "u", D0 + 10); LH.record(h, "wlan0", "g", D0 + 100); LH.record(h, "wlan0", "u", D0 + 200)
+check("history: a slot holds the worst state seen in it", h["ifaces"]["wlan0"]["s"] == "g", h)
+LH.record(h, "wlan0", "u", D0 + 300 * 3 + 5)
+check("  a gap is no data", h["ifaces"]["wlan0"]["s"] == "g..u", h["ifaces"]["wlan0"]["s"])
+check("  the clock gone back: the sample dropped, the slots ahead stand", not LH.record(h, "wlan0", "d", D0 + 300) and h["ifaces"]["wlan0"]["s"] == "g..u")
+check("  an unknown state is not recorded", not LH.record(h, "wlan0", "x", D0 + 1500) and not LH.record(h, "wlan0", ".", D0 + 1500))
+for k in range(4, LH.KEEP + 11):
+    LH.record(h, "wlan0", "u", D0 + 300 * k)
+e = h["ifaces"]["wlan0"]
+check("  35 days kept, the oldest dropped", len(e["s"]) == LH.KEEP and e["first"] + len(e["s"]) - 1 == (D0 + 300 * (LH.KEEP + 10)) // 300, (len(e["s"]), e["first"]))
+LH.record(h, "wlan0", "u", D0 + 300 * (3 * LH.KEEP))
+check("  a jump past 35 days starts again", h["ifaces"]["wlan0"]["s"] == "u")
+# A week: up, then on day 6 a 15-minute outage at 03:10 and the owner switching it off for an hour.
+h = {}
+for slot in range(12, 6 * 288 + 200):  # from 01:00 on the first day
+    t = D0 - 6 * 86400 + slot * 300 + 30
+    st = "u"
+    if 5 * 288 + 38 <= slot < 5 * 288 + 41:
+        st = "d"                      # day 6, 03:10-03:25
+    if 5 * 288 + 120 <= slot < 5 * 288 + 132:
+        st = "o"                      # day 6, 10:00-11:00
+    LH.record(h, "wlan0", st, t, "uplink")
+now = D0 + 200 * 300 + 60
+out = LH.summarize(h, now)["wlan0"]
+day6 = out["week"][5]
+check("summary: 7 days by 24 hours, 35 days, in local time", len(out["week"]) == 7 and all(len(d["hours"]) == 24 for d in out["week"])
+      and len(out["month"]) == 35 and out["week"][-1]["date"] == "2026-10-07", [d["date"] for d in out["week"]])
+check("  the outage's hour: up 9 of 12, one drop", day6["hours"][3] == {"up": 0.75, "n": 12, "drops": 1, "off": False}, day6["hours"][3])
+check("  the owner's hour off: not up, not a drop, marked off", day6["hours"][10]["up"] == 0 and day6["hours"][10]["drops"] == 0 and day6["hours"][10]["off"])
+check("  hours not yet come, and before the record began: no data", out["week"][-1]["hours"][23] is None and out["week"][0]["hours"][0] is None, out["week"][0]["hours"][:2])
+sm = out["summary"]
+check("  in words' worth: the share up, drops, the longest outage and when", sm["drops"] == 1 and sm["longest"] == {"minutes": 15, "at": D0 - 86400 + 3 * 3600 + 600}
+      and 0.99 < sm["up"] < 0.995, sm)
+check("  a day with nothing recorded: no data", out["month"][0].get("up") is None and "date" in out["month"][0])
+# The watchdog's recorder: written once a slot closes, never while the clock is not trusted.
+U.HISTORY = Path(tempfile.mkdtemp()) / "uplink-history.json"
+import irate_box.root.safeio as SIO  # noqa: E402
+SIO.write = lambda path, text, mode=0o644: Path(path).write_text(text)
+trust = {"ok": False}
+rec = U.History(trusted=lambda: trust["ok"])
+rec.note(D0, "wlan0", "u", {"eth0": "d"})
+rec.note(D0 + 400, "wlan0", "u", {"eth0": "d"})
+check("recorder: nothing while the clock is not trusted", not U.HISTORY.exists() and not rec.hist)
+trust["ok"] = True
+rec.note(D0 + 700, "wlan0", "u", {"eth0": "d"}); rec.note(D0 + 800, "wlan0", "g", {"eth0": "u"})
+check("  kept in memory within a slot", not U.HISTORY.exists())
+rec.note(D0 + 900, "wlan0", "u", {})
+saved = json.loads(U.HISTORY.read_text())
+check("  written as the slot closes: the uplink's full state, the others' link (down, then up: down)", saved["ifaces"]["wlan0"]["s"] == "g" and saved["ifaces"]["wlan0"]["kind"] == "uplink"
+      and saved["ifaces"]["eth0"]["s"] == "d" and saved["ifaces"]["eth0"]["kind"] == "link", saved)
+check("  the watched link's letter from its state", [U.history_state(x, l) for x, l in (("up", True), ("checking", True), ("down", True), ("down", False), ("off", False))]
+      == ["u", "g", "g", "d", "o"])
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
