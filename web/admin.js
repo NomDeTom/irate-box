@@ -3392,6 +3392,60 @@ tlsEl.again.addEventListener('click', () => {
 window.addEventListener('hashchange', () => { if (location.hash === '#security') loadTls(); });
 if (location.hash === '#security') loadTls();
 
+// --- accounts (step 16: accounts.py, /admin/accounts) ------------------------------------------------
+const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
+  make: document.getElementById('accounts-make'), code: document.getElementById('accounts-code'), list: document.getElementById('accounts-list') };
+async function loadAccounts() {
+  try { renderAccounts(await getJSON('/admin/accounts')); } catch (_) { acctEl.counts.textContent = 'Could not read the accounts.'; }
+}
+function renderAccounts(d) {
+  acctEl.settings.elements.signup.value = d.settings.signup;
+  acctEl.settings.elements.http.value = d.settings.http;
+  const c = d.counts;
+  acctEl.counts.textContent = `${c.user} user${c.user === 1 ? '' : 's'} (${c.admins} admin${c.admins === 1 ? '' : 's'}), ${c.asked} asking, ${c.disabled} switched off.`;
+  const when = (t) => (t ? ago(Date.now() / 1000 - t) : 'never');
+  acctEl.list.replaceChildren(...(d.accounts.length ? d.accounts.map((a) => {
+    const act = (action, label) => actionButton(label, () => acctAct({ action, name: a.name }));
+    const state = a.state === 'asked' ? 'Asking' : a.state === 'disabled' ? 'Off' : a.role === 'admin' ? 'Admin' : 'User';
+    return el('div', { className: 'admin-item' },
+      el('span', { className: `state state-${a.state === 'user' ? 'running' : 'stopped'}`, textContent: state }),
+      el('span', { className: 'setting-name', textContent: ` ${a.name}` }),
+      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}.` }),
+      el('span', { className: 'library-buttons' },
+        a.state === 'asked' ? act('accept', 'Accept') : null,
+        a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
+        a.state === 'user' ? act(a.role === 'admin' ? 'user' : 'admin', a.role === 'admin' ? 'Make a user' : 'Make an admin') : null,
+        a.state !== 'asked' ? act('reset', 'Reset password') : null,
+        act('delete', a.state === 'asked' ? 'Refuse' : 'Delete')));
+  }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
+}
+function showCode(name, code) {
+  acctEl.code.hidden = false;
+  acctEl.code.replaceChildren(el('span', { textContent: `${name}'s one-time code: ` }), el('code', { textContent: code }),
+    el('span', { className: 'setting-desc', textContent: ' Give it to them now: it is not shown again.' }));
+}
+async function acctAct(body) {
+  if (body.action === 'delete' && !confirm(`Delete ${body.name}'s account?`)) return;
+  try {
+    const d = await postJSON('/admin/accounts', body);
+    if (d.code) showCode(body.name, d.code);
+    say('Done.', true, acctEl.note);
+    renderAccounts(d);
+  } catch (err) { say(err.message, false, acctEl.note); }
+}
+acctEl.settings.addEventListener('submit', (e) => {
+  e.preventDefault();
+  acctAct({ action: 'settings', signup: acctEl.settings.elements.signup.value, http: acctEl.settings.elements.http.value });
+});
+acctEl.make.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = acctEl.make.elements;
+  acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
+  f.name.value = '';
+});
+window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadAccounts(); });
+if (location.hash === '#accounts') loadAccounts();
+
 // --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
   form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note'),

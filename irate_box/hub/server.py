@@ -27,6 +27,7 @@ from urllib.parse import unquote, urlparse
 
 import html
 from irate_box.hub import access
+from irate_box.hub import accounts
 from irate_box.hub import board
 from irate_box.hub import ci
 from irate_box.library import firmware
@@ -796,6 +797,7 @@ SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
 # is as open as it always was.
 FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
 FRONT_HEADER = "X-Irate-Front"
+SESSION_COOKIE = "irate_session"
 
 
 def unclaimed():
@@ -1562,11 +1564,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # quiet
 
-    def send_json(self, code, data):
+    def send_json(self, code, data, headers=()):
         body = json.dumps(data).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", len(body))
+        for k, v in headers:
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -1685,6 +1689,69 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(403, {"error": "/admin only through the web server in front"})
         return True
 
+    # --- accounts (accounts.py, step 16): the session cookie, and whether the request came over HTTPS
+
+    def _https(self):
+        """Over HTTPS: the web server says so (X-Forwarded-Proto, which it always sets, replacing a
+        guest's own). Run bare, the hub is plain HTTP."""
+        return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
+
+    def _session_token(self):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == SESSION_COOKIE:
+                return v
+        return ""
+
+    def _session_cookie(self, token, max_age):
+        return ("Set-Cookie", f"{SESSION_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict"
+                + ("; Secure" if self._https() else ""))
+
+    def _client_addr(self):
+        fwd = self.headers.get("X-Forwarded-For", "")
+        return fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
+
+    def _account_post(self, payload):
+        """/api/account: sign up, log in or out, change a password, set one with a code. A page
+        elsewhere can't make these (the header, as /admin's), nor is a password taken over plain
+        HTTP when the admin has prevented it."""
+        site = self.headers.get("Sec-Fetch-Site")
+        origin = self.headers.get("Origin")
+        if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")) \
+                or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
+            self.send_json(403, {"error": "this must come from the box's own account page"})
+            return
+        action, addr = payload.get("action"), self._client_addr()
+        if action == "logout":
+            accounts.logout(self._session_token())
+            self.send_json(200, {"me": None}, [self._session_cookie("", 0)])
+            return
+        if action in ("signup", "login", "password", "code") and not self._https() and accounts.settings()["http"] == "prevented":
+            self.send_json(403, {"error": "this box takes passwords only over HTTPS: open this page with https://", "https": False})
+            return
+        try:
+            if action == "signup":
+                state = accounts.signup(payload.get("name"), payload.get("password"), addr)
+                if state == "asked":
+                    self.send_json(200, {"state": "asked"})
+                    return
+                action = "login"
+            if action == "login":
+                token, me = accounts.login(payload.get("name"), payload.get("password"), addr)
+                self.send_json(200, {"me": me}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
+            elif action == "password":
+                accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr)
+                self.send_json(200, {"changed": True})
+            elif action == "code":
+                name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
+                self.send_json(200, {"name": name})
+            else:
+                self.send_json(400, {"error": "action is signup, login, logout, password or code"})
+        except accounts.Wait as exc:
+            self.send_json(429, {"error": str(exc)})
+        except accounts.AccountError as exc:
+            self.send_json(400, {"error": str(exc)})
+
     def _forged(self, path):
         """An /admin POST a page elsewhere could have made (S3): it must carry X-Irate-Admin,
         which a cross-site form cannot send and a cross-site fetch cannot without a preflight
@@ -1788,6 +1855,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/source", "/source/", "/source/irate-box-source.tar.gz"):
             self._send_source()
+            return
+
+        if path == "/api/account":
+            # The account page's view: what the admin allows, and who this is (accounts.py).
+            self.send_json(200, dict(accounts.settings(), https=self._https(), me=accounts.session(self._session_token())))
+            return
+
+        if path == "/admin/accounts":
+            self.send_json(200, {"settings": accounts.settings(), "accounts": accounts.listing(), "counts": accounts.counts()})
             return
 
         if path == "/admin/setup":
@@ -2204,6 +2280,30 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(413, {"error": f"a request to the hub is at most {MAX_JSON >> 10} KB"})
                 return
             self.send_json(400, {"error": "bad request"})
+            return
+
+        if path == "/api/account":
+            self._account_post(payload)
+            return
+
+        if path == "/admin/accounts":
+            # Accounts (accounts.py): the sign-up level and the HTTP stance; accept, disable,
+            # enable, delete, the role; a new account or a reset, each with a one-time code.
+            action = payload.get("action")
+            try:
+                if action == "settings":
+                    out = {"settings": accounts.set_settings(payload.get("signup"), payload.get("http"))}
+                elif action == "make":
+                    out = {"code": accounts.make(payload.get("name"), payload.get("role", "user"))}
+                elif action == "reset":
+                    out = {"code": accounts.reset(payload.get("name"))}
+                else:
+                    accounts.change(payload.get("name"), action)
+                    out = {}
+            except accounts.AccountError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, dict(out, settings=accounts.settings(), accounts=accounts.listing(), counts=accounts.counts()))
             return
 
         if path == "/admin/setup":

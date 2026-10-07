@@ -28,6 +28,7 @@
         <a href="#overview">Overview</a>
         <a href="#addons">Add-ons</a>
         <a href="#access">Access</a>
+        <a href="#accounts">Accounts</a>
         <a href="#clock">Clock</a>
         <p class="admin-side-group">Library</p>
         <a href="#apps">Apps</a>
@@ -611,6 +612,45 @@
         <p class="setting-desc" id="ci-offline"></p>
         <div id="ci-runs" class="admin-list"></div>
         <div id="ci-run-view" class="git-manage" hidden></div>
+      </section>
+
+      <section class="admin-pane" id="accounts" aria-labelledby="accounts-title">
+        <h2 id="accounts-title">Accounts</h2>
+        <p class="setting-desc">
+          Who may have an account on the box. A user logs in at <a href="/account.html">/account.html</a>;
+          an admin account can do what this page does. Off, the box has guests and its admin only,
+          as before.
+        </p>
+        <form id="accounts-settings" class="library-form">
+          <label>Sign-up
+            <select name="signup">
+              <option value="off">Off: no accounts</option>
+              <option value="open">Open: anyone makes one, usable at once</option>
+              <option value="apply">Apply: anyone asks; an admin accepts</option>
+              <option value="assigned">Assigned: an admin makes them</option>
+            </select>
+          </label>
+          <label>Over plain HTTP
+            <select name="http">
+              <option value="prevented">Prevented: passwords only over HTTPS</option>
+              <option value="warning">Warning: allowed, and the page says it can be read off the air</option>
+              <option value="permitted">Permitted: allowed, nothing said</option>
+            </select>
+          </label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="accounts-note" role="status" hidden></p>
+        <p class="setting-desc" id="accounts-counts"></p>
+        <h3>Make an account</h3>
+        <form id="accounts-make" class="library-form">
+          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required></label>
+          <label>Role <select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
+          <button type="submit">Make it</button>
+        </form>
+        <p class="setting-desc">Each comes with a one-time code, for a day, for its person to set their password at /account.html.</p>
+        <p class="acct-code" id="accounts-code" hidden></p>
+        <h3>The accounts</h3>
+        <div id="accounts-list" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">

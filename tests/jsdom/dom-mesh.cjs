@@ -38,8 +38,9 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   check('/mesh.html: listening, the node count', /Listening to the box's MQTT broker: 2 nodes heard in the last 7 days\./.test(t(d.getElementById('mesh-state'))));
   check('  the traffic by kind, most first', /4 positions, 1 messages, 1 encrypted \(no key here\)\./.test(t(d.getElementById('mesh-counts'))), t(d.getElementById('mesh-counts')));
   const row = [...d.querySelectorAll('#mesh-nodes tbody tr')][0];
-  check('  a node: its name, when heard, battery, where, how heard, packets', [...row.cells].map((c) => t(c)).join(' | ')
-    === 'Base camp (BASE) | 60 s ago | 87 %, 4.05 V | 51.5007, -0.1246, 25 m | 1 hop, SNR 6.25, -97 dBm | 12', [...row.cells].map((c) => t(c)).join(' | '));
+  // 60 or 61 s: the fixture's clock is read a moment before the page renders.
+  check('  a node: its name, when heard, battery, where, how heard, packets', /^Base camp \(BASE\) \| 6[01] s ago \| 87 %, 4\.05 V \| 51\.5007, -0\.1246, 25 m \| 1 hop, SNR 6\.25, -97 dBm \| 12$/
+    .test([...row.cells].map((c) => t(c)).join(' | ')), [...row.cells].map((c) => t(c)).join(' | '));
   check('  one never named: its id, the rest blank', [...[...d.querySelectorAll('#mesh-nodes tbody tr')][1].cells].map((c) => t(c)).join(' | ') === '!deadbeef | 2 h ago | — | — | — | 3');
   check('  recent traffic by name, never a message', /text from Base camp \(BASE\) on LongFast/.test(t(d.getElementById('mesh-packets'))) && !/meet at the gate/.test(d.body.textContent));
   // The map: placed as they are, no tiles. Add a node 1 km east, and one at 0,0 (no fix): left out.
