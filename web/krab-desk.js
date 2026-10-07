@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The controller krab's desk lights (style.css: .admin-art, .art-lamps). The desk in art/ is dark;
-// art/krab-controller-lit.webp is the same desk lit, and art/krab-controller-mask.webp marks the
-// lights (pink = the yellow ones, green = the blue ones). Each blob of the mask is one light; they
-// are shared out into groups, and each group shows the lit desk through its blobs, plus a soft
-// edge grown from them, with a blink pattern of its own. Built by make-krab-desk-v2.cjs (Tom's
-// notes, irate-box/2026-10-02-ui-improvements) from the layered picture; the first half of this
-// file is its krab-desk-lib.js.
+// The krab scenes' lights (style.css: .admin-art, .art-lamps): the controller's desk, and the
+// Firmware Factory's production line. Each scene's picture in art/ is dark; art/<scene>-lit.webp
+// is the same picture lit, and art/<scene>-mask.webp marks the lights (pink = the yellow or orange
+// ones, green = the blue ones). Each blob of the mask is one light; they are shared out into
+// groups (or each is a group of its own), and each group shows the lit picture through its blobs,
+// plus a soft edge grown from them, with a blink pattern of its own. The scene is the one the
+// page's data-art names (on .admin-art's parent), followed as it changes; each is built the
+// first time it is shown, and kept. Built by make-krab-scene.cjs (Tom's notes,
+// irate-box/2026-10-02-ui-improvements) from the layered pictures; the first half of this file
+// is its krab-desk-lib.js.
 // Krab desk v2: turns the colour-mask layer into per-group light masks. Plain JS, DOM only in the
 // blink/glow/flutter animations, so the preview page and the hub's web/krab-desk.js inline it and
 // make-krab-desk-v2.cjs tests it in Node.
@@ -51,6 +54,13 @@ const KD = (() => {
   function assign(list, nPink, nGreen, seed) {
     const r = rng(seed), g = new Int16Array(list.length + 1);
     for (const b of list) g[b.id] = b.kind === 1 ? Math.floor(r() * nPink) : nPink + Math.floor(r() * nGreen);
+    return g;
+  }
+  // Or every blob a group of its own (a scene with a few lights, each blinking for itself),
+  // pink ones first, in the order the blobs were found (top to bottom, left to right)
+  function each(list) {
+    const g = new Int16Array(list.length + 1); let n = 0;
+    for (const k of [1, 2]) for (const b of list) if (b.kind === k) g[b.id] = n++;
     return g;
   }
   // One group's mask: the blobs themselves (core, 0/255) and a soft halo grown out of them
@@ -105,40 +115,59 @@ const KD = (() => {
     ks.push({ offset: 1, opacity: ks[0].opacity });
     el.animate(ks, { duration: 500 + r() * 1100, iterations: Infinity, delay: -r() * 1000 });
   }
-  return { classify, blobs, assign, masks, rng, blink, glow, flutter };
+  return { classify, blobs, assign, each, masks, rng, blink, glow, flutter };
 })();
 (() => {
-  const W = 900, H = 317, NP = 12, NG = 6, SEED = 11;
+  // data-art -> the scene: its files, its yellow and blue groups (np, ng; each: a group per
+  // light), the seed its patterns come from, and the glow's reach in pixels.
+  const SCENES = {"controller":{"art":"krab-controller","np":12,"ng":6,"seed":11,"halo":3},"factory":{"art":"krab-factory","each":true,"seed":7,"halo":3}};
   const here = document.currentScript && document.currentScript.src;
   const art = document.querySelector('.admin-art'), host = art && art.querySelector('.art-lamps');
   if (!here || !host || !document.createElement('canvas').getContext) return;
+  const owner = art.parentElement;
   const still = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const load = (name) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no;
-    i.src = new URL('art/krab-controller-' + name + '.webp', here).href; });
-  const pixels = (img) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, W, H); return x.getImageData(0, 0, W, H).data; };
-  const layer = (lit, alpha) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const id = new ImageData(new Uint8ClampedArray(lit), W, H), d = id.data;
-    for (let i = 0; i < W * H; i++) d[i * 4 + 3] = Math.min(d[i * 4 + 3], alpha[i]);
-    c.getContext('2d').putImageData(id, 0, 0); return c; };
-  async function build() {
-    const [lit, mask] = (await Promise.all([load('lit'), load('mask')])).map(pixels);
+  const load = (file) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no;
+    i.src = new URL('art/' + file + '.webp', here).href; });
+  async function build(sc) {
+    const imgs = await Promise.all([load(sc.art + '-lit'), load(sc.art + '-mask')]);
+    const W = imgs[0].naturalWidth, H = imgs[0].naturalHeight;
+    const pixels = (img) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, W, H); return x.getImageData(0, 0, W, H).data; };
+    const layer = (lit, alpha) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const id = new ImageData(new Uint8ClampedArray(lit), W, H), d = id.data;
+      for (let i = 0; i < W * H; i++) d[i * 4 + 3] = Math.min(d[i * 4 + 3], alpha[i]);
+      c.getContext('2d').putImageData(id, 0, 0); return c; };
+    const [lit, mask] = imgs.map(pixels);
     const kind = KD.classify(mask, W * H), { labels, list } = KD.blobs(kind, W, H);
-    const groupOf = KD.assign(list, NP, NG, SEED);
-    for (let g = 0; g < NP + NG; g++) {
-      const { core, halo } = KD.masks(labels, groupOf, g, W, H, 3);
+    let np = sc.np, ng = sc.ng, groupOf;
+    if (sc.each) {
+      groupOf = KD.each(list);
+      np = list.filter((b) => b.kind === 1).length; ng = list.length - np;
+    } else groupOf = KD.assign(list, np, ng, sc.seed);
+    const out = [];
+    for (let g = 0; g < np + ng; g++) {
+      const { core, halo } = KD.masks(labels, groupOf, g, W, H, sc.halo);
       const d = document.createElement('i'), h = layer(lit, halo);
-      d.append(h, layer(lit, core)); host.append(d);
+      d.append(h, layer(lit, core)); out.push(d);
       if (still) continue;
-      const r = KD.rng(SEED * 1000 + g);
-      if (g < NP) { KD.blink(r, d); KD.flutter(r, h); } else { KD.glow(r, d); h.style.opacity = .7; }
+      const r = KD.rng(sc.seed * 1000 + g);
+      if (g < np) { KD.blink(r, d); KD.flutter(r, h); } else { KD.glow(r, d); h.style.opacity = .7; }
     }
+    return out;
   }
-  // Only once the art is on show (it is hidden on most panes), and once.
-  let started = false;
-  const go = () => { if (started) return; started = true; build().catch(() => {}); };
-  if (window.IntersectionObserver) {
-    const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { io.disconnect(); go(); } });
-    io.observe(art);
-  } else go();
+  const built = {};
+  let current = null;
+  function show() {
+    const name = owner.dataset.art || '';
+    if (name === current) return;
+    current = name;
+    host.replaceChildren();
+    const sc = SCENES[name];
+    if (!sc) return;
+    (built[name] = built[name] || build(sc))
+      .then((lights) => { if (current === name) host.replaceChildren(...lights); })
+      .catch(() => {});
+  }
+  if (window.MutationObserver) new MutationObserver(show).observe(owner, { attributes: true, attributeFilter: ['data-art'] });
+  show();
 })();
