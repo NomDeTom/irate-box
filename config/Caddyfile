@@ -196,8 +196,16 @@
 	# (:21027/udp) do not go through Caddy; the sole-listener rule has this one exception.
 	handle_path /sync/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/sync-off.caddy*
-		basic_auth {
-			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		# The login, or an admin account's session (access.py caddy_admin_gate): the hub's answer,
+		# copied onto the request, skips the login. A guest's own X-Irate-Session never counts.
+		route {
+			request_header -X-Irate-Session
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+			@irate_box_basic not header X-Irate-Session admin
+			basic_auth @irate_box_basic {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_header -X-Irate-Session
 		}
 		reverse_proxy 127.0.0.1:8384 {
 			header_up Host {upstream_hostport}
@@ -281,11 +289,13 @@
 	# --- /git and /git-private → git over HTTP, and cgit to browse ---------------------
 	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
 	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
-	# paths in @smart) goes to git http-backend; every other path is cgit's web view. Public:
-	# anyone may browse and clone, a push needs the admin login. Caddy does not ask the hub
-	# about each repository's preset yet (nginx does: auth_request), so public-everything works
-	# on nginx only; read-only presets hold here too, through http.receivepack. Private: all of
-	# it behind the login. Pushes up to 64 MB.
+	# paths in @smart) goes to git http-backend; every other path is cgit's web view. As on
+	# nginx, the hub decides each clone, fetch and push (gitrepos.decide: the repository's
+	# preset, the git app's switch, an account's own credentials), asked with forward_auth: its
+	# "ok" skips the box's own login, which is the way in otherwise, and its X-Irate-User is the
+	# account's name for the push hook (REMOTE_USER; nginx's $remote_user). Private: the admin's
+	# alone (the login, an admin account's credentials, or for cgit an admin's session). Pushes
+	# up to 64 MB.
 	# Pushes go through git-http-guard.py: Caddy streams the body, and a push it cuts off at
 	# max_size would otherwise leave git waiting forever (the guard says why).
 	redir /git /git/ permanent
@@ -306,16 +316,21 @@
 	handle_path /git/* {
 		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
 		handle @smart {
-			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
-			@push {
-				expression {query.service} == "git-receive-pack" || {path}.endsWith("/git-receive-pack")
-				not file {
-					root {$HUB_GIT_ROOT:/var/lib/hub/git}
-					try_files /guest-push
+			# Only the 404 of the git app's switch: the hub weighs users and private itself.
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git-off.caddy*
+			route {
+				request_header -X-Irate-Session
+				request_header -X-Irate-User
+				forward_auth 127.0.0.1:8000 {
+					uri /internal/git-access?soft=1
+					header_up X-Original-URI {http.request.orig_uri}
+					header_up X-Original-Method {http.request.method}
+					copy_headers X-Irate-Session X-Irate-User
 				}
-			}
-			basic_auth @push {
-				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+				@irate_box_basic not header X-Irate-Session ok
+				basic_auth @irate_box_basic {
+					admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+				}
 			}
 			request_body {
 				max_size 64MB
@@ -326,7 +341,7 @@
 					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/public
 					env GIT_HTTP_EXPORT_ALL 1
 					env PATH_INFO /{re.smart.1}
-					env REMOTE_USER {http.auth.user.id}
+					env REMOTE_USER {http.auth.user.id}{http.request.header.X-Irate-User}
 					read_timeout 1h
 				}
 			}
@@ -346,11 +361,26 @@
 		}
 	}
 	handle_path /git-private/* {
-		basic_auth {
-			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
-		}
+		# Each check in a route of its own: route is ordered after handle and forward_auth after
+		# basic_auth, so written order needs one (found in a container, 2026-10-08). Git's own paths
+		# ask the hub about the request's credentials and otherwise answer 401, as git needs to send
+		# them at all (it asks anonymously first); cgit's pages take an admin's session as well.
 		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
 		handle @smart {
+			route {
+				request_header -X-Irate-Session
+				request_header -X-Irate-User
+				forward_auth 127.0.0.1:8000 {
+					uri /internal/git-access?soft=1
+					header_up X-Original-URI {http.request.orig_uri}
+					header_up X-Original-Method {http.request.method}
+					copy_headers X-Irate-Session X-Irate-User
+				}
+				@irate_box_basic not header X-Irate-Session ok
+				basic_auth @irate_box_basic {
+					admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+				}
+			}
 			request_body {
 				max_size 64MB
 			}
@@ -360,12 +390,21 @@
 					env GIT_PROJECT_ROOT {$HUB_GIT_ROOT:/var/lib/hub/git}/private
 					env GIT_HTTP_EXPORT_ALL 1
 					env PATH_INFO /{re.smart.1}
-					env REMOTE_USER {http.auth.user.id}
+					env REMOTE_USER {http.auth.user.id}{http.request.header.X-Irate-User}
 					read_timeout 1h
 				}
 			}
 		}
 		handle {
+			route {
+				request_header -X-Irate-Session
+				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+				@irate_box_basic not header X-Irate-Session admin
+				basic_auth @irate_box_basic {
+					admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+				}
+				request_header -X-Irate-Session
+			}
 			# As on nginx: scripts only the box's own; a README's HTML is already text.
 			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
 			header X-Content-Type-Options nosniff
@@ -378,6 +417,7 @@
 			}
 		}
 	}
+
 
 	# --- /admin → the hub's own operator options ------------------------------------
 	# Same credential gate as /term, and for the same reason: these change what every
@@ -405,8 +445,16 @@
 			}
 		}
 		handle {
-			basic_auth {
-				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			# The login, or an admin account's session (access.py caddy_admin_gate): the hub's answer,
+			# copied onto the request, skips the login. A guest's own X-Irate-Session never counts.
+			route {
+				request_header -X-Irate-Session
+				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+				@irate_box_basic not header X-Irate-Session admin
+				basic_auth @irate_box_basic {
+					admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+				}
+				request_header -X-Irate-Session
 			}
 			reverse_proxy 127.0.0.1:8000 {
 				# The hub's proof this came through here (server.py FRONT_SECRET), read
@@ -424,8 +472,16 @@
 	# caddy hash-password. Path passes through: ttyd runs with --base-path /term.
 	handle /term/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/term-off.caddy*
-		basic_auth {
-			admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+		# The login, or an admin account's session (access.py caddy_admin_gate): the hub's answer,
+		# copied onto the request, skips the login. A guest's own X-Irate-Session never counts.
+		route {
+			request_header -X-Irate-Session
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+			@irate_box_basic not header X-Irate-Session admin
+			basic_auth @irate_box_basic {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_header -X-Irate-Session
 		}
 		reverse_proxy unix//run/ttyd/ttyd.sock
 	}
