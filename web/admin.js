@@ -359,7 +359,13 @@ function renderLibrary(snap) {
     const field = lib.policy.elements[k];
     if (field && document.activeElement !== field) field.value = String(v);
   }
-  lib.tokenState.textContent = snap.token_set ? 'A token is set.' : 'No token is set.';
+  // GitHub's hourly allowance, as the last check saw it (librarian.py: rate): low, the scheduled
+  // checks wait for the next hour rather than fail.
+  const gh = snap.github || {};
+  const resets = gh.reset ? new Date(gh.reset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  lib.tokenState.textContent = (snap.token_set ? 'A token is set.' : 'No token is set.')
+    + (gh.limit && gh.reset * 1000 > Date.now() ? ` GitHub: ${gh.remaining} of ${gh.limit} requests left this hour (until ${resets})`
+      + (gh.remaining < 10 ? '; scheduled checks wait for the next hour.' : '.') : '');
 
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.

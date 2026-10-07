@@ -123,5 +123,54 @@ check("sort: size (largest first), date (newest first)", L.books_page(sort="size
 check("pages: the last one, past the end clamped", len(L.books_page(page=6)["books"]) == 2 and L.books_page(page=99)["page"] == 6)
 check("every matching name, for a bulk action on all of them", L.books_page(kept="yes", names_only=True)["matching"] == 41
       and len(L.books_page(kept="yes", names_only=True)["names"]) == 41)
+# Checks that fit GitHub's limits (step 14, part c): one request per address per run, ETags sent
+# back (a 304 answered from what was kept), the allowance recorded, the most overdue checked first
+# and the rest left for the next run once a few requests are left.
+import io, time, urllib.error, urllib.request  # noqa: E402
+from email.message import Message  # noqa: E402
+gh = {"remaining": 60, "requests": [], "etag": '"v1"'}
+class Resp(io.BytesIO):
+    def __init__(self, body, headers):
+        super().__init__(json.dumps(body).encode()); self.headers = headers; self.status = 200
+def fake_urlopen(req, timeout=60):
+    gh["requests"].append((req.full_url, req.get_header("If-none-match")))
+    gh["remaining"] -= 1
+    h = Message()
+    for k, v in (("ETag", gh["etag"]), ("X-RateLimit-Limit", "60"), ("X-RateLimit-Remaining", str(gh["remaining"])),
+                 ("X-RateLimit-Reset", str(int(time.time()) + 1800))):
+        h[k] = v
+    if req.get_header("If-none-match") == gh["etag"]:
+        raise urllib.error.HTTPError(req.full_url, 304, "Not Modified", h, None)
+    return Resp([{"tag_name": "v1", "assets": []}], h)
+real_urlopen, urllib.request.urlopen = urllib.request.urlopen, fake_urlopen
+body = L._api("/repos/a/b/releases?per_page=20"); L._api("/repos/a/b/releases?per_page=20")
+check("one request per address within a run", len(gh["requests"]) == 1 and body[0]["tag_name"] == "v1")
+L._memo.clear()
+again = L._api("/repos/a/b/releases?per_page=20")
+check("asked again later: its ETag sent, the 304 answered from what was kept", gh["requests"][-1][1] == '"v1"' and again == body, gh["requests"])
+check("the allowance recorded", L.rate()["remaining"] == 58 and L.rate()["limit"] == 60)
+gh["etag"] = '"v2"'; L._memo.clear()
+L._api("/repos/a/b/releases?per_page=20")
+check("  a changed answer replaces what was kept", (L._read_json(next(L.API_CACHE.glob("*.json")), {})).get("etag") == '"v2"')
+urllib.request.urlopen = real_urlopen
+# The scheduled run, with resolve stood in: each check costs one request.
+srcs = [{"name": f"gh-{i}", "type": "release", "repo": f"o/r{i}", "pattern": "*.zim", "enabled": True} for i in range(6)]
+L.save_config({"policy": dict(L.load_config()["policy"], check_every_hours=24), "sources": srcs})
+L.save_status({f"gh-{i}": {"last_check": f"2026-10-0{6 - i}T00:00:00Z"} for i in range(6)})  # gh-5 the most overdue
+checked = []
+def fake_resolve(src):
+    checked.append(src["name"]); L._rate["remaining"] -= 1
+    raise L.LibrarianError("stood in")
+real_resolve, L.resolve = L.resolve, fake_resolve
+L._rate.update(remaining=12, limit=60, reset=int(time.time()) + 1800)
+out = L.update(names=[f"gh-{i}" for i in range(6)], scheduled=True, log=lambda *a: None)  # by name: the books only, no other stage
+check("scheduled: the most overdue first, stopping with a few requests left", checked == ["gh-5", "gh-4", "gh-3"], checked)
+check("  the rest wait for the next run, said, their last check unchanged", out["gh-0"].startswith("waiting: 9 of GitHub's 60")
+      and L.load_status()["gh-0"]["last_check"] == "2026-10-06T00:00:00Z" and "deferred" in L.load_status()["gh-0"], out)
+check("  and the allowance kept for the page", L._read_json(L.RATE_FILE, {}).get("remaining") == 9 and "github" in L.snapshot())
+checked.clear()
+L.update(names=["gh-0"], log=lambda *a: None)
+check("asked for by name: checked whatever is left", checked == ["gh-0"])
+L.resolve = real_resolve
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
