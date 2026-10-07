@@ -165,8 +165,12 @@ o("x509", "-req", "-in", str(P / "inter.csr"), "-CA", str(P / "root.crt"), "-CAk
 o("req", "-new", "-key", str(P / "leaf.key"), "-subj", "/CN=box.example.org", "-out", str(P / "leaf.csr"))
 o("x509", "-req", "-in", str(P / "leaf.csr"), "-CA", str(P / "inter.crt"), "-CAkey", str(P / "inter.key"), "-CAcreateserial", "-days", "90",
   "-extfile", str(P / "leaf.ext"), "-out", str(P / "leaf.crt"))
-o("x509", "-req", "-in", str(P / "leaf.csr"), "-CA", str(P / "inter.crt"), "-CAkey", str(P / "inter.key"), "-CAcreateserial",
-  "-not_before", "20200101000000Z", "-not_after", "20210101000000Z", "-extfile", str(P / "leaf.ext"), "-out", str(P / "expired.crt"))
+# An expired one, by openssl ca with explicit dates (x509 -not_after needs OpenSSL 3.4; CI has 3.0).
+(P / "db").mkdir(); (P / "db" / "index.txt").write_text(""); (P / "db" / "serial").write_text("1000\n")
+(P / "ca.cnf").write_text(f"""[ca]\ndefault_ca = d\n[d]\ndatabase = {P}/db/index.txt\nserial = {P}/db/serial\nnew_certs_dir = {P}/db
+certificate = {P}/inter.crt\nprivate_key = {P}/inter.key\ndefault_md = sha256\npolicy = p\ncopy_extensions = none\n[p]\ncommonName = supplied\n""")
+o("ca", "-batch", "-config", str(P / "ca.cnf"), "-in", str(P / "leaf.csr"), "-startdate", "20200101000000Z", "-enddate", "20210101000000Z",
+  "-extfile", str(P / "leaf.ext"), "-notext", "-out", str(P / "expired.crt"))
 tls.TRUST = str(P / "root.crt")
 r = lambda f: (P / f).read_text()  # noqa: E731
 def refused(chain, k, why):
