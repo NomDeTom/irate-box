@@ -2268,8 +2268,28 @@ class Handler(BaseHTTPRequestHandler):
             if action in ("on", "off"):
                 self.send_json(202, {"id": control_request({"action": "tls-switch", "on": action == "on"})})
                 return
+            if action == "import":
+                # The owner's own certificate and key, staged for the root helper (hub-only, 0600),
+                # which checks and installs them and removes these copies.
+                chain, key = payload.get("chain"), payload.get("key")
+                if not isinstance(chain, str) or not isinstance(key, str) or len(chain) > 64 << 10 or len(key) > 16 << 10:
+                    self.send_json(400, {"error": "chain and key: the PEM text of each"})
+                    return
+                staged = STATE_DIR / "tls-import"
+                staged.mkdir(mode=0o700, exist_ok=True)
+                for name, text in (("chain.pem", chain), ("key.pem", key)):
+                    f = staged / name
+                    f.unlink(missing_ok=True)
+                    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "w") as fh:
+                        fh.write(text)
+                self.send_json(202, {"id": control_request({"action": "tls-import"})})
+                return
+            if action == "box":
+                self.send_json(202, {"id": control_request({"action": "tls-box"})})
+                return
             if action not in ("make", "renew"):
-                self.send_json(400, {"error": "action must be make, renew, on or off"})
+                self.send_json(400, {"error": "action must be make, renew, on, off, import or box"})
                 return
             self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
             return

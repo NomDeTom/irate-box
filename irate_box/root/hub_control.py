@@ -1447,6 +1447,19 @@ def _write_usb(data):
     safeio.write(USB_STATE, json.dumps(data, indent=2))
 
 
+def _tls_answer(fn):
+    """openssl's and nginx's refusals (RuntimeError in tls.py) as a failed answer, not a crash of
+    the helper: only ValueError and OSError are answered as failures by the loop below."""
+    def run_it(req):
+        try:
+            return fn(req)
+        except RuntimeError as exc:
+            raise ValueError(str(exc))
+    run_it.__name__ = fn.__name__
+    return run_it
+
+
+@_tls_answer
 def tls_make(req):
     """HTTPS (step 15): the box's own CA and its certificate. A second CA only when asked: every
     device that installed the first would have to install the new one."""
@@ -1457,11 +1470,39 @@ def tls_make(req):
     return f"made the box's CA ({rec['ca']['fingerprint'][:23]}…) and its certificate"
 
 
+@_tls_answer
 def tls_renew(req):
     from irate_box.root import tls
     return tls.renew()
 
 
+@_tls_answer
+def tls_import(req):
+    """The owner's own certificate (stage 4): the chain and key the hub staged, read without
+    following a link, checked by tls.import_own, and the staged copies removed either way."""
+    from irate_box.root import tls
+    staged = STATE / "tls-import"
+    try:
+        chain = safeio.read_request(staged / "chain.pem", 64 << 10)
+        key = safeio.read_request(staged / "key.pem", 16 << 10)
+    except OSError as exc:
+        return f"nothing to import ({exc})"
+    finally:
+        for f in ("chain.pem", "key.pem"):
+            (staged / f).unlink(missing_ok=True)
+    try:
+        return tls.import_own(chain, key)
+    except ValueError as exc:
+        raise ValueError(f"not used: {exc}")
+
+
+@_tls_answer
+def tls_box(req):
+    from irate_box.root import tls
+    return tls.use_box_own()
+
+
+@_tls_answer
 def tls_switch(req):
     """HTTPS on or off at the front, the CA and certificate kept either way."""
     from irate_box.root import tls
@@ -1867,7 +1908,7 @@ ACTIONS = {"service": service, "password": password,
            "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
-           "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
+           "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,

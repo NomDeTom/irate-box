@@ -756,8 +756,26 @@
           <button type="button" id="tls-make">Make the box's certificate</button>
           <button type="button" id="tls-switch" hidden></button>
           <button type="button" id="tls-again" hidden>Make a new CA</button>
+          <button type="button" id="tls-box" hidden>Go back to the box's own certificate</button>
         </p>
         <p class="setting-desc action-note" id="tls-note" role="status" hidden></p>
+        <details class="tls-own">
+          <summary>Use your own certificate</summary>
+          <p class="setting-desc">
+            For a domain you hold, minted elsewhere (the box has no public address, so a DNS
+            challenge: <code>certbot certonly --manual --preferred-challenges dns</code>, or your DNS
+            host's own tool). Devices then trust the box with nothing to install. Paste the full
+            chain (the certificate, then its intermediates) and its unencrypted private key. The
+            box checks that they match, that it hasn't expired and that the chain reaches a known CA,
+            and never replaces it on its own: renew it before it expires.
+          </p>
+          <p class="setting-desc bad" id="tls-own-plain" hidden>This page is on plain HTTP: the private key would cross the network in clear. Paste it over HTTPS, or from a device on a cable.</p>
+          <form id="tls-own-form" class="library-form">
+            <label>Certificate chain <textarea name="chain" rows="5" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
+            <label>Private key <textarea name="key" rows="4" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></label>
+            <button type="submit">Use it</button>
+          </form>
+        </details>
         <h3>The hotspot's own WiFi</h3>
         <p class="setting-desc">
           How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby

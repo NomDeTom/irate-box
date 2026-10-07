@@ -249,13 +249,84 @@ def renew():
     return f"certificate re-made ({why})"
 
 
+# --- bring your own (certificates-plan stage 4) -----------------------------------------------------
+# A certificate for a domain the owner holds, minted elsewhere (DNS-01: the box has no public
+# address) and pasted in on /admin. The only route with no warning anywhere and nothing to install,
+# and what passkeys and the https:// captive-portal API need. Checked before it is used: the key
+# matches, it has not expired, its chain reaches a CA the system trusts, and which names it covers.
+# The box never replaces it on its own (due() is None for it); the owner can go back to the box's.
+TRUST = os.environ.get("HUB_TLS_TRUST")  # a CA bundle for the chain check (tests); the system's by default
+PEM_CERT = re.compile(r"-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+?-----END CERTIFICATE-----")
+PEM_KEY = re.compile(r"-----BEGIN (?:EC |RSA )?PRIVATE KEY-----\s+[A-Za-z0-9+/=\s]+?-----END (?:EC |RSA )?PRIVATE KEY-----")
+
+
+def _not_after(cert_file):
+    out = openssl("x509", "-in", str(cert_file), "-noout", "-enddate").strip().split("=", 1)[1]
+    import calendar
+    return calendar.timegm(time.strptime(re.sub(r"\s+", " ", out), "%b %d %H:%M:%S %Y %Z"))
+
+
+def import_own(chain_pem, key_pem):
+    """The owner's certificate chain and key, checked, then served in place of the box's own."""
+    certs = PEM_CERT.findall(chain_pem or "")
+    keys = PEM_KEY.findall(key_pem or "")
+    if not certs:
+        raise ValueError("no certificate in what was pasted (-----BEGIN CERTIFICATE----- …)")
+    if len(keys) != 1:
+        raise ValueError("one private key, unencrypted (-----BEGIN PRIVATE KEY----- …)")
+    with tempfile.TemporaryDirectory() as tmp:
+        leaf, rest, key = Path(tmp) / "leaf.pem", Path(tmp) / "rest.pem", Path(tmp) / "key.pem"
+        leaf.write_text(certs[0] + "\n")
+        rest.write_text("\n".join(certs[1:]) + "\n")
+        key.write_text(keys[0] + "\n")
+        os.chmod(key, 0o600)
+        try:
+            if openssl("x509", "-in", str(leaf), "-noout", "-pubkey") != openssl("pkey", "-in", str(key), "-pubout"):
+                raise ValueError("the key is not this certificate's")
+        except RuntimeError as exc:
+            raise ValueError(f"unreadable: {exc}")
+        if subprocess.run(["openssl", "x509", "-in", str(leaf), "-noout", "-checkend", "0"], capture_output=True).returncode != 0:
+            raise ValueError("the certificate has expired")
+        args = ["openssl", "verify"] + (["-CAfile", TRUST] if TRUST else []) + (["-untrusted", str(rest)] if len(certs) > 1 else []) + [str(leaf)]
+        v = subprocess.run(args, capture_output=True, text=True)
+        if v.returncode != 0:
+            why = (v.stderr or v.stdout).strip().splitlines()[-1:] or ["openssl verify failed"]
+            raise ValueError(f"its chain does not reach a CA this box trusts (paste the intermediates too): {why[0][:200]}")
+        san = subprocess.run(["openssl", "x509", "-in", str(leaf), "-noout", "-ext", "subjectAltName"], capture_output=True, text=True).stdout
+        names = re.findall(r"DNS:([^,\s]+)", san)
+        if not names:
+            raise ValueError("the certificate names no DNS name (subjectAltName)")
+        expires = _not_after(leaf)
+        TLS.mkdir(parents=True, exist_ok=True)
+        _write(KEY, keys[0] + "\n", 0o640, FRONT_GROUP or None)
+        _write(CHAIN, "\n".join(certs) + "\n", 0o644)
+    rec = _record()
+    rec["cert"] = {"made": int(time.time()), "expires": expires, "names": names, "addresses": [], "own": True}
+    _write(RECORD, json.dumps(rec), 0o644)
+    front(True)
+    return f"your certificate for {', '.join(names)} is in use, until {time.strftime('%Y-%m-%d', time.gmtime(expires))}"
+
+
+def use_box_own():
+    """Back from the owner's certificate to the box's own (its CA's)."""
+    rec = _record()
+    if not rec.get("ca"):
+        raise ValueError("the box has no CA of its own to go back to: make one first")
+    make_cert()
+    front(True)
+    return "the box's own certificate is in use again"
+
+
 def status():
     """What the hub and the doctor see: whether HTTPS is set up, the CA's fingerprint and what it
     may vouch for, the certificate's names, addresses and expiry, and the box's addresses the CA
     cannot cover (a new subnet: a new CA is needed)."""
     rec = _record()
-    if not rec.get("ca"):
+    if not rec.get("ca") and not (rec.get("cert") or {}).get("own"):
         return {"set_up": False}
+    if not rec.get("ca"):  # only the owner's own certificate
+        return {"set_up": True, "on": bool(rec.get("on")), "ports": TWINS, "ca": None, "cert": rec.get("cert"), "outside": [], "due": None,
+                "keys_private": True}
     nets = [ipaddress.ip_network(n) for n in rec["ca"]["networks"]]
     outside = [a["address"] for a in addresses() if a["address"] != HOTSPOT and not a["address"].startswith("100.")
                and not any(ipaddress.ip_address(a["address"]) in n for n in nets)]

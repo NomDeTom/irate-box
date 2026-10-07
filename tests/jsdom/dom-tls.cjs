@@ -57,6 +57,20 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   admin.w.eval('loadTls()'); await wait();
   check('moved to another subnet: said, as needing a new CA', /now at 10\.0\.0\.5, outside what its CA may vouch for: make a new CA/.test(t(d.getElementById('tls-state')))
     && d.getElementById('tls-state').classList.contains('bad'));
+  // Bring your own.
+  check('own certificate: a warning on plain HTTP (the key would cross the network in clear)', !d.getElementById('tls-own-plain').hidden);
+  const of = d.getElementById('tls-own-form');
+  of.elements.chain.value = '-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----';
+  of.elements.key.value = '-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----';
+  of.dispatchEvent(new admin.w.Event('submit', { cancelable: true })); await wait();
+  const imp = posted.find((b) => b.action === 'import');
+  check('  Use it: the chain and the key sent, the key not left in the page', imp && /BEGIN CERTIFICATE/.test(imp.chain) && /BEGIN PRIVATE KEY/.test(imp.key) && of.elements.key.value === '');
+  state = Object.assign({}, ON, { cert: Object.assign({}, ON.cert, { names: ['box.example.org'], addresses: [], own: true }) });
+  admin.w.eval('loadTls()'); await wait();
+  check('  in use: said as yours, to renew; and the way back to the box\'s own', /\(your own: renew it before then\)/.test(t(d.getElementById('tls-state')))
+    && !d.getElementById('tls-box').hidden);
+  d.getElementById('tls-box').click(); await wait();
+  check('  Go back: asked of the hub', posted.some((b) => b.action === 'box'));
   check('admin: no page errors', !admin.errors.length, admin.errors.join(' | '));
 
   // The public page.
