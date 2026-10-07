@@ -275,6 +275,24 @@ def queue(name, ref, envs, floor_mb=512):
     return {"batch": batch, "queued": len(picked), "commit": data["commit"]}
 
 
+def queue_tools(name, ref, family):
+    """Fetch a family's tools (git-ci-plan §4b item 7): PlatformIO installs what one of its targets
+    needs (platform, toolchain, framework, libraries) with nothing compiled, so a later build of
+    that family needs no internet; and whether PlatformIO has these tools for this board's processor
+    at all is known in minutes, not after hours of compiling."""
+    src = source(name)
+    data = targets(src, ref)
+    fam = [t for t in data["targets"] if t["family"] == family]
+    if not fam:
+        raise ValueError(f"no family {family} in {name} at {ref}")
+    pick = next((t for t in fam if t["level"] == "pr"), fam[0])
+    ci.QUEUE.mkdir(parents=True, exist_ok=True)
+    _put({"kind": "firmware", "tools_only": True, "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
+          "env": pick["env"], "family": family, "name": f"{family}'s tools (by {pick['env']})", "batch": secrets.token_hex(4),
+          "queued": time.time()})
+    return {"queued": 1, "env": pick["env"], "commit": data["commit"]}
+
+
 def _job_path(job_id):
     if not re.fullmatch(r"[0-9]{6,24}-[0-9a-f]{6}", job_id or ""):
         raise ValueError("not a waiting build")
@@ -347,7 +365,7 @@ def estimates(history):
     est = {}
     for s in history:
         f, res = s.get("family"), s.get("resources") or {}
-        if f and f not in est and s.get("state") == "passed" and s.get("duration") is not None:
+        if f and f not in est and s.get("state") == "passed" and s.get("duration") is not None and not s.get("tools_only"):
             est[f] = {"seconds": s["duration"], "disk": res.get("work_bytes"), "peak_memory": res.get("peak_memory"),
                       "built": s.get("finished")}
     return est
@@ -355,14 +373,23 @@ def estimates(history):
 
 def readiness(history):
     """Per family: "built here" once one has passed, else "untested on this box"; a family whose
-    last build here downloaded nothing is "offline ready"."""
-    out = {}
+    last build here downloaded nothing is "offline ready"; one whose tools were fetched (and not
+    yet built) says so, with their size; one whose tools could not be fetched says that."""
+    out, tools = {}, {}
     for s in history:
         f = s.get("family")
-        if not f or f in out or s.get("state") != "passed":
+        if not f:
+            continue
+        if s.get("tools_only"):
+            if f not in tools and s.get("state") in ("passed", "failed"):
+                res = s.get("resources") or {}
+                tools[f] = (f"tools fetched ({round((res.get('received') or 0) / 2 ** 20)} MB downloaded), not yet built"
+                            if s["state"] == "passed" else "its tools could not be fetched here: see the log")
+            continue
+        if f in out or s.get("state") != "passed":
             continue
         out[f] = "offline ready" if (s.get("resources") or {}).get("offline") else "built here (needed the internet)"
-    return out
+    return {**tools, **out}
 
 
 def snapshot():

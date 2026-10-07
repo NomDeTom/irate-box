@@ -3213,10 +3213,11 @@ function renderFactory(d) {
     const u = r.resources || {};
     const used = r.resources ? [`${facDur(r.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
       u.hottest != null ? `hottest ${Math.round(u.hottest)} °C` : null,
-      u.offline ? 'offline' : u.received ? `downloaded ${mbs(u.received)}` : null].filter(Boolean).join(', ') : facDur(r.duration);
+      u.offline ? 'offline' : u.received ? `downloaded ${mbs(u.received)}` : null,
+      r.tools_only && u.tools_bytes ? `PlatformIO's tools now ${mbs(u.tools_bytes)}` : null].filter(Boolean).join(', ') : facDur(r.duration);
     const file = (n) => `/admin/ci/file?run=${encodeURIComponent(r.run)}&name=${encodeURIComponent(n)}`;
     return el('div', { className: 'admin-item' },
-      el('span', { className: `state state-${r.state === 'passed' ? 'running' : 'stopped'}`, textContent: r.state === 'passed' ? 'Built' : r.state }),
+      el('span', { className: `state state-${r.state === 'passed' ? 'running' : 'stopped'}`, textContent: r.state === 'passed' ? (r.tools_only ? 'Tools fetched' : 'Built') : r.state }),
       el('span', { textContent: ` ${describe(r)} (${String(r.commit || '').slice(0, 7)})` }),
       el('span', { className: 'setting-desc', textContent: ` ${r.finished ? ago(Date.now() / 1000 - r.finished) : ''}; ${used}.` }),
       el('span', { className: 'factory-files' }, ...(r.artifacts || []).map((n) => el('a', { href: file(n), textContent: n, download: n })),
@@ -3263,6 +3264,13 @@ function renderFactoryTargets() {
     const fold = el('details', { className: 'factory-family', open: !!q || picked > 0 },
       el('summary', {}, el('strong', { textContent: f }),
         el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}${picked ? `, ${picked} chosen` : ''}; ${facReady(f)}; ${facEst(f)}.` })),
+      el('p', { className: 'library-buttons' }, actionButton('Fetch tools', async () => {
+        try {
+          const r = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f });
+          say(`Fetching ${f}'s tools (by ${r.env}): queued. Nothing is compiled; once fetched, its builds need no internet.`, true, fac.note);
+          renderFactory(r.snapshot);
+        } catch (err) { say(err.message, false, fac.note); }
+      }, { title: 'Install what this family needs (toolchain, framework, libraries) without building: a later build needs no internet' })),
       el('div', { className: 'factory-boards' }, ...list.map((t) => el('label', { title: [t.file, t.level ? `board_level ${t.level}` : '', t.support ? `support level ${t.support}` : ''].filter(Boolean).join(', ') },
         el('input', { type: 'checkbox', value: t.env, checked: facChosen.has(t.env),
           onchange: (e) => { if (e.target.checked) facChosen.add(t.env); else facChosen.delete(t.env); factoryChosen(); } }),

@@ -170,6 +170,11 @@ rc, calls, out = pio_case("deb-late", True, "Compiling .pio/x.o\\nerror: x.cpp\\
 check("  Debian's fails while compiling: the build fails, no second try", rc != 0 and calls == ["debpio"], (rc, calls))
 rc, calls, out = pio_case("no-deb", False, "", 0)
 check("  no Debian PlatformIO: the wheelhouse's", rc == 0 and calls == ["venvpio"], (rc, calls))
+os.environ["FW_TOOLS_ONLY"] = "1"
+rc, calls, out = pio_case("tools", True, "", 0)
+del os.environ["FW_TOOLS_ONLY"]
+check("  FW_TOOLS_ONLY=1: pkg install, not run (nothing compiled)", rc == 0 and "fetching the tools with" in out
+      and "pkg install -e native" in (T / "pio-tools" / "calls").read_text(), (rc, out))
 rc, calls, out = pio_case("pip", True, "", 0, mode="pip")
 check("  PIO=pip: the wheelhouse's even with Debian's there", rc == 0 and calls == ["venvpio"], (rc, calls))
 from irate_box.library import firmware as FW  # noqa: E402

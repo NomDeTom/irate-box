@@ -45,6 +45,7 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/factory') {
     const b = JSON.parse(opts.body); posted.push(b);
     if (b.action === 'queue') return ok({ batch: 'x', queued: b.targets.length, commit: '8e6a88d00', snapshot: state }, 202);
+    if (b.action === 'tools') return ok({ queued: 1, env: 'rak4631', commit: '8e6a88d00', snapshot: state }, 202);
     if (b.action === 'pause') state = snap({ paused: true });
     return ok(state);
   }
@@ -97,6 +98,12 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
     && [...built[0].querySelectorAll('a')].map((a) => a.getAttribute('href')).join(' ') === '/admin/ci/file?run=firmware-factory%2F6&name=meshtasticd /admin/ci/file?run=firmware-factory%2F6&name=log.txt',
     t(built[0]));
   check('  a failed one says so', /^failed T-Beam \(tbeam\)/.test(t(built[1])));
+  const fold = [...d.querySelectorAll('.factory-family')].find((f) => t(f.querySelector('summary strong')) === 'nrf52840');
+  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Fetch tools').click();
+  await wait();
+  const tq = posted.find((b) => b.action === 'tools');
+  check('Fetch tools: the family asked for at this source and ref, and said', tq && tq.family === 'nrf52840' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
+    && /Fetching nrf52840's tools \(by rak4631\): queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
   d.getElementById('factory-pause').click();
   await wait();
   check('Pause: asked, then said, the button now Resume', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume');
