@@ -1147,3 +1147,8 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .mesh-map-node circle { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
 .mesh-map-label { fill: var(--text); font-size: 12px; }
 .mesh-map-scale { stroke: var(--text); stroke-width: 2; }
+
+/* /account.html (step 16): the forms, one column. */
+.acct-form { margin: 1.2em 0; max-width: 28em; }
+.acct-form label { display: block; margin: 0.5em 0; }
+.acct-form input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2em; }
