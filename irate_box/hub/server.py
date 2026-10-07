@@ -71,6 +71,35 @@ try:
 except ValueError:
     AP_NET = None
 HUB_HOST = urlparse(HUB_URL).hostname if HUB_URL.startswith(("http://", "https://")) else None
+# Without HUB_AP_NET and an absolute HUB_URL set, the hotspot's own (root/ap.py: 192.168.4.1/24) are
+# used while the root helper says it is up (control/ap.json), and never otherwise: a home network
+# that happens to be 192.168.4.0/24 is not the hotspot.
+HOTSPOT_NET = ipaddress.ip_network("192.168.4.0/24")
+HOTSPOT_URL = "http://192.168.4.1/"
+_ap_up = {"mtime": None, "up": False}
+
+
+def hotspot_up():
+    path = STATE_DIR / "control" / "ap.json"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return False
+    if _ap_up["mtime"] != mtime:
+        try:
+            _ap_up["up"] = bool(json.loads(path.read_text()).get("up"))
+        except (OSError, ValueError, AttributeError):
+            _ap_up["up"] = False
+        _ap_up["mtime"] = mtime
+    return _ap_up["up"]
+
+
+def ap_net():
+    return AP_NET or (HOTSPOT_NET if hotspot_up() else None)
+
+
+def hub_host():
+    return HUB_HOST or (urlparse(HOTSPOT_URL).hostname if hotspot_up() else None)
 
 CLOCK = hubclock.HubClock(STATE_DIR / "clock.json")
 BOARD = board.Board(STATE_DIR / "board.json", CLOCK)
@@ -1675,12 +1704,14 @@ class Handler(BaseHTTPRequestHandler):
         # A redirect, and a page as well: some phones act only on a 3xx, others only on a
         # 200 with content where they expected an empty 204, so the probe gets both -- a 302
         # whose body is a page that goes to the hub by itself.
-        url = html.escape(HUB_URL, quote=True)
+        # A guest on the hotspot goes to the hub's own address (not "/" under whatever name they typed).
+        target = HUB_URL if HUB_HOST or not self._from_hotspot() else HOTSPOT_URL
+        url = html.escape(target, quote=True)
         body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>Irate-Box</title>'
                 f'<meta http-equiv="refresh" content="0; url={url}"></head>'
                 f'<body><p><a href="{url}">Open the hub</a></p></body></html>').encode()
         self.send_response(302)
-        self.send_header("Location", HUB_URL)
+        self.send_header("Location", target)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -1846,12 +1877,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _off_hub_name(self):
         """A hotspot guest asking under a name that is not the hub's own (see AP_NET)."""
-        if not (AP_NET and HUB_HOST) or self.headers.get("Host", "").split(":")[0] == HUB_HOST:
+        net, host = ap_net(), hub_host()
+        if not (net and host) or self.headers.get("Host", "").split(":")[0] == host:
+            return False
+        return self._from_hotspot(net)
+
+    def _from_hotspot(self, net=None):
+        net = net or ap_net()
+        if not net:
             return False
         fwd = self.headers.get("X-Forwarded-For", "")
         addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
         try:
-            return ipaddress.ip_address(addr) in AP_NET
+            return ipaddress.ip_address(addr) in net
         except ValueError:
             return False
 
@@ -2660,6 +2698,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
             return
 
+        if path == "/admin/hotspot" and payload.get("action") in ("on", "off", "try", "confirm"):
+            # The hotspot itself (root/ap.py through the root helper): on with the owner's choices,
+            # off, the try of a channel of its own beside the WiFi link, or keeping one that took it.
+            req = {"action": "ap-" + payload["action"]}
+            if payload["action"] == "on":
+                for k in ("radio", "band", "channel", "take_radio"):
+                    if payload.get(k) is not None:
+                        req[k] = payload[k]
+            self.send_json(202, {"id": control_request(req)})
+            return
+
         if path == "/admin/hotspot":
             try:
                 saved = hotspot.save(payload.get("settings"))
@@ -2667,7 +2716,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": str(exc)})
                 return
             self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
-                                 "It takes effect when the hotspot add-on is set up."})
+                                 "It takes effect the next time the hotspot is switched on (Network)."})
             return
 
         if path == "/admin/security":

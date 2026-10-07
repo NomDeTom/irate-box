@@ -413,6 +413,45 @@ def check_inventory():
     return []
 
 
+def check_hotspot():
+    """While the hotspot is meant to be on (root/ap.py's record): its interface there, in AP mode, on its
+    planned channel (or the link's, when it follows); the access point's own service; dnsmasq."""
+    from irate_box.root import ap
+    rec = ap._load(ap.RECORD, {})
+    if not rec.get("up"):
+        return []
+    plan = rec.get("plan") or {}
+    iface = ap.ap_iface(plan) if plan else None
+    out = []
+    chans = ap.channels_now(run)
+    want = chans.get(plan.get("uplink")) if plan.get("follows_uplink") else plan.get("channel")
+    if iface not in chans:
+        out.append(_f("hotspot-iface", "Hotspot interface", "problem", f"The hotspot should be on {iface}, which isn't there.",
+                      "Network → the hotspot: switch it off and on again"))
+    elif chans.get(iface) != want:
+        out.append(_f("hotspot-iface", "Hotspot interface", "warn",
+                      f"{iface} is on channel {chans.get(iface)}, not {want}" + (" (the WiFi link's)" if plan.get("follows_uplink") else "") + ".",
+                      "Network → the hotspot: switch it off and on again"))
+    else:
+        out.append(_f("hotspot-iface", "Hotspot interface", "ok", f"{iface} on channel {want}: {plan.get('text', '')}"))
+    if plan.get("backend") == "hostapd":
+        if run("systemctl", "is-active", "--quiet", ap.HOSTAPD_UNIT).returncode:
+            out.append(_f("hotspot-ap", "Hotspot access point (hostapd)", "problem", "hostapd isn't running.",
+                          f"journalctl -u {ap.HOSTAPD_UNIT} -n 30", [_act(f"unit-restart:{ap.HOSTAPD_UNIT}", "Start it again")]))
+    else:
+        act = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active").stdout or ""
+        if ap.CONNECTION not in act.split():
+            out.append(_f("hotspot-ap", "Hotspot access point (NetworkManager)", "problem", f"The connection {ap.CONNECTION} isn't active.",
+                          f"nmcli connection up {ap.CONNECTION}"))
+    if run("systemctl", "is-active", "--quiet", ap.DNSMASQ_UNIT).returncode:
+        out.append(_f("hotspot-dns", "Hotspot DHCP and names", "problem", "dnsmasq isn't running: guests get no address.",
+                      f"journalctl -u {ap.DNSMASQ_UNIT} -n 30", [_act(f"unit-restart:{ap.DNSMASQ_UNIT}", "Start it again")]))
+    if not rec.get("confirmed", True):
+        out.append(_f("hotspot-confirm", "Hotspot waiting to be kept", "warn",
+                      "It took the box's WiFi link: press Keep it from the hotspot, or the link comes back by itself.", ""))
+    return out
+
+
 def check_web():
     web = option(install_options(), "--web", "nginx") or "nginx"
     if web == "nginx" and shutil.which("nginx"):
@@ -756,7 +795,7 @@ def set_clock(epoch):
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_space, check_builds):
+                  check_hotspot, check_space, check_builds):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
