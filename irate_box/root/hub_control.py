@@ -2135,6 +2135,12 @@ if __name__ == "__main__":
         note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
         _ap_record_status(None, note)
         sys.exit(0)
+    # The boot unit (root/ap.py): the hotspot as it was before the reboot.
+    if sys.argv[1:] == ["ap-boot"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        _ap_record_status(None, ap.boot(run, _ap_inventory(), _ap_settings()))
+        sys.exit(0)
     # The dead-man timer: the owner didn't confirm a hotspot that took the box's own link.
     if sys.argv[1:] == ["ap-revert"]:
         if os.geteuid() != 0:

@@ -183,5 +183,23 @@ check("stop: down, the link reconnected, the hook removed, recorded off", ["nmcl
       and not ap.DISPATCHER.exists() and json.loads(ap.RECORD.read_text())["up"] is False)
 p5 = ap.start(fake_run, inv3, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
 check("a plan that waits on the owner starts nothing", p5["needs_choice"] and json.loads(ap.RECORD.read_text())["up"] is False)
+
+# After a reboot (the boot unit, ap.boot).
+calls.clear()
+ap.start(fake_run, inv, settings)
+check("start installs and enables the boot unit", (ap.UNITS / ap.BOOT_UNIT).exists() and ["systemctl", "enable", ap.BOOT_UNIT] in calls
+      and "hub_control ap-boot" in (ap.UNITS / ap.BOOT_UNIT).read_text())
+calls.clear()
+out = ap.boot(fake_run, inv, settings)
+check("boot: on before, planned and started again (ap0 made anew)", out.startswith("started again on ap0") and
+      ["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"] in calls, out)
+ap.start(fake_run, inv3, settings, {"take_radio": True})
+calls.clear()
+out = ap.boot(fake_run, inv3, settings)
+check("  a hotspot that took the link and was never confirmed: the link comes back instead",
+      "the link is back" in out and ["nmcli", "device", "connect", "wlan0"] in calls and json.loads(ap.RECORD.read_text())["up"] is False, out)
+calls.clear()
+check("  off before: nothing", ap.boot(fake_run, inv, settings) == "the hotspot is off" and not calls)
+check("stop disables the boot unit", ["systemctl", "disable", ap.BOOT_UNIT] in (ap.stop(fake_run) and calls))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

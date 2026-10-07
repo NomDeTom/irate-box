@@ -142,6 +142,33 @@ def _put(path, text, mode=0o644):
     os.replace(tmp, path)
 
 
+BOOT_UNIT = "irate-box-ap.service"
+
+
+def boot_unit():
+    """At boot, the hotspot as it was: ap0 is gone after a reboot, so it is planned and started again
+    (the box's links may have changed meanwhile). Enabled while the hotspot is on, disabled when off."""
+    return "\n".join([
+        "[Unit]", "Description=Irate-Box: the hotspot, again after a reboot (root/ap.py)",
+        "After=NetworkManager.service", "Wants=NetworkManager.service", "",
+        "[Service]", "Type=oneshot", f"ExecStart={CODE}/irate-box hub_control ap-boot", "",
+        "[Install]", "WantedBy=multi-user.target", ""])
+
+
+def boot(run, inv, settings, ssid=DEFAULT_SSID):
+    """The boot unit's call. Off: nothing. On and confirmed (or never needing it): planned and started
+    again. A hotspot that took the box's own link and was never confirmed: the link comes back instead."""
+    rec = _load(RECORD, {})
+    if not rec.get("up"):
+        return "the hotspot is off"
+    if not rec.get("confirmed", True):
+        return stop(run) + ": it had taken the box's WiFi link and wasn't confirmed, so the link is back"
+    plan = start(run, inv, settings, rec.get("owner") or {}, ssid)
+    if plan.get("needs_choice") or plan["kind"] == "none":
+        return "not started again: " + plan["text"]
+    return f"started again on {ap_iface(plan)}, channel {plan['channel']}"
+
+
 def dispatcher_hook():
     """NetworkManager runs this on every link change: when the hotspot follows the link's channel
     (rung 3), a link that came up somewhere new moves it."""
@@ -174,6 +201,10 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
         _put(unit, dnsmasq_unit())
         run("systemctl", "daemon-reload")
     _put(DISPATCHER, dispatcher_hook(), 0o755)
+    boot = UNITS / BOOT_UNIT
+    if not boot.exists() or boot.read_text() != boot_unit():
+        _put(boot, boot_unit())
+        run("systemctl", "daemon-reload")
     try:
         _run_all(run, up_steps(plan))
     except RuntimeError:
@@ -183,6 +214,7 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
         # The owner gave up the box's link: unless confirmed from the hotspot in time, it comes back.
         run("systemd-run", f"--on-active={DEADMAN}", "--unit=irate-box-ap-deadman", "--timer-property=AccuracySec=1s",
             f"{CODE}/irate-box", "hub_control", "ap-revert")
+    run("systemctl", "enable", BOOT_UNIT)
     _put(RECORD, json.dumps({"up": True, "plan": plan, "owner": owner, "since": time.time(),
                              "confirmed": not plan.get("drops_uplink")}))
     return plan
@@ -193,6 +225,7 @@ def stop(run):
     if rec.get("up"):
         _run_all(run, down_steps(rec["plan"]), check=False)
     run("systemctl", "stop", "irate-box-ap-deadman.timer")
+    run("systemctl", "disable", BOOT_UNIT)
     DISPATCHER.unlink(missing_ok=True)
     _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time()}))
     return "the hotspot is off"
