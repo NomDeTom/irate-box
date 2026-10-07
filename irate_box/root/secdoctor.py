@@ -1553,12 +1553,21 @@ def _debsecan_command(work):
     return [sys.executable, str(work / "usr" / "bin" / "debsecan")], {"PYTHONPATH": str(work / "usr" / "lib" / "python3" / "dist-packages")}
 
 
-def _debsecan(cmd, env, suite, status=None, timeout=300):
-    """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary."""
+def _debsecan(cmd, env, suite, status=None, timeout=900):
+    """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary. Fifteen
+    minutes: on the Lyra with a firmware build and the deep audit running (load 25 on four cores,
+    2026-10-07) five were not enough, and a busy box is not a failed check."""
     args = [*cmd, "--suite", suite, "--source", f"file://{DEBSECAN_FEED}/", "--format", "summary"]
     if status:
         args += ["--status", str(status)]
-    r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **env))
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **env))
+    except subprocess.TimeoutExpired:
+        try:
+            load = Path("/proc/loadavg").read_text().split()[1]
+        except OSError:
+            load = "?"
+        raise RuntimeError(f"debsecan took over {timeout // 60} minutes (the box's load: {load}); run the doctor again when it is quieter")
     if r.returncode != 0:
         raise RuntimeError((r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300])
     out = {}
