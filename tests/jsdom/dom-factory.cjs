@@ -112,6 +112,20 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/\b(undefined|NaN|null)\b|\[object/.test(n.textContent)) stray.push(n.textContent.trim());
   check('no stray undefined, null or NaN', !stray.length, stray.join(' | '));
   check('no page errors', !errors.length, errors.join(' | '));
+  // The web flasher: Publish on a passed build with a manifest; what is published, with Remove.
+  w.renderFactory(snap({ running: null, waiting: [], runs: [{ run: 'firmware-factory/8', state: 'passed', env: 'heltec-v3', name: 'Heltec V3', family: 'esp32s3',
+    source: 'meshtastic-firmware', ref: 'v2.8.1.8e6a88d', commit: '8e6a88d', finished: now - 60, duration: 600,
+    artifacts: ['firmware-heltec-v3-2.8.1.8e6a88d.bin', 'firmware-heltec-v3-2.8.1.8e6a88d.mt.json'] }, snap().runs[1]],
+    flasher: [{ version: '2.8.1.8e6a88d-built', targets: [{ board: 'rak4631', platform: 'nrf52840', run: 'firmware-factory/3', ref: 'develop' }] }] }));
+  const pubRuns = [...d.querySelectorAll('#factory-runs .admin-item')];
+  const pubBtn = [...pubRuns[0].querySelectorAll('button')].find((b) => t(b) === 'Publish to the web flasher');
+  check('flasher: Publish on a build with a manifest, not on native', pubBtn && ![...pubRuns[1].querySelectorAll('button')].some((b) => /Publish/.test(t(b))));
+  check('  what is published listed, by board and version', /rak4631, nrf52840: 2\.8\.1\.8e6a88d from develop\./.test(t(d.getElementById('factory-flasher'))), t(d.getElementById('factory-flasher')));
+  pubBtn.click();
+  [...d.querySelectorAll('#factory-flasher button')].find((b) => t(b) === 'Remove').click();
+  await wait();
+  check('  Publish and Remove ask the hub', posted.some((b) => b.action === 'publish' && b.run === '8')
+    && posted.some((b) => b.action === 'unpublish' && b.version === '2.8.1.8e6a88d-built' && b.env === 'rak4631'), JSON.stringify(posted.slice(-2)));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();

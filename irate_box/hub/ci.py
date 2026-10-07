@@ -483,7 +483,8 @@ ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 FAMILY_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 # What a target's build leaves that is worth keeping: flash images, update zips, UF2 and hex files,
 # and native's program. Not the .elf or the map.
-ARTIFACT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|uf2|hex|zip)$|^(meshtasticd|program)$")
+# .mt.json: the firmware's manifest of its files (bin/platformio-custom.py), what the web flasher reads.
+ARTIFACT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|uf2|hex|zip|mt\.json)$|^(meshtasticd|program)$")
 FIRMWARE_SCRIPT = """#!/bin/bash
 # A Firmware Factory build (factory.py): one PlatformIO environment, $FW_ENV, of a source cloned
 # from the box's own copy at the commit asked for; ci.py keeps its files and what it used.
