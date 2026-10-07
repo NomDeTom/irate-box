@@ -2145,8 +2145,13 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.match(sys.argv[2]):
         if os.geteuid() != 0:
             sys.exit("run as root")
+        rec = ap._load(ap.RECORD, {})
+        if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink"):
+            sys.exit(0)   # every link change calls this (ap0's own too): leave the last note alone
         try:
-            _ap_record_status(None, ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2]))
+            note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
+            if note.startswith("moved"):
+                _ap_record_status(None, note)
         except RuntimeError as exc:
             sys.exit(str(_ap_failed(exc)))
         sys.exit(0)

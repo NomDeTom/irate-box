@@ -161,6 +161,8 @@ calls.clear()
 worked, p2 = ap.try_own_channel(fake_run, inv, settings, wait=0, sleep=lambda s: None)
 check("the try: the hotspot on a channel other than the link's (1), held, so it works; recorded; then back to the plan",
       worked is True and json.loads(ap.TRIED.read_text()) == {"phy0": True} and p2["kind"] == "own-channel", (worked, p2))
+check("  afterwards on the plan's channel (the link's, 11), the try's channel not kept as the owner's choice",
+      p2["channel"] == 11 and json.loads(ap.RECORD.read_text())["owner"] == {}, (p2.get("channel"), json.loads(ap.RECORD.read_text())["owner"]))
 iw_force = {"wlan0": 11}
 def forced_run(*cmd, **kw):
     out = fake_run(*cmd, **kw)

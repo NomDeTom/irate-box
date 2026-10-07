@@ -321,6 +321,7 @@ def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=
         or next((c["channel"] for c in chans if c["channel"] != link_ch), None)
     if other is None:
         return None, plan
+    owner = _load(RECORD, {}).get("owner") or {}   # the owner's own choices, not the try's channel
     try:
         start(run, inv, settings, {"channel": other}, ssid)
     except RuntimeError:
@@ -332,7 +333,7 @@ def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=
     tried = _load(TRIED, {})
     tried[plan["phy"]] = worked
     _put(TRIED, json.dumps(tried))
-    return worked, start(run, inv, settings, _load(RECORD, {}).get("owner") or {}, ssid)
+    return worked, start(run, inv, settings, owner, ssid)
 
 
 def follow(run, inv, settings, iface, ssid=DEFAULT_SSID):
