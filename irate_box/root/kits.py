@@ -89,7 +89,43 @@ def arch():
 
 
 def _packages(kit):
-    return kitdefs.packages_for(kit, arch())
+    """(the kit's packages for this box, those left out). A kit from Debian's debug archive (the
+    symbols kit) asks only for the symbols of what is installed here: a -dbgsym package depends on
+    its program at exactly the same version, so asking for mosquitto's on a box without it would
+    bring mosquitto too."""
+    pkgs, left = kitdefs.packages_for(kit, arch())
+    if kit.get("debug_archive"):
+        here = _installed_packages()
+        absent = [p for p in pkgs if p.endswith("-dbgsym") and p[:-len("-dbgsym")] not in here]
+        pkgs, left = [p for p in pkgs if p not in absent], sorted(left + absent)
+    return pkgs, left
+
+
+# Debian's debug archive (toolkits-plan §6): the -dbgsym packages, signed with the same keys as the
+# rest of Debian. A kit that asks for it is fetched from it alone, its index kept apart from the
+# box's own lists (so the box's apt never sees it), and that index vouches for it on a USB stick.
+DEBUG_LISTS = ROOT / "lists-debug"
+DEBIAN_KEYRING = Path(os.environ.get("HUB_DEBIAN_KEYRING", "/usr/share/keyrings/debian-archive-keyring.gpg"))
+
+
+def _codename():
+    try:
+        for line in Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release")).read_text().splitlines():
+            if line.startswith("VERSION_CODENAME="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    raise ValueError("this box's Debian release is not known (VERSION_CODENAME in /etc/os-release)")
+
+
+def _debug_apt():
+    """apt options for the debug archive alone, with its own lists."""
+    DEBUG_LISTS.mkdir(parents=True, exist_ok=True)
+    (DEBUG_LISTS / "partial").mkdir(exist_ok=True)
+    src = ROOT / "debug.list"
+    src.write_text(f"deb [signed-by={DEBIAN_KEYRING}] http://deb.debian.org/debian-debug {_codename()}-debug main\n")
+    return ["-o", f"Dir::Etc::sourcelist={src}", "-o", "Dir::Etc::sourceparts=-", "-o", f"Dir::State::Lists={DEBUG_LISTS}",
+            "-o", "APT::Get::List-Cleanup=0"]
 
 
 def _kit(kit_id):
@@ -203,9 +239,10 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
     for d in (ROOT, POOL, MANIFESTS):
         d.mkdir(parents=True, exist_ok=True)
     os.chmod(ROOT, 0o755)
-    if update_lists:
-        log("apt-get update")
-        run(["apt-get", "update", "-q"], timeout=900)
+    debug = _debug_apt() if kit.get("debug_archive") else []
+    if update_lists or debug:
+        log("apt-get update" + (" (Debian's debug archive)" if debug else ""))
+        run(["apt-get", *debug, "update", "-q"], timeout=900)
     stage = ROOT / f"stage-{kit_id}"
     shutil.rmtree(stage, ignore_errors=True)
     (stage / "partial").mkdir(parents=True)
@@ -215,7 +252,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         base = {l[len("Package: "):] for l in (stage / "status").read_text().splitlines() if l.startswith("Package: ")}
         packages, left_out = _packages(kit)
         log(f"{kit_id}: downloading {len(packages)} packages and what they need")
-        run(["apt-get", "install", "--download-only", "-y", "-q", "--no-install-recommends",
+        run(["apt-get", *debug, "install", "--download-only", "-y", "-q", "--no-install-recommends",
              "-o", f"Dir::Cache::archives={stage}", "-o", f"Dir::State::status={stage / 'status'}",
              "-o", "Debug::NoLocking=1", *packages], timeout=3600)
         pkgs = []
@@ -581,16 +618,16 @@ def export_usb(kit_id, dest, report=None):
         raise ValueError("the cache fails its check, so it was not copied: refresh it first")
     want = {p["file"]: p["sha256"] for p in man["packages"]}
     lists, vouched = [], set()
-    for pk in sorted(APT_LISTS.glob("*_Packages")):
+    for pk in sorted(p for d in (APT_LISTS, DEBUG_LISTS) for p in d.glob("*_Packages")):
         m = LIST_RE.match(pk.name)
-        if not m or not (APT_LISTS / f"{m.group('release')}_InRelease").exists():
+        if not m or not (pk.parent / f"{m.group('release')}_InRelease").exists():
             continue
         # By hash alone: apt saves a .deb with its version's epoch in the name (valgrind_1%3a3.24…),
         # the index lists it without; a SHA-256 is the whole of the check either way.
         hashes = set(_packages_hashes(pk).values())
         hit = {f for f, h in want.items() if h in hashes}
         if hit:
-            lists += [pk, APT_LISTS / f"{m.group('release')}_InRelease"]
+            lists += [pk, pk.parent / f"{m.group('release')}_InRelease"]
             vouched |= hit
     unvouched = sorted(set(want) - vouched)
     if unvouched:
