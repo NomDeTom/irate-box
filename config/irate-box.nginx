@@ -62,6 +62,7 @@ server {
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
 	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location = /_irate_admin { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/admin; }
 	location @irate_box_login { return 302 /account.html?next=$uri; }
 
 	# Caddy logged warnings only and compressed nothing on the fly; the same here. Request
@@ -240,6 +241,7 @@ server {
 		if ($irate_box_off_sync) { return 404; }
 		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
+		include @ACCESS@.d/gate-admin.conf*;
 		proxy_set_header Host 127.0.0.1:8384;
 		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
@@ -413,6 +415,8 @@ server {
 		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
 		auth_basic $irate_box_admin_auth;
 		auth_basic_user_file @HTPASSWD@;
+		# Or an admin account's session (accounts step 16): gate-admin.conf, from the root helper.
+		include @ACCESS@.d/gate-admin.conf*;
 		# The secret that tells the hub this came through here (server.py FRONT_SECRET), from
 		# a root-only file. Setting a header here drops the server-level ones, so all again.
 		include @FRONT@;
@@ -433,6 +437,7 @@ server {
 		if ($irate_box_off_term) { return 404; }
 		auth_basic "Irate-Box";
 		auth_basic_user_file @HTPASSWD@;
+		include @ACCESS@.d/gate-admin.conf*;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/ttyd/ttyd.sock;
 	}
@@ -494,6 +499,7 @@ server {
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
 	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location = /_irate_admin { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/admin; }
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	client_max_body_size 50m;  # attachments
 	proxy_http_version 1.1;
@@ -535,6 +541,7 @@ server {
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
 	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location = /_irate_admin { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/admin; }
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	proxy_http_version 1.1;
 	proxy_set_header Host $http_host;
@@ -582,6 +589,7 @@ server {
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# No proxy_set_header here: it would drop the server's (X-Irate-Front blanked among them).
 	location = /_irate_user { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/user; }
+	location = /_irate_admin { internal; proxy_pass_request_body off; proxy_pass http://irate_box_hub/_irate/admin; }
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
 	root @STATIC@;
 	location = / { return 302 /git/; }

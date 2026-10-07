@@ -807,6 +807,23 @@ def unclaimed():
     return UNCLAIMED_FILE.exists()
 
 
+def admin_login_on():
+    """Whether the box's own admin login (basic auth) is on: the root helper's record (on unless
+    it says off)."""
+    try:
+        return json.loads((CONTROL_DIR / "admin-login.json").read_text()).get("on") is not False
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
+def accounts_view():
+    listing = accounts.listing()
+    return {"settings": accounts.settings(), "accounts": listing, "counts": accounts.counts(),
+            "admin_login": {"on": admin_login_on(), "results": control_results(10),
+                            "https_admins": [a["name"] for a in listing if a["role"] == "admin" and a["state"] == "user"
+                                             and a["password_set"] and a.get("https_login")]}}
+
+
 def setup_status(rid):
     out = {"unclaimed": unclaimed()}
     if rid:
@@ -1743,7 +1760,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 action = "login"
             if action == "login":
-                token, me = accounts.login(payload.get("name"), payload.get("password"), addr)
+                token, me = accounts.login(payload.get("name"), payload.get("password"), addr, https=self._https())
                 self.send_json(200, {"me": me}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
             elif action == "password":
                 accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr)
@@ -1863,6 +1880,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send_source()
             return
 
+        if path == "/_irate/admin":
+            # The front's question for the admin's routes (/admin, the shell, Syncthing, private
+            # apps), asked beside the box's own login (either will do): is this an admin account's
+            # session? Yes too while the box is unclaimed, when /admin shows only the set-the-
+            # password page and asks no login (nginx's satisfy any would otherwise refuse it).
+            me = accounts.session(self._session_token())
+            if unclaimed() or (me and me.get("role") == "admin"):
+                self.send_response(204)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_json(401, {"error": "an admin's login"})
+            return
+
         if path == "/_irate/user":
             # The front's question for an app in users mode (access.py): is this visitor logged in?
             # 204 yes; no: 401 for nginx (its gate sends them to log in), or for Caddy (?redirect=1)
@@ -1888,7 +1919,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/accounts":
-            self.send_json(200, {"settings": accounts.settings(), "accounts": accounts.listing(), "counts": accounts.counts()})
+            self.send_json(200, accounts_view())
             return
 
         if path == "/admin/setup":
@@ -2316,19 +2347,24 @@ class Handler(BaseHTTPRequestHandler):
             # enable, delete, the role; a new account or a reset, each with a one-time code.
             action = payload.get("action")
             try:
+                keep = not admin_login_on()
+                if action == "admin-login":
+                    # The box's own login on or off: root's (the web server's login file), checked there too.
+                    self.send_json(202, {"id": control_request({"action": "admin-login", "on": payload.get("on") is True})})
+                    return
                 if action == "settings":
-                    out = {"settings": accounts.set_settings(payload.get("signup"), payload.get("http"))}
+                    out = {"settings": accounts.set_settings(payload.get("signup"), payload.get("http"), keep_admin=keep)}
                 elif action == "make":
                     out = {"code": accounts.make(payload.get("name"), payload.get("role", "user"))}
                 elif action == "reset":
                     out = {"code": accounts.reset(payload.get("name"))}
                 else:
-                    accounts.change(payload.get("name"), action)
+                    accounts.change(payload.get("name"), action, keep_admin=keep)
                     out = {}
             except accounts.AccountError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
-            self.send_json(200, dict(out, settings=accounts.settings(), accounts=accounts.listing(), counts=accounts.counts()))
+            self.send_json(200, dict(out, **accounts_view()))
             return
 
         if path == "/admin/setup":

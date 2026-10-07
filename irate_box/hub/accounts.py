@@ -161,7 +161,15 @@ def settings():
     return s
 
 
-def set_settings(signup=None, http=None):
+def _admins(data):
+    return [k for k, a in data["accounts"].items() if a.get("role") == "admin" and a.get("state") == "user" and a.get("hash")]
+
+
+def set_settings(signup=None, http=None, keep_admin=False):
+    """keep_admin: the box's own admin login is off, so the admin accounts are the only way into
+    /admin: sign-up may not go off (no account would log in)."""
+    if keep_admin and signup == "off":
+        raise AccountError("the box's own admin login is off: switch it on first (Accounts), or no one could open /admin")
     with _lock:
         data = _load()
         if signup is not None:
@@ -177,7 +185,7 @@ def set_settings(signup=None, http=None):
 
 
 def _public(acc):
-    return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by")} | {"password_set": bool(acc.get("hash"))}
+    return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {"password_set": bool(acc.get("hash"))}
 
 
 def listing():
@@ -220,8 +228,9 @@ def signup(name, password, addr=""):
     return state
 
 
-def login(name, password, addr=""):
-    """A session for a user whose password is right: (cookie value, account)."""
+def login(name, password, addr="", https=False):
+    """A session for a user whose password is right: (cookie value, account). Over HTTPS it is
+    recorded (https_login): an admin account that has can stand in for the box's own login."""
     if settings()["signup"] == "off":
         raise AccountError("this box has no accounts")
     now = time.time()
@@ -241,6 +250,8 @@ def login(name, password, addr=""):
         data = _load()
         data["sessions"][_digest(token)] = {"name": acc["name"].lower(), "expires": round(now + SESSION_DAYS * 86400)}
         data["accounts"][acc["name"].lower()]["seen"] = round(now)
+        if https:
+            data["accounts"][acc["name"].lower()]["https_login"] = round(now)
         _save(data)
     return token, _public(acc)
 
@@ -364,14 +375,17 @@ def reset(name):
     return code
 
 
-def change(name, action):
-    """accept (an application), disable, enable, delete, admin (the role), user (the role)."""
+def change(name, action, keep_admin=False):
+    """accept (an application), disable, enable, delete, admin (the role), user (the role).
+    keep_admin: the box's own admin login is off; the last admin account stays one."""
     key = (name or "").lower()
     with _lock:
         data = _load()
         acc = data["accounts"].get(key)
         if not acc:
             raise AccountError("no such account")
+        if keep_admin and action in ("disable", "delete", "user") and _admins(data) == [key]:
+            raise AccountError("the last admin account, while the box's own admin login is off: switch that on first, or no one could open /admin")
         if action == "accept":
             if acc["state"] != "asked":
                 raise AccountError("only an application is accepted")
