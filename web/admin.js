@@ -473,6 +473,34 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
+// The services' uptime (step 35): a row per service, the week by hour and 35 days by day, from
+// the hub's five-minute samples (svchistory.py); a dot where it started (a reboot starts them all).
+function renderServiceUptime(services, u) {
+  const body = document.getElementById('svc-uptime-body');
+  const units = (u && u.units) || {};
+  const mine = services.filter((s) => s.unit && units[s.unit]);
+  if (!mine.length) {
+    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing recorded yet: the hub looks at every service every five minutes, '
+      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 35 days.' }));
+    return;
+  }
+  const hourCols = [];
+  u.days.forEach((d) => { for (let h = 0; h < 24; h++) hourCols.push(h ? '' : d.label); });
+  const at = (i) => `${u.days[Math.floor(i / 24)].label} ${String(i % 24).padStart(2, '0')}:00–${String((i + 1) % 24).padStart(2, '0')}:00`;
+  const said = (s) => { const sm = units[s.unit].summary;
+    return sm.up == null ? `${s.name}: no data this week` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
+  const dayLabel = (back) => u.month_days[34 - back].label;
+  body.replaceChildren(
+    el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
+    Heatmap.grid({ caption: 'Each service, the last 7 days by hour', cols: hourCols,
+      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].week, where: (i) => `${s.name}, ${at(i)}` })) }),
+    el('p', { className: 'setting-desc', textContent: 'The last 35 days, by day:' }),
+    Heatmap.grid({ caption: 'Each service, the last 35 days by day', cols: Array.from({ length: 35 }, (_, i) => (i % 7 ? '' : dayLabel(34 - i))),
+      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(34 - i)}` })) }),
+    Heatmap.legend(),
+    el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
+}
+
 function renderBox(data) {
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
@@ -500,6 +528,7 @@ function renderBox(data) {
     );
   });
   document.querySelector('#service-table tbody').replaceChildren(...rows);
+  renderServiceUptime(data.services, data.service_uptime);
 
   const results = data.results || [];
   document.getElementById('control-results').replaceChildren(...results.slice(0, 4).map((r) =>

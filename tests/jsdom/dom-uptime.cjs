@@ -5,7 +5,9 @@
 // outage on the 6th, an hour switched off, a day with no record) and a wired link down every night.
 // Each card has a folded Uptime part: the week by hour (7 x 24), 35 days by day (5 x 7), a legend,
 // the summary in words; each cell says what it was; a card with no record says how one comes.
-// Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
+// And the services' (step 35, from svchistory.summarize): a fold under Overview's table, closed,
+// a row per service by hour for the week and by day for 35 days, the starts marked, kept open
+// across the pane's redraws. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -24,7 +26,12 @@ vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) er
 vc.on('error', (...a) => { if (!/HTTP 404/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
 const dom = new JSDOM(html, { url: 'http://box.local/admin/#network', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
-w.fetch = async (u) => (u === '/admin/network' ? new Response(JSON.stringify(data), { status: 200 }) : new Response('{}', { status: 404 }));
+const box = { system: {}, uptime: 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: fixture.services,
+  services: [{ name: 'Library (Kiwix)', unit: 'kiwix.service', state: 'running', active: true, enabled: true, ops: [] },
+    { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: [] },
+    { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] }] };
+w.fetch = async (u) => (u === '/admin/network' ? new Response(JSON.stringify(data), { status: 200 })
+  : u === '/admin/box' ? new Response(JSON.stringify(box), { status: 200 }) : new Response('{}', { status: 404 }));
 // A page's scripts share their top-level consts; separate evals do not, so heatmap.js comes in as a var.
 w.eval(fs.readFileSync(`${WEB}/heatmap.js`, 'utf8').replace(/^const Heatmap =/m, 'var Heatmap ='));
 w.eval(fs.readFileSync(`${WEB}/admin.js`, 'utf8'));
@@ -57,7 +64,29 @@ setTimeout(() => {
   const none = card('eth1'), noneUp = none && none.querySelector('details.net-uptime');
   check('a link with no record: says so, and how one comes', noneUp && /Not recorded yet\./.test(t(noneUp.querySelector('summary'))) && !noneUp.querySelector('.heatmap')
     && /once the box's clock is known to be right/.test(t(noneUp)));
-  check('no page errors', !errors.length, errors.join(' | '));
-  console.log(`failures: ${fails}`);
-  process.exit(fails ? 1 : 0);
+  // The services' fold, under Overview's table.
+  w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  w.eval('loadBox()');
+  setTimeout(() => {
+    const fold = d.getElementById('svc-uptime');
+    check('services: a fold under the table, closed by default', fold && !fold.open && /Uptime, last 7 days/.test(t(fold.querySelector('summary'))));
+    const [sweek, smonth] = fold ? [...fold.querySelectorAll('.heatmap')] : [];
+    const srows = sweek ? [...sweek.querySelectorAll('.hm-row:not(.hm-head)')] : [];
+    check('  a row per recorded service (not one never recorded), 168 hours each', srows.length === 2 && srows.every((r) => r.querySelectorAll('.hm-cell').length === 168)
+      && t(srows[0].querySelector('.hm-label')) === 'Library (Kiwix)', srows.map((r) => t(r.querySelector('.hm-label'))));
+    const k = srows[0] ? [...srows[0].querySelectorAll('.hm-cell')] : [];
+    const marked = k.filter((c) => c.classList.contains('hm-mark'));
+    check('  the hour it stopped and started again: partly down, marked, said', marked.length === 1 && marked[0].classList.contains('hm-part')
+      && /Library \(Kiwix\), Tue 06 03:00–04:00: up 50 %, 1 restart$/.test(marked[0].title), marked.map((c) => c.title).join(' | '));
+    check('  35 days by day too, with the hub\'s dates', smonth && smonth.querySelectorAll('.hm-row:not(.hm-head)')[0].querySelectorAll('.hm-cell').length === 35
+      && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-row:not(.hm-head)')[0].querySelectorAll('.hm-cell')].pop().title));
+    check('  the week in a line', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(fold.querySelector('#svc-uptime-body > p'))), t(fold.querySelector('#svc-uptime-body > p')));
+    fold.open = true; w.eval('loadBox()');
+    setTimeout(() => {
+      check('  open stays open as the pane redraws', d.getElementById('svc-uptime').open && d.querySelectorAll('#svc-uptime .heatmap').length === 2);
+      check('no page errors', !errors.length, errors.join(' | '));
+      console.log(`failures: ${fails}`);
+      process.exit(fails ? 1 : 0);
+    }, 200);
+  }, 300);
 }, 300);
