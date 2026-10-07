@@ -163,5 +163,22 @@ check("F30: links in a cloned app tree are removed", "if path.is_symlink():" in 
 check("F30: deps extraction checks free space first", "DEPS_RESERVE" in (REPO / "irate_box/library/firmware.py").read_text())
 check("F24: nginx passes the guest's own address only", "$proxy_add_x_forwarded_for" not in ngx)
 
+# After installing an update the helper stops, so what is still queued runs with the new code (the
+# Lyra, 2026-10-07: a kit fetched just after an update ran with the old kits.py).
+hub_control.REQUESTS.mkdir(parents=True, exist_ok=True)
+for f in hub_control.REQUESTS.glob("*.json"):
+    f.unlink()
+ran, answered = [], []
+for i, what in enumerate(("update-install", "net-scan")):
+    f = hub_control.REQUESTS / f"{'a' * 15}{i}.json"
+    f.write_text(json.dumps({"action": what}))
+    os.utime(f, (1_000_000 + i, 1_000_000 + i))
+with mock.patch.dict(hub_control.ACTIONS, {"update-install": lambda req: ran.append("update") or "updated", "net-scan": lambda req: ran.append("scan") or "scanned"}), \
+     mock.patch.object(hub_control, "answer", lambda rid, ok, msg: answered.append(msg)):
+    hub_control.main()
+    check("after an update the helper stops; the next request waits for a fresh one", ran == ["update"] and answered == ["updated"]
+          and len(list(hub_control.REQUESTS.glob("*.json"))) == 1, (ran, answered))
+    hub_control.main()
+    check("  which then runs it", ran == ["update", "scan"])
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
