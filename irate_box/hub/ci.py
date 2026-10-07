@@ -34,6 +34,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -73,6 +74,57 @@ ENV_VARS = {
     "PIP_FIND_LINKS": "when the Building kit's wheelhouse is cached: its folder, so `pip install platformio` needs no internet",
     "HOME": "a folder of its own that stays between builds, so tool caches (~/.platformio, a venv) survive",
 }
+# The parts of a PlatformIO build the meshtasticd template and the Firmware Factory's builds share:
+# which PlatformIO (Debian's, or the wheelhouse's as a fallback), seeding it from the build cache,
+# and the build of $PIO_ENV (whose family is $PIO_ENV_FAMILY).
+_PIO_PICK = """PIO_FROM=${PIO:-auto}
+PIO_DEBIAN=/usr/bin/pio
+venv_pio() {  # PlatformIO from the wheelhouse (or PyPI), in a venv that sees Debian's protobuf
+  if ! grep -qs "include-system-site-packages = true" "$HOME/pio/pyvenv.cfg"; then
+    rm -rf "$HOME/pio" && python3 -m venv --system-site-packages "$HOME/pio" >&2
+  fi
+  [ -x "$HOME/pio/bin/pio" ] || "$HOME/pio/bin/pip" install -q --ignore-installed platformio >&2
+  echo "$HOME/pio/bin/pio"
+}
+"""
+_PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
+  echo "== seeding PlatformIO from the build cache ($CI_PIO_DEPS_TAG)"
+  # Only what is missing: what PlatformIO already has stays as it is. Its download cache gives it
+  # the platform (by the URL's hash); usage.db is left out, as its old dates would expire the rest.
+  mkdir -p "$HOME/.platformio/.cache/downloads"
+  for f in "$CI_PIO_DEPS"/core/.cache/downloads/*; do
+    [ "${f##*/}" = usage.db ] || [ -e "$HOME/.platformio/.cache/downloads/${f##*/}" ] || cp "$f" "$HOME/.platformio/.cache/downloads/"
+  done
+  # The cache's packages and libraries are the native build's: only a native build takes them.
+  if [ "$PIO_ENV_FAMILY" = native ]; then
+    mkdir -p "$HOME/.platformio/packages" ".pio/libdeps/$PIO_ENV"
+    for d in "$CI_PIO_DEPS"/packages/*/; do
+      [ -e "$HOME/.platformio/packages/$(basename "$d")" ] || cp -r "$d" "$HOME/.platformio/packages/"
+    done
+    libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
+    for d in "$libs"/*/; do
+      [ -e ".pio/libdeps/$PIO_ENV/$(basename "$d")" ] || cp -r "$d" ".pio/libdeps/$PIO_ENV/"
+    done
+  fi
+fi
+"""
+_PIO_BUILD = """case $PIO_FROM in
+  pip) PIO_BIN=$(venv_pio) ;;
+  debian) PIO_BIN=$PIO_DEBIAN ;;
+  *) if [ -x "$PIO_DEBIAN" ]; then PIO_BIN=$PIO_DEBIAN; else PIO_BIN=$(venv_pio); fi ;;
+esac
+echo "== building with $("$PIO_BIN" --version) ($PIO_BIN)"
+if ! "$PIO_BIN" run -e "$PIO_ENV" -j 1 2>&1 | tee "$HOME/pio-run.log"; then
+  if [ "$PIO_FROM" = auto ] && [ "$PIO_BIN" = "$PIO_DEBIAN" ] && ! grep -q "^Compiling " "$HOME/pio-run.log"; then
+    PIO_BIN=$(venv_pio)
+    echo "== Debian's PlatformIO stopped before compiling; building with $("$PIO_BIN" --version) from the wheelhouse"
+    "$PIO_BIN" run -e "$PIO_ENV" -j 1
+  else
+    exit 1
+  fi
+fi
+"""
+
 TEMPLATES = {
     "meshtasticd": {"title": "Meshtastic firmware: meshtasticd (native)", "script": """#!/bin/bash
 # .irate-ci.sh: build meshtasticd (PlatformIO env "native") on the box. The source is cloned from
@@ -87,51 +139,12 @@ set -euo pipefail
 # What to build: the release the library's build cache is for, which needs no internet, or develop
 # (anything it needs that the cache lacks is downloaded). Set FW_REF to choose.
 FW_REF=${CI_PIO_DEPS_TAG:-develop}
-PIO_FROM=${PIO:-auto}
-PIO_DEBIAN=/usr/bin/pio
-venv_pio() {  # PlatformIO from the wheelhouse (or PyPI), in a venv that sees Debian's protobuf
-  if ! grep -qs "include-system-site-packages = true" "$HOME/pio/pyvenv.cfg"; then
-    rm -rf "$HOME/pio" && python3 -m venv --system-site-packages "$HOME/pio" >&2
-  fi
-  [ -x "$HOME/pio/bin/pio" ] || "$HOME/pio/bin/pip" install -q --ignore-installed platformio >&2
-  echo "$HOME/pio/bin/pio"
-}
-[ -d "$HOME/fw/.git" ] || git clone -q --depth 50 https://github.com/meshtastic/firmware "$HOME/fw"
+""" + _PIO_PICK + """[ -d "$HOME/fw/.git" ] || git clone -q --depth 50 https://github.com/meshtastic/firmware "$HOME/fw"
 cd "$HOME/fw"
 git fetch -q --depth 50 origin "$FW_REF" && git checkout -q FETCH_HEAD
 git submodule update -q --init --depth 1
-if [ -n "${CI_PIO_DEPS:-}" ]; then
-  echo "== seeding PlatformIO from the build cache ($CI_PIO_DEPS_TAG)"
-  # Only what is missing: what PlatformIO already has stays as it is. Its download cache gives it
-  # the platform (by the URL's hash); usage.db is left out, as its old dates would expire the rest.
-  mkdir -p "$HOME/.platformio/.cache/downloads" "$HOME/.platformio/packages" .pio/libdeps/native
-  for f in "$CI_PIO_DEPS"/core/.cache/downloads/*; do
-    [ "${f##*/}" = usage.db ] || [ -e "$HOME/.platformio/.cache/downloads/${f##*/}" ] || cp "$f" "$HOME/.platformio/.cache/downloads/"
-  done
-  for d in "$CI_PIO_DEPS"/packages/*/; do
-    [ -e "$HOME/.platformio/packages/$(basename "$d")" ] || cp -r "$d" "$HOME/.platformio/packages/"
-  done
-  libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
-  for d in "$libs"/*/; do
-    [ -e ".pio/libdeps/native/$(basename "$d")" ] || cp -r "$d" .pio/libdeps/native/
-  done
-fi
-case $PIO_FROM in
-  pip) PIO_BIN=$(venv_pio) ;;
-  debian) PIO_BIN=$PIO_DEBIAN ;;
-  *) if [ -x "$PIO_DEBIAN" ]; then PIO_BIN=$PIO_DEBIAN; else PIO_BIN=$(venv_pio); fi ;;
-esac
-echo "== building with $("$PIO_BIN" --version) ($PIO_BIN)"
-if ! "$PIO_BIN" run -e native -j 1 2>&1 | tee "$HOME/pio-run.log"; then
-  if [ "$PIO_FROM" = auto ] && [ "$PIO_BIN" = "$PIO_DEBIAN" ] && ! grep -q "^Compiling " "$HOME/pio-run.log"; then
-    PIO_BIN=$(venv_pio)
-    echo "== Debian's PlatformIO stopped before compiling; building with $("$PIO_BIN" --version) from the wheelhouse"
-    "$PIO_BIN" run -e native -j 1
-  else
-    exit 1
-  fi
-fi
-echo "== keeping the program"
+PIO_ENV=native PIO_ENV_FAMILY=native
+""" + _PIO_SEED + _PIO_BUILD + """echo "== keeping the program"
 cp .pio/build/native/meshtasticd "$CI_ARTIFACTS/" 2>/dev/null || cp .pio/build/native/program "$CI_ARTIFACTS/meshtasticd"
 """},
     "make": {"title": "Run make", "script": """#!/bin/bash
@@ -425,23 +438,224 @@ def prepare_git():
 
 
 def run_queue():
-    """Every queued job, oldest first, until the queue is empty (more may arrive meanwhile)."""
+    """Every queued job until the queue is empty (more may arrive meanwhile): pushes, Build now and
+    run changes first, oldest first; then the Firmware Factory's, one at a time, in its order
+    (factory.order: moved up, then the family built last, then the oldest)."""
+    from irate_box.hub import factory  # it imports this module
     WORK.mkdir(exist_ok=True)
     prepare_git()
     while True:
-        jobs = sorted(p for p in QUEUE.glob("*.json"))
+        jobs = []
+        for path in sorted(QUEUE.glob("*.json")):
+            try:
+                jobs.append((path, json.loads(path.read_text())))
+            except (OSError, ValueError):
+                path.unlink(missing_ok=True)
         if not jobs:
             return 0
-        for path in jobs:
-            try:
-                job = json.loads(path.read_text())
-            except (OSError, ValueError):
-                job = None
+        plain = [(p, j) for p, j in jobs if j.get("kind") != "firmware"]
+        if plain:
+            path, job = plain[0]
             path.unlink(missing_ok=True)
-            if job and job.get("change"):
+            if job.get("change"):
                 change_run(job)
-            elif job:
+            else:
                 build(job)
+            continue
+        firmware = factory.order([dict(j, _path=str(p)) for p, j in jobs], factory.last_family())
+        job = firmware[0]
+        Path(job.pop("_path")).unlink(missing_ok=True)
+        build_firmware(job)
+
+
+# --- the Firmware Factory's builds (factory.py queues them) ------------------------------------
+
+FACTORY = "firmware-factory"     # runs/firmware-factory/<n>
+FACTORY_KEEP = 2                 # each target's newest runs kept (and any marked keep)
+ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
+FAMILY_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+# What a target's build leaves that is worth keeping: flash images, update zips, UF2 and hex files,
+# and native's program. Not the .elf or the map.
+ARTIFACT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|uf2|hex|zip)$|^(meshtasticd|program)$")
+FIRMWARE_SCRIPT = """#!/bin/bash
+# A Firmware Factory build (factory.py): one PlatformIO environment, $FW_ENV, of a source cloned
+# from the box's own copy at the commit asked for; ci.py keeps its files and what it used.
+set -euo pipefail
+""" + _PIO_PICK + 'PIO_ENV=$FW_ENV PIO_ENV_FAMILY=$FW_FAMILY\n' + _PIO_SEED + _PIO_BUILD
+
+
+def _mirror_paths():
+    """The local copies the mirrors' URLs point at (mirror-urls.json): what the factory may build."""
+    try:
+        urls = json.loads(MIRROR_URLS.read_text())
+    except (OSError, ValueError):
+        return set()
+    return {str(Path(u[7:]).resolve()) for u in urls.values() if isinstance(u, str) and u.startswith("file:///")}
+
+
+class Usage(threading.Thread):
+    """What one build used: wall and CPU time, peak memory (its unit's cgroup, sampled every few
+    seconds), disk read and written, the card's free space before and after, the hottest the board
+    got, and what the unit received over the network (IPAccounting: none means it ran offline)."""
+
+    def __init__(self, every=5):
+        super().__init__(daemon=True)
+        self.every, self.stop_ev = every, threading.Event()
+        self.peak, self.hottest = 0, None
+        self.cg = self._cgroup()
+
+    @staticmethod
+    def _cgroup():
+        try:
+            for line in Path("/proc/self/cgroup").read_text().splitlines():
+                if line.startswith("0::"):
+                    f = Path("/sys/fs/cgroup") / line[3:].lstrip("/") / "memory.current"
+                    return f if f.is_file() else None
+        except OSError:
+            pass
+        return None
+
+    @staticmethod
+    def temperature():
+        temps = []
+        for z in Path("/sys/class/thermal").glob("thermal_zone*/temp"):
+            try:
+                temps.append(int(z.read_text()) / 1000)
+            except (OSError, ValueError):
+                pass
+        return max(temps) if temps else None
+
+    @staticmethod
+    def network():
+        out = subprocess.run(["systemctl", "show", "-p", "IPIngressBytes", "-p", "IPEgressBytes", "irate-box-ci.service"],
+                             capture_output=True, text=True).stdout
+        vals = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+        try:
+            got = int(vals.get("IPIngressBytes", ""))
+        except ValueError:
+            return None
+        return None if got >= 2 ** 63 else got   # unset: "[not set]" or UINT64_MAX
+
+    def _sample(self):
+        if self.cg:
+            try:
+                self.peak = max(self.peak, int(self.cg.read_text()))
+            except (OSError, ValueError):
+                pass
+        t = self.temperature()
+        if t is not None:
+            self.hottest = t if self.hottest is None else max(self.hottest, t)
+
+    def run(self):
+        while not self.stop_ev.wait(self.every):
+            self._sample()
+
+    def __enter__(self):
+        import resource
+        self.r0 = resource.getrusage(resource.RUSAGE_CHILDREN)
+        self.t0, self.free0, self.net0 = time.time(), shutil.disk_usage(ROOT).free, self.network()
+        self._sample()
+        self.start()
+        return self
+
+    def __exit__(self, *exc):
+        import resource
+        self.stop_ev.set()
+        self._sample()
+        r1 = resource.getrusage(resource.RUSAGE_CHILDREN)
+        net1 = self.network()
+        self.result = {
+            "wall": round(time.time() - self.t0),
+            "cpu": round((r1.ru_utime - self.r0.ru_utime) + (r1.ru_stime - self.r0.ru_stime)),
+            "peak_memory": self.peak or r1.ru_maxrss * 1024,
+            "read_bytes": (r1.ru_inblock - self.r0.ru_inblock) * 512,
+            "written_bytes": (r1.ru_oublock - self.r0.ru_oublock) * 512,
+            "free_before": self.free0, "free_after": shutil.disk_usage(ROOT).free,
+            "hottest": self.hottest,
+            "received": None if self.net0 is None or net1 is None else net1 - self.net0}
+        self.result["offline"] = self.result["received"] == 0
+        return False
+
+
+def build_firmware(job):
+    """One Firmware Factory target: the source's local copy (a mirror, or a private repository) at
+    the commit, cloned with its submodules from the mirrors, PlatformIO run for the environment,
+    its files kept, and what the build used recorded."""
+    repo = Path(job.get("repo", "")).resolve()
+    if not (str(repo) in _mirror_paths() or repo.parent == PRIVATE.resolve()):
+        return  # only the owner's mirrors and private repositories: never a guest's
+    env_name, family = job.get("env", ""), job.get("family", "")
+    if not (ENV_RE.match(env_name) and FAMILY_RE.match(family) and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))):
+        return
+    runs = RUNS / FACTORY
+    runs.mkdir(parents=True, exist_ok=True)
+    run = runs / str(_next_number(runs))
+    (run / "artifacts").mkdir(parents=True)
+    started = time.time()
+    keep = {k: job.get(k) for k in ("source", "ref", "commit", "env", "family", "name", "batch", "queued")}
+    _write_status(run, kind="firmware", repo=FACTORY, branch=job.get("ref"), started=started, state="running", **keep)
+    src = WORK / FACTORY
+    shutil.rmtree(src, ignore_errors=True)
+    state, usage, work_bytes = "failed", None, None
+    with open(run / "log.txt", "w") as log:
+        def say(text):
+            log.write(f"== {text}\n")
+            log.flush()
+        say(f"{job.get('source')} {job.get('ref')} ({job['commit'][:7]}): {env_name}, family {family}, on {os.uname().nodename}")
+        try:
+            out = _git("clone", "--quiet", "--no-checkout", str(repo), str(src))
+            if out.returncode != 0:
+                raise RuntimeError(f"clone failed: {out.stderr.strip()}")
+            out = _git("checkout", "--quiet", job["commit"], cwd=src)
+            if out.returncode != 0:
+                raise RuntimeError(f"checkout failed: {out.stderr.strip()}")
+            _git("submodule", "update", "--init", "--recursive", "--depth", "1", cwd=src, timeout=3600)
+            env = dict(os.environ, CI="1", CI_REPO=FACTORY, CI_BRANCH=str(job.get("ref")), CI_COMMIT=job["commit"],
+                       CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family)
+            deps = _pio_deps()
+            if deps:
+                env["CI_PIO_DEPS"] = str(deps)
+                env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
+            wheelhouse = _wheelhouse()
+            if wheelhouse:
+                env["PIP_NO_INDEX"] = "1"
+                env["PIP_FIND_LINKS"] = str(wheelhouse)
+            say(f"building {env_name} (time limit {TIME_LIMIT // 60} min)")
+            with Usage() as usage:
+                proc = subprocess.run(["bash", "-c", FIRMWARE_SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                      stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
+            state = "passed" if proc.returncode == 0 else "failed"
+            built = src / ".pio" / "build" / env_name
+            kept = []
+            for f in sorted(built.iterdir()) if built.is_dir() else []:
+                if f.is_file() and not f.is_symlink() and ARTIFACT_RE.match(f.name):
+                    shutil.copy2(f, run / "artifacts" / f.name)
+                    kept.append(f.name)
+            work_bytes = sum(f.stat().st_size for f in (src / ".pio").rglob("*") if f.is_file() and not f.is_symlink()) \
+                if (src / ".pio").is_dir() else 0
+            say(f"PlatformIO exited with {proc.returncode}; kept {', '.join(kept) or 'nothing'}")
+        except subprocess.TimeoutExpired:
+            state = "timed out"
+            say(f"stopped: over the time limit of {TIME_LIMIT // 60} min")
+        except (RuntimeError, OSError) as exc:
+            say(str(exc))
+        finally:
+            shutil.rmtree(src, ignore_errors=True)
+    res = dict(usage.result, work_bytes=work_bytes) if usage and hasattr(usage, "result") else None
+    _write_status(run, state=state, finished=time.time(), duration=round(time.time() - started), resources=res,
+                  artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()))
+    prune_factory(runs)
+
+
+def prune_factory(runs):
+    """Each target's newest FACTORY_KEEP runs, and any marked keep; never one under way."""
+    by_env = {}
+    for p in sorted((p for p in runs.iterdir() if p.name.isdigit()), key=lambda p: int(p.name)):
+        by_env.setdefault(_status(p).get("env"), []).append(p)
+    for group in by_env.values():
+        loose = [p for p in group if not _status(p).get("keep") and _status(p).get("state") != "running"]
+        for old in loose[:-FACTORY_KEEP]:
+            shutil.rmtree(old, ignore_errors=True)
 
 
 def snapshot(limit=20):

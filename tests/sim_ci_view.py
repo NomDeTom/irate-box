@@ -125,7 +125,7 @@ for layout in ("native", "whole"):
     (home / ".platformio/packages/framework-portduino").mkdir(parents=True)
     (home / ".platformio/packages/framework-portduino/package.json").write_text("kept")
     fwd.mkdir(); (fwd / ".pio/libdeps/native/Crypto").mkdir(parents=True); (fwd / ".pio/libdeps/native/Crypto/library.json").write_text("kept")
-    r = subprocess.run(["bash", "-euc", seed], cwd=fwd, env=dict(os.environ, HOME=str(home), CI_PIO_DEPS=str(cache), CI_PIO_DEPS_TAG="v2.8.1.8e6a88d"),
+    r = subprocess.run(["bash", "-euc", seed], cwd=fwd, env=dict(os.environ, HOME=str(home), CI_PIO_DEPS=str(cache), CI_PIO_DEPS_TAG="v2.8.1.8e6a88d", PIO_ENV="native", PIO_ENV_FAMILY="native"),
                        capture_output=True, text=True)
     pio = home / ".platformio"
     check(f"seeding ({layout} cache): the platform's archive in, usage.db not, what was there kept", r.returncode == 0
@@ -133,6 +133,12 @@ for layout in ("native", "whole"):
           and (pio / "packages/framework-portduino/package.json").read_text() == "kept", r.stderr)
     check(f"  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
           and (fwd / ".pio/libdeps/native/Crypto/library.json").read_text() == "kept", sorted(p.name for p in (fwd / ".pio/libdeps/native").iterdir()))
+# Another family (a Firmware Factory build, step 36): the download cache, not native's packages or libraries.
+home, fwd = T / "home-esp", T / "fw-esp"; fwd.mkdir()
+r = subprocess.run(["bash", "-euc", seed], cwd=fwd, env=dict(os.environ, HOME=str(home), CI_PIO_DEPS=str(T / "cache-native"), CI_PIO_DEPS_TAG="v2.8.1.8e6a88d",
+                   PIO_ENV="heltec-v3", PIO_ENV_FAMILY="esp32s3"), capture_output=True, text=True)
+check("seeding another family: the download cache only", r.returncode == 0 and (home / ".platformio/.cache/downloads/eb76").exists()
+      and not (home / ".platformio/packages").exists() and not (fwd / ".pio").exists(), r.stderr)
 # Which PlatformIO (step 33c): Debian's by default; the wheelhouse's in a venv that sees Debian's
 # protobuf when Debian's has none, is asked for, or stops before compiling; never a second build
 # after one that compiled and failed.
@@ -148,7 +154,7 @@ def pio_case(name, debian, debian_out, debian_rc, mode="auto"):
         fake(home / "debpio", "6.1.10", debian_out, debian_rc)
     fake(home / "venvpio", "6.2.0", "Compiling .pio/x.o\\n", 0)
     r = subprocess.run(["bash", "-c", "set -euo pipefail\n" + pio_part.replace("PIO_DEBIAN=/usr/bin/pio", f"PIO_DEBIAN={home / 'debpio'}")],
-                       env=dict(os.environ, HOME=str(home), PIO=mode), capture_output=True, text=True)
+                       env=dict(os.environ, HOME=str(home), PIO=mode, PIO_ENV="native"), capture_output=True, text=True)
     calls = [Path(c.split()[0]).name for c in (home / "calls").read_text().splitlines()] if (home / "calls").exists() else []
     return r.returncode, calls, r.stdout + r.stderr
 rc, calls, out = pio_case("deb-ok", True, "Compiling .pio/x.o\\n", 0)

@@ -30,6 +30,7 @@ from irate_box.hub import access
 from irate_box.hub import board
 from irate_box.hub import ci
 from irate_box.library import firmware
+from irate_box.hub import factory
 from irate_box.hub import flasher
 from irate_box.hub import gitrepos
 from irate_box.hub import hotspot
@@ -1898,6 +1899,23 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, snap)
             return
 
+        if path == "/admin/factory":
+            self.send_json(200, factory.snapshot())
+            return
+
+        if path == "/admin/factory/targets":
+            # A source's refs, and its targets at one (factory.py): read from its local copy.
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            try:
+                src = factory.source(unquote(query.get("source", "")))
+                out = {"source": src["name"], "refs": factory.refs(src)}
+                if query.get("ref"):
+                    out.update(factory.targets(src, unquote(query["ref"])))
+                self.send_json(200, out)
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            return
+
         if path == "/admin/ci/run":
             query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
             try:
@@ -2133,6 +2151,26 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/factory":
+            # The Firmware Factory's queue (factory.py): queue targets, cancel or move one up, pause.
+            action = payload.get("action")
+            try:
+                if action == "queue":
+                    out = factory.queue(str(payload.get("source", "")), str(payload.get("ref", "")), payload.get("targets"))
+                    self.send_json(202, dict(out, snapshot=factory.snapshot()))
+                    return
+                if action in ("cancel", "up"):
+                    (factory.cancel if action == "cancel" else factory.move_up)(str(payload.get("id", "")))
+                elif action in ("pause", "resume"):
+                    factory.pause(action == "pause")
+                else:
+                    raise ValueError("action must be queue, cancel, up, pause or resume")
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+                return
+            self.send_json(200, factory.snapshot())
             return
 
         if path == "/admin/ci":
