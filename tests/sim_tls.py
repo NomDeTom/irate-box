@@ -96,5 +96,33 @@ os.environ["HUB_WEB_SERVER"] = "nginx"
 from irate_box.hub import access  # noqa: E402
 csp = access.addon_csp({"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}})
 check("an add-on's ws:// also as wss:// (the MQTT explorer over HTTPS)", "connect-src 'self' ws://$host/mqtt wss://$host/mqtt https://api.github.com;" in csp, csp)
+# The hub's public routes (stage 3): /certificate.json says only public facts, /certificate/ca.crt is
+# the CA's certificate as a download, never a key.
+import socket, urllib.request, urllib.error  # noqa: E402
+tls.front(True)
+s_ = socket.socket(); s_.bind(("127.0.0.1", 0)); port = s_.getsockname()[1]; s_.close()
+env = dict(os.environ, HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), PORT=str(port), HUB_BIND="127.0.0.1")
+hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def get(path):
+    for _ in range(100):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=2) as r:
+                return r.status, dict(r.headers), r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, dict(e.headers), b""
+        except OSError:
+            time.sleep(0.1)
+try:
+    code, _, body = get("/certificate.json")
+    pub = json.loads(body)
+    check("/certificate.json: on, the fingerprint, the names, the expiry; nothing else", code == 200 and pub["on"] and pub["fingerprint"] == tls.status()["ca"]["fingerprint"]
+          and set(pub) == {"set_up", "on", "port", "fingerprint", "names", "expires"}, pub)
+    code, headers, body = get("/certificate/ca.crt")
+    check("/certificate/ca.crt: the CA's certificate, as one to install", code == 200 and body.decode() == tls.CA_CERT.read_text()
+          and headers.get("Content-Type") == "application/x-x509-ca-cert" and b"PRIVATE" not in body)
+    code, headers, _ = get("/certificate")
+    check("/certificate: to its page", code in (200, 302))
+finally:
+    hub.terminate(); hub.wait()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

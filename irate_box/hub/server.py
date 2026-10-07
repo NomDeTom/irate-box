@@ -2031,6 +2031,39 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(204 if ok else 403)
             return
 
+        if path in ("/certificate", "/certificate.json", "/certificate/ca.crt"):
+            # HTTPS (step 15): the box's CA for guests to install, and what the page says of it.
+            # Public: only the CA's public certificate and facts about it, never a key.
+            if path == "/certificate":
+                self.send_response(302)
+                self.send_header("Location", "/certificate.html")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            try:
+                st = json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
+            except (OSError, ValueError):
+                st = {"set_up": False}
+            if path == "/certificate.json":
+                cert = st.get("cert") or {}
+                self.send_json(200, {"set_up": bool(st.get("set_up")), "on": bool(st.get("on")), "port": (st.get("ports") or {}).get("main", 443),
+                                     "fingerprint": (st.get("ca") or {}).get("fingerprint"), "names": cert.get("names", []),
+                                     "expires": cert.get("expires")})
+                return
+            try:
+                body = (CONTROL_DIR / "tls" / "ca.crt").read_bytes()
+            except OSError:
+                self.send_json(404, {"error": "no certificate yet"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-x509-ca-cert")
+            self.send_header("Content-Disposition", 'attachment; filename="irate-box-ca.crt"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path in ("/factory.json", "/factory/file"):
             # The Firmware Factory's tile (factory.py public_view): only while the owner shows it,
             # and only its downloadable files (ESP32 images and zips, UF2s), never logs or sources.

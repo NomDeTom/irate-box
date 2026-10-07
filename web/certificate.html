@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The box's certificate · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+</head>
+<body class="help certificate">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>🔐 The box's certificate</h1>
+    <p class="subtitle">So your device can talk to this box privately, over HTTPS.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <section>
+    <p id="cert-state">Looking…</p>
+    <p id="cert-check" role="status"></p>
+  </section>
+
+  <section id="cert-about" hidden>
+    <h2>What installing it does</h2>
+    <p>
+      The box made its own certificate authority. Installing it tells your device to trust the
+      box's HTTPS pages, so what you send here (the admin password above all) can't be read or
+      changed by anyone else on the WiFi. It can vouch <strong>only for this box</strong>: its names
+      (<span id="cert-names"></span>) and its addresses on this network. Your device will not trust
+      it for any other site, even if it were stolen, because those limits are part of the
+      certificate itself.
+    </p>
+    <p>
+      You don't need it to use the box: every page also works over plain HTTP, as before.
+    </p>
+    <p><a class="head-btn labelled" id="cert-download" href="/certificate/ca.crt" download="irate-box-ca.crt">⬇ Download the certificate</a></p>
+    <p>Its fingerprint (SHA-256), to compare with what your device shows:</p>
+    <p><code id="cert-fingerprint" class="cert-fingerprint"></code></p>
+
+    <h2>Installing it</h2>
+    <div id="cert-steps"></div>
+    <p>
+      Afterwards, open <a id="cert-https" href="#">the hub over HTTPS</a>. If your browser warns
+      you, don't click through: the certificate isn't installed yet, or isn't trusted yet.
+    </p>
+  </section>
+
+  <script src="/certificate.js"></script>
+</body>
+</html>
