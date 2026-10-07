@@ -136,5 +136,21 @@ check("MQTT: CONNECT as 3.1.1, SUBSCRIBE to msh/#, a PUBLISH decoded", got["conn
 srv.close()
 src = (REPO / "irate_box/hub/meshbridge.py").read_text()
 check("it never publishes", "0x30" not in src.split("class Bridge")[1])
+# The security doctor's rules (step 18): never bridged out, anonymous limited to msh/#, keys private.
+from irate_box.root import secdoctor as SD  # noqa: E402
+MQ = T / "mosquitto"; (MQ / "conf.d").mkdir(parents=True)
+SD.MOSQUITTO = MQ; SD.STATE = T
+check("doctor: no broker, nothing to say but that", [f["status"] for f in SD.step_mqtt({})] == ["ok"])
+(MQ / "irate-box.acl").write_text("# limited\ntopic readwrite msh/#\n")
+(MQ / "conf.d" / "irate-box.conf").write_text(f"allow_anonymous true\nacl_file {MQ / 'irate-box.acl'}\nlistener 1883\n")
+f = {x["id"]: x for x in SD.step_mqtt({})}
+check("  the box's own config: not bridged, anonymous limited, keys private", (f["mqtt-bridge"]["status"], f["mqtt-acl"]["status"], f["mqtt-keys"]["status"]) == ("ok", "ok", "ok"), f)
+(MQ / "conf.d" / "bridge.conf").write_text("connection meshtastic\naddress mqtt.meshtastic.org:1883\ntopic msh/# both 0\n")
+(MQ / "irate-box.acl").write_text("topic readwrite msh/#\ntopic readwrite #\n")
+os.chmod(B.CHANNELS, 0o644)
+f = {x["id"]: x for x in SD.step_mqtt({})}
+check("  a bridge to mqtt.meshtastic.org, an open ACL, readable keys: each said", f["mqtt-bridge"]["status"] == "problem" and "mqtt.meshtastic.org" in f["mqtt-bridge"]["detail"]
+      and f["mqtt-acl"]["status"] == "warn" and f["mqtt-keys"]["status"] == "problem", {k: v["status"] for k, v in f.items()})
+check("  in the doctor's steps", any(st[0] == "mqtt" for st in SD.STEPS))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
