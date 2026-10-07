@@ -90,8 +90,37 @@ try:
 except RuntimeError as exc:
     check("nginx refusing the twins: undone, and said", not list(tls.FRONT.glob("*.conf")) and "taken away again" in str(exc) and not tls.status()["on"], str(exc))
 nginx_ok["ok"] = True
+# Under Caddy: a site of its own per twin, importing the plain site's snippet (Caddy refuses TLS on a
+# block whose other port is plain); the admin redirect by a protocol matcher. With $CADDY naming
+# Caddy binaries (2.6, Debian's, and a newer one), the rendered Caddyfile is validated with each.
+tls.front(False)
 os.environ["HUB_WEB_SERVER"] = "caddy"
-check("under Caddy: made, not yet served, and said so", "nginx only so far" in tls.front(True))
+tls.front(True)
+sites = sorted(p.name for p in tls.FRONT.glob("caddy-site-*.caddy"))
+main_site = (tls.FRONT / "caddy-site-main.caddy").read_text()
+check("under Caddy: the hub's and the add-ons' twins, each importing its snippet, with the certificate", sites == ["caddy-site-addons.caddy", "caddy-site-main.caddy"]
+      and "https://:443 {" in main_site and f"tls {tls.CHAIN} {tls.KEY}" in main_site and "import irate_box_hub" in main_site
+      and "import irate_box_addons" in (tls.FRONT / "caddy-site-addons.caddy").read_text() and not list(tls.FRONT.glob("nginx-*.conf")), sites)
+tls.admin_only(True)
+check("  admin over HTTPS only, by a protocol matcher", "@irate_box_plain protocol http" in (tls.FRONT / "caddy-admin.caddy").read_text()
+      and "redir @irate_box_plain https://{host}{uri} 302" in (tls.FRONT / "caddy-admin.caddy").read_text())
+caddies = [c for c in os.environ.get("CADDY", "").split(":") if c]
+cf = (REPO / "config" / "Caddyfile").read_text().replace("$2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT", "$2a$14$" + "a" * 53)
+for c in caddies:
+    ver = subprocess.run([c, "version"], capture_output=True, text=True).stdout
+    text = cf.replace("basic_auth", "basicauth") if ver.startswith("v2.6") else cf
+    (T / "Caddyfile").write_text(text)
+    for state, files in (("with HTTPS on", True), ("with HTTPS off", False)):
+        if not files:
+            for f in tls.FRONT.glob("caddy-*.caddy"):
+                f.unlink()
+        r = subprocess.run([c, "validate", "--adapter", "caddyfile", "--config", str(T / "Caddyfile")], capture_output=True, text=True,
+                           env=dict(os.environ, HUB_TLS_FRONT=str(tls.FRONT), HUB_ACCESS_DIR=str(T / "access")))
+        check(f"  Caddy {ver.split()[0]} validates the box's Caddyfile {state}", r.returncode == 0, (r.stderr or r.stdout)[-400:])
+    tls.front(True); tls.admin_only(True)
+if not caddies:
+    print("SKIP the Caddyfile with real Caddy: set CADDY=/path/to/caddy[:/path/to/another]")
+tls.front(False)
 os.environ["HUB_WEB_SERVER"] = "nginx"
 from irate_box.hub import access  # noqa: E402
 csp = access.addon_csp({"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}})

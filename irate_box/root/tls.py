@@ -176,8 +176,20 @@ def make_cert():
     return rec
 
 
+def _server():
+    return "caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else "nginx"
+
+
 def _nginx_check_and_reload():
-    """nginx -t, then a reload; (ok, why). Stood in by the tests."""
+    """The front's own check, then a reload; (ok, why). Stood in by the tests. (Named for nginx,
+    its first; Caddy's is caddy validate on its live config.)"""
+    if _server() == "caddy":
+        t = subprocess.run(["caddy", "validate", "--adapter", "caddyfile", "--config", "/etc/caddy/Caddyfile"],
+                           capture_output=True, text=True, timeout=60)
+        if t.returncode != 0:
+            return False, ((t.stderr or t.stdout).strip().splitlines() or ["caddy validate failed"])[-1]
+        r = subprocess.run(["systemctl", "reload", "caddy"], capture_output=True, text=True, timeout=60)
+        return r.returncode == 0, (r.stderr or "").strip()
     t = subprocess.run(["nginx", "-t", "-q"], capture_output=True, text=True, timeout=60)
     if t.returncode != 0:
         return False, ((t.stderr or t.stdout).strip().splitlines() or ["nginx -t failed"])[-1]
@@ -185,28 +197,41 @@ def _nginx_check_and_reload():
     return r.returncode == 0, (r.stderr or "").strip()
 
 
+def _front_files():
+    """{file: text}: each site's TLS twin, for the web server in front.
+    nginx: an include in each server block (listen … ssl, the certificate).
+    Caddy: a site of its own per twin, importing the same snippet as the plain site (its routes)."""
+    if _server() == "caddy":
+        return {FRONT / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
+                f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else 'addons'}\n}}\n"
+                for name in ("main", "addons")}
+    out = {}
+    for name, port in TWINS.items():
+        ds = " default_server" if name == "main" else ""
+        out[FRONT / f"nginx-{name}.conf"] = (f"# Written by irate-box (root/tls.py): this server block's TLS twin.\nlisten {port} ssl{ds};\n"
+                                             f"listen [::]:{port} ssl{ds};\nssl_certificate {CHAIN};\nssl_certificate_key {KEY};\n"
+                                             "ssl_protocols TLSv1.2 TLSv1.3;\n")
+    return out
+
+
 def front(on):
     """HTTPS on or off at the front: each server block's include, then nginx checked and reloaded.
     A check that fails takes the includes away again, so the box serves what it did before."""
-    server = os.environ.get("HUB_WEB_SERVER", "nginx")
-    if server != "nginx":
-        return f"HTTPS is served by nginx only so far ({server} here): the certificate is made, not yet served"
     FRONT.mkdir(parents=True, exist_ok=True)
     os.chmod(FRONT, 0o755)
     if not on:
-        (FRONT / "nginx-admin.conf").unlink(missing_ok=True)  # never send plain /admin to a dead HTTPS port
-    for name, port in TWINS.items():
-        f = FRONT / f"nginx-{name}.conf"
+        for f in ("nginx-admin.conf", "caddy-admin.caddy"):
+            (FRONT / f).unlink(missing_ok=True)  # never send plain /admin to a dead HTTPS port
+    files = _front_files()
+    for f, text in files.items():
         if on:
-            ds = " default_server" if name == "main" else ""
-            _write(f, f"# Written by irate-box (root/tls.py): this server block's TLS twin.\nlisten {port} ssl{ds};\nlisten [::]:{port} ssl{ds};\n"
-                      f"ssl_certificate {CHAIN};\nssl_certificate_key {KEY};\nssl_protocols TLSv1.2 TLSv1.3;\n", 0o644)
+            _write(f, text, 0o644)
         else:
             f.unlink(missing_ok=True)
     ok, why = _nginx_check_and_reload()
     if not ok and on:
-        for name in TWINS:
-            (FRONT / f"nginx-{name}.conf").unlink(missing_ok=True)
+        for f in files:
+            f.unlink(missing_ok=True)
         _nginx_check_and_reload()
         rec = _record()
         rec["on"] = False
@@ -230,11 +255,17 @@ def admin_only(on):
     rec = _record()
     if on and not rec.get("on"):
         raise ValueError("HTTPS is off: switch it on first")
-    f = FRONT / "nginx-admin.conf"
+    port = TWINS["main"]
+    there = "" if port == 443 else f":{port}"
+    if _server() == "caddy":
+        f = FRONT / "caddy-admin.caddy"
+        text = ("# Written by irate-box (root/tls.py): /admin over HTTPS only.\n@irate_box_plain protocol http\n"
+                f"redir @irate_box_plain https://{{host}}{there}{{uri}} 302\n")
+    else:
+        f = FRONT / "nginx-admin.conf"
+        text = f"# Written by irate-box (root/tls.py): /admin over HTTPS only.\nif ($scheme = http) {{ return 302 https://$host{there}$request_uri; }}\n"
     if on:
-        port = TWINS["main"]
-        _write(f, "# Written by irate-box (root/tls.py): /admin over HTTPS only.\n"
-                  f"if ($scheme = http) {{ return 302 https://$host{'' if port == 443 else f':{port}'}$request_uri; }}\n", 0o644)
+        _write(f, text, 0o644)
     else:
         f.unlink(missing_ok=True)
     ok, why = _nginx_check_and_reload()

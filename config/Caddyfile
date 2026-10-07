@@ -6,8 +6,12 @@
 # irate-box.nginx, is the default. A route changed here is changed there too.
 #
 # Rules from §5 "Two listeners":
-#   - :80 only, always plain. Captive-portal probes are HTTP; an HTTPS listener
-#     appears only when a cert file exists, and never as a redirect target.
+#   - :80 always plain. Captive-portal probes are HTTP; an HTTPS listener appears only
+#     when the box has a certificate (next-work plan step 15: root/tls.py writes its
+#     sites, imported at the end), and never as a redirect target.
+#   - The routes are snippets, (irate_box_hub) and (irate_box_addons), so the plain
+#     sites and their HTTPS twins serve the same: Caddy can't put TLS on one port of a
+#     site block whose other port is plain.
 #   - never a blanket HTTP→HTTPS redirect, never HSTS. auto_https off keeps Caddy
 #     from adding either on its own.
 #
@@ -23,7 +27,7 @@
 	admin off
 }
 
-:80 {
+(irate_box_hub) {
 	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
 	request_header -X-Irate-Front
 
@@ -386,6 +390,9 @@
 	# when the password is set; from then on the login applies. Root-owned, so the hub
 	# cannot bring it back.
 	handle /admin/* {
+		# The owner's "admin over HTTPS only" (step 15, root/tls.py): plain requests sent to
+		# the HTTPS twin, before any login. Present only while that switch is on.
+		import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-admin*.caddy
 		@unclaimed file {
 			root {$HUB_CADDY_DIR:/etc/caddy}
 			try_files /irate-box-unclaimed
@@ -432,6 +439,10 @@
 	}
 }
 
+:80 {
+	import irate_box_hub
+}
+
 # --- the add-on origin: the local add-ons (plans/no-root-addons-plan) ------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's
 # login, read the hub's storage, or script its pages. Their files are the hub user's
@@ -439,7 +450,7 @@
 # proxies anywhere. The routes, one per add-on that is not off with its login and
 # Content-Security-Policy, are the root helper's (addons-routes.caddy). Caddy follows links,
 # unlike nginx's disable_symlinks: the security doctor looks for any in the folder.
-:{$HUB_ADDON_PORT:8090} {
+(irate_box_addons) {
 	root * {$HUB_ADDONS_ROOT:/var/lib/hub/addons}
 	header {
 		X-Content-Type-Options nosniff
@@ -450,3 +461,11 @@
 	import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/addons-routes.caddy*
 }
 
+:{$HUB_ADDON_PORT:8090} {
+	import irate_box_addons
+}
+
+# HTTPS (next-work plan step 15): https://:443 and the add-ons' twin, each importing the same
+# snippet as its plain site, with the box's certificate. Written by root/tls.py only while HTTPS
+# is on; with none, this matches nothing and the box serves plain HTTP only.
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-site-*.caddy
