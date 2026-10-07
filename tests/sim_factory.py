@@ -166,6 +166,31 @@ ci.build, ci.build_firmware = real_build, real_fw
 n = len(factory.runs(200))
 ci.build_firmware({"kind": "firmware", "repo": str(guest), "commit": "a" * 40, "env": "native", "family": "native", "ref": "main"})
 check("a public repository that is not a mirror is never built", len(factory.runs(200)) == n)
+# Fetch tools (git-ci-plan §4b item 7): one target of the family, nothing compiled.
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
+out = factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32s3")
+j = factory._jobs()[0]
+check("fetch tools: queued for one target of the family (a pr-level one), tools only", out["env"] == "heltec-v3" and j["tools_only"] is True
+      and j["family"] == "esp32s3" and j["env"] == "heltec-v3", j)
+try:
+    factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32p4"); check("  a family the source hasn't: refused", False)
+except ValueError:
+    check("  a family the source hasn't: refused", True)
+seen_env = {}
+ci.FIRMWARE_SCRIPT = 'echo "$FW_TOOLS_ONLY" > "$CI_ARTIFACTS/../tools-only.txt"\n'
+ci.run_queue()
+st = factory.runs()[0]
+check("  the build script told so (FW_TOOLS_ONLY=1), the run marked tools-only, PlatformIO's folder measured",
+      (ci.RUNS / st["run"] / "tools-only.txt").read_text().strip() == "1" and st["tools_only"] and "tools_bytes" in (st.get("resources") or {}), st)
+sn = factory.snapshot()
+check("  a family already built here stays built (a build says more); no estimate taken from the tools run",
+      sn["readiness"]["esp32s3"].startswith("built here") and sn["estimates"]["esp32s3"]["built"] != st["finished"], (sn["readiness"], sn["estimates"]))
+r = factory.readiness([{"family": "rp2040", "tools_only": True, "state": "passed", "resources": {"received": 300 * 2 ** 20}},
+                       {"family": "stm32", "tools_only": True, "state": "failed"}])
+check("  one not built: tools fetched with their size, or could not be", r == {"rp2040": "tools fetched (300 MB downloaded), not yet built",
+      "stm32": "its tools could not be fetched here: see the log"}, r)
+
 # The front page's tile (the owner's choice): the view and the files a guest may have.
 for p in ci.QUEUE.glob("*.json"):
     p.unlink()

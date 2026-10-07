@@ -117,12 +117,15 @@ _PIO_BUILD = """case $PIO_FROM in
   debian) PIO_BIN=$PIO_DEBIAN ;;
   *) if [ -x "$PIO_DEBIAN" ]; then PIO_BIN=$PIO_DEBIAN; else PIO_BIN=$(venv_pio); fi ;;
 esac
-echo "== building with $("$PIO_BIN" --version) ($PIO_BIN)"
-if ! "$PIO_BIN" run -e "$PIO_ENV" -j 1 2>&1 | tee "$HOME/pio-run.log"; then
+# FW_TOOLS_ONLY=1 (the Firmware Factory's "Fetch tools"): what the environment needs (platform,
+# toolchain, framework, libraries) installed, nothing compiled.
+if [ "${FW_TOOLS_ONLY:-}" = 1 ]; then PIO_DO=(pkg install -e "$PIO_ENV"); DOING="fetching the tools"; else PIO_DO=(run -e "$PIO_ENV" -j 1); DOING="building"; fi
+echo "== $DOING with $("$PIO_BIN" --version) ($PIO_BIN)"
+if ! "$PIO_BIN" "${PIO_DO[@]}" 2>&1 | tee "$HOME/pio-run.log"; then
   if [ "$PIO_FROM" = auto ] && [ "$PIO_BIN" = "$PIO_DEBIAN" ] && ! grep -q "^Compiling " "$HOME/pio-run.log"; then
     PIO_BIN=$(venv_pio)
-    echo "== Debian's PlatformIO stopped before compiling; building with $("$PIO_BIN" --version) from the wheelhouse"
-    "$PIO_BIN" run -e "$PIO_ENV" -j 1
+    echo "== Debian's PlatformIO stopped before compiling; $DOING with $("$PIO_BIN" --version) from the wheelhouse"
+    "$PIO_BIN" "${PIO_DO[@]}"
   else
     exit 1
   fi
@@ -597,6 +600,7 @@ def build_firmware(job):
     (run / "artifacts").mkdir(parents=True)
     started = time.time()
     keep = {k: job.get(k) for k in ("source", "ref", "commit", "env", "family", "name", "batch", "queued")}
+    keep["tools_only"] = job.get("tools_only") is True
     _write_status(run, kind="firmware", repo=FACTORY, branch=job.get("ref"), started=started, state="running", **keep)
     src = WORK / FACTORY
     shutil.rmtree(src, ignore_errors=True)
@@ -615,7 +619,8 @@ def build_firmware(job):
                 raise RuntimeError(f"checkout failed: {out.stderr.strip()}")
             _git("submodule", "update", "--init", "--recursive", "--depth", "1", cwd=src, timeout=3600)
             env = dict(os.environ, CI="1", CI_REPO=FACTORY, CI_BRANCH=str(job.get("ref")), CI_COMMIT=job["commit"],
-                       CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family)
+                       CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family,
+                       FW_TOOLS_ONLY="1" if keep["tools_only"] else "")
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
@@ -624,7 +629,7 @@ def build_firmware(job):
             if wheelhouse:
                 env["PIP_NO_INDEX"] = "1"
                 env["PIP_FIND_LINKS"] = str(wheelhouse)
-            say(f"building {env_name} (time limit {TIME_LIMIT // 60} min)")
+            say(f"{'fetching the tools for' if keep['tools_only'] else 'building'} {env_name} (time limit {TIME_LIMIT // 60} min)")
             with Usage() as usage:
                 proc = subprocess.run(["bash", "-c", FIRMWARE_SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
@@ -646,6 +651,10 @@ def build_firmware(job):
         finally:
             shutil.rmtree(src, ignore_errors=True)
     res = dict(usage.result, work_bytes=work_bytes) if usage and hasattr(usage, "result") else None
+    if res is not None:
+        # PlatformIO's own folder afterwards: the toolchains and platforms every build shares.
+        pio_home = Path(os.environ.get("HOME", "/nonexistent")) / ".platformio"
+        res["tools_bytes"] = sum(f.stat().st_size for f in pio_home.rglob("*") if f.is_file() and not f.is_symlink()) if pio_home.is_dir() else 0
     _write_status(run, state=state, finished=time.time(), duration=round(time.time() - started), resources=res,
                   artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()))
     prune_factory(runs)
