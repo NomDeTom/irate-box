@@ -1019,7 +1019,8 @@ def _safe(version):
 # one kiwix-manage run per book, each rewriting the whole library.xml, took over 10 minutes for 300
 # small books, and ran again in full for every new one. One run takes many books (49 in 1.5 s),
 # but a single unreadable one makes it write nothing: so a failing batch is halved until that book
-# is alone, and left out. A new or removed book changes only its own entry.
+# is alone, and left out (300 books: 18 s). A new or removed book changes only its own entry,
+# spliced in as XML (_splice), since kiwix-manage reopens every book a library already lists.
 KIWIX_BATCH = 100
 
 
@@ -1043,16 +1044,6 @@ def _kiwix_add(lib, zims):
     return _kiwix_add(lib, zims[:mid]) + _kiwix_add(lib, zims[mid:])
 
 
-def _entries(lib, filename):
-    """The ids of lib's entries for a book file (kiwix-manage writes paths relative to lib)."""
-    import xml.etree.ElementTree as ET
-    try:
-        root = ET.parse(lib).getroot()
-    except (OSError, ET.ParseError):
-        return None
-    return [b.get("id") for b in root.iter("book") if Path(b.get("path", "")).name == filename and b.get("id")]
-
-
 def rebuild_library():
     """library.xml from the .zim files actually present, as install.sh does: in batches, the
     unreadable ones left out (returned). kiwix-serve's --monitorLibrary notices the new file."""
@@ -1067,35 +1058,54 @@ def rebuild_library():
     return left
 
 
-def library_put(book):
-    """One book added or replaced in Kiwix's catalogue: its old entry (by file name) removed, the
-    new one added, on a copy swapped in. A missing or unreadable catalogue is rebuilt instead."""
-    book = Path(book)
-    ids = _entries(LIBRARY_XML, book.name) if LIBRARY_XML.exists() else None
-    if ids is None:
-        return rebuild_library()
+def _splice(drop_name, add_from=None):
+    """library.xml with the entries for file `drop_name` taken out and, if given, the <book> entries
+    of the scratch library `add_from` put in: edited as XML, on a copy swapped in. Measured on the
+    Lyra (2026-10-07, 300 books): kiwix-manage opens every book already in a library on each run,
+    so even one `add` took 17 s; describing the new book alone, in an empty library beside the
+    real one, and splicing its entry in takes a fraction of that. None if library.xml is unreadable."""
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(LIBRARY_XML)
+    except (OSError, ET.ParseError):
+        return None
+    root = tree.getroot()
+    for b in [b for b in root.findall("book") if Path(b.get("path", "")).name == drop_name]:
+        root.remove(b)
+    if add_from is not None:
+        try:
+            root.extend(ET.parse(add_from).getroot().findall("book"))
+        except (OSError, ET.ParseError):
+            return None
     new = ZIM_DIR / "library.xml.new"
-    shutil.copyfile(LIBRARY_XML, new)
-    if ids and _kiwix(new, "remove", *ids) != 0:
-        new.unlink(missing_ok=True)
-        return rebuild_library()
-    left = _kiwix_add(new, [book]) if book.exists() else []
+    tree.write(new, encoding="utf-8", xml_declaration=True)
     os.replace(new, LIBRARY_XML)
-    return left
+    return True
+
+
+def library_put(book):
+    """One book added or replaced in Kiwix's catalogue: described by kiwix-manage in a library of
+    its own (beside the real one, so its path is written the same way), then spliced in.
+    Returns [book] if Kiwix can't read it (then left out). A missing or unreadable catalogue is
+    rebuilt instead."""
+    book = Path(book)
+    if not LIBRARY_XML.exists():
+        return rebuild_library()
+    one = ZIM_DIR / f".{book.stem}.library-one.xml"
+    one.unlink(missing_ok=True)
+    try:
+        left = _kiwix_add(one, [book]) if book.exists() else []
+        if _splice(book.name, one if one.exists() else None) is None:
+            return rebuild_library()
+        return left
+    finally:
+        one.unlink(missing_ok=True)
 
 
 def library_drop(filename):
-    """A book's entries out of Kiwix's catalogue (its file already gone)."""
-    ids = _entries(LIBRARY_XML, filename) if LIBRARY_XML.exists() else None
-    if ids is None:
+    """A book's entries out of Kiwix's catalogue (its file already gone): no kiwix-manage at all."""
+    if not LIBRARY_XML.exists() or _splice(filename) is None:
         return rebuild_library()
-    if ids:
-        new = ZIM_DIR / "library.xml.new"
-        shutil.copyfile(LIBRARY_XML, new)
-        if _kiwix(new, "remove", *ids) != 0:
-            new.unlink(missing_ok=True)
-            return rebuild_library()
-        os.replace(new, LIBRARY_XML)
     return []
 
 
