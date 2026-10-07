@@ -2232,8 +2232,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/tls":
             action = payload.get("action")
+            if action in ("on", "off"):
+                self.send_json(202, {"id": control_request({"action": "tls-switch", "on": action == "on"})})
+                return
             if action not in ("make", "renew"):
-                self.send_json(400, {"error": "action must be make or renew"})
+                self.send_json(400, {"error": "action must be make, renew, on or off"})
                 return
             self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
             return

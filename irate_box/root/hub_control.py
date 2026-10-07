@@ -865,8 +865,11 @@ def _nginx_check(src, opts):
         (Path(tmp) / "front.conf").write_text('proxy_set_header X-Irate-Front "check";\n')
         text = text.replace("@FRONT@", f"{tmp}/front.conf")
         (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
+        # The TLS twins' includes: an empty folder (a box with no certificate), their ports as set.
+        (Path(tmp) / "tls").mkdir()
         for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
-                           "@ADDONS@": str(STATE / "addons")}.items():
+                           "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491",
+                           "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons")}.items():
             text = text.replace(key, value)
         # A port placeholder this helper does not know yet (an update adds a server block): a
         # spare port stands in, so a newer site is checked by its syntax, not refused for being
@@ -1459,6 +1462,14 @@ def tls_renew(req):
     return tls.renew()
 
 
+def tls_switch(req):
+    """HTTPS on or off at the front, the CA and certificate kept either way."""
+    from irate_box.root import tls
+    if not tls.status().get("set_up"):
+        return "HTTPS is not set up yet: make the box's certificate first"
+    return tls.front(req.get("on") is True)
+
+
 def usb_scan(req):
     data = usbstick.scan()
     _write_usb(data)
@@ -1856,7 +1867,7 @@ ACTIONS = {"service": service, "password": password,
            "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
-           "tls-make": tls_make, "tls-renew": tls_renew, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
+           "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,

@@ -18,6 +18,8 @@ Files:
   /etc/hub/tls/ca.crt              the CA's certificate (public)
   /etc/hub/tls/server.key          root:<front group>, 0640 (Caddy reads it as its own user)
   /etc/hub/tls/fullchain.crt       the server certificate and the CA's, for the front
+  /etc/hub/tls/front/nginx-*.conf  each server block's TLS twin (listen … ssl, the certificate),
+                                   included by config/irate-box.nginx; present only while HTTPS is on
   $HUB_STATE_DIR/control/tls/      for the hub: status.json, and ca.crt for /certificate
 Stdlib only (and the openssl command).
 """
@@ -47,6 +49,12 @@ HOTSPOT = "192.168.4.1"
 CERT_DAYS = 397
 CA_DAYS = 3650
 # Who besides root reads the server key: Caddy runs as its own user; nginx's master reads it as root.
+FRONT = TLS / "front"
+# Each origin's TLS twin (install.sh: TLS_PORT and the rest): the hub's own, then the add-ons',
+# the notes', Kiwix's and cgit's, beside their plain ports.
+TWINS = {"main": int(os.environ.get("HUB_TLS_PORT", "443")), "addons": int(os.environ.get("HUB_ADDON_TLS_PORT", "8490")),
+         "notes": int(os.environ.get("HUB_NOTES_TLS_PORT", "8491")), "wiki": int(os.environ.get("HUB_WIKI_TLS_PORT", "8492")),
+         "git": int(os.environ.get("HUB_GIT_TLS_PORT", "8493"))}
 FRONT_GROUP = os.environ.get("HUB_TLS_GROUP") or ("caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else "")
 
 
@@ -126,7 +134,8 @@ def make_ca(nets=None):
     rec = {"ca": {"made": int(time.time()), "names": names, "networks": ips, "fingerprint": fingerprint(CA_CERT)}}
     _write(RECORD, json.dumps(rec), 0o644)
     make_cert()
-    return rec
+    front(True)  # making the box's CA is the owner's choice to have HTTPS (certificates-plan, question 2)
+    return _record()
 
 
 def fingerprint(cert):
@@ -167,6 +176,48 @@ def make_cert():
     return rec
 
 
+def _nginx_check_and_reload():
+    """nginx -t, then a reload; (ok, why). Stood in by the tests."""
+    t = subprocess.run(["nginx", "-t", "-q"], capture_output=True, text=True, timeout=60)
+    if t.returncode != 0:
+        return False, ((t.stderr or t.stdout).strip().splitlines() or ["nginx -t failed"])[-1]
+    r = subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=60)
+    return r.returncode == 0, (r.stderr or "").strip()
+
+
+def front(on):
+    """HTTPS on or off at the front: each server block's include, then nginx checked and reloaded.
+    A check that fails takes the includes away again, so the box serves what it did before."""
+    server = os.environ.get("HUB_WEB_SERVER", "nginx")
+    if server != "nginx":
+        return f"HTTPS is served by nginx only so far ({server} here): the certificate is made, not yet served"
+    FRONT.mkdir(parents=True, exist_ok=True)
+    os.chmod(FRONT, 0o755)
+    for name, port in TWINS.items():
+        f = FRONT / f"nginx-{name}.conf"
+        if on:
+            ds = " default_server" if name == "main" else ""
+            _write(f, f"# Written by irate-box (root/tls.py): this server block's TLS twin.\nlisten {port} ssl{ds};\nlisten [::]:{port} ssl{ds};\n"
+                      f"ssl_certificate {CHAIN};\nssl_certificate_key {KEY};\nssl_protocols TLSv1.2 TLSv1.3;\n", 0o644)
+        else:
+            f.unlink(missing_ok=True)
+    ok, why = _nginx_check_and_reload()
+    if not ok and on:
+        for name in TWINS:
+            (FRONT / f"nginx-{name}.conf").unlink(missing_ok=True)
+        _nginx_check_and_reload()
+        rec = _record()
+        rec["on"] = False
+        _write(RECORD, json.dumps(rec), 0o644)
+        publish()
+        raise RuntimeError(f"nginx refused the HTTPS server blocks, so they were taken away again: {why}")
+    rec = _record()
+    rec["on"] = on
+    _write(RECORD, json.dumps(rec), 0o644)
+    publish()
+    return f"HTTPS on: port {TWINS['main']}, and each origin's twin" if on else "HTTPS off (the CA and certificate are kept)"
+
+
 def due(now=None):
     """Why the server certificate should be re-made now, or None."""
     now = time.time() if now is None else now
@@ -193,6 +244,8 @@ def renew():
         publish()
         return "the certificate is current"
     make_cert()
+    if _record().get("on"):
+        front(True)  # nginx reads the new certificate on a reload
     return f"certificate re-made ({why})"
 
 
@@ -206,7 +259,7 @@ def status():
     nets = [ipaddress.ip_network(n) for n in rec["ca"]["networks"]]
     outside = [a["address"] for a in addresses() if a["address"] != HOTSPOT and not a["address"].startswith("100.")
                and not any(ipaddress.ip_address(a["address"]) in n for n in nets)]
-    return {"set_up": True, "ca": rec["ca"], "cert": rec.get("cert"), "outside": outside, "due": due(),
+    return {"set_up": True, "on": bool(rec.get("on")), "ports": TWINS, "ca": rec["ca"], "cert": rec.get("cert"), "outside": outside, "due": due(),
             "keys_private": CA_KEY.exists() and (CA_KEY.stat().st_mode & 0o077) == 0}
 
 
@@ -225,10 +278,12 @@ def main(argv):
         print(json.dumps(make_ca(), indent=1))
     elif cmd == "renew":
         print(renew())
+    elif cmd in ("on", "off"):
+        print(front(cmd == "on"))
     elif cmd == "status":
         print(json.dumps(status(), indent=1))
     else:
-        print("usage: tls.py make|renew|status", file=sys.stderr)
+        print("usage: tls.py make|renew|on|off|status", file=sys.stderr)
         return 2
     return 0
 
