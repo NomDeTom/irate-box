@@ -1960,8 +1960,18 @@ def _ap_inventory():
     return inv
 
 
+def _ap_failed(exc):
+    """A step that failed (ap.start has undone what it did): said on the Network page and to the hub."""
+    note = f"the hotspot didn't start: {exc}"
+    _ap_record_status(None, note)
+    return ValueError(note)
+
+
 def ap_on(req):
-    plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
+    try:
+        plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
+    except RuntimeError as exc:
+        raise _ap_failed(exc) from exc
     if plan.get("needs_choice") or plan["kind"] == "none":
         _ap_record_status(plan, plan["text"])
         return plan["text"] + (f" ({plan['why']})" if plan.get("why") else "")
@@ -1979,7 +1989,10 @@ def ap_off(req):
 
 
 def ap_try(req):
-    worked, plan = ap.try_own_channel(run, _ap_inventory(), _ap_settings())
+    try:
+        worked, plan = ap.try_own_channel(run, _ap_inventory(), _ap_settings())
+    except RuntimeError as exc:
+        raise _ap_failed(exc) from exc
     if worked is None:
         note = "nothing to try: " + plan["text"]
     else:
@@ -2132,14 +2145,19 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.match(sys.argv[2]):
         if os.geteuid() != 0:
             sys.exit("run as root")
-        note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
-        _ap_record_status(None, note)
+        try:
+            _ap_record_status(None, ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2]))
+        except RuntimeError as exc:
+            sys.exit(str(_ap_failed(exc)))
         sys.exit(0)
     # The boot unit (root/ap.py): the hotspot as it was before the reboot.
     if sys.argv[1:] == ["ap-boot"]:
         if os.geteuid() != 0:
             sys.exit("run as root")
-        _ap_record_status(None, ap.boot(run, _ap_inventory(), _ap_settings()))
+        try:
+            _ap_record_status(None, ap.boot(run, _ap_inventory(), _ap_settings()))
+        except RuntimeError as exc:
+            sys.exit(str(_ap_failed(exc)))
         sys.exit(0)
     # The dead-man timer: the owner didn't confirm a hotspot that took the box's own link.
     if sys.argv[1:] == ["ap-revert"]:

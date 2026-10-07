@@ -134,6 +134,7 @@ import json, os, subprocess, tempfile  # noqa: E401,E402
 T = Path(tempfile.mkdtemp(prefix="ap-"))
 ap.RECORD, ap.TRIED, ap.DISPATCHER, ap.UNITS = T / "ap.json", T / "ap-tried.json", T / "90-irate-box-ap", T / "units"
 ap.KEYFILE, ap.DNSMASQ_CONF = T / "kf", T / "dns.conf"
+ap.LINKS = T / "network"
 calls, iw = [], {"wlan0": 11, "ap0": None}
 def fake_run(*cmd, **kw):
     calls.append(list(cmd))
@@ -152,6 +153,10 @@ rec = json.loads(ap.RECORD.read_text())
 check("start: the files written (the keyfile 600), the unit installed, the hook in place, the steps run, recorded",
       (T / "kf").stat().st_mode & 0o777 == 0o600 and (ap.UNITS / ap.DNSMASQ_UNIT).exists() and os.access(ap.DISPATCHER, os.X_OK)
       and ["nmcli", "connection", "up", "irate-box-ap"] in calls and rec["up"] and rec["confirmed"] and rec["plan"]["channel"] == 11, rec)
+link = ap.LINKS / ap.LINK_FILE
+check("  udev told to keep ap0's name (a USB radio's ap0 became wlx… on the Lyra), before ap0 is made",
+      link.exists() and "OriginalName=ap0" in link.read_text() and "Name=ap0" in link.read_text()
+      and calls.index(["udevadm", "control", "--reload"]) < calls.index(["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"]))
 calls.clear()
 worked, p2 = ap.try_own_channel(fake_run, inv, settings, wait=0, sleep=lambda s: None)
 check("the try: the hotspot on a channel other than the link's (1), held, so it works; recorded; then back to the plan",
@@ -165,6 +170,28 @@ def forced_run(*cmd, **kw):
 worked, p3 = ap.try_own_channel(forced_run, inv, settings, wait=0, sleep=lambda s: None)
 check("  a driver that drags the hotspot onto the link's channel: the try fails, recorded, the plan becomes following",
       worked is False and json.loads(ap.TRIED.read_text()) == {"phy0": False} and p3["kind"] == "follow", (worked, p3))
+ap.TRIED.unlink()
+def refusing_run(*cmd, **kw):
+    if cmd[:3] == ("nmcli", "connection", "up") and "channel=11" not in (T / "kf").read_text():
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 4, "", "Error: Connection activation failed")
+    return fake_run(*cmd, **kw)
+calls.clear()
+worked, p3b = ap.try_own_channel(refusing_run, inv, settings, wait=0, sleep=lambda s: None)
+check("  a driver that won't start the hotspot off the link's channel: the try fails (no crash), undone, then following",
+      worked is False and json.loads(ap.TRIED.read_text()) == {"phy0": False} and p3b["kind"] == "follow"
+      and ["iw", "dev", "ap0", "del"] in calls and json.loads(ap.RECORD.read_text())["up"], (worked, p3b))
+def broken_run(*cmd, **kw):
+    if cmd[:3] == ("nmcli", "connection", "up"):
+        return subprocess.CompletedProcess(cmd, 4, "", "Error: no suitable device")
+    return fake_run(*cmd, **kw)
+try:
+    ap.start(broken_run, inv, settings)
+    failed = None
+except RuntimeError as exc:
+    failed = str(exc)
+check("a start that fails says why (for the Network page)", failed and "no suitable device" in failed, failed)
+ap.TRIED.write_text(json.dumps({"phy0": False}))
 inv2, v2 = box([radio(lyra, "wlan0", "phy0", 6)], wifi_up); inv2["ap"] = v2
 calls.clear()
 out = ap.follow(fake_run, inv2, settings, "wlan0")

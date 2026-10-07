@@ -156,6 +156,8 @@ RECORD = ETC / "ap.json"            # what is up, from which plan, since when, a
 TRIED = ETC / "ap-tried.json"       # {phy: True|False}: whether a channel of its own beside the link worked
 DISPATCHER = Path(os.environ.get("HUB_NM_DISPATCHER", "/etc/NetworkManager/dispatcher.d")) / "90-irate-box-ap"
 UNITS = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
+LINKS = Path(os.environ.get("HUB_LINK_DIR", "/etc/systemd/network"))
+LINK_FILE = "10-irate-box-ap.link"
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 TRY_WAIT = 20                        # seconds the hotspot must hold its own channel in the try
 DEADMAN = 300                        # seconds before a hotspot that took the box's link undoes itself
@@ -179,6 +181,15 @@ def _put(path, text, mode=0o644):
 
 
 BOOT_UNIT = "irate-box-ap.service"
+
+
+def link_file():
+    """udev keeps ap0's name. Without it a USB radio's second interface is renamed by its address
+    (wlx…) as soon as it appears, and the hotspot's profile, made for ap0, finds no device (the Lyra,
+    2026-10-07)."""
+    return "\n".join([
+        "# Written by irate-box (root/ap.py): the hotspot's interface keeps the name it was given.",
+        "[Match]", f"OriginalName={SHARED_IFACE}", "", "[Link]", "NamePolicy=", f"Name={SHARED_IFACE}", ""])
 
 
 def boot_unit():
@@ -245,6 +256,11 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
             _put(unit, text)
             run("systemctl", "daemon-reload")
     _put(DISPATCHER, dispatcher_hook(), 0o755)
+    if ap_iface(plan) == SHARED_IFACE:
+        link = LINKS / LINK_FILE
+        if not link.exists() or link.read_text() != link_file():
+            _put(link, link_file())
+            run("udevadm", "control", "--reload")
     boot = UNITS / BOOT_UNIT
     if not boot.exists() or boot.read_text() != boot_unit():
         _put(boot, boot_unit())
@@ -305,10 +321,14 @@ def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=
         or next((c["channel"] for c in chans if c["channel"] != link_ch), None)
     if other is None:
         return None, plan
-    start(run, inv, settings, {"channel": other}, ssid)
-    sleep(wait)
-    now = channels_now(run)
-    worked = now.get(ap_iface(plan)) == other and now.get(link) == link_ch and link_ch is not None
+    try:
+        start(run, inv, settings, {"channel": other}, ssid)
+    except RuntimeError:
+        worked = False   # it wouldn't even start on a channel of its own: that's the answer
+    else:
+        sleep(wait)
+        now = channels_now(run)
+        worked = now.get(ap_iface(plan)) == other and now.get(link) == link_ch and link_ch is not None
     tried = _load(TRIED, {})
     tried[plan["phy"]] = worked
     _put(TRIED, json.dumps(tried))
