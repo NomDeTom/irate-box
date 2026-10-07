@@ -193,6 +193,8 @@ def front(on):
         return f"HTTPS is served by nginx only so far ({server} here): the certificate is made, not yet served"
     FRONT.mkdir(parents=True, exist_ok=True)
     os.chmod(FRONT, 0o755)
+    if not on:
+        (FRONT / "nginx-admin.conf").unlink(missing_ok=True)  # never send plain /admin to a dead HTTPS port
     for name, port in TWINS.items():
         f = FRONT / f"nginx-{name}.conf"
         if on:
@@ -213,9 +215,37 @@ def front(on):
         raise RuntimeError(f"nginx refused the HTTPS server blocks, so they were taken away again: {why}")
     rec = _record()
     rec["on"] = on
+    if not on:
+        rec["admin_only"] = False
     _write(RECORD, json.dumps(rec), 0o644)
     publish()
     return f"HTTPS on: port {TWINS['main']}, and each origin's twin" if on else "HTTPS off (the CA and certificate are kept)"
+
+
+def admin_only(on):
+    """/admin over HTTPS only (certificates-plan stage 5): plain requests for it are sent to the
+    HTTPS twin, so the admin password never crosses the network in clear. Only while HTTPS is on;
+    the hub lets the owner turn it on only from an admin page opened over HTTPS (proof that their
+    device trusts the box, so they can't lock themselves out)."""
+    rec = _record()
+    if on and not rec.get("on"):
+        raise ValueError("HTTPS is off: switch it on first")
+    f = FRONT / "nginx-admin.conf"
+    if on:
+        port = TWINS["main"]
+        _write(f, "# Written by irate-box (root/tls.py): /admin over HTTPS only.\n"
+                  f"if ($scheme = http) {{ return 302 https://$host{'' if port == 443 else f':{port}'}$request_uri; }}\n", 0o644)
+    else:
+        f.unlink(missing_ok=True)
+    ok, why = _nginx_check_and_reload()
+    if not ok:
+        f.unlink(missing_ok=True)
+        _nginx_check_and_reload()
+        raise RuntimeError(f"nginx refused it, so it was taken away again: {why}")
+    rec["admin_only"] = on
+    _write(RECORD, json.dumps(rec), 0o644)
+    publish()
+    return "/admin is HTTPS only now: plain requests are sent there" if on else "/admin answers on plain HTTP too again"
 
 
 def due(now=None):
@@ -330,7 +360,7 @@ def status():
     nets = [ipaddress.ip_network(n) for n in rec["ca"]["networks"]]
     outside = [a["address"] for a in addresses() if a["address"] != HOTSPOT and not a["address"].startswith("100.")
                and not any(ipaddress.ip_address(a["address"]) in n for n in nets)]
-    return {"set_up": True, "on": bool(rec.get("on")), "ports": TWINS, "ca": rec["ca"], "cert": rec.get("cert"), "outside": outside, "due": due(),
+    return {"set_up": True, "on": bool(rec.get("on")), "admin_only": bool(rec.get("admin_only")), "ports": TWINS, "ca": rec["ca"], "cert": rec.get("cert"), "outside": outside, "due": due(),
             "keys_private": CA_KEY.exists() and (CA_KEY.stat().st_mode & 0o077) == 0}
 
 

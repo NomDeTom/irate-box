@@ -389,6 +389,9 @@ server {
 	# set-the-password page. hub_control.py deletes the file when the password is set.
 	location = /admin { return 301 /admin/; }
 	location /admin/ {
+		# The owner's "admin over HTTPS only" (step 15, root/tls.py): plain requests sent to the
+		# HTTPS twin, before any login is asked. Present only while that switch is on.
+		include @TLS@/nginx-admin.conf*;
 		set $irate_box_admin_auth "Irate-Box";
 		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
 		auth_basic $irate_box_admin_auth;
