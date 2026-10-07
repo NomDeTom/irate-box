@@ -122,6 +122,8 @@ for layout in ("native", "whole"):
         (cache / f).parent.mkdir(parents=True, exist_ok=True); (cache / f).write_text("new")
     (libs / "RadioLib").mkdir(parents=True); (libs / "RadioLib" / "library.json").write_text("new")
     (libs / "Crypto").mkdir(parents=True); (libs / "Crypto" / "library.json").write_text("new")
+    for ui in ("lvgl", "meshtastic-device-ui"):
+        (libs / ui).mkdir(parents=True); (libs / ui / "library.json").write_text("ui")
     (home / ".platformio/packages/framework-portduino").mkdir(parents=True)
     (home / ".platformio/packages/framework-portduino/package.json").write_text("kept")
     fwd.mkdir(); (fwd / ".pio/libdeps/native/Crypto").mkdir(parents=True); (fwd / ".pio/libdeps/native/Crypto/library.json").write_text("kept")
@@ -131,6 +133,8 @@ for layout in ("native", "whole"):
     check(f"seeding ({layout} cache): the platform's archive in, usage.db not, what was there kept", r.returncode == 0
           and (pio / ".cache/downloads/eb76").read_text() == "new" and not (pio / ".cache/downloads/usage.db").exists()
           and (pio / "packages/framework-portduino/package.json").read_text() == "kept", r.stderr)
+    check(f"  the touchscreen build's libraries left out (the Lyra's offline build failed on them)", not (fwd / ".pio/libdeps/native/lvgl").exists()
+          and not (fwd / ".pio/libdeps/native/meshtastic-device-ui").exists())
     check(f"  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
           and (fwd / ".pio/libdeps/native/Crypto/library.json").read_text() == "kept", sorted(p.name for p in (fwd / ".pio/libdeps/native").iterdir()))
 # Another family (a Firmware Factory build, step 36): the download cache, not native's packages or libraries.
@@ -168,5 +172,7 @@ rc, calls, out = pio_case("no-deb", False, "", 0)
 check("  no Debian PlatformIO: the wheelhouse's", rc == 0 and calls == ["venvpio"], (rc, calls))
 rc, calls, out = pio_case("pip", True, "", 0, mode="pip")
 check("  PIO=pip: the wheelhouse's even with Debian's there", rc == 0 and calls == ["venvpio"], (rc, calls))
+from irate_box.library import firmware as FW  # noqa: E402
+check("the template's left-out libraries are firmware.py's UI_LIBS", set(re.search(r"case .*?\) continue", script).group(0).split("in ", 1)[1].split(")")[0].split("|")) == FW.UI_LIBS)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

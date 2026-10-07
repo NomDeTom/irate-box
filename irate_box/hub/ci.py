@@ -103,6 +103,10 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
     done
     libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
     for d in "$libs"/*/; do
+      # Not the touchscreen build's libraries (the cache is native-tft's): PlatformIO's finder
+      # compiles any library it sees, and meshtastic-device-ui needs headers native lacks (the
+      # Lyra's offline build failed on them after 3 h 25 min, 2026-10-07). firmware.py UI_LIBS.
+      case "$(basename "$d")" in lvgl|meshtastic-device-ui|SdFat|PNGdec|libdeflate) continue ;; esac
       [ -e ".pio/libdeps/$PIO_ENV/$(basename "$d")" ] || cp -r "$d" ".pio/libdeps/$PIO_ENV/"
     done
   fi
