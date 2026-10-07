@@ -13,7 +13,8 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="factory-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_GIT_ROOT=str(T / "git"), HUB_CI_ROOT=str(T / "ci"),
                   HUB_GIT_PRIVATE=str(T / "git" / "private"), HUB_MIRROR_URLS=str(T / "git" / "mirror-urls.json"),
-                  HUB_FIRMWARE_ROOT=str(T / "firmware"))
+                  HUB_FIRMWARE_ROOT=str(T / "firmware"), HOME=str(T / "home"))
+(T / "home").mkdir()
 for d in ("state/library", "git/public", "git/private", "ci/queue", "ci/runs", "ci/work"):
     (T / d).mkdir(parents=True)
 sys.path.insert(0, str(REPO))
@@ -123,7 +124,7 @@ for p in ci.QUEUE.glob("*.json"):
 
 # A build, with PlatformIO stood in.
 ci.FIRMWARE_SCRIPT = """set -eu
-mkdir -p ".pio/build/$FW_ENV"; cd ".pio/build/$FW_ENV"
+mkdir -p "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"; cd "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"
 echo x > "firmware-$FW_ENV-2.8.1.bin"; echo x > "firmware-$FW_ENV-2.8.1.factory.bin"; echo x > "firmware-$FW_ENV.uf2"
 head -c 5000 /dev/zero > firmware.elf; echo x > output.map
 echo "Compiling .pio/x.o"
@@ -234,11 +235,41 @@ st = factory.runs()[0]
 check("  where the network can't be cut off: failed, and said, nothing built", st["state"] == "failed"
       and "cannot run without the network here" in (ci.RUNS / st["run"] / "log.txt").read_text())
 
+# The kept workspace (PLATFORMIO_WORKSPACE_DIR, as Meshtastic's build containers): a target's
+# libraries stay for its next build; an offline test compiles all of it again.
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
+ci.OFFLINE = ["env", "IRATE_NO_NETWORK=1"]
+ci.FIRMWARE_SCRIPT = r"""set -eu
+L="$PLATFORMIO_WORKSPACE_DIR/libdeps/$FW_ENV"; B="$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"
+if [ -d "$L/SomeLib" ]; then echo "libraries already here"; else mkdir -p "$L/SomeLib"; echo "downloaded SomeLib"; fi
+[ -f "$B/obj.o" ] && echo "objects already here" || echo "compiled everything"
+mkdir -p "$B"; touch "$B/obj.o"; echo x > "$B/firmware-$FW_ENV.uf2"
+"""
+E = "rak4631-inkhud"   # a target no test above has built
+lastlog = lambda: (ci.RUNS / factory.runs(1)[0]["run"] / "log.txt").read_text()  # noqa: E731
+factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", env=E)
+ci.run_queue()
+fetch_log = lastlog()
+factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", [E])
+ci.run_queue()
+build_log = lastlog()
+factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", env=E, offline=True)
+ci.run_queue()
+off_log = lastlog()
+ws = T / "home" / "workspace" / "meshtastic-firmware"
+check("workspace: kept per source in the builder's home; the fetch's libraries found by the build, its objects by the next",
+      ws.is_dir() and "downloaded SomeLib" in fetch_log and "libraries already here" in build_log and "objects already here" in build_log,
+      (fetch_log, build_log))
+check("  the offline test: the libraries kept, the target's earlier objects removed, all compiled again; only this run's files kept",
+      "libraries already here" in off_log and "compiled everything" in off_log and "earlier build output removed" in off_log
+      and factory.runs(1)[0]["artifacts"] == [f"firmware-{E}.uf2"], off_log)
+
 # The web flasher (§4b item 5): a passed build published, as a release built on this box.
 for f in ci.QUEUE.glob("*.json"):
     f.unlink()
 ci.FIRMWARE_SCRIPT = r"""set -eu
-mkdir -p ".pio/build/$FW_ENV"; cd ".pio/build/$FW_ENV"
+mkdir -p "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"; cd "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"
 V=2.8.1.abcdef0; P="firmware-$FW_ENV-$V"
 case $FW_ENV in rak4631) EXT="uf2 zip hex"; ARCH=nrf52840;; *) EXT="bin factory.bin"; ARCH=esp32-s3;; esac
 for e in $EXT; do echo "$FW_ENV $e" > "$P.$e"; done
@@ -311,7 +342,7 @@ check("  the last target out: the release gone, and from the flasher's list", no
 for p in ci.QUEUE.glob("*.json"):
     p.unlink()
 ci.FIRMWARE_SCRIPT = """set -eu
-mkdir -p ".pio/build/$FW_ENV"; cd ".pio/build/$FW_ENV"
+mkdir -p "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"; cd "$PLATFORMIO_WORKSPACE_DIR/build/$FW_ENV"
 for f in firmware-$FW_ENV.bin firmware-$FW_ENV.factory.bin firmware-$FW_ENV.zip firmware-$FW_ENV.uf2 meshtasticd; do echo x > "$f"; done
 """
 factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", ["heltec-v3", "rak4631", "native"])

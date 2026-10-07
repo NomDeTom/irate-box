@@ -97,7 +97,8 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
   done
   # The cache's packages and libraries are the native build's: only a native build takes them.
   if [ "$PIO_ENV_FAMILY" = native ]; then
-    mkdir -p "$HOME/.platformio/packages" ".pio/libdeps/$PIO_ENV"
+    LIBDEPS="${PLATFORMIO_WORKSPACE_DIR:-.pio}/libdeps/$PIO_ENV"
+    mkdir -p "$HOME/.platformio/packages" "$LIBDEPS"
     for d in "$CI_PIO_DEPS"/packages/*/; do
       [ -e "$HOME/.platformio/packages/$(basename "$d")" ] || cp -r "$d" "$HOME/.platformio/packages/"
     done
@@ -107,7 +108,7 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
       # compiles any library it sees, and meshtastic-device-ui needs headers native lacks (the
       # Lyra's offline build failed on them after 3 h 25 min, 2026-10-07). firmware.py UI_LIBS.
       case "$(basename "$d")" in lvgl|meshtastic-device-ui|SdFat|PNGdec|libdeflate) continue ;; esac
-      [ -e ".pio/libdeps/$PIO_ENV/$(basename "$d")" ] || cp -r "$d" ".pio/libdeps/$PIO_ENV/"
+      [ -e "$LIBDEPS/$(basename "$d")" ] || cp -r "$d" "$LIBDEPS/"
     done
   fi
 fi
@@ -137,6 +138,17 @@ if ! "$PIO_BIN" "${PIO_DO[@]}" 2>&1 | tee "$HOME/pio-run.log"; then
   else
     exit 1
   fi
+fi
+# What a build fetches by itself if it isn't there, which offline it can't: the tools Meshtastic's
+# own build containers add per environment (meshtastic/gh-action-firmware, bin/pio_load_and_dedupe.sh).
+if [ "${FW_TOOLS_ONLY:-}" = 1 ]; then
+  EXTRA=(--tool platformio/tool-mklittlefs)
+  case "${PIO_ENV_FAMILY:-}" in
+    esp32*) EXTRA+=(--tool https://github.com/pioarduino/registry/releases/download/0.0.1/scons-4.11.1.zip) ;;
+    *) EXTRA+=(--tool "platformio/tool-cppcheck@~1.21100.0") ;;
+  esac
+  echo "== and the tools a build fetches by itself: ${EXTRA[*]}"
+  "$PIO_BIN" pkg install -e "$PIO_ENV" --no-save "${EXTRA[@]}"
 fi
 """
 
@@ -506,6 +518,12 @@ set -euo pipefail
 OFFLINE = ["unshare", "--user", "--map-current-user", "--net", "--"]
 
 
+def workspace(source):
+    """A Factory source's kept PlatformIO workspace, in the builder's home."""
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", str(source or "unknown"))[:64] or "unknown"
+    return Path(os.environ.get("HOME", "/nonexistent")) / "workspace" / name
+
+
 def _mirror_paths():
     """The local copies the mirrors' URLs point at (mirror-urls.json): what the factory may build."""
     try:
@@ -644,9 +662,23 @@ def build_firmware(job):
                                  capture_output=True, text=True, timeout=3600)
             if offline and out.returncode != 0:
                 raise RuntimeError(f"the submodules need the network: {out.stderr.strip()[-300:]}")
+            # The project's .pio (its libraries, and what it built) kept outside the source, which is
+            # removed after each run: a target's libraries stay for its next build, offline or not,
+            # and a rebuild is incremental. As Meshtastic's build containers do (PLATFORMIO_WORKSPACE_DIR).
+            ws = workspace(job.get("source"))
+            ws.mkdir(parents=True, exist_ok=True)
+            # The build folder is kept: the files an earlier build made there (another version's) are
+            # not this one's, so they go first; its compiled objects stay.
+            for f in (ws / "build" / env_name).iterdir() if (ws / "build" / env_name).is_dir() else []:
+                if f.is_file() and ARTIFACT_RE.match(f.name):
+                    f.unlink()
+            if offline and (ws / "build" / env_name).exists():
+                # An offline proof compiles everything: only the libraries and tools are taken as given.
+                shutil.rmtree(ws / "build" / env_name, ignore_errors=True)
+                say("offline: this target's earlier build output removed, so all of it is compiled now")
             env = dict(os.environ, CI="1", CI_REPO=FACTORY, CI_BRANCH=str(job.get("ref")), CI_COMMIT=job["commit"],
                        CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family,
-                       FW_TOOLS_ONLY="1" if keep["tools_only"] else "")
+                       FW_TOOLS_ONLY="1" if keep["tools_only"] else "", PLATFORMIO_WORKSPACE_DIR=str(ws))
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
@@ -664,14 +696,14 @@ def build_firmware(job):
                 proc = subprocess.run([*netns, "bash", "-c", FIRMWARE_SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
             state = "passed" if proc.returncode == 0 else "failed"
-            built = src / ".pio" / "build" / env_name
+            built = ws / "build" / env_name
             kept = []
             for f in sorted(built.iterdir()) if built.is_dir() else []:
                 if f.is_file() and not f.is_symlink() and ARTIFACT_RE.match(f.name):
                     shutil.copy2(f, run / "artifacts" / f.name)
                     kept.append(f.name)
-            work_bytes = sum(f.stat().st_size for f in (src / ".pio").rglob("*") if f.is_file() and not f.is_symlink()) \
-                if (src / ".pio").is_dir() else 0
+            work_bytes = sum(f.stat().st_size for d in (ws / "build" / env_name, ws / "libdeps" / env_name) if d.is_dir()
+                             for f in d.rglob("*") if f.is_file() and not f.is_symlink())
             say(f"PlatformIO exited with {proc.returncode}; kept {', '.join(kept) or 'nothing'}")
         except subprocess.TimeoutExpired:
             state = "timed out"
