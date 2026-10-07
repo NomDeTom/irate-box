@@ -1142,3 +1142,8 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 /* The mesh (step 18): the traffic a line each; a message set apart. */
 .mesh-packets { padding-left: 1.4rem; font-size: 0.9rem; }
 .mesh-text { color: var(--text); font-style: italic; }
+.mesh-map { width: 100%; max-width: 600px; height: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.mesh-map-bg { fill: var(--surface); }
+.mesh-map-node circle { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+.mesh-map-label { fill: var(--text); font-size: 12px; }
+.mesh-map-scale { stroke: var(--text); stroke-width: 2; }

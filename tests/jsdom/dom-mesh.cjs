@@ -42,6 +42,21 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     === 'Base camp (BASE) | 60 s ago | 87 %, 4.05 V | 51.5007, -0.1246, 25 m | 1 hop, SNR 6.25, -97 dBm | 12', [...row.cells].map((c) => t(c)).join(' | '));
   check('  one never named: its id, the rest blank', [...[...d.querySelectorAll('#mesh-nodes tbody tr')][1].cells].map((c) => t(c)).join(' | ') === '!deadbeef | 2 h ago | — | — | — | 3');
   check('  recent traffic by name, never a message', /text from Base camp \(BASE\) on LongFast/.test(t(d.getElementById('mesh-packets'))) && !/meet at the gate/.test(d.body.textContent));
+  // The map: placed as they are, no tiles. Add a node 1 km east, and one at 0,0 (no fix): left out.
+  const mapView = Object.assign({}, publicView, { nodes: [...nodes, { id: '!00000001', short_name: 'EAST', last: now, packets: 1,
+    position: { lat: 51.50071, lon: -0.12462 + 1000 / (111320 * Math.cos(51.5 * Math.PI / 180)) } },
+    { id: '!00000002', short_name: 'NOFIX', last: now, packets: 1, position: { lat: 0, lon: 0 } }] });
+  pub = page('mesh.html', 'http://box.local/mesh.html', async (u) => (u === '/mesh.json' ? json(mapView) : json({}, 404)), ['mesh.js']);
+  await wait();
+  const dots = [...pub.d.querySelectorAll('#mesh-map .mesh-map-node')];
+  check('the map: the nodes with a position, by short name; one at 0,0 (no fix) left out', dots.length === 2 && dots.map((g) => t(g.querySelector('text'))).join(',') === 'BASE,EAST'
+    && /2 nodes with a position, placed as they are: no map underneath/.test(t(pub.d.getElementById('mesh-map-note'))));
+  const [a, b] = dots.map((g) => Number(g.querySelector('circle').getAttribute('cx')));
+  const scale = pub.d.querySelector('#mesh-map .mesh-map-scale');
+  const len = Number(scale.getAttribute('x2')) - Number(scale.getAttribute('x1'));
+  const said = t(pub.d.querySelector('#mesh-map > text'));
+  const metres = said.endsWith(' km') ? parseFloat(said) * 1000 : parseFloat(said);
+  check('  east is to the right, and the scale bar agrees with the 1 km between them', b > a && Math.abs((b - a) / len * metres - 1000) < 20, `${a} ${b} ${len} ${said}`);
   pub = page('mesh.html', 'http://box.local/mesh.html', async () => json({ error: 'not shown' }, 404), ['mesh.js']);
   await wait();
   check('  not public: says the owner chooses, and where', /not shown here: its owner chooses \(\/admin → Access, the MQTT broker, public\)/.test(t(pub.d.getElementById('mesh-state'))));
