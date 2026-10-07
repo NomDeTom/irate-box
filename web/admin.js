@@ -3217,7 +3217,8 @@ function renderFactory(d) {
     const used = r.resources ? [`${facDur(r.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
       u.hottest != null ? `hottest ${Math.round(u.hottest)} °C` : null,
       r.offline ? 'no network' : u.received ? `the box received ${mbs(u.received)} meanwhile` : null,
-      r.tools_only && u.tools_bytes ? `PlatformIO's tools now ${mbs(u.tools_bytes)}` : null].filter(Boolean).join(', ') : facDur(r.duration);
+      r.tools_only && u.tools_bytes ? `PlatformIO's tools now ${mbs(u.tools_bytes)}` : null,
+      u.from_cache ? `${u.from_cache} of ${u.from_cache + (u.compiled || 0)} objects from the build cache` : null].filter(Boolean).join(', ') : facDur(r.duration);
     const file = (n) => `/admin/ci/file?run=${encodeURIComponent(r.run)}&name=${encodeURIComponent(n)}`;
     return el('div', { className: 'admin-item' },
       el('span', { className: `state state-${r.state === 'passed' ? 'running' : 'stopped'}`, textContent: r.state === 'passed' ? (r.tools_only ? 'Tools fetched' : r.offline ? 'Built offline' : 'Built') : r.state }),
