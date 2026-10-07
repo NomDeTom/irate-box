@@ -506,5 +506,29 @@ kits.fetch("build", budget_mb=50, log=lambda *a: None)
 check("pruning drops a wheel no manifest names any more", not (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
       and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists() and (kits.WHEELHOUSE / "platformio-6.3.0-py3-none-any.whl").exists())
 check("kits.status() counts the wheels and the wheelhouse's bytes", kits.status()["kits"]["build"]["cached"]["wheels"] == 2 and kits.wheelhouse_bytes() > 0)
+# Debug symbols (step 37, toolkits-plan §6): a kit from Debian's debug archive alone, its index kept
+# apart, and only the symbols of what is installed here (a -dbgsym depends on its exact version).
+ARCHIVE.update({"nginx": ("1.26.3-3", []), "nginx-dbgsym": ("1.26.3-3", ["nginx"]), "mosquitto-dbgsym": ("2.0.21-1", ["mosquitto"]),
+                "mosquitto": ("2.0.21-1", [])})
+installed.add("nginx")
+(T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
+(T / "os-release").write_text('PRETTY_NAME="Debian GNU/Linux 13 (trixie)"\nVERSION_CODENAME=trixie\n')
+kits_os = os.environ.get("HUB_OS_RELEASE"); os.environ["HUB_OS_RELEASE"] = str(T / "os-release")
+(T / "defs" / "syms.json").write_text(json.dumps({"id": "syms", "title": "Syms", "summary": "s", "consent": "c", "debug_archive": True,
+                                                   "packages": ["nginx-dbgsym", "mosquitto-dbgsym"]}))
+calls.clear()
+line = kits.fetch("syms", budget_mb=50, log=lambda *a: None)
+man = kits.manifest("syms")
+upd = [c for c in calls if c[0].endswith("apt-get") and "update" in c]
+dl = [c for c in calls if c[0].endswith("apt-get") and "--download-only" in c]
+check("symbols: only for what is installed here (nginx), mosquitto's said as left out", [p["name"] for p in man["packages"]] == ["nginx-dbgsym"]
+      and "mosquitto-dbgsym" in man["left_out"], man)
+src = (kits.ROOT / "debug.list").read_text()
+check("  from Debian's debug archive alone, for this release, with Debian's keyring", src.strip() == f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-debug main"
+      and upd and all(c[c.index("-o") + 1:].count(f"Dir::Etc::sourcelist={kits.ROOT / 'debug.list'}") for c in upd + dl), src)
+check("  its index kept apart from the box's own lists", all(f"Dir::State::Lists={kits.DEBUG_LISTS}" in c for c in upd + dl)
+      and all("Dir::Etc::sourceparts=-" in c for c in upd + dl))
+check("the shipped symbols kit loads, from the debug archive", __import__("irate_box.hub.kitdefs", fromlist=["x"])._ok(
+      json.loads((REPO / "toolkits" / "symbols.json").read_text()), "symbols") and json.loads((REPO / "toolkits" / "symbols.json").read_text())["debug_archive"] is True)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

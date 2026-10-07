@@ -123,6 +123,15 @@ try:
     kits.export_usb("small", T / "stick2"); check("export refuses a .deb no signed index lists", False)
 except ValueError as exc:
     check("export refuses a .deb no signed index lists", "libgdb_1%3a16.3-1_armhf.deb" in str(exc), str(exc))
+# A kit from Debian's debug archive (the symbols kit): its signed index is in the kits' own lists.
+(L / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages").write_text(packages)
+kits.DEBUG_LISTS.mkdir(parents=True, exist_ok=True)
+for f in ("deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages", "deb.debian.org_debian_dists_trixie_InRelease"):
+    shutil.move(str(L / f), str(kits.DEBUG_LISTS / f.replace("debian_dists_trixie", "debian-debug_dists_trixie-debug")))
+line = kits.export_usb("small", T / "stick3")
+check("export: a debug-archive kit vouched for by the index kept in the kits' own lists",
+      sorted(p.name for p in (T / "stick3" / "armhf" / "small" / "lists").iterdir()) == ["deb.debian.org_debian-debug_dists_trixie-debug_InRelease",
+      "deb.debian.org_debian-debug_dists_trixie-debug_main_binary-armhf_Packages"], line)
 from irate_box.root import hub_control  # noqa: E402
 check("the root helper has both", {"usb-kit-import", "usb-kit-export"} <= set(hub_control.ACTIONS))
 print("ok" if not fails else f"{fails} failure(s)")
