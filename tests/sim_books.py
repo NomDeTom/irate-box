@@ -172,5 +172,56 @@ checked.clear()
 L.update(names=["gh-0"], log=lambda *a: None)
 check("asked for by name: checked whatever is left", checked == ["gh-0"])
 L.resolve = real_resolve
+# Kiwix's catalogue (step 14, part d): a search, a book kept current by its catalogue name, the
+# books' budget, and a book never taken over plain HTTP. The catalogue stood in, shaped as
+# opds.library.kiwix.org answered on 2026-10-07.
+def entry(name, date, size, flavour=""):
+    return f"""<entry><id>urn:uuid:x</id><title>{name} title</title><updated>{date}T00:00:00Z</updated><summary>About {name}</summary>
+<language>eng</language><name>{name}</name><flavour>{flavour}</flavour><category>stack_exchange</category><articleCount>77213</articleCount>
+<link rel="http://opds-spec.org/acquisition/open-access" type="application/x-zim" href="https://lb.download.kiwix.org/zim/x/{name}{'_' + flavour if flavour else ''}_{date[:7]}.zim.meta4" length="{size}" /></entry>"""
+FEED = """<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"><totalResults>3</totalResults>""" + \
+    entry("raspberrypi_en_all", "2026-08-04", 298463232) + entry("raspberrypi_en_all", "2026-09-04", 300000000) + \
+    entry("raspberrypi_en_all", "2026-10-01", 100, "nopic") + '<entry><title>http only</title><link type="application/x-zim" href="http://x/y.zim" /></entry></feed>'
+opened = []
+class Feed(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+real_open = L._open
+L._open = lambda url, auth=None, method="GET", timeout=60, extra=None: (opened.append(url), Feed(FEED.encode()))[1]
+res = L.catalogue_search(q="raspberry", language="eng")
+check("catalogue: entries with title, language, size, date, the .zim (not its .meta4), https only", res["total"] == 3 and len(res["entries"]) == 3
+      and res["entries"][0]["url"] == "https://lb.download.kiwix.org/zim/x/raspberrypi_en_all_2026-08.zim" and res["entries"][0]["size"] == 298463232
+      and res["entries"][0]["updated"] == "2026-08-04" and "q=raspberry" in opened[-1] and "lang=eng" in opened[-1], res["entries"][0])
+src = L.validate_source({"name": "raspberrypi", "type": "kiwix", "kiwix_name": "raspberrypi_en_all"})
+cand = L.resolve(src)
+check("kept current by its catalogue name: the newest of that name and flavour", cand["url"].endswith("raspberrypi_en_all_2026-09.zim") and cand["size"] == 300000000
+      and not cand["zip"] and "name=raspberrypi_en_all" in opened[-1], cand)
+cand2 = L.resolve(L.validate_source({"name": "raspberrypi-nopic", "type": "kiwix", "kiwix_name": "raspberrypi_en_all", "flavour": "nopic"}))
+check("  a flavour picks its own", cand2["url"].endswith("_nopic_2026-10.zim"), cand2)
+for bad in ({"kiwix_name": "../x"}, {"kiwix_name": ""}, {"kiwix_name": "a", "flavour": "x y"}):
+    try:
+        L.validate_source(dict({"name": "k", "type": "kiwix"}, **bad)); check(f"kiwix source refused: {bad}", False)
+    except L.LibrarianError:
+        check(f"kiwix source refused: {bad}", True)
+L._open = real_open
+pol = dict(L.load_config()["policy"], books_budget_mb=1)
+why = L.over_budget("newbig", 2 << 20, pol)
+check("the books' budget: refused, saying how far over and what is largest", why and "of 1 MB" in why and "Largest now:" in why, why)
+check("  a book that fits, or no budget: no objection", L.over_budget("x", 10, dict(pol, books_budget_mb=0)) is None
+      and L.over_budget("x", 10, dict(pol, books_budget_mb=10 ** 6)) is None)
+try:
+    L.fetch_book({"name": "newbig"}, {"size": 2 << 20, "zip": False, "url": "https://x/y.zim", "auth": None, "version": "v"}, pol, {})
+    check("  fetching refuses it before downloading", False)
+except L.LibrarianError as exc:
+    check("  fetching refuses it before downloading", "over the books' budget" in str(exc), str(exc))
+class Redirected(io.BytesIO):
+    status = 200; headers = {"Content-Length": "3"}
+    def geturl(self): return "http://mirror.example/y.zim"
+L._open = lambda *a, **k: Redirected(b"abc")
+try:
+    L._download("https://lb.download.kiwix.org/y.zim", T / "y.part"); check("a redirect to plain HTTP: not taken", False)
+except L.LibrarianError as exc:
+    check("a redirect to plain HTTP: not taken (F22)", "plain HTTP" in str(exc), str(exc))
+L._open = real_open
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

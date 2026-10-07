@@ -88,11 +88,12 @@ LOCK_FILE = LIB_DIR / "lock"
 PROGRESS_FILE = LIB_DIR / "progress.json"  # the download in flight, for /admin
 LIBRARY_XML = ZIM_DIR / "library.xml"
 
-TYPES = ("release", "actions", "nightly-link", "url")
+TYPES = ("release", "actions", "nightly-link", "url", "kiwix")
 DEFAULT_POLICY = {
     "keep_old": 1,            # archived previous versions per book; 0 deletes them
     "check_every_hours": 24,  # for the timer; 0 means only when asked
     "min_free_mb": 512,       # never let a download leave less than this free
+    "books_budget_mb": 0,     # all the books together at most this (0: no cap, only min_free_mb)
     # What a scheduled check does with something newer, for books and apps: 0 only notes it,
     # 1 also downloads and checks it (ready to update), 2 also puts it in use.
     "auto_install": 2,
@@ -104,7 +105,7 @@ DEFAULT_POLICY = {
     "hub_window_start": 2,
     "hub_window_end": 5,
 }
-POLICY_MAX = {"auto_install": 2, "hub_auto": 2, "hub_window_start": 23, "hub_window_end": 23}
+POLICY_MAX = {"auto_install": 2, "hub_auto": 2, "hub_window_start": 23, "hub_window_end": 23, "books_budget_mb": 10 ** 7}
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 API = "https://api.github.com"
@@ -246,6 +247,17 @@ def validate_source(src):
     if out["type"] not in TYPES:
         raise LibrarianError(f"type must be one of {', '.join(TYPES)}")
     pattern = str(src.get("pattern", "")).strip()
+    if out["type"] == "kiwix":
+        # A book from Kiwix's catalogue (library.kiwix.org), kept current by its catalogue name:
+        # each release has a new file name, so a plain url source would never move on.
+        kname = str(src.get("kiwix_name", "")).strip()
+        if not KIWIX_NAME_RE.match(kname):
+            raise LibrarianError("kiwix_name: the book's name in Kiwix's catalogue, e.g. wikipedia_en_top_mini")
+        flavour = str(src.get("flavour", "")).strip()
+        if flavour and not KIWIX_NAME_RE.match(flavour):
+            raise LibrarianError("flavour: letters, digits, '_' and '-'")
+        out.update(kiwix_name=kname, flavour=flavour, enabled=bool(src.get("enabled", True)))
+        return out
     if out["type"] == "url":
         url = str(src.get("url", "")).strip()
         if urllib.parse.urlparse(url).scheme != "https":
@@ -862,7 +874,66 @@ def _resolve_url(src, auth):
     }
 
 
-RESOLVERS = {"release": _resolve_release, "actions": _resolve_actions,
+# --- Kiwix's catalogue (library.kiwix.org, OPDS) ---------------------------------------------------
+KIWIX_OPDS = "https://opds.library.kiwix.org/catalog/v2/entries"
+KIWIX_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
+_ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def _opds(params):
+    """The catalogue's entries for a query: [{name, title, summary, language, category, flavour,
+    updated, size, articles, url}] and the total. The download is the .zim the .meta4 names."""
+    import xml.etree.ElementTree as ET
+    url = f"{KIWIX_OPDS}?{urllib.parse.urlencode(params)}"
+    with _open(url, timeout=30) as resp:
+        data = resp.read(4 << 20)
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        raise LibrarianError("Kiwix's catalogue sent something unreadable")
+    out = []
+    for e in root.findall(f"{_ATOM}entry"):
+        g = lambda tag: (e.findtext(f"{_ATOM}{tag}") or "").strip()  # noqa: E731
+        link = next((l for l in e.findall(f"{_ATOM}link") if l.get("type") == "application/x-zim"), None)
+        href = (link.get("href") or "") if link is not None else ""
+        if not href.startswith("https://"):
+            continue
+        out.append({"name": g("name"), "title": g("title"), "summary": g("summary"), "language": g("language"),
+                    "category": g("category"), "flavour": g("flavour"), "updated": g("updated")[:10],
+                    "size": int(link.get("length") or 0), "articles": int(g("articleCount") or 0),
+                    "url": href[:-len(".meta4")] if href.endswith(".meta4") else href})
+    try:
+        total = int(root.findtext(f"{_ATOM}totalResults") or len(out))
+    except ValueError:
+        total = len(out)
+    return out, total
+
+
+def catalogue_search(q="", language="", category="", start=0, count=20):
+    """A page of Kiwix's catalogue for the Books page (online only)."""
+    params = {"count": max(1, min(int(count), 50)), "start": max(0, int(start))}
+    if q:
+        params["q"] = q[:100]
+    if language:
+        params["lang"] = language[:20]
+    if category:
+        params["category"] = category[:40]
+    entries, total = _opds(params)
+    return {"entries": entries, "total": total, "start": params["start"]}
+
+
+def _resolve_kiwix(src, auth):
+    entries, _ = _opds({"name": src["kiwix_name"], "count": 20})
+    entries = [e for e in entries if e["name"] == src["kiwix_name"] and (e["flavour"] or "") == (src.get("flavour") or "")]
+    if not entries:
+        raise LibrarianError(f"Kiwix's catalogue has no {src['kiwix_name']}" + (f" ({src['flavour']})" if src.get("flavour") else ""))
+    e = max(entries, key=lambda x: x["updated"])
+    file = e["url"].rsplit("/", 1)[-1]
+    return {"version": file, "url": e["url"], "size": e["size"], "zip": False,
+            "label": f"{file} ({e['updated']}, from Kiwix's catalogue)", "auth": None}
+
+
+RESOLVERS = {"release": _resolve_release, "actions": _resolve_actions, "kiwix": _resolve_kiwix,
              "nightly-link": _resolve_nightly, "url": _resolve_url, "git": _resolve_git}
 
 
@@ -884,6 +955,9 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
         have = 0
     try:
         resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
+        if urllib.parse.urlparse(url).scheme == "https" and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https":
+            resp.close()  # a book is never taken over plain HTTP, even on a redirect (F22)
+            raise LibrarianError(f"{urllib.parse.urlparse(url).hostname} redirected to plain HTTP: not taken")
         go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
         done = have if go_on else 0
         with resp, open(dest, "ab" if go_on else "wb") as out:
@@ -1041,6 +1115,25 @@ def staged_book(name):
     return ZIM_DIR / f".{name}.zim.fetched"
 
 
+def books_bytes():
+    return sum(p.stat().st_size for p in ZIM_DIR.glob("*.zim")) if ZIM_DIR.is_dir() else 0
+
+
+def over_budget(name, size, policy):
+    """Why a book of `size` bytes would not fit the books' budget (it replaces <name>.zim), or None.
+    Says which books are largest: what the owner would remove first to make room."""
+    budget = policy.get("books_budget_mb", 0) << 20
+    if not budget or not size:
+        return None
+    current = ZIM_DIR / f"{name}.zim"
+    after = books_bytes() - (current.stat().st_size if current.exists() else 0) + size
+    if after <= budget:
+        return None
+    largest = sorted(ZIM_DIR.glob("*.zim"), key=lambda p: p.stat().st_size, reverse=True)[:3]
+    return (f"over the books' budget: it would make {after >> 20} MB of {budget >> 20} MB. Largest now: "
+            + ", ".join(f"{p.stem} ({p.stat().st_size >> 20} MB)" for p in largest))
+
+
 def fetch_book(src, cand, policy, status_entry):
     """Download cand and check it into staged_book(); readers see no change until install."""
     name = src["name"]
@@ -1048,6 +1141,9 @@ def fetch_book(src, cand, policy, status_entry):
     free = _free_bytes(ZIM_DIR)
     if cand["size"] and free < need:
         raise LibrarianError(f"not enough space: {free >> 20} MB free, {need >> 20} MB needed")
+    over = over_budget(name, cand["size"], policy)
+    if over:
+        raise LibrarianError(over)
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     ZIM_DIR.mkdir(parents=True, exist_ok=True)
@@ -1394,7 +1490,8 @@ def book_rows():
 def books_page(q="", language="", state="", kept="", sort="title", page=1, per_page=PER_PAGE, names_only=False):
     """One page of the books, filtered and sorted, with a summary of all of them."""
     rows, sources, status = book_rows()
-    summary = {"count": len(rows), "bytes": sum(r["size"] for r in rows), "languages": {}, "states": {}, "kept": sum(r["kept"] for r in rows)}
+    summary = {"count": len(rows), "bytes": sum(r["size"] for r in rows), "languages": {}, "states": {}, "kept": sum(r["kept"] for r in rows),
+               "budget_mb": load_config()["policy"]["books_budget_mb"]}
     for r in rows:
         if r["language"]:
             summary["languages"][r["language"]] = summary["languages"].get(r["language"], 0) + 1
