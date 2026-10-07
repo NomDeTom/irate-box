@@ -1139,3 +1139,6 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .book-card td { background: var(--surface); }
 .books-pager { display: flex; gap: 0.6rem; align-items: center; }
 .scroll-x { overflow-x: auto; }
+/* The mesh (step 18): the traffic a line each; a message set apart. */
+.mesh-packets { padding-left: 1.4rem; font-size: 0.9rem; }
+.mesh-text { color: var(--text); font-style: italic; }

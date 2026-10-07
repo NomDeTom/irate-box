@@ -41,6 +41,7 @@
         <a href="#moderation">Moderation</a>
         <a href="#git">Git</a>
         <a href="#factory">Firmware Factory</a>
+        <a href="#mesh">Mesh</a>
         <p class="admin-side-group">System</p>
         <a href="#network">Network</a>
         <a href="#security">Security</a>
@@ -610,6 +611,30 @@
         <p class="setting-desc" id="ci-offline"></p>
         <div id="ci-runs" class="admin-list"></div>
         <div id="ci-run-view" class="git-manage" hidden></div>
+      </section>
+
+      <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">
+        <h2 id="mesh-title">Mesh</h2>
+        <p class="setting-desc">
+          The Meshtastic packets nodes and phones send to the box's MQTT broker, decoded here with
+          the channel keys below: which nodes there are, where, how they're doing, and what they
+          said. Without a channel's key its packets stay encrypted, and only that they were sent is
+          shown. Messages appear only on this page; <a href="/mesh.html">/mesh.html</a> shows
+          guests the nodes and the traffic, while the MQTT broker is public (Access).
+        </p>
+        <p class="setting-desc" id="mesh-admin-state">Looking…</p>
+        <h3>Channels</h3>
+        <div id="mesh-channels" class="admin-list"></div>
+        <form id="mesh-channel-form" class="library-form">
+          <label>Name <input name="name" maxlength="11" placeholder="LongFast" autocomplete="off"></label>
+          <label>Key <input name="key" placeholder="the channel's key, base64, as Meshtastic shows it" autocomplete="off" spellcheck="false"></label>
+          <button type="submit">Add</button>
+          <button type="button" id="mesh-longfast" class="link-button">Add Meshtastic's public LongFast</button>
+        </form>
+        <p class="setting-desc action-note" id="mesh-note" role="status" hidden></p>
+        <h3>Heard</h3>
+        <p class="setting-desc" id="mesh-admin-counts"></p>
+        <ol class="mesh-packets" id="mesh-admin-packets"></ol>
       </section>
 
       <section class="admin-pane" id="factory" aria-labelledby="factory-title">

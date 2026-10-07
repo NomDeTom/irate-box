@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mesh · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+</head>
+<body class="help mesh">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📡 Mesh</h1>
+    <p class="subtitle">The Meshtastic nodes heard through this box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+  <section>
+    <p id="mesh-state" role="status">Looking…</p>
+    <p class="setting-desc" id="mesh-counts"></p>
+  </section>
+  <section>
+    <h2>Nodes</h2>
+    <div class="scroll-x">
+      <table class="admin-table mesh-nodes" id="mesh-nodes">
+        <thead><tr><th>Node</th><th>Last heard</th><th>Battery</th><th>Where</th><th>Heard</th><th>Packets</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  <section>
+    <h2>Recent traffic</h2>
+    <p class="setting-desc">What kind of packet, from whom, on which channel. Messages are not shown here.</p>
+    <ol class="mesh-packets" id="mesh-packets"></ol>
+  </section>
+  <script src="/mesh.js"></script>
+</body>
+</html>
