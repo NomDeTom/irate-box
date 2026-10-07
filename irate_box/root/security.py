@@ -357,6 +357,23 @@ KERNEL = {
 }
 
 
+# Debian's own kernel defaults: the link protections and the rest a stock Debian box has (FIFOs and
+# regular files in shared folders, source routes refused, the SysRq mask). Armbian builds leave
+# recommended packages out, so mPWRD-OS images lack it (the Lyra, 2026-10-07; Armbian fixed it
+# upstream on 2026-08-26). Offered before the hub's own file wherever apt can get it.
+DEBIAN_SYSCTL = "linux-sysctl-defaults"
+
+
+def debian_sysctl():
+    """'installed', 'available' (apt has a candidate, from the network or its cache), or None."""
+    if not _have("dpkg-query") or not _have("apt-cache"):
+        return None
+    if "install ok installed" in (run("dpkg-query", "-W", "-f=${Status}", DEBIAN_SYSCTL).stdout or ""):
+        return "installed"
+    m = re.search(r"Candidate:\s*(\S+)", run("apt-cache", "policy", DEBIAN_SYSCTL).stdout or "")
+    return "available" if m and m.group(1) != "(none)" else None
+
+
 def _sysctl_path(key):
     return PROC_SYS / key.replace(".", "/")
 
@@ -378,6 +395,16 @@ def kernel_findings(rec):
         if all(now[key] == want for key, want in k["keys"].items()):
             out.append(_finding(f"kernel-{name}", k["title"], "ok", shown + ".", "",
                                 [{"choice": f"kernel-{name}-undo", "label": "Undo"}] if name in ours else []))
+        elif name == "links" and debian_sysctl() == "available":
+            out.append(_finding(f"kernel-{name}", k["title"], k["status"], f"{shown}. {k['why']}",
+                                f"Debian's own defaults ({DEBIAN_SYSCTL}) set these and the rest a stock Debian "
+                                "box has; or the hub sets just these two (a file in /etc/sysctl.d). Either one now "
+                                "and at every boot.",
+                                [{"choice": "kernel-links-debian", "label": "Install Debian's defaults",
+                                  "confirm": f"Install {DEBIAN_SYSCTL} from Debian and apply it now? It also "
+                                             "protects FIFOs and files in shared folders and refuses source routes, "
+                                             "as on any Debian box."},
+                                 {"choice": f"kernel-{name}-on", "label": "Just these two"}]))
         else:
             out.append(_finding(f"kernel-{name}", k["title"], k["status"], f"{shown}. {k['why']}",
                                 "Set them, now and at every boot (a file in /etc/sysctl.d).",
@@ -386,7 +413,7 @@ def kernel_findings(rec):
 
 
 def _write_sysctl_dropin(kernel):
-    keys = {key: want for name in kernel for key, want in KERNEL[name]["keys"].items()}
+    keys = {key: want for name, e in kernel.items() if not e.get("by") for key, want in KERNEL[name]["keys"].items()}
     if not keys:
         SYSCTL_DROPIN.unlink(missing_ok=True)
         return
@@ -409,6 +436,11 @@ def _kernel(rec, name, on):
     entry = kernel.pop(name, None)
     if entry is None:
         raise ValueError(f"{KERNEL[name]['title']} were not changed from this page")
+    if entry.get("by") == DEBIAN_SYSCTL:
+        out = run("apt-get", "remove", "-y", DEBIAN_SYSCTL, timeout=600)
+        if out.returncode != 0:
+            kernel[name] = entry
+            raise ValueError(f"apt-get remove {DEBIAN_SYSCTL}: {(out.stderr or out.stdout).strip()[-200:]}")
     for key, v in (entry.get("old") or {}).items():
         if v is not None:
             _sysctl_path(key).write_text(v + "\n")
@@ -416,6 +448,27 @@ def _kernel(rec, name, on):
     if not kernel:
         rec.pop("kernel")
     return f"{KERNEL[name]['title']}: back as they were"
+
+
+def _kernel_debian(rec):
+    """Debian's own defaults installed and applied (systemd-sysctl reads every sysctl.d file again)."""
+    kernel = rec.setdefault("kernel", {})
+    old = kernel.get("links", {}).get("old") or {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
+    env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+    out = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
+                         capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, timeout=600)
+    if out.returncode != 0:
+        raise ValueError(f"apt-get install {DEBIAN_SYSCTL}: {(out.stderr or out.stdout).strip()[-200:]} "
+                         "(Just these two works without it)")
+    kernel["links"] = {"old": old, "at": time.strftime("%Y-%m-%d"), "by": DEBIAN_SYSCTL}
+    _write_sysctl_dropin(kernel)   # the hub's own file no longer carries these two
+    save_record(rec)               # installed: Undo must be possible even if what follows fails
+    _systemctl("restart", "systemd-sysctl.service")
+    now = {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
+    if any(now[key] != want for key, want in KERNEL["links"]["keys"].items()):
+        raise ValueError(f"{DEBIAN_SYSCTL} is installed but the link protections are still off "
+                         f"({', '.join(f'{k}={v}' for k, v in now.items())}): something later in sysctl.d sets them back")
+    return f"{KERNEL['links']['title']}: on, from Debian's own defaults ({DEBIAN_SYSCTL}), now and at every boot"
 
 
 # Groups that are root by another name: docker runs containers as root with any folder mounted;
@@ -642,6 +695,8 @@ def fix(choice, updates_log):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
         msg = _llmnr(rec, choice == "llmnr-off")
+    elif choice == "kernel-links-debian":
+        msg = _kernel_debian(rec)
     elif choice in [f"kernel-{n}-{w}" for n in KERNEL for w in ("on", "undo")]:
         msg = _kernel(rec, choice.split("-")[1], choice.endswith("-on"))
     elif choice.startswith(("group-drop:", "group-undo:")):

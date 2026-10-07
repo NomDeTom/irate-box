@@ -31,6 +31,17 @@ for i, l in enumerate(lines):
 open(p, "w").write("\\n".join(lines) + "\\n")
 """)
 (BIN / "gpasswd").chmod(0o755)
+# apt and systemd for linux-sysctl-defaults: apt has it when T/apt-candidate exists; installing it
+# marks it installed; systemd-sysctl then sets the link protections from it.
+for name, body in {
+    "apt-cache": f"import os\nprint('Candidate: ' + ('4.12.1' if os.path.exists('{T}/apt-candidate') else '(none)'))",
+    "dpkg-query": f"import os\nprint('install ok installed' if os.path.exists('{T}/installed') else 'unknown ok not-installed', end='')",
+    "apt-get": f"import sys, pathlib\nm = pathlib.Path('{T}/installed')\nopen('{T}/apt-log', 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+               "m.touch() if 'install' in sys.argv else m.unlink(missing_ok=True)",
+    "systemctl": f"import sys, os\nif sys.argv[1:] == ['restart', 'systemd-sysctl.service'] and os.path.exists('{T}/installed'):\n"
+                 f"    [open('{PROC}/fs/' + k, 'w').write('1\\n') for k in ('protected_symlinks', 'protected_hardlinks')]",
+}.items():
+    (BIN / name).write_text("#!/usr/bin/env python3\n" + body + "\n"); (BIN / name).chmod(0o755)
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_PROC_SYS=str(PROC), HUB_GROUP_FILE=str(T / "group"),
                   HUB_PASSWD_FILE=str(T / "passwd"), HUB_SYSCTL_DROPIN=str(T / "sysctl.d" / "60-irate-box.conf"),
                   PATH=f"{BIN}:{os.environ['PATH']}")
@@ -69,6 +80,24 @@ print(security.fix("kernel-links-undo", None))
 check("links undone: the old values back, the file keeps the other set",
       sysctl("fs.protected_symlinks") == "0" and "protected_symlinks" not in drop.read_text() and "kptr_restrict" in drop.read_text())
 
+(T / "apt-candidate").touch()
+f = findings()
+check("links off, Debian's defaults to be had: offered first, the hub's own two beside it",
+      [a["choice"] for a in f["kernel-links"]["actions"]] == ["kernel-links-debian", "kernel-links-on"]
+      and "linux-sysctl-defaults" in f["kernel-links"]["fix"] and f["kernel-links"]["actions"][0].get("confirm"), f["kernel-links"])
+print(security.fix("kernel-links-debian", None))
+check("Debian's defaults: installed, applied, on now", (T / "installed").exists() and sysctl("fs.protected_symlinks") == "1"
+      and "install -y --no-install-recommends linux-sysctl-defaults" in (T / "apt-log").read_text())
+check("  not in the hub's own file (Debian's carries them); the other set still there",
+      "protected_symlinks" not in drop.read_text() and "kptr_restrict" in drop.read_text())
+f = findings()
+check("  ok, with Undo", f["kernel-links"]["status"] == "ok" and f["kernel-links"]["actions"][0]["choice"] == "kernel-links-undo")
+print(security.fix("kernel-links-undo", None))
+check("  undone: the package removed, the old values back",
+      not (T / "installed").exists() and "remove -y linux-sysctl-defaults" in (T / "apt-log").read_text()
+      and sysctl("fs.protected_symlinks") == "0")
+(T / "apt-candidate").unlink()
+
 print(security.fix("group-drop:lyra@docker", None))
 check("lyra out of docker", "lyra" not in (T / "group").read_text().split("docker:x:990:")[1].split("\n")[0])
 f = findings()
@@ -89,6 +118,6 @@ srv = (REPO / "irate_box" / "hub" / "server.py").read_text()
 import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
-      ("kernel-links-on", "kernel-info-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
+      ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
