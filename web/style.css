@@ -742,6 +742,9 @@ body[data-art] > header { z-index: 2; }
   width: min(46vw, 34rem); aspect-ratio: 900 / 315; opacity: 0.22; }
 [data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp");
   width: min(46vw, 34rem); aspect-ratio: 900 / 317; opacity: 0.22; }
+/* The Firmware Factory's production line: the desk's size, with lights of its own (krab-desk.js). */
+[data-art="factory"] .admin-art { display: block; background-image: url("art/krab-factory.webp");
+  width: min(46vw, 34rem); aspect-ratio: 900 / 266; opacity: 0.22; }
 /* The desk's lights: the picture above is the desk dark (krab-controller.webp). krab-desk.js reads
    the colour mask (krab-controller-mask.webp; each blob is one light, pink the yellow ones, green
    the blue ones), shares the blobs out into groups, and adds each group as an <i> in .art-lamps:
@@ -749,14 +752,14 @@ body[data-art] > header { z-index: 2; }
    grown from them (the first canvas) that flutters on its own. The yellow groups blink in
    patterns of their own; the blue ones glow up and down. The crab is over them all. */
 .art-lamps, .art-krab { display: none; position: absolute; inset: 0; }
-[data-art="controller"] .art-lamps, [data-art="controller"] .art-krab { display: block; }
+[data-art="controller"] .art-lamps, [data-art="controller"] .art-krab, [data-art="factory"] .art-lamps { display: block; }
 .art-lamps i, .art-lamps canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .art-lamps i { will-change: opacity; }
 .art-krab { background: url("art/krab-controller-krab.webp") no-repeat center / contain; }
 /* No motion asked for: krab-desk.js leaves every light on, as in the picture. */
 @media (max-width: 760px) {
   .admin-art { width: 45vw; opacity: 0.12; }
-  [data-art="controller"] .admin-art, [data-art="workbench"] .admin-art { width: 70vw; opacity: 0.16; }
+  [data-art="controller"] .admin-art, [data-art="workbench"] .admin-art, [data-art="factory"] .admin-art { width: 70vw; opacity: 0.16; }
 }
 @media print { .admin-art { display: none !important; } }
 /* The uptime heatmaps (heatmap.js): a label column, then the cells; colours from the palette. */

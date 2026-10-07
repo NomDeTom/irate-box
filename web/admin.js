@@ -25,12 +25,12 @@ function showPane() {
   });
   // Background art by side-bar group (style.css, web/art/): the controller for Box and System,
   // the librarian for Library and Hub content, the doctor for Health; a pane may have its own
-  // (the workbench for Toolkits).
+  // (the workbench for Toolkits, the production line for the Firmware Factory).
   const link = sideLinks.find((l) => l.hash === `#${pane.id}`);
   let group = link && link.previousElementSibling;
   while (group && !group.classList.contains('admin-side-group')) group = group.previousElementSibling;
   const ART = { Box: 'controller', System: 'controller', Library: 'librarian', 'Hub content': 'librarian', Health: 'doctor' };
-  const PANE_ART = { welcome: 'welcome-controller', toolkits: 'workbench' };
+  const PANE_ART = { welcome: 'welcome-controller', toolkits: 'workbench', factory: 'factory' };
   document.querySelector('.admin-main').dataset.art = PANE_ART[pane.id]
     || (group && ART[group.textContent.trim()]) || '';
   const title = pane.querySelector('h2').textContent;
