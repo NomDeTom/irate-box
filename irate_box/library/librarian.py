@@ -56,6 +56,7 @@ Stdlib only: it runs on the board's Python with nothing installed.
 import argparse
 import fcntl
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -680,10 +681,22 @@ def _request(url, auth=None, method="GET", extra=None):
     return req
 
 
+class _NotModified(Exception):
+    """A conditional request's 304: what was kept is still current."""
+
+    def __init__(self, headers):
+        super().__init__("304")
+        self.headers = headers
+
+
 def _open(url, auth=None, method="GET", timeout=60, extra=None):
     try:
         return urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)
     except urllib.error.HTTPError as exc:
+        if exc.code == 304 and (extra or {}).get("If-None-Match"):
+            raise _NotModified(exc.headers)
+        if exc.headers is not None:
+            _note_rate(exc.headers)
         if exc.code == 401:
             raise LibrarianError(f"{url}: 401, a GitHub token is needed (or a valid one)")
         if exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0":
@@ -694,9 +707,58 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
         raise LibrarianError(f"cannot reach {urllib.parse.urlparse(url).hostname}: {reason}")
 
 
+# GitHub's API at hundreds of sources (next-work plan step 14). Without a token it allows 60 requests
+# an hour, from this address. So: one request per address per run (books sharing a repository share
+# its listing), the answer's ETag kept and sent back (a 304 saves the download always, and the
+# hourly allowance only with a token: tried 2026-10-07, without one each 304 still counted), and
+# what is left of the allowance recorded, so a scheduled run stops checking before it runs out and
+# leaves the rest for the next one (update(), RESERVE).
+API_CACHE = LIB_DIR / "api-cache"   # one file per address: {url, etag, body, at}
+API_CACHE_MAX = 400
+RATE_FILE = LIB_DIR / "github-rate.json"
+RESERVE = 10
+MEMO_SECONDS = 600  # the same address asked twice within this: answered from memory
+_memo = {}          # path -> (when, body)
+_rate = {}
+
+
+def _note_rate(headers):
+    try:
+        _rate.update(limit=int(headers["X-RateLimit-Limit"]), remaining=int(headers["X-RateLimit-Remaining"]),
+                     reset=int(headers["X-RateLimit-Reset"]), at=int(time.time()))
+    except (KeyError, TypeError, ValueError):
+        pass
+
+
+def rate():
+    """What is left of GitHub's hourly allowance, as last seen (by this process or the last run)."""
+    return dict(_rate) or _read_json(RATE_FILE, {})
+
+
 def _api(path, auth=None):
-    with _open(f"{API}{path}", auth) as resp:
-        return json.load(resp)
+    got = _memo.get(path)
+    if got and time.time() - got[0] < MEMO_SECONDS:
+        return got[1]
+    url = f"{API}{path}"
+    kept = API_CACHE / f"{hashlib.sha1(url.encode()).hexdigest()}.json"
+    hit = _read_json(kept, {})
+    hit = hit if hit.get("url") == url and hit.get("etag") else None
+    try:
+        with _open(url, auth, extra={"If-None-Match": hit["etag"]} if hit else None) as resp:
+            _note_rate(resp.headers)
+            body = json.load(resp)
+            etag = resp.headers.get("ETag")
+    except _NotModified as nm:
+        _note_rate(nm.headers)
+        body, etag = hit["body"], hit["etag"]
+    if etag:
+        API_CACHE.mkdir(parents=True, exist_ok=True)
+        _write_json(kept, {"url": url, "etag": etag, "body": body, "at": int(time.time())})
+        files = sorted(API_CACHE.glob("*.json"), key=lambda f: f.stat().st_mtime)
+        for old in files[:max(0, len(files) - API_CACHE_MAX)]:
+            old.unlink(missing_ok=True)
+    _memo[path] = (time.time(), body)
+    return body
 
 
 def revoked(rel):
@@ -1132,9 +1194,13 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     # The timer goes as far as the owner chose; asked for by name or from /admin, it does what was asked.
     mode = mode or (("check", "fetch", "update")[policy["auto_install"]] if scheduled else "update" if download else "check")
     results = {}
+    _memo.clear()  # a run asks afresh (ETags keep that cheap), then once per address
     with Lock():
         status = load_status()
-        for src in cfg["sources"]:
+        # A scheduled run takes the most overdue first, and stops asking GitHub while a few of
+        # its hourly requests are left: the rest wait for the next run (spread across the day).
+        order = sorted(cfg["sources"], key=lambda s: (status.get(s["name"]) or {}).get("last_check") or "") if scheduled else cfg["sources"]
+        for src in order:
             name = src["name"]
             if names and name not in names:
                 continue
@@ -1143,6 +1209,13 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             entry = status.setdefault(name, {})
             if scheduled and not _due(entry, policy["check_every_hours"]):
                 continue
+            left = rate()
+            if scheduled and src.get("type") in ("release", "actions", "nightly-link") and left.get("remaining") is not None \
+                    and left["remaining"] < RESERVE and left.get("reset", 0) > time.time():
+                entry["deferred"] = now_iso()
+                results[name] = f"waiting: {left['remaining']} of GitHub's {left.get('limit')} requests left this hour"
+                continue
+            entry.pop("deferred", None)
             entry["last_check"] = now_iso()
             try:
                 if src.get("kind") == "app":
@@ -1166,6 +1239,9 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             results[name] = outcome
             log(f"{name}: {outcome}")
             save_status(status)
+        save_status(status)  # the deferrals too
+        if _rate:
+            _write_json(RATE_FILE, _rate)
         # The firmware mirror (firmware.py), on the same schedule and under the same lock.
         if not names or "firmware" in names:
             from irate_box.library import firmware
@@ -1259,7 +1335,7 @@ def snapshot():
     cfg = load_config()
     return {"policy": cfg["policy"], "sources": cfg["sources"], "status": load_status(),
             "token_set": bool(token()), "running": is_running(), "types": list(TYPES),
-            "progress": progress(), "apps": apps_snapshot(), "hub_update": _hub_update_state(),
+            "progress": progress(), "apps": apps_snapshot(), "hub_update": _hub_update_state(), "github": rate(),
             "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
 
 
