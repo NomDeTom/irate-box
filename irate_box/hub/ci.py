@@ -16,8 +16,9 @@ may be allowed to push there, and a build runs whatever the commit says.
 A build is a fresh clone of the pushed commit and `bash .irate-ci.sh` in it, with
   CI=1  CI_REPO  CI_BRANCH  CI_COMMIT  CI_ARTIFACTS (a folder: what the script leaves there is
   kept)  HOME (persistent, so tool caches such as ~/.platformio survive between builds)
-  CI_PIO_DEPS  (when the librarian carries one: firmware.py) PlatformIO's libdeps/ and packages/
-  for the newest kept Meshtastic release, for a build with no internet
+  CI_PIO_DEPS  (when the librarian carries one: firmware.py) PlatformIO's libdeps/, packages/
+  and download cache (core/.cache/downloads) for the newest kept Meshtastic release, and
+  CI_PIO_DEPS_TAG, that release's tag, for a build with no internet
   PIP_NO_INDEX, PIP_FIND_LINKS  (when the Building kit's wheelhouse is cached: root/kits.py) so
   `pip install platformio` needs no internet either (toolkits-plan §5)
 and a time limit. Its log, status and artifacts go to runs/<repo>/<number>/; the newest
@@ -67,6 +68,7 @@ ENV_VARS = {
     "CI_COMMIT": "the commit, 40 hex digits",
     "CI_ARTIFACTS": "a folder: what the script leaves there is kept with the run",
     "CI_PIO_DEPS": "when the library keeps one: PlatformIO's packages for the newest Meshtastic release",
+    "CI_PIO_DEPS_TAG": "with CI_PIO_DEPS: the release it is for (v2.8.1.8e6a88d), the firmware a build can make with no internet",
     "PIP_NO_INDEX": "when the Building kit's wheelhouse is cached: 1, so pip never reaches the internet",
     "PIP_FIND_LINKS": "when the Building kit's wheelhouse is cached: its folder, so `pip install platformio` needs no internet",
     "HOME": "a folder of its own that stays between builds, so tool caches (~/.platformio, a venv) survive",
@@ -80,12 +82,30 @@ TEMPLATES = {
 # first build on a small board takes hours (the Lyra: 2.8 h); later ones are incremental, as $HOME
 # is kept.
 set -eu
-FW_REF=develop
+# What to build: the release the library's build cache is for, which needs no internet, or develop
+# (anything it needs that the cache lacks is downloaded). Set FW_REF to choose.
+FW_REF=${CI_PIO_DEPS_TAG:-develop}
 [ -x "$HOME/pio/bin/pio" ] || { python3 -m venv "$HOME/pio" && "$HOME/pio/bin/pip" install -q platformio; }
 [ -d "$HOME/fw/.git" ] || git clone -q --depth 50 https://github.com/meshtastic/firmware "$HOME/fw"
 cd "$HOME/fw"
 git fetch -q --depth 50 origin "$FW_REF" && git checkout -q FETCH_HEAD
 git submodule update -q --init --depth 1
+if [ -n "${CI_PIO_DEPS:-}" ]; then
+  echo "== seeding PlatformIO from the build cache ($CI_PIO_DEPS_TAG)"
+  # Only what is missing: what PlatformIO already has stays as it is. Its download cache gives it
+  # the platform (by the URL's hash); usage.db is left out, as its old dates would expire the rest.
+  mkdir -p "$HOME/.platformio/.cache/downloads" "$HOME/.platformio/packages" .pio/libdeps/native
+  for f in "$CI_PIO_DEPS"/core/.cache/downloads/*; do
+    [ "${f##*/}" = usage.db ] || [ -e "$HOME/.platformio/.cache/downloads/${f##*/}" ] || cp "$f" "$HOME/.platformio/.cache/downloads/"
+  done
+  for d in "$CI_PIO_DEPS"/packages/*/; do
+    [ -e "$HOME/.platformio/packages/$(basename "$d")" ] || cp -r "$d" "$HOME/.platformio/packages/"
+  done
+  libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
+  for d in "$libs"/*/; do
+    [ -e ".pio/libdeps/native/$(basename "$d")" ] || cp -r "$d" .pio/libdeps/native/
+  done
+fi
 echo "== building"
 "$HOME/pio/bin/pio" run -e native -j 1
 echo "== keeping the program"
@@ -312,7 +332,8 @@ def build(job):
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
-                say(f"CI_PIO_DEPS={deps} (the librarian's build cache)")
+                env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
+                say(f"CI_PIO_DEPS={deps} (the librarian's build cache, for v{deps.parent.name})")
             wheelhouse = _wheelhouse()
             if wheelhouse:
                 env["PIP_NO_INDEX"] = "1"

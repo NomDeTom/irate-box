@@ -34,8 +34,10 @@ Settings ($HUB_STATE_DIR/library/firmware.json, /admin's Firmware page):
   cache        "discard" (default) | "native" | "whole": the newest release's
                platformio-deps zip (484 MB, for native-tft), kept so builds on push (ci.py,
                CI_PIO_DEPS) need no internet. "native" keeps what a headless meshtasticd uses
-               (~215 MB unpacked): not lvgl and meshtastic-device-ui, not PlatformIO's copy of
-               the archives. Only the newest kept release keeps one. A build matter, not the
+               (~250 MB unpacked): not lvgl and meshtastic-device-ui, and of PlatformIO's
+               download cache only the small archives (36 MB at 2.8.1), as the platform itself
+               (platform-native) is only there; the big ones are the UI libraries'. Only the
+               newest kept release keeps one. A build matter, not the
                flasher's (git-ci-plan 4a): set on the Git page's Builds, and kept whether or
                not flash files are.
 
@@ -79,6 +81,10 @@ BOARD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 FILE_RE = re.compile(r"^[A-Za-z0-9_.+-]{1,128}$")
 # In the deps zip, what only the touchscreen build (native-tft) uses.
 UI_LIBS = {"lvgl", "meshtastic-device-ui", "SdFat", "PNGdec", "libdeflate"}
+# PlatformIO's download cache (core/.cache/downloads, each archive named by the SHA-1 of its URL)
+# is where an offline build finds the platform, which the zip has nowhere else. At 2.8.1 its
+# three archives over this size are the UI libraries' (207 MB); the rest come to 36 MB.
+BIG_ARCHIVE = 16 << 20
 
 
 def _publish(path, data):
@@ -221,7 +227,7 @@ def _mirror_version(rel, cfg, policy, log):
 
 DEPS_RESERVE = 512 << 20  # free space the deps extraction leaves on the card
 
-def _subset(name, mode):
+def _subset(name, mode, size=0):
     """Where a deps-zip entry goes under pio-deps/, or None to leave it out."""
     parts = name.split("/")
     # No empty part (a "//" made the rest absolute, and joining that discarded the folder: F10),
@@ -235,7 +241,9 @@ def _subset(name, mode):
         return "/".join(["packages", *rest])
     if area == "libdeps" and len(rest) >= 2 and rest[1] not in UI_LIBS:
         return "/".join(["libdeps", *rest[1:]])  # libdeps/<env>/<lib>/... -> libdeps/<lib>/...
-    return None                        # core/.cache (the archives again), and the UI libraries
+    if area == "core" and rest[:2] == [".cache", "downloads"] and len(rest) == 3 and rest[2] != "usage.db" and size < BIG_ARCHIVE:
+        return "/".join(["core", *rest])
+    return None                        # the big archives, the rest of core/.cache, the UI libraries
 
 
 def _carry_cache(rel, cfg, policy, log):
@@ -266,13 +274,13 @@ def _carry_cache(rel, cfg, policy, log):
     try:
         with zipfile.ZipFile(tmp) as zf:
             # What it unpacks to must fit, with room left (F30): a small zip can claim gigabytes.
-            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"]) and not i.is_dir())
+            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir())
             free = shutil.disk_usage(ROOT).free
             if wanted > free - DEPS_RESERVE:
                 raise LibrarianError(f"{deps['name']} unpacks to {wanted >> 20} MB; {free >> 20} MB are free, "
                                      f"and {DEPS_RESERVE >> 20} MB must stay free")
             for info in zf.infolist():
-                rel_path = _subset(info.filename, cfg["cache"])
+                rel_path = _subset(info.filename, cfg["cache"], info.file_size)
                 if not rel_path or info.is_dir():
                     continue
                 target = work / rel_path
