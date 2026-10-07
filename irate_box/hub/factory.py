@@ -23,6 +23,7 @@ used (ci.py: resources), and the estimates here come from those records. Stdlib 
 
 import configparser
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -414,7 +415,8 @@ def snapshot():
             known = False
     return {"sources": [{k: s[k] for k in ("name", "area", "mirror", "upstream")} for s in sources()],
             "paused": PAUSED.exists(), "running": running, "waiting": waiting, "runs": history[:30],
-            "estimates": est, "readiness": readiness(history), "free": free_bytes(), "max_per_request": MAX_PER_REQUEST}
+            "estimates": est, "readiness": readiness(history), "free": free_bytes(), "max_per_request": MAX_PER_REQUEST,
+            "flasher": published()}
 
 
 # --- the front page's tile (the owner's choice: settings factory_tile) -------------------------------
@@ -471,3 +473,139 @@ def public_file(run_number, name):
         return None
     f = run / "artifacts" / name
     return f if f.is_file() and not f.is_symlink() else None
+
+
+# --- the web flasher (git-ci-plan §4b item 5: the owner's choice, build by build) --------------------
+# A passed build's manifest (firmware-<env>-<version>.mt.json, which the firmware's own
+# bin/platformio-custom.py writes) and the files it names are copied to <firmware root>/<version>-built/,
+# laid out as release.meshtastic.org's folders are, with that folder's board list
+# (firmware-<version>-built.json). flasher.py lists each such folder as a release built on this box,
+# beside the librarian's. The suffix keeps it clear of the librarian, which removes only the
+# version-shaped folders it no longer keeps, and tells the two apart in the flasher's list.
+FIRMWARE = Path(os.environ.get("HUB_FIRMWARE_ROOT", "/var/lib/hub/firmware"))
+BUILT = "-built"
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}$")
+FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
+
+
+def _run(run_number):
+    if not re.fullmatch(r"[0-9]{1,6}", str(run_number or "")):
+        raise ValueError("run: a factory run's number")
+    run = ci.RUNS / RUNS_NAME / str(run_number)
+    try:
+        return run, json.loads((run / "status.json").read_text())
+    except (OSError, ValueError):
+        raise ValueError("no such run")
+
+
+def _write(path, data):
+    tmp = path.with_name(path.name + ".part")
+    tmp.write_text(json.dumps(data, indent=1))
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def _board_list(folder):
+    try:
+        return json.loads((folder / f"firmware-{folder.name}.json").read_text())
+    except (OSError, ValueError):
+        return {"version": folder.name, "targets": []}
+
+
+def publish(run_number):
+    """Offer one passed build in the web flasher. Returns {version (the flasher's release), env}."""
+    run, st = _run(run_number)
+    if st.get("state") != "passed" or st.get("tools_only"):
+        raise ValueError("only a build that passed can go to the flasher")
+    arts = set(st.get("artifacts") or [])
+    names = [n for n in arts if n.endswith(".mt.json")]
+    if len(names) != 1:
+        raise ValueError("this build kept no manifest (.mt.json): a native build, or one from before the factory kept them")
+    try:
+        mt = json.loads((run / "artifacts" / names[0]).read_text())
+    except (OSError, ValueError):
+        raise ValueError("its manifest cannot be read")
+    env, version = st.get("env"), str(mt.get("version", ""))
+    if not VERSION_RE.match(version) or mt.get("platformioTarget") != env or not ENV_RE.match(env or ""):
+        raise ValueError("its manifest is not this build's")
+    # Each file the manifest names, as kept: the nRF52 update zip is named -ota.zip in the manifest
+    # (bin/platformio-custom.py) but built as .zip. The .elf (debug only) and the bare program are
+    # never kept, and leave the manifest.
+    files, plan = [], []
+    for entry in mt.get("files") or []:
+        name = str(entry.get("name", ""))
+        kept = name if name in arts else name[:-len("-ota.zip")] + ".zip" if name.endswith("-ota.zip") else None
+        if not FILE_RE.match(name) or kept not in arts:
+            continue
+        data = (run / "artifacts" / kept).read_bytes()
+        if entry.get("md5") and hashlib.md5(data).hexdigest() != entry["md5"]:
+            raise ValueError(f"{kept} does not match its manifest's MD5")
+        files.append(entry)
+        plan.append((name, data))
+    if not files:
+        raise ValueError("none of the files its manifest names were kept")
+    folder = FIRMWARE / (version + BUILT)
+    folder.mkdir(parents=True, exist_ok=True)
+    os.chmod(folder, 0o755)
+    for name, data in plan:
+        tmp = folder / (name + ".part")
+        tmp.write_bytes(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, folder / name)
+    _write(folder / f"firmware-{env}-{folder.name}.mt.json", dict(mt, files=files, built_run=f"{RUNS_NAME}/{run.name}",
+                                                                 built_ref=st.get("ref"), built_source=st.get("source")))
+    board_list = _board_list(folder)
+    board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env] + \
+                            [{"board": env, "platform": mt.get("architecture") or st.get("family")}]
+    board_list["targets"].sort(key=lambda t: t["board"])
+    _write(folder / f"firmware-{folder.name}.json", board_list)
+    return {"version": folder.name, "env": env}
+
+
+def unpublish(version, env):
+    """Take one target out of a release built here; the release goes with its last target. A file
+    another target's manifest also names (an ESP32's shared OTA loader) stays."""
+    if not (version.endswith(BUILT) and VERSION_RE.match(version[:-len(BUILT)])) or not ENV_RE.match(env or ""):
+        raise ValueError("not a release built here")
+    folder = FIRMWARE / version
+    mt_path = folder / f"firmware-{env}-{version}.mt.json"
+    try:
+        mine = {f.get("name") for f in json.loads(mt_path.read_text()).get("files", [])}
+    except (OSError, ValueError):
+        raise ValueError(f"{env} is not in {version}")
+    mt_path.unlink()
+    others = set()
+    for m in folder.glob(f"firmware-*-{version}.mt.json"):
+        try:
+            others |= {f.get("name") for f in json.loads(m.read_text()).get("files", [])}
+        except (OSError, ValueError):
+            pass
+    for name in mine - others:
+        if isinstance(name, str) and FILE_RE.match(name):
+            (folder / name).unlink(missing_ok=True)
+    board_list = _board_list(folder)
+    board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env]
+    if board_list["targets"]:
+        _write(folder / f"firmware-{version}.json", board_list)
+    else:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def published():
+    """The releases built here that the flasher offers, newest first: [{version, targets: [{board,
+    platform, run, ref}]}]."""
+    out = []
+    for folder in FIRMWARE.glob("*" + BUILT) if FIRMWARE.is_dir() else []:
+        if not (folder.is_dir() and VERSION_RE.match(folder.name[:-len(BUILT)])):
+            continue
+        targets = []
+        for t in _board_list(folder).get("targets", []):
+            try:
+                mt = json.loads((folder / f"firmware-{t['board']}-{folder.name}.mt.json").read_text())
+            except (OSError, ValueError, KeyError):
+                continue
+            targets.append(dict(t, run=mt.get("built_run"), ref=mt.get("built_ref"), epoch=mt.get("build_epoch")))
+        if targets:
+            out.append({"version": folder.name, "targets": targets, "changed": folder.stat().st_mtime})
+    out.sort(key=lambda r: r["changed"], reverse=True)
+    return out

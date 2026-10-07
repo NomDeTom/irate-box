@@ -3163,6 +3163,7 @@ const fac = {
   targets: document.getElementById('factory-targets'), chosen: document.getElementById('factory-chosen'),
   queue: document.getElementById('factory-queue'), note: noteEl('factory-note'), paused: document.getElementById('factory-paused'),
   pause: document.getElementById('factory-pause'), waiting: document.getElementById('factory-waiting'), runs: document.getElementById('factory-runs'),
+  flasher: document.getElementById('factory-flasher'),
 };
 let facData = null;
 let facTargets = null;
@@ -3209,6 +3210,7 @@ function renderFactory(d) {
   });
   fac.waiting.replaceChildren(...(rows.length ? rows : [el('p', { className: 'setting-desc', textContent: 'Nothing building or waiting.' })]));
   const mbs = (b) => (b == null ? '?' : `${Math.round(b / 2 ** 20)} MB`);
+  const published = new Set((d.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
   fac.runs.replaceChildren(...(d.runs.filter((r) => r.state !== 'running').map((r) => {
     const u = r.resources || {};
     const used = r.resources ? [`${facDur(r.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
@@ -3221,9 +3223,18 @@ function renderFactory(d) {
       el('span', { textContent: ` ${describe(r)} (${String(r.commit || '').slice(0, 7)})` }),
       el('span', { className: 'setting-desc', textContent: ` ${r.finished ? ago(Date.now() / 1000 - r.finished) : ''}; ${used}.` }),
       el('span', { className: 'factory-files' }, ...(r.artifacts || []).map((n) => el('a', { href: file(n), textContent: n, download: n })),
-        el('a', { href: file('log.txt'), textContent: 'log', target: '_blank', rel: 'noopener' })));
+        el('a', { href: file('log.txt'), textContent: 'log', target: '_blank', rel: 'noopener' })),
+      r.state === 'passed' && (r.artifacts || []).some((n) => n.endsWith('.mt.json'))
+        ? el('span', { className: 'library-buttons' }, actionButton(published.has(r.run) ? 'Publish again' : 'Publish to the web flasher',
+          () => facAct({ action: 'publish', run: r.run.split('/')[1] }),
+          { title: 'Offer this build in the web flasher, as a release built on this box' })) : null);
   })));
   if (!fac.runs.children.length) fac.runs.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing built here yet.' }));
+  const pub = (d.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
+    el('span', { textContent: `${t.board}, ${t.platform}: ${rel.version.replace(/-built$/, '')}` }),
+    el('span', { className: 'setting-desc', textContent: ` from ${t.ref || '?'}${t.epoch ? `, built ${new Date(t.epoch * 1000).toLocaleDateString()}` : ''}.` }),
+    el('span', { className: 'library-buttons' }, actionButton('Remove', () => facAct({ action: 'unpublish', version: rel.version, env: t.board }))))));
+  fac.flasher.replaceChildren(...(pub.length ? pub : [el('p', { className: 'setting-desc', textContent: 'Nothing published yet.' })]));
   clearTimeout(facPoll);
   if (location.hash === '#factory') facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
 }

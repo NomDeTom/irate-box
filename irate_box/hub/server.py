@@ -2348,12 +2348,16 @@ class Handler(BaseHTTPRequestHandler):
                     out = factory.queue_tools(str(payload.get("source", "")), str(payload.get("ref", "")), str(payload.get("family", "")))
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
-                if action in ("cancel", "up"):
+                if action == "publish":
+                    factory.publish(str(payload.get("run", "")))
+                elif action == "unpublish":
+                    factory.unpublish(str(payload.get("version", "")), str(payload.get("env", "")))
+                elif action in ("cancel", "up"):
                     (factory.cancel if action == "cancel" else factory.move_up)(str(payload.get("id", "")))
                 elif action in ("pause", "resume"):
                     factory.pause(action == "pause")
                 else:
-                    raise ValueError("action must be queue, tools, cancel, up, pause or resume")
+                    raise ValueError("action must be queue, tools, publish, unpublish, cancel, up, pause or resume")
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return

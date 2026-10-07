@@ -12,11 +12,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="factory-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_GIT_ROOT=str(T / "git"), HUB_CI_ROOT=str(T / "ci"),
-                  HUB_GIT_PRIVATE=str(T / "git" / "private"), HUB_MIRROR_URLS=str(T / "git" / "mirror-urls.json"))
+                  HUB_GIT_PRIVATE=str(T / "git" / "private"), HUB_MIRROR_URLS=str(T / "git" / "mirror-urls.json"),
+                  HUB_FIRMWARE_ROOT=str(T / "firmware"))
 for d in ("state/library", "git/public", "git/private", "ci/queue", "ci/runs", "ci/work"):
     (T / d).mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import ci, factory  # noqa: E402
+from irate_box.hub import ci, factory, flasher  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -190,6 +191,79 @@ r = factory.readiness([{"family": "rp2040", "tools_only": True, "state": "passed
                        {"family": "stm32", "tools_only": True, "state": "failed"}])
 check("  one not built: tools fetched with their size, or could not be", r == {"rp2040": "tools fetched (300 MB downloaded), not yet built",
       "stm32": "its tools could not be fetched here: see the log"}, r)
+
+# The web flasher (§4b item 5): a passed build published, as a release built on this box.
+for f in ci.QUEUE.glob("*.json"):
+    f.unlink()
+ci.FIRMWARE_SCRIPT = r"""set -eu
+mkdir -p ".pio/build/$FW_ENV"; cd ".pio/build/$FW_ENV"
+V=2.8.1.abcdef0; P="firmware-$FW_ENV-$V"
+case $FW_ENV in rak4631) EXT="uf2 zip hex"; ARCH=nrf52840;; *) EXT="bin factory.bin"; ARCH=esp32-s3;; esac
+for e in $EXT; do echo "$FW_ENV $e" > "$P.$e"; done
+echo shared > mt-esp32s3-ota.bin; head -c 3000 /dev/zero > "$P.elf"
+[ "$FW_ENV" = native ] && exit 0
+python3 - "$P" "$V" "$ARCH" <<'PY'
+import hashlib, json, os, sys
+p, v, arch = sys.argv[1:]
+env = os.environ["FW_ENV"]
+files = []
+for n in sorted(os.listdir(".")):
+    if n.startswith(p) or n == "mt-esp32s3-ota.bin":
+        name = p + "-ota.zip" if n == p + ".zip" else n
+        files.append({"name": name, "md5": hashlib.md5(open(n, "rb").read()).hexdigest(), "bytes": os.path.getsize(n)})
+json.dump({"version": v, "platformioTarget": env, "architecture": arch, "files": files}, open(p + ".mt.json", "w"))
+PY
+"""
+factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", ["heltec-v3", "rak4631", "native"])
+ci.run_queue()
+by_env = {r["env"]: r for r in factory.runs(3)}
+check("the manifest (.mt.json) kept with a build", "firmware-heltec-v3-2.8.1.abcdef0.mt.json" in by_env["heltec-v3"]["artifacts"], by_env["heltec-v3"]["artifacts"])
+out = factory.publish(by_env["heltec-v3"]["run"].split("/")[1])
+factory.publish(by_env["rak4631"]["run"].split("/")[1])
+rel = T / "firmware" / "2.8.1.abcdef0-built"
+check("publish: a release folder of its own, beside the librarian's, its board list", out == {"version": "2.8.1.abcdef0-built", "env": "heltec-v3"}
+      and json.loads((rel / "firmware-2.8.1.abcdef0-built.json").read_text()) == {"version": "2.8.1.abcdef0-built", "targets": [
+          {"board": "heltec-v3", "platform": "esp32-s3"}, {"board": "rak4631", "platform": "nrf52840"}]}, sorted(p.name for p in rel.iterdir()))
+mt = json.loads((rel / "firmware-heltec-v3-2.8.1.abcdef0-built.mt.json").read_text())
+check("  the manifest under the flasher's name for it, the .elf left out; the files as built", [f["name"] for f in mt["files"]] == [
+      "firmware-heltec-v3-2.8.1.abcdef0.bin", "firmware-heltec-v3-2.8.1.abcdef0.factory.bin", "mt-esp32s3-ota.bin"]
+      and (rel / "firmware-heltec-v3-2.8.1.abcdef0.factory.bin").read_text() == "heltec-v3 factory.bin\n", mt)
+check("  the nRF52's update zip under its manifest's name (-ota.zip)", (rel / "firmware-rak4631-2.8.1.abcdef0-ota.zip").is_file())
+status, body = flasher.api("/flasher/api/github/firmware/list")
+lst = json.loads(body)
+check("the flasher's list: the release built here, first among the alphas, with its boards",
+      status == 200 and lst["releases"]["alpha"][0]["id"] == "v2.8.1.abcdef0-built"
+      and lst["releases"]["alpha"][0]["title"] == "Meshtastic Firmware 2.8.1.abcdef0 built on this box (heltec-v3, rak4631)", lst)
+check("  the factory page lists it, with the run each target came from", [(t["board"], t["run"]) for t in factory.snapshot()["flasher"][0]["targets"]]
+      == [("heltec-v3", by_env["heltec-v3"]["run"]), ("rak4631", by_env["rak4631"]["run"])])
+for bad, why in ((by_env["native"]["run"].split("/")[1], "no manifest"), ("../1", "not a run"), ("999", "no such run")):
+    try:
+        factory.publish(bad); check(f"  refused: {why}", False)
+    except ValueError:
+        check(f"  refused: {why}", True)
+(ci.RUNS / by_env["rak4631"]["run"] / "artifacts" / "firmware-rak4631-2.8.1.abcdef0.uf2").write_text("changed")
+try:
+    factory.publish(by_env["rak4631"]["run"].split("/")[1]); check("  refused: a file changed since its manifest (MD5)", False)
+except ValueError as exc:
+    check("  refused: a file changed since its manifest (MD5)", "MD5" in str(exc), exc)
+factory.unpublish("2.8.1.abcdef0-built", "rak4631")
+check("unpublish: the target's files and manifest gone, the board list without it",
+      not list(rel.glob("firmware-rak4631*")) and [t["board"] for t in json.loads((rel / "firmware-2.8.1.abcdef0-built.json").read_text())["targets"]] == ["heltec-v3"])
+(rel / "firmware-esp32-2.8.1.abcdef0-built.mt.json").write_text(json.dumps({"files": [{"name": "mt-esp32s3-ota.bin"}]}))
+bl = json.loads((rel / "firmware-2.8.1.abcdef0-built.json").read_text())
+bl["targets"].append({"board": "esp32", "platform": "esp32"})
+(rel / "firmware-2.8.1.abcdef0-built.json").write_text(json.dumps(bl))
+factory.unpublish("2.8.1.abcdef0-built", "heltec-v3")
+check("  a file another target's manifest names stays", (rel / "mt-esp32s3-ota.bin").is_file() and not (rel / "firmware-heltec-v3-2.8.1.abcdef0.bin").exists(), sorted(p.name for p in rel.iterdir()) if rel.exists() else "gone")
+factory.unpublish("2.8.1.abcdef0-built", "esp32")
+try:
+    factory.unpublish("2.8.1.abcdef0", "heltec-v3"); check("  refused: a librarian's release", False)
+except ValueError:
+    check("  refused: a librarian's release", True)
+factory.publish(by_env["heltec-v3"]["run"].split("/")[1])
+factory.unpublish("2.8.1.abcdef0-built", "heltec-v3")
+check("  the last target out: the release gone, and from the flasher's list", not rel.exists()
+      and not json.loads(flasher.api("/flasher/api/github/firmware/list")[1])["releases"]["alpha"])
 
 # The front page's tile (the owner's choice): the view and the files a guest may have.
 for p in ci.QUEUE.glob("*.json"):

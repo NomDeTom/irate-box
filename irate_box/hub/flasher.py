@@ -19,7 +19,10 @@ page and the API:
   GET /flasher/api/resource/deviceHardware   the bundle's data/hardware-list.json
   GET /flasher/api/resource/eventFirmware    the bundle's data/event_firmware.json
   GET /flasher/api/github/firmware/list      what the librarian keeps (firmware.py writes
-                                             index.json); an empty list until it keeps any
+                                             index.json), and first, what the owner published
+                                             from the Firmware Factory (factory.py publish:
+                                             <version>-built/ folders), as alphas; an empty list
+                                             until there is any
   OPTIONS /flasher/api/...                   the CORS preflight
 
 Stdlib only.
@@ -51,6 +54,23 @@ API_FILES = {
 }
 
 
+BUILT = "-built"   # factory.py's folders: <version>-built/firmware-<version>-built.json
+
+
+def _built():
+    """The releases built here, newest first: [{version, targets}] (factory.published, read here
+    without the factory's imports)."""
+    out = []
+    for folder in FIRMWARE.glob("*" + BUILT) if FIRMWARE.is_dir() else []:
+        try:
+            targets = json.loads((folder / f"firmware-{folder.name}.json").read_text()).get("targets") or []
+        except (OSError, ValueError):
+            continue
+        if targets and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}" + BUILT, folder.name):
+            out.append((folder.stat().st_mtime, {"version": folder.name, "targets": targets}))
+    return [r for _, r in sorted(out, key=lambda x: x[0], reverse=True)]
+
+
 def installed():
     return (ROOT / "flasher.html").is_file()
 
@@ -70,8 +90,15 @@ def api(path):
         return (200, f.read_bytes()) if f.is_file() else (404, b'{"error": "the flasher is not installed"}')
     if path == "/flasher/api/github/firmware/list":
         try:
-            return 200, (FIRMWARE / "index.json").read_bytes()
-        except OSError:
-            return 200, json.dumps(EMPTY_LIST).encode()
+            out = json.loads((FIRMWARE / "index.json").read_text())
+        except (OSError, ValueError):
+            out = json.loads(json.dumps(EMPTY_LIST))
+        built = [{"id": "v" + r["version"], "release_notes": "",
+                  "title": f"Meshtastic Firmware {r['version'][:-len(BUILT)]} built on this box "
+                           f"({', '.join(t['board'] for t in r['targets'][:4])}{' …' if len(r['targets']) > 4 else ''})"}
+                 for r in _built()]
+        if built:
+            out.setdefault("releases", {}).setdefault("alpha", [])[:0] = built
+        return 200, json.dumps(out).encode()
     # Pull-request builds and anything else the hosted API has: not offline.
     return 404, b'{"error": "not available on this hub"}'
