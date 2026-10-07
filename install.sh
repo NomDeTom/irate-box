@@ -1296,7 +1296,11 @@ RestrictSUIDSGID=yes
 RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
-SystemCallArchitectures=native"
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK"
+# The baseline every unprivileged unit carries (next-work plan step 17; tests/unit_guard.py fails on
+# a missing line). AF_NETLINK: glibc's name lookup asks the kernel's addresses through it.
 cat >/etc/systemd/system/irate-box.service <<EOF
 [Unit]
 Description=Irate-Box hub
@@ -1617,6 +1621,8 @@ Group=$HUB_USER
 Environment=ZIM_CLUSTERCACHE=4
 ExecStart=/usr/bin/kiwix-serve --threads 2 --library --monitorLibrary --blockexternal --nodatealiases --address 127.0.0.1 --port 8081 --urlRootLocation /wiki $STATE/zim/library.xml
 Restart=on-failure
+# It reads the books and writes nothing (step 17: tried on the Lyra, 2026-10-07).
+$HUB_SANDBOX
 
 [Install]
 WantedBy=multi-user.target
@@ -1719,9 +1725,7 @@ ExecStart=/usr/bin/node --max-old-space-size=48 $ROOM/dist/index.js
 Restart=on-failure
 MemoryHigh=80M
 MemoryMax=128M
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
+$HUB_SANDBOX
 
 [Install]
 WantedBy=multi-user.target
