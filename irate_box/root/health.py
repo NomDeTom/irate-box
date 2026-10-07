@@ -448,6 +448,59 @@ def check_space():
     return out
 
 
+def check_builds(now=None):
+    """The builds (ci.py) and the Firmware Factory (factory.py): builds waiting over a day, a
+    factory family failing every time here, and what builds take on the card."""
+    now = time.time() if now is None else now
+    ci_root, out = STATE / "ci", []
+    waiting = []
+    for d in (ci_root / "queue", STATE / "factory-held"):
+        for p in d.glob("*.json") if d.is_dir() else []:
+            try:
+                job = json.loads(p.read_text())
+            except (OSError, ValueError):
+                continue
+            if not job.get("change") and now - float(job.get("queued", now)) > 86400:
+                waiting.append(job)
+    if waiting:
+        held = (STATE / "factory-paused").exists()
+        out.append(_f("builds-waiting", "Builds waiting", "warn",
+                      f"{len(waiting)} build{'s have' if len(waiting) != 1 else ' has'} waited over a day"
+                      + (" (the Firmware Factory is paused)." if held else "."),
+                      "Firmware Factory: resume, or cancel what is no longer wanted." if held else
+                      "Is the builder running (irate-box-ci)? A long build delays the rest: Git → Builds and the Firmware Factory say what is under way."))
+    families = {}
+    runs = ci_root / "runs" / "firmware-factory"
+    for st in sorted(runs.glob("*/status.json"), key=lambda p: int(p.parent.name) if p.parent.name.isdigit() else 0) if runs.is_dir() else []:
+        try:
+            r = json.loads(st.read_text())
+        except (OSError, ValueError):
+            continue
+        if r.get("family") and r.get("state") in ("passed", "failed", "timed out"):
+            families.setdefault(r["family"], []).append(r["state"])
+    for fam, states in sorted(families.items()):
+        if len(states) >= 2 and "passed" not in states:
+            out.append(_f(f"builds-family:{fam}", f"Firmware builds: {fam}", "warn",
+                          f"Every {fam} build here has failed ({len(states)} of them).",
+                          "Open a failed one's log (Firmware Factory, Built): a toolchain PlatformIO has no build of for this board's "
+                          "processor, or one it could not download, fails every target of the family."))
+    used = 0
+    for f in ci_root.rglob("*") if ci_root.is_dir() else []:
+        try:
+            if f.is_file() and not f.is_symlink():
+                used += f.stat().st_size
+        except OSError:
+            pass
+    total = shutil.disk_usage(STATE).total if STATE.exists() else 0
+    if used and total:
+        share = used / total
+        out.append(_f("builds-disk", "What builds take", "warn" if share > 0.2 else "ok",
+                      f"{used >> 20} MB ({share:.0%} of the card): runs, and the builder's tools and caches.",
+                      "Git → Builds: delete old runs (the Firmware Factory keeps each target's two newest). "
+                      "The builder's PlatformIO tools are in /var/lib/hub/ci/home." if share > 0.2 else ""))
+    return out
+
+
 # --- the clock ---------------------------------------------------------------------------------
 # These boards have no clock that keeps time while they are off (the Lyra has no RTC at all),
 # and the hub is meant to run offline. fake-hwclock restores the last time it saved, so a box
@@ -696,7 +749,7 @@ def set_clock(epoch):
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_space):
+                  check_space, check_builds):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
