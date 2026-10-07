@@ -1716,6 +1716,34 @@ class Handler(BaseHTTPRequestHandler):
         guest's own). Run bare, the hub is plain HTTP."""
         return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
 
+    def _irate_check(self, path):
+        """The front's questions (nginx auth_request, Caddy forward_auth), never with a body.
+        /_irate/admin: is this an admin account's session? (Asked beside the box's own login for
+        /admin, the shell, Syncthing and private apps: either will do.) Yes too while the box is
+        unclaimed, when /admin shows only the set-the-password page and asks no login (nginx's
+        satisfy any would otherwise refuse it).
+        /_irate/user: is this visitor logged in? (An app in users mode, access.py.) No: 401 for
+        nginx (its gate sends them to log in), or for Caddy (?redirect=1) the redirect itself,
+        back to where they were going on this origin."""
+        me = accounts.session(self._session_token())
+        if path == "/_irate/admin":
+            ok = unclaimed() or (me is not None and me.get("role") == "admin")
+        else:
+            ok = me is not None
+        if ok:
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif path == "/_irate/user" and "redirect=1" in self.path.partition("?")[2].split("&"):
+            back = self.headers.get("X-Forwarded-Uri", "/")
+            nxt = back if back.startswith("/") and not back.startswith("//") else "/"
+            self.send_response(302)
+            self.send_header("Location", "/account.html?next=" + quote(nxt, safe="/"))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            self.send_json(401, {"error": "an admin's login" if path == "/_irate/admin" else "log in first"})
+
     def _signed_in(self):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
 
@@ -1880,37 +1908,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_source()
             return
 
-        if path == "/_irate/admin":
-            # The front's question for the admin's routes (/admin, the shell, Syncthing, private
-            # apps), asked beside the box's own login (either will do): is this an admin account's
-            # session? Yes too while the box is unclaimed, when /admin shows only the set-the-
-            # password page and asks no login (nginx's satisfy any would otherwise refuse it).
-            me = accounts.session(self._session_token())
-            if unclaimed() or (me and me.get("role") == "admin"):
-                self.send_response(204)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-            else:
-                self.send_json(401, {"error": "an admin's login"})
-            return
-
-        if path == "/_irate/user":
-            # The front's question for an app in users mode (access.py): is this visitor logged in?
-            # 204 yes; no: 401 for nginx (its gate sends them to log in), or for Caddy (?redirect=1)
-            # the redirect itself, back to where they were going on this origin.
-            if accounts.session(self._session_token()):
-                self.send_response(204)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-            elif "redirect=1" in self.path.partition("?")[2].split("&"):
-                back = self.headers.get("X-Forwarded-Uri", "/")
-                nxt = back if back.startswith("/") and not back.startswith("//") else "/"
-                self.send_response(302)
-                self.send_header("Location", "/account.html?next=" + quote(nxt, safe="/"))
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-            else:
-                self.send_json(401, {"error": "log in first"})
+        if path in ("/_irate/admin", "/_irate/user"):
+            self._irate_check(path)
             return
 
         if path == "/api/account":
@@ -2325,6 +2324,11 @@ class Handler(BaseHTTPRequestHandler):
         # Delegated before the body is read: the store takes raw bytes, and the
         # Excalidraw frontend sends no Content-Type for JSON to be parsed from.
         if store.handle(self, "POST", path, STORE, DROP):
+            return
+
+        if path in ("/_irate/admin", "/_irate/user"):
+            # The front's checks, whatever the method: never a body to read.
+            self._irate_check(path)
             return
 
         if self._admin_refused(path) or self._forged(path) or self._admin_locked(path):

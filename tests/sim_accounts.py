@@ -244,6 +244,14 @@ try:
     _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
     code, _, _ = req("/_irate/admin", headers={"Cookie": h.get("Set-Cookie", "").split(";")[0]})
     _, d, _ = req("/admin/accounts")
+    r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/admin", data=b"", method="POST",
+                               headers={"Cookie": h.get("Set-Cookie", "").split(";")[0], "Content-Length": "40"})
+    t0 = time.time()
+    try:
+        pc = urllib.request.urlopen(r, timeout=5).status
+    except (urllib.error.HTTPError, OSError) as e:
+        pc = getattr(e, "code", str(e))
+    check("  asked as a POST whose body never comes (a gated POST): answered at once, not waited on", pc == 204 and time.time() - t0 < 2, pc)
     check("  an admin account's: 204; the Accounts page knows it logged in over HTTPS", code == 204 and d["admin_login"]["on"] is True
           and d["admin_login"]["https_admins"] == ["gina"], (code, d.get("admin_login")))
 finally:
