@@ -1113,3 +1113,11 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .ci-env { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.7rem; font-size: 0.82rem; }
 .ci-env dd { margin: 0; color: var(--muted); }
 .ci-template pre { max-height: 14rem; overflow: auto; font-size: 0.75rem; }
+/* The Firmware Factory (admin.js): the targets by family, a fold each; a build's files as links. */
+.factory-form { display: grid; gap: 0.6rem; }
+.factory-form label { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.factory-targets { display: grid; gap: 0.35rem; }
+.factory-family summary { cursor: pointer; }
+.factory-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.15rem 1rem; padding: 0.4rem 0 0.4rem 1rem; }
+.factory-boards label { font-size: 0.9rem; }
+.factory-files { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; font-size: 0.85rem; }

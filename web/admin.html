@@ -40,6 +40,7 @@
         <a href="#saved">Saved work</a>
         <a href="#moderation">Moderation</a>
         <a href="#git">Git</a>
+        <a href="#factory">Firmware Factory</a>
         <p class="admin-side-group">System</p>
         <a href="#network">Network</a>
         <a href="#security">Security</a>
@@ -310,7 +311,8 @@
           with no internet. Only the boards you tick are kept (a few MB each, per release); "all
           boards" is about 600 MB a release. Checked on the library's schedule, whenever the box has
           internet. The firmware's source code is a mirror like any other repository (Git → Mirrors);
-          the build cache is with the builds (Git → Builds).
+          the build cache is with the builds (Git → Builds). To build your own from the mirror, for
+          boards a release doesn't cover or from a fork: the <a href="#factory">Firmware Factory</a>.
         </p>
         <p class="setting-desc" id="fw-source"></p>
         <p class="setting-desc" id="fw-status"></p>
@@ -567,6 +569,33 @@
         <p class="setting-desc" id="ci-offline"></p>
         <div id="ci-runs" class="admin-list"></div>
         <div id="ci-run-view" class="git-manage" hidden></div>
+      </section>
+
+      <section class="admin-pane" id="factory" aria-labelledby="factory-title">
+        <h2 id="factory-title">Firmware Factory</h2>
+        <p class="setting-desc">
+          Build Meshtastic firmware here, from the box's own copy of its source (a mirror, or a
+          private repository such as a fork): choose a release or a branch, then the boards. Builds
+          run one at a time, at the lowest priority, as the builder (Git → Builds), and each one's
+          use of time, memory, disk and heat is recorded, so the estimates below come from this box.
+          A family's first build here downloads its toolchain; after that it can build offline.
+        </p>
+        <p class="setting-desc bad" id="factory-paused" hidden>Paused: nothing new starts until you resume (a build under way finishes).</p>
+        <h3>Build</h3>
+        <form id="factory-form" class="factory-form">
+          <label>Source <select name="source" id="factory-source"></select></label>
+          <label>Release or branch <select name="ref" id="factory-ref"></select></label>
+          <label>Show <input type="search" id="factory-search" placeholder="board or target" aria-label="Show targets containing"></label>
+          <div id="factory-targets" class="factory-targets"></div>
+          <p class="setting-desc" id="factory-chosen"></p>
+          <button type="submit" id="factory-queue" disabled>Queue</button>
+          <p class="setting-desc action-note" id="factory-note" role="status" hidden></p>
+        </form>
+        <h3>The queue</h3>
+        <p class="library-buttons"><button type="button" id="factory-pause">Pause</button></p>
+        <div id="factory-waiting" class="admin-list"></div>
+        <h3>Built</h3>
+        <div id="factory-runs" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="health" aria-labelledby="health-title">
