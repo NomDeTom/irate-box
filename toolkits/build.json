@@ -1,8 +1,9 @@
 {"id": "build", "title": "Building",
  "summary": "Compilers, make and the rest, so builds on push and builds by hand work offline.",
  "packages": ["build-essential", "cmake", "pkg-config", "python3-dev", "python3-venv"],
- "pip": ["platformio"],
+ "pip": ["platformio", "protobuf", "grpcio-tools"],
  "consent": "A compiler on the box lets anyone with a shell build and run programs here. The builds on push need it.",
  "notes": ["Kept until removed by default: builds on push need it.",
-           "Carries a wheelhouse (platformio and what it needs, as wheels), so a build's pip install needs no internet."],
+           "Carries a wheelhouse (platformio and what it needs, as wheels), so a build's pip install needs no internet.",
+           "The wheelhouse also has protobuf and grpcio-tools, which Meshtastic's build installs for nanopb."],
  "remove_after_hours": null}

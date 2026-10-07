@@ -38,7 +38,8 @@ installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
 BOARD = {"arch": "armhf"}
 # The build kit's wheelhouse (toolkits-plan §5), stood in: what `pip download platformio` fetches.
-WHEELS = {"platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)]}
+WHEELS = {"platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)],
+          "protobuf": [], "grpcio-tools": []}  # nanopb's, in the build kit too; none here, so the sums below are platformio's
 (T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
 calls = []
 policy_seen = []
@@ -478,7 +479,7 @@ check("  and extra", queued[-1] == {"action": "kit-extra", "kit": "capture", "pa
 
 # The wheelhouse (toolkits-plan §5): the build kit names Python packages too, fetched with pip
 # into a folder of its own, so a build's `pip install platformio` needs no internet.
-check("the build kit names platformio for its wheelhouse", kits.definitions()["build"]["pip"] == ["platformio"])
+check("the build kit names platformio, and nanopb's protobuf and grpcio-tools, for its wheelhouse", kits.definitions()["build"]["pip"] == ["platformio", "protobuf", "grpcio-tools"])
 line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
 man = kits.manifest("build")
 check("fetch: the wheelhouse too, counted in the kit's size", {w["file"] for w in man["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}

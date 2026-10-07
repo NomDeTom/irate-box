@@ -98,6 +98,13 @@ check("F11: but not one that is an option", refused(librarian.validate_source, {
 check("F10: '//' in a member name is left out", firmware._subset("pio-deps-x//etc/cron.d/x", "whole") is None)
 check("F10: '..' is left out", firmware._subset("pio-deps-x/packages/../../x", "whole") is None)
 check("F10: a normal member is kept", firmware._subset("pio-deps-x/packages/tool/bin/gcc", "whole") == "packages/tool/bin/gcc")
+# Step 33c: "native" keeps the download cache's small archives (the platform is only there), not the
+# UI libraries' big ones, nor usage.db, whose old dates would expire the rest.
+dl = "pio-deps-native-tft/core/.cache/downloads/"
+check("native: a small archive of the download cache kept", firmware._subset(dl + "eb76d078", "native", 20 << 10) == "core/.cache/downloads/eb76d078")
+check("native: a big one (a UI library's) left out", firmware._subset(dl + "d3084ca4", "native", 88 << 20) is None)
+check("native: usage.db and the http cache left out", firmware._subset(dl + "usage.db", "native", 3000) is None
+      and firmware._subset("pio-deps-native-tft/core/.cache/http/4e69", "native", 3000) is None)
 
 # F22: books and code over encrypted transports only.
 check("F22: a book url over http is refused", refused(librarian.validate_source, {"name": "b", "type": "url", "url": "http://x/b.zim"},

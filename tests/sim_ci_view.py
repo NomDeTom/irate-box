@@ -87,7 +87,7 @@ for t in ci.TEMPLATES.values():
     used |= set(re.findall(r"\$\{?(CI_[A-Z_]+|HOME)\b", t["script"]))
 check("the templates use only what a build gets", used and used <= set(ci.ENV_VARS), used - set(ci.ENV_VARS))
 build_src = (REPO / "irate_box/hub/ci.py").read_text()
-given = set(re.findall(r"\b(CI(?:_[A-Z_]+)?)=", build_src[build_src.index("def build(job)"):])) | {"CI_PIO_DEPS", "PIP_NO_INDEX", "PIP_FIND_LINKS", "HOME"}
+given = set(re.findall(r"\b(CI(?:_[A-Z_]+)?)=", build_src[build_src.index("def build(job)"):])) | {"CI_PIO_DEPS", "CI_PIO_DEPS_TAG", "PIP_NO_INDEX", "PIP_FIND_LINKS", "HOME"}
 check("and what the page says a build gets is what build() sets", set(ci.ENV_VARS) <= given, set(ci.ENV_VARS) - given)
 snap = ci.snapshot()
 check("the snapshot says the limits, the runs' size, what is offline, and the templates", {"keep_runs", "runs_bytes", "memory", "mirrored", "pio_deps", "wheelhouse", "env", "templates"} <= set(snap)
@@ -110,5 +110,28 @@ commit = subprocess.run(["git", "rev-parse", "main"], cwd=w, capture_output=True
 ci.build({"repo": str(wh_bare), "branch": "main", "commit": commit, "queued": time.time()})
 env_out = (ci.RUNS / "wh" / "1" / "artifacts" / "env.txt").read_text()
 check("a build gets PIP_NO_INDEX and PIP_FIND_LINKS from the wheelhouse", env_out == f"1 {kits_root / 'wheelhouse'}", env_out)
+# The firmware template seeds PlatformIO from the build cache (step 33c): only what is missing, the
+# download cache without usage.db, the libraries of either layout; and builds the cache's release.
+script = ci.TEMPLATES["meshtasticd"]["script"]
+check("the template builds the cache's release, or develop", 'FW_REF=${CI_PIO_DEPS_TAG:-develop}' in script)
+seed = script[script.index('if [ -n "${CI_PIO_DEPS:-}" ]'):script.index('echo "== building"')]
+for layout in ("native", "whole"):
+    cache, home, fwd = T / f"cache-{layout}", T / f"home-{layout}", T / f"fw-{layout}"
+    libs = cache / "libdeps" / ("native-tft" if layout == "whole" else "")
+    for f in ("core/.cache/downloads/eb76", "core/.cache/downloads/usage.db", "packages/framework-portduino/package.json"):
+        (cache / f).parent.mkdir(parents=True, exist_ok=True); (cache / f).write_text("new")
+    (libs / "RadioLib").mkdir(parents=True); (libs / "RadioLib" / "library.json").write_text("new")
+    (libs / "Crypto").mkdir(parents=True); (libs / "Crypto" / "library.json").write_text("new")
+    (home / ".platformio/packages/framework-portduino").mkdir(parents=True)
+    (home / ".platformio/packages/framework-portduino/package.json").write_text("kept")
+    fwd.mkdir(); (fwd / ".pio/libdeps/native/Crypto").mkdir(parents=True); (fwd / ".pio/libdeps/native/Crypto/library.json").write_text("kept")
+    r = subprocess.run(["bash", "-euc", seed], cwd=fwd, env=dict(os.environ, HOME=str(home), CI_PIO_DEPS=str(cache), CI_PIO_DEPS_TAG="v2.8.1.8e6a88d"),
+                       capture_output=True, text=True)
+    pio = home / ".platformio"
+    check(f"seeding ({layout} cache): the platform's archive in, usage.db not, what was there kept", r.returncode == 0
+          and (pio / ".cache/downloads/eb76").read_text() == "new" and not (pio / ".cache/downloads/usage.db").exists()
+          and (pio / "packages/framework-portduino/package.json").read_text() == "kept", r.stderr)
+    check(f"  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
+          and (fwd / ".pio/libdeps/native/Crypto/library.json").read_text() == "kept", sorted(p.name for p in (fwd / ".pio/libdeps/native").iterdir()))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
