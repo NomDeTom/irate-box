@@ -98,8 +98,8 @@ $('acct-logout').addEventListener('click', async () => {
 const HUES = [0, 40, 130, 210, 280];
 let saved = {}, draft = {};
 function showPrefs(p, namesTo) {
-  saved = { ...p };
-  draft = { ...p };
+  saved = JSON.parse(JSON.stringify(p));
+  draft = JSON.parse(JSON.stringify(p));
   $('acct-names-to').textContent = namesTo === 'admin' ? 'Names are shown to the box\'s admin only (the owner\'s choice).' : 'Names are shown to those logged in (the owner\'s choice); guests only see how many.';
   drawPrefs();
 }
@@ -115,6 +115,24 @@ function drawPrefs() {
     b.addEventListener('click', () => { draft.hue = h; drawPrefs(); });
     return b;
   }));
+  const POST_APPS = [['shoutbox', 'Shoutbox'], ['board', 'Forum'], ['saves', 'Saved work'], ['drop', 'File drop']];
+  const SEEN = [['everyone', 'everyone here'], ['users', 'signed-in people'], ['me', 'only me']];
+  draft.posts = draft.posts || {};
+  $('acct-posts').replaceChildren(...POST_APPS.map(([app, label]) => {
+    const row = document.createElement('div');
+    row.className = 'acct-pref';
+    const group = document.createElement('span');
+    group.className = 'chip-group'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', label);
+    SEEN.forEach(([v, t]) => {
+      const b = document.createElement('button');
+      const cur = draft.posts[app] || 'everyone';
+      b.type = 'button'; b.className = 'chip' + (cur === v ? ' selected' : ''); b.textContent = t; b.setAttribute('aria-pressed', String(cur === v));
+      b.addEventListener('click', () => { draft.posts = { ...draft.posts, [app]: v }; drawPrefs(); });
+      group.append(b);
+    });
+    row.append(Object.assign(document.createElement('span'), { textContent: label }), group);
+    return row;
+  }));
   const email = $('acct-prefs-form').elements.email;
   if (document.activeElement !== email) email.value = draft.email || '';
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
@@ -122,10 +140,10 @@ function drawPrefs() {
 }
 document.querySelectorAll('#acct-prefs-form [data-pref]').forEach((b) => b.addEventListener('click', () => { draft[b.dataset.pref] = !draft[b.dataset.pref]; drawPrefs(); }));
 $('acct-prefs-form').elements.email.addEventListener('input', (e) => { draft.email = e.target.value.trim(); drawPrefs(); });
-$('acct-prefs-discard').addEventListener('click', () => { draft = { ...saved }; drawPrefs(); });
+$('acct-prefs-discard').addEventListener('click', () => { draft = JSON.parse(JSON.stringify(saved)); drawPrefs(); });
 $('acct-prefs-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const changes = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== saved[k]).map((k) => [k, draft[k]]));
+  const changes = Object.fromEntries(Object.keys(draft).filter((k) => JSON.stringify(draft[k]) !== JSON.stringify(saved[k])).map((k) => [k, draft[k]]));
   try { const d = await post({ action: 'prefs', prefs: changes }); showPrefs(d.prefs, view && view.names_to); note('Saved.', true); }
   catch (err) { note(err.message, false); }
 });

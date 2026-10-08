@@ -1770,6 +1770,23 @@ def moderation_action(payload):
     return (200 if ok else 404), moderation_snapshot()
 
 
+# --- who sees what a person posts (M13) --------------------------------------------------------
+# Each signed-in person chooses, per app, whether what they post is seen by everyone here,
+# signed-in people, or only them (their account page; accounts.py "posts"). Never wider than the
+# app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
+# reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
+store.VIEWER = lambda handler: accounts.session(handler._session_token())
+store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
+
+
+def seen_by_of(account, app):
+    """The narrower-than-everyone choice an account's new post carries, or None."""
+    if not account:
+        return None
+    seen = accounts.prefs(account)["posts"].get(app, "everyone")
+    return seen if seen in ("users", "me") else None
+
+
 # --- reports (M10) ---------------------------------------------------------------------------
 # Anyone may report a shoutbox message or a forum post, for one of the reasons the owner offers;
 # the owner decides how many reports put it in the queue on /admin → Moderation, and whether it is
@@ -2444,12 +2461,16 @@ class Handler(BaseHTTPRequestHandler):
             hide = hidden_by_reports()
             if hide:
                 msgs = [m for m in msgs if f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}" not in hide]
+            me = accounts.session(self._session_token())
+            msgs = [m for m in msgs if store.can_see(m, me)]
             self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout"),
                                  "report_reasons": settings_snapshot()["report_reasons"]})
             return
 
         if path == "/board/threads":
-            self.send_json(200, dict(BOARD.list_threads(), posting=self._posting_view("board")))
+            listing, me = BOARD.list_threads(), accounts.session(self._session_token())
+            listing["threads"] = [t for t in listing["threads"] if store.can_see(t, me)]
+            self.send_json(200, dict(listing, posting=self._posting_view("board")))
             return
 
         if path == "/admin/folders":
@@ -2837,6 +2858,11 @@ class Handler(BaseHTTPRequestHandler):
             if result is None:
                 self.send_json(404, {"error": "no such thread"})
             else:
+                me = accounts.session(self._session_token())
+                if result["thread"]["posts"] and not store.can_see(result["thread"]["posts"][0], me):
+                    self.send_json(404, {"error": "no such thread"})
+                    return
+                result = dict(result, thread=dict(result["thread"], posts=[p for p in result["thread"]["posts"] if store.can_see(p, me)]))
                 hide = hidden_by_reports()
                 if hide:
                     t = dict(result["thread"])
@@ -3328,7 +3354,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = BOARD.create_thread(poster[0],
                                              payload.get("title"),
                                              payload.get("text"),
-                                             self._hue(payload, poster), poster[1])
+                                             self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -3342,7 +3368,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 result = BOARD.reply(tid, poster[0], payload.get("text"),
-                                     self._hue(payload, poster), poster[1])
+                                     self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -3477,6 +3503,9 @@ class Handler(BaseHTTPRequestHandler):
             entry["hue"] = hue
         if account:
             entry["account"] = account
+            seen = seen_by_of(account, "shoutbox")
+            if seen:
+                entry["seen_by"] = seen
         with lock:
             msgs = live_messages(now)
             msgs.append(entry)

@@ -27,6 +27,7 @@ run sim_status_tiles.py
 run sim_reports.py
 run sim_prefs.py
 run sim_tour.py
+run sim_seen.py
 run sim_svchistory.py
 run sim_rtc.py
 run sim_tls.py

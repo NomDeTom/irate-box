@@ -195,14 +195,21 @@ def _public(acc):
 # sign-up, will need to be able to access their own user settings, including online visibility";
 # "locking, visibility of posts by app, font colour"). Theirs alone, through their own session;
 # the safe choice is each default: not shown by name, no lock, no email.
-PREFS = {"show_online": False, "hue": None, "lock_default": False, "email": ""}
+PREFS = {"show_online": False, "hue": None, "lock_default": False, "email": "",
+         # Who sees what they post, per app (M13): everyone here, signed-in people, or only them.
+         # Never wider than the app itself (its access); Notes, SilverBullet's one shared notebook,
+         # has no posts of anyone's own to hide.
+         "posts": {"shoutbox": "everyone", "board": "everyone", "saves": "everyone", "drop": "everyone"}}
+POST_SEEN = ("everyone", "users", "me")
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}$")
 
 
 def prefs(name):
     """One account's settings, with the defaults for any not chosen."""
     acc = _load()["accounts"].get(str(name or "").lower())
-    return dict(PREFS, **{k: v for k, v in ((acc or {}).get("prefs") or {}).items() if k in PREFS})
+    out = dict(PREFS, **{k: v for k, v in ((acc or {}).get("prefs") or {}).items() if k in PREFS})
+    out["posts"] = dict(PREFS["posts"], **{k: v for k, v in (out.get("posts") or {}).items() if k in PREFS["posts"] and v in POST_SEEN})
+    return out
 
 
 def set_prefs(token, changes):
@@ -217,12 +224,18 @@ def set_prefs(token, changes):
             raise AccountError(f"{k}: true or false")
     if "hue" in changes and changes["hue"] is not None and not (type(changes["hue"]) is int and 0 <= changes["hue"] < 360):
         raise AccountError("hue: 0 to 359")
+    if "posts" in changes and not (isinstance(changes["posts"], dict) and changes["posts"]
+                                   and all(k in PREFS["posts"] and v in POST_SEEN for k, v in changes["posts"].items())):
+        raise AccountError("posts: per app (shoutbox, board, saves, drop), everyone, users or me")
     if "email" in changes and not (changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.match(changes["email"]))):
         raise AccountError("email: an address, or nothing")
     with _lock:
         data = _load()
         acc = data["accounts"][me["name"].lower()]
-        acc["prefs"] = dict(acc.get("prefs") or {}, **changes)
+        merged = dict(acc.get("prefs") or {}, **changes)
+        if "posts" in changes:
+            merged["posts"] = dict((acc.get("prefs") or {}).get("posts") or {}, **changes["posts"])
+        acc["prefs"] = merged
         _save(data)
     return prefs(me["name"])
 

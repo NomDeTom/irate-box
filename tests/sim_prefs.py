@@ -45,7 +45,7 @@ try:
         check(f"{name} signs up and is logged in", st == 200 and d.get("me", {}).get("name") == name and ck, (st, d))
     st, d, _ = go("GET", "/api/account", cookie=jar["alice"])
     check("their own settings, the safe defaults: not shown by name, no lock, no email",
-          d.get("prefs") == {"show_online": False, "hue": None, "lock_default": False, "email": ""}, d.get("prefs"))
+          d.get("prefs") == {"show_online": False, "hue": None, "lock_default": False, "email": "", "posts": {"shoutbox": "everyone", "board": "everyone", "saves": "everyone", "drop": "everyone"}}, d.get("prefs"))
     st, d, _ = go("POST", "/api/account", {"action": "prefs", "prefs": {"show_online": True, "hue": 210, "email": "alice@example.org"}}, cookie=jar["alice"], account=True)
     check("alice chooses to be shown, a colour, an email", st == 200 and d["prefs"]["show_online"] is True and d["prefs"]["hue"] == 210, d)
     for bad in ({"show_online": "yes"}, {"hue": 400}, {"email": "not an address"}, {"role": "admin"}, {}):
