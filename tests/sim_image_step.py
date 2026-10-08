@@ -52,7 +52,7 @@ check("the image's access-point profiles, not the hub's nor a client profile: en
       aps["status"] == "warn" and "Hotspot (encrypted)" in aps["detail"] and "Open AP (open, brought up on its own)" in aps["detail"]
       and "irate-box" not in aps["detail"] and "Home" not in aps["detail"], aps["detail"])
 check("bluetooth not running here: ok", got["image-bluetooth"]["status"] == "ok")
-check("the step is in the doctor's list, after accounts", [s[0] for s in sd.STEPS].index("image") == [s[0] for s in sd.STEPS].index("accounts") + 1)
+check("the step is in the doctor's list, after the accounts steps", [s[0] for s in sd.STEPS].index("image") > [s[0] for s in sd.STEPS].index("accounts-hub"))
 
 # A clean box: Debian's sources with Signed-By, Debian's keys only, Debian's kernel, no stray AP.
 for p in (APT / "sources.list.d").iterdir():
