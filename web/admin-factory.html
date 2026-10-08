@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en" class="art-page">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firmware Factory · Hub admin</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>Firmware Factory</h1>
+    <p class="subtitle">Builds Meshtastic firmware on the box. <a href="/admin/#page-app-box-factory">Its settings are in /admin</a>.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <main class="admin-main factory-app" data-art="factory">
+    <!-- The production line behind the page, played by krab-loop.js, as on /admin's Factory page. -->
+    <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
+    <section class="admin-pane" id="factory" aria-label="Firmware Factory">
+      <p class="setting-desc bad" id="factory-paused" hidden>Paused: nothing new starts until you resume (a build under way finishes).</p>
+        <h3>Build</h3>
+        <form id="factory-form" class="factory-form">
+          <label>Source <select name="source" id="factory-source"></select></label>
+          <label>Release or branch <select name="ref" id="factory-ref"></select></label>
+          <label>Show <input type="search" id="factory-search" placeholder="board or target" aria-label="Show targets containing"></label>
+          <div id="factory-targets" class="factory-targets"></div>
+          <p class="setting-desc" id="factory-chosen"></p>
+          <button type="submit" id="factory-queue" disabled>Queue</button>
+          <p class="setting-desc action-note" id="factory-note" role="status" hidden></p>
+        </form>
+        <h3>The queue</h3>
+        <p class="library-buttons"><button type="button" id="factory-pause">Pause</button></p>
+        <div id="factory-waiting" class="admin-list"></div>
+        <h3>Built</h3>
+        <div id="factory-runs" class="admin-list"></div>
+        <h3>In the web flasher</h3>
+        <p class="setting-desc">Builds published from the list above, offered in the web flasher (<a href="/admin/#firmware">Firmware</a>) as a release built on this box, beside the ones the librarian keeps.</p>
+        <div id="factory-flasher" class="admin-list"></div>
+    </section>
+  </main>
+  <script src="/hub.js"></script>
+  <script src="/krab-loop.js"></script>
+  <script src="/factory.js"></script>
+</body>
+</html>

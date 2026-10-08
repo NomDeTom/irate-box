@@ -2811,6 +2811,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
+        elif path == "/admin/factory.html":
+            # The Firmware Factory's own page (menu overhaul F7): behind /admin's login, as /admin is.
+            path = "/admin-factory.html"
 
         if path == "/api/captive":
             # RFC 8908's captive-portal API, named by the hotspot's DHCP (option 114, RFC 8910):

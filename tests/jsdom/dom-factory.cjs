@@ -9,8 +9,9 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
-const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+// The Factory's own page (menu overhaul F7): /admin/factory.html, its code in factory.js.
+const html = fs.readFileSync(`${WEB}/admin-factory.html`, 'utf8');
+const js = ['factory.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);
 const snap = (over = {}) => Object.assign({
   sources: [{ name: 'meshtastic-firmware', area: 'public', mirror: true, upstream: 'https://github.com/meshtastic/firmware' },
@@ -40,7 +41,7 @@ const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
 vc.on('error', (...a) => { if (!/HTTP 404/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
-const dom = new JSDOM(html, { url: 'http://box.local/admin/#factory', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
+const dom = new JSDOM(html, { url: 'http://box.local/admin/factory.html', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 const ok = (b, status = 200) => new Response(JSON.stringify(b), { status });
 w.fetch = async (u, opts = {}) => {
@@ -64,7 +65,7 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   await wait(300);
   const d = w.document;
-  check('a side-bar entry', [...d.querySelectorAll('.admin-side-list a')].some((a) => a.hash === '#factory' && t(a) === 'Firmware Factory'));
+  check('its own page: the Factory\'s title, and its settings a link back to /admin', t(d.querySelector('h1')) === 'Firmware Factory' && !!d.querySelector('header a[href="/admin/#page-app-box-factory"]') && !d.querySelector('.admin-side-list'));
   check('sources: the mirror and the private fork, said which', [...d.querySelectorAll('#factory-source option')].map((o) => t(o)).join(' | ')
     === 'meshtastic-firmware (a mirror) | my-fork (private)');
   check('refs: releases, then branches', [...d.querySelectorAll('#factory-ref optgroup')].map((g) => `${g.label}: ${[...g.children].map((o) => o.value).join(',')}`).join(' | ')
