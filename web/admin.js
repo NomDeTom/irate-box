@@ -1093,6 +1093,29 @@ let secNote = null; // { fid, text, ok }
 let secPoll = null;
 let secAsked = false;
 
+// Which page a line of the box's scan belongs on (S1, done in the page: the root helper and its
+// allow-list are untouched). A cure has one right answer (5d): the kernel's protections, root's own
+// login and password, its first-login script, SSH's root login, LLMNR. Debian's security updates
+// are system updates (4d). The rest are the owner's real choices.
+const CURE_ID = /^(kernel-|root-password|root-firstrun|ssh-root|llmnr)/;
+const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
+function secKind(f) {
+  if (f.id === 'security-updates' || f.id === 'unattended') return 'update';
+  if (CURE_ID.test(f.id) || (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))) return 'cure';
+  return 'choice';
+}
+// Passwordless sudo as a toggle (Tom, 2026-10-08: "I like the idea of a toggle"): On while a
+// NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
+function sudoToggle(f, busy) {
+  return el('span', { className: 'library-buttons' }, ...f.actions.map((a) => {
+    const on = /^sudo-drop:/.test(a.choice), file = a.choice.split(':')[1];
+    const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : ''), disabled: busy,
+      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secFix(f.id, a) });
+    b.setAttribute('aria-pressed', String(on));
+    return b;
+  }));
+}
+
 function renderSecurity(data) {
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
@@ -1108,14 +1131,21 @@ function renderSecurity(data) {
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (secNote && secNote.fid === fid
     ? el('span', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
-  sec.findings.replaceChildren(...all.map((f) => el('li', { className: `check check-${f.status}` },
+  const line = (f) => el('li', { className: `check check-${f.status}` },
     el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
-    f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
+    f.id === 'sudo-nopasswd' ? sudoToggle(f, busy) : f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
       type: 'button', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
     }))) : null,
-    noteUnder(f.id))));
+    noteUnder(f.id));
+  // Each where it belongs (checklist 4d, 5d; S of the menu overhaul): the real choices here, the
+  // cures beside the doctor's findings, Debian's security updates on Updates. The same scan and the
+  // same fix request everywhere, so root's rule (only what its last scan offered) is unchanged.
+  const by = (k) => all.filter((f) => secKind(f) === k);
+  sec.findings.replaceChildren(...by('choice').map(line));
+  noteEl('secdoctor-cures').replaceChildren(...(by('cure').length ? by('cure').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to cure.' : 'Not scanned yet.' })]));
+  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
@@ -1142,8 +1172,10 @@ function renderSecurity(data) {
     el('td', { textContent: l.addr }))));
   sec.output.hidden = !data.log.length;
   sec.log.textContent = data.log.join('\n');
-  const problems = all.filter((f) => f.status === 'problem').length;
+  const problems = by('choice').filter((f) => f.status === 'problem').length;
   badge('security', problems ? String(problems) : '');
+  const updProblems = by('update').filter((f) => f.status === 'problem').length;
+  badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention (F4) words it
   if (scan) setupStep('security', problems ? `${problems} thing${problems === 1 ? '' : 's'} to fix or leave.` : 'Nothing to fix.', problems ? 'problem' : 'ok');
 
   const stale = !scan || Date.now() / 1000 - scan.at > 15 * 60;
@@ -1265,6 +1297,8 @@ function parseScanReport(text, name) {
 }
 
 function renderAudit(audit, busy) {
+  // The cures are lines of the box's scan, which the joint report already counts (its "security-page"
+  // source): the badge stays the merged count.
   badge('secdoctor', audit ? String((audit.joint && audit.joint.after ? audit.joint.after.problem : audit.counts.problem) || '') : '');
   renderJoint(audit && audit.joint);
   if (!audit) {
@@ -3881,6 +3915,7 @@ const ATTENTION = {
   network: () => 'A network link is down',
   git: (w) => `${w} build${w === '1' ? '' : 's'} failed since you last looked`,
   moderation: (w) => `${w} reported item${w === '1' ? '' : 's'} waiting for a decision`,
+  'updates-security': () => 'Debian security updates waiting to be installed',
 };
 function drawAttention() {
   const box = document.getElementById('attention');

@@ -25,7 +25,14 @@ const OPENVAS = `<report id="r1"><report id="r1"><scan_start>2026-10-05T10:00:00
 const CSV = 'IP,Hostname,Port,Port Protocol,CVSS,Severity,QoD,Solution Type,NVT Name,Summary,Specific Result,NVT OID,CVEs,Task ID,Task Name,Timestamp,Result ID,Impact,Solution\n' +
   '192.168.4.1,,80,tcp,7.5,High,80,VendorFix,"nginx < 1.27, ""old""",An old nginx.,,1.3.6,"CVE-2026-1111,CVE-2026-2222",t,task,2026-10-05T10:00:00Z,r,,Update nginx.\n' +
   '192.168.4.1,,,tcp,0.0,Log,80,,OS detection,,,1,,t,task,2026-10-05T10:00:00Z,r2,,\n';
-const sec = { hub: [], scan: { at: now, listeners: [], findings: [] }, log: [], pending: 0, results: [], deep: { at: now - 3600, took: 438 },
+// The box's scan, one of each kind (S of the menu overhaul): a cure, two choices, a toggle, an update.
+const F = (id, title, status, actions) => ({ id, title, status, detail: 'd', fix: '', actions });
+const sec = { hub: [], scan: { at: now, listeners: [], findings: [
+    F('kernel-links', 'Kernel link protections', 'problem', [{ choice: 'kernel-links-debian', label: "Install Debian's defaults" }]),
+    F('ssh-password', 'SSH password login', 'warn', [{ choice: 'ssh-password-off', label: 'Turn password login off' }]),
+    F('sudo-nopasswd', 'Passwordless sudo', 'problem', [{ choice: 'sudo-drop:90-lyra', label: 'Remove 90-lyra', confirm: 'Remove it?' }]),
+    F('listen-tcp-9090', 'Cockpit', 'problem', [{ choice: 'cockpit-off', label: 'Switch off' }]),
+    F('security-updates', 'Security updates', 'problem', [{ choice: 'security-updates', label: 'Install 3 security updates' }])] }, log: [], pending: 0, results: [], deep: { at: now - 3600, took: 438 },
   imports: { nmap: { name: 'scan.xml', ran: now - 86400, imported: now - 3600, results: 3 } },
   audit: { at: now, root: true, counts: { problem: 3, warn: 9, ok: 30 }, not_covered: [],
     steps: [{ id: 'kernel', title: 'Kernel protections', ref: '', findings: [{ id: 'kernel-links', title: 'Link protections off', status: 'problem', detail: 'x', fix: 'y', ref: '' }] }],
@@ -104,6 +111,21 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
+  // S: each line of the scan where it belongs (checklist 4d, 5d).
+  const ids = (sel) => [...d.querySelectorAll(`${sel} li strong`)].map(t).join('|');
+  check('the doctor offers the cure beside its findings', ids('#secdoctor-cures') === 'Kernel link protections'
+    && [...d.querySelectorAll('#secdoctor-cures button')].some((b) => t(b) === "Install Debian's defaults"), ids('#secdoctor-cures'));
+  check('Security keeps the real choices', ids('#security-findings') === 'Passwordless sudo|Cockpit|SSH password login', ids('#security-findings'));
+  check('Debian\'s security updates on Updates', ids('#updates-security') === 'Security updates', ids('#updates-security'));
+  check('Security links to where the rest went', ['#secdoctor', '#updates', '#network'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
+  check('the hotspot\'s WiFi security with the hotspot, on Network', !!d.querySelector('#network #hs-modes') && !d.querySelector('#security #hs-modes'));
+  w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });  // the answer to what was asked: no longer busy
+  const sudo = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));
+  check('passwordless sudo a toggle, On while the rule is there', sudo && t(sudo) === 'Passwordless sudo: On' && sudo.getAttribute('aria-pressed') === 'true', sudo && t(sudo));
+  w.confirm = () => true;
+  sudo.click();
+  await wait();
+  check('  Off asks root to take the rule out', posted.some(([u, b]) => u === '/admin/security' && b.action === 'fix' && b.choice === 'sudo-drop:90-lyra'));
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
