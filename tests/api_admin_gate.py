@@ -67,6 +67,19 @@ try:
           go("POST", "/messages", {**msg, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}, b"{}") != 403
           and go("POST", "/messages", msg, b"{}") != 403)
     check("and the connection is still itself after each", go("GET", "/admin/settings", front) == 200)
+
+    # The setup gate (stance review 2026-10-08, I1): "Finish setup" refused while the Security page's last scan
+    # says a passwordless sudo rule names an account sshd lets in by password.
+    import json as _json
+    ctl = Path(state) / "control"; ctl.mkdir(exist_ok=True)
+    (ctl / "security.json").write_text(_json.dumps({"findings": [{"id": "sudo-nopasswd", "status": "problem", "detail": "claude-temp: lyra.", "actions": []}]}))
+    same = {**page, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+    check("Finish setup while the scan says sudo-nopasswd is a problem: 409", go("POST", "/admin/settings", same, b'{"setup_done": true}') == 409)
+    (ctl / "security.json").write_text(_json.dumps({"findings": [{"id": "sudo-nopasswd", "status": "warn", "detail": "", "actions": []}]}))
+    check("  a warning only, or no scan: finished", go("POST", "/admin/settings", same, b'{"setup_done": true}') == 200)
+    (ctl / "security.json").unlink()
+    check("  no scan at all: finished", go("POST", "/admin/settings", same, b'{"setup_done": false}') == 200)
+
     # F15: the hub reads no JSON over 256 KB; the connection stays usable after.
     big = b'{"x": "' + b"y" * (300 * 1024) + b'"}'
     check("a JSON body over 256 KB: 413", go("POST", "/messages", {"Content-Type": "application/json"}, big) == 413)
