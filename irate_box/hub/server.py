@@ -1624,12 +1624,97 @@ HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-
                               r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
                               r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
+HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
+# Busy spells logged (Tom, 2026-10-08: "have it log busy false alarms so that patterns can be established"):
+# one entry per job of the helper's that kept a request waiting past HELPER_STUCK_AFTER.
+HELPER_BUSY_LOG = STATE_DIR / "helper-busy.json"
+_busy_lock = threading.Lock()
+
+
+def _helper_doing():
+    """What the root helper is running now, from its child's command line (/proc is readable): e.g.
+    "apt-get install --download-only … stage-debug". None when it can't be told."""
+    try:
+        r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "MainPID"], capture_output=True, text=True, timeout=10)
+        pid = r.stdout.strip().partition("=")[2]
+        kids = Path(f"/proc/{pid}/task/{pid}/children").read_text().split() if pid.isdigit() and pid != "0" else []
+        cmd = Path(f"/proc/{kids[0]}/cmdline").read_bytes().split(b"\0") if kids else []
+    except (OSError, subprocess.SubprocessError):
+        return None
+    words = [w.decode(errors="replace") for w in cmd if w]
+    # The command and its plain words; options' values (paths) kept short.
+    return " ".join(Path(w).name if w.startswith("/") else w for w in words if not w.startswith("Dir::") and w != "-o")[:160] or None
+
+
+def _log_busy(started, busy, waited, now=None):
+    """One entry per job: when it started, how long it ran, the longest any request waited behind it,
+    what waited, and what the helper was doing. Updated as the job goes on; the last 200 kept."""
+    now = now or time.time()
+    waiting = []
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            waiting.append(str(json.loads(path.read_text()).get("action", "?"))[:40])
+        except (OSError, ValueError, AttributeError):
+            pass
+    with _busy_lock:
+        try:
+            log = json.loads(HELPER_BUSY_LOG.read_text())
+        except (OSError, ValueError):
+            log = []
+        entry = next((e for e in log if abs(e.get("job_started", 0) - started) < 10), None)
+        if entry is None:
+            entry = {"job_started": round(started), "doing": _helper_doing(), "waiting": []}
+            log.append(entry)
+        entry.update(seen=round(now), busy_for=round(busy), longest_wait=max(entry.get("longest_wait", 0), round(waited)),
+                     waiting=sorted(set(entry["waiting"]) | set(waiting)))
+        if not entry.get("doing"):
+            entry["doing"] = _helper_doing()
+        try:
+            _write_atomic(HELPER_BUSY_LOG, json.dumps(log[-200:]))
+        except OSError:
+            pass
+
+
+def helper_busy_summary(now=None):
+    """The last week's busy spells, for the Health page: how many, the longest wait, the commonest job."""
+    now = now or time.time()
+    try:
+        log = [e for e in json.loads(HELPER_BUSY_LOG.read_text()) if e.get("seen", 0) > now - 7 * 86400]
+    except (OSError, ValueError):
+        return None
+    if not log:
+        return None
+    kinds = {}
+    for e in log:
+        k = " ".join((e.get("doing") or "?").split()[:2])
+        kinds[k] = kinds.get(k, 0) + 1
+    top = max(kinds.items(), key=lambda x: x[1])
+    return {"count": len(log), "longest_wait": max(e.get("longest_wait", 0) for e in log), "commonest": top[0], "commonest_n": top[1],
+            "last": log[-1]}
+
+
+def helper_busy():
+    """Seconds the root helper has been at its current job, or None when it isn't running one. It
+    takes one request at a time, so a long job (a toolkit's download, an update) keeps the rest
+    waiting without anything being wrong (2026-10-08: the debug kit's refresh, 4 minutes, was
+    shown as "not answering"). systemctl show is the hub's to ask."""
+    try:
+        r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "ActiveState",
+                            "-p", "InactiveExitTimestampMonotonic"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    f = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
+    if f.get("ActiveState") not in ("activating", "active") or not f.get("InactiveExitTimestampMonotonic", "").isdigit():
+        return None
+    since = int(f["InactiveExitTimestampMonotonic"]) / 1e6
+    return max(0, time.monotonic() - since) if since else None
 
 
 def helper_state():
     """Is the root helper answering? The hub can see that for itself: its requests wait in a
     folder it owns. One left for more than 90 s means everything on /admin that needs root
-    goes nowhere, including the doctor, so the page says what to type instead."""
+    goes nowhere, including the doctor, so the page says what to type instead; unless the helper
+    is busy with an earlier job, which the page says instead (helper_busy)."""
     oldest = None
     for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
         try:
@@ -1638,7 +1723,12 @@ def helper_state():
             continue
         oldest = m if oldest is None or m < oldest else oldest
     age = time.time() - oldest if oldest else 0
-    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER,
+    busy = helper_busy() if age > HELPER_STUCK_AFTER else None
+    working = busy is not None and busy < HELPER_BUSY_UP_TO
+    if working:
+        _log_busy(time.time() - busy, busy, age)
+    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER and not working,
+            "busy": round(busy) if working else None, "busy_log": helper_busy_summary(),
             "commands": ["sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
                          "sudo systemctl start irate-box-control.path",
                          "sudo /opt/irate-box/irate-box health"]}

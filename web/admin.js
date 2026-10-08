@@ -1487,6 +1487,8 @@ const hl = {
   banner: document.getElementById('helper-banner'),
   bannerDetail: document.getElementById('helper-banner-detail'),
   bannerCmds: document.getElementById('helper-banner-cmds'),
+  busyLine: document.getElementById('helper-busy'),
+  busyLog: document.getElementById('helper-busy-log'),
 };
 let hlWaiting = null; // { id, fid }
 let hlNote = null; // { fid, text, ok }
@@ -1508,6 +1510,20 @@ function renderHealth(data) {
   if (h.stuck) {
     hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? ' is' : 's are'} waiting, the oldest for ${minutes(h.oldest)}.`;
     hl.bannerCmds.textContent = h.commands.join('\n');
+  }
+  // The busy spells of the last week (Tom: "log busy false alarms so that patterns can be established").
+  const bl = h.busy_log;
+  hl.busyLog.hidden = !bl;
+  if (bl) {
+    hl.busyLog.textContent = `The root helper kept requests waiting ${bl.count} time${bl.count === 1 ? '' : 's'} this week while busy `
+      + `(the longest wait ${minutes(bl.longest_wait)}); most often while running ${bl.commonest} (${bl.commonest_n}×). `
+      + `The log: ${'helper-busy.json'} in the hub's state folder.`;
+  }
+  // Busy, not stuck: an earlier job (a toolkit's download, an update) is still running; the rest wait their turn.
+  hl.busyLine.hidden = !h.busy || !h.waiting;
+  if (h.busy && h.waiting) {
+    hl.busyLine.textContent = `The root helper is busy with an earlier job (for ${minutes(h.busy)}); `
+      + `${h.waiting} request${h.waiting === 1 ? ' waits' : 's wait'} behind it and will be done in turn.`;
   }
   const p = data.progress && data.progress.action === 'repair' ? data.progress : null;
   const busy = data.pending > 0 || !!hlWaiting || !!p;
