@@ -92,13 +92,20 @@ const AL = (() => {
       const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
-        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.sections.length || x.folder))) {
+        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.sections.length || x.folder || x.page))) {
           // Who opens it, who sees it: first on its page (M6; admin.js fills it from /admin/access).
           if (a.switch) {
             const id = 'app-access-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-access', id },
               el('h2', { text: 'Who opens it, who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
             a = { ...a, sections: [id, ...a.sections] };
+          }
+          // An app drawn on the hub page: its width, after its first section (M9).
+          if (a.width) {
+            const id = 'app-width-' + a.id;
+            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-width', id },
+              el('h2', { text: 'Width' }), el('div', { class: 'width-block', 'data-key': a.width })));
+            a = { ...a, sections: [a.sections[0], id, ...a.sections.slice(1)].filter(Boolean) };
           }
           // A folder's entries (M7): after its access, before its other sections.
           if (a.folder) {
@@ -117,7 +124,7 @@ const AL = (() => {
       list.append(groupHead(g.name), ...entries.map((e) => e.link));
     }
     // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
-    const left = [...sections.keys()].filter((id) => !placed.has(id) && !id.startsWith('app-access-') && !id.startsWith('folder-'));
+    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-)/.test(id));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);

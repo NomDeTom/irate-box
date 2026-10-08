@@ -55,6 +55,18 @@ try:
     _, body = go("GET", "/admin/access")
     vis = {a["id"]: a["visible"] for a in json.loads(body)["apps"]}
     check("/admin/access says what was chosen", vis.get("notes") == "guests" and vis.get("draw") == "hidden" and vis.get("mermaid") == "auto", vis)
+    # The shoutbox and the board (M9): drawn on the hub page; who sees each tab is theirs too.
+    _, home = go("GET", "/")
+    check("both tabs on the page by default", 'data-tab="shout"' in home and 'data-tab="board"' in home and "data-off" not in home)
+    go("POST", "/admin/visibility", {"app": "shoutbox", "visible": "hidden"})
+    go("POST", "/admin/visibility", {"app": "board", "visible": "users"})
+    _, home = go("GET", "/")
+    check("the shoutbox hidden: its tab gone, its pane marked off", 'data-tab="shout"' not in home and '<div id="tab-shout" data-off hidden>' in home)
+    check("the board for users: gone for a guest too", 'data-tab="board"' not in home and '<div id="tab-board" data-off hidden>' in home)
+    _, body = go("GET", "/admin/access")
+    check("/admin/access says so", json.loads(body).get("pages") == {"shoutbox": "hidden", "board": "users"}, body[-120:])
+    go("POST", "/admin/visibility", {"app": "shoutbox", "visible": "auto"})
+    go("POST", "/admin/visibility", {"app": "board", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "draw", "visible": "auto"})
     _, home = go("GET", "/")
     check("back to auto: as its access again", tile(home, "Excalidraw") is not None)

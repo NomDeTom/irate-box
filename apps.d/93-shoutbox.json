@@ -1,0 +1,14 @@
+{
+  "id": "shoutbox",
+  "order": 93,
+  "admin": {
+    "title": "Shoutbox",
+    "icon": "📣",
+    "page": true,
+    "width": "shout_width",
+    "sections": [
+      "shoutbox-settings",
+      "shoutbox-mod"
+    ]
+  }
+}

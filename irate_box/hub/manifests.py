@@ -43,10 +43,12 @@ on it. Every part but "id" and "order" is optional:
     "access":  {"title", "note"}       who may open it is set on /admin (public, private, off) for
                                       the apps access.py names; these word its line there
     "core": true                      kept current by default ("Keep all apps current")
-    "admin":   {"sections": ["books", …], "title", "icon"}
+    "admin":   {"sections": ["books", …], "title", "icon", "page": bool, "width": "shout_width"}
                                       the /admin sections this app owns, by their id in admin.html:
                                       the app's own page in /admin's Apps group (menu overhaul M4)
-                                      holds them; title and icon name the page when the tile does not
+                                      holds them; title and icon name the page when the tile does not;
+                                      page: drawn on the hub page itself, not as a tile (the shoutbox,
+                                      the board: M9), its width the setting named
   }
 
 Local add-ons (plans/no-root-addons-plan): a static web app the owner adds from /admin, with
@@ -179,6 +181,8 @@ def _check(m, where):
              "admin.sections: a list of /admin section ids")
         for k in ("title", "icon"):
             need(k not in adm or isinstance(adm[k], str), f"admin.{k}: a string")
+        need(type(adm.get("page", False)) is bool, "admin.page: true for an app drawn on the hub page itself")
+        need("width" not in adm or adm["width"] in ("shout_width", "board_width"), "admin.width: shout_width or board_width")
     src = m.get("source")
     if src is not None:
         need(inst is not None, "a source needs an install")
@@ -355,7 +359,8 @@ def admin_apps(manifests):
             continue
         out.append({"id": m["id"], "name": name, "icon": adm.get("icon") or tile.get("icon", ""),
                     "sections": list(adm.get("sections", [])), "folder": bool(menu),
-                    "art": (menu or {}).get("art"), "local": bool(m.get("local"))})
+                    "art": (menu or {}).get("art"), "local": bool(m.get("local")),
+                    "page": bool(adm.get("page")), "width": adm.get("width")})
     return out
 
 

@@ -275,6 +275,17 @@ def _switched():
     return set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
 
 
+# The apps drawn on the hub page itself, not as tiles (the shoutbox and the board, M9): who sees
+# them is a visibility of their own (guests, users or hidden; auto is guests); who may post is
+# their shout_who / board_who. id -> the tab they are in index.html.
+PAGE_APPS = {"shoutbox": "shout", "board": "board"}
+
+
+def page_app_hidden(i, signed_in):
+    v = visibility().get(i, "auto")
+    return v == "hidden" or (v == "users" and not signed_in)
+
+
 def hidden_apps(signed_in=False):
     """The apps not on the home page or the list pages: off; and otherwise as their visibility
     says, or (auto) as their access does: private, and for users unless the visitor is logged in
@@ -464,6 +475,11 @@ def home_page(signed_in=False):
         text = path.read_text(encoding="utf-8")
         hidden = hidden_apps(signed_in)
         locked = locked_apps(signed_in)
+        # A tab its visitor isn't to see (M9): its link and its pane left out of the page.
+        for app, tab in PAGE_APPS.items():
+            if page_app_hidden(app, signed_in):
+                text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
+                text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         cached["body"] = text.encode()
         cached["mtime"] = mtime
@@ -2282,6 +2298,7 @@ class Handler(BaseHTTPRequestHandler):
             vis = visibility()
             self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"]), visible=vis.get(a["id"], "auto"))
                                           for a in access.apps(MANIFESTS)],
+                                 "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
                                  "results": control_results()})
             return
 
@@ -2884,7 +2901,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/visibility":
             # Who sees an app's tile (M5): the hub's own, at once; no root, no web server change.
             app, v = str(payload.get("app", "")), payload.get("visible")
-            if app not in _switched() or v not in VISIBLE:
+            if (app not in _switched() and app not in PAGE_APPS) or v not in VISIBLE:
                 self.send_json(400, {"error": "app must name an app on /admin, and visible be auto, guests, users or hidden"})
                 return
             data = visibility()

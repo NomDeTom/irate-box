@@ -2153,8 +2153,23 @@ function renderAccess(data) {
 
 // Each app's own page starts with its access (M6): the same controls, drawn again there.
 let lastAccess = null;
+const TAB_SEEN = { guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function fillSeenBlocks() {
+  if (!lastAccess) return;
+  document.querySelectorAll('.seen-block[data-app]').forEach((block) => {
+    const app = block.dataset.app, cur = ((lastAccess.pages || {})[app] || 'auto').replace('auto', 'guests');
+    block.replaceChildren(el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Its tab on the hub page, shown to:' }),
+      ...Object.entries(TAB_SEEN).map(([v, label]) => {
+        const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: label,
+          onclick: () => { if (v !== cur) postJSON('/admin/visibility', { app, visible: v }).then(loadAccess, (err) => say(err.message, false, block)); } });
+        b.setAttribute('aria-pressed', String(cur === v));
+        return b;
+      })));
+  });
+}
 function fillAccessBlocks() {
   if (!lastAccess) return;
+  fillSeenBlocks();
   document.querySelectorAll('.access-block[data-app]').forEach((block) => {
     const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
     block.replaceChildren(...(a ? accessControls(a) : [el('p', { className: 'setting-desc', textContent: 'Always on the hub: no switch.' })]));
@@ -3568,25 +3583,26 @@ acctEl.make.addEventListener('submit', (e) => {
   acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
   f.name.value = '';
 });
-// Who may post on the shoutbox and forum, and the users' marks (the hub's settings).
-const acctPosting = document.getElementById('accounts-posting');
-const POSTING_KEYS = ['shout_who', 'shout_marks', 'board_who', 'board_marks'];
+// Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
+// each app's own page (menu overhaul M9).
+const postingForms = [...document.querySelectorAll('.posting-form')];
+const fillPosting = (st) => postingForms.forEach((form) => [...form.elements].forEach((f) => {
+  if (!(f.name in st)) return;
+  if (f.type === 'checkbox') f.checked = st[f.name] === true; else f.value = st[f.name];
+}));
 async function loadPosting() {
-  try {
-    const st = await getJSON('/admin/settings');
-    POSTING_KEYS.forEach((k) => { const f = acctPosting.elements[k]; if (f.type === 'checkbox') f.checked = st[k] === true; else f.value = st[k]; });
-  } catch (_) { /* the rest of the pane says if the hub can't be read */ }
+  try { fillPosting(await getJSON('/admin/settings')); } catch (_) { /* the page says if the hub can't be read */ }
 }
-acctPosting.addEventListener('change', async (e) => {
-  const f = e.target;
+postingForms.forEach((form) => form.addEventListener('change', async (e) => {
+  const f = e.target, note = noteEl(form.dataset.note);
   try {
-    const st = await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value });
-    POSTING_KEYS.forEach((k) => { const g = acctPosting.elements[k]; if (g.type === 'checkbox') g.checked = st[k] === true; else g.value = st[k]; });
-    say('Saved.', true, acctEl.note);
-  } catch (err) { say(err.message, false, acctEl.note); loadPosting(); }
-});
-window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadPosting(); });
-if (paneShown('accounts')) loadPosting();
+    fillPosting(await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value }));
+    say('Saved.', true, note);
+  } catch (err) { say(err.message, false, note); loadPosting(); }
+}));
+const postingShown = () => paneShown('shoutbox-settings') || paneShown('board-settings');
+window.addEventListener('hashchange', () => { if (postingShown()) loadPosting(); });
+if (postingShown()) loadPosting();
 window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadAccounts(); });
 if (paneShown('accounts')) loadAccounts();
 
@@ -3632,11 +3648,14 @@ if (paneShown('mesh')) loadMesh();
 // ---- Appearance (menu overhaul M2): the page widths, for everyone, read by every page from
 // /layout.css. A choice shows on this page at once; Save keeps it.
 const WIDTHS = [45, 60, 80, 90, 100];
+let appearanceSettings = null;
 async function loadAppearance() {
   const box = document.getElementById('appearance-box');
   if (!box) return;
   let st;
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  appearanceSettings = st;
+  fillWidthBlocks();
   const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
   box.replaceChildren(AW.settings([
     row('page_width', 'Hub and admin', 'the tiles, the menu and its pages'),
@@ -3731,3 +3750,17 @@ function drawFolder(block, f) {
   if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
 }
 loadFolders();
+
+// An app drawn on the hub page has its width on its own page too (M9; Tom, 2026-10-08: "in both
+// the apps page and the appearance page"): one row of the same setting.
+const WIDTH_LABEL = { shout_width: 'Its width on the hub page', board_width: 'Its width on the hub page' };
+function fillWidthBlocks() {
+  if (!appearanceSettings) return;
+  document.querySelectorAll('.width-block[data-key]').forEach((block) => {
+    const key = block.dataset.key;
+    block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
+      note: 'also on Box → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+    { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
+  });
+}
+AL.onBuild(fillWidthBlocks);

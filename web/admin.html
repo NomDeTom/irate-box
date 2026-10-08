@@ -508,8 +508,25 @@
           7 days after their last reply (powered-on time). Deleting is immediate and permanent.
         </p>
         <p class="setting-desc action-note" id="mod-note" role="status" hidden></p>
-        <h3>Starting fresh</h3>
-        <div class="settings" data-note="fresh-note">
+        <p class="setting-desc">Each app's own page has what people made with it: the shoutbox's messages, the board's
+          threads, the files in the drop.</p>
+      </section>
+
+      <!-- The shoutbox and the board: apps drawn on the hub page itself, not as tiles (Tom,
+           2026-10-07), each with its own page in /admin's Apps group (apps.d/93-shoutbox.json,
+           94-board.json; menu overhaul M9). -->
+      <section class="admin-pane" id="shoutbox-settings" aria-labelledby="shoutbox-settings-title">
+        <h2 id="shoutbox-settings-title">Posting</h2>
+        <div class="seen-block" data-app="shoutbox"></div>
+        <form id="shout-posting" class="library-form posting-form" data-note="shout-posting-note">
+          <label>Who may post
+            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          </label>
+          <label class="inline"><input type="checkbox" name="shout_marks"> A user's name marked ✓</label>
+        </form>
+        <p class="setting-desc">A logged-in user always posts under their account's name, and a guest can't use an account's name.</p>
+        <p class="setting-desc action-note" id="shout-posting-note" role="status" hidden></p>
+        <div class="settings" data-note="shout-fresh-note">
           <label class="setting">
             <input type="checkbox" id="shout_reset_on_boot">
             <span>
@@ -517,6 +534,26 @@
               <span class="setting-desc">For an event box: each day starts empty. Only a real boot clears it, not the hub restarting for an update.</span>
             </span>
           </label>
+        </div>
+        <p class="setting-desc action-note" id="shout-fresh-note" role="status" hidden></p>
+      </section>
+      <section class="admin-pane" id="shoutbox-mod" aria-labelledby="shoutbox-mod-title">
+        <h2 id="shoutbox-mod-title">Messages</h2>
+        <p class="setting-desc">They age out by themselves after 24 hours of powered-on time. Deleting is immediate and permanent.</p>
+        <div id="mod-messages" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="board-settings" aria-labelledby="board-settings-title">
+        <h2 id="board-settings-title">Posting</h2>
+        <div class="seen-block" data-app="board"></div>
+        <form id="board-posting" class="library-form posting-form" data-note="board-posting-note">
+          <label>Who may post
+            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          </label>
+          <label class="inline"><input type="checkbox" name="board_marks"> A user's name marked ✓</label>
+        </form>
+        <p class="setting-desc action-note" id="board-posting-note" role="status" hidden></p>
+        <div class="settings" data-note="board-fresh-note">
           <label class="setting">
             <input type="checkbox" id="board_reset_on_boot">
             <span>
@@ -525,13 +562,17 @@
             </span>
           </label>
         </div>
-        <p class="setting-desc action-note" id="fresh-note" role="status" hidden></p>
-        <h3>Shoutbox</h3>
-        <div id="mod-messages" class="admin-list"></div>
-        <h3>File drop</h3>
-        <div id="mod-drops" class="admin-list"></div>
-        <h3>Board</h3>
+        <p class="setting-desc action-note" id="board-fresh-note" role="status" hidden></p>
+      </section>
+      <section class="admin-pane" id="board-mod" aria-labelledby="board-mod-title">
+        <h2 id="board-mod-title">Threads</h2>
+        <p class="setting-desc">A thread ages out 7 days after its last reply (powered-on time). Deleting is immediate and permanent.</p>
         <div id="mod-threads" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="drop-mod" aria-labelledby="drop-mod-title">
+        <h2 id="drop-mod-title">Files in the drop</h2>
+        <div id="mod-drops" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="git" aria-labelledby="git-title">
@@ -633,18 +674,6 @@
         <p class="acct-code" id="accounts-code" hidden></p>
         <h3>The accounts</h3>
         <div id="accounts-list" class="admin-list"></div>
-        <h3>Shoutbox and forum</h3>
-        <form id="accounts-posting" class="library-form">
-          <label>Shoutbox: who may post
-            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
-          </label>
-          <label class="inline"><input type="checkbox" name="shout_marks"> A user's name marked ✓</label>
-          <label>Forum: who may post
-            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
-          </label>
-          <label class="inline"><input type="checkbox" name="board_marks"> A user's name marked ✓</label>
-        </form>
-        <p class="setting-desc">A logged-in user always posts under their account's name, and a guest can't use an account's name.</p>
         <h3>The box's own admin login</h3>
         <p class="setting-desc" id="accounts-admin-login">Looking…</p>
         <p class="library-buttons"><button type="button" id="accounts-admin-login-switch" hidden></button></p>
