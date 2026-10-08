@@ -1258,3 +1258,8 @@ html:has(> body.admin) { background: var(--bg); }
 }
 /* A wide page gives the sidebar a little more room. */
 @container page (min-width: 1200px) { .admin-layout { grid-template-columns: 14rem minmax(0, 1fr); } }
+
+/* The lit desks as WebM loops (krab-loop.js, menu overhaul M3): over the still, which stays as the
+   fallback; the loop has the krab and the lights in it. */
+.admin-art .art-loop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.admin-art.looping .art-lamps, .admin-art.looping .art-krab { display: none; }
