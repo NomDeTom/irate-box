@@ -30,6 +30,7 @@ ROOT = {
     "irate-box-tailscale.service": "applies Tailscale's settings (tailscale up/down)",
     "irate-box-tailscale-boot.service": "starts tailscaled at boot when the owner chose it",
     "ttyd.service": "the owner's root shell behind the admin login, which is its whole point",
+    "irate-box-visitors-switch.service": "starts and stops the visitor-counting helper (systemctl) as the owner's switch says",
 }
 # Lines a unprivileged unit may leave out, and why.
 EXEMPT = {

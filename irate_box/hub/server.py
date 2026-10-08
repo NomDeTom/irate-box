@@ -614,6 +614,10 @@ DEFAULT_SETTINGS = {
     "page_width": 80,
     "shout_width": 45,
     "board_width": 45,
+    # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
+    # (irate_box/root/visitors.py; M11). On by default (Tom, 2026-10-08), as one of the setup's
+    # decisions; off, the helper doesn't run at all.
+    "visitor_counts": True,
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -800,6 +804,33 @@ def service_status(proxied):
             entry["why"] = why["kiwix"]
         out.append(entry)
     return out
+
+
+# --- unique visitors (M11) ----------------------------------------------------------
+# The hub can't start or stop the counting helper (it runs as root, to read the leases): it records
+# the owner's choice in VISITORS_WANT, and a root path unit (irate-box-visitors-switch.path) applies
+# it (scripts/visitors-apply.sh). The helper leaves only two numbers in VISITORS_COUNTS.
+VISITORS_WANT = STATE_DIR / "visitors.want"
+VISITORS_COUNTS = Path(os.environ.get("HUB_VISITORS_COUNTS", "/run/irate-box-visitors/counts.json"))
+
+
+def write_visitors_want(on):
+    tmp = VISITORS_WANT.parent / (VISITORS_WANT.name + ".tmp")
+    tmp.write_text("on\n" if on else "off\n")
+    os.replace(tmp, VISITORS_WANT)
+
+
+def visitor_counts():
+    """{day, week} from the helper, or None (off, not running yet, or nothing written)."""
+    if not _settings.get("visitor_counts"):
+        return None
+    try:
+        data = json.loads(VISITORS_COUNTS.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or type(data.get("day")) is not int or type(data.get("week")) is not int:
+        return None
+    return {"day": data["day"], "week": data["week"], "date": str(data.get("date", ""))[:10]}
 
 
 # --- remote access -------------------------------------------------------------
@@ -2678,12 +2709,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/settings":
             with _settings_lock:
+                was_counting = _settings.get("visitor_counts")
                 for key in DEFAULT_SETTINGS:
                     if valid_setting(key, payload.get(key)):
                         _settings[key] = payload[key]
                 current = dict(_settings)
                 save_settings(current)
                 apply_settings(current)
+                if current["visitor_counts"] != was_counting or not VISITORS_WANT.exists():
+                    write_visitors_want(current["visitor_counts"])
             self.send_json(200, current)
             return
 

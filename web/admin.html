@@ -860,6 +860,27 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <ul class="admin-checks" id="security-findings"></ul>
+        <h3>What the box keeps about visitors</h3>
+        <p class="setting-desc">
+          A count of different devices, today and this week, for the People tile: never who they
+          were. A helper of its own reads the network addresses of the devices the box has seen, hashes
+          each with a random salt made for the day (and one for the week) and held only in its memory,
+          and throws the salt away when the day or week ends, so no hash can be turned back into a
+          device or matched with another day's. Only the two numbers are written, and they go at
+          reboot. Phones that use a random address may count more than once, so the numbers are
+          approximate. Off, the helper doesn't run at all. Signed-in people's names show only if each
+          of them says so, on their own account page.
+        </p>
+        <div class="settings" data-note="visitors-note">
+          <label class="setting">
+            <input type="checkbox" id="visitor_counts">
+            <span>
+              <span class="setting-name">Count unique visitors</span>
+              <span class="setting-desc">By salted hashes, as above; on unless you turn it off.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="visitors-note" role="status" hidden></p>
         <h3>HTTPS</h3>
         <p class="setting-desc">
           The box can serve every page over HTTPS too, with a certificate of its own: phones and
