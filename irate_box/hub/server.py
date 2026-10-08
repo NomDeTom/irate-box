@@ -867,6 +867,11 @@ DEFAULT_SETTINGS = {
     "page_width": 80,
     "shout_width": 45,
     "board_width": 45,
+    # The emoji pickers' set (Tom, 2026-10-08): Unicode's emoji up to a release the guests' phones
+    # can draw (a newer emoji shows as an empty box on an older phone). 13.1 for iOS 14.5 and
+    # Android 12; 15.0 for iOS 16.4 (every iPhone from the 8 on) and Android 14; 16.0 for iOS 18.4
+    # (iPhone XS on) and Android 16. Read by emoji.js from /layout.css.
+    "emoji_set": "13.1",
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
     # (irate_box/root/visitors.py; M11). On by default (Tom, 2026-10-08), as one of the setup's
     # decisions; off, the helper doesn't run at all.
@@ -894,6 +899,7 @@ DEFAULT_SETTINGS = {
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
+EMOJI_SETS = ("13.1", "15.0", "16.0")
 # The setup decisions (M14; Tom, 2026-10-08: "anything that has an impact on user or box security"):
 # web/admin-tour.js has each one's words and where it lives.
 # With the setup's own steps and the backup: one list, one tour (Tom, 2026-10-08).
@@ -914,6 +920,8 @@ def valid_setting(key, value):
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
     if key == "setup_decided":
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
+    if key == "emoji_set":
+        return value in EMOJI_SETS
     if key == "names_to":
         return value in ("users", "admin")
     if key == "report_threshold":
@@ -3077,8 +3085,8 @@ class Handler(BaseHTTPRequestHandler):
             # No file of that name in web/, so both web servers hand it to the hub.
             with _settings_lock:
                 cur = dict(_settings)
-            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; }\n"
-                    % (cur["page_width"], cur["shout_width"], cur["board_width"])).encode()
+            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"])).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
             self.send_header("Content-Length", len(body))

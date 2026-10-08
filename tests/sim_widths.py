@@ -39,6 +39,15 @@ try:
         go("POST", "/admin/settings", page, json.dumps({"page_width": bad}).encode())
     _, _, css = go("GET", "/layout.css")
     check("anything but 45, 60, 80, 90 or 100 is refused", "--page-width: 90rem" in css, css)
+    # The emoji pickers' set (Appearance): 13.1 by default, 15.0 or 16.0 by the owner's choice.
+    check("the emoji set: 13.1 by default", "--emoji-set: 13.1;" in css, css)
+    st, _, body = go("POST", "/admin/settings", page, json.dumps({"emoji_set": "16.0"}).encode())
+    _, _, css = go("GET", "/layout.css")
+    check("  set to 16.0, /layout.css follows", st == 200 and "--emoji-set: 16.0;" in css, css)
+    for bad in ("17.0", 15.0, "x; } body { display: none", None):
+        go("POST", "/admin/settings", page, json.dumps({"emoji_set": bad}).encode())
+    _, _, css = go("GET", "/layout.css")
+    check("  anything but 13.1, 15.0 or 16.0 refused (nothing written into the CSS)", "--emoji-set: 16.0;" in css, css)
 finally:
     hub.terminate()
 print(f"failures: {fails}")
