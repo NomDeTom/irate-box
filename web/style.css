@@ -808,7 +808,7 @@ body[data-art] > header { z-index: 2; }
 .hm-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.75rem; color: var(--muted); }
 .hm-key { display: inline-flex; align-items: center; gap: 0.3rem; }
 .hm-key .hm-cell { width: 0.7rem; min-height: 0.7rem; }
-.net-uptime summary, .svc-uptime summary { cursor: pointer; }
+.svc-uptime summary { cursor: pointer; }
 .svc-uptime { margin: 0.75rem 0; }
 .svc-uptime .hm-row { grid-template-columns: 9rem repeat(var(--hm-cols), minmax(0.45rem, 1fr)); }
 .admin-pane > h2 {

@@ -1863,21 +1863,18 @@ function signalWords(dbm) {
 // A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
 // by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
 // (linkhistory.py), drawn by heatmap.js.
-// The network pane redraws its cards every few seconds; a fold the owner opened stays open (Tom,
-// 2026-10-09: the expanded heatmap closed itself after a few seconds).
-const uptimeOpen = new Set();
+// Always shown, not folded (Tom, 2026-10-09: the folded heatmap closed itself on the pane's redraws, and
+// "I don't even think it needs an expander button").
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
-  const fold = el('details', { className: 'net-uptime' });
-  fold.open = uptimeOpen.has(iface);
-  fold.addEventListener('toggle', () => { if (fold.open) uptimeOpen.add(iface); else uptimeOpen.delete(iface); });
+  const fold = el('div', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'
     : `Up ${Heatmap.percent(sm.up)} over the last 72 hours (${sm.hours_seen} hours recorded)`
       + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
       + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
-  fold.append(el('summary', {}, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: ` ${said}` })));
+  fold.append(el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: said })));
   if (!u) {
     fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
