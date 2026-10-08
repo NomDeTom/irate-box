@@ -233,7 +233,30 @@ const AW = (() => {
     ] })), { id: opts.id });
   }
 
-  return { FILTER_AT, BOUND_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow };
+  // An older list, drawn by its pane's own code (F8): a limited height with a scroll (3e) and, past
+  // FILTER_AT entries, a filter box over it (3f). It follows the list through every redraw, so the
+  // pane's code stays as it is. opts.filter false: the height only (a list with a search of its own).
+  function bound(list, opts = {}) {
+    if (!list || list.dataset.awBound) return;
+    list.dataset.awBound = '1';
+    list.classList.add('aw-bounded');
+    if (opts.filter === false) return;
+    const count = h('span', { class: 'aw-count' });
+    const q = h('input', { type: 'search', placeholder: 'Filter…', 'aria-label': 'Filter this list' });
+    const bar = h('div', { class: 'aw-filter', 'data-filter-for': list.id }, q, count);
+    list.before(bar);
+    const apply = () => {
+      const rows = [...list.children], needle = q.value.trim().toLowerCase();
+      bar.hidden = rows.length <= FILTER_AT;
+      let shown = 0;
+      rows.forEach((row) => { const ok = bar.hidden || !needle || row.textContent.toLowerCase().includes(needle); row.hidden = !ok; if (ok) shown++; });
+      count.textContent = `${shown} of ${rows.length}`;
+    };
+    q.addEventListener('input', apply);
+    new MutationObserver(apply).observe(list, { childList: true });
+    apply();
+  }
+  return { FILTER_AT, BOUND_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

@@ -3869,3 +3869,9 @@ function drawAttention() {
 AL.onBadge(drawAttention);
 AL.onBuild(drawAttention);
 drawAttention();
+
+// --- older lists, bounded (menu overhaul F8; checklist 3e, 3f) -------------------------------------
+// What people made and the box's records grow without end: each gets a limited height and, once it
+// is long, a filter. The catalogue's results have a search of their own, so the height only.
+['store-saves', 'mod-messages', 'mod-threads', 'mod-drops', 'accounts-list', 'ci-runs'].forEach((id) => AW.bound(document.getElementById(id)));
+AW.bound(document.getElementById('catalogue-results'), { filter: false });
