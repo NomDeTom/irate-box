@@ -3,7 +3,7 @@
 """Each network link's history, for the uptime heatmaps on /admin → Network (next-work plan step
 34, new-feature-input). The uplink watchdog (uplink.py, root) records; the hub reads and sums.
 
-Five-minute slots, 35 days of them, one character each per interface, holding the worst state
+Five-minute slots, 72 days of them, one character each per interface, holding the worst state
 seen in the slot:
 
   .  no data: nothing was recorded (the watchdog not running, or the clock not trusted)
@@ -18,13 +18,13 @@ the last slot (the clock stepped back) is dropped; a gap is "no data".
 
 The file, $HUB_STATE_DIR/control/uplink-history.json (root's, readable by the hub):
   {"slot": 300, "ifaces": {"wlan0": {"first": <slot number>, "s": "uuuug..d", "kind": "uplink"}}}
-A slot number is the Unix time // 300. About 10 KB per interface. Stdlib only.
+A slot number is the Unix time // 300. About 20 KB per interface. Stdlib only.
 """
 
 import time
 
 SLOT = 300
-KEEP = 35 * 86400 // SLOT          # 10080 slots
+KEEP = 72 * 86400 // SLOT          # 20736 slots
 RANK = {".": 0, "u": 1, "o": 2, "g": 3, "d": 4}
 DOWN = ("g", "d")                  # what counts as an outage (off by the owner does not)
 
@@ -87,31 +87,28 @@ def _midnight(t):
 
 
 def summarize(hist, now=None):
-    """What the page draws, per interface: the last 7 days by hour, the last 35 by day, in the
-    box's local time, and a line of words' worth of numbers."""
+    """What the page draws, per interface: the last 72 hours by hour, the last 72 days by day, in
+    the box's local time (githubstatus.com's format), and a line of words' worth of numbers."""
     now = time.time() if now is None else now
     out = {}
     today = _midnight(now)
+    anchor = int(now // 3600) * 3600          # the hour now in progress, started
+    hour_at = lambda i: anchor - (71 - i) * 3600  # noqa: E731 - hours[i] covers [hour_at(i), hour_at(i)+3600)
+    hour_cols = [time.strftime("%H:00", time.localtime(hour_at(i))) if i % 12 == 0 else "" for i in range(72)]
+    hour_full = [time.strftime("%a %d %H:00", time.localtime(hour_at(i)))
+                 + "–" + time.strftime("%H:00", time.localtime(hour_at(i) + 3600)) for i in range(72)]
     for iface, e in sorted((hist or {}).get("ifaces", {}).items()):
         if not isinstance(e, dict) or not isinstance(e.get("s"), str) or not isinstance(e.get("first"), int):
             continue
         days = []
-        for back in range(34, -1, -1):
+        for back in range(71, -1, -1):
             start = _midnight(today - back * 86400 + 43200)   # noon, then its midnight: DST-proof
             end = _midnight(start + 36 * 3600)
             days.append((start, end))
         month = [dict(_bucket(_span(e, int(s // SLOT), int(t // SLOT))) or {}, date=time.strftime("%Y-%m-%d", time.localtime(s)))
                  for s, t in days]
-        week = []
-        for s, t in days[-7:]:
-            hours = []
-            for h in range(24):
-                hs = s + h * 3600
-                he = min(t, hs + 3600)
-                hours.append(_bucket(_span(e, int(hs // SLOT), int(he // SLOT))) if hs < t else None)
-            week.append({"date": time.strftime("%Y-%m-%d", time.localtime(s)), "label": time.strftime("%a %d", time.localtime(s)),
-                         "hours": hours})
-        span = _span(e, int((now - 7 * 86400) // SLOT), int(now // SLOT) + 1)
+        hours = [_bucket(_span(e, int(hour_at(i) // SLOT), int((hour_at(i) + 3600) // SLOT))) for i in range(72)]
+        span = _span(e, int((now - 72 * 3600) // SLOT), int(now // SLOT) + 1)
         seen = [c for c in span if c != "."]
         longest, run, run_start, at = 0, 0, 0, None
         for i, c in enumerate(span):
@@ -122,8 +119,9 @@ def summarize(hist, now=None):
                     longest, at = run, run_start
             elif c != ".":
                 run = 0
-        base = int((now - 7 * 86400) // SLOT)
-        out[iface] = {"kind": e.get("kind", "link"), "week": week, "month": month, "summary": {
+        base = int((now - 72 * 3600) // SLOT)
+        out[iface] = {"kind": e.get("kind", "link"), "hours": hours, "hour_cols": hour_cols, "hour_full": hour_full,
+                      "month": month, "summary": {
             "up": round(sum(c == "u" for c in seen) / len(seen), 4) if seen else None,
             "hours_seen": round(len(seen) * SLOT / 3600, 1),
             "drops": sum(1 for a, b in zip(span, span[1:]) if a == "u" and b in DOWN),

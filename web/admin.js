@@ -619,30 +619,29 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
-// The services' uptime (step 35): a row per service, the week by hour and 35 days by day, from
-// the hub's five-minute samples (svchistory.py); a dot where it started (a reboot starts them all).
+// The services' uptime (step 35): a row per service, the last 72 hours by hour and 72 days by
+// day (githubstatus.com's format), from the hub's five-minute samples (svchistory.py); a dot
+// where it started (a reboot starts them all).
 function renderServiceUptime(services, u) {
   const body = document.getElementById('svc-uptime-body');
   const units = (u && u.units) || {};
   const mine = services.filter((s) => s.unit && units[s.unit]);
   if (!mine.length) {
     body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing recorded yet: the hub looks at every service every five minutes, '
-      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 35 days.' }));
+      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return;
   }
-  const hourCols = [];
-  u.days.forEach((d) => { for (let h = 0; h < 24; h++) hourCols.push(h ? '' : d.label); });
-  const at = (i) => `${u.days[Math.floor(i / 24)].label} ${String(i % 24).padStart(2, '0')}:00–${String((i + 1) % 24).padStart(2, '0')}:00`;
   const said = (s) => { const sm = units[s.unit].summary;
-    return sm.up == null ? `${s.name}: no data this week` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
-  const dayLabel = (back) => u.month_days[34 - back].label;
+    return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
+  const dayLabel = (back) => u.month_days[71 - back].label;
   body.replaceChildren(
     el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
-    Heatmap.grid({ caption: 'Each service, the last 7 days by hour', cols: hourCols,
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].week, where: (i) => `${s.name}, ${at(i)}` })) }),
-    el('p', { className: 'setting-desc', textContent: 'The last 35 days, by day:' }),
-    Heatmap.grid({ caption: 'Each service, the last 35 days by day', cols: Array.from({ length: 35 }, (_, i) => (i % 7 ? '' : dayLabel(34 - i))),
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(34 - i)}` })) }),
+    el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
+    Heatmap.grid({ caption: 'Each service, the last 72 hours by hour', cols: u.hour_cols,
+      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].hours, where: (i) => `${s.name}, ${u.hour_full[i]}` })) }),
+    el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
+    Heatmap.grid({ caption: 'Each service, the last 72 days by day', cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : dayLabel(71 - i))),
+      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` })) }),
     Heatmap.legend(),
     el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
 }
@@ -1709,34 +1708,31 @@ function signalWords(dbm) {
   return dbm >= -50 ? 'excellent' : dbm >= -60 ? 'good' : dbm >= -70 ? 'fair' : dbm >= -80 ? 'weak' : 'poor';
 }
 
-// A link's uptime (step 34): a folded part on its card, the week by hour and 35 days by day,
-// from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
+// A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
+// by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
+// (linkhistory.py), drawn by heatmap.js.
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
   const fold = el('details', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'
-    : `Up ${Heatmap.percent(sm.up)} over the last 7 days (${sm.hours_seen} hours recorded)`
+    : `Up ${Heatmap.percent(sm.up)} over the last 72 hours (${sm.hours_seen} hours recorded)`
       + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
       + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
   fold.append(el('summary', {}, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: ` ${said}` })));
   if (!u) {
     fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
-      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 35 days.' }));
+      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return fold;
   }
-  const hours = Array.from({ length: 24 }, (_, h) => (h % 6 ? '' : String(h).padStart(2, '0')));
-  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 7 days, by hour:' }),
-    Heatmap.grid({ caption: `${iface}, the last 7 days by hour`, cols: hours,
-      rows: u.week.map((d) => ({ label: d.label, cells: d.hours,
-        where: (h) => `${d.label} ${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00` })) }));
-  const weeks = [];
-  for (let i = 0; i < u.month.length; i += 7) weeks.push(u.month.slice(i, i + 7));
+  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
+    Heatmap.grid({ caption: `${iface}, the last 72 hours by hour`, cols: u.hour_cols,
+      rows: [{ label: iface, cells: u.hours, where: (i) => u.hour_full[i] }] }));
   const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 35 days, by day:' }),
-    Heatmap.grid({ caption: `${iface}, the last 35 days by day`, cols: Array.from({ length: 7 }, () => ''),
-      rows: weeks.map((w) => ({ label: day(w[0].date), cells: w.map((c) => (c.n ? c : null)), where: (i) => day(w[i].date) })) }),
+  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
+    Heatmap.grid({ caption: `${iface}, the last 72 days by day`, cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : day(u.month[i].date))),
+      rows: [{ label: iface, cells: u.month.map((c) => (c.n ? c : null)), where: (i) => day(u.month[i].date) }] }),
     Heatmap.legend());
   fold.append(el('p', { className: 'setting-desc', textContent: u.kind === 'uplink'
     ? 'Up means the link was up and the gateway answered. A drop is the link going down after being up; switched off by you is not counted.'
