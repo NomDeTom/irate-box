@@ -2242,8 +2242,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/_irate/admin":
             # Unclaimed: /admin shows only the set-the-password page, so it asks no login; the shell,
             # Syncthing and private apps behind the same gate must not open (nginx says which page).
-            uri = self.headers.get("X-Original-URI", "")
-            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith(("/admin/", "/admin?"))))
+            # nginx sends the request's URI as typed but routes on the normalised one, so
+            # "/admin/../term/" reaches the shell's location: judged here as the browser and
+            # nginx see it, after unquoting and normalising (stance review 2026-10-08, N4).
+            import posixpath
+            uri = posixpath.normpath(unquote(self.headers.get("X-Original-URI", "").partition("?")[0]) or "/")
+            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith("/admin/")))
         else:
             ok = me is not None
         if ok:

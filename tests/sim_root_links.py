@@ -111,6 +111,21 @@ hub_control.main()
 ans = json.loads((hub_control.RESULTS / "fedcba9876543210.json").read_text())
 check("a request that is a link is refused, not carried out", ans["ok"] is False and not req.exists(), ans)
 
+
+# A request that is not an object, or one whose handler has a bug, is answered and gone: never
+# found again by the next helper (stance review 2026-10-08, N6).
+poison = {"0000000000000001": "[]", "0000000000000002": '"x"', "0000000000000003": json.dumps({"action": "uplink-set", "settings": [1]})}
+for rid, body in poison.items():
+    (hub_control.REQUESTS / f"{rid}.json").write_text(body)
+try:
+    hub_control.main(); crashed = None
+except Exception as exc:  # noqa: BLE001
+    crashed = exc
+answers = {rid: json.loads((hub_control.RESULTS / f"{rid}.json").read_text()) for rid in poison if (hub_control.RESULTS / f"{rid}.json").exists()}
+check("N6: a non-object request and a handler's own error are answered, not left to loop the helper",
+      crashed is None and set(answers) == set(poison) and all(a["ok"] is False for a in answers.values())
+      and not list(hub_control.REQUESTS.glob("*.json")), (crashed, answers))
+
 # --- what is left as source checks ---------------------------------------------------------
 src = {p: (REPO / p).read_text() for p in ("irate_box/root/hub_control.py", "irate_box/root/rtc.py", "irate_box/root/health.py",
                                            "irate_box/root/usbstick.py", "irate_box/root/security.py", "irate_box/hub/server.py",

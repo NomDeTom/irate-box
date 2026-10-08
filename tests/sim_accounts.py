@@ -98,6 +98,10 @@ t0 = time.time(); A.check_basic(basic("carol", "password6")); quick = time.time(
 check("  a wrong password, the box's own 'admin', garbage, a cookie-less nothing: none", A.check_basic(basic("carol", "nope-nope"), "10.9.9.9") is None
       and A.check_basic(basic("admin", "whatever"), "") is None and A.check_basic("Basic !!!", "") is None and A.check_basic("", "") is None)
 check("  a right one remembered for a minute (git asks several times a push)", quick < 0.01, quick)
+A.use_code(A.reset("carol"), "password7")
+check("  N14: not after a reset, that minute included", A.check_basic(basic("carol", "password6"), "10.9.9.9") is None
+      and A.check_basic(basic("carol", "password7"), "10.9.9.9") == {"name": "carol", "role": "admin"})
+A.use_code(A.reset("carol"), "password6")  # as the rest of the test knows it
 A._fails.clear()
 
 # Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
@@ -317,10 +321,12 @@ try:
     code, _, _ = req("/_irate/admin", headers={"Cookie": tok})
     check("  the admin check: a user's session, 401", code == 401, code)
     (st / "unclaimed").write_text("no password yet\n")
-    seen = {u: req("/_irate/admin", headers={"X-Original-URI": u})[0] for u in ("/admin/", "/admin/settings?x=1", "/term/", "/sync/", "/tools/", "/administer")}
+    seen = {u: req("/_irate/admin", headers={"X-Original-URI": u})[0] for u in ("/admin/", "/admin/settings?x=1", "/term/", "/sync/", "/tools/", "/administer",
+                                                                        "/admin/../term/", "/admin/%2E%2E/sync/", "/admin/./", "//admin/")}
     (st / "unclaimed").unlink()
     check("  an unclaimed box: /admin opens (the set-the-password page); the shell, Syncthing and private apps don't",
-          seen == {"/admin/": 204, "/admin/settings?x=1": 204, "/term/": 401, "/sync/": 401, "/tools/": 401, "/administer": 401}, seen)
+          seen == {"/admin/": 204, "/admin/settings?x=1": 204, "/term/": 401, "/sync/": 401, "/tools/": 401, "/administer": 401,
+                   "/admin/../term/": 401, "/admin/%2E%2E/sync/": 401, "/admin/./": 204, "//admin/": 401}, seen)
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "gina", "role": "admin"}, {"X-Irate-Admin": "1"})
     req("/api/account", {"action": "code", "code": d["code"], "password": "password9"})
     _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)

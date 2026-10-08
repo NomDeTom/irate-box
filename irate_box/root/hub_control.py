@@ -2197,16 +2197,25 @@ def main():
             rid = path.stem if ID_RE.match(path.stem) else "invalid"
             what = None
             try:
-                req = json.loads(safeio.read_request(path))  # never a link or a FIFO (F3)
+                text = safeio.read_request(path)  # never a link or a FIFO (F3)
+                # Gone before anything else can fail on it: a request this process cannot handle
+                # must never be found again by the next one, or the path unit restarts the helper
+                # for ever and nothing queued behind it is served (stance review 2026-10-08, N6).
+                path.unlink(missing_ok=True)
+                req = json.loads(text)
+                if not isinstance(req, dict):
+                    raise ValueError("not a request")
                 what = req.get("action")
-                path.unlink()
-                action = ACTIONS.get(req.get("action"))
+                action = ACTIONS.get(what)
                 if not action:
                     raise ValueError("unknown action")
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 path.unlink(missing_ok=True)
                 answer(rid, False, str(exc))
+            except Exception as exc:  # a handler's own bug: answered, and the queue goes on
+                path.unlink(missing_ok=True)
+                answer(rid, False, f"{type(exc).__name__}: {exc}")
             if what in UPDATES:
                 # The code on disk is new now; this process still has the old in memory. Stop, and
                 # the path unit starts a fresh helper for what is still queued (the Lyra,
