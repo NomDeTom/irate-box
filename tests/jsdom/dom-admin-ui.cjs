@@ -155,6 +155,12 @@ setTimeout(() => {
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
   // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
+  // A section headed with its page's title doesn't repeat it; a page of one section keeps it (F1).
+  check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
+    d.querySelector('#page-app-git #git > h2').classList.contains('same-as-page')
+    && !d.querySelector('#page-clock #clock > h2').classList.contains('same-as-page'));
+  // The words of the old menu are gone (F1): no Library pane, no Health group.
+  check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')
     && d.querySelector('#page-app-git #git'));
   // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.

@@ -959,7 +959,7 @@ function renderUpdate(data) {
     if (done) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
       updSay(updWaiting.action, failed && updWaiting.action !== 'doctor'
-        ? `${done.message} — the Updates doctor (under Health) can say why.` : done.message, !failed);
+        ? `${done.message} — the Updates doctor (under Doctors) can say why.` : done.message, !failed);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -2616,7 +2616,7 @@ function renderGit(data) {
   git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
     (data.free != null ? `; ${size(data.free)} free on the card` : '') +
     `. A single push can be up to ${size(data.max_push)}.`;
-  // Submodule mirrors have no card of their own: Library → Mirrors lists them under their parent.
+  // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
   const shown = data.repos.filter((r) => !r.submodule_of);
   const chips = (box, list, key) => box.replaceChildren(...list.map(([id, label, test]) => el('button', {
     type: 'button', className: `chip${gitView[key] === id ? ' on' : ''}`, textContent: `${label} ${shown.filter(test).length}`,
@@ -2660,8 +2660,8 @@ function newPanel(cls) {
       el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Public: anyone on the network can browse and clone it; only the admin pushes until you choose otherwise. Private: everything needs the admin login.' }),
       git.form, git.createNote),
     el('section', {}, el('h4', { textContent: 'A mirror of a repository on the internet' }),
-      el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed in Library → Mirrors.' }),
-      el('a', { href: '#mirrors', className: 'button-link', textContent: 'Add a mirror in Library → Mirrors' })));
+      el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed under Mirrors, below.' }),
+      el('a', { href: '#mirrors', className: 'button-link', textContent: 'Add a mirror' })));
 }
 
 const closeButton = () => actionButton('Close', () => { gitView.open = null; renderGit(gitData); }, { className: 'small' });
@@ -2691,7 +2691,7 @@ function repoCard(r, data) {
     el('p', { className: 'setting-desc git-facts', textContent: facts.filter(Boolean).join(' · ') }),
     el('p', { className: 'setting-desc git-access', textContent: accessSentence(r) }),
     el('p', { className: 'library-buttons' }, copyUrl(r),
-      r.mirror_of ? el('a', { href: '#mirrors', className: 'button-link small', textContent: 'Manage in Library' })
+      r.mirror_of ? el('a', { href: '#mirrors', className: 'button-link small', textContent: 'Manage the mirror' })
         : withAttrs(actionButton('Manage', () => { gitView.open = open ? null : repoKey(r); renderGit(gitData); },
           { className: 'small' }), { 'aria-expanded': String(open) })));
 }
@@ -2877,7 +2877,7 @@ function renderCi(data) {
   if (!kf.contains(document.activeElement)) kf.elements.keep.value = data.keep_runs;
   noteEl('ci-offline').textContent = 'With no internet: ' + ((data.mirrored || []).length
     ? `a build's git fetches of ${data.mirrored.length} URL${data.mirrored.length === 1 ? '' : 's'} come from this box's mirrors (${data.mirrored.slice(0, 3).map((u) => u.replace(/^https:\/\//, '')).join(', ')}${data.mirrored.length > 3 ? '…' : ''})`
-    : 'no mirrors yet, so a build that fetches from the internet needs it (Library → Mirrors)')
+    : 'no mirrors yet, so a build that fetches from the internet needs it (Git → Mirrors)')
     + (data.pio_deps ? '; PlatformIO\'s packages come from the library\'s cache (CI_PIO_DEPS).' : '; no PlatformIO cache kept (Builds above, the firmware build cache).')
     + (data.wheelhouse ? ' pip installs (platformio itself) come from the Building kit\'s wheelhouse (PIP_NO_INDEX, PIP_FIND_LINKS).'
       : ' The Building kit has no wheelhouse yet: a build\'s pip install still needs the internet.');
@@ -3322,7 +3322,7 @@ function renderFactory(d) {
     fac.source.replaceChildren(...d.sources.map((s) => el('option', { value: s.name, textContent: `${s.name} (${s.mirror ? 'a mirror' : 'private'})` })));
     if (d.sources.some((s) => s.name === was)) fac.source.value = was;
     if (d.sources.length) loadFactoryRefs();
-    else fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No source yet: mirror meshtastic/firmware in Library → Mirrors, or push a fork to a private repository.' }));
+    else fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No source yet: mirror meshtastic/firmware in Git → Mirrors, or push a fork to a private repository.' }));
   }
   const describe = (j) => `${j.name && j.name !== j.env ? `${j.name} (${j.env})` : j.env}, ${j.family}: ${j.source} ${j.ref}`;
   const rows = [];
