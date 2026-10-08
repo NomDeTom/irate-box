@@ -26,7 +26,7 @@ const TOUR = (() => {
       said: 'Off by default: an app for users shows its tile only to those signed in. On, guests see it too, with a lock that leads to sign-in. Each app\'s own "Tile shown to" still has the last word.' },
     { id: 'https', label: 'HTTPS', section: 'security', target: '#tls-state',
       said: 'The box\'s own certificate authority by default: phones install it once from /certificate. Off sends passwords in the clear.' },
-    { id: 'hotspot', label: 'The hotspot\'s security', section: 'security', target: '#hs-modes',
+    { id: 'hotspot', label: 'The hotspot\'s security', section: 'network', target: '#hs-modes',
       said: 'Encrypted with no password (OWE) where the radio can: guests join freely, and nobody nearby can read what they do.' },
     { id: 'guest-net', label: 'Guests reach the internet', section: 'network', target: '#ap-state',
       said: 'Off: guests on the hotspot reach the box and nothing else. Sharing the box\'s connection with them isn\'t built yet.' },
