@@ -1021,6 +1021,24 @@
         </p>
         <p class="setting-desc" id="update-summary">Not checked yet.</p>
         <p class="setting-desc">When an update fails, the <a href="#updoctor">Updates doctor</a> can say why.</p>
+        <h3>What an update must carry</h3>
+        <p class="setting-desc">
+          How far a new version must be vouched for before the box installs it (as root). A version
+          that is not signed as chosen here is refused, by Install anyway too.
+        </p>
+        <form id="update-signing-form" class="library-form">
+          <fieldset class="radio-set">
+            <legend>Updates must be</legend>
+            <label class="inline"><input type="radio" name="level" value="off"> From the branch, as now: a fast-forward of what is installed, its checks passed</label>
+            <label class="inline"><input type="radio" name="level" value="github"> Merged on GitHub: every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused</label>
+            <label class="inline"><input type="radio" name="level" value="tags"> Signed releases only: the newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch</label>
+          </fieldset>
+          <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
+            <textarea name="signers" rows="3" spellcheck="false" placeholder="tom@box ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
+          <p class="setting-desc" id="update-signers-kept"></p>
+          <button class="action-btn primary" type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="update-signing-note" role="status" hidden></p>
         <h3>Debian's security updates</h3>
         <p class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</p>
         <ul class="admin-checks" id="updates-security"></ul>

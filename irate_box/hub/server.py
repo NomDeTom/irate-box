@@ -1437,6 +1437,7 @@ UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
+SIGNING_STATE = CONTROL_DIR / "update-signing.json"  # root's: the level, and the keys' names
 UPDATE_ACTIONS = {"check": "update-check", "fetch": "update-fetch", "install": "update-install",
                   "force-install": "update-force-install",
                   "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
@@ -1493,8 +1494,12 @@ def update_snapshot():
     policy = librarian.load_config()["policy"]
     auto = {k: policy[k] for k in ("hub_check_every_hours", "hub_auto", "hub_window_start", "hub_window_end")}
     auto["state"] = librarian._hub_update_state()
+    try:
+        sig = json.loads(SIGNING_STATE.read_text())
+    except (OSError, ValueError):
+        sig = {"level": "off", "keys": []}
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto}
+            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto, "signing": sig}
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
@@ -3300,6 +3305,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/moderation":
             self.send_json(*moderation_action(payload))
+            return
+
+        if path == "/admin/update" and payload.get("action") == "signing":
+            # How far an update must be vouched for (root/signing.py): root checks and keeps it.
+            level, signers = payload.get("level"), payload.get("signers", "")
+            if level not in ("off", "github", "tags") or not isinstance(signers, str) or len(signers) > 20000:
+                self.send_json(400, {"error": "level is off, github or tags; signers, allowed_signers lines"})
+                return
+            self.send_json(202, {"id": control_request({"action": "update-signing", "level": level, "signers": signers})})
             return
 
         if path == "/admin/update":

@@ -30,7 +30,7 @@ const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500
 const tilesData = { tiles: [{ id: 'drop', name: 'File drop', icon: '📥' }, { id: 'about', name: 'About', icon: 'ℹ️' }], state: { order: [] } };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
   { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true }], progress: null, pending: 0, results: [], log: [] };
-const update = { state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
+const update = { signing: { level: 'github', keys: [] }, state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
   changes: ['one'], changes_known: true, verified: null,
   checks: [{ name: 'Python files compile', ok: true, warn: false, detail: '' },
     { name: 'The new nginx site passes nginx -t', ok: false, warn: false, detail: 'irate-box.nginx is missing from the update' }] },
@@ -278,6 +278,18 @@ setTimeout(() => {
     check('  an address inside a panel opens its tab', !panel('books-other').hidden && tabs[1].getAttribute('aria-selected') === 'true');
     w.location.hash = '';
   }
+  // What an update must carry (Tom, 2026-10-08: "give options in the update manager").
+  {
+    const f = d.getElementById('update-signing-form');
+    check('updates: the signing level as three choices, merged on GitHub chosen', f && f.querySelectorAll('input[type=radio][name=level]').length === 3
+      && f.elements.level.value === 'github' && d.getElementById('update-signers-label').hidden);
+    f.elements.level.value = 'tags'; f.dispatchEvent(new w.Event('change'));
+    check('  signed releases: the box for the keys shows', !d.getElementById('update-signers-label').hidden);
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    check('  with no key: not sent, said why', /at least one key/.test(t('#update-signing-note')[0]) && !posted.some((p) => p[1] && p[1].action === 'signing'));
+    f.elements.signers.value = 'tom@box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB tom';
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  }
   // The words of the old menu are gone (F1): no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')
@@ -325,6 +337,7 @@ setTimeout(() => {
     check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' }, icon: {} } }),
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
     check('padlock saved for Kiwix', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'wiki' && p[1].locked === 'padlock'), JSON.stringify(posted.filter((p) => p[0] === '/admin/visibility')));
+    check('updates: the signing level sent with the keys', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'signing' && p[1].level === 'tags' && /ssh-ed25519/.test(p[1].signers)));
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));

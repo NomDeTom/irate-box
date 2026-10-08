@@ -1,0 +1,4 @@
+config/signing/github-web-flow.asc is GitHub's published OpenPGP public key for the commits it
+signs ("web-flow"), as served at https://github.com/web-flow.gpg. It is reproduced unchanged so
+that a box can verify those signatures offline; it is GitHub's, and carries no licence from this
+project.

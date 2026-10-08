@@ -34,6 +34,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
+  {"id": ..., "action": "update-signing", "level": "off"|"github"|"tags", "signers": "<allowed_signers>"}
+      How far an update must be vouched for (signing.py): kept in /etc/hub/update-signing.json,
+      root's; what /admin may show (the level, each key's name and type) in control/.
   {"id": ..., "action": "addon", "addon": "<an apps.d add-on>", "on": true|false}
       Rerun install.sh from a copy of the installed code with that add-on's --with-* option
       added, or taken out with --remove; output and progress as for update-install.
@@ -109,6 +112,7 @@ from pathlib import Path
 
 from irate_box.hub import access
 from irate_box.root import health
+from irate_box.root import signing
 from irate_box.hub import manifests
 from irate_box.hub import netinv
 from irate_box.root import secdoctor
@@ -158,6 +162,7 @@ UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 UPDATE_STATE = CONTROL / "update.json"
 UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
+SIGNING_PUBLIC = CONTROL / "update-signing.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
 SECURITY_STATE = CONTROL / "security.json"
 AUDIT_STATE = CONTROL / "security-audit.json"
@@ -944,7 +949,38 @@ def prefetch(src, opts, progress=None):
     return checks
 
 
-def verify_update(src, installed, opts, progress=None):
+SIGNED_CHECK = "Signed as this box requires"
+
+
+def _signature_check(src, installed, tag=None):
+    """The level chosen on /admin's Updates (signing.py): nothing more at off; GitHub's signature
+    on every new commit; or the release tag signed by one of the owner's keys."""
+    sig = signing.load(ETC)
+    if sig["level"] == "off":
+        return []
+    if sig["level"] == "github":
+        known = bool(installed) and run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
+        span = f"{installed}..HEAD" if known else "-1"
+        revs = [r for r in run("git", "-C", str(src), "rev-list", span).stdout.split() if r] if known else \
+            [run("git", "-C", str(src), "rev-parse", "HEAD").stdout.strip()]
+        ok, detail = signing.check_commits(src, revs, CODE / signing.GITHUB_KEY)
+    else:
+        # The tag the check fetched; failing that, the newest release tag on what is checked out.
+        tag = tag or next(iter(run("git", "-C", str(src), "tag", "--points-at", "HEAD", "-l", signing.TAG_GLOB,
+                                   "--sort=-v:refname").stdout.split()), "")
+        ok, detail = signing.check_tag(src, tag, sig["signers"]) if tag else (False, "what was fetched is not a release tag")
+    return [_check(SIGNED_CHECK, ok, detail)]
+
+
+def update_signing(req):
+    data = signing.save(ETC, str(req.get("level", "")), str(req.get("signers", "")), lambda path, text: safeio.write(path, text, mode=0o600))
+    safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
+    words = {"off": "any version from the branch (as before)", "github": "only commits merged on GitHub (signed by GitHub)",
+             "tags": f"only release tags signed by one of {len(data['signers'])} key{'s' if len(data['signers']) != 1 else ''}"}
+    return f"updates now take {words[data['level']]}; the next check uses it"
+
+
+def verify_update(src, installed, opts, progress=None, tag=None):
     """Checks on a fetched tree; any failure not marked warn blocks the install."""
     checks = []
     if installed:
@@ -960,6 +996,7 @@ def verify_update(src, installed, opts, progress=None):
                              "Install anyway (Health → Updates doctor) if they are yours." if known else
                              f"{installed} is not in the fetched history: the box was installed from elsewhere. "
                              "Read the changes before installing.", warn=not known))
+    checks += _signature_check(src, installed, tag)
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
@@ -1086,6 +1123,21 @@ def _check_for_update(progress):
             subprocess.run(["rm", "-rf", src], check=True)
         UPDATE_SRC.parent.mkdir(parents=True, exist_ok=True)
         _git("clone", "--depth", "200", "--branch", branch, repo, src)
+    sig = signing.load(ETC)
+    tag = None
+    if sig["level"] == "tags":
+        # Signed releases (signing.py): the newest v* tag, not the branch's tip.
+        got = run("git", "-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
+        if got.returncode != 0:
+            # git says nothing when no tag matches: tell that apart from a fetch that failed.
+            remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
+            if remote.returncode == 0 and not remote.stdout.strip():
+                raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+            raise ValueError("git fetch of the release tags: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1])
+        tag = signing.newest_tag(src)
+        if not tag:
+            raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+        _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
     progress.step("Reading the changes")
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
     full = _git("-C", src, "rev-parse", "HEAD")
@@ -1100,6 +1152,7 @@ def _check_for_update(progress):
         "installed": installed, "up_to_date": up_to_date,
         "changes": changes[:50], "changes_known": known, "fetched": time.time(),
         "verified": None, "verified_sha": None, "checks": [],
+        "signing": sig["level"], "tag": tag,
     }
     # The same commit fetched before: its checks and downloads still stand. Matched on the
     # whole hash (F21): a commit sharing the first 7 digits must not inherit "verified".
@@ -1143,7 +1196,7 @@ def update_fetch(req):
             _write_update_state(state)
             return f"irate-box is up to date ({state['available']} on {state['branch']})"
         progress.step("Checking the new version")
-        checks = verify_update(UPDATE_SRC, state["installed"], opts, progress)
+        checks = verify_update(UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag"))
     head = state["available"]
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
@@ -1217,6 +1270,10 @@ def update_force_install(req):
     if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
         raise ValueError("the fetched install.sh does not parse, so not even a forced install can run it")
     failed = [c["name"] for c in state["checks"] if not c["ok"] and not c["warn"]]
+    if SIGNED_CHECK in failed:
+        # The point of a signing level (signing.py): not even Install anyway passes it.
+        raise ValueError("the fetched version is not signed as this box requires: Install anyway cannot pass that; "
+                         "change what an update must carry on Updates if this is meant")
     done = _install_fetched(state)
     return f"{done} (installed anyway, past: {'; '.join(failed)})" if failed else done
 
@@ -2173,7 +2230,7 @@ def _kit_req(fn):
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-force-install": update_force_install,
-           "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
+           "update-doctor": update_doctor, "update-clear-cache": update_clear_cache, "update-signing": update_signing,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,

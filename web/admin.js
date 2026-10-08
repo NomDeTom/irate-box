@@ -932,6 +932,7 @@ function renderUpdateProgress(p) {
 }
 
 function renderUpdate(data) {
+  drawSigning(data.signing, data.results);
   const s = data.state;
   const p = data.progress;
   const busy = data.pending > 0 || !!updWaiting || !!p;
@@ -4014,3 +4015,40 @@ function initTabs(box) {
   follow();
 }
 document.querySelectorAll('[data-tabs]').forEach(initTabs);
+
+// --- what an update must carry (root/signing.py; Tom, 2026-10-08: "give options in the update
+// manager for what level to choose") ------------------------------------------------------------
+// off, merged on GitHub, or signed releases with the owner's keys. The keys are root's: the page
+// gets back only their names and types, and each Save replaces the list with what is in the box.
+const sigEl = { form: document.getElementById('update-signing-form'), note: noteEl('update-signing-note'),
+  label: document.getElementById('update-signers-label'), kept: noteEl('update-signers-kept') };
+let sigWaiting = null;
+const SIG_WORDS = { off: 'from the branch, as before', github: 'merged on GitHub (signed by GitHub)', tags: 'signed releases only' };
+function sigShowKeys() { sigEl.label.hidden = sigEl.form.elements.level.value !== 'tags'; }
+function drawSigning(sig, results) {
+  if (!sigEl.form || !sig) return;
+  if (sigWaiting) {
+    const done = (results || []).find((r) => r.id === sigWaiting);
+    if (done) { sigWaiting = null; say(done.message, done.ok, sigEl.note); }
+  }
+  if (!sigEl.form.contains(document.activeElement)) sigEl.form.elements.level.value = sig.level;
+  sigShowKeys();
+  sigEl.kept.textContent = sig.level === 'tags' && sig.keys.length
+    ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ''})`).join('; ')}. Saving replaces the list with what is in the box above.`
+    : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
+}
+if (sigEl.form) {
+  sigEl.form.addEventListener('change', sigShowKeys);
+  sigEl.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const level = sigEl.form.elements.level.value;
+    const signers = sigEl.form.elements.signers.value;
+    if (level === 'tags' && !signers.trim()) { say('Signed releases need at least one key: paste it in the box.', false, sigEl.note); return; }
+    if (level === 'off' && !confirm('Install updates with no signature checked, as before?')) return;
+    try {
+      sigWaiting = (await postJSON('/admin/update', { action: 'signing', level, signers })).id;
+      say('Asked: the root helper keeps it.', true, sigEl.note);
+      setTimeout(loadUpdate, 1500);
+    } catch (err) { say(err.message, false, sigEl.note); }
+  });
+}
