@@ -576,6 +576,7 @@ def run(once=False):
     events = deque(_json(EVENTS, [])[-50:], maxlen=50)
     floods_hour = Counter()
     hour_start = time.time()
+    status_at = 0.0
     pending = {"snap": None}
 
     def log(now, iface, kind, text, snapshot=False):
@@ -615,12 +616,14 @@ def run(once=False):
                 append_snapshot(snapshot(keep, flood, extra))
             except OSError as exc:
                 print(f"crashwatch: snapshot not written: {exc}", file=sys.stderr)
-        if now - hour_start >= 3600 or once or not STATUS.exists():
+        # For the doctor every 5 minutes: the radios, and the floods counted over the hour so far.
+        if now - status_at >= 300 or once:
+            status_at = now
             _write(STATUS, {"at": now, "boot": boot_id(), "radios": known, "floods": dict(floods_hour.most_common(5)),
                             "flood_window": max(now - hour_start, TICK)})
-            if now - hour_start >= 3600:
-                floods_hour.clear()
-                hour_start = now
+        if now - hour_start >= 3600:
+            floods_hour.clear()
+            hour_start = now
         if once:
             return
         time.sleep(TICK)
