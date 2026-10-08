@@ -677,11 +677,11 @@
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
         <form id="ci-cache-form" class="library-form">
-          <fieldset class="radio-set">
+          <fieldset class="choice-tiles">
             <legend>Firmware build cache: PlatformIO's packages for the newest Meshtastic release, so firmware builds here need no internet</legend>
-            <label class="inline"><input type="radio" name="cache" value="discard"> Don't keep it</label>
-            <label class="inline"><input type="radio" name="cache" value="native"> Keep what a headless build needs (~215 MB)</label>
-            <label class="inline"><input type="radio" name="cache" value="whole"> Keep all of it (~700 MB, includes the touchscreen UI)</label>
+            <label class="choice-tile"><input type="radio" name="cache" value="discard"><span class="choice-text"><span class="setting-name">Don't keep it</span><span class="setting-desc">Builds fetch what they need from the internet each time.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="cache" value="native"><span class="choice-text"><span class="setting-name">Keep what a headless build needs</span><span class="setting-desc">About 215 MB.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="cache" value="whole"><span class="choice-text"><span class="setting-name">Keep all of it</span><span class="setting-desc">About 700 MB; includes the touchscreen UI.</span></span></label>
           </fieldset>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
@@ -882,7 +882,7 @@
           who can join and what is protected. The choice applies the next time the hotspot is switched on,
           above, which also says what the radios here allow. A setup decision; the tour comes here.
         </p>
-        <div class="hs-modes" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
+        <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
         <div class="net-settings" id="hs-fields">
           <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
           <select id="hs-second">
@@ -924,9 +924,9 @@
         <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
         <div class="net-settings">
           <span class="setting-name" id="up-eager-label">Eagerness: how hard it works to get back on</span>
-          <div class="up-ladder" id="up-eager" role="radiogroup" aria-labelledby="up-eager-label"></div>
+          <div class="choice-tiles" id="up-eager" role="radiogroup" aria-labelledby="up-eager-label"></div>
           <span class="setting-name" id="up-forgive-label">Forgiveness: how much it puts up with first</span>
-          <div class="up-ladder" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
+          <div class="choice-tiles" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
           <label class="setting-name" for="up-iface">Watch</label>
           <select id="up-iface"><option value="auto">The box's route to its network</option></select>
           <details id="up-custom">
@@ -1052,11 +1052,11 @@
           that is not signed as chosen here is refused, by Install anyway too.
         </p>
         <form id="update-signing-form" class="library-form">
-          <fieldset class="radio-set">
+          <fieldset class="choice-tiles">
             <legend>Updates must be</legend>
-            <label class="inline"><input type="radio" name="level" value="off"> From the branch, as now: a fast-forward of what is installed, its checks passed</label>
-            <label class="inline"><input type="radio" name="level" value="github"> Merged on GitHub: every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused</label>
-            <label class="inline"><input type="radio" name="level" value="tags"> Signed releases only: the newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch</label>
+            <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
           </fieldset>
           <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
             <textarea name="signers" rows="3" spellcheck="false" placeholder="tom@box ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>

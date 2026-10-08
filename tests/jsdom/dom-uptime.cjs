@@ -62,6 +62,12 @@ setTimeout(() => {
   check('  the current hour, only partly sampled, up so far', cells && cells[71].classList.contains('hm-full') && /up 100 %$/.test(cells[71].title), cells && cells[71].title);
   check('72 days, one row', month && rows(month).length === 1 && rows(month)[0].querySelectorAll('.hm-cell').length === 72);
   check('  most days with no record: no data', month && [...month.querySelectorAll('.hm-cell')].filter((c) => c.classList.contains('hm-none')).length >= 60);
+  up.open = true; up.dispatchEvent(new w.Event('toggle')); w.eval('loadNetwork()');
+  setTimeout(() => {
+    const up2 = card('wlan0') && card('wlan0').querySelector('details.net-uptime');
+    check('opened, it stays open as the pane redraws (the poll)', up2 && up2 !== up && up2.open);
+    check('  and the other cards\' folds stay closed', !card('eth0').querySelector('details.net-uptime').open);
+  }, 300);
   check('a legend, and what up means for the uplink', up && up.querySelectorAll('.hm-legend .hm-key').length === 6 && /the gateway answered/.test(t(up)));
   const eth = card('eth0'), ethUp = eth && eth.querySelector('details.net-uptime');
   check('a wired link: its own heatmap, link only, said', ethUp && ethUp.querySelectorAll('.heatmap').length === 2 && /Only whether the link was up/.test(t(ethUp))

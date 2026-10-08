@@ -1028,15 +1028,19 @@ body.drop > section + section { margin-top: 2.5rem; }
 .net-glossary dd { margin: 0; color: var(--muted); }
 @media (max-width: 560px) { .net-glossary dl { grid-template-columns: 1fr; } .net-glossary dd { margin-bottom: 0.3rem; } }
 
-/* Staying on the network: eagerness as a ladder of cards, each with what it means and does. */
-.up-ladder { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
-.up-rung { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
+/* Choice tiles (AW.choices; the canonical "one of a few, each needing a sentence"): a bordered card per
+   choice with its radio, the chosen one in the accent colour, an unavailable one greyed. */
+.choice-tiles { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.4rem 0 0.6rem; border: 0; padding: 0; min-width: 0; }
+.choice-tiles > legend { padding: 0; margin-bottom: 0.35rem; font-size: 0.85rem; color: var(--muted); }
+.choice-tile { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.up-rung:hover { border-color: var(--accent); }
-.up-rung.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.up-rung input { margin-top: 0.25rem; accent-color: var(--accent); }
-.up-rung-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.up-does { font-style: italic; }
+.choice-tile:hover { border-color: var(--accent); }
+.choice-tile.chosen, .choice-tile:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.choice-tile.unavailable { opacity: 0.6; }
+.choice-tile.unavailable:not(.chosen) { cursor: not-allowed; }
+.choice-tile input { margin-top: 0.25rem; accent-color: var(--accent); flex: none; }
+.choice-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.choice-does { font-style: italic; }
 .up-will { margin: 0.6rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--surface); }
 .net-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem 1rem; margin-top: 0.5rem; }
 .net-fields label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.9em; }
@@ -1055,11 +1059,6 @@ body.drop > section + section { margin-top: 2.5rem; }
 #health-findings .setting-desc code, #health-findings code { overflow-wrap: anywhere; }
 
 /* Security: the hotspot's own WiFi, one card per mode */
-.hs-modes { display: grid; gap: 0.5rem; margin: 0.5rem 0; }
-.hs-mode { display: flex; gap: 0.6rem; align-items: flex-start; border: 1px solid var(--border, #8884); border-radius: 8px; padding: 0.6rem 0.75rem; }
-.hs-mode.unavailable { opacity: 0.6; }
-.hs-mode input { margin-top: 0.25rem; }
-.hs-mode .setting-desc { display: block; }
 
 /* Locks on this device: the key's QR code */
 .locks-qr svg { width: 12rem; height: 12rem; background: #fff; border-radius: 6px; margin: 0.5rem 0; }
@@ -1364,9 +1363,6 @@ html:has(> body.admin) { background: var(--bg); }
 /* A locked tile as its owner chose (Tom, 2026-10-08): a padlock that does nothing, or greyed out. */
 .service-card.padlock { cursor: not-allowed; }
 .service-card.greyed { opacity: 0.4; filter: grayscale(1); cursor: default; }
-/* A choice of a few, each said in full: radio buttons in a set (Tom, 2026-10-08, the build cache). */
-.radio-set { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.8rem 0.6rem; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
-.radio-set legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--muted); }
 /* A set of tabs over its panels (the books' sources): the strip above, one panel below. */
 .tab-set > .view-switch { margin-bottom: 0.8rem; }
 .tab-set > [role="tabpanel"] { padding-top: 0.2rem; }
