@@ -1347,3 +1347,5 @@ html:has(> body.admin) { background: var(--bg); }
 /* A tile's own icon of letters and digits (up to four): a word, not an emoji. */
 .service-card .icon.icon-text { font-weight: 800; letter-spacing: 0.04em; font-size: 1.35rem; line-height: 1.6rem; }
 .service-grid .service-card.large .icon.icon-text { font-size: 2.4rem; line-height: 3rem; }
+/* A primary button that cannot act yet (nothing to save) looks it. */
+.action-btn.primary.primary:disabled { opacity: 0.45; filter: none; }
