@@ -17,7 +17,7 @@ const AL = (() => {
       { title: 'Overview', sections: ['overview'] },
       { title: 'Setup steps', sections: ['welcome'], art: 'welcome-controller' }] },
     { name: 'Apps', art: 'librarian', apps: 'apps', pages: [
-      { title: 'All apps, in order', sections: ['addons', 'apps'] }] },
+      { title: 'All apps, in order', sections: ['tile-order', 'apps', 'addons'] }] },
     { name: 'Folders', art: 'librarian', apps: 'folders', pages: [
       { title: 'Status tiles', sections: ['status-tiles'], art: 'controller' }] },
     { name: 'Moderation', art: 'librarian', pages: [
@@ -155,12 +155,13 @@ const AL = (() => {
       const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
-        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.sections.length || x.folder || x.page))) {
+        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page))) {
           // Who opens it, who sees it: first on its page (M6; admin.js fills it from /admin/access).
-          if (a.switch) {
+          // An app with no switch of its own (a folder, About) has only who sees its tile (F3).
+          if (a.switch || a.seen) {
             const id = 'app-access-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-access', id },
-              el('h2', { text: 'Who opens it, who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
+              el('h2', { text: a.switch ? 'Who opens it, who sees it' : 'Who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
             a = { ...a, sections: [id, ...a.sections] };
           }
           // An app drawn on the hub page: its width, after its first section (M9).
@@ -175,7 +176,7 @@ const AL = (() => {
             const id = 'folder-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane folder-section', id },
               el('h2', { text: 'What\'s in it' }), el('div', { class: 'folder-block', 'data-folder': a.id })));
-            const at = a.switch ? 1 : 0;
+            const at = a.switch || a.seen ? 1 : 0;
             a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
           }
           const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: a.sections, empty: false });

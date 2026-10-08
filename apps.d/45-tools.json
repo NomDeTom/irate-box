@@ -218,5 +218,6 @@
       "RF": "tools-rf",
       "Tiny Tools": "tools-general"
     }
-  }
+  },
+  "admin": {"title": "Calculators' site", "icon": "🧮"}
 }

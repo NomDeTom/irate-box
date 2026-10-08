@@ -294,6 +294,7 @@ def hidden_apps(signed_in=False):
     (access.py; the root helper leaves its copy of the choices in the control folder). A built-in
     with no switch (a list page, the box row, About) is never hidden."""
     state, vis = access.read(ACCESS_STATE), visibility()
+    offer = settings_snapshot()["sign_in_offer"]
     out = set()
     for i in _switched():
         mode, v = access.mode_of(state, i), vis.get(i, "auto")
@@ -302,7 +303,29 @@ def hidden_apps(signed_in=False):
         elif v == "users":
             if not signed_in:
                 out.add(i)
-        elif v == "auto" and mode != "public" and not (signed_in and mode == "users"):
+        elif v == "auto" and mode != "public" and not (signed_in and mode == "users") \
+                and not (mode == "users" and offer):
+            out.add(i)
+    return out
+
+
+def seen_only():
+    """The tiles with no switch of their own (menu overhaul F3): the folders, About. Who opens them
+    is no one's to set (their pages are the hub's, open to all), but who sees the tile is."""
+    sw = _switched()
+    return {m["id"] for m in MANIFESTS if m["id"] not in sw and m["id"] not in PAGE_APPS
+            and (m.get("tile") or {}).get("row", "apps") == "apps" and not (m.get("tile") or {}).get("widget")
+            and (m.get("tile") or m.get("menu"))}
+
+
+def hidden_tiles(signed_in=False):
+    """The tiles left off this visitor's home page: hidden_apps, and the seen-only tiles hidden
+    from them (whose addresses still work, as for any app whose tile is hidden)."""
+    vis = visibility()
+    out = set(hidden_apps(signed_in))
+    for i in seen_only():
+        v = vis.get(i, "auto")
+        if v == "hidden" or (v == "users" and not signed_in):
             out.add(i)
     return out
 
@@ -327,6 +350,9 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         pos = {i: n for n, i in enumerate(st["order"])}
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
         hidden = set(hidden) | set(st["hidden"])
+    elif row == "apps":
+        pos = {i: n for n, i in enumerate(tiles_state()["order"])}
+        ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
     for m in ms:
         tile = m.get("tile")
         if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
@@ -491,6 +517,32 @@ def status_tiles_snapshot():
             "state": st}
 
 
+# The apps row's order (menu overhaul F3, on /admin's "All apps"): the hub's own, like the box row's.
+TILES_FILE = STATE_DIR / "tiles.json"
+
+
+def tiles_state():
+    try:
+        data = json.loads(TILES_FILE.read_text())
+    except (OSError, ValueError):
+        data = {}
+    data = data if isinstance(data, dict) else {}
+    return {"order": [x for x in data.get("order", []) if isinstance(x, str)][:100]}
+
+
+def app_tiles():
+    """The apps row's tiles, in the manifests' order: [(id, name, icon)]."""
+    return [(m["id"], m["tile"].get("name", m["id"]), m["tile"].get("icon", "")) for m in MANIFESTS
+            if m.get("tile") and m["tile"].get("row", "apps") == "apps" and not m["tile"].get("widget")]
+
+
+def tiles_snapshot():
+    st = tiles_state()
+    pos = {i: n for n, i in enumerate(st["order"])}
+    tiles = sorted(app_tiles(), key=lambda t: pos.get(t[0], len(pos)))
+    return {"tiles": [{"id": i, "name": n, "icon": c} for i, n, c in tiles], "state": st}
+
+
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
 ACCOUNT_MARK = "<!-- account nav -->"
@@ -514,7 +566,7 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE):
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
@@ -525,7 +577,7 @@ def home_page(signed_in=False):
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
-        hidden = hidden_apps(signed_in)
+        hidden = hidden_tiles(signed_in)
         locked = locked_apps(signed_in)
         # A tab its visitor isn't to see (M9): its link and its pane left out of the page.
         for app, tab in PAGE_APPS.items():
@@ -701,6 +753,10 @@ DEFAULT_SETTINGS = {
     # The setup tour (M14): which of the decisions that touch security (5h) the owner has made,
     # by keeping the default or changing it where it lives. The box runs on the defaults until then.
     "setup_decided": [],
+    # A tile a guest can't open (menu overhaul F3; the setup decision "sign-in-offer"): for an app
+    # open to users and left at "as its access", show its tile to guests too, with a lock that leads
+    # to sign-in. Off (the default) shows it only to those who may open it, as before.
+    "sign_in_offer": False,
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -2519,10 +2575,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, status_tiles_snapshot())
             return
 
+        if path == "/admin/tiles":
+            self.send_json(200, tiles_snapshot())
+            return
+
         if path == "/admin/apps":
             # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
             # switch: whether its access can be set (its page then starts with it, M6).
-            self.send_json(200, {"apps": [dict(a, switch=a["id"] in access.ROUTED or a["local"]) for a in manifests.admin_apps(MANIFESTS)]})
+            seen = seen_only()
+            self.send_json(200, {"apps": [dict(a, switch=a["id"] in access.ROUTED or a["local"], seen=a["id"] in seen)
+                                          for a in manifests.admin_apps(MANIFESTS)]})
             return
 
         if path == "/admin/settings":
@@ -2624,6 +2686,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"]), visible=vis.get(a["id"], "auto"))
                                           for a in access.apps(MANIFESTS)],
                                  "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
+                                 "seen": {i: vis.get(i, "auto") for i in sorted(seen_only())},
                                  "results": control_results()})
             return
 
@@ -2746,7 +2809,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/menus.json":
             # The list pages, for the hub bar's ↑ (app.js): {id: {title, href}}, public ones only.
-            hidden = hidden_apps()
+            hidden = hidden_apps(self._signed_in())
             self.send_json(200, {i: {"title": mm["menu"]["title"], "href": mm["tile"]["href"]}
                                  for i, mm in manifests.menus(MANIFESTS).items() if i not in hidden})
             return
@@ -2910,7 +2973,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, dict(result, posting=self._posting_view("board"), report_reasons=settings_snapshot()["report_reasons"]))
             return
 
-        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
+        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps(self._signed_in())):
             body = menu_page(MENU_PAGES[path], self._signed_in())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
@@ -3246,6 +3309,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be make (books: true or false)"})
             return
 
+        if path == "/admin/tiles":
+            # The apps row's order (F3): a list of its tiles' ids, the rest after them as before.
+            data, ids = payload.get("state"), {i for i, _, _ in app_tiles()}
+            if not isinstance(data, dict) or not isinstance(data.get("order", []), list) or not set(data.get("order", [])) <= ids:
+                self.send_json(400, {"error": "state: order, a list of the apps row's tiles"})
+                return
+            tmp = TILES_FILE.parent / (TILES_FILE.name + ".tmp")
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"order": list(dict.fromkeys(data.get("order", [])))}))
+            os.replace(tmp, TILES_FILE)
+            self.send_json(200, tiles_snapshot())
+            return
+
         if path == "/admin/status-tiles":
             # The box row's arrangement (M8): its tiles only, each part a list of their ids.
             data, ids = payload.get("state"), {i for i, _ in box_tiles()}
@@ -3273,7 +3349,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/visibility":
             # Who sees an app's tile (M5): the hub's own, at once; no root, no web server change.
             app, v = str(payload.get("app", "")), payload.get("visible")
-            if (app not in _switched() and app not in PAGE_APPS) or v not in VISIBLE:
+            if (app not in _switched() and app not in PAGE_APPS and app not in seen_only()) or v not in VISIBLE:
                 self.send_json(400, {"error": "app must name an app on /admin, and visible be auto, guests, users or hidden"})
                 return
             data = visibility()

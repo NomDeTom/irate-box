@@ -38,5 +38,6 @@
       "desc": "One file: save it, then open it from your downloads in Chrome or Edge, where live USB serial works. Its SHA-256 is beside it on the box",
       "href": "/serial/serial-terminal.html"
     }
-  ]
+  ],
+  "admin": {"title": "Serial terminal", "icon": "🔌"}
 }

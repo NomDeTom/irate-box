@@ -16,6 +16,8 @@ module.exports = function adminApps() {
       const name = adm.title || tile.name || (menu || {}).title;
       if (!name || (tile.widget && !m.admin)) return [];
       return [{ id: m.id, name, icon: adm.icon || tile.icon || '', sections: adm.sections || [], folder: !!menu, art: (menu || {}).art || null, local: false,
-        page: !!adm.page, width: adm.width || null, switch: ROUTED.includes(m.id) }];
+        page: !!adm.page, width: adm.width || null, switch: ROUTED.includes(m.id),
+        // server.seen_only: a tile or folder with no switch, not drawn on the hub page (F3)
+        seen: !ROUTED.includes(m.id) && !adm.page && (tile.row || 'apps') === 'apps' && !tile.widget && !!(m.tile || menu) }];
     });
 };
