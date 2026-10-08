@@ -88,7 +88,7 @@ let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
-  const side = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
+  const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
   // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box: item 6), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
@@ -159,6 +159,33 @@ setTimeout(() => {
   check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
     d.querySelector('#page-app-git #git > h2').classList.contains('same-as-page')
     && !d.querySelector('#page-clock #clock > h2').classList.contains('same-as-page'));
+  // The sidebar's groups fold (F2; Tom, 2026-10-08: "Default open, option to toggle").
+  {
+    const heads = [...d.querySelectorAll('button.admin-side-group')];
+    const head = (n) => heads.find((h) => h.dataset.group === n);
+    const box = (n) => d.getElementById(head(n).getAttribute('aria-controls'));
+    check('fold: every group head a button, open by default', heads.length >= 6 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
+    w.AL.badge('secdoctor', '3');
+    head('Doctors').click();
+    check('fold: a head folds its group, kept in the browser', box('Doctors').hidden && head('Doctors').getAttribute('aria-expanded') === 'false'
+      && JSON.parse(w.localStorage.getItem('irate-admin-folded')).includes('Doctors'));
+    const words = [...box('Doctors').querySelectorAll('a[data-badge]')].map((a) => a.dataset.badge);
+    const sum = words.filter((x) => /^\d+$/.test(x)).reduce((s, x) => s + Number(x), 0);
+    check('fold: a folded group carries its links\' counts, summed, and their other words', sum >= 3
+      && head('Doctors').dataset.badge === [sum, ...new Set(words.filter((x) => !/^\d+$/.test(x)))].join(' '), `${head('Doctors').dataset.badge} from ${words}`);
+    w.location.hash = '#health'; w.AL.show();
+    check('fold: opening a page in a folded group opens it', !box('Doctors').hidden && !head('Doctors').dataset.badge);
+    const autoBtn = d.querySelector('.admin-side-list .side-auto');
+    autoBtn.click();
+    check('fold: Auto-collapse On keeps only the current page\'s group open', /On$/.test(autoBtn.textContent) && autoBtn.getAttribute('aria-pressed') === 'true'
+      && heads.filter((h) => h.getAttribute('aria-expanded') === 'true').map((h) => h.dataset.group).join() === 'Doctors');
+    w.location.hash = '#clock'; w.AL.show();
+    check('fold: with Auto-collapse, another page\'s group opens and the last folds', !box('System').hidden && box('Doctors').hidden);
+    autoBtn.click();
+    check('fold: Auto-collapse Off opens what wasn\'t folded by hand', /Off$/.test(autoBtn.textContent) && !box('Doctors').hidden && !box('Apps').hidden);
+    w.AL.badge('secdoctor', '');
+    w.location.hash = ''; w.AL.show();
+  }
   // The words of the old menu are gone (F1): no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')

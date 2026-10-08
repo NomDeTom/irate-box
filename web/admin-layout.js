@@ -82,12 +82,71 @@ const AL = (() => {
     if (window.Intl && Intl.Segmenter) { const g = new Intl.Segmenter().segment(s)[Symbol.iterator]().next().value; return g ? g.segment : null; }
     return [...s][0];
   }
-  function groupHead(name) { return el('p', { class: 'admin-side-group', text: name }); }
+  // The sidebar's groups fold (Tom, 2026-10-08: "Default open, option to toggle"; "Toggle button
+  // for 'auto-collapse' of the groups"). Each head is a button over its links; the current page's
+  // group is always open; a folded group shows its links' badges on its head. Auto-collapse keeps
+  // only the current group open. Both are this viewer's own, kept in the browser (a convenience,
+  // not a setting: without storage every group simply starts open).
+  const FOLD_KEY = 'irate-admin-folded', AUTO_KEY = 'irate-admin-autocollapse';
+  const stored = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } };
+  const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* private window: not kept */ } };
+  const folded = new Set(stored(FOLD_KEY, []));
+  let auto = stored(AUTO_KEY, false) === true;
+  const groups = new Map();  // name -> { head, box }
+  function group(name, links) {
+    const id = 'side-group-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const head = el('button', { type: 'button', class: 'admin-side-group', 'aria-controls': id, 'data-group': name }, el('span', { class: 'side-group-name', text: name }));
+    const box = el('div', { class: 'admin-side-links', id, role: 'group', 'aria-label': name }, links);
+    head.addEventListener('click', () => {
+      const open = head.getAttribute('aria-expanded') !== 'true';
+      if (open) folded.delete(name); else folded.add(name);
+      store(FOLD_KEY, [...folded]);
+      if (auto && open) groups.forEach((x, n) => { if (n !== name) setOpen(n, false); });
+      setOpen(name, open);
+    });
+    groups.set(name, { head, box });
+    return [head, box];
+  }
+  function setOpen(name, open) {
+    const g = groups.get(name);
+    if (!g) return;
+    g.head.setAttribute('aria-expanded', String(open));
+    g.box.hidden = !open;
+    rollUp(name);
+  }
+  // A folded group's head carries its links' words, so a problem isn't hidden by folding.
+  function rollUp(name) {
+    const g = groups.get(name);
+    if (!g) return;
+    const words = [...g.box.querySelectorAll('a[data-badge]:not([hidden])')].map((a) => a.dataset.badge);
+    // Counts add up (3 to fix and 1 to fix: 4); other words (!, new, ready) follow, each once.
+    const n = words.filter((x) => /^\d+$/.test(x)).reduce((s, x) => s + Number(x), 0);
+    const sum = [n || null, ...new Set(words.filter((x) => !/^\d+$/.test(x)))].filter(Boolean).join(' ');
+    if (g.box.hidden && words.length) { g.head.dataset.badge = sum; g.head.title = words.join(', '); }
+    else { delete g.head.dataset.badge; g.head.removeAttribute('title'); }
+  }
+  // Open the groups as kept, the current one always; with auto-collapse, only the current one.
+  function fold(current) {
+    // A page opened in a group folded by hand unfolds it for good: the viewer went there.
+    if (current && folded.delete(current)) store(FOLD_KEY, [...folded]);
+    groups.forEach((_, name) => setOpen(name, name === current || (!auto && !folded.has(name))));
+  }
+  const autoBtn = el('button', { type: 'button', class: 'action-btn side-auto', 'aria-pressed': String(auto) });
+  const autoLabel = () => { autoBtn.textContent = `Auto-collapse: ${auto ? 'On' : 'Off'}`; autoBtn.setAttribute('aria-pressed', String(auto)); };
+  autoBtn.addEventListener('click', () => {
+    auto = !auto;
+    store(AUTO_KEY, auto);
+    autoLabel();
+    const cur = pages.find((p) => p.link.getAttribute('aria-current') === 'page');
+    fold(cur ? cur.group : null);
+  });
+  autoLabel();
 
   // The box-wide groups now; the apps' pages when /admin/apps answers (or without it, at worst).
   const slots = {};
   function build(apps) {
     list.replaceChildren();
+    groups.clear();
     pages.forEach((p) => p.el.remove());
     pages.length = 0;
     placed.clear();
@@ -125,17 +184,18 @@ const AL = (() => {
       }
       if (g.apps === 'apps') slots.apps = entries;
       if (!entries.length) continue;
-      list.append(groupHead(g.name), ...entries.map((e) => e.link));
+      list.append(...group(g.name, entries.map((e) => e.link)));
     }
     // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
     const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-)/.test(id));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);
-      list.append(groupHead(g.name), ...extra.map((e) => e.link));
+      list.append(...group(g.name, extra.map((e) => e.link)));
     }
     Object.keys(badges).forEach(paint);
     hiddenLinks.forEach((id) => hide(id, true));
+    list.append(el('p', { class: 'side-foot' }, autoBtn));
     built = true;
     onBuild.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
   }
@@ -152,6 +212,7 @@ const AL = (() => {
     pages.forEach((p) => { p.el.hidden = p !== cur; });
     pages.forEach((p) => { if (p === cur) p.link.setAttribute('aria-current', 'page'); else p.link.removeAttribute('aria-current'); });
     main.dataset.art = cur.el.dataset.art || '';
+    fold(cur.group);
     document.getElementById('admin-current').textContent = cur.title;
     document.title = `${cur.title} · Hub admin`;
     side.classList.remove('open');
@@ -178,6 +239,7 @@ const AL = (() => {
     const ids = [...p.el.querySelectorAll(':scope > .admin-pane')].map((x) => x.id);
     const word = ids.map((x) => badges[x]).find(Boolean);
     if (word) p.link.dataset.badge = word; else delete p.link.dataset.badge;
+    rollUp(p.group);
   }
 
   // Hide or show the sidebar entry of the page holding a section (kept across rebuilds).
@@ -185,7 +247,7 @@ const AL = (() => {
     if (yes) hiddenLinks.add(id); else hiddenLinks.delete(id);
     const s = document.getElementById(id);
     const p = s && pages.find((x) => x.el === s.closest('.admin-page'));
-    if (p) p.link.hidden = !!yes;
+    if (p) { p.link.hidden = !!yes; rollUp(p.group); }
   }
 
   menu.addEventListener('click', () => { const open = side.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
@@ -203,6 +265,6 @@ const AL = (() => {
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       }
     });
-  return { LAYOUT, show, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
+  return { LAYOUT, show, groups: () => groups, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
 })();
 if (typeof window !== 'undefined') window.AL = AL;
