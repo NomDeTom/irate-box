@@ -950,10 +950,16 @@ def verify_update(src, installed, opts, progress=None):
     if installed:
         known = run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
         ff = known and run("git", "-C", str(src), "merge-base", "--is-ancestor", installed, "HEAD").returncode == 0
+        # A rewritten branch (the installed commit is known, and not behind HEAD) blocks: the
+        # update path is root, and a history that no longer contains what runs here is the
+        # sign of a source taken over (stance review 2026-10-08, N3). A commit the fetched
+        # history does not know at all (a box installed from a copy) is only a warning.
         checks.append(_check("A fast-forward of the installed version", ff,
                              "history continues from the installed commit" if ff else
-                             f"{installed} is not an ancestor: the branch was rewritten, or the box was "
-                             "installed from elsewhere. Read the changes before installing.", warn=True))
+                             f"{installed} is not an ancestor: the branch was rewritten. Read the changes, then "
+                             "Install anyway (Health → Updates doctor) if they are yours." if known else
+                             f"{installed} is not in the fetched history: the box was installed from elsewhere. "
+                             "Read the changes before installing.", warn=not known))
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():

@@ -316,12 +316,51 @@ def pending_security(simulated):
     return pkgs
 
 
+UNATTENDED_LOG = Path(os.environ.get("HUB_UNATTENDED_LOG", "/var/log/unattended-upgrades/unattended-upgrades.log"))
+
+
+def _apt_periodic():
+    """{key: value} of APT::Periodic::Enable and ::Unattended-Upgrade as apt sees them (every
+    apt.conf.d file merged), or {} with no apt-config."""
+    if not _have("apt-config"):
+        return {}
+    out = run("apt-config", "dump", "--format", "%f=%v%n", "APT::Periodic::Enable", "APT::Periodic::Unattended-Upgrade")
+    return dict(l.split("=", 1) for l in out.stdout.splitlines() if "=" in l)
+
+
+def unattended_finding(installed, periodic, log_age_days):
+    """Automatic security updates, by what would actually run (stance review 2026-10-08, I3):
+    Armbian images ship APT::Periodic::Enable "0", which switches the whole of apt's periodic
+    work off whatever Unattended-Upgrade says, so the binary being there meant nothing."""
+    enabled = installed and periodic.get("APT::Periodic::Enable", "1") != "0" and periodic.get("APT::Periodic::Unattended-Upgrade", "0") not in ("0", "")
+    if not installed:
+        return _finding("unattended", "Automatic security updates", "warn",
+                        "Not set up: security updates wait until someone installs them.",
+                        "Planned: unattended-upgrades for Debian-Security updates only. Until then, install them here.")
+    if not enabled:
+        return _finding("unattended", "Automatic security updates", "warn",
+                        "unattended-upgrades is installed but never runs: apt's periodic work is off "
+                        f"(APT::Periodic::Enable {periodic.get('APT::Periodic::Enable', 'unset')}, "
+                        f"Unattended-Upgrade {periodic.get('APT::Periodic::Unattended-Upgrade', 'unset')}; the image's own setting).",
+                        'Set APT::Periodic::Enable "1"; and APT::Periodic::Unattended-Upgrade "1"; in a file of your own in /etc/apt/apt.conf.d.')
+    if log_age_days is None:
+        return _finding("unattended", "Automatic security updates", "warn", "Set up, but has not run yet (no log).",
+                        "It runs daily when the box is online; an offline box must have them installed here.")
+    if log_age_days > 14:
+        return _finding("unattended", "Automatic security updates", "warn", f"Set up, but last ran {log_age_days:.0f} days ago.",
+                        "It runs daily when the box is online; an offline box must have them installed here.")
+    return _finding("unattended", "Automatic security updates", "ok", f"Set up and ran {log_age_days:.0f} day(s) ago.")
+
+
 def update_findings():
     if not _have("apt-get"):
         return [], []
     out = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180)
     pkgs = pending_security(out.stdout)
-    unattended = _have("unattended-upgrade")
+    try:
+        log_age = (time.time() - UNATTENDED_LOG.stat().st_mtime) / 86400
+    except OSError:
+        log_age = None
     findings = []
     if pkgs:
         findings.append(_finding("security-updates", "Security updates", "problem",
@@ -333,10 +372,7 @@ def update_findings():
     else:
         findings.append(_finding("security-updates", "Security updates", "ok",
                                  "None waiting (as of the last apt-get update)."))
-    findings.append(_finding("unattended", "Automatic security updates", "ok" if unattended else "warn",
-                             "unattended-upgrades is installed." if unattended else
-                             "Not set up: security updates wait until someone installs them.",
-                             "" if unattended else "Planned: unattended-upgrades for Debian-Security updates only. Until then, install them here."))
+    findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age))
     return findings, pkgs
 
 

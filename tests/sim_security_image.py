@@ -160,5 +160,17 @@ import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
       ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "root-lock", "firstrun-off", "firstrun-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
+# I3 (stance review 2026-10-08): automatic security updates judged by what would run, not by
+# the binary being there. Armbian ships APT::Periodic::Enable "0".
+uf = security.unattended_finding
+check("unattended: not installed is a warning", uf(False, {}, None)["status"] == "warn")
+check("  installed but apt's periodic work off (the image's setting): a warning that says so",
+      uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "7"}, None)["status"] == "warn"
+      and "never runs" in uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "7"}, None)["detail"])
+check("  Unattended-Upgrade unset or 0: likewise", uf(True, {}, 1)["status"] == "warn" and uf(True, {"APT::Periodic::Unattended-Upgrade": "0"}, 1)["status"] == "warn")
+check("  on, but never ran or ran long ago: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None)["status"] == "warn"
+      and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30)["status"] == "warn")
+check("  on and ran this week: ok", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2)["status"] == "ok")
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
