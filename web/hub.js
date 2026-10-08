@@ -158,9 +158,9 @@ if (grid || document.querySelector('[data-service]')) {
       }
     }
 
-    // People at double width (M8): different devices today and this week (M11), said plainly.
+    // People wide or large (M8, F5): different devices today and this week (M11), said plainly.
     const people = document.getElementById('people-card');
-    if (people && people.dataset.size === 'double') {
+    if (people && (people.dataset.size === 'wide' || people.dataset.size === 'large')) {
       let more = document.getElementById('people-more');
       if (!more) {
         more = document.createElement('span');

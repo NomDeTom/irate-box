@@ -126,6 +126,8 @@ setTimeout(() => {
     check('the tiles in order, each saying who opens it and who sees it', rows.length === 2 && /opens: everyone · seen: as its access/.test(rows[0].textContent)
       && /opens: everyone · seen: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
     rows[0].querySelector('.aw-row-head').click();
+    [...d.querySelectorAll('#tile-order-list button')].find((b) => b.textContent === 'large').click();  // F5: sizes for all tiles
+    check('a size chosen: the drop large, said in its line', /· large/.test(d.querySelector('#tile-order-list .aw-row').textContent));
     [...d.querySelectorAll('#tile-order-list button')].find((b) => /Later/.test(b.textContent)).click();
     const save = [...d.querySelectorAll('#tile-order-box button')].find((b) => b.textContent === 'Save');
     check('moved: Save offered, nothing sent yet', save && !save.disabled && !posted.some((p) => p[0] === '/admin/tiles'));
@@ -244,7 +246,7 @@ setTimeout(() => {
   [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
   setTimeout(() => {
     check('About hidden asks the hub', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about' && p[1].visible === 'hidden'));
-    check('the order saved: About, then the drop', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'] } }),
+    check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' } } }),
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));

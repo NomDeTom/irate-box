@@ -2252,7 +2252,7 @@ let tilesData = null;
 let tilesDraft = null;
 async function loadTileOrder() {
   try { tilesData = await getJSON('/admin/tiles'); } catch (e) { return; }
-  tilesDraft = { order: tilesData.tiles.map((x) => x.id) };
+  tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
   drawTileOrder();
 }
 const OPENS = { public: 'everyone', users: 'users', private: 'the admin', off: 'off' };
@@ -2273,18 +2273,22 @@ function drawTileOrder(openId) {
   const move = (id, d) => { const i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
     [order[i], order[k]] = [order[k], order[i]]; tilesDraft.order = order; drawTileOrder(id); };
   const saved = tilesData.tiles.map((x) => x.id);
-  const dirty = order.join() !== saved.join();
+  const sizesOf = (s) => JSON.stringify(Object.entries(s || {}).sort());
+  const dirty = order.join() !== saved.join() || sizesOf(tilesDraft.size) !== sizesOf(tilesData.state.size);
   const items = order.map((id) => { const t = byId.get(id), w = tileWords(id);
-    return { id, title: `${t.icon} ${t.name}`.trim(), summary: w.summary, badges: w.badges, detail: () => [
+    const sz = (tilesDraft.size || {})[id];
+    return { id, title: `${t.icon} ${t.name}`.trim(), summary: w.summary + (sz ? ` · ${sz}` : ''), badges: w.badges, detail: () => [
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Place' }),
         AW.btn('↑ Earlier', { onclick: () => move(id, -1) }), AW.btn('↓ Later', { onclick: () => move(id, 1) })),
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
+        sizeChips((tilesDraft.size || {})[id] || 'single', (v) => { setSize(tilesDraft, id, v); drawTileOrder(id); })),
       document.getElementById('page-app-' + id) ? AW.h('a', { href: '#page-app-' + id, class: 'action-btn' }, 'Its page →') : null,
     ].filter(Boolean) }; });
   const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'The order waits for Save.' });
   box.replaceChildren(AW.shortList(items, { id: 'tile-order-list' }), AW.h('div', { class: 'aw-foot' }, note,
-    AW.btn('Discard', { disabled: !dirty, onclick: () => { tilesDraft = { order: saved.slice() }; drawTileOrder(); } }),
+    AW.btn('Discard', { disabled: !dirty, onclick: () => { tilesDraft = { order: saved.slice(), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); } }),
     AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
-      try { tilesData = await postJSON('/admin/tiles', { state: { order } }); tilesDraft = { order: tilesData.tiles.map((x) => x.id) }; drawTileOrder(); }
+      try { tilesData = await postJSON('/admin/tiles', { state: { order, size: tilesDraft.size || {} } }); tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); }
       catch (err) { note.textContent = err.message; }
     } })));
   const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
@@ -3882,6 +3886,13 @@ AL.onBuild(fillWidthBlocks);
 
 // ---- Status tiles (M8): the box row arranged, held until Save.
 let stTiles = null, stDraft = null;
+// A tile's size (F5; Tom: "All tiles"): one cell, wide (two across) or large (two by two).
+const TILE_SIZES = [['single', 'one cell'], ['wide', 'wide: two across'], ['large', 'large: two by two']];
+function sizeChips(cur, set) {
+  return AW.h('div', { class: 'chip-group', role: 'group', 'aria-label': 'Size' }, TILE_SIZES.map(([v, label]) => AW.h('button', { type: 'button',
+    class: 'chip' + (cur === v ? ' selected' : ''), 'aria-pressed': String(cur === v), title: label, onclick: () => set(v) }, v)));
+}
+function setSize(draft, id, v) { draft.size = { ...(draft.size || {}) }; if (v === 'single') delete draft.size[id]; else draft.size[id] = v; }
 async function loadStatusTiles() {
   try { stTiles = await getJSON('/admin/status-tiles'); } catch (e) { return; }
   stDraft = JSON.parse(JSON.stringify(stTiles.state));
@@ -3897,18 +3908,17 @@ function drawStatusTiles(openId) {
   const redraw = (id) => drawStatusTiles(id);
   const move = (id, d) => { const order = list.map((x) => x.id), i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
     [order[i], order[k]] = [order[k], order[i]]; stDraft.order = order; redraw(id); };
-  const norm = (s) => JSON.stringify(['order', 'hidden', 'double'].map((k) => [...(s[k] || [])].sort()).concat([s.order || []]));
+  const norm = (s) => JSON.stringify(['order', 'hidden'].map((k) => [...(s[k] || [])].sort()).concat([s.order || []], [Object.entries(s.size || {}).sort()]));
   const dirty = norm(stDraft) !== norm(stTiles.state);
   const items = list.map((t) => {
-    const shown = !stDraft.hidden.includes(t.id), dbl = stDraft.double.includes(t.id);
-    return { id: t.id, title: t.name, summary: dbl ? 'two cells' : 'one cell', badges: [shown ? 'shown' : 'hidden'], detail: () => [
+    const shown = !stDraft.hidden.includes(t.id), size = (stDraft.size || {})[t.id] || 'single';
+    return { id: t.id, title: t.name, summary: { single: 'one cell', wide: 'wide: two cells', large: 'large: two by two' }[size], badges: [shown ? 'shown' : 'hidden'], detail: () => [
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'On the hub page' }),
         AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown), onclick: () => { toggle('hidden', t.id, shown); redraw(t.id); } }, shown ? 'Shown: On' : 'Shown: Off'),
         AW.btn('↑ Earlier', { onclick: () => move(t.id, -1) }), AW.btn('↓ Later', { onclick: () => move(t.id, 1) })),
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
-        AW.h('div', { class: 'chip-group', role: 'group' }, [['single', false], ['double', true]].map(([label, v]) => AW.h('button', { type: 'button',
-          class: 'chip' + (dbl === v ? ' selected' : ''), 'aria-pressed': String(dbl === v), onclick: () => { toggle('double', t.id, v); redraw(t.id); } }, label))),
-        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'double shows the different devices seen today and this week, if counting is on (Security)' }) : null),
+        sizeChips(size, (v) => { setSize(stDraft, t.id, v); redraw(t.id); }),
+        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'wide or large shows the different devices seen today and this week, if counting is on (Security)' }) : null),
     ] };
   });
   const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' });
