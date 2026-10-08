@@ -22,6 +22,11 @@ const accessData = { apps: [
   { id: 'notes', title: 'Notes', mode: 'off', login: false, kind: 'addon', unit: true },
   { id: 'term', title: 'Terminal', mode: 'public', login: true, kind: 'addon', unit: true },
 ], results: [], seen: { about: 'auto', 'tools-rf': 'hidden' } };
+// The librarian's snapshot, with Excalidraw kept current (F6: its own updates on its page).
+const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1 }, token_set: false, running: false, types: [],
+  progress: null, free_mb: 51000, job: {}, status: { draw: { last_check: '2026-10-08 03:00', outcome: 'up to date' } },
+  sources: [{ kind: 'app', name: 'draw', type: 'bundle', repo: 'NomDeTom/excalidraw', workflow: 'irate-box-bundle.yml', branch: 'main' }],
+  apps: { draw: { title: 'Excalidraw', installed: { commit: 'abc1234def', repository: 'NomDeTom/excalidraw', ref: 'main', built: '2026-10-01T00:00:00Z', has_previous: false }, pin: null } } };
 const tilesData = { tiles: [{ id: 'drop', name: 'File drop', icon: '📥' }, { id: 'about', name: 'About', icon: 'ℹ️' }], state: { order: [] } };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
   { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true }], progress: null, pending: 0, results: [], log: [] };
@@ -79,6 +84,9 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/tiles') return new Response(JSON.stringify(tilesData), { status: 200 });
+  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [], threads: [],
+    queue: [{ key: 'shoutbox:1790949000:Moth', by: 'Moth', text: 'buy cheap things', where: 'Shoutbox', count: 3, reasons: { spam: 3 } }] }), { status: 200 });
+  if (u.startsWith('/admin/library')) return new Response(JSON.stringify(library), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
   if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
     progress: null, pending: 0, books: { count: 2, bytes: 3000000000 }, results: [] }), { status: 200 });
@@ -133,6 +141,17 @@ setTimeout(() => {
     check('moved: Save offered, nothing sent yet', save && !save.disabled && !posted.some((p) => p[0] === '/admin/tiles'));
     save.click();
   }
+  // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
+  check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
+    [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
+  check('  its own updates: the librarian\'s row, with Check and Update, without a second access switch', /Installed: abc1234/.test(t('#app-updates-draw')[0])
+    && [...d.querySelectorAll('#app-updates-draw button')].some((b) => b.textContent === 'Update') && !d.querySelector('#app-updates-draw .access'));
+  check('  and the Apps list still has the row, with its access', /Installed: abc1234/.test(t('#apps-list')[0]) && !!d.querySelector('#apps-list .access'));
+  check('the shoutbox\'s page ends with what was reported there', [...d.querySelectorAll('#page-app-shoutbox > .admin-pane')].pop().id === 'app-flagged-shoutbox');
+  check('  the shoutbox\'s reported post on its page; none on the board\'s', d.querySelectorAll('#app-flagged-shoutbox .aw-row').length === 1
+    && /buy cheap things/.test(t('#app-flagged-shoutbox')[0]) && /Nothing reported here/.test(t('#app-flagged-board')[0]), t('#app-flagged-shoutbox')[0]);
+  check('Moderation: everything people made, linking to all five', ['#saved', '#drop-mod', '#shoutbox-mod', '#board-mod', '#git'].every((h) => d.querySelector(`#made-list a[href="${h}"]`))
+    && d.getElementById('made').closest('.admin-page').querySelector('.admin-page-title, h2').textContent.includes('Everything people made'));
   check('All apps starts with the tiles in order', [...d.querySelectorAll('#page-tile-order > .admin-pane')].map((x) => x.id).join(' ') === 'tile-order apps addons');
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
   check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));

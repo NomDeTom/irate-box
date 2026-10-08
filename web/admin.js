@@ -231,11 +231,13 @@ function sourceRow(src, st, busy) {
   );
 }
 
+let lastLibrary = null;  // drawn again when the menu is rebuilt, for the apps' own pages
+AL.onBuild(() => { if (lastLibrary) renderApps(lastLibrary, lastLibrary.running); });
 function renderApps(snap, busy) {
   const apps = snap.apps || {};
   const sources = Object.fromEntries(snap.sources.filter((s) => s.kind === 'app').map((s) => [s.name, s]));
   const post = (key, body, confirmText) => () => libAct(key, body, confirmText);
-  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => {
+  const row = (name, a, withAccess) => {
     const inst = a.installed;
     const src = sources[name];
     const st = snap.status[name] || {};
@@ -261,7 +263,7 @@ function renderApps(snap, busy) {
     ];
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: a.title }),
-      accessSlot(name),
+      withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
@@ -279,7 +281,14 @@ function renderApps(snap, busy) {
             title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
-  }));
+  };
+  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => row(name, a, true)));
+  // Each app's own page has its row too (F6), its access being at the top of that page already.
+  document.querySelectorAll('.updates-block[data-app]').forEach((b) => {
+    const a = apps[b.dataset.app];
+    b.replaceChildren(a ? row(b.dataset.app, a, false) : el('p', { className: 'setting-desc', textContent: 'The librarian has nothing on it yet.' }));
+  });
+  lastLibrary = snap;
 }
 
 function renderLibrary(snap) {
@@ -711,6 +720,8 @@ function renderModeration(data) {
 }
 
 // The queue across the apps (M10): what was reported enough to count, worst first; Keep or Delete.
+let lastReports = null;
+AL.onBuild(() => { if (lastReports) renderReports(...lastReports); });
 function renderReports(data, del) {
   const queue = data.queue || [], rs = data.reports;
   badge('moderation', queue.length ? String(queue.length) : '');
@@ -727,6 +738,15 @@ function renderReports(data, del) {
         ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
         : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
     ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
+  // Each app's slice of it, on its own page (F6): the same lines, its posts only.
+  lastReports = [data, del];
+  document.querySelectorAll('.flagged-block[data-app]').forEach((b) => {
+    const mine = queue.filter((r) => r.key.startsWith(b.dataset.app + ':'));
+    b.replaceChildren(mine.length ? AW.shortList(mine.map((r) => ({ id: 'own-' + r.key, title: r.text.slice(0, 80) || '(empty)',
+      summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`, badges: Object.keys(r.reasons || {}),
+      detail: () => [AW.h('p', { class: 'admin-text', text: r.text }), AW.h('a', { href: '#moderation', class: 'action-btn' }, 'Keep or delete it under Moderation →')] })),
+    { id: 'mod-queue-' + b.dataset.app }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported here.' }));
+  });
   const box = document.getElementById('report-settings');
   if (!box || !rs) return;
   // The reasons offered (any of them), how many reports count, and whether to hide meanwhile.

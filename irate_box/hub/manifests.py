@@ -360,7 +360,7 @@ def admin_apps(manifests):
         out.append({"id": m["id"], "name": name, "icon": adm.get("icon") or tile.get("icon", ""),
                     "sections": list(adm.get("sections", [])), "folder": bool(menu),
                     "art": (menu or {}).get("art"), "local": bool(m.get("local")),
-                    "page": bool(adm.get("page")), "width": adm.get("width")})
+                    "page": bool(adm.get("page")), "width": adm.get("width"), "updates": bool(m.get("source"))})
     return out
 
 

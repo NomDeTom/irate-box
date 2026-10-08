@@ -22,7 +22,7 @@ const AL = (() => {
       { title: 'Status tiles', sections: ['status-tiles'], art: 'controller' }] },
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
-      { title: 'Saved work and files', sections: ['saved'] }] },
+      { title: 'Everything people made', sections: ['made'] }] },
     { name: 'System', art: 'controller', pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
@@ -180,6 +180,23 @@ const AL = (() => {
             const at = a.switch || a.seen ? 1 : 0;
             a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
           }
+          // The app's own updates (F6; the mock's "Its own updates"): after its access, width and
+          // folder, before what it owns. Drawn by admin.js from the librarian's snapshot.
+          if (a.updates) {
+            const id = 'app-updates-' + a.id;
+            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-updates', id },
+              el('h2', { text: 'Its own updates' }), el('div', { class: 'updates-block', 'data-app': a.id })));
+            const own = new Set(a.sections.filter((s) => !/^(app-access-|app-width-|folder-)/.test(s)));
+            const at = a.sections.findIndex((s) => own.has(s));
+            a = { ...a, sections: at < 0 ? [...a.sections, id] : [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
+          }
+          // What was reported there (F6; 4f: flagged items last), for an app drawn on the hub page.
+          if (a.page) {
+            const id = 'app-flagged-' + a.id;
+            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-flagged', id },
+              el('h2', { text: 'Flagged and reported' }), el('div', { class: 'flagged-block', 'data-app': a.id })));
+            a = { ...a, sections: [...a.sections, id] };
+          }
           const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: a.sections, empty: false });
           if (e) entries.push(e);
         }
@@ -189,7 +206,7 @@ const AL = (() => {
       list.append(...group(g.name, entries.map((e) => e.link)));
     }
     // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
-    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-)/.test(id));
+    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-|app-updates-|app-flagged-)/.test(id));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);

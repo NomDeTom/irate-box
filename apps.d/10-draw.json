@@ -25,5 +25,6 @@
     "workflow": "irate-box-bundle.yml",
     "pattern": "irate-box-draw-*"
   },
-  "core": true
+  "core": true,
+  "admin": {"sections": ["saved"]}
 }
