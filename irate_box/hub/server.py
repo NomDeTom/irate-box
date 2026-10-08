@@ -691,6 +691,10 @@ DEFAULT_SETTINGS = {
     "report_reasons": ["spam", "unkind", "personal details", "other"],
     "report_threshold": 1,
     "report_hide": False,
+    # A save tied to its account, so its person may open and change it from another device once
+    # logged in (accounts-plan stage 6, item 6 of current-and-next-actions): off by default (the
+    # admin's choice), a guest's saves stay exactly as they are either way.
+    "saves_cross_device": False,
     # Who sees the names of those signed in and around (M12): users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
@@ -1790,6 +1794,8 @@ def moderation_action(payload):
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
 store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
+# Saves tied to accounts (accounts-plan stage 6, item 6): the admin's setting, off by default.
+store.CROSS_DEVICE = lambda: settings_snapshot()["saves_cross_device"]
 
 
 def seen_by_of(account, app):

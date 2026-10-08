@@ -245,12 +245,12 @@ for _ in range(100):
         time.sleep(0.1)
 
 
-def req(path, body=None, headers=None, https=False):
+def req(path, body=None, headers=None, https=False, method=None):
     h = {"X-Forwarded-For": "10.1.1.1", "X-Forwarded-Proto": "https" if https else "http", "Host": f"127.0.0.1:{port}"}
     if body is not None:
         h.update({"Content-Type": "application/json", "X-Irate-Account": "1"})
     h.update(headers or {})
-    r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=None if body is None else json.dumps(body).encode(), headers=h)
+    r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=None if body is None else json.dumps(body).encode(), headers=h, method=method)
     try:
         with urllib.request.urlopen(r, timeout=10) as resp:
             return resp.status, json.loads(resp.read() or b"{}"), resp.headers
@@ -386,6 +386,19 @@ try:
     check("forum: a user's thread under their name and marked; a guest can't reply as them; a guest's reply unmarked",
           d["thread"]["author"] == "erin" and d["thread"]["posts"][0]["account"] == "erin" and code2 == 403 and code3 == 201
           and "account" not in d3["post"] and req("/board/threads")[1]["threads"][0]["account"] == "erin" and th["posting"]["who"] == "guests", (d, d2, d3))
+
+    # Saves tied to accounts (stage 6, item 6): off by default, an admin's choice.
+    code, d, _ = req("/api/saves", {"id": "erins-locked", "kind": "t", "name": "mine", "state": {"v": 1}}, {"Cookie": utok, "X-Lock-New": "aa" * 32 + ":4"})
+    check("a locked save, made while signed in: carries the account", code == 201 and d["locked"], d)
+    code, d, _ = req("/api/saves/erins-locked", {"name": "renamed"}, {"Cookie": utok}, method="PATCH")
+    check("off (the default): logged in as its own account, but on another device (no proof): still locked", code == 403, d)
+    req("/admin/settings", {"saves_cross_device": True}, {"X-Irate-Admin": "1"})
+    code, d, _ = req("/api/saves/erins-locked", {"name": "renamed"}, {"Cookie": utok}, method="PATCH")
+    check("on: the save's own account changes it from another device, past the lock", code == 200 and d["name"] == "renamed", d)
+    code, d, _ = req("/api/saves/erins-locked", {"name": "nope"}, method="PATCH")
+    check("  a guest, even now: still locked", code == 403, d)
+    code, d, _ = req("/api/saves/erins-locked", headers={"Cookie": utok}, method="DELETE")
+    check("  the save's own account removes it too, past the lock", code == 200, d)
 finally:
     hub.terminate()
     hub.wait()

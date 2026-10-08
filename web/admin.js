@@ -3852,3 +3852,17 @@ async function loadNamesTo() {
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadNamesTo();
+
+// Saves tied to accounts (accounts-plan stage 6, item 6): off by default, so a device lock is
+// the only thing that guards a save unless the admin turns this on.
+async function loadSavesCrossDevice() {
+  const box = document.getElementById('saves-cross-device-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'saves_cross_device', label: 'A user may change or remove their own save from another device', kind: 'toggle',
+    value: st.saves_cross_device,
+    note: 'Off: only the device that made or locked a save may change it, as before. On: once logged in, a user may change or remove any save of their own account’s, on any device, past its lock. A guest’s saves are unaffected either way.' }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
+}
+loadSavesCrossDevice();

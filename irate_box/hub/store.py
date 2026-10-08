@@ -697,6 +697,10 @@ def _blob_get(handler, store, namespace, key):
 # everyone, their choice; the listings and the reads leave out what the asker may not see.
 VIEWER = None
 SEEN_BY = None
+# Saves tied to accounts (accounts-plan stage 6, item 6, current-and-next-actions): the admin's
+# setting, off by default (server.py). On, a save's own account may change or remove it from any
+# device, past the device lock that otherwise guards it; a guest's saves are untouched either way.
+CROSS_DEVICE = None
 
 
 def _author_marks(handler, app):
@@ -705,6 +709,18 @@ def _author_marks(handler, app):
         return {}
     seen = SEEN_BY(me, app) if SEEN_BY else "everyone"
     return {"account": me["name"], **({"seen_by": seen} if seen in ("users", "me") else {})}
+
+
+def _owns_save(store, key, handler):
+    """Whether the signed-in visitor is this save's own account, and the admin has turned
+    cross-device saves on: past that, the device lock (store.py's S/KEY chain) still applies."""
+    if not CROSS_DEVICE or not CROSS_DEVICE():
+        return False
+    me = VIEWER(handler) if VIEWER else None
+    if not me:
+        return False
+    meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
+    return bool(meta) and str(meta.get("account", "")).lower() == me["name"].lower()
 
 
 def can_see(meta, me):
@@ -858,7 +874,7 @@ def _handle_saves(handler, method, path, store):
             _send_json(handler, 400, {"error": "name required"})
             return True
         try:
-            meta = store.rename_save(key, name, proof=proof, lock_next=nxt, unlock=unlock)
+            meta = store.rename_save(key, name, proof=proof, lock_next=nxt, unlock=unlock, force=_owns_save(store, key, handler))
         except LockError as exc:
             _send_locked(handler, exc)
             return True
@@ -867,7 +883,7 @@ def _handle_saves(handler, method, path, store):
 
     if method == "DELETE":
         try:
-            gone = store.delete_save(key, proof=_lock_headers(handler)[0])
+            gone = store.delete_save(key, proof=_lock_headers(handler)[0], force=_owns_save(store, key, handler))
         except LockError as exc:
             _send_locked(handler, exc)
             return True
