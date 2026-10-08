@@ -3764,3 +3764,46 @@ function fillWidthBlocks() {
   });
 }
 AL.onBuild(fillWidthBlocks);
+
+// ---- Status tiles (M8): the box row arranged, held until Save.
+let stTiles = null, stDraft = null;
+async function loadStatusTiles() {
+  try { stTiles = await getJSON('/admin/status-tiles'); } catch (e) { return; }
+  stDraft = JSON.parse(JSON.stringify(stTiles.state));
+  drawStatusTiles();
+}
+function drawStatusTiles(openId) {
+  const box = document.getElementById('status-tiles-box');
+  if (!box || !stTiles) return;
+  const byId = new Map(stTiles.tiles.map((x) => [x.id, x]));
+  const pos = (i) => { const n = stDraft.order.indexOf(i); return n < 0 ? 1e6 : n; };
+  const list = stTiles.tiles.map((x, i) => ({ x, i })).sort((a, b) => (pos(a.x.id) - pos(b.x.id)) || (a.i - b.i)).map((p) => p.x);
+  const toggle = (k, id, on) => { stDraft[k] = on ? [...new Set([...stDraft[k], id])] : stDraft[k].filter((x) => x !== id); };
+  const redraw = (id) => drawStatusTiles(id);
+  const move = (id, d) => { const order = list.map((x) => x.id), i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
+    [order[i], order[k]] = [order[k], order[i]]; stDraft.order = order; redraw(id); };
+  const norm = (s) => JSON.stringify(['order', 'hidden', 'double'].map((k) => [...(s[k] || [])].sort()).concat([s.order || []]));
+  const dirty = norm(stDraft) !== norm(stTiles.state);
+  const items = list.map((t) => {
+    const shown = !stDraft.hidden.includes(t.id), dbl = stDraft.double.includes(t.id);
+    return { id: t.id, title: t.name, summary: dbl ? 'two cells' : 'one cell', badges: [shown ? 'shown' : 'hidden'], detail: () => [
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'On the hub page' }),
+        AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown), onclick: () => { toggle('hidden', t.id, shown); redraw(t.id); } }, shown ? 'Shown: On' : 'Shown: Off'),
+        AW.btn('↑ Earlier', { onclick: () => move(t.id, -1) }), AW.btn('↓ Later', { onclick: () => move(t.id, 1) })),
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
+        AW.h('div', { class: 'chip-group', role: 'group' }, [['single', false], ['double', true]].map(([label, v]) => AW.h('button', { type: 'button',
+          class: 'chip' + (dbl === v ? ' selected' : ''), 'aria-pressed': String(dbl === v), onclick: () => { toggle('double', t.id, v); redraw(t.id); } }, label))),
+        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'double shows the different devices seen today and this week, if counting is on (Security)' }) : null),
+    ] };
+  });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' });
+  box.replaceChildren(AW.shortList(items, { id: 'status-tiles-list' }), AW.h('div', { class: 'aw-foot' }, note,
+    AW.btn('Discard', { disabled: !dirty, onclick: () => { stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); } }),
+    AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+      try { stTiles = await postJSON('/admin/status-tiles', { state: stDraft }); stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); }
+      catch (err) { note.textContent = err.message; }
+    } })));
+  const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadStatusTiles();

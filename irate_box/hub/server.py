@@ -319,18 +319,26 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
     list page left with nothing on it. factory_tile: the owner's choice to show the factory's.
     locked: apps shown to this visitor that ask for a login at their door (M5)."""
     out = []
-    for m in MANIFESTS:
+    ms = MANIFESTS
+    st = status_tiles_state() if row == "box" else None
+    if st:
+        pos = {i: n for n, i in enumerate(st["order"])}
+        ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
+        hidden = set(hidden) | set(st["hidden"])
+    for m in ms:
         tile = m.get("tile")
         if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
             continue
+        wide = bool(st) and m["id"] in st["double"]
         if tile.get("widget") == "factory" and not factory_tile:
             continue
         if m.get("menu") and not menu_entries(m["id"], hidden):
             continue
         if "widget" in tile:
-            out.append(WIDGET_HTML[tile["widget"]])
+            w = WIDGET_HTML[tile["widget"]]
+            out.append(w.replace('class="service-card ', 'class="service-card wide ', 1).replace('<div ', '<div data-size="double" ', 1) if wide else w)
             continue
-        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}"']
+        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" wide" if wide else ""}"']
         if tile.get("element_id"):
             attrs.append(f'id="{html.escape(tile["element_id"])}"')
         attrs.append(f'href="{html.escape(tile["href"])}"')
@@ -450,6 +458,37 @@ def valid_folders(data):
     return out
 
 
+# --- status tiles (menu overhaul M8; Tom, 2026-10-07/08) ---------------------------------------
+# The row of readouts under the apps (the box row: people, the join QR, memory and disk, the
+# Firmware Factory, services) is one folder of tiles the owner arranges: which show, in what order,
+# and which take two cells to say more. The hub's own (state/status_tiles.json).
+STATUS_TILES_FILE = STATE_DIR / "status_tiles.json"
+
+
+def status_tiles_state():
+    try:
+        data = json.loads(STATUS_TILES_FILE.read_text())
+    except (OSError, ValueError):
+        return {"order": [], "hidden": [], "double": []}
+    data = data if isinstance(data, dict) else {}
+    return {k: [x for x in data.get(k, []) if isinstance(x, str)][:50] for k in ("order", "hidden", "double")}
+
+
+def box_tiles():
+    """The box row's tiles, in the manifests' order: [(id, name)]."""
+    names = {"people": "People here", "qr": "Join QR", "system": "Memory and disk", "factory": "Firmware Factory"}
+    return [(m["id"], m["tile"].get("name") or names.get(m["tile"].get("widget"), m["id"]))
+            for m in MANIFESTS if (m.get("tile") or {}).get("row") == "box"]
+
+
+def status_tiles_snapshot():
+    st = status_tiles_state()
+    pos = {i: n for n, i in enumerate(st["order"])}
+    tiles = sorted(box_tiles(), key=lambda t: pos.get(t[0], len(pos)))
+    return {"tiles": [{"id": i, "name": n, "hidden": i in st["hidden"], "double": i in st["double"]} for i, n in tiles],
+            "state": st}
+
+
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
 _home_page = {}   # signed in or not -> {"mtime", "body"}
@@ -463,7 +502,7 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE):
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
@@ -2225,6 +2264,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, folders_snapshot())
             return
 
+        if path == "/admin/status-tiles":
+            self.send_json(200, status_tiles_snapshot())
+            return
+
         if path == "/admin/apps":
             # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
             # switch: whether its access can be set (its page then starts with it, M6).
@@ -2582,6 +2625,10 @@ class Handler(BaseHTTPRequestHandler):
             joined = joined_count()
             if joined is not None:
                 payload["joined"] = joined
+            # Different devices today and this week (M11): the numbers only, while counting is on.
+            counted = visitor_counts()
+            if counted is not None:
+                payload["visitors"] = counted
             self.send_json(200, payload)
             return
 
@@ -2920,6 +2967,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "offline-kit", "books": payload.get("books", False)})})
             else:
                 self.send_json(400, {"error": "action must be make (books: true or false)"})
+            return
+
+        if path == "/admin/status-tiles":
+            # The box row's arrangement (M8): its tiles only, each part a list of their ids.
+            data, ids = payload.get("state"), {i for i, _ in box_tiles()}
+            if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
+                                                     for k in ("order", "hidden", "double")):
+                self.send_json(400, {"error": "state: order, hidden and double, each a list of the box row's tiles"})
+                return
+            tmp = STATUS_TILES_FILE.parent / (STATUS_TILES_FILE.name + ".tmp")
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({k: list(dict.fromkeys(data.get(k, []))) for k in ("order", "hidden", "double")}))
+            os.replace(tmp, STATUS_TILES_FILE)
+            self.send_json(200, status_tiles_snapshot())
             return
 
         if path == "/admin/folders":

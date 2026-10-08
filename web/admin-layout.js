@@ -18,7 +18,8 @@ const AL = (() => {
       { title: 'Setup steps', sections: ['welcome'], art: 'welcome-controller' }] },
     { name: 'Apps', art: 'librarian', apps: 'apps', pages: [
       { title: 'All apps, in order', sections: ['addons', 'apps'] }] },
-    { name: 'Folders', art: 'librarian', apps: 'folders', pages: [] },
+    { name: 'Folders', art: 'librarian', apps: 'folders', pages: [
+      { title: 'Status tiles', sections: ['status-tiles'], art: 'controller' }] },
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'Saved work and files', sections: ['saved'] }] },

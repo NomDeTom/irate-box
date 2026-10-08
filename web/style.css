@@ -1280,3 +1280,9 @@ html:has(> body.admin) { background: var(--bg); }
 .service-card.locked { opacity: 0.85; }
 .service-card .lock { font-size: 0.72rem; color: var(--muted); }
 .access-seen { align-items: center; margin-top: 0.3rem; }
+
+/* A status tile at double width (M8): two cells, room to say more. */
+.service-grid .service-card.wide { grid-column: span 2; }
+.people-card .people-more { margin-top: 0.2rem; }
+.people-card .field-help { margin-top: 0.4rem; text-align: left; font-size: 0.75rem; }
+@media (max-width: 480px) { .service-grid .service-card.wide { grid-column: auto; } }
