@@ -247,21 +247,66 @@ WIDGET_HTML = {
 }
 
 
+# Who sees an app's tile, apart from who may open it (menu overhaul M5; checklist 4a: "access and
+# visibility are not the same"). The hub's own choice, not root's: it changes which tiles the hub
+# draws, not the web server's gates. auto: as its access (public: everyone; users: those logged
+# in; private or off: nobody). An app that is off is never shown, whatever is chosen here.
+VISIBILITY_FILE = STATE_DIR / "visibility.json"
+VISIBLE = ("auto", "guests", "users", "hidden")
+
+
+def visibility():
+    try:
+        data = json.loads(VISIBILITY_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and v in VISIBLE} if isinstance(data, dict) else {}
+
+
+def save_visibility(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = VISIBILITY_FILE.parent / (VISIBILITY_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, VISIBILITY_FILE)
+
+
+def _switched():
+    """The apps with a switch: the built-ins the web server gates, and the local add-ons."""
+    return set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
+
+
 def hidden_apps(signed_in=False):
-    """The apps not on the home page or the list pages: private or off, and for users unless the
-    visitor is logged in (access.py; the root helper leaves its copy of the choices in the
-    control folder)."""
+    """The apps not on the home page or the list pages: off; and otherwise as their visibility
+    says, or (auto) as their access does: private, and for users unless the visitor is logged in
+    (access.py; the root helper leaves its copy of the choices in the control folder). A built-in
+    with no switch (a list page, the box row, About) is never hidden."""
+    state, vis = access.read(ACCESS_STATE), visibility()
+    out = set()
+    for i in _switched():
+        mode, v = access.mode_of(state, i), vis.get(i, "auto")
+        if mode == "off" or v == "hidden":
+            out.add(i)
+        elif v == "users":
+            if not signed_in:
+                out.add(i)
+        elif v == "auto" and mode != "public" and not (signed_in and mode == "users"):
+            out.add(i)
+    return out
+
+
+def locked_apps(signed_in=False):
+    """The apps whose tile shows but which this visitor can't open yet: for users, to someone not
+    logged in; private, to anyone (the admin login is asked for at its door)."""
     state = access.read(ACCESS_STATE)
-    # The switched apps (built-in, by their choice or default) and the local add-ons (off until
-    # switched on). A built-in with no switch (a list page, the box row, About) is never hidden.
-    ids = set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
-    return {i for i in ids if access.mode_of(state, i) != "public" and not (signed_in and access.mode_of(state, i) == "users")}
+    return {i for i in _switched() if access.mode_of(state, i) == "private"
+            or (access.mode_of(state, i) == "users" and not signed_in)}
 
 
-def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
+def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=frozenset()):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
-    list page left with nothing on it. factory_tile: the owner's choice to show the factory's."""
+    list page left with nothing on it. factory_tile: the owner's choice to show the factory's.
+    locked: apps shown to this visitor that ask for a login at their door (M5)."""
     out = []
     for m in MANIFESTS:
         tile = m.get("tile")
@@ -274,7 +319,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
         if "widget" in tile:
             out.append(WIDGET_HTML[tile["widget"]])
             continue
-        attrs = [f'class="service-card"']
+        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}"']
         if tile.get("element_id"):
             attrs.append(f'id="{html.escape(tile["element_id"])}"')
         attrs.append(f'href="{html.escape(tile["href"])}"')
@@ -287,7 +332,8 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
                    f'        <span class="icon">{html.escape(tile["icon"])}</span>\n'
                    f'        <span class="name">{html.escape(tile["name"])}</span>\n'
                    f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
-                   f'      </a>')
+                   + ('        <span class="lock">🔒 sign in to open</span>\n' if m["id"] in locked else '')
+                   + f'      </a>')
     return "\n".join(out)
 
 
@@ -304,13 +350,18 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
+    try:
+        chosen = (chosen, VISIBILITY_FILE.stat().st_mtime)
+    except OSError:
+        pass
     show_factory = settings_snapshot()["factory_tile"]
     mtime = (path.stat().st_mtime, chosen, show_factory)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
         hidden = hidden_apps(signed_in)
-        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden, show_factory))
+        locked = locked_apps(signed_in)
+        text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -2120,7 +2171,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             state = access.read(ACCESS_STATE)
-            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"])) for a in access.apps(MANIFESTS)],
+            vis = visibility()
+            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"]), visible=vis.get(a["id"], "auto"))
+                                          for a in access.apps(MANIFESTS)],
                                  "results": control_results()})
             return
 
@@ -2708,6 +2761,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "offline-kit", "books": payload.get("books", False)})})
             else:
                 self.send_json(400, {"error": "action must be make (books: true or false)"})
+            return
+
+        if path == "/admin/visibility":
+            # Who sees an app's tile (M5): the hub's own, at once; no root, no web server change.
+            app, v = str(payload.get("app", "")), payload.get("visible")
+            if app not in _switched() or v not in VISIBLE:
+                self.send_json(400, {"error": "app must name an app on /admin, and visible be auto, guests, users or hidden"})
+                return
+            data = visibility()
+            if v == "auto":
+                data.pop(app, None)
+            else:
+                data[app] = v
+            save_visibility(data)
+            self.send_json(200, {"visibility": data})
             return
 
         if path == "/admin/access":

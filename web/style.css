@@ -1275,3 +1275,8 @@ html:has(> body.admin) { background: var(--bg); }
 .admin-page:not(.solo) > .admin-pane:first-of-type > h2 { margin-top: 0.5rem; }
 .admin-side-list a .side-icon { width: 1.3em; text-align: center; flex: none; }
 .admin-side-list a[hidden] { display: none; }
+
+/* A tile shown to someone who can't open it yet (M5): a lock, and the sign-in at its door. */
+.service-card.locked { opacity: 0.85; }
+.service-card .lock { font-size: 0.72rem; color: var(--muted); }
+.access-seen { align-items: center; margin-top: 0.3rem; }

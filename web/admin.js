@@ -2087,6 +2087,22 @@ let accessWaiting = null; // { id, app }
 let accessNote = null; // { app, text, ok }
 let accessPoll = null;
 
+const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function seenDesc(a) {
+  if (a.mode === 'off') return 'Off: no tile.';
+  if (a.visible === 'auto') return '';
+  const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'those logged in' : 'the admin';
+  if (a.visible === 'hidden') return 'No tile; its address still works for whoever may open it.';
+  return a.visible === 'guests' && a.mode !== 'public'
+    ? `Everyone sees its tile, with a lock: it opens for ${opens}, and anyone else is asked to sign in.`
+    : `Its tile shows to ${SEEN_LABEL[a.visible]}; it opens for ${opens}.`;
+}
+function visibilitySet(a, v) {
+  if (v === a.visible) return;
+  postJSON('/admin/visibility', { app: a.id, visible: v }).then(() => loadAccess(),
+    (err) => { accessNote = { app: a.id, text: err.message, ok: false }; loadAccess(); });
+}
+
 function accessDesc(a) {
   if (a.mode === 'public') return a.login ? 'Public: on the home page; it still asks for the admin login.' : 'Public: on the home page, open to everyone on the network.';
   if (a.mode === 'users') return 'Users: on the home page for anyone logged in to an account (Accounts); anyone else is asked to log in.';
@@ -2135,8 +2151,19 @@ function renderAccess(data) {
     group.setAttribute('aria-label', `Who can open ${a.title}`);
     const note = accessNote && accessNote.app === a.id
       ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
+    // Who sees its tile, apart from who opens it (M5, checklist 4a): the hub's own, saved at once.
+    const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
+      ...Object.entries(SEEN_LABEL).map(([v, label]) => {
+        const b = el('button', { type: 'button', className: 'chip' + (a.visible === v ? ' selected' : ''), textContent: label,
+          disabled: a.mode === 'off', onclick: () => visibilitySet(a, v) });
+        b.setAttribute('aria-pressed', String(a.visible === v));
+        return b;
+      }));
+    seen.setAttribute('role', 'group');
+    seen.setAttribute('aria-label', `Who sees ${a.title}'s tile`);
     // No note: left out, not passed as null (replaceChildren would show the word "null").
-    slot.replaceChildren(...[group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }), note].filter(Boolean));
+    slot.replaceChildren(...[group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }),
+      seen, el('span', { className: 'setting-desc', textContent: seenDesc(a) }), note].filter(Boolean));
     if (a.kind === 'builtin') builtin.push(a);
   }
   document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
