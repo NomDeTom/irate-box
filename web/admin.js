@@ -3649,3 +3649,85 @@ async function loadAppearance() {
   } }));
 }
 loadAppearance();
+
+// ---- Folders (menu overhaul M7; checklist 5e): each folder's page arranges its entries. The
+// owner may hide an entry from a folder, order a folder's entries, and put an entry in other
+// folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
+let folders = null, folderDraft = null;
+const folderOpen = {};  // folder -> the entry left open, so a change keeps it in view
+const KIND_WORD = { switches: 'starting switches', download: 'a download', page: 'a page' };
+async function loadFolders() {
+  try { folders = await getJSON('/admin/folders'); } catch (e) { return; }
+  folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
+  fillFolderBlocks();
+}
+function fillFolderBlocks() {
+  if (!folders) return;
+  document.querySelectorAll('.folder-block[data-folder]').forEach((b) => drawFolder(b, b.dataset.folder));
+}
+AL.onBuild(fillFolderBlocks);
+// The arrangement without its empty parts, sorted by folder: what changed, and nothing else.
+const folderNorm = (s) => Object.fromEntries(Object.entries(s || {}).sort().map(([f, v]) => [f, Object.fromEntries(['hidden', 'order', 'extra'].filter((k) => (v[k] || []).length).map((k) => [k, v[k]]))]).filter(([, v]) => Object.keys(v).length));
+const fpart = (f) => { folderDraft[f] = folderDraft[f] || { hidden: [], order: [], extra: [] }; return folderDraft[f]; };
+// Is an entry in a folder: one of the folder's own and not hidden there, or put in from another.
+function inFolder(f, href) {
+  const own = (folders.folders.find((x) => x.id === f) || { entries: [] }).entries.some((e) => e.href === href && !e.extra);
+  const st = folderDraft[f] || {};
+  return own ? !(st.hidden || []).includes(href) : (st.extra || []).includes(href);
+}
+function setInFolder(f, href, yes) {
+  const own = (folders.folders.find((x) => x.id === f) || { entries: [] }).entries.some((e) => e.href === href && !e.extra);
+  const st = fpart(f);
+  const without = (list) => list.filter((h) => h !== href);
+  if (own) st.hidden = yes ? without(st.hidden) : [...without(st.hidden), href];
+  else st.extra = yes ? [...without(st.extra), href] : without(st.extra);
+}
+function drawFolder(block, f) {
+  const fol = folders.folders.find((x) => x.id === f);
+  if (!fol) { block.replaceChildren(); return; }
+  const st = fpart(f);
+  const pos = (h) => { const i = st.order.indexOf(h); return i < 0 ? 1e6 : i; };
+  // The folder's entries, plus any put in since the last save, in the draft's order.
+  const pool = new Map(folders.folders.flatMap((x) => x.entries).map((e) => [e.href, e]));
+  const hrefs = [...new Set([...fol.entries.map((e) => e.href), ...st.extra])].filter((h) => pool.has(h));
+  const list = hrefs.map((h, i) => ({ h, i })).sort((a, b) => (pos(a.h) - pos(b.h)) || (a.i - b.i)).map((x) => pool.get(x.h));
+  const dirty = JSON.stringify(folderNorm(folderDraft)) !== JSON.stringify(folderNorm(folders.state));
+  const move = (e, d) => {
+    const order = list.map((x) => x.href), i = order.indexOf(e.href), j = i + d;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    st.order = order;
+    folderOpen[f] = e.href; fillFolderBlocks();
+  };
+  const items = list.map((e) => {
+    const shown = inFolder(f, e.href);
+    return { id: e.href, title: e.name, summary: e.desc || e.href, badges: [shown ? 'shown' : 'hidden', KIND_WORD[e.kind] || e.kind].concat(e.from !== f ? ['from ' + e.from] : []),
+      detail: () => [
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'In this folder' }),
+          AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown),
+            onclick: () => { setInFolder(f, e.href, !shown); folderOpen[f] = e.href; fillFolderBlocks(); } }, shown ? 'Shown: On' : 'Shown: Off'),
+          AW.btn('↑ Earlier', { onclick: () => move(e, -1) }), AW.btn('↓ Later', { onclick: () => move(e, 1) })),
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Also in' }),
+          AW.h('div', { class: 'filter-chips' }, folders.folders.filter((x) => x.id !== f).map((x) => {
+            const on = inFolder(x.id, e.href);
+            return AW.h('button', { type: 'button', class: 'filter-chip' + (on ? ' active' : ''), 'aria-pressed': String(on),
+              onclick: () => { setInFolder(x.id, e.href, !on); folderOpen[f] = e.href; fillFolderBlocks(); } }, x.title);
+          }))),
+        AW.dl({ Opens: e.href }),
+      ] };
+  });
+  const shownCount = list.filter((e) => inFolder(f, e.href)).length;
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet (they may touch other folders too).' : 'Settings wait for Save.' });
+  block.replaceChildren(
+    AW.h('p', { class: 'setting-desc', text: `${shownCount} of ${list.length} shown on its page. The entries come from the apps' manifests, from what an app's own index adds, and from starting switches of one page.` }),
+    AW.shortList(items, { id: 'folder-list-' + f }),
+    AW.h('div', { class: 'aw-foot' }, note,
+      AW.btn('Discard', { disabled: !dirty, onclick: () => { folderDraft = JSON.parse(JSON.stringify(folders.state || {})); fillFolderBlocks(); } }),
+      AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+        try { folders = await postJSON('/admin/folders', { state: folderDraft }); folderDraft = JSON.parse(JSON.stringify(folders.state)); fillFolderBlocks(); }
+        catch (err) { note.textContent = err.message; }
+      } })));
+  const open = folderOpen[f] && [...block.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === folderOpen[f]);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadFolders();

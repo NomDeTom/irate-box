@@ -92,7 +92,7 @@ setTimeout(() => {
   // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, Box,
   // the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Moderation|Box|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|Box|Doctors', groups.join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
   check('sidebar: Clock and Appearance under Box', side.indexOf('Clock') > side.indexOf('Box') && side.indexOf('Appearance') > side.indexOf('Box') && side.indexOf('Clock') < hi);

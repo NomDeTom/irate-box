@@ -100,6 +100,14 @@ const AL = (() => {
               el('h2', { text: 'Who opens it, who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
             a = { ...a, sections: [id, ...a.sections] };
           }
+          // A folder's entries (M7): after its access, before its other sections.
+          if (a.folder) {
+            const id = 'folder-' + a.id;
+            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane folder-section', id },
+              el('h2', { text: 'What\'s in it' }), el('div', { class: 'folder-block', 'data-folder': a.id })));
+            const at = a.switch ? 1 : 0;
+            a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
+          }
           const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: a.sections, empty: false });
           if (e) entries.push(e);
         }
@@ -109,7 +117,7 @@ const AL = (() => {
       list.append(groupHead(g.name), ...entries.map((e) => e.link));
     }
     // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
-    const left = [...sections.keys()].filter((id) => !placed.has(id) && !id.startsWith('app-access-'));
+    const left = [...sections.keys()].filter((id) => !placed.has(id) && !id.startsWith('app-access-') && !id.startsWith('folder-'));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);

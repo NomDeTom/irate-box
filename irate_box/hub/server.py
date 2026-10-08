@@ -314,7 +314,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
             continue
         if tile.get("widget") == "factory" and not factory_tile:
             continue
-        if m.get("menu") and not manifests.entries_for(m["id"], MANIFESTS, hidden):
+        if m.get("menu") and not menu_entries(m["id"], hidden):
             continue
         if "widget" in tile:
             out.append(WIDGET_HTML[tile["widget"]])
@@ -337,6 +337,108 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
     return "\n".join(out)
 
 
+# --- folders (menu overhaul M7; checklist 5e, accepted by Tom 2026-10-07) ----------------------
+# A list page (a manifest with a "menu": Meshtastic, the calculators, ELIZA) is a folder of
+# entries: pages, downloads, or one page with starting switches. The owner may hide an entry from
+# a folder, put a folder's entries in an order of their own, and put an entry from one folder in
+# another as well. The hub's own choice (state/folders.json), not root's: it changes what the hub
+# lists, not what the web server serves. {folder: {"hidden": [href], "order": [href], "extra": [href]}}
+FOLDERS_FILE = STATE_DIR / "folders.json"
+FOLDER_PARTS = ("hidden", "order", "extra")
+
+
+def folders_state():
+    try:
+        data = json.loads(FOLDERS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {f: {k: [h for h in v.get(k, []) if isinstance(h, str)][:500] for k in FOLDER_PARTS}
+            for f, v in data.items() if isinstance(f, str) and isinstance(v, dict)}
+
+
+def save_folders(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = FOLDERS_FILE.parent / (FOLDERS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, FOLDERS_FILE)
+
+
+def entry_pool(skip=()):
+    """Every entry any folder lists: href -> (order, entry, status path, the folder that names it)."""
+    pool = {}
+    for mid in manifests.menus(MANIFESTS):
+        for o, e, svc in manifests.entries_for(mid, MANIFESTS, skip):
+            pool.setdefault(e["href"], (o, e, svc, mid))
+    return pool
+
+
+def menu_entries(menu_id, skip=(), include_hidden=False, state=None):
+    """A folder's entries as the owner arranged them: its own (manifests.entries_for), those put
+    in from other folders, in its order (the rest after, as they were), less the hidden ones."""
+    st = (folders_state() if state is None else state).get(menu_id, {})
+    items = list(manifests.entries_for(menu_id, MANIFESTS, skip))
+    have = {e["href"] for _, e, _ in items}
+    if st.get("extra"):
+        pool = entry_pool(skip)
+        for href in st["extra"]:
+            if href in pool and href not in have:
+                o, e, svc, _ = pool[href]
+                items.append((o, e, svc))
+                have.add(href)
+    pos = {h: i for i, h in enumerate(st.get("order", []))}
+    items = [x for _, x in sorted(enumerate(items), key=lambda p: (pos.get(p[1][1]["href"], len(pos)), p[0]))]
+    if not include_hidden:
+        hidden = set(st.get("hidden", []))
+        items = [x for x in items if x[1]["href"] not in hidden]
+    return items
+
+
+def entry_kind(href):
+    """What an entry is, for /admin: one page with starting switches, a download, or a page."""
+    tail = href.split("#", 1)[-1]
+    if "?" in tail:
+        return "switches"
+    return "page" if href.startswith("/app.html#") else "download"
+
+
+def folders_snapshot():
+    """/admin/folders: each folder with all its entries (hidden ones too) and the choices."""
+    state = folders_state()
+    pool = entry_pool()
+    out = []
+    for mid, m in manifests.menus(MANIFESTS).items():
+        st = state.get(mid, {})
+        hidden, extra = set(st.get("hidden", [])), set(st.get("extra", []))
+        entries = []
+        for _, e, _ in menu_entries(mid, include_hidden=True, state=state):
+            href = e["href"]
+            entries.append({"href": href, "name": e["name"], "desc": e.get("desc", ""), "kind": entry_kind(href),
+                            "from": pool.get(href, (0, 0, 0, mid))[3], "hidden": href in hidden, "extra": href in extra})
+        out.append({"id": mid, "title": m["menu"]["title"], "entries": entries})
+    return {"folders": out, "state": state}
+
+
+def valid_folders(data):
+    """A whole folders.json from /admin: only real folders, only entries some folder lists."""
+    if not isinstance(data, dict) or len(data) > 64:
+        return None
+    menus, pool = manifests.menus(MANIFESTS), entry_pool()
+    out = {}
+    for f, v in data.items():
+        if f not in menus or not isinstance(v, dict):
+            return None
+        part = {}
+        for k in FOLDER_PARTS:
+            hrefs = v.get(k, [])
+            if not isinstance(hrefs, list) or len(hrefs) > 500 or not all(isinstance(h, str) and h in pool for h in hrefs):
+                return None
+            part[k] = list(dict.fromkeys(hrefs))
+        out[f] = part
+    return out
+
+
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
 _home_page = {}   # signed in or not -> {"mtime", "body"}
@@ -350,10 +452,11 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    try:
-        chosen = (chosen, VISIBILITY_FILE.stat().st_mtime)
-    except OSError:
-        pass
+    for f in (VISIBILITY_FILE, FOLDERS_FILE):
+        try:
+            chosen = (chosen, f.stat().st_mtime)
+        except OSError:
+            chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     mtime = (path.stat().st_mtime, chosen, show_factory)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
@@ -406,7 +509,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
 
 def menu_page(m, signed_in=False):
     items = []
-    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps(signed_in)):
+    for _, e, service in menu_entries(m["id"], hidden_apps(signed_in)):
         href = e["href"]
         if href.startswith("/app.html#"):
             # The hub bar then offers ↑ back to this list (app.js).
@@ -2071,6 +2174,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, dict(BOARD.list_threads(), posting=self._posting_view("board")))
             return
 
+        if path == "/admin/folders":
+            self.send_json(200, folders_snapshot())
+            return
+
         if path == "/admin/apps":
             # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
             # switch: whether its access can be set (its page then starts with it, M6).
@@ -2762,6 +2869,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "offline-kit", "books": payload.get("books", False)})})
             else:
                 self.send_json(400, {"error": "action must be make (books: true or false)"})
+            return
+
+        if path == "/admin/folders":
+            # The folders' arrangement (M7): the whole of folders.json, checked, at once.
+            data = valid_folders(payload.get("state"))
+            if data is None:
+                self.send_json(400, {"error": "state: per folder, hidden, order and extra: entries some folder lists"})
+                return
+            save_folders(data)
+            self.send_json(200, folders_snapshot())
             return
 
         if path == "/admin/visibility":
