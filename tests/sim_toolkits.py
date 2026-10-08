@@ -123,7 +123,17 @@ def fake(cmd, timeout=0, check=True, env=None):
             installed.update(need)
             return R()
         if verb == "purge":
-            installed.difference_update(pkgs)
+            # As apt: a purge takes what depends on what it purges too; "name+" keeps a package; -s only says.
+            keep = {x[:-1] for x in pkgs if x.endswith("+")}
+            gone, more = {x for x in pkgs if not x.endswith("+")}, True
+            while more:
+                more = False
+                for q in installed - gone:
+                    if q in ARCHIVE and set(ARCHIVE[q][1]) & gone:
+                        gone.add(q); more = True
+            if "-s" in cmd:
+                return R(rc=100) if gone & keep else R("\n".join(f"Purg {g} [1]" for g in sorted(gone)))
+            installed.difference_update(gone)
             return R()
     raise AssertionError(f"unexpected command {cmd}")
 kits.run = fake
@@ -421,7 +431,7 @@ d = json.loads((T / "defs" / "small.json").read_text()); d["needs_64bit"] = ["gd
 ARCHIVE["gdb"] = ("16.3-9", ARCHIVE["gdb"][1])
 calls.clear()
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("fetched on a 32-bit board: left out, and said", "left out on this armhf board (64-bit only): gdb" in line
+check("fetched on a 32-bit board: left out, and said", "left out on this armhf board: gdb (64-bit only)" in line
       and "gdb" not in {p["name"] for p in kits.manifest("small")["packages"]} and kits.manifest("small")["left_out"] == ["gdb"]
       and not any("gdb" in c for c in calls if c[0] == "apt-get"), line)
 check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_out"] == ["gdb"])
@@ -434,6 +444,47 @@ kits.fetch("small", budget_mb=10, log=lambda *a: None)
 (T / "defs" / "odd.json").write_text(json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]}))
 check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
 (T / "defs" / "odd.json").unlink()
+# The System kit (os-image-plan §2): each package only where it fits, the alternatives cached, never installed.
+sysk = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "system.json").read_text())
+check("the System kit loads, kept installed", kitdefs._ok(sysk, "system") and sysk["remove_after_hours"] is None)
+board = T / "board"
+real_paths = kitdefs.SYSFS, kitdefs.ROOTFS
+kitdefs.SYSFS, kitdefs.ROOTFS = board / "sys", board / "root"
+(board / "root/usr/lib/sysctl.d").mkdir(parents=True)
+(board / "root/usr/lib/sysctl.d/50-default.conf").write_text("")
+(board / "sys/bus/pci/devices").mkdir(parents=True); (board / "sys/block/mmcblk0").mkdir(parents=True)
+keep, left = kitdefs.packages_for(sysk, "armhf")
+check("  on a Lyra (armhf, no PCI, an SD card, no AppArmor, the kernel defaults in place): only what fits",
+      set(left) == {"linux-sysctl-defaults", "pciutils", "smartmontools", "apparmor", "apparmor-utils", "dmidecode"} and "exfatprogs" in keep, left)
+check("  each left out with its reason", kitdefs.why_left_out(sysk, left) == "apparmor, apparmor-utils (no AppArmor in the kernel); dmidecode (64-bit only); "
+      "linux-sysctl-defaults (already in place); pciutils (no PCI); smartmontools (no disk that reports SMART)", kitdefs.why_left_out(sysk, left))
+check("  the alternatives fetched, never installed", not {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} & set(keep)
+      and {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} <= set(kitdefs.packages_for(sysk, "armhf", fetching=True)[0]))
+(board / "root/usr/lib/sysctl.d/50-default.conf").unlink()
+(board / "sys/bus/pci/devices/0000:00:00.0").mkdir(); (board / "sys/block/nvme0n1").mkdir(); (board / "sys/kernel/security/apparmor").mkdir(parents=True)
+keep, left = kitdefs.packages_for(sysk, "amd64")
+check("  on a PC (amd64, PCI, NVMe, AppArmor, no kernel defaults): all of it", not left and set(sysk["packages"]) == set(keep), left)
+kitdefs.SYSFS, kitdefs.ROOTFS = real_paths
+for bad in ({"alternatives": ["gdb"]}, {"only_where": {"gdb": "moon"}}, {"only_where": {"notinkit": "pci"}}):
+    check(f"  a kit with {bad} is refused", not kitdefs._ok({"id": "x", "packages": ["gdb"], **bad}, "x"))
+# Kits overlap (Recovery and System both list smartmontools): removing one keeps what another lists,
+# and what that needs, however the two were installed.
+for kid, hours in (("lend", 24), ("keepr", None)):
+    (T / "defs" / f"{kid}.json").write_text(json.dumps({"id": kid, "title": kid, "summary": "s", "consent": "c", "packages": ["platformio"],
+                                                         "remove_after_hours": hours}))
+    kits.fetch(kid, budget_mb=10, log=lambda *a: None)
+kits.install("lend", hours=24, log=lambda *a: None)
+kits.install("keepr", hours=None, log=lambda *a: None)
+check("two kits listing platformio: the first adds it and python3-click, the second nothing", set(kits.installed_state()["lend"]["added"]) == {"platformio", "python3-click"}
+      and not kits.installed_state()["keepr"]["added"], kits.installed_state())
+line = kits.remove("lend", log=lambda *a: None)
+check("  removing the first keeps platformio (the other lists it) and python3-click (platformio needs it)", {"platformio", "python3-click"} <= installed and "kept 2" in line, (line, installed))
+kits.install("lend", hours=24, log=lambda *a: None)
+kits.remove("keepr", log=lambda *a: None)
+kits.remove("lend", log=lambda *a: None)
+check("  with neither left, both go", not {"platformio", "python3-click"} & installed, installed)
+for kid in ("lend", "keepr"):
+    (T / "defs" / f"{kid}.json").unlink()
 # Step 38: the owner's own kits, and extra tools in a shipped kit.
 line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "scanner", "title": "Scanner tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
                                                   "remove_after_hours": 4}})

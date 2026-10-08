@@ -27,17 +27,53 @@ PIP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 ARCH_64 = {"amd64", "arm64", "riscv64", "ppc64el", "s390x", "mips64el", "loong64"}
 
 
-def packages_for(kit, arch):
-    """(the kit's packages for a board of this dpkg architecture, those left out and why)."""
-    skip = set() if arch in ARCH_64 else set(kit.get("needs_64bit", [])) & set(kit["packages"])
-    return [p for p in kit["packages"] if p not in skip], sorted(skip)
+# Packages a kit gives "only_where" a condition (the System kit, os-image-plan §2: each package only
+# where it fits) are left out where the board doesn't meet it. Read from the board itself; the paths
+# can be moved for the tests (HUB_SYSFS, HUB_ROOTFS).
+SYSFS = Path(os.environ.get("HUB_SYSFS", "/sys"))
+ROOTFS = Path(os.environ.get("HUB_ROOTFS", "/"))
+CONDITIONS = {
+    # PCI devices to list (pciutils): the Lyra has none.
+    "pci": lambda: any((SYSFS / "bus/pci/devices").glob("*")),
+    # A disk that may report SMART (smartmontools): SATA, SCSI, USB disks and NVMe, not SD cards.
+    "smart-disk": lambda: any((SYSFS / "block").glob("sd*")) or any((SYSFS / "block").glob("nvme*")),
+    # A kernel with AppArmor (apparmor and its tools do nothing without it).
+    "apparmor": lambda: (SYSFS / "kernel/security/apparmor").is_dir(),
+    # Debian's kernel defaults not already in place: newer Armbian board packages ship the same file
+    # and conflict with linux-sysctl-defaults.
+    "no-sysctl-defaults": lambda: not (ROOTFS / "usr/lib/sysctl.d/50-default.conf").exists(),
+}
+
+
+def packages_for(kit, arch, fetching=False):
+    """(the kit's packages for a board of this dpkg architecture, those left out and why). Fetching,
+    its "alternatives" too: cached with it, installed only by the owner's choice, never with the kit."""
+    names = kit["packages"] + (kit.get("alternatives", []) if fetching else [])
+    skip = set() if arch in ARCH_64 else set(kit.get("needs_64bit", [])) & set(names)
+    skip |= {p for p, cond in kit.get("only_where", {}).items() if p in names and not CONDITIONS[cond]()}
+    return [p for p in names if p not in skip], sorted(skip)
+
+
+WHY = {"pci": "no PCI", "smart-disk": "no disk that reports SMART", "apparmor": "no AppArmor in the kernel",
+       "no-sysctl-defaults": "already in place"}
+
+
+def why_left_out(kit, left):
+    """The left-out packages grouped by why, as one phrase: "gdb (64-bit only); pciutils (no PCI)"."""
+    by = {}
+    for p in left:
+        cond = kit.get("only_where", {}).get(p)
+        by.setdefault(WHY[cond] if cond else "64-bit only", []).append(p)
+    return "; ".join(f"{', '.join(ps)} ({why})" for why, ps in by.items())
 
 
 def _ok(k, stem):
     return (isinstance(k, dict) and ID_RE.match(str(k.get("id", ""))) and k["id"] == stem
             and isinstance(k.get("packages"), list) and k["packages"] and all(isinstance(p, str) and PKG_RE.match(p) for p in k["packages"])
             and isinstance(k.get("needs_64bit", []), list) and all(p in k["packages"] for p in k.get("needs_64bit", []))
-            and isinstance(k.get("pip", []), list) and all(isinstance(p, str) and PIP_RE.match(p) for p in k.get("pip", [])))
+            and isinstance(k.get("pip", []), list) and all(isinstance(p, str) and PIP_RE.match(p) for p in k.get("pip", []))
+            and isinstance(k.get("alternatives", []), list) and all(isinstance(p, str) and PKG_RE.match(p) and p not in k["packages"] for p in k.get("alternatives", []))
+            and isinstance(k.get("only_where", {}), dict) and all(p in k["packages"] and c in CONDITIONS for p, c in k.get("only_where", {}).items()))
 
 
 def _load(path):
