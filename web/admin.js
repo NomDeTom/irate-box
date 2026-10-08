@@ -2374,7 +2374,9 @@ function accessBlock(id, a, seenOnly) {
   const tileOf = tilesData && tilesData.tiles.find((x) => x.id === id);
   const iconNow = (tileOf && tileOf.own_icon) || '';
   if (d.icon === iconNow) delete d.icon;
-  const dirty = d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined;
+  const sizeNow = (tileOf && tileOf.size) || 'single';
+  if (d.size === sizeNow) delete d.size;
+  const dirty = d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined || d.size !== undefined;
   const waiting = !!(accessWaiting && accessWaiting.app === id);
   const note = accessNote && accessNote.app === id
     ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
@@ -2384,8 +2386,10 @@ function accessBlock(id, a, seenOnly) {
       if (d.seen !== base.seen) await postJSON('/admin/visibility', { app: id, visible: d.seen === auto ? 'auto' : d.seen });
       const icons = { ...((tilesData && tilesData.state.icon) || {}) };
       if (d.icon !== undefined) { if (d.icon) icons[id] = d.icon; else delete icons[id]; }
-      if ((d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined) {
-        tilesData = await postJSON('/admin/tiles', { state: { order: d.order || tileOrderNow(), size: (tilesData && tilesData.state.size) || {}, icon: icons } });
+      const sizes = { ...((tilesData && tilesData.state.size) || {}) };
+      if (d.size !== undefined) { if (d.size === 'single') delete sizes[id]; else sizes[id] = d.size; }
+      if ((d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined || d.size !== undefined) {
+        tilesData = await postJSON('/admin/tiles', { state: { order: d.order || tileOrderNow(), size: sizes, icon: icons } });
         tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
       }
       accessDrafts.delete(id);
@@ -2401,6 +2405,8 @@ function accessBlock(id, a, seenOnly) {
       el('button', { type: 'button', className: 'action-btn', textContent: '↑ Earlier', disabled: at === 0, onclick: () => move(-1) }),
       el('button', { type: 'button', className: 'action-btn', textContent: '↓ Later', disabled: at === order.length - 1, onclick: () => move(1) }),
       el('span', { className: 'setting-desc', textContent: `${at + 1} of ${order.length}` })) : null,
+    tileOf ? el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile size' }),
+      sizeChips(d.size !== undefined ? d.size : sizeNow, (v) => { d.size = v; redraw(); })) : null,
     tileOf ? iconField(d, tileOf, iconNow, redraw) : null,
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
       : seenWords(d.seen, 'public') }),
