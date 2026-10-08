@@ -27,6 +27,7 @@
    "name": "debian-cis",
    "upstream": "https://github.com/ovh/debian-cis",
    "branch": "master",
+   "pin": "2e7135e09fc5275baafa625d6d9a2a40f48c769e",
    "why": "The CIS benchmark's checks for Debian, run --audit only (never its fixes) by the security doctor's deep audit."
   }
  ],
