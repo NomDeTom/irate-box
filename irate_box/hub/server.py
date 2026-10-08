@@ -2955,6 +2955,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/admin/factory.html":
             # The Firmware Factory's own page (menu overhaul F7): behind /admin's login, as /admin is.
             path = "/admin-factory.html"
+        elif path == "/admin/mesh.html":
+            # Mesh's Heard, the messages' texts too (item 9, as the Factory's page): behind /admin's login.
+            path = "/admin-mesh.html"
 
         if path == "/api/captive":
             # RFC 8908's captive-portal API, named by the hotspot's DHCP (option 114, RFC 8910):

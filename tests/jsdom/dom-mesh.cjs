@@ -78,7 +78,8 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     && /Listening to the broker: 2 nodes/.test(t(d.getElementById('mesh-admin-state'))));
   check('  the channels, without their keys', /LongFast Meshtastic's public default key: anyone can read this channel\./.test(t(d.getElementById('mesh-channels')))
     && /Family Its own key \(not shown\)\./.test(t(d.getElementById('mesh-channels'))));
-  check('  the messages, here only', /“meet at the gate”/.test(t(d.getElementById('mesh-admin-packets'))));
+  check('  Heard on a page of its own (item 9): a link, and no messages on /admin', d.getElementById('mesh-open').getAttribute('href') === '/admin/mesh.html'
+    && !/meet at the gate/.test(t(d.getElementById('mesh'))));
   const f = d.getElementById('mesh-channel-form');
   f.elements.name.value = 'Hikers'; f.elements.key.value = 'q2Fc9u0aBcDeFgHiJkLmNw==';
   f.dispatchEvent(new admin.w.Event('submit', { cancelable: true })); await wait();
@@ -89,6 +90,15 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   [...d.querySelectorAll('#mesh-channels button')].find((b) => t(b) === 'Remove').click(); await wait();
   check('  Remove', posted.some((b) => b.action === 'remove-channel' && b.name === 'LongFast'));
   check('admin: no page errors', !admin.errors.length, admin.errors.join(' | '));
+
+  // /admin/mesh.html: Heard, the messages too.
+  const heard = page('admin-mesh.html', 'http://box.local/admin/mesh.html', async (u) => (u === '/admin/mesh'
+    ? json({ state: 'listening', nodes, packets, counts: { text: 1 }, since: now, channels }) : json({}, 404)), ['mesh-heard.js']);
+  await wait();
+  d = heard.d;
+  check('heard: the state and the counts', /Listening to the broker: 2 nodes/.test(t(d.getElementById('mesh-heard-state'))) && /1 text/.test(t(d.getElementById('mesh-heard-counts'))));
+  check('  the messages, here only', /“meet at the gate”/.test(t(d.getElementById('mesh-heard-packets'))));
+  check('heard: no page errors', !heard.errors.length, heard.errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();
