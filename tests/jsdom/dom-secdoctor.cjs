@@ -88,7 +88,10 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     && /2 sources agree/.test(t(cards[0])) && /the doctor/.test(t(cards[0])) && /the Security page/.test(t(cards[0])) && /To do: Turn them on/.test(t(cards[0])));
   check('seen by one source only: listed apart, saying who could have seen it', !d.getElementById('joint-alone').hidden
     && /TCP 9999 — only nmap said so; the Security page could have seen it and did not\./.test(t(d.getElementById('joint-alone-list'))), t(d.getElementById('joint-alone-list')));
-  check('each source: what it covers and how fresh', d.querySelectorAll('#joint-sources tr').length === 3 && /Only which ports answer/.test(t(d.getElementById('joint-sources'))));
+  const pills = [...d.querySelectorAll('#joint-fresh span')];
+  check('each source in one strip at the top: how fresh, what it covers in its title', pills.length === 3
+    && pills.some((x) => /^nmap: 1(\.0)? days? ago|^nmap: 24 h ago/.test(t(x)) && /Only which ports answer/.test(x.title)), pills.map(t).join(' | '));
+  check('  none stale here (the newest is a day old, under nmap\'s 30)', !pills.some((x) => x.className === 'warn-pill'), pills.map((x) => x.className + ':' + t(x)).join(' | '));
   check('the badge counts merged items (2), not every source\'s (3)', d.querySelector('a[href="#secdoctor"]').dataset.badge === '2', d.querySelector('a[href="#secdoctor"]').dataset.badge);
   check('the imported report is listed, with Remove', /nmap scan\.xml: 3 results/.test(t(d.getElementById('import-list'))) && [...d.querySelectorAll('#import-list button')].some((b) => t(b) === 'Remove'));
   check('the deep audit\'s last run is said', /Last deep audit .*, 7 min\./.test(t(d.getElementById('audit-deep-when'))), t(d.getElementById('audit-deep-when')));

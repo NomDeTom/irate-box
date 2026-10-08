@@ -1156,6 +1156,8 @@
         </div>
         <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
+        <!-- Each source and how fresh it is (item 11 step 6, the plan's §5.5–5.6): what it covers in its title. -->
+        <p class="fresh-strip" id="joint-fresh" aria-label="Each source, and how fresh it is"></p>
         <h3>Cures</h3>
         <p class="setting-desc">
           From the box's own scan: what has one right answer, offered here with your consent and an Undo
@@ -1168,11 +1170,6 @@
         <details class="admin-output" id="joint-alone" hidden>
           <summary>Seen by one source only: worth a look, or a false positive</summary>
           <ul class="admin-checks" id="joint-alone-list"></ul>
-        </details>
-        <details class="admin-output" id="joint-sources-box">
-          <summary>What each source covers, and how fresh it is</summary>
-          <table class="admin-table"><thead><tr><th>Source</th><th>Covers</th><th>From</th><th>To fix / to look at</th></tr></thead>
-            <tbody id="joint-sources"></tbody></table>
         </details>
         <h3>Import a scan</h3>
         <p class="setting-desc">
