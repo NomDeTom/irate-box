@@ -493,7 +493,17 @@ def status_tiles_snapshot():
 
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
+ACCOUNT_MARK = "<!-- account nav -->"
 _home_page = {}   # signed in or not -> {"mtime", "body"}
+
+
+def _account_nav(signed_in):
+    """A link to /account.html in the hub bar, item 6 of current-and-next-actions: while sign-up
+    is on, "Sign in" for a guest, "My account" for anyone already in."""
+    if accounts.settings()["signup"] == "off":
+        return ""
+    title, label = (("Your account", "My account") if signed_in else ("Sign in or sign up", "Sign in"))
+    return f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
 
 
 def home_page(signed_in=False):
@@ -510,7 +520,8 @@ def home_page(signed_in=False):
         except OSError:
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
-    mtime = (path.stat().st_mtime, chosen, show_factory)
+    signup = accounts.settings()["signup"]
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -522,6 +533,7 @@ def home_page(signed_in=False):
                 text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
+        text = text.replace(ACCOUNT_MARK, _account_nav(signed_in))
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
