@@ -1,0 +1,21 @@
+{
+ "id": "network",
+ "title": "Network",
+ "summary": "Find out why the hotspot or the link misbehaves with no internet to apt from: iperf3, mtr, iw, wavemon, dig, tcpdump, WireGuard's tools.",
+ "packages": [
+  "iperf3",
+  "mtr-tiny",
+  "iw",
+  "wavemon",
+  "bind9-dnsutils",
+  "tcpdump",
+  "wireguard-tools"
+ ],
+ "consent": "tcpdump reads every packet on the box; iperf3 listens for a test partner. Install the kit only while you need it.",
+ "notes": [
+  "nftables and iw come with the box itself (install.sh); this kit adds what one reaches for when the radio or the link is the question.",
+  "iperf3 -s on the box and iperf3 -c <the box> on a phone or laptop measures the hotspot's real throughput.",
+  "wavemon shows the link's signal and rate as it changes; iw dev <iface> station dump lists each guest's."
+ ],
+ "remove_after_hours": 24
+}
