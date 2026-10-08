@@ -100,7 +100,7 @@ function page(file, url, fetcher, scripts) {
     if (o.method === 'POST' && u === '/admin/accounts') { const b = JSON.parse(o.body); aposted.push(b); return json(Object.assign({}, state, b.action === 'make' ? { code: 'ABCD-EFGH-JKLM-NPQR' } : {})); }
     if (u === '/admin/accounts') return json(state);
     return json({}, 404);
-  }, ['admin.js']);
+  }, ['admin-widgets.js', 'admin.js']);
   await wait(300); d = a.d;
   check('admin: a side-bar entry, the levels as set, the counts', [...d.querySelectorAll('.admin-side-list a')].some((x) => x.hash === '#accounts')
     && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 admin\), 1 asking, 0 switched off\./.test(t(d.getElementById('accounts-counts'))));

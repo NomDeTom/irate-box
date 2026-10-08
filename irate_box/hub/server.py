@@ -327,6 +327,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
   <title>{title} · Hub</title>
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
 </head>
 <body{art_attrs}>
   <!-- {about}
@@ -437,8 +438,15 @@ DEFAULT_SETTINGS = {
     "shout_marks": True,
     "board_who": "guests",
     "board_marks": True,
+    # Page widths in rem (menu overhaul M2; Tom, 2026-10-08: 80rem, with the owner's choice of
+    # 45, 60, 80, 90 or 100; the shoutbox and the forum their own, 45 as they always were).
+    # Every page reads them from /layout.css.
+    "page_width": 80,
+    "shout_width": 45,
+    "board_width": 45,
 }
 POSTERS = ("guests", "users", "off")
+WIDTHS = (45, 60, 80, 90, 100)
 _settings_lock = threading.Lock()
 
 
@@ -446,6 +454,8 @@ def valid_setting(key, value):
     want = type(DEFAULT_SETTINGS[key])
     if key in ("shout_who", "board_who"):
         return value in POSTERS
+    if key in ("page_width", "shout_width", "board_width"):
+        return type(value) is int and value in WIDTHS
     return type(value) is want and (want is not int or value >= 0)
 
 
@@ -2322,6 +2332,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/layout.css":
+            # The owner's page widths for every page (M2): public, tiny, read after style.css.
+            # No file of that name in web/, so both web servers hand it to the hub.
+            with _settings_lock:
+                cur = dict(_settings)
+            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; }\n"
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"])).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css; charset=utf-8")
+            self.send_header("Content-Length", len(body))
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(body)
             return

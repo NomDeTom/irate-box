@@ -18,6 +18,7 @@ run() {
 	[ "$rc" = 0 ] || failed=$((failed + 1))
 }
 run sim_uplink.py
+run sim_widths.py
 run sim_svchistory.py
 run sim_rtc.py
 run sim_tls.py

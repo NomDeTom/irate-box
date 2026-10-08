@@ -3620,3 +3620,24 @@ meshEl.form.addEventListener('submit', (e) => {
 meshEl.longfast.addEventListener('click', () => meshAct({ action: 'add-channel', name: 'LongFast', key: 'AQ==' }));
 window.addEventListener('hashchange', () => { if (location.hash === '#mesh') loadMesh(); });
 if (location.hash === '#mesh') loadMesh();
+
+// ---- Appearance (menu overhaul M2): the page widths, for everyone, read by every page from
+// /layout.css. A choice shows on this page at once; Save keeps it.
+const WIDTHS = [45, 60, 80, 90, 100];
+async function loadAppearance() {
+  const box = document.getElementById('appearance-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
+  box.replaceChildren(AW.settings([
+    row('page_width', 'Hub and admin', 'the tiles, the menu and its pages'),
+    row('shout_width', 'Shoutbox', 'its tab on the hub page'),
+    row('board_width', 'Forum', 'its tab on the hub page'),
+  ], { save: async (changed) => {
+    const now = await postJSON('/admin/settings', changed);
+    document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
+    return now;
+  } }));
+}
+loadAppearance();

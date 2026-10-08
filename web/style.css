@@ -9,15 +9,20 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, sans-serif;
-  max-width: 960px;
+  /* The owner's width (/layout.css, set on /admin; menu overhaul M2), 80rem until it loads. */
+  max-width: var(--page-width, 80rem);
   margin: 0 auto;
   padding: 2rem 1rem 4rem;
 }
 /* One page width everywhere, so the header's corner buttons never move between pages. Text
    stays at reading width; the home tiles and the admin tables use the full width. */
 body:not(.admin):not(.app-frame) > :not(header):not(.services):not(script) {
-  max-width: 720px; margin-left: auto; margin-right: auto;
+  max-width: 45rem; margin-left: auto; margin-right: auto;
 }
+/* The shoutbox and the forum on the home page: widths of their own (M2). */
+body.home > #tab-shout { max-width: var(--shout-width, 45rem); }
+body.home > #tab-board { max-width: var(--board-width, 45rem); }
+body.home > .home-tabs { max-width: max(var(--shout-width, 45rem), var(--board-width, 45rem)); }
 
 header {
   position: relative;
@@ -1233,3 +1238,23 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .aw-field:first-child { border-top: 0; }
 .aw-label { min-width: 10rem; color: var(--muted); }
 .aw-field input[type="text"] { padding: 0.35rem 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; border-radius: 4px; }
+
+/* The admin at a narrow page width (45rem, M2): the sidebar folds into its ☰ button as on a
+   phone, by the page's width rather than the screen's. */
+body.admin { container: page / inline-size; }
+/* A container body no longer lends its background to the whole window (CSS containment), so the
+   root carries it too. */
+html:has(> body.admin) { background: var(--bg); }
+@container page (max-width: 760px) {
+  .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .admin-side { position: relative; top: 0; }
+  .admin-menu {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.55rem 0.8rem;
+    font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer;
+  }
+  .admin-side-list { display: none; margin-top: 0.5rem; padding: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+  .admin-side.open .admin-side-list { display: flex; }
+}
+/* A wide page gives the sidebar a little more room. */
+@container page (min-width: 1200px) { .admin-layout { grid-template-columns: 14rem minmax(0, 1fr); } }

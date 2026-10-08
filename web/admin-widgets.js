@@ -13,9 +13,8 @@
 //   3e a list of records has a limited height and scrolls
 //   3f a list of more than FILTER_AT entries has a filter: a search box and chips of its states
 // And one open at a time in a pane; settings wait for Save (Discard puts them back), jobs act at once.
-'use strict';
-
 const AW = (() => {
+  'use strict';
   const FILTER_AT = 12;   // 3f: more than this many entries get a filter
   const BOUND_AT = 20;    // a short list longer than this scrolls in its own box
 
@@ -236,3 +235,5 @@ const AW = (() => {
 
   return { FILTER_AT, BOUND_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow };
 })();
+// Scripts evaluated one by one (the jsdom tests) see it too.
+if (typeof window !== 'undefined') window.AW = AW;

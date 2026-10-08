@@ -6,7 +6,7 @@ const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
+const js = fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8') + ';\n' + fs.readFileSync(`${WEB}/admin.js`, 'utf8');
 const fixture = fs.readFileSync(process.env.FIX || `${__dirname}/health-fixture.json`, 'utf8');
 const errors = [];
 const vc = new VirtualConsole();
