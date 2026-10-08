@@ -32,3 +32,9 @@ path = "tests/fixtures/**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "config/signing/github-web-flow.asc"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "GitHub, Inc."
+SPDX-License-Identifier = "LicenseRef-GitHub-public-key"

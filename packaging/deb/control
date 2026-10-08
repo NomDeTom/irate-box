@@ -3,7 +3,7 @@ Version: @VERSION@
 Architecture: all
 Maintainer: NomDeTom <NomDeTom@users.noreply.github.com>
 Installed-Size: @SIZE@
-Depends: python3 (>= 3.11), curl, ca-certificates, git, unzip, fcgiwrap, cgit, iw, openssl
+Depends: python3 (>= 3.11), curl, ca-certificates, git, unzip, fcgiwrap, cgit, iw, openssl, gpg
 Recommends: nginx | caddy, kiwix-tools
 Suggests: syncthing, mosquitto, mosquitto-clients, nodejs
 Section: net
