@@ -20,7 +20,8 @@ const posted = [];
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
-const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const dom = new JSDOM(html, { url: 'http://box/admin/#page-app-tools-rf', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window, d = w.document;
 w.fetch = async (u, o = {}) => {
