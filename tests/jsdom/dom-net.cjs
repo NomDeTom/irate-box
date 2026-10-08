@@ -8,7 +8,7 @@ const fs = require('fs');
 const BASE = process.env.BASE || 'http://127.0.0.1:18098';
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8') + ';\n' + fs.readFileSync(`${WEB}/admin.js`, 'utf8');
+const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const errors = [];
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };

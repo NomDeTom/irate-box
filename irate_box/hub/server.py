@@ -2020,6 +2020,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, dict(BOARD.list_threads(), posting=self._posting_view("board")))
             return
 
+        if path == "/admin/apps":
+            # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
+            self.send_json(200, {"apps": manifests.admin_apps(MANIFESTS)})
+            return
+
         if path == "/admin/settings":
             self.send_json(200, settings_snapshot())
             return

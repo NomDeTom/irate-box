@@ -28,6 +28,7 @@ function page(running) {
     return json({}, 404);
   };
   dom.window.eval(fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8'));
+  dom.window.eval(fs.readFileSync(`${WEB}/admin-layout.js`, 'utf8'));
   dom.window.eval(fs.readFileSync(`${WEB}/admin.js`, 'utf8'));
   return { w: dom.window, d: dom.window.document, posted, errors };
 }

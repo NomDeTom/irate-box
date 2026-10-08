@@ -1263,3 +1263,15 @@ html:has(> body.admin) { background: var(--bg); }
    fallback; the loop has the krab and the lights in it. */
 .admin-art .art-loop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .admin-art.looping .art-lamps, .admin-art.looping .art-krab { display: none; }
+
+/* ---- /admin's pages (menu overhaul M4): each holds one or more of the old panes, now its
+   sections. A page of one section keeps that section's own title; a page of several has its own,
+   and its sections' titles step down a size. ---- */
+.admin-main > .admin-page { position: relative; z-index: 1; }
+.admin-page[hidden] { display: none; }
+.admin-page-title { margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+.admin-page.solo > .admin-page-title { display: none; }
+.admin-page:not(.solo) > .admin-pane > h2 { font-size: 1.2rem; margin: 2rem 0 0.75rem; }
+.admin-page:not(.solo) > .admin-pane:first-of-type > h2 { margin-top: 0.5rem; }
+.admin-side-list a .side-icon { width: 1.3em; text-align: center; flex: none; }
+.admin-side-list a[hidden] { display: none; }

@@ -7,51 +7,15 @@ const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1'
 // loads, the operator has already authenticated. Each toggle saves on change; there is
 // no Save button to forget to press.
 
-// --- panes ------------------------------------------------------------------------------
-// One pane at a time, chosen by the sidebar and kept in the address (#updates), so a
-// reload or a bookmark comes back to the same place. Everything keeps loading in the
-// background, so the sidebar's badges stay current whichever pane is open.
-const panes = [...document.querySelectorAll('.admin-pane')];
-const sideLinks = [...document.querySelectorAll('.admin-side-list a')];
-const menu = document.querySelector('.admin-menu');
-const side = document.querySelector('.admin-side');
-
-function showPane() {
-  const pane = panes.find((p) => `#${p.id}` === location.hash) || panes[0];
-  panes.forEach((p) => { p.hidden = p !== pane; });
-  sideLinks.forEach((a) => {
-    if (a.hash === `#${pane.id}`) a.setAttribute('aria-current', 'page');
-    else a.removeAttribute('aria-current');
-  });
-  // Background art by side-bar group (style.css, web/art/): the controller for Box and System,
-  // the librarian for Library and Hub content, the doctor for Health; a pane may have its own
-  // (the workbench for Toolkits, the production line for the Firmware Factory).
-  const link = sideLinks.find((l) => l.hash === `#${pane.id}`);
-  let group = link && link.previousElementSibling;
-  while (group && !group.classList.contains('admin-side-group')) group = group.previousElementSibling;
-  const ART = { Box: 'controller', System: 'controller', Library: 'librarian', 'Hub content': 'librarian', Health: 'doctor' };
-  const PANE_ART = { welcome: 'welcome-controller', toolkits: 'workbench', factory: 'factory' };
-  document.querySelector('.admin-main').dataset.art = PANE_ART[pane.id]
-    || (group && ART[group.textContent.trim()]) || '';
-  const title = pane.querySelector('h2').textContent;
-  document.getElementById('admin-current').textContent = title;
-  document.title = `${title} · Hub admin`;
-  side.classList.remove('open');
-  menu.setAttribute('aria-expanded', 'false');
-  window.scrollTo(0, 0);
-}
-window.addEventListener('hashchange', showPane);
-menu.addEventListener('click', () => {
-  const open = side.classList.toggle('open');
-  menu.setAttribute('aria-expanded', String(open));
-});
-showPane();
-
-// A word beside a sidebar entry: "new", "working", ... or nothing.
-function badge(pane, text) {
-  const a = sideLinks.find((l) => l.hash === `#${pane}`);
-  if (a) { if (text) a.dataset.badge = text; else delete a.dataset.badge; }
-}
+// --- the menu --------------------------------------------------------------------------
+// Built by admin-layout.js (AL) from its table and the apps' manifests (menu overhaul M4): pages
+// holding the sections below, the address naming a section. Everything keeps loading in the
+// background, so the sidebar's badges stay current whichever page is open.
+const showPane = AL.show;
+// A word beside a section's sidebar entry: "new", "working", ... or nothing.
+const badge = AL.badge;
+// Is this section on the page that's showing? (The loaders that wait to be seen.)
+const paneShown = AL.shown;
 
 // Every answer goes in the note right under the control that asked for it.
 const noteEl = (id) => document.getElementById(id);
@@ -1418,8 +1382,8 @@ function renderHealth(data) {
   badge('clock', clockProblems ? String(clockProblems) : '');
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
-  const here = location.hash === '#health' || location.hash === '#clock';
-  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, location.hash === '#clock' ? 'clock-scan' : 'scan'); return; }
+  const here = paneShown('health') || paneShown('clock');
+  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, paneShown('clock') ? 'clock-scan' : 'scan'); return; }
   clearTimeout(hlPoll);
   hlPoll = setTimeout(loadHealth, busy ? 2000 : here ? 15000 : 30000);
 }
@@ -1456,7 +1420,7 @@ function hlFix(fid, action) {
 
 hl.scan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'scan'));
 hl.clockScan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'clock-scan'));
-window.addEventListener('hashchange', () => { if (location.hash === '#health' || location.hash === '#clock') loadHealth(); });
+window.addEventListener('hashchange', () => { if (paneShown('health') || paneShown('clock')) loadHealth(); });
 loadHealth();
 
 // --- network ---------------------------------------------------------------------------
@@ -1864,9 +1828,9 @@ function renderNetwork(data) {
   badge('network', down ? '!' : '');
 
   const stale = !inv || Date.now() / 1000 - inv.at > 60 * 60;
-  if (stale && !busy && !netAsked && location.hash === '#network') { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
+  if (stale && !busy && !netAsked && paneShown('network')) { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
   clearTimeout(netPoll);
-  netPoll = setTimeout(loadNetwork, busy ? 2000 : location.hash === '#network' ? 10000 : 60000);
+  netPoll = setTimeout(loadNetwork, busy ? 2000 : paneShown('network') ? 10000 : 60000);
 }
 
 async function loadNetwork() {
@@ -1898,7 +1862,7 @@ net.save.addEventListener('click', () => {
 });
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
 net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 0 }, 'up'));
-window.addEventListener('hashchange', () => { if (location.hash === '#network') loadNetwork(); });
+window.addEventListener('hashchange', () => { if (paneShown('network')) loadNetwork(); });
 
 // --- the hotspot itself (item 2: root/ap.py, the plan from hub/apmode.py) -----------------------------
 const apEl = { state: document.getElementById('ap-state'), form: document.getElementById('ap-form'), radio: document.getElementById('ap-radio'),
@@ -1965,8 +1929,8 @@ apEl.form.addEventListener('submit', (e) => {
 apEl.radio.addEventListener('change', () => renderAp(apRun || {}));
 apEl.tryB.addEventListener('click', () => apAct({ action: 'try' }));
 apEl.confirmB.addEventListener('click', () => apAct({ action: 'confirm' }));
-window.addEventListener('hashchange', () => { if (location.hash === '#network') loadAp(); });
-if (location.hash === '#network') loadAp();
+window.addEventListener('hashchange', () => { if (paneShown('network')) loadAp(); });
+if (paneShown('network')) loadAp();
 loadNetwork();
 
 // --- the hotspot's own WiFi ----------------------------------------------------------------
@@ -2109,7 +2073,7 @@ kitEl.form.addEventListener('submit', async (e) => {
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#backup') loadKit(); });
+window.addEventListener('hashchange', () => { if (paneShown('backup')) loadKit(); });
 loadKit();
 
 // --- who can open each app --------------------------------------------------------------
@@ -2404,7 +2368,6 @@ loadLocal();
 // line is filled in by the part of this page that already loads its data; the pane shows
 // until the owner finishes it, and Overview's link brings it back.
 const setupList = document.getElementById('setup-steps');
-const welcomeLink = document.getElementById('welcome-link');
 
 function setupStep(step, text, status) {
   const li = setupList.querySelector(`[data-step="${step}"]`);
@@ -2413,7 +2376,7 @@ function setupStep(step, text, status) {
 }
 
 function applySetup(done) {
-  welcomeLink.hidden = done;
+  AL.hide('welcome', done);
   if (!done && !location.hash) location.hash = '#welcome';
 }
 
@@ -2836,8 +2799,8 @@ function renderCi(data) {
   let seen = 0;
   try { seen = Number(localStorage.getItem('irate-ci-seen')) || 0; } catch (_) { /* no storage */ }
   const newBad = data.runs.filter((r) => r.finished && r.finished > seen && r.state !== 'passed').length;
-  if (location.hash === '#git') { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
-  badge('git', location.hash !== '#git' && newBad ? String(newBad) : '');
+  if (paneShown('git')) { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
+  badge('git', !paneShown('git') && newBad ? String(newBad) : '');
   clearTimeout(ciPoll);
   if (data.queued || data.runs.some((r) => r.state === 'running')) ciPoll = setTimeout(loadCi, 5000);
 }
@@ -3228,8 +3191,8 @@ document.getElementById('kits-refresh-all').addEventListener('click', async () =
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
   say('Asked for each kit: the root helper fetches them one after another (minutes each).', true, kitsEl.note);
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); } });
-if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); }
+window.addEventListener('hashchange', () => { if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); } });
+if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); }
 
 // --- the Firmware Factory (factory.py): choose a source, a ref and targets; follow the queue ------
 const fac = {
@@ -3312,7 +3275,7 @@ function renderFactory(d) {
     el('span', { className: 'library-buttons' }, actionButton('Remove', () => facAct({ action: 'unpublish', version: rel.version, env: t.board }))))));
   fac.flasher.replaceChildren(...(pub.length ? pub : [el('p', { className: 'setting-desc', textContent: 'Nothing published yet.' })]));
   clearTimeout(facPoll);
-  if (location.hash === '#factory') facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
+  if (paneShown('factory')) facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
 }
 
 async function loadFactoryRefs() {
@@ -3416,8 +3379,8 @@ fac.form.addEventListener('submit', async (e) => {
     renderFactoryTargets();
   } catch (err) { say(err.message, false, fac.note); }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#factory') loadFactory(); });
-if (location.hash === '#factory') loadFactory();
+window.addEventListener('hashchange', () => { if (paneShown('factory')) loadFactory(); });
+if (paneShown('factory')) loadFactory();
 
 // --- HTTPS (step 15: root/tls.py, /admin/tls) -------------------------------------------------------
 const tlsEl = { state: document.getElementById('tls-state'), make: document.getElementById('tls-make'), sw: document.getElementById('tls-switch'),
@@ -3486,8 +3449,8 @@ tlsEl.again.addEventListener('click', () => {
     tlsAct({ action: 'make', again: true });
   }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#security') loadTls(); });
-if (location.hash === '#security') loadTls();
+window.addEventListener('hashchange', () => { if (paneShown('security')) loadTls(); });
+if (paneShown('security')) loadTls();
 
 // --- accounts (step 16: accounts.py, /admin/accounts) ------------------------------------------------
 const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
@@ -3577,10 +3540,10 @@ acctPosting.addEventListener('change', async (e) => {
     say('Saved.', true, acctEl.note);
   } catch (err) { say(err.message, false, acctEl.note); loadPosting(); }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadPosting(); });
-if (location.hash === '#accounts') loadPosting();
-window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadAccounts(); });
-if (location.hash === '#accounts') loadAccounts();
+window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadPosting(); });
+if (paneShown('accounts')) loadPosting();
+window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadAccounts(); });
+if (paneShown('accounts')) loadAccounts();
 
 // --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
@@ -3605,7 +3568,7 @@ function renderMesh(d) {
     el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} from ${names[p.from] || p.from}${p.channel ? ` on ${p.channel}` : ''}` }),
     p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
   clearTimeout(meshPoll);
-  if (location.hash === '#mesh') meshPoll = setTimeout(loadMesh, 15000);
+  if (paneShown('mesh')) meshPoll = setTimeout(loadMesh, 15000);
 }
 async function meshAct(body) {
   try { await postJSON('/admin/mesh', body); say(body.action === 'add-channel' ? `Added ${body.name}.` : `Removed ${body.name}.`, true, meshEl.note); loadMesh(); }
@@ -3618,8 +3581,8 @@ meshEl.form.addEventListener('submit', (e) => {
   f.key.value = '';
 });
 meshEl.longfast.addEventListener('click', () => meshAct({ action: 'add-channel', name: 'LongFast', key: 'AQ==' }));
-window.addEventListener('hashchange', () => { if (location.hash === '#mesh') loadMesh(); });
-if (location.hash === '#mesh') loadMesh();
+window.addEventListener('hashchange', () => { if (paneShown('mesh')) loadMesh(); });
+if (paneShown('mesh')) loadMesh();
 
 // ---- Appearance (menu overhaul M2): the page widths, for everyone, read by every page from
 // /layout.css. A choice shows on this page at once; Save keeps it.

@@ -12,5 +12,11 @@
     "path": "/git/",
     "name": "Git (cgit, git http-backend)",
     "root_env": "HUB_GIT_ROOT"
+  },
+  "admin": {
+    "sections": [
+      "git",
+      "mirrors"
+    ]
   }
 }

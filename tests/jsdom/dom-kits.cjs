@@ -9,7 +9,7 @@ const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8') + ';\n' + fs.readFileSync(`${WEB}/admin.js`, 'utf8');
+const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);
 const def = (id, title, packages, extra = {}) => Object.assign({ id, title, summary: `${title} tools.`, consent: `${title}: read this first.`,
   packages, notes: [`${title} note`], remove_after_hours: 24 }, extra);
@@ -62,7 +62,8 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
   const card = (title) => [...d.querySelectorAll('#kits-grid .kit-card')].find((c) => t(c.querySelector('h4')) === title);
   const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
-  check('Toolkits sits in Library, after Mirrors', [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#mirrors #toolkits #sources'));
+  check('Toolkits has its page under Box, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
+    return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('Box') && links.indexOf('Toolkits') < links.indexOf('Doctors'); })());
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB; newest fetch \d{4}-\d\d-\d\d\. Cached kits install with no internet\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));

@@ -23,38 +23,8 @@
       <button type="button" class="admin-menu" aria-expanded="false" aria-controls="admin-side-list">
         <span aria-hidden="true">☰</span> <span id="admin-current">Overview</span>
       </button>
-      <div class="admin-side-list" id="admin-side-list">
-        <p class="admin-side-group">Box</p>
-        <a href="#welcome" id="welcome-link">Setup steps</a>
-        <a href="#overview">Overview</a>
-        <a href="#addons">Add-ons</a>
-        <a href="#access">Access</a>
-        <a href="#accounts">Accounts</a>
-        <a href="#clock">Clock</a>
-        <a href="#appearance">Appearance</a>
-        <p class="admin-side-group">Library</p>
-        <a href="#apps">Apps</a>
-        <a href="#books">Books</a>
-        <a href="#firmware">Firmware</a>
-        <a href="#mirrors">Mirrors</a>
-        <a href="#toolkits">Toolkits</a>
-        <a href="#sources">Schedule and token</a>
-        <p class="admin-side-group">Hub content</p>
-        <a href="#saved">Saved work</a>
-        <a href="#moderation">Moderation</a>
-        <a href="#git">Git</a>
-        <a href="#factory">Firmware Factory</a>
-        <a href="#mesh">Mesh</a>
-        <p class="admin-side-group">System</p>
-        <a href="#network">Network</a>
-        <a href="#security">Security</a>
-        <a href="#updates">Updates</a>
-        <a href="#backup">Backup</a>
-        <p class="admin-side-group">Health</p>
-        <a href="#health">Box doctor</a>
-        <a href="#secdoctor">Security doctor</a>
-        <a href="#updoctor">Updates doctor</a>
-      </div>
+      <!-- Filled by admin-layout.js: the groups and pages, from its table and the apps' manifests. -->
+      <div class="admin-side-list" id="admin-side-list"></div>
     </nav>
 
     <main class="admin-main">
@@ -1135,6 +1105,7 @@
   <script src="/krab-loop.js"></script>
   <script src="/heatmap.js"></script>
   <script src="/admin-widgets.js"></script>
+  <script src="/admin-layout.js"></script>
   <script src="/admin.js"></script>
 </body>
 </html>
