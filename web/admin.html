@@ -65,22 +65,13 @@
           and any can be skipped and come back to later: this page stays in the sidebar until you
           finish it, and Overview can bring it back.
         </p>
-        <ol class="setup-steps" id="setup-steps">
-          <li data-step="password"><strong>Admin password</strong> <span>Set.</span>
-            <a href="#access">Change it under Access</a></li>
-          <li data-step="connection"><strong>How guests reach the box</strong> <span></span></li>
-          <li data-step="security"><strong>What the box exposes</strong> <span>Not scanned yet.</span>
-            <a href="#security">Open Security</a></li>
-          <li data-step="addons"><strong>Add-ons</strong> <span></span> <a href="#addons">Choose add-ons</a></li>
-          <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
-          <li data-step="decisions"><strong>Decide what the box shows and counts</strong> <span></span>
-            <p class="setting-desc">Everything that touches the security of the box or the people on it. Each has a default
-              already; the tour takes you to each one where it lives.</p>
-            <div class="library-buttons tour-actions">
-              <button class="action-btn" type="button" id="setup-finish">Hide this setup page</button>
-            </div>
-            <p class="setting-desc">This can be reopened from the Overview page.</p></li>
-        </ol>
+        <!-- One list, every step in the same form (Tom, 2026-10-08): the setup's own steps, the
+             decisions that touch security, and a backup last; the tour walks all of it. Drawn by admin-tour.js. -->
+        <div class="library-buttons tour-actions"></div>
+        <p class="setting-desc" id="setup-left"></p>
+        <ol class="setup-steps" id="setup-steps"></ol>
+        <p class="library-buttons"><button class="action-btn" type="button" id="setup-finish">Hide this setup page</button>
+          <span class="setting-desc">It can be reopened from the Overview page.</span></p>
         <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
       </section>
 
@@ -688,7 +679,7 @@
       </section>
 
       <section class="admin-pane" id="accounts" aria-labelledby="accounts-title">
-        <h2 id="accounts-title">Accounts</h2>
+        <h2 id="accounts-title">Accounts &amp; users</h2>
         <p class="setting-desc">
           Who may have an account on the box. A user logs in at <a href="/account.html">/account.html</a>;
           an admin account can do what this page does. Off, the box has guests and its admin only,
@@ -716,7 +707,9 @@
         <p class="setting-desc" id="accounts-counts"></p>
         <h3>Make an account</h3>
         <form id="accounts-make" class="library-form">
-          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required></label>
+          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"
+            title="3 to 32 characters: letters, digits, dots, dashes or underscores; no spaces">
+            <small class="setting-desc">3 to 32 characters: letters, digits, dots (.), dashes (-) or underscores (_); no spaces.</small></label>
           <label>Role <select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
           <button class="action-btn primary" type="submit">Make it</button>
         </form>
@@ -1212,6 +1205,7 @@
 
   <script src="/krab-loop.js"></script>
   <script src="/heatmap.js"></script>
+  <script src="/emoji.js"></script>
   <script src="/admin-widgets.js"></script>
   <script src="/admin-layout.js"></script>
   <script src="/admin.js"></script>

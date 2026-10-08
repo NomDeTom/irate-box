@@ -141,7 +141,7 @@ check('no page errors', !errors.length, errors.join('; '));
   setTimeout(() => {
     const rd = rw.document;
     // Besides the vocabulary: the menu's own controls (the sidebar, its ☰) and a link drawn as a button.
-    const SHELL = ['admin-menu', 'admin-side-group', 'link-button'];
+    const SHELL = ['admin-menu', 'admin-side-group', 'link-button', 'emoji-toggle'];
     const odd2 = [...rd.querySelectorAll('.admin-main button, .admin-side button')].filter((b) => ![...VOCAB, ...SHELL].some((c) => b.classList.contains(c)));
     const kinds = [...new Set(odd2.map((b) => b.className || '(none)'))];
     check('6a on the real /admin: every button one of the vocabulary', !odd2.length, `${odd2.length}: ${kinds.join(' | ')}`);
