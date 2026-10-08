@@ -3221,14 +3221,19 @@ loadFirmware();
 // Each action is a request for the root helper; the page shows "Working…" until its answer is in.
 const kitsEl = { summary: noteEl('kits-summary'), note: noteEl('kits-note'), grid: noteEl('kits-grid'),
   problems: noteEl('kits-problems'), budget: document.getElementById('kits-budget'),
-  add: document.getElementById('kits-add'), addTitle: noteEl('kits-form-title'), addCancel: document.getElementById('kits-add-cancel') };
+  add: document.getElementById('kits-add'), addTitle: noteEl('kits-form-title'), addCancel: document.getElementById('kits-add-cancel'),
+  custom: document.getElementById('kits-custom') };
+const kitsHome = document.getElementById('kits-custom');  // where the form waits while its card is closed
+const kitsFormNodes = [...kitsHome.childNodes];
+const kitsFormHome = () => { if (!kitsEl.add.isConnected || !kitsHome.contains(kitsEl.add) && !kitsEl.grid.contains(kitsEl.add)) kitsHome.append(...kitsFormNodes); };
+// Its card closed (✕, Esc, another card): the form goes back to wait.
+new MutationObserver(kitsFormHome).observe(kitsEl.grid, { childList: true, subtree: true });
 const REMOVE_AFTER = [[1, 'an hour'], [4, '4 hours'], [24, 'a day'], [168, 'a week'], [720, 'a month'], [null, 'never']];
 const hoursWords = (h) => (REMOVE_AFTER.find(([v]) => v === h) || [h, h == null ? 'never' : `${h} hours`])[1];
 const dayOf = (unix) => (unix ? new Date(unix * 1000).toISOString().slice(0, 10) : '');
 const kitsWaiting = new Set();
 let kitsData = null;
 let kitsPoll = null;
-let kitsOpen = null; // the card whose Install… step is showing
 
 function hoursPicker(value) {
   return el('select', { className: 'kit-hours' }, ...REMOVE_AFTER.map(([v, label]) =>
@@ -3263,89 +3268,112 @@ function renderKits(data) {
   if (!kitsEl.budget.contains(document.activeElement)) kitsEl.budget.elements.budget.value = cfg.budget_mb;
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
     'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
-  kitsEl.grid.replaceChildren(...kits.map((k) => kitCard(k, st, cfg)));
+  // Item 8 (and checklist 3): a card per kit, its details in a drawer inside the card; not redrawn
+  // under an open drawer with changes not saved.
+  const open = kitsEl.grid.querySelector('.aw-card.open');
+  if (!(open && open._dirty && open._dirty())) {
+    const openId = open && open.dataset.awId;
+    kitsHome.append(...kitsFormNodes);
+    kitsEl.grid.replaceChildren(AW.cards([...kits.map((k) => kitItem(k, st, cfg)),
+      { id: 'kit-custom', title: '+ Custom toolkit', summary: 'Packages of your own, kept by the librarian', badges: [] }],
+    { id: 'kits-cards', body: (it, setDirty) => (it.id === 'kit-custom' ? customBody() : kitBody(it.kit, st, cfg, setDirty)),
+      save: (it) => kitSave(it) }));
+    const again = openId && kitsEl.grid.querySelector(`.aw-card[data-aw-id="${openId}"] .aw-card-head`);
+    if (again) again.click();
+  }
   clearTimeout(kitsPoll);
   if (kitsWaiting.size) kitsPoll = setTimeout(loadKits, 3000);
 }
 
-function kitCard(k, st, cfg) {
-  const s = (st.kits || {})[k.id] || {};
-  const c = s.cached;
-  const inst = (st.installed || {})[k.id];
-  const mine = cfg.kits[k.id];
+// A kit's card: its name, what it is for and its state in words (item 8, step 1).
+function kitItem(k, st, cfg) {
+  const s = (st.kits || {})[k.id] || {}, c = s.cached, inst = (st.installed || {})[k.id];
   const left = inst && inst.remove_at ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600)) : null;
   const badges = [
-    c ? [`Cached ${dayOf(c.fetched)}, ${size(c.bytes)}`, 'badge-public'] : ['Not cached', 'badge-push'],
-    s.previous ? ['2 versions', 'badge-push'] : null,
-    k.owner ? ['Yours', 'badge-mirror'] : null,
-    ((kitsData || {}).flag_details || {})[k.id] ? ['Flagged by the doctor', 'badge-push bad'] : null,
-    (k.extra || []).length ? [`+${k.extra.length} extra`, 'badge-mirror'] : null,
-    inst ? [inst.remove_at ? `Installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'Installed, kept', 'badge-private'] : null,
+    c ? `cached ${dayOf(c.fetched)}, ${size(c.bytes)}` : 'not cached',
+    s.previous ? '2 versions' : null,
+    k.owner ? 'yours' : null,
+    ((kitsData || {}).flag_details || {})[k.id] ? 'flagged by the doctor' : null,
+    (k.extra || []).length ? `+${k.extra.length} extra` : null,
+    inst ? (inst.remove_at ? `installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'installed, kept') : null,
   ].filter(Boolean);
-  const body = [];
+  return { id: 'kit-' + k.id, title: k.title, summary: k.summary || '', badges, kit: k };
+}
+// Its drawer (steps 2, 3): settings held until Save (keep current, removed after by default, extra
+// tools); jobs at once (install, remove, keep longer, refresh, roll back, edit, delete), said so.
+const kitDrafts = new Map();
+function kitBody(k, st, cfg, setDirty) {
+  const s = (st.kits || {})[k.id] || {}, c = s.cached, inst = (st.installed || {})[k.id], mine = cfg.kits[k.id];
+  const draft = { keep_current: mine.keep_current, remove_after: mine.remove_after, extra: (k.extra || []).join(' ') };
+  kitDrafts.set(k.id, draft);
+  const jobs = el('div', { className: 'kit-jobs' });
+  const jobRow = (...kids) => el('p', { className: 'library-buttons' }, ...kids);
   if (inst) {
     const keep = hoursPicker(mine.remove_after);
-    body.push(el('p', { className: 'library-buttons' },
-      actionButton('Remove now', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
+    jobs.append(jobRow(actionButton('Remove now', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
       el('span', { className: 'setting-desc', textContent: 'Keep it for ' }), keep,
-      actionButton('Keep longer', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })),
-    inst.upgraded && inst.upgraded.length ? el('p', { className: 'setting-desc', textContent:
-      `Installing it also brought these up to date (they stay when it goes): ${inst.upgraded.join(', ')}.` }) : null);
-  } else if (kitsOpen === k.id) {
-    // The consent step: what the kit can do, and when it goes again.
-    const hours = hoursPicker(mine.remove_after);
-    const flag = ((kitsData || {}).flag_details || {})[k.id];
-    body.push(el('div', { className: 'kit-consent' },
-      el('p', { textContent: k.consent }),
-      flag ? el('p', { className: 'kit-flag', textContent: `The security doctor flags this kit's cache: ${flag} Refresh it first if the box can reach the internet.` }) : null,
-      el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
-        actionButton('Install', () => { kitsOpen = null; kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }); }, { className: 'small' }),
-        actionButton('Cancel', () => { kitsOpen = null; renderKits(kitsData); }, { className: 'small' }))));
+      actionButton('Keep longer', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })));
+    if (inst.upgraded && inst.upgraded.length) jobs.append(el('p', { className: 'setting-desc', textContent:
+      `Installing it also brought these up to date (they stay when it goes): ${inst.upgraded.join(', ')}.` }));
   } else {
-    body.push(el('p', { className: 'library-buttons' },
-      actionButton('Install…', () => { kitsOpen = k.id; renderKits(kitsData); },
+    // Install… first shows the consent step: what the kit can do, and when it goes again.
+    const consent = () => {
+      const hours = hoursPicker(mine.remove_after);
+      const flag = ((kitsData || {}).flag_details || {})[k.id];
+      return el('div', { className: 'kit-consent' }, el('p', { textContent: k.consent }),
+        flag ? el('p', { className: 'kit-flag', textContent: `The security doctor flags this kit's cache: ${flag} Refresh it first if the box can reach the internet.` }) : null,
+        jobRow(el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
+          actionButton('Install', () => kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }), { className: 'small' }),
+          actionButton('Cancel', (e) => e.target.closest('.kit-consent').replaceWith(installRow()), { className: 'small' })));
+    };
+    const installRow = () => jobRow(
+      actionButton('Install…', (e) => e.target.closest('p').replaceWith(consent()),
         { className: 'small', disabled: !c, title: c ? '' : 'Not cached yet: Refresh it while the box has internet.' }),
-      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' })));
+      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' }));
+    jobs.append(installRow());
   }
-  if (k.owner) {
-    body.push(el('p', { className: 'library-buttons' },
-      actionButton('Edit', () => editKit(k, mine), { className: 'small' }),
-      actionButton('Delete', () => {
-        if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id });
-      }, { className: 'small', disabled: !!inst, title: inst ? 'Remove it first' : '' })));
-  }
+  jobs.append(jobRow(
+    actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
+    s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
+      if (confirm(`Go back to ${k.title}'s set fetched ${dayOf(s.previous.fetched)}?${inst ? ' Its installed packages are put back to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
+    }, { className: 'small' }) : null,
+    k.owner ? actionButton('Edit', () => editKit(k, mine), { className: 'small' }) : null,
+    k.owner ? actionButton('Delete', () => { if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id }); },
+      { className: 'small', disabled: !!inst, title: inst ? 'Remove it first' : '' }) : null));
+  const keepBtn = el('button', { type: 'button', className: 'chip-btn' + (draft.keep_current ? ' active' : ''), textContent: `Keep current: ${draft.keep_current ? 'On' : 'Off'}` });
+  keepBtn.setAttribute('aria-pressed', String(draft.keep_current));
+  keepBtn.addEventListener('click', () => { draft.keep_current = !draft.keep_current; keepBtn.classList.toggle('active', draft.keep_current);
+    keepBtn.setAttribute('aria-pressed', String(draft.keep_current)); keepBtn.textContent = `Keep current: ${draft.keep_current ? 'On' : 'Off'}`; setDirty(); });
   const def = hoursPicker(mine.remove_after);
-  def.addEventListener('change', () => kitAct({ action: 'settings', kits: { [k.id]: { remove_after: pickedHours(def) } } }));
-  const details = el('details', { className: 'kit-details' }, el('summary', { textContent: 'Details' }),
+  def.addEventListener('change', () => { draft.remove_after = pickedHours(def); setDirty(); });
+  const extra = k.owner ? null : el('input', { className: 'kit-extra', value: draft.extra, placeholder: 'e.g. ltrace gdbserver' });
+  if (extra) extra.addEventListener('input', () => { draft.extra = extra.value; setDirty(); });
+  const field = (label, ...kids) => el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: label }), ...kids);
+  return [
+    el('p', { className: 'setting-desc', textContent: 'Jobs, at once:' }), jobs,
+    field('Keep current', keepBtn, el('span', { className: 'setting-desc', textContent: 'the library refreshes it on its schedule' })),
+    field('Removed after, by default', def),
+    extra ? field('Extra tools', extra) : null,
     el('ul', { className: 'kit-notes' }, ...(k.notes || []).map((n) => el('li', { textContent: n }))),
-    c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` +
-      Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ') +
-      (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
-    k.owner ? null : extraTools(k),
+    c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` + Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ')
+      + (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
     c && c.left_out && c.left_out.length ? el('p', { className: 'setting-desc', textContent: `Left out on this ${c.arch || ''} board, as they need a 64-bit one: ${c.left_out.join(', ')}.` }) : null,
     (k.git || []).length ? el('p', { className: 'setting-desc', textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, '')}, a mirror)`).join(', ')}.` }) : null,
-    el('p', { className: 'library-buttons' },
-      actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
-      s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
-        if (confirm(`Go back to ${k.title}'s set fetched ${dayOf(s.previous.fetched)}?${inst ? ' Its installed packages are put back to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
-      }, { className: 'small' }) : null),
-    el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Removed after, by default: ' }), def));
-  const keepCurrent = el('input', { type: 'checkbox', checked: mine.keep_current,
-    onchange: (e) => kitAct({ action: 'settings', kits: { [k.id]: { keep_current: e.target.checked } } }) });
-  return el('div', { className: `git-card kit-card${inst ? ' open' : ''}` },
-    el('h4', { textContent: k.title }),
-    el('p', { className: 'badges' }, ...badges.map(([text, cls]) => el('span', { className: `badge ${cls}`, textContent: text }))),
-    el('p', { className: 'git-about', textContent: k.summary }),
-    ...body,
-    el('label', { className: 'inline setting-desc' }, keepCurrent, ' Keep current (the library refreshes it on its schedule)'),
-    details);
+  ];
 }
-
-// Extra tools tracked in a shipped kit (Tom, 2026-10-06: "the toolkit may want an extra tool").
-function extraTools(k) {
-  const input = el('input', { className: 'kit-extra', value: (k.extra || []).join(' '), placeholder: 'e.g. ltrace gdbserver' });
-  return el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Extra tools: ' }), input,
-    actionButton('Save', () => kitAct({ action: 'extra', kit: k.id, packages: input.value.trim().split(/[\s,]+/).filter(Boolean) }), { className: 'small' }));
+async function kitSave(it) {
+  const k = it.kit, d = kitDrafts.get(k.id), mine = kitsData.settings.kits[k.id];
+  const ch = {};
+  if (d.keep_current !== mine.keep_current) ch.keep_current = d.keep_current;
+  if (d.remove_after !== mine.remove_after) ch.remove_after = d.remove_after;
+  const extra = d.extra.trim().split(/[\s,]+/).filter(Boolean);
+  if (Object.keys(ch).length) await kitAct({ action: 'settings', kits: { [k.id]: ch } });
+  if (!k.owner && extra.join(' ') !== (k.extra || []).join(' ')) await kitAct({ action: 'extra', kit: k.id, packages: extra });
+}
+// The "+ Custom toolkit" card (step 4): the form, moved into its drawer while it is open.
+function customBody() {
+  const box = el('div', { className: 'kit-custom' }, ...kitsFormNodes);
+  return [box];
 }
 
 function editKit(k, mine) {
@@ -3355,6 +3383,9 @@ function editKit(k, mine) {
   kitsEl.addTitle.textContent = `Change ${k.title}`;
   kitsEl.addCancel.hidden = false;
   kitsEl.add.querySelector('button[type=submit]').textContent = 'Save toolkit';
+  // In the custom card's drawer: open it if it isn't.
+  const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
+  if (card && !card.classList.contains('open')) card.querySelector('.aw-card-head').click();
   kitsEl.add.scrollIntoView?.({ block: 'center' });
 }
 function resetKitForm() {

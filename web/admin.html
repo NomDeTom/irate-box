@@ -431,7 +431,10 @@
         <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Look for USB sticks</button></p>
         <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
         <div id="kits-usb"></div>
-        <h3 id="kits-form-title">Add a toolkit of your own</h3>
+        <!-- The form for a toolkit of your own: opened in the "+ Custom toolkit" card (item 8), kept here
+             while that card is closed. -->
+        <div id="kits-custom" hidden>
+        <h4 id="kits-form-title">Add a toolkit of your own</h4>
         <p class="setting-desc">
           Any Debian packages this box's package lists know, kept, refreshed and removed like the
           kits above. Each name is checked before the kit is kept.
@@ -445,6 +448,7 @@
           <button class="action-btn primary" type="submit">Add toolkit</button>
           <button class="action-btn" type="button" id="kits-add-cancel" hidden>Cancel</button>
         </form>
+        </div>
       </section>
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
