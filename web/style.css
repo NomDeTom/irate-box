@@ -1354,3 +1354,6 @@ html:has(> body.admin) { background: var(--bg); }
 /* A one-time code beside its account, to copy. */
 .code-copy { display: inline-flex; align-items: center; gap: 0.3rem; }
 .code-box { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.2rem 0.4rem; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--text); border-radius: 4px; }
+/* A locked tile as its owner chose (Tom, 2026-10-08): a padlock that does nothing, or greyed out. */
+.service-card.padlock { cursor: not-allowed; }
+.service-card.greyed { opacity: 0.4; filter: grayscale(1); cursor: default; }

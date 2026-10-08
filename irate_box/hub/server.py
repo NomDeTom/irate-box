@@ -318,6 +318,28 @@ def save_visibility(data):
     os.replace(tmp, VISIBILITY_FILE)
 
 
+# What a tile does for a visitor who sees it but may not open it (Tom, 2026-10-08): offer the
+# sign-in page, offer sign-up (while accounts are open or by application), a padlock that does
+# nothing, or greyed out. Per app; sign-in unless chosen.
+LOCKED_AS_FILE = STATE_DIR / "locked_as.json"
+LOCKED_AS = ("signin", "signup", "padlock", "grey")
+
+
+def locked_as():
+    try:
+        data = json.loads(LOCKED_AS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and v in LOCKED_AS} if isinstance(data, dict) else {}
+
+
+def save_locked_as(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = LOCKED_AS_FILE.parent / (LOCKED_AS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, LOCKED_AS_FILE)
+
+
 def _switched():
     """The apps with a switch: the built-ins the web server gates, and the local add-ons."""
     return set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
@@ -404,6 +426,8 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
         hidden = set(hidden) | set(st["hidden"])
     own_icons = {}
+    lock_ways, access_state = locked_as(), access.read(ACCESS_STATE)
+    sign_up_open = accounts.settings()["signup"] in ("open", "apply")
     if row == "apps":
         st = tiles_state()
         own_icons = st["icon"]
@@ -422,24 +446,39 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
             w = WIDGET_HTML[tile["widget"]]
             out.append(w.replace('class="service-card ', f'class="service-card {size} ', 1).replace('<div ', f'<div data-size="{size}" ', 1) if size else w)
             continue
-        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"']
+        # A locked tile (seen, not to be opened by this visitor): as the owner chose for it.
+        how = (lock_ways.get(m["id"], "signin") if m["id"] in locked else None)
+        if how == "signup" and not (sign_up_open and access.mode_of(access_state, m["id"]) == "users"):
+            how = "signin"  # no sign-up to offer, or an app for the admin only
+        dead = how in ("padlock", "grey")
+        attrs = [f'class="service-card{" locked" if how else ""}{" greyed" if how == "grey" else ""}{" padlock" if how == "padlock" else ""}'
+                 f'{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"']
         if size:
             attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
             attrs.append(f'id="{html.escape(tile["element_id"])}"')
-        attrs.append(f'href="{html.escape(tile["href"])}"')
+        if dead:
+            attrs.append('aria-disabled="true"')
+        elif how == "signup":
+            attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}#signup"')
+        elif how == "signin" and access.mode_of(access_state, m["id"]) == "users":
+            attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}"')
+        else:
+            attrs.append(f'href="{html.escape(tile["href"])}"')
         path = m.get("status", {}).get("path")
         if path:
             attrs.append(f'data-service="{html.escape(path)}"')
-        if tile.get("new_tab"):
+        if tile.get("new_tab") and not dead:
             attrs.append('target="_blank"')
-        out.append(f'      <a {" ".join(attrs)}>\n'
+        tag = "div" if dead else "a"
+        lock = {"signin": "🔒 sign in to open", "signup": "🔒 sign up to open", "padlock": "🔒"}.get(how)
+        out.append(f'      <{tag} {" ".join(attrs)}>\n'
                    + icon_html(own_icons.get(m["id"]) or tile["icon"])
                    + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
                    f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
-                   + ('        <span class="lock">🔒 sign in to open</span>\n' if m["id"] in locked else '')
+                   + (f'        <span class="lock">{lock}</span>\n' if lock else '')
                    + ('        <span class="tile-pill admin-pill" title="Only an admin sees this tile">admin only</span>\n' if m["id"] in admin_only else '')
-                   + f'      </a>')
+                   + f'      </{tag}>')
     return "\n".join(out)
 
 
@@ -660,7 +699,7 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE):
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
@@ -2799,6 +2838,7 @@ class Handler(BaseHTTPRequestHandler):
                                           for a in access.apps(MANIFESTS)],
                                  "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
                                  "seen": {i: vis.get(i, "auto") for i in sorted(seen_only())},
+                                 "locked_as": locked_as(),
                                  "results": control_results()})
             return
 
@@ -3473,6 +3513,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
             save_folders(data)
             self.send_json(200, folders_snapshot())
+            return
+
+        if path == "/admin/visibility" and "locked" in payload:
+            # What its tile does for one who sees it but may not open it (Tom, 2026-10-08).
+            app, how = str(payload.get("app", "")), payload.get("locked")
+            if app not in _switched() or how not in LOCKED_AS:
+                self.send_json(400, {"error": "app must name an app with a switch, and locked be signin, signup, padlock or grey"})
+                return
+            data = locked_as()
+            if how == "signin":
+                data.pop(app, None)
+            else:
+                data[app] = how
+            save_locked_as(data)
+            self.send_json(200, {"locked_as": data})
             return
 
         if path == "/admin/visibility":
