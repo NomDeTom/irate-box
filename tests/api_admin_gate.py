@@ -80,6 +80,12 @@ try:
     (ctl / "security.json").unlink()
     check("  no scan at all: finished", go("POST", "/admin/settings", same, b'{"setup_done": false}') == 200)
 
+    # The security doctor asks the same of the running hub (stance review §2: probes, not code markers).
+    sys.path.insert(0, str(REPO))
+    from irate_box.root import secdoctor
+    secdoctor._hub_port = lambda: port
+    check("the doctor's F2 probe: this hub drains an unread body", secdoctor.probe_drains() is True)
+    check("the doctor's F15 probe: this hub refuses a 300 KB JSON body and stays usable", secdoctor.probe_json_cap() is True)
     # F15: the hub reads no JSON over 256 KB; the connection stays usable after.
     big = b'{"x": "' + b"y" * (300 * 1024) + b'"}'
     check("a JSON body over 256 KB: 413", go("POST", "/messages", {"Content-Type": "application/json"}, big) == 413)
