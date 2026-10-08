@@ -625,6 +625,12 @@ def step_front(ctx):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
                          f"The route exists in the front with no auth_basic/auth_request.", "Put it behind the admin login.", "S1"))
+    # N11 (stance review 2026-10-08): a baseline CSP on the hub's own origin, where /admin lives.
+    csp = [d for s, d in directives if d.startswith("add_header Content-Security-Policy") and s and s[0] == "server"]
+    out.append(F("front-csp", "A Content-Security-Policy on the hub's origin", "ok" if csp else "warn",
+                 "Set server-wide (no plugins, no <base> hijack, framed by this origin alone)." if csp else
+                 "None on the hub's origin: a script that gets in (a bug in a bundled editor) has the browser's whole toolbox.",
+                 "" if csp else "add_header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\" always; (irate-box.nginx)", "S4"))
     return out
 
 
