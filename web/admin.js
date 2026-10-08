@@ -2683,16 +2683,16 @@ loadUsb();
 const git = {
   usage: noteEl('git-usage'), note: noteEl('git-note'),
   form: document.getElementById('git-create'), createNote: noteEl('git-create-note'),
-  grid: noteEl('git-grid'), side: noteEl('git-side'), search: document.getElementById('git-search'),
-  chipsKind: noteEl('git-chips-kind'), chipsArea: noteEl('git-chips-area'), manageAs: document.getElementById('git-manage-as'),
+  grid: noteEl('git-grid'), search: document.getElementById('git-search'),
+  chipsKind: noteEl('git-chips-kind'), chipsArea: noteEl('git-chips-area'),
   mirrors: noteEl('git-mirrors'), mirrorForm: document.getElementById('git-mirror-add'), mirrorNote: noteEl('git-mirror-note'),
 };
 const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 // The Git page as cards (git-ci-plan §1, Kiwix's library as the model): a filter bar, a card per
-// repository with its badges in words, and Manage, opening under the card or beside the grid.
+// repository with its badges in words, and Manage, opening under its card (checklist 3a: the
+// side panel beside the grid went, F7).
 let gitData = null;
 const gitView = { kind: 'all', area: 'all', q: '', open: null };
-try { git.manageAs.value = localStorage.getItem('irate-git-manage-as') || 'drawer'; } catch (_) { /* no storage */ }
 const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'the admin pushes', nobody: 'read-only' };
 const builds = (r) => r.can_build && r.build && r.has_script;
 const repoKey = (r) => `${r.area}/${r.name}`;
@@ -2733,19 +2733,14 @@ function renderGit(data) {
   const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
   const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
   const list = shown.filter((r) => kindTest(r) && areaTest(r) && (!q || r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)));
-  const side = git.manageAs.value === 'side';
   const cards = [newCard()];
   for (const r of list) {
     cards.push(repoCard(r, data));
-    if (!side && gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
+    if (gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
   }
-  if (!side && gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
+  if (gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
   if (!list.length) cards.push(el('p', { className: 'setting-desc', textContent: shown.length ? 'Nothing matches.' : 'No repositories yet.' }));
   git.grid.replaceChildren(...cards);
-  const openRepo = shown.find((r) => repoKey(r) === gitView.open);
-  git.side.hidden = !(side && (openRepo || gitView.open === 'new'));
-  git.side.replaceChildren(...(git.side.hidden ? [] : [openRepo ? managePanel(openRepo, data, 'git-sidepanel') : newPanel('git-sidepanel')]));
-  document.getElementById('git-layout').classList.toggle('with-side', !git.side.hidden);
 }
 
 function newCard() {
@@ -2874,10 +2869,6 @@ function managePanel(r, data, cls) {
 }
 
 git.search.addEventListener('input', () => { gitView.q = git.search.value.trim(); if (gitData) renderGit(gitData); });
-git.manageAs.addEventListener('change', () => {
-  try { localStorage.setItem('irate-git-manage-as', git.manageAs.value); } catch (_) { /* no storage */ }
-  if (gitData) renderGit(gitData);
-});
 
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {

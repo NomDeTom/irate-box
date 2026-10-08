@@ -1077,8 +1077,6 @@ body.drop > section + section { margin-top: 2.5rem; }
 .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .git-manage-as { font-size: 0.82rem; color: var(--muted); margin-left: auto; }
 .git-layout { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
-.git-layout.with-side { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); align-items: start; }
-@media (max-width: 900px) { .git-layout.with-side { grid-template-columns: 1fr; } }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.75rem; }
 .git-card { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.75rem 0.9rem; min-width: 0;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); text-align: left; color: var(--text); }
@@ -1104,7 +1102,6 @@ body.drop > section + section { margin-top: 2.5rem; }
 .git-manage { padding: 0.75rem 1rem; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--bg);
   display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
 .git-drawer { grid-column: 1 / -1; }
-.git-sidepanel { position: sticky; top: 0.75rem; max-height: calc(100vh - 1.5rem); overflow-y: auto; }
 .git-manage-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .git-manage section { border-top: 1px solid var(--border); padding-top: 0.5rem; }
 .git-manage h4 { margin: 0 0 0.25rem; font-size: 0.95rem; }
