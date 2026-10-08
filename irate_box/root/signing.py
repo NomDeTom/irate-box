@@ -92,26 +92,79 @@ def newest_tag(src):
     return tags[0] if tags else None
 
 
+def _dearmor(text):
+    """An ASCII-armoured OpenPGP block as the binary keyring gpgv reads: the base64 between the
+    headers' blank line and the checksum line."""
+    import base64
+    body, started = [], False
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("-----BEGIN"):
+            started, past_headers = True, False
+            continue
+        if line.startswith("-----END"):
+            break
+        if not started:
+            continue
+        if not past_headers:
+            if line == "":
+                past_headers = True
+            elif ":" not in line:
+                past_headers = True
+                body.append(line)
+            continue
+        if line.startswith("="):
+            continue
+        body.append(line)
+    return base64.b64decode("".join(body))
+
+
+def _split_commit(raw):
+    """(signature, signed payload) of a raw commit object, or (None, raw) when it carries none."""
+    lines = raw.split(b"\n")
+    out, sig, i = [], [], 0
+    while i < len(lines) and lines[i] != b"":
+        if lines[i].startswith(b"gpgsig ") or lines[i].startswith(b"gpgsig-sha256 "):
+            sig.append(lines[i].split(b" ", 1)[1])
+            i += 1
+            while i < len(lines) and lines[i].startswith(b" "):
+                sig.append(lines[i][1:])
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    out += lines[i:]
+    return (b"\n".join(sig) + b"\n" if sig else None), b"\n".join(out)
+
+
 def check_commits(src, revs, key_file):
-    """(ok, detail): each of revs carries a good signature by the key in key_file (GitHub's)."""
-    if not shutil.which("gpg"):
-        return False, "gpg is not installed, so GitHub's signatures cannot be read: install the gpg package"
+    """(ok, detail): each of revs carries a good signature by the key in key_file (GitHub's).
+    Read with gpgv, the verify-only tool apt itself uses: no agent, no keyring of root's touched."""
+    if not shutil.which("gpgv"):
+        return False, "gpgv is not installed, so GitHub's signatures cannot be read"
     if not Path(key_file).is_file():
         return False, f"GitHub's key is not in the installed code ({key_file})"
     if not revs:
         return True, "nothing new to check"
-    with tempfile.TemporaryDirectory() as home:
-        os.chmod(home, 0o700)
-        env = dict(os.environ, GNUPGHOME=home)
-        imp = subprocess.run(["gpg", "--batch", "--quiet", "--import", str(key_file)], capture_output=True, text=True, env=env, timeout=60)
-        if imp.returncode != 0:
-            return False, "GitHub's key could not be read: " + (imp.stderr.strip().splitlines() or ["?"])[-1]
+    try:
+        keyring = _dearmor(Path(key_file).read_text())
+    except (OSError, ValueError) as exc:
+        return False, f"GitHub's key could not be read: {exc}"
+    with tempfile.TemporaryDirectory() as tmp:
+        ring = Path(tmp) / "github.gpg"
+        ring.write_bytes(keyring)
         for rev in revs:
-            out = _git(src, "verify-commit", "--raw", rev, env=env)
-            if out.returncode != 0 or "[GNUPG:] VALIDSIG" not in out.stderr:
-                short = rev[:7]
-                why = "not signed" if "[GNUPG:]" not in out.stderr else "not signed by GitHub's key"
-                return False, f"{short} is {why}: pushed straight to the branch, not merged on GitHub"
+            raw = subprocess.run(["git", "-C", str(src), "cat-file", "commit", rev], capture_output=True, timeout=60).stdout
+            sig, payload = _split_commit(raw)
+            short = rev[:7]
+            if not sig:
+                return False, f"{short} is not signed: pushed straight to the branch, not merged on GitHub"
+            (Path(tmp) / "sig").write_bytes(sig)
+            (Path(tmp) / "payload").write_bytes(payload)
+            out = subprocess.run(["gpgv", "--status-fd", "1", "--keyring", str(ring), str(Path(tmp) / "sig"), str(Path(tmp) / "payload")],
+                                 capture_output=True, text=True, timeout=60, env=dict(os.environ, GNUPGHOME=tmp))
+            if out.returncode != 0 or "[GNUPG:] VALIDSIG" not in out.stdout:
+                return False, f"{short} is not signed by GitHub's key: not merged on GitHub"
     return True, f"{len(revs)} commit{'s' if len(revs) != 1 else ''} signed by GitHub"
 
 

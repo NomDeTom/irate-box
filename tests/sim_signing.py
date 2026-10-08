@@ -109,8 +109,8 @@ hub_control.update_signing({"level": "off", "signers": ""})
 check("off: no signature check", hub_control._signature_check(src, None) == [])
 
 # --- merged on GitHub: GitHub's key, a key of our own standing in for it ---
-if not shutil.which("gpg"):
-    print("SKIP GitHub's level: gpg is not installed here (CI's runner has it)")
+if not (shutil.which("gpg") and shutil.which("gpgv")):
+    print("SKIP GitHub's level: gpg or gpgv is not installed here (CI's runner has both)")
 else:
     home = T / "gnupg"
     home.mkdir(mode=0o700)
