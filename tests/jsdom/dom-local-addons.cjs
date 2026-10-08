@@ -62,7 +62,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('Accept posts it, agreed', acc && acc[1].id === 'eliza' && acc[1].agree === true, JSON.stringify(acc));
   asked.length = 0;
   check('added: ELIZA, installed at the pinned commit', /ELIZA/.test(added.textContent) && /Installed: 4ac38e6 \(the pinned commit\)/.test(added.textContent), added.textContent);
-  check('added: its access switch in its row', added.querySelectorAll('.access-toggle button').length === 3);
+  check('added: its access block in its row, four chips for who opens it (users only where it can)', added.querySelectorAll('.access-set .access-field')[0].querySelectorAll('.chip').length === 4);
   check('added: Open and Remove', [...added.querySelectorAll('a, button')].some((b) => b.textContent === 'Open') && [...added.querySelectorAll('button')].some((b) => b.textContent === 'Remove'));
   const cat = d.getElementById('local-catalogue');
   check('catalogue: only what is not added', /MQTT explorer/.test(cat.textContent) && !/ELIZA/.test(cat.textContent), cat.textContent);

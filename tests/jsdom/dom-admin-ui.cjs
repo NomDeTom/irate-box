@@ -112,24 +112,34 @@ setTimeout(() => {
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
   const pageOf = (id) => d.getElementById(id).closest('.admin-page');
   // M6: each app's page starts with who opens it and who sees it, then its own sections (4f).
+  // The access block as the mock has it (Tom, 2026-10-08): four chips for who opens it, four for who
+  // sees the tile, ↑ Earlier / ↓ Later, held until Save.
+  const rowOf = (root, label) => [...root.querySelectorAll('.access-field')].find((f) => f.querySelector('.aw-label').textContent === label);
+  const chipsOf = (root, label) => { const r = root && rowOf(root, label); return r ? [...r.querySelectorAll('.chip')] : []; };
+  const picked = (root, label) => (chipsOf(root, label).find((c) => c.getAttribute('aria-pressed') === 'true') || {}).textContent;
   const kiwix = d.getElementById('page-app-wiki');
   check('an app\'s page starts with its access, then its sections', kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-wiki books',
     kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' '));
-  check('  its access block filled from /admin/access: who opens it, who sees its tile', kiwix && !!kiwix.querySelector('.access-block .access-toggle [aria-checked="true"]') && !!kiwix.querySelector('.access-block .access-seen .chip.selected'));
+  check('  its access block: four chips each for who opens it and who sees it, Kiwix (private) at admin', kiwix
+    && chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
+    && chipsOf(kiwix, 'Who sees the tile').map((c) => c.textContent).join('|') === 'guests|users|admin|hidden'
+    && picked(kiwix, 'Who can open it') === 'admin' && picked(kiwix, 'Who sees the tile') === 'admin', kiwix && t('#app-access-wiki')[0]);
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
   // F3: a tile with no switch (About, the folders) has who sees it, and nothing else of access.
   check('About\'s page holds only who sees its tile', !!d.querySelector('#page-app-about #app-access-about')
-    && /Who sees it/.test(t('#app-access-about h2')[0]) && !d.querySelector('#page-app-about .access-toggle'));
+    && /Who sees it/.test(t('#app-access-about h2')[0]) && !rowOf(d.getElementById('app-access-about'), 'Who can open it'));
   check('a folder\'s page starts with who sees it, then what\'s in it', [...d.querySelectorAll('#page-app-tools-rf > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-tools-rf folder-tools-rf');
   check('apps with a switch and no tile have a page: Serial, the calculators\' site, Syncthing', ['serial', 'tools', 'sync'].every((i) => d.querySelector(`#page-app-${i} .access-block`)));
   {
     // F3: the seen-only chips, and the tiles' order held until Save.
-    const chips = [...d.querySelectorAll('#app-access-about .access-seen .chip')];
-    check('About: "Tile shown to" everyone (the default), as chips', chips.map((c) => c.textContent).join('|') === 'everyone|those logged in|nobody'
-      && chips[0].getAttribute('aria-pressed') === 'true', chips.map((c) => c.textContent).join('|'));
-    chips[2].click();
-    const folderChips = [...d.querySelectorAll('#app-access-tools-rf .access-seen .chip')];
-    check('a hidden folder says so', folderChips[2] && folderChips[2].getAttribute('aria-pressed') === 'true' && /address still works/.test(t('#app-access-tools-rf .access-block')[0]));
+    const about = d.getElementById('app-access-about');
+    check('About: who sees the tile, guests (the default) of four chips', picked(about, 'Who sees the tile') === 'guests');
+    check('  and its place on the hub, earlier or later', !!rowOf(about, 'Order on the hub') && /2 of 2/.test(rowOf(about, 'Order on the hub').textContent));
+    chipsOf(about, 'Who sees the tile')[3].click();
+    check('  a choice waits for Save', picked(d.getElementById('app-access-about'), 'Who sees the tile') === 'hidden'
+      && !posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about'));
+    [...d.querySelectorAll('#app-access-about button')].find((b) => b.textContent === 'Save').click();
+    check('a hidden folder says so', picked(d.getElementById('app-access-tools-rf'), 'Who sees the tile') === 'hidden' && /No tile/.test(t('#app-access-tools-rf .access-block')[0]));
     const rows = [...d.querySelectorAll('#tile-order-list .aw-row')];
     check('the tiles in order, each saying who opens it and who sees it', rows.length === 2 && /opens: everyone · seen: as its access/.test(rows[0].textContent)
       && /opens: everyone · seen: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
@@ -165,10 +175,10 @@ setTimeout(() => {
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
   const built = t('#builtin-list .setting-name');
-  check('built-in parts listed with a switch each', built.join('|') === 'File drop|Kiwix|Git' && d.querySelectorAll('#builtin-list .access-toggle').length === 3, built);
+  check('built-in parts listed with the access block each', built.join('|') === 'File drop|Kiwix|Git' && d.querySelectorAll('#builtin-list .access-set').length === 3, built);
   const on = (id) => [...d.querySelectorAll(`#${id} [aria-checked="true"]`)].map((b) => b.textContent);
   const notes = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Notes'));
-  check('the Notes add-on carries its switch, set to off', notes && notes.querySelector('.access-toggle [aria-checked="true"]').textContent.includes('Off'));
+  check('the Notes add-on carries its block, set to off', notes && picked(notes, 'Who can open it') === 'off');
   const term = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Terminal'));
   check('Terminal public still says it asks for the login', term && term.textContent.includes('still asks for the admin login'));
   const main = d.querySelector('.admin-main');
@@ -265,10 +275,25 @@ setTimeout(() => {
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   force.click();
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
-  [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
+  {
+    // The tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits.
+    const field = rowOf(d.getElementById('app-access-about'), 'Tile icon');
+    const inp = field && field.querySelector('input');
+    check('a tile icon field, the app\'s own as its placeholder', inp && inp.placeholder === 'ℹ️', inp && inp.placeholder);
+    inp.value = 'TOOLONG'; inp.dispatchEvent(new w.Event('change'));
+    const save = () => [...d.querySelectorAll('#app-access-about button')].find((b) => b.textContent === 'Save');
+    check('  five letters refused before Save', save().disabled && /up to four letters/.test(t('#app-access-about')[0]));
+    const inp2 = rowOf(d.getElementById('app-access-about'), 'Tile icon').querySelector('input');
+    inp2.value = 'INFO'; inp2.dispatchEvent(new w.Event('change'));
+    check('  four letters taken, Save offered', !save().disabled);
+    save().click();
+  }
+  chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
+  [...[...d.querySelectorAll('#builtin-list .library-source')][0].querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   setTimeout(() => {
+    check('the icon saved with the tiles\' state', posted.some((p) => p[0] === '/admin/tiles' && p[1].state.icon && p[1].state.icon.about === 'INFO'), JSON.stringify(posted.filter((p) => p[0] === '/admin/tiles')));
     check('About hidden asks the hub', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about' && p[1].visible === 'hidden'));
-    check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' } } }),
+    check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' }, icon: {} } }),
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));

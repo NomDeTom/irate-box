@@ -106,6 +106,36 @@ try:
     check("/admin/tiles says it", json.loads(go("GET", "/admin/tiles")[1])["state"]["order"] == ["about", "draw"])
     st, _ = go("POST", "/admin/tiles", {"state": {"order": ["about", "nonsense"]}})
     check("refused: an order naming no tile", st == 400, st)
+    # The admin level (Tom, 2026-10-08: the mock's four chips): a tile only an admin account sees.
+    def visit(path, cookie="", body=None, account=False):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        h = {"Host": f"127.0.0.1:{port}", "Content-Type": "application/json", "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+        if cookie:
+            h["Cookie"] = cookie
+        if account:
+            h["X-Irate-Account"] = "1"
+        c.request("POST" if body is not None else "GET", path, body=json.dumps(body).encode() if body is not None else None, headers=h)
+        r = c.getresponse(); raw = r.read().decode()
+        return raw, (r.getheader("Set-Cookie") or "").split(";")[0]
+    go("POST", "/admin/accounts", {"action": "settings", "signup": "open"})
+    jar = {}
+    for name, role in (("ada", "admin"), ("bea", "user")):
+        _, body = go("POST", "/admin/accounts", {"action": "make", "name": name, "role": role})
+        visit("/api/account", body={"action": "code", "code": json.loads(body)["code"], "password": "correct horse " + name}, account=True)
+        _, jar[name] = visit("/api/account", body={"action": "login", "name": name, "password": "correct horse " + name}, account=True)
+    st, _ = go("POST", "/admin/visibility", {"app": "draw", "visible": "admin"})
+    check("visible admin taken", st == 200, st)
+    check("admin: no tile for a guest", tile(visit("/")[0], "Excalidraw") is None)
+    check("admin: no tile for a user", jar["bea"] and tile(visit("/", jar["bea"])[0], "Excalidraw") is None)
+    check("admin: the tile for an admin account", jar["ada"] and tile(visit("/", jar["ada"])[0], "Excalidraw") is not None, jar)
+    t = tile(visit("/", jar["ada"])[0], "Excalidraw") or ""
+    check("admin: the admin's tile carries its pill", "admin-pill" in t and "admin-only" in t, t)
+    t = tile(visit("/", jar["ada"])[0], "Notes") or ""
+    check("  a tile others see too has none", t and "admin-pill" not in t, t)
+    go("POST", "/admin/visibility", {"app": "draw", "visible": "auto"})
+    go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
+    check("auto, private: no tile for a user, the tile for an admin account", tile(visit("/", jar["bea"])[0], "Git") is None
+          and tile(visit("/", jar["ada"])[0], "Git") is not None)
     st, body = go("GET", "/menus.json")
     check("/menus.json still answers", st == 200 and "tools-general" in json.loads(body), body[:120])
 finally:
