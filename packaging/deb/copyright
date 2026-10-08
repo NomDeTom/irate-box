@@ -8,3 +8,9 @@ Files: *
 Copyright: 2026 NomDeTom
 License: AGPL-3.0-or-later and GPL-3.0-or-later and MIT and CC-BY-SA-4.0
  See /usr/share/irate-box/src/LICENSES/ and each file's SPDX lines.
+
+Files: web/emoji-data.js
+Copyright: 1991-2025 Unicode, Inc.
+License: Unicode-3.0
+ Made from Unicode's emoji-test.txt by tools/make-emoji-data.cjs. See
+ /usr/share/irate-box/src/LICENSES/Unicode-3.0.txt.
