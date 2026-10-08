@@ -2404,8 +2404,7 @@ function accessBlock(id, a, seenOnly) {
     tileOf ? iconField(d, tileOf, iconNow, redraw) : null,
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
       : seenWords(d.seen, 'public') }),
-    el('details', { className: 'field-help' }, el('summary', { textContent: 'Seen but not opened?' }),
-      el('p', { textContent: 'A visitor who sees a tile they can\'t open gets a lock on it, and the sign-in page when they open it: they can see what is on the box (checklist 4a). Hidden, its address still works for whoever may open it.' })),
+    el('p', { className: 'field-help', textContent: 'Seen but not opened: a visitor who sees a tile they can\'t open gets a lock on it, and the sign-in page when they open it, so they can see what is on the box (checklist 4a). Hidden, its address still works for whoever may open it.' }),
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
@@ -2428,7 +2427,11 @@ function iconField(d, tile, iconNow, redraw) {
   const hint = el('span', { className: 'setting-desc' + (bad ? ' bad' : ''), textContent: bad ? 'Emoji, or up to four letters and digits (no spaces).'
     : val ? 'Its own; blank goes back to the app\'s.' : `The app's own: ${tile.icon}` });
   input.addEventListener('change', () => { d.icon = input.value.trim(); redraw(); });
-  return el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
+  // A pick from the emoji picker (Tom, 2026-10-08) arrives as an input event of the page's own.
+  input.addEventListener('input', (e) => { if (!e.isTrusted) { d.icon = input.value.trim(); redraw(); } });
+  const field = el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
+  if (window.EMOJI) window.EMOJI.attach(input);
+  return field;
 }
 
 async function loadAccess() {
@@ -2655,10 +2658,11 @@ loadLocal();
 // until the owner finishes it, and Overview's link brings it back.
 const setupList = document.getElementById('setup-steps');
 
+// Each setup step's state, as the part of the page that knows it says; the tour draws the list.
+const SETUP_STATE = {};
 function setupStep(step, text, status) {
-  const li = setupList.querySelector(`[data-step="${step}"]`);
-  li.querySelector('span').textContent = text;
-  li.className = `step-${status}`;
+  SETUP_STATE[step] = { text, status };
+  if (window.TOUR) TOUR.drawList();
 }
 
 function applySetup(done) {
@@ -3616,13 +3620,28 @@ function renderAccounts(d) {
         a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
         a.state === 'user' ? act(a.role === 'admin' ? 'user' : 'admin', a.role === 'admin' ? 'Make a user' : 'Make an admin') : null,
         a.state !== 'asked' ? act('reset', 'Reset password') : null,
+        acctCodes[a.name.toLowerCase()] ? codeBox(a.name, acctCodes[a.name.toLowerCase()]) : null,
         act('delete', a.state === 'asked' ? 'Refuse' : 'Delete')));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
 }
+// A one-time code shows beside the account it is for (Tom, 2026-10-08), in a box to copy, until the
+// page is reloaded: the hub keeps only its hash.
+const acctCodes = {};
 function showCode(name, code) {
+  acctCodes[name.toLowerCase()] = code;
   acctEl.code.hidden = false;
-  acctEl.code.replaceChildren(el('span', { textContent: `${name}'s one-time code: ` }), el('code', { textContent: code }),
-    el('span', { className: 'setting-desc', textContent: ' Give it to them now: it is not shown again.' }));
+  acctEl.code.replaceChildren(el('span', { textContent: `${name}'s one-time code is beside their name below. Give it to them now: it is not shown again.` }));
+}
+function codeBox(name, code) {
+  const box = el('input', { type: 'text', readOnly: true, value: code, className: 'code-box', size: code.length + 1 });
+  box.setAttribute('aria-label', `${name}'s one-time code`);
+  const note = el('span', { className: 'setting-desc' });
+  const copy = async () => {
+    box.select();
+    try { await navigator.clipboard.writeText(code); note.textContent = ' Copied.'; return; } catch (_) { /* plain HTTP: no clipboard API */ }
+    try { note.textContent = document.execCommand('copy') ? ' Copied.' : ' Selected: copy it.'; } catch (_) { note.textContent = ' Selected: copy it.'; }
+  };
+  return el('span', { className: 'code-copy' }, box, actionButton('Copy', copy, { className: 'small' }), note);
 }
 async function acctAct(body) {
   if (body.action === 'delete' && !confirm(`Delete ${body.name}'s account?`)) return;
@@ -3925,8 +3944,8 @@ function drawAttention() {
     return say && { id, text: say, where: AL.titleOf(id) };
   }).filter(Boolean);
   const T = window.TOUR;
-  const left = T ? T.DECISIONS.length - T.decided().size : 0;
-  if (left > 0) items.push({ id: 'welcome', text: `${left} setup decision${left === 1 ? '' : 's'} not made yet: the box runs on the defaults until then`, where: 'Setup steps' });
+  const left = T ? T.left() : 0;
+  if (left > 0) items.push({ id: 'welcome', text: `${left} setup step${left === 1 ? '' : 's'} not done yet: the box runs on the defaults until then`, where: 'Setup steps' });
   box.replaceChildren(el('h3', { textContent: 'Needs attention' }), items.length
     ? el('ul', { className: 'admin-checks attention-list' }, ...items.map((i) => el('li', { className: 'check' },
       el('a', { href: '#' + i.id, textContent: i.text }), el('span', { className: 'setting-desc', textContent: ` — ${i.where}` }))))

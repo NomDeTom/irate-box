@@ -132,6 +132,19 @@ try:
     check("admin: the admin's tile carries its pill", "admin-pill" in t and "admin-only" in t, t)
     t = tile(visit("/", jar["ada"])[0], "Notes") or ""
     check("  a tile others see too has none", t and "admin-pill" not in t, t)
+    # The box's own admin login (Tom, 2026-10-08): seen at /admin, a signed cookie; the home page then
+    # shows the admin's tiles even with no account at all.
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    c.request("GET", "/admin/", headers={"Host": f"127.0.0.1:{port}", "X-Irate-Front": SECRET})
+    r = c.getresponse(); r.read()
+    seen = (r.getheader("Set-Cookie") or "").split(";")[0]
+    check("/admin leaves the admin-seen cookie, HttpOnly, SameSite=Strict", seen.startswith("irate_admin_seen=")
+          and "HttpOnly" in (r.getheader("Set-Cookie") or "") and "SameSite=Strict" in (r.getheader("Set-Cookie") or ""), r.getheader("Set-Cookie"))
+    t = tile(visit("/", seen)[0], "Excalidraw") or ""
+    check("the admin seen at /admin: the admin's tile, with its pill, no account needed", "admin-pill" in t, t)
+    forged = "irate_admin_seen=" + seen.split("=", 1)[1].split(".")[0] + "." + "0" * 64
+    check("  a forged one: no", tile(visit("/", forged)[0], "Excalidraw") is None)
+    check("  an old one: no", tile(visit("/", "irate_admin_seen=1." + "0" * 64)[0], "Excalidraw") is None)
     go("POST", "/admin/visibility", {"app": "draw", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
     check("auto, private: no tile for a user, the tile for an admin account", tile(visit("/", jar["bea"])[0], "Git") is None

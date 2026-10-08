@@ -28,7 +28,7 @@ try:
         return json.loads(c.getresponse().read())
     check("nothing decided to begin with", post({})["setup_decided"] == [])
     check("decisions recorded", post({"setup_decided": ["visitors", "https"]})["setup_decided"] == ["visitors", "https"])
-    for bad in (["visitors", "nonsense"], "visitors", ["https"] * 12):
+    for bad in (["visitors", "nonsense"], "visitors", ["https"] * 18):
         check(f"refused: {str(bad)[:40]}", post({"setup_decided": bad})["setup_decided"] == ["visitors", "https"])
 finally:
     hub.terminate()

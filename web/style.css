@@ -926,12 +926,11 @@ progress.admin-bar:indeterminate::-moz-progress-bar { background: transparent; }
 .action-note { display: block; margin-top: 0.4rem; }
 /* The setup steps on /admin: one line per step, marked by its state. */
 .setup-steps { margin: 1rem 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.7rem; font-size: 0.92rem; }
-.setup-steps li span { color: var(--muted); }
+.setup-steps li .step-text { display: block; color: var(--muted); font-size: 0.86rem; margin-top: 0.15rem; }
 .setup-steps li a { margin-left: 0.4rem; color: var(--accent); white-space: nowrap; }
 .setup-steps li.step-ok::marker { color: var(--ok); }
 .setup-steps li.step-warn::marker { color: var(--warn); }
 .setup-steps li.step-problem::marker { color: #e5484d; }
-.setup-steps li.step-ok strong::after { content: " ✓"; color: var(--ok); }
 .action-note.busy { color: var(--warn); }
 
 .admin-output { margin: 0.75rem 0; }
@@ -1352,3 +1351,6 @@ html:has(> body.admin) { background: var(--bg); }
 .action-btn.action-btn.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
 /* An older list bounded (F8; checklist 3e): a limited height, a scroll. */
 .aw-bounded { max-height: 26rem; overflow-y: auto; padding-right: 0.25rem; }
+/* A one-time code beside its account, to copy. */
+.code-copy { display: inline-flex; align-items: center; gap: 0.3rem; }
+.code-box { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.2rem 0.4rem; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--text); border-radius: 4px; }

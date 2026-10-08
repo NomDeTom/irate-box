@@ -260,6 +260,44 @@ VISIBILITY_FILE = STATE_DIR / "visibility.json"
 VISIBLE = ("auto", "guests", "users", "admin", "hidden")
 
 
+# The admin, seen at /admin (Tom, 2026-10-08: "admin-only apps are hidden when accounts are off, even
+# if I'm signed in as admin"). The box's own login is the web server's, on /admin only, so the home
+# page never sees it: /admin's page, which only the admin reaches, leaves a signed cookie that the
+# home page reads as "the admin is here". It changes which tiles show, never who may open them.
+ADMIN_SEEN_COOKIE = "irate_admin_seen"
+ADMIN_SEEN_HOURS = 12
+_admin_seen_key = []
+
+
+def admin_seen_key():
+    if not _admin_seen_key:
+        f = STATE_DIR / "admin-seen.key"
+        try:
+            key = f.read_bytes()
+        except OSError:
+            key = b""
+        if len(key) != 32:
+            key = secrets.token_bytes(32)
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                out.write(key)
+        _admin_seen_key.append(key)
+    return _admin_seen_key[0]
+
+
+def admin_seen_value(now=None):
+    until = int((now or time.time()) + ADMIN_SEEN_HOURS * 3600)
+    return f"{until}.{hmac.new(admin_seen_key(), str(until).encode(), 'sha256').hexdigest()}"
+
+
+def admin_seen_ok(value, now=None):
+    until, _, sig = (value or "").partition(".")
+    if not until.isdigit() or int(until) < (now or time.time()):
+        return False
+    return hmac.compare_digest(sig, hmac.new(admin_seen_key(), until.encode(), "sha256").hexdigest())
+
+
 def _unseen(v, signed_in):
     """Is a tile at visibility v hidden from this visitor?"""
     return v == "hidden" or (v == "users" and not signed_in) or (v == "admin" and signed_in != "admin")
@@ -819,8 +857,10 @@ POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
 # The setup decisions (M14; Tom, 2026-10-08: "anything that has an impact on user or box security"):
 # web/admin-tour.js has each one's words and where it lives.
+# With the setup's own steps and the backup: one list, one tour (Tom, 2026-10-08).
 SETUP_DECISIONS = ("visitors", "names", "signup", "sign-in-offer", "https", "hotspot", "guest-net", "ssh",
-                   "tailscale", "cockpit", "terminal")
+                   "tailscale", "cockpit", "terminal",
+                   "password", "connection", "security", "addons", "books", "backup")
 REPORT_REASONS = ("spam", "unkind", "personal details", "illegal", "other")
 _settings_lock = threading.Lock()
 
@@ -2395,9 +2435,19 @@ class Handler(BaseHTTPRequestHandler):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
 
     def _viewer(self):
-        """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account)."""
+        """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account,
+        or the admin lately at /admin: the box's own login)."""
+        if admin_seen_ok(self._cookie(ADMIN_SEEN_COOKIE)):
+            return "admin"
         me = accounts.session(self._session_token()) if self._session_token() else None
         return False if me is None else "admin" if me.get("role") == "admin" else True
+
+    def _cookie(self, name):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return ""
 
     def _session_token(self):
         for part in self.headers.get("Cookie", "").split(";"):
@@ -2853,8 +2903,10 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        admin_page = False
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
+            admin_page = not unclaimed()
         elif path == "/admin/factory.html":
             # The Firmware Factory's own page (menu overhaul F7): behind /admin's login, as /admin is.
             path = "/admin-factory.html"
@@ -3065,6 +3117,9 @@ class Handler(BaseHTTPRequestHandler):
             body = file_path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", MIME.get(file_path.suffix, "application/octet-stream"))
+            if admin_page:  # only the admin reaches /admin: the home page may show them the admin's tiles
+                self.send_header("Set-Cookie", f"{ADMIN_SEEN_COOKIE}={admin_seen_value()}; Path=/; Max-Age={ADMIN_SEEN_HOURS * 3600}; "
+                                 "HttpOnly; SameSite=Strict" + ("; Secure" if self._https() else ""))
             self.send_header("Content-Length", len(body))
             self.end_headers()
             self.wfile.write(body)

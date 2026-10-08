@@ -130,3 +130,5 @@ function attach(field) {
 
 buildPanel();
 document.querySelectorAll('[data-emoji]').forEach(attach);
+// For fields drawn after the page loads (/admin's tile icon).
+window.EMOJI = { attach };
