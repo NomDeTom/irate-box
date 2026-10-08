@@ -152,6 +152,8 @@ const PRESETS = {
 let libPoll = null;
 
 const el = (tag, props = {}, ...kids) => {
+  // A button with no class of its own is an action button (rule 6a: the control vocabulary).
+  if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
   const node = Object.assign(document.createElement(tag), props);
   node.append(...kids.filter((k) => k !== null && k !== undefined));
   return node;
@@ -577,7 +579,7 @@ async function postJSON(url, body) {
   return data;
 }
 const actionButton = (label, onclick, extra = {}) =>
-  el('button', { type: 'button', textContent: label, onclick, ...extra });
+  el('button', { type: 'button', textContent: label, onclick, ...extra, className: `action-btn${extra.className ? ' ' + extra.className : ''}` });
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };

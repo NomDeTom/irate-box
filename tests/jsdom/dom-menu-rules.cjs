@@ -125,5 +125,32 @@ const odd = [...d.querySelectorAll('button')].filter((b) => !VOCAB.some((c) => b
 check('6a every button is one of the vocabulary', !odd.length, odd.map((b) => b.outerHTML.slice(0, 60)).join(' | '));
 check('6b every disclosure carries aria-expanded', [...d.querySelectorAll('[data-disclosure]')].every((b) => b.hasAttribute('aria-expanded')));
 check('no page errors', !errors.length, errors.join('; '));
-console.log(`failures: ${fails}`);
-process.exit(fails ? 1 : 0);
+
+// ---- The same, on the real /admin (F8): every page built, every button and disclosure looked at ----
+{
+  const adminApps = require('./admin-apps-fixture.cjs');
+  const page = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
+  const code = ['admin-widgets.js', 'admin-layout.js', 'admin.js', 'admin-tour.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+  const vc2 = new VirtualConsole();
+  const real = new JSDOM(page, { url: 'http://box/admin/', runScripts: 'outside-only', virtualConsole: vc2, pretendToBeVisual: true });
+  const rw = real.window;
+  rw.fetch = async (u) => new rw.Response(JSON.stringify(String(u).startsWith('/admin/apps') ? { apps: adminApps() } : {}), { status: 200 });
+  rw.HTMLElement.prototype.scrollIntoView = () => {};
+  rw.scrollTo = () => {};
+  try { rw.eval(code); } catch (e) { /* a loader with nothing to draw: the structure is what is looked at */ }
+  setTimeout(() => {
+    const rd = rw.document;
+    // Besides the vocabulary: the menu's own controls (the sidebar, its ☰) and a link drawn as a button.
+    const SHELL = ['admin-menu', 'admin-side-group', 'link-button'];
+    const odd2 = [...rd.querySelectorAll('.admin-main button, .admin-side button')].filter((b) => ![...VOCAB, ...SHELL].some((c) => b.classList.contains(c)));
+    const kinds = [...new Set(odd2.map((b) => b.className || '(none)'))];
+    check('6a on the real /admin: every button one of the vocabulary', !odd2.length, `${odd2.length}: ${kinds.join(' | ')}`);
+    check('6b on the real /admin: every sidebar group head says its state', [...rd.querySelectorAll('.admin-side-group')].every((b) => b.hasAttribute('aria-expanded')));
+    // The stub answers {} beyond the apps, so lists drawn from data are empty here: what is looked at
+    // is every button the page and its empty states draw, on every page.
+    const pagesBuilt = rd.querySelectorAll('.admin-page').length;
+    check('the real /admin: a page for every sidebar entry', pagesBuilt > 20 && pagesBuilt === rd.querySelectorAll('.admin-side-list a[data-page]').length, pagesBuilt);
+    console.log(`failures: ${fails}`);
+    process.exit(fails ? 1 : 0);
+  }, 2500);
+}

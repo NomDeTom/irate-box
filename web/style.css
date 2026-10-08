@@ -1349,3 +1349,4 @@ html:has(> body.admin) { background: var(--bg); }
 .service-grid .service-card.large .icon.icon-text { font-size: 2.4rem; line-height: 3rem; }
 /* A primary button that cannot act yet (nothing to save) looks it. */
 .action-btn.primary.primary:disabled { opacity: 0.45; filter: none; }
+.action-btn.action-btn.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
