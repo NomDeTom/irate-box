@@ -2073,7 +2073,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/apps":
             # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
-            self.send_json(200, {"apps": manifests.admin_apps(MANIFESTS)})
+            # switch: whether its access can be set (its page then starts with it, M6).
+            self.send_json(200, {"apps": [dict(a, switch=a["id"] in access.ROUTED or a["local"]) for a in manifests.admin_apps(MANIFESTS)]})
             return
 
         if path == "/admin/settings":

@@ -100,6 +100,13 @@ setTimeout(() => {
   const sections = [...d.querySelectorAll('.admin-pane')];
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
   const pageOf = (id) => d.getElementById(id).closest('.admin-page');
+  // M6: each app's page starts with who opens it and who sees it, then its own sections (4f).
+  const kiwix = d.getElementById('page-app-wiki');
+  check('an app\'s page starts with its access, then its sections', kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-wiki books',
+    kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' '));
+  check('  its access block filled from /admin/access: who opens it, who sees its tile', kiwix && !!kiwix.querySelector('.access-block .access-toggle [aria-checked="true"]') && !!kiwix.querySelector('.access-block .access-seen .chip.selected'));
+  check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
+  check('no page for an app with nothing to set (About)', !d.getElementById('page-app-about'));
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
   check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));
   check('no clock findings in the services doctor', !t('#health-findings li').some((x) => x.startsWith('🔴 Clock') || /Clock module|^.{0,3}Clock —/.test(x)), t('#health-findings li'));

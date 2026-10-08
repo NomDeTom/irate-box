@@ -2089,6 +2089,7 @@ let accessPoll = null;
 
 const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
 function seenDesc(a) {
+  a = { ...a, visible: a.visible || 'auto' };
   if (a.mode === 'off') return 'Off: no tile.';
   if (a.visible === 'auto') return '';
   const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'those logged in' : 'the admin';
@@ -2138,38 +2139,55 @@ function renderAccess(data) {
     }
   }
   const builtin = [];
+  lastAccess = data;
   for (const a of data.apps) {
-    const slot = accessSlot(a.id);
-    const group = el('span', { className: 'access-toggle' },
-      ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
-        const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', String(a.mode === mode));
-        return b;
-      }));
-    group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', `Who can open ${a.title}`);
-    const note = accessNote && accessNote.app === a.id
-      ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
-    // Who sees its tile, apart from who opens it (M5, checklist 4a): the hub's own, saved at once.
-    const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
-      ...Object.entries(SEEN_LABEL).map(([v, label]) => {
-        const b = el('button', { type: 'button', className: 'chip' + (a.visible === v ? ' selected' : ''), textContent: label,
-          disabled: a.mode === 'off', onclick: () => visibilitySet(a, v) });
-        b.setAttribute('aria-pressed', String(a.visible === v));
-        return b;
-      }));
-    seen.setAttribute('role', 'group');
-    seen.setAttribute('aria-label', `Who sees ${a.title}'s tile`);
-    // No note: left out, not passed as null (replaceChildren would show the word "null").
-    slot.replaceChildren(...[group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }),
-      seen, el('span', { className: 'setting-desc', textContent: seenDesc(a) }), note].filter(Boolean));
+    accessSlot(a.id).replaceChildren(...accessControls(a));
     if (a.kind === 'builtin') builtin.push(a);
   }
+  fillAccessBlocks();
   document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
     el('span', {}, el('span', { className: 'setting-name', textContent: a.title }), accessSlot(a.id)))));
   clearTimeout(accessPoll);
   if (accessWaiting) accessPoll = setTimeout(loadAccess, 1000);
+}
+
+// Each app's own page starts with its access (M6): the same controls, drawn again there.
+let lastAccess = null;
+function fillAccessBlocks() {
+  if (!lastAccess) return;
+  document.querySelectorAll('.access-block[data-app]').forEach((block) => {
+    const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
+    block.replaceChildren(...(a ? accessControls(a) : [el('p', { className: 'setting-desc', textContent: 'Always on the hub: no switch.' })]));
+  });
+}
+AL.onBuild(fillAccessBlocks);
+
+function accessControls(a) {
+  a = { ...a, visible: a.visible || 'auto' };  // a hub from before M5 says nothing: as its access
+  const group = el('span', { className: 'access-toggle' },
+    ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
+      const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(a.mode === mode));
+      return b;
+    }));
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-label', `Who can open ${a.title}`);
+  const note = accessNote && accessNote.app === a.id
+    ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
+  // Who sees its tile, apart from who opens it (M5, checklist 4a): the hub's own, saved at once.
+  const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
+    ...Object.entries(SEEN_LABEL).map(([v, label]) => {
+      const b = el('button', { type: 'button', className: 'chip' + (a.visible === v ? ' selected' : ''), textContent: label,
+        disabled: a.mode === 'off', onclick: () => visibilitySet(a, v) });
+      b.setAttribute('aria-pressed', String(a.visible === v));
+      return b;
+    }));
+  seen.setAttribute('role', 'group');
+  seen.setAttribute('aria-label', `Who sees ${a.title}'s tile`);
+  // No note: left out, not passed as null (replaceChildren would show the word "null").
+  return [group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }),
+    seen, el('span', { className: 'setting-desc', textContent: seenDesc(a) }), note].filter(Boolean);
 }
 
 async function loadAccess() {

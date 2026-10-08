@@ -47,7 +47,8 @@ const AL = (() => {
   const placed = new Set();
   const pages = [];
   const badges = {};
-  const hiddenLinks = new Set();  // sections whose page's sidebar entry is hidden (the setup steps, once done)
+  const hiddenLinks = new Set();
+  const onBuild = [];  // called after each build: admin.js fills the generated sections  // sections whose page's sidebar entry is hidden (the setup steps, once done)
   let built = false;
 
   function el(tag, props, ...kids) {
@@ -67,7 +68,7 @@ const AL = (() => {
     ids.forEach((sid) => { placed.add(sid); p.append(sections.get(sid)); });
     p.hidden = true;
     main.append(p);
-    const link = el('a', { href: '#' + (ids[0] || id), 'data-page': id }, def.icon ? el('span', { class: 'side-icon', 'aria-hidden': 'true', text: def.icon }) : null, def.title);
+    const link = el('a', { href: '#' + (def.app ? id : ids[0] || id), 'data-page': id }, def.icon ? el('span', { class: 'side-icon', 'aria-hidden': 'true', text: def.icon }) : null, def.title);
     const entry = { id, el: p, link, title: def.title, group: group.name };
     pages.push(entry);
     return entry;
@@ -91,7 +92,14 @@ const AL = (() => {
       const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
-        for (const a of apps.filter((x) => (g.apps === 'folders') === x.folder)) {
+        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.sections.length || x.folder))) {
+          // Who opens it, who sees it: first on its page (M6; admin.js fills it from /admin/access).
+          if (a.switch) {
+            const id = 'app-access-' + a.id;
+            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-access', id },
+              el('h2', { text: 'Who opens it, who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
+            a = { ...a, sections: [id, ...a.sections] };
+          }
           const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: a.sections, empty: false });
           if (e) entries.push(e);
         }
@@ -101,7 +109,7 @@ const AL = (() => {
       list.append(groupHead(g.name), ...entries.map((e) => e.link));
     }
     // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
-    const left = [...sections.keys()].filter((id) => !placed.has(id));
+    const left = [...sections.keys()].filter((id) => !placed.has(id) && !id.startsWith('app-access-'));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);
@@ -110,6 +118,7 @@ const AL = (() => {
     Object.keys(badges).forEach(paint);
     hiddenLinks.forEach((id) => hide(id, true));
     built = true;
+    onBuild.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
   }
 
   // The page for an address: the page itself, or the one holding the section it names.
@@ -175,6 +184,6 @@ const AL = (() => {
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       }
     });
-  return { LAYOUT, show, shown, badge, hide, ready, pages: () => pages.slice(), isBuilt: () => built };
+  return { LAYOUT, show, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
 })();
 if (typeof window !== 'undefined') window.AL = AL;

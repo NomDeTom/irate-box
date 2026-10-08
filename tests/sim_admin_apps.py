@@ -49,7 +49,10 @@ try:
     st, _ = get("/admin/apps", {})
     check("/admin/apps refused without the front's header", st == 403, st)
     st, body = get("/admin/apps", {"X-Irate-Front": SECRET})
-    check("/admin/apps answers the admin page", st == 200 and json.loads(body)["apps"] == apps, body[:200])
+    got = json.loads(body)["apps"] if st == 200 else []
+    check("/admin/apps answers the admin page", [{k: v for k, v in x.items() if k != "switch"} for x in got] == apps, body[:200])
+    sw = {x["id"]: x["switch"] for x in got}
+    check("  with whether each app's access can be set (M6)", sw.get("git") is True and sw.get("wiki") is True and sw.get("meshtastic") is False and sw.get("box-factory") is False, sw)
 finally:
     hub.terminate()
 print(f"failures: {fails}")

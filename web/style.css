@@ -1269,7 +1269,7 @@ html:has(> body.admin) { background: var(--bg); }
    and its sections' titles step down a size. ---- */
 .admin-main > .admin-page { position: relative; z-index: 1; }
 .admin-page[hidden] { display: none; }
-.admin-page-title { margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+.admin-page-title.admin-page-title { margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; text-transform: none; color: var(--text); }
 .admin-page.solo > .admin-page-title { display: none; }
 .admin-page:not(.solo) > .admin-pane > h2 { font-size: 1.2rem; margin: 2rem 0 0.75rem; }
 .admin-page:not(.solo) > .admin-pane:first-of-type > h2 { margin-top: 0.5rem; }
