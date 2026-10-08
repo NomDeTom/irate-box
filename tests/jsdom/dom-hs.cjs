@@ -23,7 +23,7 @@ w.crypto = { getRandomValues: (a) => { for (let i = 0; i < a.length; i++) a[i] =
 w.eval(js);
 setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
-  console.log('MODES:'); [...d.querySelectorAll('.hs-mode')].forEach((m) => console.log('  ', m.querySelector('input').disabled ? '[disabled]' : '[ ]', m.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)));
+  console.log('MODES:'); [...d.querySelectorAll('#hs-modes .choice-tile')].forEach((m) => console.log('  ', m.querySelector('input').disabled ? '[disabled]' : '[ ]', m.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)));
   console.log('FIELDS hidden (open):', d.getElementById('hs-fields').hidden);
   console.log('WARNINGS (open):', t('#hs-warnings li').length);
   const sae = d.querySelector('input[value="sae"]'); sae.checked = true; sae.dispatchEvent(new w.Event('change'));

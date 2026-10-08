@@ -256,7 +256,100 @@ const AW = (() => {
     new MutationObserver(apply).observe(list, { childList: true });
     apply();
   }
-  return { FILTER_AT, BOUND_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound };
+  // ---- Choice tiles: one of a few, each needing a sentence (Tom, 2026-10-08: the Network page had two
+  // ways of drawing these, and the Updates and Builds pages a third). The canonical pair: chips when each
+  // choice is a word or two (settings' 'choice', and short drop-downs, below), tiles when each needs saying.
+  // A tile: a real radio (so a form, or code reading input[name=…]:checked, sees it), its title, what it
+  // means, what it does (optional), and why it can't be chosen here (greyed, unless it is the current one).
+  //   box: the container (made a radiogroup); name: the radios' name;
+  //   options: [{value, title, desc, does, why}]; opts: {value, onChange(value)}
+  function choices(box, name, options, opts = {}) {
+    box.classList.add('choice-tiles');
+    if (!box.hasAttribute('role') && box.tagName !== 'FIELDSET') box.setAttribute('role', 'radiogroup');
+    box.replaceChildren(...options.map((o) => {
+      const off = !!o.why && o.value !== opts.value;
+      const input = h('input', { type: 'radio', name, value: o.value, disabled: off });
+      input.checked = o.value === opts.value;
+      return h('label', { class: 'choice-tile' + (o.why ? ' unavailable' : '') + (input.checked ? ' chosen' : '') }, input,
+        h('span', { class: 'choice-text' }, h('span', { class: 'setting-name', text: o.title }),
+          o.desc ? h('span', { class: 'setting-desc', text: o.desc }) : null,
+          o.does ? h('span', { class: 'setting-desc choice-does', text: o.does }) : null,
+          o.why ? h('span', { class: 'setting-desc bad', text: `Not available here: ${o.why}.` }) : null));
+    }));
+    if (!box._choicesWired) {
+      box._choicesWired = true;
+      box.addEventListener('change', (e) => {
+        if (e.target.type !== 'radio') return;
+        box.querySelectorAll('.choice-tile').forEach((t) => t.classList.toggle('chosen', t.querySelector('input').checked));
+        if (box._onChange) box._onChange(e.target.value);
+      });
+    }
+    box._onChange = opts.onChange || null;
+    return box;
+  }
+
+  // ---- A drop-down of a few, as chips (Tom, 2026-10-08: "I don't like the drop-down boxes in the admin
+  // menu, especially where there are only 2 or 3 choices"): every <select> of up to CHIPS_AT choices is
+  // shown as a row of chips, one selected (a radio group to a screen reader). The <select> stays, hidden,
+  // as the source of truth: forms, .value and its change handlers work as they did, and the chips follow
+  // whatever sets it. A longer list (languages, channels, hours) stays a drop-down; one whose choices are
+  // drawn from data turns into chips or back as their number changes.
+  const CHIPS_AT = 6;
+  function chipSelect(sel) {
+    watchSetters();
+    if (sel._chips !== undefined || sel.multiple || sel.closest('[data-no-chips]')) return;
+    const group = h('div', { class: 'chip-group select-chips', role: 'radiogroup' });
+    sel._chips = group;
+    sel.after(group);
+    const label = sel.closest('label');
+    const name = sel.getAttribute('aria-label') || (label ? [...label.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').trim() : '');
+    if (name) group.setAttribute('aria-label', name);
+    const draw = () => {
+      const opts = [...sel.options];
+      const few = opts.length > 0 && opts.length <= CHIPS_AT;
+      sel.hidden = few;
+      group.hidden = !few;
+      if (!few) return;
+      group.replaceChildren(...opts.map((o) => h('button', {
+        type: 'button', class: 'chip' + (o.selected ? ' selected' : ''), role: 'radio', 'aria-checked': String(o.selected),
+        disabled: sel.disabled || o.disabled, title: o.title || null,
+        onclick: () => { if (sel.value === o.value) return; sel.value = o.value; sel.dispatchEvent(new Event('change', { bubbles: true })); },
+      }, o.textContent)));
+    };
+    sel._chipsDraw = draw;     // the value set from code redraws too (watchSetters, below)
+    sel.addEventListener('change', draw);
+    if (sel.form) sel.form.addEventListener('reset', () => setTimeout(draw));
+    new MutationObserver(draw).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'selected'] });
+    draw();
+  }
+  // A <select>'s value set from code (sel.value = …, selectedIndex) redraws its chips: the setters wrapped
+  // once, on the prototype (an own property on each element confuses jsdom, which the tests run in).
+  let watched = false;
+  function watchSetters() {
+    if (watched || typeof HTMLSelectElement === 'undefined') return;
+    watched = true;
+    for (const prop of ['value', 'selectedIndex']) {
+      const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
+      if (!d || !d.set) continue;
+      Object.defineProperty(HTMLSelectElement.prototype, prop, { configurable: true, enumerable: d.enumerable,
+        get() { return d.get.call(this); }, set(v) { d.set.call(this, v); if (this._chipsDraw) this._chipsDraw(); } });
+    }
+  }
+  function chipSelects(root) {
+    watchSetters();
+    (root || document).querySelectorAll('select').forEach(chipSelect);
+  }
+  if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    const start = () => {
+      chipSelects(document);
+      new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
+        if (n.nodeType !== 1) return;
+        if (n.tagName === 'SELECT') chipSelect(n); else chipSelects(n);
+      }))).observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

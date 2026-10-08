@@ -47,10 +47,10 @@ const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 setTimeout(() => {
   const d = w.document;
   const card = (iface) => [...d.querySelectorAll('#net-devices .net-device')].find((c) => c.querySelector('h4').textContent.startsWith(iface));
-  const wl = card('wlan0'), up = wl && wl.querySelector('details.net-uptime');
-  check('the uplink\'s card: a folded Uptime part, closed', up && !up.open);
-  check('  its summary in words: the share up, the drop, the longest outage', /Up 98\.2 % over the last 72 hours \(69\.5 hours recorded\); 1 drop; longest outage 15 min,/.test(t(up && up.querySelector('summary'))),
-    t(up && up.querySelector('summary')));
+  const wl = card('wlan0'), up = wl && wl.querySelector('div.net-uptime');
+  check('the uplink\'s card: the Uptime part shown, not folded (no expander)', up && !up.closest('details') && !up.querySelector('summary') && up.querySelector('.heatmap'));
+  check('  its summary in words: the share up, the drop, the longest outage', /Up 98\.2 % over the last 72 hours \(69\.5 hours recorded\); 1 drop; longest outage 15 min,/.test(t(up && up.querySelector('.net-line'))),
+    t(up && up.querySelector('.net-line')));
   const [hours, month] = up ? [...up.querySelectorAll('.heatmap')] : [];
   const rows = (g) => [...g.querySelectorAll('.hm-row:not(.hm-head)')];
   check('the last 72 hours: one row, 72 cells', hours && rows(hours).length === 1 && rows(hours)[0].querySelectorAll('.hm-cell').length === 72);
@@ -63,11 +63,11 @@ setTimeout(() => {
   check('72 days, one row', month && rows(month).length === 1 && rows(month)[0].querySelectorAll('.hm-cell').length === 72);
   check('  most days with no record: no data', month && [...month.querySelectorAll('.hm-cell')].filter((c) => c.classList.contains('hm-none')).length >= 60);
   check('a legend, and what up means for the uplink', up && up.querySelectorAll('.hm-legend .hm-key').length === 6 && /the gateway answered/.test(t(up)));
-  const eth = card('eth0'), ethUp = eth && eth.querySelector('details.net-uptime');
+  const eth = card('eth0'), ethUp = eth && eth.querySelector('div.net-uptime');
   check('a wired link: its own heatmap, link only, said', ethUp && ethUp.querySelectorAll('.heatmap').length === 2 && /Only whether the link was up/.test(t(ethUp))
-    && /Up 95\.6 % over the last 72 hours.*longest outage 60 min/.test(t(ethUp.querySelector('summary'))), t(ethUp && ethUp.querySelector('summary')));
-  const none = card('eth1'), noneUp = none && none.querySelector('details.net-uptime');
-  check('a link with no record: says so, and how one comes', noneUp && /Not recorded yet\./.test(t(noneUp.querySelector('summary'))) && !noneUp.querySelector('.heatmap')
+    && /Up 95\.6 % over the last 72 hours.*longest outage 60 min/.test(t(ethUp.querySelector('.net-line'))), t(ethUp && ethUp.querySelector('.net-line')));
+  const none = card('eth1'), noneUp = none && none.querySelector('div.net-uptime');
+  check('a link with no record: says so, and how one comes', noneUp && /Not recorded yet\./.test(t(noneUp.querySelector('.net-line'))) && !noneUp.querySelector('.heatmap')
     && /once the box's clock is known to be right/.test(t(noneUp)));
   // The services' fold, under Overview's table.
   w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));

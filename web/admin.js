@@ -1729,15 +1729,9 @@ function willText(eff) {
 // Both levels the same way (Tom, 2026-10-06): radio cards, each level's description and what it
 // does shown at once.
 function rungs(box, group, names, line, levels) {
-  box.replaceChildren(...names.map((name) => {
-    const input = el('input', { type: 'radio', name: `up-${group}`, value: name });
-    input.addEventListener('change', () => upChoose({ [group]: name }, levels));
-    return el('label', { className: 'up-rung' }, input,
-      el('span', { className: 'up-rung-text' },
-        el('span', { className: 'setting-name', textContent: cap1(name) }),
-        el('span', { className: 'setting-desc', textContent: levels.describe[name] || '' }),
-        el('span', { className: 'setting-desc up-does', textContent: line(name) })));
-  }));
+  AW.choices(box, `up-${group}`, names.map((name) => ({
+    value: name, title: cap1(name), desc: levels.describe[name] || '', does: line(name),
+  })), { onChange: (name) => upChoose({ [group]: name }, levels) });
 }
 
 function buildUpChoices(levels) {
@@ -1779,7 +1773,7 @@ function showUpPreset(levels) {
   for (const [box, chosen] of [[net.eager, e], [net.forgive, f]]) {
     for (const input of box.querySelectorAll('input')) {
       input.checked = input.value === chosen;
-      input.closest('.up-rung').classList.toggle('chosen', input.checked);
+      input.closest('.choice-tile').classList.toggle('chosen', input.checked);
     }
   }
   const eff = upPreset(e, f, levels);
@@ -1869,16 +1863,18 @@ function signalWords(dbm) {
 // A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
 // by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
 // (linkhistory.py), drawn by heatmap.js.
+// Always shown, not folded (Tom, 2026-10-09: the folded heatmap closed itself on the pane's redraws, and
+// "I don't even think it needs an expander button").
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
-  const fold = el('details', { className: 'net-uptime' });
+  const fold = el('div', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'
     : `Up ${Heatmap.percent(sm.up)} over the last 72 hours (${sm.hours_seen} hours recorded)`
       + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
       + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
-  fold.append(el('summary', {}, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: ` ${said}` })));
+  fold.append(el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: said })));
   if (!u) {
     fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
@@ -2167,15 +2163,9 @@ function hsShowFields() {
 function renderHotspot(data) {
   hsData = data;
   const s = data.settings;
-  hs.modes.replaceChildren(...data.modes.map((m) => {
-    const why = data.available[m];
-    const input = el('input', { type: 'radio', name: 'hs-mode', value: m, checked: s.mode === m, disabled: !!why && s.mode !== m });
-    input.addEventListener('change', hsShowFields);
-    return el('label', { className: `hs-mode${why ? ' unavailable' : ''}` }, input,
-      el('span', {}, el('span', { className: 'setting-name', textContent: data.label[m] }),
-        el('span', { className: 'setting-desc', textContent: data.what[m] }),
-        why ? el('span', { className: 'setting-desc bad', textContent: `Not available here: ${why}.` }) : null));
-  }));
+  AW.choices(hs.modes, 'hs-mode', data.modes.map((m) => ({
+    value: m, title: data.label[m], desc: data.what[m], why: data.available[m],
+  })), { value: s.mode, onChange: hsShowFields });
   hs.second.value = s.second;
   hs.password.value = s.password || '';
   hs.wpa2.checked = !!s.allow_wpa2;
