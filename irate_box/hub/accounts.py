@@ -316,6 +316,12 @@ def login(name, password, addr="", https=False):
 _basic_ok = {}   # (name, sha256 of the password) -> when it was last right: a push is several requests
 
 
+def _forget_basic(name):
+    """A changed or reset password is not right any more, this minute included (stance review 2026-10-08, N14)."""
+    for k in [k for k in _basic_ok if k[0] == (name or "").lower()]:
+        _basic_ok.pop(k, None)
+
+
 def check_basic(header, addr=""):
     """An HTTP Basic Authorization header that is an account's name and password (git over HTTP:
     a client sends no cookie): {name, role}, or None. Limited as logins are; a right one is
@@ -395,6 +401,7 @@ def change_password(token, old, new, addr=""):
             _failed(acc["name"], addr, now)
             raise AccountError("the current password is not right")
         stored["hash"] = hash_password(new)
+        _forget_basic(acc["name"])
         # Every other session of the account ends: a password changed because it leaked.
         keep = _digest(token)
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != acc["name"].lower() or k == keep}
@@ -417,6 +424,7 @@ def use_code(code, password, addr=""):
             raise AccountError("that code is not one this box gave, or it has been used or has expired")
         acc = data["accounts"][c["name"]]
         acc["hash"] = hash_password(password)
+        _forget_basic(c["name"])
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != c["name"]}
         _save(data)
     return acc["name"]

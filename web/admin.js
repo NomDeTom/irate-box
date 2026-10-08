@@ -1252,6 +1252,7 @@ function renderAudit(audit, busy) {
   }
   const c = audit.counts;
   sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}: ${c.problem} to fix, ${c.warn} to look at, ${c.ok} fine`
+    + ((audit.new || []).length ? `; ${audit.new.length} new since ${new Date(audit.previous_at * 1000).toLocaleDateString()}` : '')
     + (audit.root ? '.' : ' (not run as root: some checks could not read what they need).') + (busy ? ' Running…' : '');
   sec.auditSteps.replaceChildren(...audit.steps.map((st) => {
     const worst = st.findings.some((f) => f.status === 'problem') ? 'problem' : st.findings.some((f) => f.status === 'warn') ? 'warn' : 'ok';
@@ -1260,6 +1261,7 @@ function renderAudit(audit, busy) {
       el('summary', { textContent: `${MARK[worst]} ${st.title}${st.ref ? ` (${st.ref})` : ''}` }),
       el('ul', { className: 'admin-checks' }, ...lines.map((f) => el('li', { className: `check check-${f.status}` },
         el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
+        (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
         el('span', { textContent: ` — ${f.detail}` }),
         f.fix ? el('span', { className: 'setting-desc', textContent: `To do: ${f.fix}` }) : null))));

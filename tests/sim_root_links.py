@@ -111,6 +111,21 @@ hub_control.main()
 ans = json.loads((hub_control.RESULTS / "fedcba9876543210.json").read_text())
 check("a request that is a link is refused, not carried out", ans["ok"] is False and not req.exists(), ans)
 
+
+# A request that is not an object, or one whose handler has a bug, is answered and gone: never
+# found again by the next helper (stance review 2026-10-08, N6).
+poison = {"0000000000000001": "[]", "0000000000000002": '"x"', "0000000000000003": json.dumps({"action": "uplink-set", "settings": [1]})}
+for rid, body in poison.items():
+    (hub_control.REQUESTS / f"{rid}.json").write_text(body)
+try:
+    hub_control.main(); crashed = None
+except Exception as exc:  # noqa: BLE001
+    crashed = exc
+answers = {rid: json.loads((hub_control.RESULTS / f"{rid}.json").read_text()) for rid in poison if (hub_control.RESULTS / f"{rid}.json").exists()}
+check("N6: a non-object request and a handler's own error are answered, not left to loop the helper",
+      crashed is None and set(answers) == set(poison) and all(a["ok"] is False for a in answers.values())
+      and not list(hub_control.REQUESTS.glob("*.json")), (crashed, answers))
+
 # --- what is left as source checks ---------------------------------------------------------
 src = {p: (REPO / p).read_text() for p in ("irate_box/root/hub_control.py", "irate_box/root/rtc.py", "irate_box/root/health.py",
                                            "irate_box/root/usbstick.py", "irate_box/root/security.py", "irate_box/hub/server.py",
@@ -165,6 +180,19 @@ check("F7: the staging folder swapped for a link: refused, nothing removed there
 os.unlink(real); os.rename(T / "apps.real", real)
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
 check("F7: the check and the extraction read root's copy only", "_install_taken(app, taken, zip_path)" in src_ and "Path(zip_path).unlink" not in src_)
+
+# --- the offline kit: kits/ as a link the hub planted (stance review 2026-10-08, N1) -------------
+target = T / "kit-target"; target.mkdir(); target.chmod(0o700)
+(STATE / "kits").symlink_to(target)
+try:
+    hub_control.offline_kit({"books": False}); refused = False
+except (ValueError, OSError):
+    refused = True
+check("N1: kits/ as a link: refused, its target untouched", refused and (target.stat().st_mode & 0o777) == 0o700 and not any(target.iterdir()))
+(STATE / "kits").unlink()
+src_ = (REPO / "irate_box/root/hub_control.py").read_text()
+check("N1: the kit is built through kits/'s own fd, with no chown or chmod by path",
+      "/proc/self/fd/{kits_fd}" in src_ and "os.chown(KITS" not in src_ and "os.chmod(KITS" not in src_)
 
 # --- install.sh's state_dir, for real --------------------------------------------------------
 fn = inst[inst.index("state_dir() {"):]

@@ -64,5 +64,13 @@ hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the updater's nginx -t fills it in too, the TLS includes and ports among them", '"@NOTES_PORT@": "8091"' in hc and '"@TLS@": f"{tmp}/tls"' in hc and '"@GIT_TLS_PORT@": "8493"' in hc)
 place = {k: next((tuple(p) for p, b in servers if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
 check("the doctor sees notes, books and cgit on their own origins", place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",)}, place)
+# N5 (stance review 2026-10-08): the hub's session cookie never reaches an app on a sibling port.
+books, sync = by_port.get(("8092",), ""), hub
+check("the hub's session cookie is stripped for notes, books, cgit and Syncthing", "map $http_cookie $irate_box_app_cookie" in text
+      and notes.count("proxy_set_header Cookie $irate_box_app_cookie;") == 1 and books.count("proxy_set_header Cookie $irate_box_app_cookie;") == 2
+      and cgit.count("fastcgi_param HTTP_COOKIE $irate_box_app_cookie;") == 2
+      and re.search(r"location /sync/ \{.*?proxy_set_header Cookie \$irate_box_app_cookie;.*?proxy_pass http://127\.0\.0\.1:8384/;", hub, re.S) is not None)
+caddy = (REPO / "config" / "Caddyfile").read_text()
+check("  and on Caddy", caddy.count("header_up Cookie \"irate_session=[^;]*;?\\s*\" \"\"") == 4, caddy.count("header_up Cookie"))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

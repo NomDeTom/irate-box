@@ -2242,8 +2242,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/_irate/admin":
             # Unclaimed: /admin shows only the set-the-password page, so it asks no login; the shell,
             # Syncthing and private apps behind the same gate must not open (nginx says which page).
-            uri = self.headers.get("X-Original-URI", "")
-            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith(("/admin/", "/admin?"))))
+            # nginx sends the request's URI as typed but routes on the normalised one, so
+            # "/admin/../term/" reaches the shell's location: judged here as the browser and
+            # nginx see it, after unquoting and normalising (stance review 2026-10-08, N4).
+            import posixpath
+            uri = posixpath.normpath(unquote(self.headers.get("X-Original-URI", "").partition("?")[0]) or "/")
+            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith("/admin/")))
         else:
             ok = me is not None
         if ok:
@@ -2945,6 +2949,8 @@ class Handler(BaseHTTPRequestHandler):
         self._note_account()
         refresh_manifests()
         path = self.path.split("?")[0]
+        if not path.startswith("/_irate/") and self._cross_site():
+            return
 
         # Delegated before the body is read: the store takes raw bytes, and the
         # Excalidraw frontend sends no Content-Type for JSON to be parsed from.
@@ -3400,16 +3406,29 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_empty(404)
 
+    def _cross_site(self):
+        """A change a page on another site made (stance review 2026-10-08, N10; S3 for /admin
+        is _forged): when the browser says where the request came from (Sec-Fetch-Site, or
+        Origin), it must be this host; a sibling port (same-site) does not count. A client that
+        sends neither (curl, the box's own scripts) carries no cached login of a browser's."""
+        site = self.headers.get("Sec-Fetch-Site")
+        origin = self.headers.get("Origin")
+        if (site and site not in ("same-origin", "none")) or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
+            self._discard_body()
+            self.send_json(403, {"error": "a change must come from the box's own pages"})
+            return True
+        return False
+
     def do_PUT(self):
-        if not store.handle(self, "PUT", self.path.split("?")[0], STORE, DROP):
+        if not self._cross_site() and not store.handle(self, "PUT", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def do_DELETE(self):
-        if not store.handle(self, "DELETE", self.path.split("?")[0], STORE, DROP):
+        if not self._cross_site() and not store.handle(self, "DELETE", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def do_PATCH(self):
-        if not store.handle(self, "PATCH", self.path.split("?")[0], STORE, DROP):
+        if not self._cross_site() and not store.handle(self, "PATCH", self.path.split("?")[0], STORE, DROP):
             self.send_empty(404)
 
     def do_OPTIONS(self):

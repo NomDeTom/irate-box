@@ -129,14 +129,34 @@ def cis_findings(checks, summary, took=None):
     return out
 
 
-def run_cis(work):
+def cis_pin():
+    """The commit of debian-cis the shipped security kit pins (toolkits/security.json, root-owned
+    code), or None. The mirror is fetched and tagged by the hub user, so root runs nothing from it
+    but this commit (security stance review 2026-10-08, N2)."""
+    from irate_box.hub import kitdefs
+    for g in (kitdefs.shipped().get("security") or {}).get("git", []):
+        if g.get("upstream", "").rstrip("/").lower() == CIS_UPSTREAM and re.fullmatch(r"[0-9a-f]{40}", str(g.get("pin", ""))):
+            return g["pin"]
+    return None
+
+
+def run_cis(work, pin=None):
     repo = _cis_mirror()
     if not repo:
         return [_f("cis-missing", "debian-cis", "warn", "Its mirror is not on the box yet.",
                    "Library → Toolkits: keep the Security kit current; the librarian mirrors debian-cis.", "debian-cis")]
+    pin = pin or cis_pin()
+    if not pin:
+        return [_f("cis-unpinned", "debian-cis", "warn", "The security kit names no commit of debian-cis, so it is not run: "
+                   "root runs only the commit the hub's own code pins, never whatever the mirror holds.", "", "debian-cis")]
+    have = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "cat-file", "-e", f"{pin}^{{commit}}"],
+                          capture_output=True, timeout=60)
+    if have.returncode != 0:
+        return [_f("cis-pin-missing", "debian-cis", "warn", f"Its mirror does not hold the pinned commit {pin[:12]}, so it is not run.",
+                   "Library → Mirrors: update debian-cis (the kit pins it; an older mirror may need re-adding).", "debian-cis")]
     src = work / "debian-cis"
     src.mkdir()
-    arch = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "archive", "--format=tar", "HEAD"],
+    arch = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "archive", "--format=tar", pin],
                           capture_output=True, timeout=300)
     if arch.returncode != 0:
         return [_f("cis-error", "debian-cis", "warn", f"Could not export it from its mirror: {arch.stderr.decode()[-200:]}", "", "debian-cis")]

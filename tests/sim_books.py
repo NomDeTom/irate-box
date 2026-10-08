@@ -196,7 +196,7 @@ check("catalogue: entries with title, language, size, date, the .zim (not its .m
 src = L.validate_source({"name": "raspberrypi", "type": "kiwix", "kiwix_name": "raspberrypi_en_all"})
 cand = L.resolve(src)
 check("kept current by its catalogue name: the newest of that name and flavour", cand["url"].endswith("raspberrypi_en_all_2026-09.zim") and cand["size"] == 300000000
-      and not cand["zip"] and "name=raspberrypi_en_all" in opened[-1], cand)
+      and not cand["zip"] and any("name=raspberrypi_en_all" in u for u in opened) and "sha256" in cand, cand)
 cand2 = L.resolve(L.validate_source({"name": "raspberrypi-nopic", "type": "kiwix", "kiwix_name": "raspberrypi_en_all", "flavour": "nopic"}))
 check("  a flavour picks its own", cand2["url"].endswith("_nopic_2026-10.zim"), cand2)
 for bad in ({"kiwix_name": "../x"}, {"kiwix_name": ""}, {"kiwix_name": "a", "flavour": "x y"}):
@@ -224,5 +224,29 @@ try:
 except L.LibrarianError as exc:
     check("a redirect to plain HTTP: not taken (F22)", "plain HTTP" in str(exc), str(exc))
 L._open = real_open
+# N7, N8 (stance review 2026-10-08): a book checked against its metalink's sha256, a nightly.link
+# bundle against GitHub's artifact digest.
+META4 = '<?xml version="1.0"?><metalink xmlns="urn:ietf:params:xml:ns:metalink"><file name="y.zim"><size>3</size><hash type="sha-256">' + \
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad</hash><url>https://x/y.zim</url></file></metalink>"
+L._open = lambda url, auth=None, method="GET", timeout=60, extra=None: Feed(META4.encode())
+check("a metalink's sha-256 read", L._meta4_sha256("https://x/y.zim.meta4") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+check("  none from a plain-HTTP or missing metalink, or one that is not XML", L._meta4_sha256("http://x/y.meta4") is None and L._meta4_sha256("") is None
+      and (setattr(L, "_open", lambda *a, **k: Feed(b"nope")) or L._meta4_sha256("https://x/y.meta4")) is None)
+L._open = real_open
+(T / "abc").write_bytes(b"abc")
+L._verify_sha256(T / "abc", "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD", "abc")
+L._verify_sha256(T / "abc", None, "abc")
+check("a download that matches, or a source that names no hash: kept", (T / "abc").exists())
+try:
+    L._verify_sha256(T / "abc", "0" * 64, "abc"); check("one that does not match: refused and gone", False)
+except L.LibrarianError as exc:
+    check("one that does not match: refused and gone", "sha256" in str(exc) and not (T / "abc").exists(), str(exc))
+real_newest = L._newest_artifact
+L._newest_artifact = lambda s, a: ({"id": 7, "head_branch": "main", "created_at": "2026-10-08T00:00:00Z"}, {"id": 9, "name": "bundle", "size_in_bytes": 5, "digest": "sha256:" + "A" * 64})
+check("nightly.link: GitHub's artifact digest carried to the download's check", L._resolve_nightly({"repo": "o/r"}, None)["sha256"] == "a" * 64)
+L._newest_artifact = lambda s, a: ({"id": 7}, {"id": 9, "name": "bundle"})
+check("  an artifact with no digest: unchecked, as before", L._resolve_nightly({"repo": "o/r"}, None)["sha256"] is None)
+L._newest_artifact = real_newest
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

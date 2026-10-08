@@ -33,6 +33,13 @@ map $scheme $irate_box_addon_port { https @ADDON_TLS_PORT@; default @ADDON_PORT@
 map $scheme $irate_box_notes_port { https @NOTES_TLS_PORT@; default @NOTES_PORT@; }
 map $scheme $irate_box_wiki_port  { https @WIKI_TLS_PORT@;  default @WIKI_PORT@; }
 map $scheme $irate_box_git_port   { https @GIT_TLS_PORT@;   default @GIT_PORT@; }
+# The hub's session cookie is the hub's: an app on a sibling port (notes, books, cgit, Syncthing)
+# gets the rest of the Cookie header without it, so a page there cannot act as the owner
+# (security stance review 2026-10-08, N5). The gates (auth_request) still see the whole header.
+map $http_cookie $irate_box_app_cookie {
+	default $http_cookie;
+	"~^(?<pre>.*?)irate_session=[^;]*;?\s*(?<post>.*)$" "$pre$post";
+}
 
 # The hub keeps HTTP/1.1 connections open. Reusing them matters: one new connection per
 # request is what filled the hub's listen queue in the benchmark.
@@ -272,6 +279,7 @@ server {
 		auth_basic_user_file @HTPASSWD@;
 		include @ACCESS@.d/gate-admin.conf*;
 		proxy_set_header Host 127.0.0.1:8384;
+		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $http_host;
@@ -605,6 +613,7 @@ server {
 		auth_basic $irate_box_auth_notes;
 		include @ACCESS@.d/gate-notes.conf*;
 		auth_basic_user_file @HTPASSWD@;
+		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
 	}
@@ -671,6 +680,7 @@ server {
 		auth_basic $irate_box_auth_wiki;
 		include @ACCESS@.d/gate-wiki.conf*;
 		auth_basic_user_file @HTPASSWD@;
+		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_pass http://127.0.0.1:8081;
 	}
 	# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM would hide behind the old
@@ -682,6 +692,7 @@ server {
 		auth_basic_user_file @HTPASSWD@;
 		proxy_hide_header Cache-Control;
 		add_header Cache-Control "no-cache" always;
+		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_pass http://127.0.0.1:8081;
 	}
 	location / { return 404; }
@@ -774,6 +785,7 @@ server {
 		add_header X-Content-Type-Options nosniff always;
 		fastcgi_param HTTP_HOST $host:@PORT@;  # cgit's clone URLs: the hub's port, where git is served
 		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_param HTTP_COOKIE $irate_box_app_cookie;
 		fastcgi_pass unix:/run/irate-box-git.sock;
 	}
 	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
@@ -790,6 +802,7 @@ server {
 		add_header X-Content-Type-Options nosniff always;
 		fastcgi_param HTTP_HOST $host:@PORT@;  # cgit's clone URLs: the hub's port, where git is served
 		fastcgi_param PATH_INFO $irate_box_cgit_path;
+		fastcgi_param HTTP_COOKIE $irate_box_app_cookie;
 		fastcgi_pass unix:/run/irate-box-git.sock;
 	}
 	location / { return 404; }

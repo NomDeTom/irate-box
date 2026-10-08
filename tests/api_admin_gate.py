@@ -56,6 +56,17 @@ try:
     r = c.getresponse(); r.read()
     check("a chunked unread body closes the connection", r.will_close, r.getheaders())
     check("and the next request, on a new one, is itself", go("GET", "/admin/settings", front) == 200)
+    # N10 (stance review 2026-10-08): a guest-level change from another site, or from a sibling port
+    # (same-site), is refused; one that says nothing of where it came from is not a browser's.
+    msg = {"Content-Type": "application/json"}
+    check("POST /messages from a cross-site page: 403", go("POST", "/messages", {**msg, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403)
+    check("POST /messages from a sibling port (same-site): 403", go("POST", "/messages", {**msg, "Sec-Fetch-Site": "same-site"}, b"{}") == 403)
+    check("POST /messages with another Origin: 403", go("POST", "/messages", {**msg, "Origin": "http://evil.example"}, b"{}") == 403)
+    check("PUT /api/v2/x cross-site: 403", go("PUT", "/api/v2/x", {"Sec-Fetch-Site": "cross-site"}, b"x") == 403)
+    check("POST /messages from this origin, or with no word of where from: not 403",
+          go("POST", "/messages", {**msg, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}, b"{}") != 403
+          and go("POST", "/messages", msg, b"{}") != 403)
+    check("and the connection is still itself after each", go("GET", "/admin/settings", front) == 200)
     # F15: the hub reads no JSON over 256 KB; the connection stays usable after.
     big = b'{"x": "' + b"y" * (300 * 1024) + b'"}'
     check("a JSON body over 256 KB: 413", go("POST", "/messages", {"Content-Type": "application/json"}, big) == 413)
