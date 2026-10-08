@@ -33,6 +33,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box import confine
 from irate_box.hub import ci, gitrepos
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -335,7 +336,8 @@ def queue_tools(name, ref, family, offline=False, env=None):
 def _job_path(job_id):
     if not re.fullmatch(r"[0-9]{6,24}-[0-9a-f]{6}", job_id or ""):
         raise ValueError("not a waiting build")
-    p = next((d / f"{job_id}.json" for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()), ci.QUEUE / f"{job_id}.json")
+    p = next((confine.under(d, f"{job_id}.json") for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()),
+             confine.under(ci.QUEUE, f"{job_id}.json"))
     try:
         j = json.loads(p.read_text())
     except (OSError, ValueError):
@@ -535,7 +537,7 @@ FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
 def _run(run_number):
     if not re.fullmatch(r"[0-9]{1,6}", str(run_number or "")):
         raise ValueError("run: a factory run's number")
-    run = ci.RUNS / RUNS_NAME / str(run_number)
+    run = confine.under(ci.RUNS, RUNS_NAME, str(run_number))
     try:
         return run, json.loads((run / "status.json").read_text())
     except (OSError, ValueError):
@@ -566,7 +568,7 @@ def publish(run_number):
     if len(names) != 1:
         raise ValueError("this build kept no manifest (.mt.json): a native build, or one from before the factory kept them")
     try:
-        mt = json.loads((run / "artifacts" / names[0]).read_text())
+        mt = json.loads(confine.under(run, "artifacts", names[0]).read_text())
     except (OSError, ValueError):
         raise ValueError("its manifest cannot be read")
     env, version = st.get("env"), str(mt.get("version", ""))
@@ -581,28 +583,28 @@ def publish(run_number):
         kept = name if name in arts else name[:-len("-ota.zip")] + ".zip" if name.endswith("-ota.zip") else None
         if not FILE_RE.match(name) or kept not in arts:
             continue
-        data = (run / "artifacts" / kept).read_bytes()
+        data = confine.under(run, "artifacts", kept).read_bytes()
         if entry.get("md5") and hashlib.md5(data).hexdigest() != entry["md5"]:
             raise ValueError(f"{kept} does not match its manifest's MD5")
         files.append(entry)
         plan.append((name, data))
     if not files:
         raise ValueError("none of the files its manifest names were kept")
-    folder = FIRMWARE / (version + BUILT)
+    folder = confine.under(FIRMWARE, version + BUILT)
     folder.mkdir(parents=True, exist_ok=True)
     os.chmod(folder, 0o755)
     for name, data in plan:
-        tmp = folder / (name + ".part")
+        tmp = confine.under(folder, name + ".part")
         tmp.write_bytes(data)
         os.chmod(tmp, 0o644)
-        os.replace(tmp, folder / name)
-    _write(folder / f"firmware-{env}-{folder.name}.mt.json", dict(mt, files=files, built_run=f"{RUNS_NAME}/{run.name}",
+        os.replace(tmp, confine.under(folder, name))
+    _write(confine.under(folder, f"firmware-{env}-{folder.name}.mt.json"), dict(mt, files=files, built_run=f"{RUNS_NAME}/{run.name}",
                                                                  built_ref=st.get("ref"), built_source=st.get("source")))
     board_list = _board_list(folder)
     board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env] + \
                             [{"board": env, "platform": mt.get("architecture") or st.get("family")}]
     board_list["targets"].sort(key=lambda t: t["board"])
-    _write(folder / f"firmware-{folder.name}.json", board_list)
+    _write(confine.under(folder, f"firmware-{folder.name}.json"), board_list)
     return {"version": folder.name, "env": env}
 
 
@@ -611,8 +613,8 @@ def unpublish(version, env):
     another target's manifest also names (an ESP32's shared OTA loader) stays."""
     if not (version.endswith(BUILT) and VERSION_RE.match(version[:-len(BUILT)])) or not ENV_RE.match(env or ""):
         raise ValueError("not a release built here")
-    folder = FIRMWARE / version
-    mt_path = folder / f"firmware-{env}-{version}.mt.json"
+    folder = confine.under(FIRMWARE, version)
+    mt_path = confine.under(folder, f"firmware-{env}-{version}.mt.json")
     try:
         mine = {f.get("name") for f in json.loads(mt_path.read_text()).get("files", [])}
     except (OSError, ValueError):
@@ -626,11 +628,11 @@ def unpublish(version, env):
             pass
     for name in mine - others:
         if isinstance(name, str) and FILE_RE.match(name):
-            (folder / name).unlink(missing_ok=True)
+            confine.under(folder, name).unlink(missing_ok=True)
     board_list = _board_list(folder)
     board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env]
     if board_list["targets"]:
-        _write(folder / f"firmware-{version}.json", board_list)
+        _write(confine.under(folder, f"firmware-{version}.json"), board_list)
     else:
         shutil.rmtree(folder, ignore_errors=True)
 

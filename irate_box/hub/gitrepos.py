@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from irate_box import confine
 
 ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] / "git"))
 AREAS = {"public": "/git/", "private": "/git-private/"}
@@ -164,7 +165,7 @@ def decide(uri, method="GET", git_mode="public", account=None):
     writing = m.group(3).endswith("git-receive-pack") or service == "git-receive-pack"
     if not writing:
         return True
-    repo = ROOT / "public" / f"{m.group(2)}.git"
+    repo = confine.under(ROOT, "public", f"{m.group(2)}.git")
     if not (repo / "HEAD").exists():
         return False
     level = write_level(repo)
@@ -202,7 +203,7 @@ def _target(payload):
         name = name[:-4]
     if not NAME_RE.match(name):
         raise ValueError("a name is letters, digits, '.', '_' and '-', up to 64, starting with a letter or digit")
-    return ROOT / area / f"{name}.git"
+    return confine.under(ROOT, area, f"{name}.git")
 
 
 def action(payload):
@@ -249,7 +250,7 @@ def action(payload):
             to = payload.get("to")
             if to not in AREAS or to == path.parent.name:
                 raise ValueError("to: the other area, public or private")
-            dest = ROOT / to / path.name
+            dest = confine.under(ROOT, to, path.name)
             if dest.exists():
                 raise ValueError(f"{path.name} already exists in {to}")
             level = write_level(path)

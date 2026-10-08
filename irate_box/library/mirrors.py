@@ -39,6 +39,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
+from irate_box import confine
 from irate_box.hub import gitrepos
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
@@ -155,7 +156,7 @@ def repo_path(m):
 def add(m):
     m = validate(m)
     mirrors = load()
-    if any(x["name"] == m["name"] for x in mirrors) or any((gitrepos.ROOT / a / f"{m['name']}.git").exists() for a in gitrepos.AREAS):
+    if any(x["name"] == m["name"] for x in mirrors) or any(confine.under(gitrepos.ROOT, a, f"{m['name']}.git").exists() for a in gitrepos.AREAS):
         raise LibrarianError(f"{m['name']}.git already exists")
     mirrors.append(m)
     _write(SETTINGS, {"mirrors": mirrors})

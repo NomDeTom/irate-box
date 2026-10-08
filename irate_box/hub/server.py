@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 import html
+from irate_box import confine
 from irate_box.hub import access
 from irate_box.hub import accounts
 from irate_box.hub import board
@@ -1296,7 +1297,7 @@ def local_addons_snapshot():
 def _local_add(m, how):
     """Write a checked local manifest, record the consent, and fetch it in the background."""
     i = m["id"]
-    path = manifests.LOCAL_D / f"{i}.json"
+    path = confine.under(manifests.LOCAL_D, f"{i}.json")
     if path.exists():
         raise ValueError(f"{i} is already added")
     _write_atomic(path, json.dumps(m, indent=2) + "\n")
@@ -1338,9 +1339,9 @@ def local_addons_action(payload):
             # changes on /admin and takes it. It replaces the copy, with a new consent record.
             i = str(payload.get("id", ""))
             cat = manifests.catalogue()
-            path = manifests.LOCAL_D / f"{i}.json"
-            if not LOCAL_ID_RE.match(i) or i not in cat or not path.exists():
+            if not LOCAL_ID_RE.match(i) or i not in cat or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
                 return 400, {"error": "id must name an add-on added from the catalogue"}
+            path = confine.under(manifests.LOCAL_D, f"{i}.json")
             if payload.get("agree") is not True:
                 return 400, {"error": "agree to its consent text first"}
             entry = cat[i]
@@ -1354,17 +1355,17 @@ def local_addons_action(payload):
             return 200, {"accepted": i}
         if action == "remove":
             i = str(payload.get("id", ""))
-            if not LOCAL_ID_RE.match(i) or not (manifests.LOCAL_D / f"{i}.json").exists():
+            if not LOCAL_ID_RE.match(i) or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
                 return 400, {"error": "id must name an added add-on"}
             try:
                 librarian.remove_source(i)
             except librarian.LibrarianError:
                 pass
-            for p in (manifests.ADDONS / i, manifests.ADDONS / f".{i}.prev", manifests.ADDONS / f".{i}.new"):
+            for p in (confine.under(manifests.ADDONS, i), confine.under(manifests.ADDONS, f".{i}.prev"), confine.under(manifests.ADDONS, f".{i}.new")):
                 shutil.rmtree(p, ignore_errors=True)
             # Off first (root's, while the manifest is still there to name it), then gone.
             control_request({"action": "access", "app": i, "mode": "off"})
-            (manifests.LOCAL_D / f"{i}.json").unlink(missing_ok=True)
+            confine.under(manifests.LOCAL_D, f"{i}.json").unlink(missing_ok=True)
             consents = _read_consents()
             consents.pop(i, None)
             _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
@@ -2625,7 +2626,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not gitrepos.NAME_RE.match(name):
                         raise ValueError("repo: a private repository's name")
                     branch = payload.get("branch")
-                    out = ci.queue_build(gitrepos.ROOT / "private" / f"{name}.git", str(branch) if branch else None)
+                    out = ci.queue_build(confine.under(gitrepos.ROOT, "private", f"{name}.git"), str(branch) if branch else None)
                     self.send_json(202, dict(out, queued=True, snapshot=ci.snapshot()))
                 elif action in ("keep", "unkeep", "delete"):
                     ci.queue_run_change(str(payload.get("run", "")), action)

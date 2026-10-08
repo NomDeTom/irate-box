@@ -306,8 +306,14 @@ def set_login(pw, keep=True):
 
     secret = ETC / "admin-password"
     if keep:
-        secret.write_text(pw + "\n")
-        secret.chmod(0o600)
+        # Root's alone from the moment it exists (a write then a chmod left it readable by every
+        # account for that moment), into a new file renamed over the old.
+        tmp = secret.with_name(f".{secret.name}.new")
+        tmp.unlink(missing_ok=True)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(pw + "\n")
+        os.replace(tmp, secret)
     else:
         secret.unlink(missing_ok=True)
     # ttyd has no credential of its own any more (F9); a box installed before then has one, the

@@ -10,7 +10,13 @@ let view = null;
 // a path on this origin, never another site (an open redirect).
 const next = (() => {
   const n = new URLSearchParams(location.search).get('next') || '';
-  return n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : '';
+  if (!n.startsWith('/')) return '';
+  // Resolved as the browser would (it drops tabs and newlines, so "/\t/elsewhere" is "//elsewhere"),
+  // and kept only if it is still this origin.
+  try {
+    const u = new URL(n, location.origin);
+    return u.origin === location.origin ? u.pathname + u.search + u.hash : '';
+  } catch (e) { return ''; }
 })();
 
 function note(text, ok) {

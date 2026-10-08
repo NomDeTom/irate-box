@@ -12,7 +12,7 @@ if (!process.argv[2]) { console.error('usage: node tests/eliza.cjs ADAPTED_DIR')
 const dir = path.resolve(process.argv[2]);
 // The engine is eliza.html's script, run without its page: the load handler is never called.
 const page = fs.readFileSync(path.join(dir, 'eliza.html'), 'utf8');
-const code = page.match(/<script>([\s\S]*?)<\/script>/)[1];
+const code = page.slice(page.indexOf('<script>') + '<script>'.length, page.indexOf('</script>'));
 const ctx = { console, TextEncoder, setTimeout, window: { addEventListener() {} }, document: {} };
 vm.runInNewContext(code + '\n;this.E = { Eliza, readScript, nullTracer, join, CACM_1966_01_DOCTOR_SCRIPT };', ctx);
 const { Eliza, readScript, nullTracer, join, CACM_1966_01_DOCTOR_SCRIPT } = ctx.E;

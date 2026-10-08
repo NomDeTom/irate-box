@@ -34,6 +34,7 @@ import shutil
 import threading
 from pathlib import Path
 
+from irate_box import confine
 from irate_box.hub import hubclock
 
 # Namespaces the Excalidraw frontend uses. Scenes are shared drawings, rooms are
@@ -165,12 +166,12 @@ class Store:
         self._lock = threading.Lock()
 
     def _dir(self, namespace):
-        path = self.root / namespace
+        path = confine.under(self.root, namespace)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def _blob_path(self, namespace, key):
-        return self._dir(namespace) / key
+        return confine.under(self._dir(namespace), key)
 
     def _write(self, path, data):
         """Write-and-rename, as everywhere else in the hub: a power cut mid-write must
@@ -230,14 +231,14 @@ class Store:
         }
         with self._lock:
             saves = self._dir("saves")
-            old = self._read_meta(saves / (key + ".meta"))
+            old = self._read_meta(confine.under(saves, key + ".meta"))
             lock = _lock_after((old or {}).get("lock"), proof, lock_new, lock_next)
             if lock:
                 meta["lock"] = lock
-            self._write(saves / (key + ".data"), payload)
+            self._write(confine.under(saves, key + ".data"), payload)
             if thumb:
-                self._write(saves / (key + ".thumb"), thumb)
-            self._write(saves / (key + ".meta"), json.dumps(meta).encode())
+                self._write(confine.under(saves, key + ".thumb"), thumb)
+            self._write(confine.under(saves, key + ".meta"), json.dumps(meta).encode())
             self._enforce_quota()
         return meta
 
@@ -258,7 +259,7 @@ class Store:
 
     def rename_save(self, key, name, proof=None, lock_next=None, unlock=False, force=False):
         """Rename (and, with unlock, remove the lock). force: the admin, past any lock."""
-        meta_path = self._dir("saves") / (key + ".meta")
+        meta_path = confine.under(self._dir("saves"), key + ".meta")
         with self._lock:
             meta = self._read_meta(meta_path)
             if meta is None:
@@ -274,7 +275,7 @@ class Store:
         return meta
 
     def get_save(self, key):
-        meta = self._read_meta(self._dir("saves") / (key + ".meta"))
+        meta = self._read_meta(confine.under(self._dir("saves"), key + ".meta"))
         if meta is None:
             return None
         data = self.get("saves", key + ".data")
@@ -287,7 +288,7 @@ class Store:
 
     def delete_save(self, key, proof=None, force=False):
         with self._lock:
-            meta = self._read_meta(self._dir("saves") / (key + ".meta"))
+            meta = self._read_meta(confine.under(self._dir("saves"), key + ".meta"))
             if meta and meta.get("lock") and not force:
                 if advance_lock(meta["lock"], proof) is None:
                     raise LockError(meta["lock"])
@@ -304,7 +305,7 @@ class Store:
         found = False
         for suffix in (".data", ".thumb", ".meta"):
             try:
-                (self._dir("saves") / (key + suffix)).unlink()
+                (confine.under(self._dir("saves"), key + suffix)).unlink()
                 found = True
             except OSError:
                 pass
@@ -407,7 +408,7 @@ class Drop:
         found = False
         for suffix in (".data", ".meta"):
             try:
-                (self.dir / (key + suffix)).unlink()
+                (confine.under(self.dir, key + suffix)).unlink()
                 found = True
             except OSError:
                 pass
@@ -431,7 +432,7 @@ class Drop:
             if meta["id"] != keep and not meta.get("pinned"):
                 self._remove(meta["id"])
                 total -= meta.get("size", 0)
-        return [m for m in metas if (self.dir / (m["id"] + ".meta")).exists()]
+        return [m for m in metas if confine.under(self.dir, m["id"] + ".meta").exists()]
 
     def pin(self, src, key, name, by=""):
         """A fixed file in the drop: copied from src under id `key`, replacing an earlier pin of
@@ -440,13 +441,13 @@ class Drop:
         if not ID_RE.match(key):
             raise ValueError("bad id")
         self.dir.mkdir(parents=True, exist_ok=True)
-        tmp = self.dir / (key + ".tmp")
+        tmp = confine.under(self.dir, key + ".tmp")
         shutil.copyfile(src, tmp)
         meta = {"id": key, "name": clean_filename(name), "size": tmp.stat().st_size, "by": str(by)[:MAX_NAME],
                 "created": self.clock.ticks(), "pinned": True}
         with self._lock:
-            os.replace(tmp, self.dir / (key + ".data"))
-            (self.dir / (key + ".meta")).write_text(json.dumps(meta))
+            os.replace(tmp, confine.under(self.dir, key + ".data"))
+            (confine.under(self.dir, key + ".meta")).write_text(json.dumps(meta))
         return meta
 
     def list(self):
@@ -469,7 +470,7 @@ class Drop:
         if shutil.disk_usage(self.dir).free < length + DROP_MIN_FREE:
             raise ValueError("the card is too full")
         key = secrets.token_urlsafe(12)
-        tmp = self.dir / (key + ".tmp")
+        tmp = confine.under(self.dir, key + ".tmp")
         try:
             with open(tmp, "wb") as fh:
                 left = length
@@ -486,8 +487,8 @@ class Drop:
             if lock:
                 meta["lock"] = lock
             with self._lock:
-                os.replace(tmp, self.dir / (key + ".data"))
-                (self.dir / (key + ".meta")).write_text(json.dumps(meta))
+                os.replace(tmp, confine.under(self.dir, key + ".data"))
+                (confine.under(self.dir, key + ".meta")).write_text(json.dumps(meta))
                 self._prune(keep=key)
             return meta
         finally:
@@ -498,8 +499,8 @@ class Drop:
         if not ID_RE.match(key):
             return None
         try:
-            meta = json.loads((self.dir / (key + ".meta")).read_text())
-            return meta, open(self.dir / (key + ".data"), "rb")
+            meta = json.loads((confine.under(self.dir, key + ".meta")).read_text())
+            return meta, open(confine.under(self.dir, key + ".data"), "rb")
         except (OSError, ValueError):
             return None
 
@@ -510,7 +511,7 @@ class Drop:
             return False
         with self._lock:
             try:
-                meta = json.loads((self.dir / (key + ".meta")).read_text())
+                meta = json.loads((confine.under(self.dir, key + ".meta")).read_text())
             except (OSError, ValueError):
                 return False
             if not force:
@@ -796,7 +797,7 @@ def _handle_saves(handler, method, path, store):
         return True
 
     if method == "GET":
-        meta = store._read_meta(store._dir("saves") / (key + ".meta"))
+        meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
         if meta is None:
             _send_json(handler, 404, {"error": "not found"})
             return True
