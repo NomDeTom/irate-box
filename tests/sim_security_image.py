@@ -248,5 +248,6 @@ done = security.undo_all()
 check("undo_all puts the three back", (T / "sudoers.d" / "claude-temp").exists() and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists()
       and not (T / "journald.conf.d" / "irate-box.conf").exists() and not security.load_record(), done)
 
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
