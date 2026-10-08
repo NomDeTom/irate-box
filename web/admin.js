@@ -199,7 +199,7 @@ function sourceRow(src, st, busy) {
   const archive = st.archive || [];
   const key = `book:${src.name}`;
   const button = (label, body, confirmText, opts = {}) => el('button', {
-    type: 'button', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
+    type: 'button', className: 'action-btn', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
     onclick: () => libAct(key, body, confirmText),
   });
   // Check finds a newer version; Fetch downloads and checks it beside the book in use;
@@ -268,18 +268,18 @@ function renderApps(snap, busy) {
       withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
-        el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
-        el('button', { type: 'button', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
           title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
-        el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
-        inst && inst.has_previous ? el('button', { type: 'button', textContent: 'Roll back', disabled: busy,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
+        inst && inst.has_previous ? el('button', { type: 'button', className: 'action-btn', textContent: 'Roll back', disabled: busy,
           onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null,
-        a.pin ? el('button', { type: 'button', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
+        a.pin ? el('button', { type: 'button', className: 'action-btn', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
           onclick: post(`app:${name}`, { action: 'add', source: { ...src, follow: follow === 'pinned' ? 'latest' : 'pinned' } },
             follow === 'pinned' ? `Install the newest ${a.title} from now on, rather than the pinned commit the hub's maintainers checked? Nobody will have looked at it first.` : null) }) : null)
         : el('span', { className: 'library-buttons' },
-          el('button', { type: 'button', textContent: 'Keep current', disabled: busy,
+          el('button', { type: 'button', className: 'action-btn', textContent: 'Keep current', disabled: busy,
             title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
@@ -1137,7 +1137,7 @@ function renderSecurity(data) {
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     f.id === 'sudo-nopasswd' ? sudoToggle(f, busy) : f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
+      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
     }))) : null,
     noteUnder(f.id));
   // Each where it belongs (checklist 4d, 5d; S of the menu overhaul): the real choices here, the
@@ -1450,7 +1450,7 @@ function renderHealth(data) {
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
+      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
     }))) : null,
     noteUnder(f.id));
   hl.findings.replaceChildren(...all.filter((f) => !isClock(f)).map(item));
@@ -2499,7 +2499,7 @@ function renderAddons(data) {
       el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
       !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,
       a.added === null ? null : el('span', { className: 'library-buttons' }, el('button', {
-        type: 'button', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
+        type: 'button', className: 'action-btn', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
         onclick: () => addonSet(a, !a.added),
       })),
       note));
@@ -2586,8 +2586,8 @@ function renderLocal(data) {
       el('span', { className: 'library-buttons' },
         inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
         a.catalogue && a.catalogue.status === 'held'
-          ? el('button', { type: 'button', textContent: 'Accept the new version', onclick: () => localAccept(a, data) }) : null,
-        el('button', { type: 'button', textContent: 'Remove', onclick: () => localRemove(a) })),
+          ? el('button', { type: 'button', className: 'action-btn', textContent: 'Accept the new version', onclick: () => localAccept(a, data) }) : null,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Remove', onclick: () => localRemove(a) })),
       note(a.id)));
   }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
   const offered = data.catalogue.filter((c) => !c.added);
@@ -2597,7 +2597,7 @@ function renderLocal(data) {
       el('span', { className: 'setting-name', textContent: c.title }),
       el('span', { className: 'setting-desc', textContent: c.summary }),
       el('span', { className: 'setting-desc', textContent: `${capsText(c.capabilities)} From ${c.repo} at ${String(c.pin).slice(0, 7)}.` }),
-      el('span', { className: 'library-buttons' }, el('button', { type: 'button', textContent: 'Add', disabled: fetching, onclick: () => localAdd(c) })),
+      el('span', { className: 'library-buttons' }, el('button', { type: 'button', className: 'action-btn', textContent: 'Add', disabled: fetching, onclick: () => localAdd(c) })),
       note(c.id)))) : [el('p', { className: 'setting-desc', textContent: 'Everything in the catalogue is added.' })]));
   loc.errors.replaceChildren(...Object.values(data.errors || {}).map((why) => el('p', { className: 'setting-desc bad', textContent: `Left out: ${why}` })));
   clearTimeout(locPoll);
@@ -2748,13 +2748,13 @@ function renderUsb(data) {
       d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
       ...(d.zims.length ? d.zims.map((z) => el('span', { className: 'usb-book' },
         el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ` · cannot be imported: ${z.problem || 'not a ZIM file'}`}` }),
-        z.zim ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
+        z.zim ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
           onclick: () => usbRequest({ action: 'import', device: d.name, file: z.file }, `${d.name}:${z.file}`,
             `Copy ${z.file} into the library (${size(z.size)})?`) }) : null,
         noteAt(`${d.name}:${z.file}`)))
         : [el('span', { className: 'setting-desc', textContent: d.error ? '' : 'No books on this stick.' })]),
       data.books.length ? el('span', { className: 'library-buttons' }, pick,
-        el('button', { type: 'button', textContent: 'Export to this stick', disabled: busy,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Export to this stick', disabled: busy,
           onclick: () => usbRequest({ action: 'export', device: d.name, book: pick.value }, `export:${d.name}`,
             `Copy ${pick.value}.zim onto ${d.label || d.name}?`) })) : null,
       noteAt(`export:${d.name}`)));
@@ -3488,10 +3488,10 @@ async function loadKitsUsb() {
         ...((d.kits || []).length ? d.kits.map((k) => el('span', { className: 'usb-book' },
           el('span', { className: 'setting-desc', textContent: `${k.title}: ${k.packages} packages, ${size(k.bytes)}, ${k.arch}` +
             (here && k.arch !== here ? ` (for another kind of board: this one is ${here})` : '') }),
-          !here || k.arch === here ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
+          !here || k.arch === here ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
             onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the stick? Every package is checked against Debian's signatures first.`) }) : null))
           : [el('span', { className: 'setting-desc', textContent: 'No toolkits on this stick.' })]),
-        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', textContent: 'Copy to this stick', disabled: busy,
+        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this stick', disabled: busy,
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
     p ? el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` }) : null);
