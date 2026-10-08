@@ -1298,9 +1298,17 @@ html:has(> body.admin) { background: var(--bg); }
 
 /* A status tile at double width (M8): two cells, room to say more. */
 .service-grid .service-card.wide { grid-column: span 2; }
+/* Large: two across and two down (F5; Tom: "All tiles"). The grid packs the gaps a large tile
+   leaves with later tiles, so no row has a hole; the order still reads left to right. */
+.service-grid { grid-auto-flow: row dense; }
+.service-grid .service-card.large { grid-column: span 2; grid-row: span 2; justify-content: center; }
+.service-grid .service-card.large .icon { font-size: 3rem; }
+.service-grid .service-card.large .name { font-size: 1.15rem; }
+.service-grid .service-card.large .desc { font-size: 0.9rem; }
+.service-grid .qr-card.large .qr { width: 11rem; }  /* big enough to scan across a table */
 .people-card .people-more { margin-top: 0.2rem; }
 .people-card .field-help { margin-top: 0.4rem; text-align: left; font-size: 0.75rem; }
-@media (max-width: 480px) { .service-grid .service-card.wide { grid-column: auto; } }
+@media (max-width: 480px) { .service-grid .service-card.wide { grid-column: auto; } .service-grid .service-card.large { grid-column: 1 / -1; grid-row: auto; } }
 
 /* Reporting a message or post (M10): a quiet ⚑, its reasons opening beside it. */
 .report { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-left: 0.4rem; }

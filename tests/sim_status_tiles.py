@@ -39,8 +39,21 @@ try:
     _, home = go("GET", "/")
     check("hidden: the QR gone", st == 200 and 'id="qr-card"' not in home)
     check("ordered: Memory and disk first", home.find('id="system-card"') < home.find('id="people-card"'))
-    check("double: People two cells wide, marked so", 'data-size="double" class="service-card wide people-card" id="people-card"' in home, home[home.find('people-card') - 80:home.find('people-card') + 40])
-    for bad in ({"hidden": ["box-nothing"]}, {"double": "box-people"}, "x"):
+    check("an older page's double: People wide (two cells), marked so", 'data-size="wide" class="service-card wide people-card" id="people-card"' in home, home[home.find('people-card') - 80:home.find('people-card') + 40])
+    # F5: three sizes, single, wide (2x1) and large (2x2), for the box row and the apps row alike.
+    st, body = go("POST", "/admin/status-tiles", {"state": {"order": [], "hidden": [], "size": {"box-system": "large", "box-people": "wide"}}})
+    _, home = go("GET", "/")
+    check("large: Memory and disk two by two, marked so", st == 200 and 'data-size="large" class="service-card large system-card"' in home, home[home.find('system-card') - 80:home.find('system-card') + 30])
+    check("the state says each size", json.loads(body)["state"]["size"] == {"box-system": "large", "box-people": "wide"}
+          and {t["id"]: t["size"] for t in json.loads(body)["tiles"]}.get("box-qr") == "single", body[:300])
+    st, body = go("POST", "/admin/tiles", {"state": {"order": [], "size": {"draw": "large", "about": "wide"}}})
+    _, home = go("GET", "/")
+    i = home.find('<span class="name">Excalidraw</span>')
+    check("an app's tile large", st == 200 and 'class="service-card large" data-size="large"' in home[home.rfind("<a ", 0, i):i], home[home.rfind("<a ", 0, i):i])
+    for bad in ({"size": {"draw": "huge"}}, {"size": {"nothing": "wide"}}, {"size": ["draw"]}):
+        st, _ = go("POST", "/admin/tiles", {"state": bad})
+        check(f"apps row refused: {str(bad)[:40]}", st == 400, st)
+    for bad in ({"hidden": ["box-nothing"]}, {"double": "box-people"}, {"size": {"box-qr": "huge"}}, "x"):
         st, _ = go("POST", "/admin/status-tiles", {"state": bad})
         check(f"refused: {str(bad)[:40]}", st == 400, st)
     _, body = go("GET", "/status")

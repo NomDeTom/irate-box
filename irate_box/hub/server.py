@@ -351,22 +351,25 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
         hidden = set(hidden) | set(st["hidden"])
     elif row == "apps":
-        pos = {i: n for n, i in enumerate(tiles_state()["order"])}
+        st = tiles_state()
+        pos = {i: n for n, i in enumerate(st["order"])}
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
     for m in ms:
         tile = m.get("tile")
         if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
             continue
-        wide = bool(st) and m["id"] in st["double"]
+        size = (st or {}).get("size", {}).get(m["id"])
         if tile.get("widget") == "factory" and not factory_tile:
             continue
         if m.get("menu") and not menu_entries(m["id"], hidden):
             continue
         if "widget" in tile:
             w = WIDGET_HTML[tile["widget"]]
-            out.append(w.replace('class="service-card ', 'class="service-card wide ', 1).replace('<div ', '<div data-size="double" ', 1) if wide else w)
+            out.append(w.replace('class="service-card ', f'class="service-card {size} ', 1).replace('<div ', f'<div data-size="{size}" ', 1) if size else w)
             continue
-        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" wide" if wide else ""}"']
+        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" " + size if size else ""}"']
+        if size:
+            attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
             attrs.append(f'id="{html.escape(tile["element_id"])}"')
         attrs.append(f'href="{html.escape(tile["href"])}"')
@@ -493,13 +496,28 @@ def valid_folders(data):
 STATUS_TILES_FILE = STATE_DIR / "status_tiles.json"
 
 
+# A tile's size (menu overhaul F5; Tom, 2026-10-08: "All tiles"): one cell, wide (two across) or
+# large (two across and two down). M8's "double" list reads as wide.
+SIZES = ("wide", "large")
+
+
+def _sizes(data):
+    size = {i: "wide" for i in data.get("double", []) if isinstance(i, str)}
+    got = data.get("size", {})
+    if isinstance(got, dict):
+        size.update({k: v for k, v in got.items() if isinstance(k, str) and v in SIZES})
+    return dict(list(size.items())[:100])
+
+
 def status_tiles_state():
     try:
         data = json.loads(STATUS_TILES_FILE.read_text())
     except (OSError, ValueError):
-        return {"order": [], "hidden": [], "double": []}
+        data = {}
     data = data if isinstance(data, dict) else {}
-    return {k: [x for x in data.get(k, []) if isinstance(x, str)][:50] for k in ("order", "hidden", "double")}
+    out = {k: [x for x in data.get(k, []) if isinstance(x, str)][:50] for k in ("order", "hidden")}
+    out["size"] = _sizes(data)
+    return out
 
 
 def box_tiles():
@@ -513,7 +531,7 @@ def status_tiles_snapshot():
     st = status_tiles_state()
     pos = {i: n for n, i in enumerate(st["order"])}
     tiles = sorted(box_tiles(), key=lambda t: pos.get(t[0], len(pos)))
-    return {"tiles": [{"id": i, "name": n, "hidden": i in st["hidden"], "double": i in st["double"]} for i, n in tiles],
+    return {"tiles": [{"id": i, "name": n, "hidden": i in st["hidden"], "size": st["size"].get(i, "single")} for i, n in tiles],
             "state": st}
 
 
@@ -527,7 +545,7 @@ def tiles_state():
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
-    return {"order": [x for x in data.get("order", []) if isinstance(x, str)][:100]}
+    return {"order": [x for x in data.get("order", []) if isinstance(x, str)][:100], "size": _sizes(data)}
 
 
 def app_tiles():
@@ -540,7 +558,7 @@ def tiles_snapshot():
     st = tiles_state()
     pos = {i: n for n, i in enumerate(st["order"])}
     tiles = sorted(app_tiles(), key=lambda t: pos.get(t[0], len(pos)))
-    return {"tiles": [{"id": i, "name": n, "icon": c} for i, n, c in tiles], "state": st}
+    return {"tiles": [{"id": i, "name": n, "icon": c, "size": st["size"].get(i, "single")} for i, n, c in tiles], "state": st}
 
 
 TILES_MARK = "<!-- apps.d tiles -->"
@@ -3312,12 +3330,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/tiles":
             # The apps row's order (F3): a list of its tiles' ids, the rest after them as before.
             data, ids = payload.get("state"), {i for i, _, _ in app_tiles()}
-            if not isinstance(data, dict) or not isinstance(data.get("order", []), list) or not set(data.get("order", [])) <= ids:
-                self.send_json(400, {"error": "state: order, a list of the apps row's tiles"})
+            size = data.get("size", {}) if isinstance(data, dict) else None
+            if not isinstance(data, dict) or not isinstance(data.get("order", []), list) or not set(data.get("order", [])) <= ids \
+                    or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES):
+                self.send_json(400, {"error": "state: order, a list of the apps row's tiles; size, wide or large by tile"})
                 return
             tmp = TILES_FILE.parent / (TILES_FILE.name + ".tmp")
             STATE_DIR.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps({"order": list(dict.fromkeys(data.get("order", [])))}))
+            tmp.write_text(json.dumps({"order": list(dict.fromkeys(data.get("order", []))), "size": size}))
             os.replace(tmp, TILES_FILE)
             self.send_json(200, tiles_snapshot())
             return
@@ -3325,13 +3345,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/status-tiles":
             # The box row's arrangement (M8): its tiles only, each part a list of their ids.
             data, ids = payload.get("state"), {i for i, _ in box_tiles()}
+            size = data.get("size", {}) if isinstance(data, dict) else None
             if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
-                                                     for k in ("order", "hidden", "double")):
-                self.send_json(400, {"error": "state: order, hidden and double, each a list of the box row's tiles"})
+                                                     for k in ("order", "hidden", "double")) \
+                    or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES):
+                self.send_json(400, {"error": "state: order and hidden, each a list of the box row's tiles; size, wide or large by tile"})
                 return
             tmp = STATUS_TILES_FILE.parent / (STATUS_TILES_FILE.name + ".tmp")
             STATE_DIR.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps({k: list(dict.fromkeys(data.get(k, []))) for k in ("order", "hidden", "double")}))
+            out = {k: list(dict.fromkeys(data.get(k, []))) for k in ("order", "hidden")}
+            out["size"] = _sizes(data)  # an older page's "double" list, read as wide
+            tmp.write_text(json.dumps(out))
             os.replace(tmp, STATUS_TILES_FILE)
             self.send_json(200, status_tiles_snapshot())
             return
