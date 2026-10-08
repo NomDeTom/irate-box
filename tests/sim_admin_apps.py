@@ -57,6 +57,11 @@ try:
     got = json.loads(body)["apps"] if st == 200 else []
     check("/admin/apps answers the admin page", [{k: v for k, v in x.items() if k not in ("switch", "seen")} for x in got] == apps, body[:200])
     seen = {x["id"]: x.get("seen") for x in got}
+    # F7: the Firmware Factory's own page, under /admin's gate.
+    st, page = get("/admin/factory.html", {"X-Irate-Front": SECRET})
+    check("the Factory's own page served at /admin/factory.html", st == 200 and b"/factory.js" in page and b"factory-form" in page, st)
+    st, _ = get("/admin/factory.html", {})
+    check("  refused without the front's header, as /admin is", st == 403, st)
     check("/admin/apps: who sees it alone for About and the folders, not a switched app (F3)", seen.get("about") is True and seen.get("tools-rf") is True and seen.get("draw") is False, seen)
     sw = {x["id"]: x["switch"] for x in got}
     check("  with whether each app's access can be set (M6)", sw.get("git") is True and sw.get("wiki") is True and sw.get("meshtastic") is False and sw.get("box-factory") is False, sw)

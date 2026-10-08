@@ -760,17 +760,6 @@
           use of time, memory, disk and heat is recorded, so the estimates below come from this box.
           A family's first build here downloads its toolchain; after that it can build offline.
         </p>
-        <p class="setting-desc bad" id="factory-paused" hidden>Paused: nothing new starts until you resume (a build under way finishes).</p>
-        <h3>Build</h3>
-        <form id="factory-form" class="factory-form">
-          <label>Source <select name="source" id="factory-source"></select></label>
-          <label>Release or branch <select name="ref" id="factory-ref"></select></label>
-          <label>Show <input type="search" id="factory-search" placeholder="board or target" aria-label="Show targets containing"></label>
-          <div id="factory-targets" class="factory-targets"></div>
-          <p class="setting-desc" id="factory-chosen"></p>
-          <button type="submit" id="factory-queue" disabled>Queue</button>
-          <p class="setting-desc action-note" id="factory-note" role="status" hidden></p>
-        </form>
         <div class="settings" data-note="factory-tile-note">
           <label class="setting">
             <input type="checkbox" id="factory_tile">
@@ -781,14 +770,14 @@
           </label>
         </div>
         <p class="setting-desc action-note" id="factory-tile-note" role="status" hidden></p>
-        <h3>The queue</h3>
-        <p class="library-buttons"><button type="button" id="factory-pause">Pause</button></p>
-        <div id="factory-waiting" class="admin-list"></div>
-        <h3>Built</h3>
-        <div id="factory-runs" class="admin-list"></div>
-        <h3>In the web flasher</h3>
-        <p class="setting-desc">Builds published from the list above, offered in the web flasher (<a href="/admin/#firmware">Firmware</a>) as a release built on this box, beside the ones the librarian keeps.</p>
-        <div id="factory-flasher" class="admin-list"></div>
+        <h3>The Factory itself</h3>
+        <p class="setting-desc">
+          Choosing what to build, the queue and what was built are inside the app, on a page of its
+          own (checklist 5b; Tom: "all of the decisions about building and scheduling builds should
+          be inside it"). Its builds come from the box's own copies of the firmware's source: a
+          mirror under <a href="#mirrors">Git → Mirrors</a>, or a private repository on Git's page.
+        </p>
+        <p class="library-buttons"><a class="action-btn primary" href="/admin/factory.html" id="factory-open">Open the Firmware Factory →</a></p>
       </section>
 
       <section class="admin-pane" id="health" aria-labelledby="health-title">
