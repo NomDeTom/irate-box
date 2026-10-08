@@ -1354,3 +1354,6 @@ html:has(> body.admin) { background: var(--bg); }
 /* A one-time code beside its account, to copy. */
 .code-copy { display: inline-flex; align-items: center; gap: 0.3rem; }
 .code-box { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.2rem 0.4rem; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--text); border-radius: 4px; }
+/* A choice of a few, each said in full: radio buttons in a set (Tom, 2026-10-08, the build cache). */
+.radio-set { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.8rem 0.6rem; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
+.radio-set legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--muted); }
