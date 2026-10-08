@@ -124,6 +124,14 @@ setTimeout(() => {
     && chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
     && chipsOf(kiwix, 'Who sees the tile').map((c) => c.textContent).join('|') === 'guests|users|admin|hidden'
     && picked(kiwix, 'Who can open it') === 'admin' && picked(kiwix, 'Who sees the tile') === 'admin', kiwix && t('#app-access-wiki')[0]);
+  // The third row (Tom, 2026-10-08): what the tile does for one who sees it but may not open it.
+  const lockChips = chipsOf(kiwix, 'When seen but not opened');
+  check('  when seen but not opened: sign in, sign up, padlock, greyed; sign in by default; no sign-up for an app for the admin',
+    lockChips.map((c) => c.textContent).join('|') === 'sign in|sign up|padlock|greyed' && picked(kiwix, 'When seen but not opened') === 'sign in' && lockChips[1].disabled,
+    lockChips.map((c) => `${c.textContent}${c.disabled ? '(off)' : ''}`).join('|'));
+  check('  About, open to all, has no such row', !rowOf(d.getElementById('app-access-about'), 'When seen but not opened'));
+  lockChips[2].click();
+  [...d.getElementById('app-access-wiki').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
   // F3: a tile with no switch (About, the folders) has who sees it, and nothing else of access.
   check('About\'s page holds only who sees its tile', !!d.querySelector('#page-app-about #app-access-about')
@@ -256,6 +264,20 @@ setTimeout(() => {
     check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
     w.AL.badge('apps', '');
   }
+  // The books' sources as tabs (Tom, 2026-10-08): Kiwix library, Other source, USB stick.
+  {
+    const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
+    const panel = (id) => d.getElementById(id);
+    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB stick'
+      && tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden && panel('books-other').hidden && panel('books-usb').hidden);
+    tabs[2].click();
+    check('  a tab opens its panel and closes the rest', !panel('books-usb').hidden && panel('books-kiwix').hidden && tabs[2].classList.contains('active'));
+    tabs[2].dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    check('  the arrow keys move along', tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden);
+    w.location.hash = '#library-add'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+    check('  an address inside a panel opens its tab', !panel('books-other').hidden && tabs[1].getAttribute('aria-selected') === 'true');
+    w.location.hash = '';
+  }
   // The words of the old menu are gone (F1): no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')
@@ -268,6 +290,7 @@ setTimeout(() => {
   check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
     && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
   [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
+  check('git: the build cache\'s three choices as radio buttons, not a dropdown (Tom)', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
   cacheForm.elements.cache.value = 'whole';
   cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const mf = d.getElementById('git-mirror-add').elements;
@@ -301,6 +324,7 @@ setTimeout(() => {
     check('About hidden asks the hub', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about' && p[1].visible === 'hidden'));
     check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' }, icon: {} } }),
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
+    check('padlock saved for Kiwix', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'wiki' && p[1].locked === 'padlock'), JSON.stringify(posted.filter((p) => p[0] === '/admin/visibility')));
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));

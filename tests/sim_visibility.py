@@ -149,6 +149,36 @@ try:
     go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
     check("auto, private: no tile for a user, the tile for an admin account", tile(visit("/", jar["bea"])[0], "Git") is None
           and tile(visit("/", jar["ada"])[0], "Git") is not None)
+    # What a locked tile does (Tom, 2026-10-08): sign in, sign up, a padlock, greyed.
+    def card(page, name):
+        i = page.find(f'<span class="name">{name}</span>')
+        if i < 0:
+            return None
+        start = max(page.rfind("<a ", 0, i), page.rfind("<div ", 0, i))
+        end = min(x for x in (page.find("</a>", i), page.find("</div>", i)) if x >= 0)
+        return page[start:end]
+    go("POST", "/admin/visibility", {"app": "notes", "visible": "guests"})  # notes: for users, seen by everyone
+    t = card(visit("/")[0], "Notes") or ""
+    check("locked, sign in (the default): to the sign-in page, back to the app after", 'href="/account.html?next=' in t and "sign in to open" in t, t)
+    st, _ = go("POST", "/admin/visibility", {"app": "notes", "locked": "signup"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("sign up, with accounts open: to the sign-up form", st == 200 and "#signup" in t and "sign up to open" in t, t)
+    go("POST", "/admin/accounts", {"action": "settings", "signup": "off"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("  with no accounts to make: sign in instead", "#signup" not in t and "sign in to open" in t, t)
+    go("POST", "/admin/accounts", {"action": "settings", "signup": "open"})
+    go("POST", "/admin/visibility", {"app": "notes", "locked": "padlock"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("padlock: a padlock, and nothing to follow", t.startswith("<div ") and "padlock" in t and "href" not in t and "🔒" in t, t)
+    go("POST", "/admin/visibility", {"app": "notes", "locked": "grey"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("greyed: greyed out, nothing to follow, no padlock", t.startswith("<div ") and "greyed" in t and "href" not in t and "🔒" not in t, t)
+    t = card(visit("/", jar["bea"])[0], "Notes") or ""
+    check("  a user, who may open it, gets the app as ever", t.startswith("<a ") and "greyed" not in t and "/notes" in t, t)
+    st, _ = go("POST", "/admin/visibility", {"app": "notes", "locked": "ajar"})
+    check("refused: a way not offered", st == 400, st)
+    check("/admin/access says each app's way", json.loads(go("GET", "/admin/access")[1]).get("locked_as") == {"notes": "grey"})
+    go("POST", "/admin/visibility", {"app": "notes", "locked": "signin"})
     st, body = go("GET", "/menus.json")
     check("/menus.json still answers", st == 200 and "tools-general" in json.loads(body), body[:120])
 finally:
