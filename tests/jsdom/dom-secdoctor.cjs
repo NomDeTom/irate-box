@@ -83,9 +83,12 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   // The joint report on the page.
   check('the summary: counted after merging', /After merging what the sources agree on: 2 to fix, 5 to look at; 3 things several sources agree are fine\./.test(t(d.getElementById('joint-summary'))),
     t(d.getElementById('joint-summary')));
-  const cards = [...d.querySelectorAll('#joint-items .joint-item')];
-  check('an item per thing: what it is about, the sources that agree, what to do', cards.length === 2 && /Kernel link protections/.test(t(cards[0]))
-    && /2 sources agree/.test(t(cards[0])) && /the doctor/.test(t(cards[0])) && /the Security page/.test(t(cards[0])) && /To do: Turn them on/.test(t(cards[0])));
+  const rows = [...d.querySelectorAll('#joint-items .aw-row')];
+  rows.forEach((r) => r.querySelector('.aw-row-head').click());
+  check('one list, an entry per thing: what it is about, the sources that agree, what to do (step 4)', rows.length === 2 && /Kernel link protections/.test(t(rows[0]))
+    && /2 sources agree/.test(t(rows[0])) && /the doctor/.test(t(rows[0])) && /the Security page/.test(t(rows[0])) && /To do: Turn them on/.test(t(rows.find((r) => /Kernel link/.test(t(r))))));
+  check('  worst first, each tagged to fix / to look at, its area and its sources', rows[0].dataset.tags.split('|')[0] === 'to fix'
+    && rows.every((r) => /^(to fix|to look at)\|/.test(r.dataset.tags)), rows.map((r) => r.dataset.tags).join(' ; '));
   check('seen by one source only: listed apart, saying who could have seen it', !d.getElementById('joint-alone').hidden
     && /TCP 9999 — only nmap said so; the Security page could have seen it and did not\./.test(t(d.getElementById('joint-alone-list'))), t(d.getElementById('joint-alone-list')));
   const pills = [...d.querySelectorAll('#joint-fresh span')];

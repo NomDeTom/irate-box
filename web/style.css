@@ -1122,8 +1122,6 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .kit-flag { color: var(--warn); font-weight: 600; }
 
 /* The security doctor's joint report: an item per thing, which sources agree. */
-.joint-item.joint-problem { border-color: #e5484d; }
-.joint-item.joint-warn { border-color: var(--warn); }
 .joint-titles { margin: 0.2rem 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--muted); }
 
 /* Builds: a run's own view, and the templates. */
