@@ -16,6 +16,9 @@ the box itself, for when something has stopped or an install did not finish:
     kiwix-manage read it?), the library against the books on disk, and a crash loop
   - the uplink watchdog's report, the network inventory, the web server's config, whether
     the hub answers, the space left
+  - crash watch (crashwatch.py): a box that stopped without shutting down, and what it was doing;
+    a driver flooding the kernel log; the radio failing, and how far pre-emption goes; whether a
+    frozen box restarts by itself
 
 Every finding says what to do by hand ("fix", shell commands where they help) and, where it is
 safe to do from a button, offers it ("actions", carried out by fix()). Nothing changes unless
@@ -163,6 +166,8 @@ def expected_units():
              ("irate-box-librarian.timer", "the librarian's schedule"), ("irate-box-ci.path", "builds on push")]
     if (UNIT_DIR / "irate-box-uplink.service").exists() or "irate-box-uplink" in _installed_text():
         units.append(("irate-box-uplink.service", "the uplink watchdog"))
+    if (UNIT_DIR / "irate-box-crashwatch.service").exists() or "irate-box-crashwatch" in _installed_text():
+        units.append(("irate-box-crashwatch.service", "crash watch"))
     for opt, unit in ADDON_UNITS.items():
         if opt in opts:
             units.append((unit, f"the {opt.removeprefix('--with-')} add-on"))
@@ -792,10 +797,83 @@ def set_clock(epoch):
             f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(epoch))}.{saved}")
 
 
+PREEMPT_WORDS = {"off": "Off", "warn": "Warn", "radio": "Reset the radio", "reboot": "Reset, then restart the box"}
+
+
+def check_crashwatch(now=None):
+    """Crash watch (crashwatch.py): crashes, kernel floods, the radio and pre-emption, the hang settings."""
+    from irate_box.root import crashwatch as cw
+    now = now or time.time()
+    if not (UNIT_DIR / "irate-box-crashwatch.service").exists() and not cw.DIR.exists():
+        return []
+    st = cw.status()
+    s, out = st["settings"], []
+    week = [c for c in st["crashes"] if c.get("detected", 0) > now - 7 * 86400]
+    if week:
+        last = week[-1]
+        ago = _human_secs(now - last["detected"])
+        lines = [l.strip() for l in last.get("last", "").splitlines()[:4] if l.strip()]
+        ev = "; ".join(f"{e['kind']}: {e['text']}" for e in last.get("events", [])[-2:])
+        out.append(_f("crash-last", "The box stopped without shutting down", "warn" if now - last["detected"] < 86400 else "ok",
+                      f"{len(week)} time{'s' if len(week) != 1 else ''} this week, the last found {ago} ago (a hang, a crash or the "
+                      f"power going). Its last snapshot: " + (" | ".join(lines) or "none: snapshots were off") + (f". Before it: {ev}." if ev else "."),
+                      f"sudo ls {cw.CRASHES}/{last['dir']}/  (snapshots.log, journal-previous-boot.log)"
+                      + ("" if s["watchdog"] or s["panic"] else ". If it froze, the hang settings below restart it by itself next time.")))
+    else:
+        out.append(_f("crash-last", "The box stopped without shutting down", "ok", "Not in the last week."))
+    run = st["running"]
+    fl = run.get("floods") or {}
+    if fl:
+        k, n = max(fl.items(), key=lambda x: x[1])
+        rate = n / max(run.get("flood_window", 3600), 30)
+        out.append(_f("crash-flood", "The kernel log", "warn",
+                      f"Flooded: {n} lines like \"{k}\" in the last {_human_secs(run.get('flood_window', 3600))}, about {rate:.1f} a second. "
+                      "A driver logging that much wears the storage the log is synced to and hides the lines that matter; crash watch "
+                      "counts them rather than copying them.",
+                      "Often a driver's debug output: look for its module's debug parameter, or a newer driver. "
+                      "sudo dmesg | tail -50"))
+    radios = ", ".join(f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()) or "none found"
+    day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "reset", "reboot", "held")]
+    level = s["preempt"]
+    acts = [_act(f"crashwatch-preempt:{lv}", f"Pre-emption: {PREEMPT_WORDS[lv]}",
+                 "Restart the box by itself when the radio fails and a reset doesn't bring it back? Within the uplink "
+                 "watchdog's guards: never with guests on the hotspot (unless it says otherwise), during a build or an "
+                 "update, within 15 minutes of starting, or past its daily cap." if lv == "reboot" else None)
+            for lv in cw.PREEMPT if lv != level]
+    detail = (f"Watching: {radios}. Pre-emption: {PREEMPT_WORDS[level]}" + {
+        "off": " (a failing radio isn't looked for).", "warn": " (a failing radio is noted and said here, nothing more).",
+        "radio": " (a failing radio is reset at once: its USB device unbound and bound again).",
+        "reboot": " (a failing radio is reset, and the box restarted if it isn't back within 3 minutes)."}[level])
+    if day:
+        detail += " In the last day: " + "; ".join(f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}" for e in day[-4:])
+    out.append(_f("crash-radio", "The WiFi radio", "warn" if day else "ok", detail,
+                  "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver.", acts))
+    wd = st.get("watchdog_device")
+    hang = []
+    hang.append(_act("crashwatch-panic:" + ("off" if s["panic"] else "on"),
+                     "Kernel panic: don't restart" if s["panic"] else "Restart on a kernel panic or lockup",
+                     None if s["panic"] else "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen?"))
+    if wd:
+        hang.append(_act("crashwatch-watchdog:" + ("off" if s["watchdog"] else "on"),
+                         "Watchdog: off" if s["watchdog"] else f"A watchdog ({'the board' if wd == 'hardware' else 'softdog'}) restarts a frozen box",
+                         None if s["watchdog"] else "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy work "
+                                                    "that starves systemd for that long would restart too."))
+    on = [w for w, v in (("restarts after a kernel panic or lockup", s["panic"]), ("a watchdog restarts it if it freezes", s["watchdog"])) if v]
+    out.append(_f("crash-hang", "A frozen box", "ok",
+                  ("; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug.")
+                  + ("" if wd else " This kernel has no watchdog (neither the board's nor softdog)."),
+                  "Each restart is filed as a crash, with what the box was doing, so nothing is lost by allowing it.", hang))
+    out.append(_f("crash-snapshots", "Crash watch's snapshots", "ok" if s["snapshots"] else "warn",
+                  f"Every 30 s to {cw.SNAP}, synced: what a crash is explained by." if s["snapshots"] else
+                  "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).", "",
+                  [_act("crashwatch-snapshots:" + ("off" if s["snapshots"] else "on"), "Snapshots: off" if s["snapshots"] else "Snapshots: on")]))
+    return out
+
+
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_hotspot, check_space, check_builds):
+                  check_hotspot, check_space, check_builds, check_crashwatch):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
@@ -807,6 +885,7 @@ def scan():
 # --- repairs ---------------------------------------------------------------------------------------
 
 CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
+                       r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$|^crashwatch-preempt:(off|warn|radio|reboot)$"
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
 
 
@@ -814,6 +893,9 @@ def fix(choice):
     if not CHOICE_RE.match(choice):
         raise ValueError(f"{choice} is not something the doctor does")
     kind, _, arg = choice.partition(":")
+    if kind.startswith("crashwatch-"):
+        from irate_box.root import crashwatch
+        return crashwatch.set_option(kind[len("crashwatch-"):], arg)
     if kind in ("unit-restart", "unit-enable"):
         if not OUR_UNIT.match(arg):
             raise ValueError(f"{arg} is not irate-box's to restart")

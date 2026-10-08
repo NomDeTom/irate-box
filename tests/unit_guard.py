@@ -27,6 +27,7 @@ BASELINE = ["ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "Pr
 ROOT = {
     "irate-box-control.service": "the root helper: installs updates and packages, writes the front's config, starts units",
     "irate-box-uplink.service": "the network watchdog: reconnects, restarts the network, resets the radio",
+    "irate-box-crashwatch.service": "crash watch: reads /dev/kmsg, resets a failing radio (USB unbind), restarts the box, sets the hang settings",
     "irate-box-tailscale.service": "applies Tailscale's settings (tailscale up/down)",
     "irate-box-tailscale-boot.service": "starts tailscaled at boot when the owner chose it",
     "ttyd.service": "the owner's root shell behind the admin login, which is its whole point",
