@@ -39,8 +39,8 @@ ACCEPTED = [
     ("debian-cis", r"^1\.1\.\d+(\.\d+)?_.*(partition|nodev|nosuid|noexec)$",
      "one partition: the box runs from an SD card, with no separate /var, /tmp or /home"),
     ("debian-cis", r"^2\.2\.10_disable_http_server$", "the box is a web server: nginx (or Caddy) is the hub's front"),
-    ("debian-cis", r"^3\.5\.4\.1\.1_net_fw_default_policy_drop$", "no firewall rules yet, until the network floor is built"),
-    ("lynis", r"^FIRE-4512$", "no firewall rules yet, until the network floor is built"),
+    ("debian-cis", r"^3\.5\.4\.1\.1_net_fw_default_policy_drop$", "the box filters the hotspot alone (the floor, Security page): its other interfaces are the owner's network, left as found"),
+    ("lynis", r"^FIRE-4512$", "the box filters the hotspot alone (the floor, Security page): its other interfaces are the owner's network, left as found"),
 ]
 
 
