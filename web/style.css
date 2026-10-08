@@ -703,10 +703,23 @@ body.admin button.link-button {
 .admin-menu { display: none; }
 .admin-side-list { display: flex; flex-direction: column; gap: 0.1rem; }
 .admin-side-group {
-  margin: 1rem 0 0.25rem; padding: 0 0.75rem; font-size: 0.7rem; font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 0.35rem; width: 100%; margin: 1rem 0 0.25rem; padding: 0.15rem 0.75rem;
+  font: inherit; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); background: none; border: 0; border-radius: 6px; cursor: pointer; text-align: left;
 }
 .admin-side-group:first-child { margin-top: 0; }
+.admin-side-group:hover { color: var(--text); background: var(--surface); }
+/* The group's fold, as on list entries: ▾ open, ▸ folded (F2). */
+.admin-side-group::before { content: '▾'; font-size: 0.8rem; width: 0.8rem; flex: none; }
+.admin-side-group[aria-expanded="false"]::before { content: '▸'; }
+.admin-side-group[data-badge]::after {
+  content: attr(data-badge); margin-left: auto; padding: 0 0.45rem; border-radius: 999px; letter-spacing: 0;
+  text-transform: none; font-size: 0.7rem; font-weight: 600; color: var(--accent-ink); background: var(--accent);
+}
+.admin-side-links { display: flex; flex-direction: column; gap: 0.1rem; }
+.admin-side-links[hidden] { display: none; }
+.admin-side-list .side-foot { margin: 1rem 0 0; padding: 0 0.75rem; }
+.admin-side-list .side-auto { font-size: 0.75rem; padding: 0.25rem 0.55rem; }
 .admin-side-list a {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; border-radius: 6px;
   border-left: 3px solid transparent; color: var(--text); text-decoration: none; font-size: 0.92rem;
