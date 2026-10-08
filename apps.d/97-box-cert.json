@@ -1,0 +1,11 @@
+{
+  "id": "box-cert",
+  "order": 97,
+  "tile": {
+    "row": "box",
+    "icon": "🔒",
+    "name": "Secure connection",
+    "desc": "Install this box's certificate, for HTTPS",
+    "href": "/certificate.html"
+  }
+}
