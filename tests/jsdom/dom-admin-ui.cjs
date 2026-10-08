@@ -276,6 +276,7 @@ setTimeout(() => {
   check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
     && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
   [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
+  check('git: the build cache\'s three choices as radio buttons, not a dropdown (Tom)', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
   cacheForm.elements.cache.value = 'whole';
   cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const mf = d.getElementById('git-mirror-add').elements;

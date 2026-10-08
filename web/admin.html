@@ -658,12 +658,12 @@
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
         <form id="ci-cache-form" class="library-form">
-          <label>Firmware build cache (PlatformIO's packages for the newest Meshtastic release), so firmware builds here need no internet
-            <select name="cache">
-              <option value="discard">Don't keep it</option>
-              <option value="native">Keep what a headless build needs (~215 MB)</option>
-              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
-            </select></label>
+          <fieldset class="radio-set">
+            <legend>Firmware build cache: PlatformIO's packages for the newest Meshtastic release, so firmware builds here need no internet</legend>
+            <label class="inline"><input type="radio" name="cache" value="discard"> Don't keep it</label>
+            <label class="inline"><input type="radio" name="cache" value="native"> Keep what a headless build needs (~215 MB)</label>
+            <label class="inline"><input type="radio" name="cache" value="whole"> Keep all of it (~700 MB, includes the touchscreen UI)</label>
+          </fieldset>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc" id="ci-cache-status"></p>

@@ -1357,3 +1357,6 @@ html:has(> body.admin) { background: var(--bg); }
 /* A locked tile as its owner chose (Tom, 2026-10-08): a padlock that does nothing, or greyed out. */
 .service-card.padlock { cursor: not-allowed; }
 .service-card.greyed { opacity: 0.4; filter: grayscale(1); cursor: default; }
+/* A choice of a few, each said in full: radio buttons in a set (Tom, 2026-10-08, the build cache). */
+.radio-set { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.8rem 0.6rem; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
+.radio-set legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--muted); }
