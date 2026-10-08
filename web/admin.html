@@ -77,7 +77,7 @@
             <p class="setting-desc">Everything that touches the security of the box or the people on it. Each has a default
               already; the tour takes you to each one where it lives.</p>
             <div class="library-buttons tour-actions">
-              <button type="button" id="setup-finish">Hide this setup page</button>
+              <button class="action-btn" type="button" id="setup-finish">Hide this setup page</button>
             </div>
             <p class="setting-desc">This can be reopened from the Overview page.</p></li>
         </ol>
@@ -127,7 +127,7 @@
           <textarea id="local-paste-text" rows="10" spellcheck="false" placeholder='{"id": "...", "order": 70, "tile": {...}, "source": {...}, "needs": "index.html", "addon": {...}}'></textarea>
           <label class="setting"><input type="checkbox" id="local-paste-ok">
             <span class="setting-desc">I understand this runs someone else's code on this box's address</span></label>
-          <span class="library-buttons"><button type="button" id="local-paste-go">Add it</button></span>
+          <span class="library-buttons"><button class="action-btn" type="button" id="local-paste-go">Add it</button></span>
           <span class="setting-desc" id="local-paste-note" role="status"></span>
         </details>
         <div id="local-errors"></div>
@@ -143,7 +143,7 @@
         <form id="password-form" class="library-form">
           <label>New password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
           <label>Again <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
-          <button type="submit">Change password</button>
+          <button class="action-btn primary" type="submit">Change password</button>
         </form>
         <p class="setting-desc action-note" id="password-note" role="status" hidden></p>
 
@@ -191,7 +191,7 @@
         </p>
         <p class="setting-desc" id="clock-when">Not looked yet.</p>
         <div class="library-buttons">
-          <button type="button" id="clock-scan">Look again</button>
+          <button class="action-btn" type="button" id="clock-scan">Look again</button>
         </div>
         <p class="setting-desc action-note" id="clock-note" role="status" hidden></p>
         <ul class="admin-checks" id="clock-findings"></ul>
@@ -267,9 +267,9 @@
         </div>
         <div class="books-bulk" id="books-bulk" hidden>
           <span id="books-selected"></span>
-          <button type="button" data-bulk="check">Check</button>
-          <button type="button" data-bulk="update">Update</button>
-          <button type="button" data-bulk="untrack">Stop tracking</button>
+          <button class="action-btn" type="button" data-bulk="check">Check</button>
+          <button class="action-btn" type="button" data-bulk="update">Update</button>
+          <button class="action-btn" type="button" data-bulk="untrack">Stop tracking</button>
           <button type="button" id="books-select-matching" class="link-button"></button>
           <button type="button" id="books-select-none" class="link-button">Clear the selection</button>
         </div>
@@ -279,12 +279,12 @@
             <tbody></tbody>
           </table>
         </div>
-        <p class="books-pager"><button type="button" id="books-prev">Previous</button> <span id="books-page"></span> <button type="button" id="books-next">Next</button></p>
+        <p class="books-pager"><button class="action-btn" type="button" id="books-prev">Previous</button> <span id="books-page"></span> <button class="action-btn" type="button" id="books-next">Next</button></p>
         <div id="library-sources" hidden></div>
         <div class="library-actions">
-          <button type="button" data-all="check">Check all</button>
-          <button type="button" data-all="fetch">Fetch all</button>
-          <button type="button" data-all="update">Update all</button>
+          <button class="action-btn" type="button" data-all="check">Check all</button>
+          <button class="action-btn" type="button" data-all="fetch">Fetch all</button>
+          <button class="action-btn" type="button" data-all="update">Update all</button>
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
@@ -297,11 +297,11 @@
         <form id="catalogue-form" class="books-tools">
           <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
           <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
-          <button type="submit">Search</button>
+          <button class="action-btn primary" type="submit">Search</button>
         </form>
         <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
         <div id="catalogue-results" class="admin-list"></div>
-        <p class="books-pager" id="catalogue-pager" hidden><button type="button" id="catalogue-more">More</button></p>
+        <p class="books-pager" id="catalogue-pager" hidden><button class="action-btn" type="button" id="catalogue-more">More</button></p>
 
         <h3>Add a book source</h3>
         <p class="setting-desc">
@@ -327,7 +327,7 @@
           <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
           <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
           <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
-          <button type="submit">Add source</button>
+          <button class="action-btn primary" type="submit">Add source</button>
         </form>
         <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
 
@@ -337,7 +337,7 @@
           hub's books copied onto it to carry to another box. The stick is only mounted for the
           scan or the copy, read-only unless something is being copied to it.
         </p>
-        <div class="library-buttons"><button type="button" id="usb-scan">Scan for USB sticks</button></div>
+        <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB sticks</button></div>
         <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
         <div class="admin-progress" id="usb-progress" hidden>
           <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
@@ -366,12 +366,12 @@
           <label class="inline"><input type="checkbox" name="all_boards"> All boards</label>
           <label>Boards <input id="fw-filter" type="search" placeholder="filter: rak, heltec, t-deck…"></label>
           <div id="fw-boards" class="fw-boards"></div>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="fw-note" role="status" hidden></p>
         <p class="library-buttons">
-          <button type="button" id="fw-check">Check now</button>
-          <button type="button" id="fw-update">Update now</button>
+          <button class="action-btn" type="button" id="fw-check">Check now</button>
+          <button class="action-btn" type="button" id="fw-update">Update now</button>
         </p>
         <h3>Kept</h3>
         <div id="fw-kept" class="admin-list"></div>
@@ -399,7 +399,7 @@
           <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
           <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
           <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too (so builds here need no internet)</label>
-          <button type="submit">Add mirror</button>
+          <button class="action-btn primary" type="submit">Add mirror</button>
         </form>
         <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
       </section>
@@ -416,8 +416,8 @@
         <p class="setting-desc" id="kits-summary"></p>
         <form id="kits-budget" class="library-form inline-form">
           <label>The cache's budget, MB <input name="budget" type="number" min="10" max="65536" step="10"></label>
-          <button type="submit">Save</button>
-          <button type="button" id="kits-refresh-all">Refresh all now</button>
+          <button class="action-btn primary" type="submit">Save</button>
+          <button class="action-btn" type="button" id="kits-refresh-all">Refresh all now</button>
         </form>
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
@@ -428,7 +428,7 @@
           it there. The stick also carries Debian's signed indexes for its packages, and an import
           checks every package against them with the box's own keys before anything is kept.
         </p>
-        <p class="library-buttons"><button type="button" id="kits-usb-scan">Look for USB sticks</button></p>
+        <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Look for USB sticks</button></p>
         <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
         <div id="kits-usb"></div>
         <h3 id="kits-form-title">Add a toolkit of your own</h3>
@@ -442,8 +442,8 @@
           <label>What it is for <input name="summary" maxlength="200" placeholder="optional, one line"></label>
           <label>Packages <textarea name="packages" rows="2" required placeholder="rtl-sdr gqrx-sdr sox"></textarea></label>
           <label>Removed after <select name="hours"><option value="1">an hour</option><option value="4">4 hours</option><option value="24" selected>a day</option><option value="168">a week</option><option value="720">a month</option><option value="never">never</option></select></label>
-          <button type="submit">Add toolkit</button>
-          <button type="button" id="kits-add-cancel" hidden>Cancel</button>
+          <button class="action-btn primary" type="submit">Add toolkit</button>
+          <button class="action-btn" type="button" id="kits-add-cancel" hidden>Cancel</button>
         </form>
       </section>
 
@@ -470,7 +470,7 @@
           </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
           <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256"></label>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>
 
@@ -484,8 +484,8 @@
         <form id="library-token" class="library-form">
           <label>Token <input name="value" type="password" autocomplete="off" placeholder="github_pat_…"></label>
           <div class="library-buttons">
-            <button type="submit">Save</button>
-            <button type="button" id="library-token-clear">Clear</button>
+            <button class="action-btn primary" type="submit">Save</button>
+            <button class="action-btn" type="button" id="library-token-clear">Clear</button>
           </div>
         </form>
         <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
@@ -514,7 +514,7 @@
             <input name="drop_max_total_mb" type="number" min="1" step="1"></label>
           <label>Dropped files expire after (hours of powered-on time, 0 = only when the cap is reached)
             <input name="drop_ttl_hours" type="number" min="0" step="1"></label>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="store-settings-note" role="status" hidden></p>
       </section>
@@ -656,7 +656,7 @@
           <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
           <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
           <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
-          <button type="submit">Create</button>
+          <button class="action-btn primary" type="submit">Create</button>
         </form>
         <p class="setting-desc action-note" id="git-create-note" role="status" hidden></p>
         </div>
@@ -669,14 +669,14 @@
               <option value="native">Keep what a headless build needs (~215 MB)</option>
               <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
             </select></label>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc" id="ci-cache-status"></p>
         <p class="setting-desc action-note" id="ci-cache-note" role="status" hidden></p>
         <p class="setting-desc" id="ci-limits"></p>
         <form id="ci-keep-form" class="library-form inline-form">
           <label>Runs kept per repository <input name="keep" type="number" min="1" max="50"></label>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc" id="ci-offline"></p>
         <div id="ci-runs" class="admin-list"></div>
@@ -706,7 +706,7 @@
               <option value="permitted">Permitted: allowed, nothing said</option>
             </select>
           </label>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="accounts-note" role="status" hidden></p>
         <p class="setting-desc" id="accounts-counts"></p>
@@ -714,7 +714,7 @@
         <form id="accounts-make" class="library-form">
           <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required></label>
           <label>Role <select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
-          <button type="submit">Make it</button>
+          <button class="action-btn primary" type="submit">Make it</button>
         </form>
         <p class="setting-desc">Each comes with a one-time code, for a day, for its person to set their password at /account.html.</p>
         <p class="acct-code" id="accounts-code" hidden></p>
@@ -722,7 +722,7 @@
         <div id="accounts-list" class="admin-list"></div>
         <h3>The box's own admin login</h3>
         <p class="setting-desc" id="accounts-admin-login">Looking…</p>
-        <p class="library-buttons"><button type="button" id="accounts-admin-login-switch" hidden></button></p>
+        <p class="library-buttons"><button class="action-btn" type="button" id="accounts-admin-login-switch" hidden></button></p>
         <h3>Saves across devices</h3>
         <div id="saves-cross-device-box"></div>
       </section>
@@ -742,7 +742,7 @@
         <form id="mesh-channel-form" class="library-form">
           <label>Name <input name="name" maxlength="11" placeholder="LongFast" autocomplete="off"></label>
           <label>Key <input name="key" placeholder="the channel's key, base64, as Meshtastic shows it" autocomplete="off" spellcheck="false"></label>
-          <button type="submit">Add</button>
+          <button class="action-btn primary" type="submit">Add</button>
           <button type="button" id="mesh-longfast" class="link-button">Add Meshtastic's public LongFast</button>
         </form>
         <p class="setting-desc action-note" id="mesh-note" role="status" hidden></p>
@@ -792,7 +792,7 @@
         </p>
         <p class="setting-desc" id="health-when">Not looked yet.</p>
         <div class="library-buttons">
-          <button type="button" id="health-scan">Look again</button>
+          <button class="action-btn" type="button" id="health-scan">Look again</button>
         </div>
         <p class="setting-desc action-note" id="health-note" role="status" hidden></p>
         <div class="admin-progress" id="health-progress" hidden>
@@ -818,7 +818,7 @@
         <p class="setting-desc" id="net-when">Not looked yet.</p>
         <div class="library-buttons">
           <label>Device <select id="net-device"><option value="">All</option></select></label>
-          <button type="button" id="net-scan">Look again</button>
+          <button class="action-btn" type="button" id="net-scan">Look again</button>
         </div>
         <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
         <details class="net-glossary" id="net-glossary">
@@ -851,9 +851,9 @@
           <select id="ap-channel"><option value="">Automatic</option></select>
           <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot: the box leaves your WiFi while it runs</label>
           <span class="library-buttons">
-            <button type="submit" id="ap-switch">Switch on</button>
-            <button type="button" id="ap-try" hidden>Try a channel of its own</button>
-            <button type="button" id="ap-confirm" hidden>Keep it</button>
+            <button class="action-btn primary" type="submit" id="ap-switch">Switch on</button>
+            <button class="action-btn" type="button" id="ap-try" hidden>Try a channel of its own</button>
+            <button class="action-btn" type="button" id="ap-confirm" hidden>Keep it</button>
           </span>
         </form>
         <p class="setting-desc action-note" id="ap-note" role="status" hidden></p>
@@ -874,9 +874,9 @@
         </div>
         <p class="setting-desc up-will" id="up-will" role="status"></p>
         <div class="library-buttons">
-          <button type="button" id="up-save">Save</button>
-          <button type="button" id="up-hold">Hold repairs for an hour</button>
-          <button type="button" id="up-unhold" hidden>End the hold</button>
+          <button class="action-btn" type="button" id="up-save">Save</button>
+          <button class="action-btn" type="button" id="up-hold">Hold repairs for an hour</button>
+          <button class="action-btn" type="button" id="up-unhold" hidden>End the hold</button>
         </div>
         <p class="setting-desc action-note" id="up-note" role="status" hidden></p>
         <div id="up-profile"></div>
@@ -893,7 +893,7 @@
         </p>
         <p class="setting-desc" id="security-when">Not scanned yet.</p>
         <div class="library-buttons">
-          <button type="button" id="security-scan">Scan again</button>
+          <button class="action-btn" type="button" id="security-scan">Scan again</button>
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <ul class="admin-checks" id="security-findings"></ul>
@@ -927,11 +927,11 @@
         </p>
         <p class="setting-desc" id="tls-state">Looking…</p>
         <p class="library-buttons">
-          <button type="button" id="tls-make">Make the box's certificate</button>
-          <button type="button" id="tls-switch" hidden></button>
-          <button type="button" id="tls-again" hidden>Make a new CA</button>
-          <button type="button" id="tls-box" hidden>Go back to the box's own certificate</button>
-          <button type="button" id="tls-admin-only" hidden></button>
+          <button class="action-btn" type="button" id="tls-make">Make the box's certificate</button>
+          <button class="action-btn" type="button" id="tls-switch" hidden></button>
+          <button class="action-btn" type="button" id="tls-again" hidden>Make a new CA</button>
+          <button class="action-btn" type="button" id="tls-box" hidden>Go back to the box's own certificate</button>
+          <button class="action-btn" type="button" id="tls-admin-only" hidden></button>
         </p>
         <p class="setting-desc" id="tls-admin-only-note" hidden></p>
         <p class="setting-desc action-note" id="tls-note" role="status" hidden></p>
@@ -949,7 +949,7 @@
           <form id="tls-own-form" class="library-form">
             <label>Certificate chain <textarea name="chain" rows="5" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
             <label>Private key <textarea name="key" rows="4" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></label>
-            <button type="submit">Use it</button>
+            <button class="action-btn primary" type="submit">Use it</button>
           </form>
         </details>
         <h3>The hotspot's own WiFi</h3>
@@ -969,7 +969,7 @@
           <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
           <span class="library-buttons">
             <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
-            <button type="button" id="hs-generate">Make one</button>
+            <button class="action-btn" type="button" id="hs-generate">Make one</button>
           </span>
           <label class="setting" id="hs-wpa2-label">
             <input type="checkbox" id="hs-wpa2">
@@ -978,7 +978,7 @@
         </div>
         <ul class="admin-checks" id="hs-warnings"></ul>
         <div class="library-buttons">
-          <button type="button" id="hs-save">Save</button>
+          <button class="action-btn" type="button" id="hs-save">Save</button>
         </div>
         <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
 
@@ -1032,14 +1032,14 @@
             <select name="hub_window_start"></select> and <select name="hub_window_end"></select>
             <span class="setting-desc">(the box's own clock)</span>
           </label>
-          <button type="submit">Save</button>
+          <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="auto-note" role="status" hidden></p>
         <p class="setting-desc" id="auto-state"></p>
         <div class="library-buttons">
-          <button type="button" id="update-check">Check for updates</button>
-          <button type="button" id="update-fetch" disabled>Fetch update</button>
-          <button type="button" id="update-install" disabled>Install update</button>
+          <button class="action-btn" type="button" id="update-check">Check for updates</button>
+          <button class="action-btn" type="button" id="update-fetch" disabled>Fetch update</button>
+          <button class="action-btn" type="button" id="update-install" disabled>Install update</button>
         </div>
         <div class="admin-progress" id="update-progress" hidden>
           <progress class="admin-bar" id="update-bar" max="1" value="0"></progress>
@@ -1082,7 +1082,7 @@
         </p>
         <form id="kit-form" class="library-form">
           <label class="inline"><input type="checkbox" name="books"> <span id="kit-books">Include the books</span></label>
-          <button type="submit" id="kit-make">Make the kit</button>
+          <button class="action-btn primary" type="submit" id="kit-make">Make the kit</button>
         </form>
         <div class="admin-progress" id="kit-progress" hidden>
           <progress class="admin-bar" id="kit-bar" max="1" value="0"></progress>
@@ -1115,8 +1115,8 @@
         </p>
         <p class="setting-desc" id="audit-when">Not run yet.</p>
         <div class="library-buttons">
-          <button type="button" id="audit-run">Run the doctor</button>
-          <button type="button" id="audit-deep">Deep audit</button>
+          <button class="action-btn" type="button" id="audit-run">Run the doctor</button>
+          <button class="action-btn" type="button" id="audit-deep">Deep audit</button>
         </div>
         <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
@@ -1141,7 +1141,7 @@
         </p>
         <form id="import-form" class="library-form inline-form">
           <label>Report <input type="file" name="file" accept=".xml,.csv,text/xml,text/csv" required></label>
-          <button type="submit">Import</button>
+          <button class="action-btn primary" type="submit">Import</button>
         </form>
         <p class="setting-desc action-note" id="import-note" role="status" hidden></p>
         <ul class="admin-list" id="import-list"></ul>
@@ -1162,8 +1162,8 @@
           <a href="#health">Box doctor</a>; to check for and install updates, <a href="#updates">Updates</a>.
         </p>
         <div class="library-buttons">
-          <button type="button" id="update-doctor">Run the update doctor</button>
-          <button type="button" id="update-clear">Clear the update cache</button>
+          <button class="action-btn" type="button" id="update-doctor">Run the update doctor</button>
+          <button class="action-btn" type="button" id="update-clear">Clear the update cache</button>
         </div>
         <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
         <p class="setting-desc" id="doctor-when" hidden></p>
@@ -1179,7 +1179,7 @@
         </p>
         <ul class="admin-checks" id="force-failed" hidden></ul>
         <div class="library-buttons">
-          <button type="button" id="update-force" disabled>Install the fetched version anyway</button>
+          <button class="action-btn" type="button" id="update-force" disabled>Install the fetched version anyway</button>
         </div>
         <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
       </section>

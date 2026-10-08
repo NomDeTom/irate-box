@@ -10,7 +10,9 @@
   const noteEl = (id) => document.getElementById(id);
   function say(text, ok, at) { at.textContent = text; at.classList.toggle('bad', !ok); at.hidden = !text; }
   const el = (tag, props = {}, ...kids) => {
-    const node = Object.assign(document.createElement(tag), props);
+    // A button with no class of its own is an action button (rule 6a: the control vocabulary).
+  if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
+  const node = Object.assign(document.createElement(tag), props);
     node.append(...kids.filter((k) => k !== null && k !== undefined));
     return node;
   };
@@ -28,7 +30,7 @@
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
     return data;
   }
-  const actionButton = (label, onclick, extra = {}) => el('button', { type: 'button', textContent: label, onclick, ...extra });
+  const actionButton = (label, onclick, extra = {}) => el('button', { type: 'button', textContent: label, onclick, ...extra, className: `action-btn${extra.className ? ' ' + extra.className : ''}` });
   // The page is the Factory: always showing (admin.js asked its layout).
   const paneShown = () => true;
 
