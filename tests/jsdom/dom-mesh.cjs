@@ -71,7 +71,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     if (o.method === 'POST' && u === '/admin/mesh') { const b = JSON.parse(o.body); posted.push(b); return json({ channels }); }
     if (u === '/admin/mesh') return json({ state: 'listening', nodes, packets, counts: { text: 1 }, since: now, channels });
     return json({}, 404);
-  }, ['admin.js']);
+  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait();
   d = admin.d;
   check('admin: a side-bar entry, and the state', [...d.querySelectorAll('.admin-side-list a')].some((a) => a.hash === '#mesh')

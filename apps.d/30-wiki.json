@@ -24,5 +24,10 @@
       "desc": "The whole docs site, offline, in Kiwix",
       "href": "/app.html#/wiki/viewer#meshtastic-docs/"
     }
-  ]
+  ],
+  "admin": {
+    "sections": [
+      "books"
+    ]
+  }
 }

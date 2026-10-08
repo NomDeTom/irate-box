@@ -28,5 +28,12 @@
       "desc": "One file: save it, then open it from your downloads in Chrome or Edge and plug the radio in. It finds this hub's firmware by itself, or flashes a release zip you have",
       "href": "/flasher/flasher.html"
     }
-  ]
+  ],
+  "admin": {
+    "sections": [
+      "firmware"
+    ],
+    "title": "Web flasher",
+    "icon": "⚡📟"
+  }
 }

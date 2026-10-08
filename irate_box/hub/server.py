@@ -11,6 +11,7 @@ import ipaddress
 import json
 import os
 import re
+import hashlib
 import hmac
 import secrets
 import shutil
@@ -247,34 +248,98 @@ WIDGET_HTML = {
 }
 
 
+# Who sees an app's tile, apart from who may open it (menu overhaul M5; checklist 4a: "access and
+# visibility are not the same"). The hub's own choice, not root's: it changes which tiles the hub
+# draws, not the web server's gates. auto: as its access (public: everyone; users: those logged
+# in; private or off: nobody). An app that is off is never shown, whatever is chosen here.
+VISIBILITY_FILE = STATE_DIR / "visibility.json"
+VISIBLE = ("auto", "guests", "users", "hidden")
+
+
+def visibility():
+    try:
+        data = json.loads(VISIBILITY_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and v in VISIBLE} if isinstance(data, dict) else {}
+
+
+def save_visibility(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = VISIBILITY_FILE.parent / (VISIBILITY_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, VISIBILITY_FILE)
+
+
+def _switched():
+    """The apps with a switch: the built-ins the web server gates, and the local add-ons."""
+    return set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
+
+
+# The apps drawn on the hub page itself, not as tiles (the shoutbox and the board, M9): who sees
+# them is a visibility of their own (guests, users or hidden; auto is guests); who may post is
+# their shout_who / board_who. id -> the tab they are in index.html.
+PAGE_APPS = {"shoutbox": "shout", "board": "board"}
+
+
+def page_app_hidden(i, signed_in):
+    v = visibility().get(i, "auto")
+    return v == "hidden" or (v == "users" and not signed_in)
+
+
 def hidden_apps(signed_in=False):
-    """The apps not on the home page or the list pages: private or off, and for users unless the
-    visitor is logged in (access.py; the root helper leaves its copy of the choices in the
-    control folder)."""
+    """The apps not on the home page or the list pages: off; and otherwise as their visibility
+    says, or (auto) as their access does: private, and for users unless the visitor is logged in
+    (access.py; the root helper leaves its copy of the choices in the control folder). A built-in
+    with no switch (a list page, the box row, About) is never hidden."""
+    state, vis = access.read(ACCESS_STATE), visibility()
+    out = set()
+    for i in _switched():
+        mode, v = access.mode_of(state, i), vis.get(i, "auto")
+        if mode == "off" or v == "hidden":
+            out.add(i)
+        elif v == "users":
+            if not signed_in:
+                out.add(i)
+        elif v == "auto" and mode != "public" and not (signed_in and mode == "users"):
+            out.add(i)
+    return out
+
+
+def locked_apps(signed_in=False):
+    """The apps whose tile shows but which this visitor can't open yet: for users, to someone not
+    logged in; private, to anyone (the admin login is asked for at its door)."""
     state = access.read(ACCESS_STATE)
-    # The switched apps (built-in, by their choice or default) and the local add-ons (off until
-    # switched on). A built-in with no switch (a list page, the box row, About) is never hidden.
-    ids = set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
-    return {i for i in ids if access.mode_of(state, i) != "public" and not (signed_in and access.mode_of(state, i) == "users")}
+    return {i for i in _switched() if access.mode_of(state, i) == "private"
+            or (access.mode_of(state, i) == "users" and not signed_in)}
 
 
-def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
+def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=frozenset()):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
-    list page left with nothing on it. factory_tile: the owner's choice to show the factory's."""
+    list page left with nothing on it. factory_tile: the owner's choice to show the factory's.
+    locked: apps shown to this visitor that ask for a login at their door (M5)."""
     out = []
-    for m in MANIFESTS:
+    ms = MANIFESTS
+    st = status_tiles_state() if row == "box" else None
+    if st:
+        pos = {i: n for n, i in enumerate(st["order"])}
+        ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
+        hidden = set(hidden) | set(st["hidden"])
+    for m in ms:
         tile = m.get("tile")
         if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
             continue
+        wide = bool(st) and m["id"] in st["double"]
         if tile.get("widget") == "factory" and not factory_tile:
             continue
-        if m.get("menu") and not manifests.entries_for(m["id"], MANIFESTS, hidden):
+        if m.get("menu") and not menu_entries(m["id"], hidden):
             continue
         if "widget" in tile:
-            out.append(WIDGET_HTML[tile["widget"]])
+            w = WIDGET_HTML[tile["widget"]]
+            out.append(w.replace('class="service-card ', 'class="service-card wide ', 1).replace('<div ', '<div data-size="double" ', 1) if wide else w)
             continue
-        attrs = [f'class="service-card"']
+        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" wide" if wide else ""}"']
         if tile.get("element_id"):
             attrs.append(f'id="{html.escape(tile["element_id"])}"')
         attrs.append(f'href="{html.escape(tile["href"])}"')
@@ -287,8 +352,142 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False):
                    f'        <span class="icon">{html.escape(tile["icon"])}</span>\n'
                    f'        <span class="name">{html.escape(tile["name"])}</span>\n'
                    f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
-                   f'      </a>')
+                   + ('        <span class="lock">🔒 sign in to open</span>\n' if m["id"] in locked else '')
+                   + f'      </a>')
     return "\n".join(out)
+
+
+# --- folders (menu overhaul M7; checklist 5e, accepted by Tom 2026-10-07) ----------------------
+# A list page (a manifest with a "menu": Meshtastic, the calculators, ELIZA) is a folder of
+# entries: pages, downloads, or one page with starting switches. The owner may hide an entry from
+# a folder, put a folder's entries in an order of their own, and put an entry from one folder in
+# another as well. The hub's own choice (state/folders.json), not root's: it changes what the hub
+# lists, not what the web server serves. {folder: {"hidden": [href], "order": [href], "extra": [href]}}
+FOLDERS_FILE = STATE_DIR / "folders.json"
+FOLDER_PARTS = ("hidden", "order", "extra")
+
+
+def folders_state():
+    try:
+        data = json.loads(FOLDERS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {f: {k: [h for h in v.get(k, []) if isinstance(h, str)][:500] for k in FOLDER_PARTS}
+            for f, v in data.items() if isinstance(f, str) and isinstance(v, dict)}
+
+
+def save_folders(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = FOLDERS_FILE.parent / (FOLDERS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, FOLDERS_FILE)
+
+
+def entry_pool(skip=()):
+    """Every entry any folder lists: href -> (order, entry, status path, the folder that names it)."""
+    pool = {}
+    for mid in manifests.menus(MANIFESTS):
+        for o, e, svc in manifests.entries_for(mid, MANIFESTS, skip):
+            pool.setdefault(e["href"], (o, e, svc, mid))
+    return pool
+
+
+def menu_entries(menu_id, skip=(), include_hidden=False, state=None):
+    """A folder's entries as the owner arranged them: its own (manifests.entries_for), those put
+    in from other folders, in its order (the rest after, as they were), less the hidden ones."""
+    st = (folders_state() if state is None else state).get(menu_id, {})
+    items = list(manifests.entries_for(menu_id, MANIFESTS, skip))
+    have = {e["href"] for _, e, _ in items}
+    if st.get("extra"):
+        pool = entry_pool(skip)
+        for href in st["extra"]:
+            if href in pool and href not in have:
+                o, e, svc, _ = pool[href]
+                items.append((o, e, svc))
+                have.add(href)
+    pos = {h: i for i, h in enumerate(st.get("order", []))}
+    items = [x for _, x in sorted(enumerate(items), key=lambda p: (pos.get(p[1][1]["href"], len(pos)), p[0]))]
+    if not include_hidden:
+        hidden = set(st.get("hidden", []))
+        items = [x for x in items if x[1]["href"] not in hidden]
+    return items
+
+
+def entry_kind(href):
+    """What an entry is, for /admin: one page with starting switches, a download, or a page."""
+    tail = href.split("#", 1)[-1]
+    if "?" in tail:
+        return "switches"
+    return "page" if href.startswith("/app.html#") else "download"
+
+
+def folders_snapshot():
+    """/admin/folders: each folder with all its entries (hidden ones too) and the choices."""
+    state = folders_state()
+    pool = entry_pool()
+    out = []
+    for mid, m in manifests.menus(MANIFESTS).items():
+        st = state.get(mid, {})
+        hidden, extra = set(st.get("hidden", [])), set(st.get("extra", []))
+        entries = []
+        for _, e, _ in menu_entries(mid, include_hidden=True, state=state):
+            href = e["href"]
+            entries.append({"href": href, "name": e["name"], "desc": e.get("desc", ""), "kind": entry_kind(href),
+                            "from": pool.get(href, (0, 0, 0, mid))[3], "hidden": href in hidden, "extra": href in extra})
+        out.append({"id": mid, "title": m["menu"]["title"], "entries": entries})
+    return {"folders": out, "state": state}
+
+
+def valid_folders(data):
+    """A whole folders.json from /admin: only real folders, only entries some folder lists."""
+    if not isinstance(data, dict) or len(data) > 64:
+        return None
+    menus, pool = manifests.menus(MANIFESTS), entry_pool()
+    out = {}
+    for f, v in data.items():
+        if f not in menus or not isinstance(v, dict):
+            return None
+        part = {}
+        for k in FOLDER_PARTS:
+            hrefs = v.get(k, [])
+            if not isinstance(hrefs, list) or len(hrefs) > 500 or not all(isinstance(h, str) and h in pool for h in hrefs):
+                return None
+            part[k] = list(dict.fromkeys(hrefs))
+        out[f] = part
+    return out
+
+
+# --- status tiles (menu overhaul M8; Tom, 2026-10-07/08) ---------------------------------------
+# The row of readouts under the apps (the box row: people, the join QR, memory and disk, the
+# Firmware Factory, services) is one folder of tiles the owner arranges: which show, in what order,
+# and which take two cells to say more. The hub's own (state/status_tiles.json).
+STATUS_TILES_FILE = STATE_DIR / "status_tiles.json"
+
+
+def status_tiles_state():
+    try:
+        data = json.loads(STATUS_TILES_FILE.read_text())
+    except (OSError, ValueError):
+        return {"order": [], "hidden": [], "double": []}
+    data = data if isinstance(data, dict) else {}
+    return {k: [x for x in data.get(k, []) if isinstance(x, str)][:50] for k in ("order", "hidden", "double")}
+
+
+def box_tiles():
+    """The box row's tiles, in the manifests' order: [(id, name)]."""
+    names = {"people": "People here", "qr": "Join QR", "system": "Memory and disk", "factory": "Firmware Factory"}
+    return [(m["id"], m["tile"].get("name") or names.get(m["tile"].get("widget"), m["id"]))
+            for m in MANIFESTS if (m.get("tile") or {}).get("row") == "box"]
+
+
+def status_tiles_snapshot():
+    st = status_tiles_state()
+    pos = {i: n for n, i in enumerate(st["order"])}
+    tiles = sorted(box_tiles(), key=lambda t: pos.get(t[0], len(pos)))
+    return {"tiles": [{"id": i, "name": n, "hidden": i in st["hidden"], "double": i in st["double"]} for i, n in tiles],
+            "state": st}
 
 
 TILES_MARK = "<!-- apps.d tiles -->"
@@ -304,13 +503,24 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE):
+        try:
+            chosen = (chosen, f.stat().st_mtime)
+        except OSError:
+            chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     mtime = (path.stat().st_mtime, chosen, show_factory)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
         hidden = hidden_apps(signed_in)
-        text = text.replace(TILES_MARK, render_tiles("apps", hidden)).replace(BOX_MARK, render_tiles("box", hidden, show_factory))
+        locked = locked_apps(signed_in)
+        # A tab its visitor isn't to see (M9): its link and its pane left out of the page.
+        for app, tab in PAGE_APPS.items():
+            if page_app_hidden(app, signed_in):
+                text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
+                text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
+        text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -327,6 +537,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
   <title>{title} · Hub</title>
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
 </head>
 <body{art_attrs}>
   <!-- {about}
@@ -354,7 +565,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
 
 def menu_page(m, signed_in=False):
     items = []
-    for _, e, service in manifests.entries_for(m["id"], MANIFESTS, hidden_apps(signed_in)):
+    for _, e, service in menu_entries(m["id"], hidden_apps(signed_in)):
         href = e["href"]
         if href.startswith("/app.html#"):
             # The hub bar then offers ↑ back to this list (app.js).
@@ -393,6 +604,20 @@ ONLINE_WINDOW = 90
 LEASES = Path(os.environ.get("HUB_LEASES", "/var/lib/misc/dnsmasq.leases"))
 _seen = {}
 _seen_lock = threading.Lock()
+
+
+_online_names = {}   # account name -> when last seen (ticks), in memory only (M12)
+
+
+def note_account(name):
+    with _seen_lock:
+        _online_names[name] = CLOCK.ticks()
+
+
+def online_names(now):
+    """The accounts seen in the last ONLINE_WINDOW: every one, whatever they chose to show."""
+    with _seen_lock:
+        return sorted(n for n, t in _online_names.items() if now - t <= ONLINE_WINDOW)
 
 
 def note_client(handler):
@@ -437,8 +662,36 @@ DEFAULT_SETTINGS = {
     "shout_marks": True,
     "board_who": "guests",
     "board_marks": True,
+    # Page widths in rem (menu overhaul M2; Tom, 2026-10-08: 80rem, with the owner's choice of
+    # 45, 60, 80, 90 or 100; the shoutbox and the forum their own, 45 as they always were).
+    # Every page reads them from /layout.css.
+    "page_width": 80,
+    "shout_width": 45,
+    "board_width": 45,
+    # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
+    # (irate_box/root/visitors.py; M11). On by default (Tom, 2026-10-08), as one of the setup's
+    # decisions; off, the helper doesn't run at all.
+    "visitor_counts": True,
+    # Reports (M10; Tom, 2026-10-08: "anyone can report a post - admin decides what counts"): the
+    # reasons offered, how many reports put a post in the queue, and whether it is hidden from
+    # everyone else until looked at.
+    "report_reasons": ["spam", "unkind", "personal details", "other"],
+    "report_threshold": 1,
+    "report_hide": False,
+    # Who sees the names of those signed in and around (M12): users, or the admin only. Guests
+    # only ever get the count; and each person decides whether their own name shows at all.
+    "names_to": "users",
+    # The setup tour (M14): which of the decisions that touch security (5h) the owner has made,
+    # by keeping the default or changing it where it lives. The box runs on the defaults until then.
+    "setup_decided": [],
 }
 POSTERS = ("guests", "users", "off")
+WIDTHS = (45, 60, 80, 90, 100)
+# The setup decisions (M14; Tom, 2026-10-08: "anything that has an impact on user or box security"):
+# web/admin-tour.js has each one's words and where it lives.
+SETUP_DECISIONS = ("visitors", "names", "signup", "sign-in-offer", "https", "hotspot", "guest-net", "ssh",
+                   "tailscale", "cockpit", "terminal")
+REPORT_REASONS = ("spam", "unkind", "personal details", "illegal", "other")
 _settings_lock = threading.Lock()
 
 
@@ -446,6 +699,16 @@ def valid_setting(key, value):
     want = type(DEFAULT_SETTINGS[key])
     if key in ("shout_who", "board_who"):
         return value in POSTERS
+    if key in ("page_width", "shout_width", "board_width"):
+        return type(value) is int and value in WIDTHS
+    if key == "report_reasons":
+        return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
+    if key == "setup_decided":
+        return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
+    if key == "names_to":
+        return value in ("users", "admin")
+    if key == "report_threshold":
+        return type(value) is int and 1 <= value <= 20
     return type(value) is want and (want is not int or value >= 0)
 
 
@@ -620,6 +883,33 @@ def service_status(proxied):
             entry["why"] = why["kiwix"]
         out.append(entry)
     return out
+
+
+# --- unique visitors (M11) ----------------------------------------------------------
+# The hub can't start or stop the counting helper (it runs as root, to read the leases): it records
+# the owner's choice in VISITORS_WANT, and a root path unit (irate-box-visitors-switch.path) applies
+# it (scripts/visitors-apply.sh). The helper leaves only two numbers in VISITORS_COUNTS.
+VISITORS_WANT = STATE_DIR / "visitors.want"
+VISITORS_COUNTS = Path(os.environ.get("HUB_VISITORS_COUNTS", "/run/irate-box-visitors/counts.json"))
+
+
+def write_visitors_want(on):
+    tmp = VISITORS_WANT.parent / (VISITORS_WANT.name + ".tmp")
+    tmp.write_text("on\n" if on else "off\n")
+    os.replace(tmp, VISITORS_WANT)
+
+
+def visitor_counts():
+    """{day, week} from the helper, or None (off, not running yet, or nothing written)."""
+    if not _settings.get("visitor_counts"):
+        return None
+    try:
+        data = json.loads(VISITORS_COUNTS.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or type(data.get("day")) is not int or type(data.get("week")) is not int:
+        return None
+    return {"day": data["day"], "week": data["week"], "date": str(data.get("date", ""))[:10]}
 
 
 # --- remote access -------------------------------------------------------------
@@ -1426,8 +1716,18 @@ def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
         msgs = live_messages(now)
+    st = settings_snapshot()
     return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(),
-            "drops": [store.public_meta(m) for m in DROP.list()]}
+            "drops": [store.public_meta(m) for m in DROP.list()], "queue": moderation_queue(),
+            "reports": {"reasons": st["report_reasons"], "all_reasons": list(REPORT_REASONS),
+                        "threshold": st["report_threshold"], "hide": st["report_hide"]}}
+
+
+def forget_report(key):
+    with _reports_lock:
+        data = reports()
+        if data.pop(key, None) is not None:
+            save_reports(data)
 
 
 def delete_message(created, name):
@@ -1442,17 +1742,150 @@ def delete_message(created, name):
 
 def moderation_action(payload):
     action = payload.get("action")
+    if action == "keep" and isinstance(payload.get("key"), str) and REPORT_KEY_RE.match(payload["key"]):
+        # Looked at and kept: out of the queue, and shown again if it was hidden.
+        with _reports_lock:
+            data = reports()
+            ok = payload["key"] in data
+            if ok:
+                data[payload["key"]]["kept"] = True
+                save_reports(data)
+        return (200 if ok else 404), moderation_snapshot()
     if action == "delete_message":
         ok = delete_message(payload.get("created"), payload.get("name"))
+        if ok:
+            forget_report(f"shoutbox:{int(payload.get('created') or 0)}:{str(payload.get('name', ''))[:40]}")
     elif action == "delete_thread" and type(payload.get("id")) is int:
         ok = BOARD.delete_thread(payload["id"])
     elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
+        thread = BOARD.get_thread(payload["id"])
+        posts = thread["thread"]["posts"] if thread else []
         ok = BOARD.delete_post(payload["id"], payload["index"])
+        if ok and 0 <= payload["index"] < len(posts):
+            forget_report(f"board:{payload['id']}:{int(posts[payload['index']].get('created', 0))}")
     elif action == "delete_drop" and isinstance(payload.get("id"), str):
         ok = DROP.delete(payload["id"], force=True)  # moderation removes locked files too
     else:
         return 400, {"error": "unknown action"}
     return (200 if ok else 404), moderation_snapshot()
+
+
+# --- who sees what a person posts (M13) --------------------------------------------------------
+# Each signed-in person chooses, per app, whether what they post is seen by everyone here,
+# signed-in people, or only them (their account page; accounts.py "posts"). Never wider than the
+# app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
+# reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
+store.VIEWER = lambda handler: accounts.session(handler._session_token())
+store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
+
+
+def seen_by_of(account, app):
+    """The narrower-than-everyone choice an account's new post carries, or None."""
+    if not account:
+        return None
+    seen = accounts.prefs(account)["posts"].get(app, "everyone")
+    return seen if seen in ("users", "me") else None
+
+
+# --- reports (M10) ---------------------------------------------------------------------------
+# Anyone may report a shoutbox message or a forum post, for one of the reasons the owner offers;
+# the owner decides how many reports put it in the queue on /admin → Moderation, and whether it is
+# hidden from everyone else until they have looked. A post is known by where it is and when it was
+# written: shoutbox:<created>:<name>, board:<thread>:<created>. One report per visitor per post: the
+# visitor is known by a hash of their address with a salt made when the hub starts, in memory only.
+REPORTS_FILE = STATE_DIR / "reports.json"
+_reports_lock = threading.Lock()
+_report_salt = secrets.token_bytes(32)
+_reported = set()       # hashes of (visitor, post): who has reported what, this run only
+_report_times = {}      # visitor hash -> recent report times (at most REPORTS_PER_HOUR an hour)
+REPORTS_PER_HOUR = 20
+REPORT_KEY_RE = re.compile(r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20})$")
+
+
+def reports():
+    try:
+        data = json.loads(REPORTS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if REPORT_KEY_RE.match(k) and isinstance(v, dict)} if isinstance(data, dict) else {}
+
+
+def save_reports(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = REPORTS_FILE.parent / (REPORTS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, REPORTS_FILE)
+
+
+def report_key(app, ref):
+    """The key of a post from what the page sends: shoutbox {created, name}; board {thread, created}."""
+    if not isinstance(ref, dict):
+        return None
+    if app == "shoutbox" and type(ref.get("created")) in (int, float) and isinstance(ref.get("name"), str):
+        key = f"shoutbox:{int(ref['created'])}:{ref['name'][:40]}"
+    elif app == "board" and type(ref.get("thread")) is int and type(ref.get("created")) in (int, float):
+        key = f"board:{ref['thread']}:{int(ref['created'])}"
+    else:
+        return None
+    return key if REPORT_KEY_RE.match(key) else None
+
+
+def report(app, ref, reason, addr):
+    """One visitor's report. (status, message)."""
+    st = settings_snapshot()
+    key = report_key(app, ref)
+    if key is None or reason not in st["report_reasons"]:
+        return 400, "app, the post, and one of the reasons offered"
+    who = hmac.new(_report_salt, addr.encode(), hashlib.sha256).digest()[:16]
+    mine = hmac.new(_report_salt, who + key.encode(), hashlib.sha256).digest()[:16]
+    now = time.monotonic()
+    with _reports_lock:
+        recent = [t for t in _report_times.get(who, []) if now - t < 3600]
+        if len(recent) >= REPORTS_PER_HOUR:
+            return 429, "that's a lot of reports: try again later"
+        if mine in _reported:
+            return 200, "already reported, thank you"
+        _reported.add(mine)
+        _report_times[who] = recent + [now]
+        data = reports()
+        r = data.setdefault(key, {"app": app, "count": 0, "reasons": {}, "first": CLOCK.ticks()})
+        r["count"] += 1
+        r["reasons"][reason] = r["reasons"].get(reason, 0) + 1
+        r["last"] = CLOCK.ticks()
+        save_reports(data)
+    return 200, "reported, thank you: the owner will look"
+
+
+def hidden_by_reports():
+    """The posts hidden from everyone else until the owner looks (if they chose that)."""
+    st = settings_snapshot()
+    if not st["report_hide"]:
+        return set()
+    return {k for k, r in reports().items() if r.get("count", 0) >= st["report_threshold"] and not r.get("kept")}
+
+
+def moderation_queue():
+    """The reported posts that count (as many reports as the owner asked), with what they say."""
+    st, now = settings_snapshot(), CLOCK.ticks()
+    with lock:
+        msgs = {f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}": m for m in live_messages(now)}
+    posts = {}
+    for t in BOARD.all_threads()["threads"]:
+        for i, p in enumerate(t["posts"]):
+            posts[f"board:{t['id']}:{int(p.get('created', 0))}"] = (t, i, p)
+    out = []
+    for k, r in reports().items():
+        if r.get("kept") or r.get("count", 0) < st["report_threshold"]:
+            continue
+        if k in msgs:
+            m = msgs[k]
+            out.append(dict(r, key=k, by=m.get("name", ""), text=m.get("text", ""), where="Shoutbox"))
+        elif k in posts:
+            t, i, p = posts[k]
+            out.append(dict(r, key=k, by=p.get("author", ""), text=p.get("text", ""), where=f"Board: {t.get('title', '')}",
+                            thread=t["id"], index=i))
+    out.sort(key=lambda x: (-x["count"], -x.get("last", 0)))
+    return out
 
 
 def store_snapshot():
@@ -1825,6 +2258,22 @@ class Handler(BaseHTTPRequestHandler):
         fwd = self.headers.get("X-Forwarded-For", "")
         return fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
 
+    def _hue(self, payload, poster):
+        """The colour a post is written in: the page's choice, or for someone logged in with none, their
+        account's own (M12)."""
+        hue = payload.get("hue")
+        if hue is None and poster and poster[1]:
+            hue = accounts.prefs(poster[0])["hue"]
+        return hue
+
+    def _note_account(self):
+        """A signed-in visitor's name, as around now (M12): in memory only."""
+        token = self._session_token()
+        if token:
+            me = accounts.session(token)
+            if me:
+                note_account(me["name"])
+
     def _account_post(self, payload):
         """/api/account: sign up, log in or out, change a password, set one with a code. A page
         elsewhere can't make these (the header, as /admin's), nor is a password taken over plain
@@ -1859,8 +2308,11 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "code":
                 name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
                 self.send_json(200, {"name": name})
+            elif action == "prefs":
+                # A person's own settings (M12): theirs alone, through their own session.
+                self.send_json(200, {"prefs": accounts.set_prefs(self._session_token(), payload.get("prefs"))})
             else:
-                self.send_json(400, {"error": "action is signup, login, logout, password or code"})
+                self.send_json(400, {"error": "action is signup, login, logout, password, code or prefs"})
         except accounts.Wait as exc:
             self.send_json(429, {"error": str(exc)})
         except accounts.AccountError as exc:
@@ -1961,6 +2413,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         note_client(self)
+        self._note_account()
         refresh_manifests()
         if self._is_captive_probe() or self._off_hub_name():
             self._redirect_to_hub()
@@ -1983,8 +2436,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/account":
-            # The account page's view: what the admin allows, and who this is (accounts.py).
-            self.send_json(200, dict(accounts.settings(), https=self._https(), me=accounts.session(self._session_token())))
+            # The account page's view: what the admin allows, who this is, and their own settings.
+            me = accounts.session(self._session_token())
+            self.send_json(200, dict(accounts.settings(), https=self._https(), me=me,
+                                     prefs=accounts.prefs(me["name"]) if me else None, names_to=settings_snapshot()["names_to"]))
             return
 
         if path == "/admin/accounts":
@@ -2003,11 +2458,33 @@ class Handler(BaseHTTPRequestHandler):
             now = CLOCK.ticks()
             with lock:
                 msgs = live_messages(now)
-            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout")})
+            hide = hidden_by_reports()
+            if hide:
+                msgs = [m for m in msgs if f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}" not in hide]
+            me = accounts.session(self._session_token())
+            msgs = [m for m in msgs if store.can_see(m, me)]
+            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout"),
+                                 "report_reasons": settings_snapshot()["report_reasons"]})
             return
 
         if path == "/board/threads":
-            self.send_json(200, dict(BOARD.list_threads(), posting=self._posting_view("board")))
+            listing, me = BOARD.list_threads(), accounts.session(self._session_token())
+            listing["threads"] = [t for t in listing["threads"] if store.can_see(t, me)]
+            self.send_json(200, dict(listing, posting=self._posting_view("board")))
+            return
+
+        if path == "/admin/folders":
+            self.send_json(200, folders_snapshot())
+            return
+
+        if path == "/admin/status-tiles":
+            self.send_json(200, status_tiles_snapshot())
+            return
+
+        if path == "/admin/apps":
+            # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
+            # switch: whether its access can be set (its page then starts with it, M6).
+            self.send_json(200, {"apps": [dict(a, switch=a["id"] in access.ROUTED or a["local"]) for a in manifests.admin_apps(MANIFESTS)]})
             return
 
         if path == "/admin/settings":
@@ -2105,7 +2582,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             state = access.read(ACCESS_STATE)
-            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"])) for a in access.apps(MANIFESTS)],
+            vis = visibility()
+            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"]), visible=vis.get(a["id"], "auto"))
+                                          for a in access.apps(MANIFESTS)],
+                                 "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
                                  "results": control_results()})
             return
 
@@ -2326,6 +2806,21 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/layout.css":
+            # The owner's page widths for every page (M2): public, tiny, read after style.css.
+            # No file of that name in web/, so both web servers hand it to the hub.
+            with _settings_lock:
+                cur = dict(_settings)
+            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; }\n"
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"])).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css; charset=utf-8")
+            self.send_header("Content-Length", len(body))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/status":
             # The web server's proxy adds X-Forwarded-For; a direct hit has none.
             proxied = "X-Forwarded-For" in self.headers
@@ -2343,6 +2838,17 @@ class Handler(BaseHTTPRequestHandler):
             joined = joined_count()
             if joined is not None:
                 payload["joined"] = joined
+            # Different devices today and this week (M11): the numbers only, while counting is on.
+            counted = visitor_counts()
+            if counted is not None:
+                payload["visitors"] = counted
+            # Signed in and around (M12): the count for everyone; the names only to whom the owner
+            # allows, and only of those who said yes on their own account page.
+            around = online_names(now)
+            payload["signed_in"] = len(around)
+            me = accounts.session(self._session_token())
+            if me and (settings_snapshot()["names_to"] == "users" or me.get("role") == "admin"):
+                payload["names"] = [n for n in around if accounts.prefs(n)["show_online"]]
             self.send_json(200, payload)
             return
 
@@ -2352,7 +2858,18 @@ class Handler(BaseHTTPRequestHandler):
             if result is None:
                 self.send_json(404, {"error": "no such thread"})
             else:
-                self.send_json(200, dict(result, posting=self._posting_view("board")))
+                me = accounts.session(self._session_token())
+                if result["thread"]["posts"] and not store.can_see(result["thread"]["posts"][0], me):
+                    self.send_json(404, {"error": "no such thread"})
+                    return
+                result = dict(result, thread=dict(result["thread"], posts=[p for p in result["thread"]["posts"] if store.can_see(p, me)]))
+                hide = hidden_by_reports()
+                if hide:
+                    t = dict(result["thread"])
+                    t["posts"] = [p if f"board:{t['id']}:{int(p.get('created', 0))}" not in hide
+                                  else dict(p, text="(hidden while the owner looks at a report)", hidden=True) for p in t["posts"]]
+                    result = dict(result, thread=t)
+                self.send_json(200, dict(result, posting=self._posting_view("board"), report_reasons=settings_snapshot()["report_reasons"]))
             return
 
         if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
@@ -2405,6 +2922,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         note_client(self)
+        self._note_account()
         refresh_manifests()
         path = self.path.split("?")[0]
 
@@ -2470,12 +2988,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/settings":
             with _settings_lock:
+                was_counting = _settings.get("visitor_counts")
                 for key in DEFAULT_SETTINGS:
                     if valid_setting(key, payload.get(key)):
                         _settings[key] = payload[key]
                 current = dict(_settings)
                 save_settings(current)
                 apply_settings(current)
+                if current["visitor_counts"] != was_counting or not VISITORS_WANT.exists():
+                    write_visitors_want(current["visitor_counts"])
             self.send_json(200, current)
             return
 
@@ -2680,6 +3201,45 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be make (books: true or false)"})
             return
 
+        if path == "/admin/status-tiles":
+            # The box row's arrangement (M8): its tiles only, each part a list of their ids.
+            data, ids = payload.get("state"), {i for i, _ in box_tiles()}
+            if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
+                                                     for k in ("order", "hidden", "double")):
+                self.send_json(400, {"error": "state: order, hidden and double, each a list of the box row's tiles"})
+                return
+            tmp = STATUS_TILES_FILE.parent / (STATUS_TILES_FILE.name + ".tmp")
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({k: list(dict.fromkeys(data.get(k, []))) for k in ("order", "hidden", "double")}))
+            os.replace(tmp, STATUS_TILES_FILE)
+            self.send_json(200, status_tiles_snapshot())
+            return
+
+        if path == "/admin/folders":
+            # The folders' arrangement (M7): the whole of folders.json, checked, at once.
+            data = valid_folders(payload.get("state"))
+            if data is None:
+                self.send_json(400, {"error": "state: per folder, hidden, order and extra: entries some folder lists"})
+                return
+            save_folders(data)
+            self.send_json(200, folders_snapshot())
+            return
+
+        if path == "/admin/visibility":
+            # Who sees an app's tile (M5): the hub's own, at once; no root, no web server change.
+            app, v = str(payload.get("app", "")), payload.get("visible")
+            if (app not in _switched() and app not in PAGE_APPS) or v not in VISIBLE:
+                self.send_json(400, {"error": "app must name an app on /admin, and visible be auto, guests, users or hidden"})
+                return
+            data = visibility()
+            if v == "auto":
+                data.pop(app, None)
+            else:
+                data[app] = v
+            save_visibility(data)
+            self.send_json(200, {"visibility": data})
+            return
+
         if path == "/admin/access":
             app, mode = str(payload.get("app", "")), payload.get("mode")
             if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES \
@@ -2779,6 +3339,13 @@ class Handler(BaseHTTPRequestHandler):
             self._post_message(payload)
             return
 
+        if path == "/api/report":
+            fwd = self.headers.get("X-Forwarded-For", "")
+            addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
+            code, message = report(str(payload.get("app", "")), payload.get("ref"), payload.get("reason"), addr)
+            self.send_json(code, {"message": message} if code == 200 else {"error": message})
+            return
+
         if path == "/board/threads":
             poster = self._poster("board", str(payload.get("name", "")))
             if poster is None:
@@ -2787,7 +3354,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = BOARD.create_thread(poster[0],
                                              payload.get("title"),
                                              payload.get("text"),
-                                             payload.get("hue"), poster[1])
+                                             self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -2801,7 +3368,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 result = BOARD.reply(tid, poster[0], payload.get("text"),
-                                     payload.get("hue"), poster[1])
+                                     self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -2916,7 +3483,7 @@ class Handler(BaseHTTPRequestHandler):
         # Optional author colour, stored as a hue only (0-359) -- the client's palette
         # picks saturation and lightness. Absent means "derive it from the name", so a
         # guest who renames re-colours instead of carrying a stale hue around.
-        hue = payload.get("hue")
+        hue = self._hue(payload, poster)
         if hue is not None:
             try:
                 hue = int(hue) % 360
@@ -2936,6 +3503,9 @@ class Handler(BaseHTTPRequestHandler):
             entry["hue"] = hue
         if account:
             entry["account"] = account
+            seen = seen_by_of(account, "shoutbox")
+            if seen:
+                entry["seen_by"] = seen
         with lock:
             msgs = live_messages(now)
             msgs.append(entry)

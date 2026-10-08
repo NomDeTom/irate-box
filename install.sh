@@ -28,6 +28,9 @@
 #                             by irate-box-ci.service as the unprivileged hubci user
 #   irate-box-uplink.service  the uplink watchdog (uplink.py, root): keeps the box on its network
 #                             as eagerly as --uplink or /admin's Network page says
+#   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
+#                             hashed with daily and weekly salts held in memory, only the counts
+#                             written; runs only while counting is on (irate-box-visitors-switch.path)
 #   /var/lib/hub/control/netinv.json   what the box has for networking (netinv.py), looked
 #                             at once here and again from /admin
 #
@@ -1938,6 +1941,56 @@ RandomizedDelaySec=5min
 [Install]
 WantedBy=timers.target
 EOF
+
+# --- Unique visitors (menu overhaul M11) -------------------------------------------
+# A helper of its own reads the leases and the neighbour table every minute, hashes each address
+# with a salt made for the day (and one for the week) that it holds only in memory, and writes two
+# numbers for the hub. It runs only while counting is on: the hub records the owner's choice in
+# $STATE/visitors.want (on by default, one of the setup's decisions) and the path unit applies it.
+cat >/etc/systemd/system/irate-box-visitors.service <<EOF
+[Unit]
+Description=Irate-Box: unique visitors, counted from salted hashes kept in memory only
+
+[Service]
+ExecStart=$CODE/irate-box visitors
+# Not root: the leases and /proc/net/arp are readable by anyone; it writes one file in its runtime folder.
+DynamicUser=yes
+RuntimeDirectory=irate-box-visitors
+RuntimeDirectoryMode=0755
+Restart=on-failure
+MemoryDenyWriteExecute=yes
+$HUB_SANDBOX
+
+[Install]
+WantedBy=multi-user.target
+EOF
+cat >/etc/systemd/system/irate-box-visitors-switch.service <<EOF
+[Unit]
+Description=Irate-Box: apply the visitor-counting switch ($STATE/visitors.want)
+
+[Service]
+Type=oneshot
+Environment=HUB_STATE_DIR=$STATE
+ExecStart=$CODE/scripts/visitors-apply.sh
+EOF
+cat >/etc/systemd/system/irate-box-visitors-switch.path <<EOF
+[Unit]
+Description=Irate-Box: watch the visitor-counting switch
+
+[Path]
+PathChanged=$STATE/visitors.want
+Unit=irate-box-visitors-switch.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+if [ ! -f "$STATE/visitors.want" ]; then
+	# Written as the hub, in its folder (F13): on, as the setting's default.
+	echo on | runuser -u "$HUB_USER" -- sh -c 'cat >"$1"' sh "$STATE/visitors.want"
+fi
+systemctl daemon-reload
+systemctl enable --quiet --now irate-box-visitors-switch.path || problem "irate-box-visitors-switch.path did not start"
+HUB_STATE_DIR="$STATE" "$CODE/scripts/visitors-apply.sh" || problem "visitor counting: journalctl -u irate-box-visitors -n 30"
 
 # --- Tailscale remote access -------------------------------------------------------
 # Not installed by this script. Where it is already present, it stops being a boot

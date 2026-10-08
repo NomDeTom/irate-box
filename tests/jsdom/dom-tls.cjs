@@ -38,7 +38,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     if (o.method === 'POST' && u === '/admin/tls') { posted.push(JSON.parse(o.body)); state = Object.assign({}, ON, { results: [{ id: 'r1', ok: true, message: 'made the box\'s CA' }] }); return json({ id: 'r1' }, 202); }
     if (u === '/admin/tls') return json(state);
     return new Response('{}', { status: 404 });
-  }, ['admin.js']);
+  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait();
   let d = admin.d;
   check('not set up: said, and Make the box\'s certificate offered', /No certificate yet/.test(t(d.getElementById('tls-state'))) && !d.getElementById('tls-make').hidden

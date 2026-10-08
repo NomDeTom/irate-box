@@ -212,7 +212,7 @@ class Store:
 
     # -- saves API (gallery) --------------------------------------------------
 
-    def save(self, kind, name, payload, thumb=None, key=None, proof=None, lock_new=None, lock_next=None):
+    def save(self, kind, name, payload, thumb=None, key=None, proof=None, lock_new=None, lock_next=None, marks=None):
         """Store a document plus optional pre-rendered thumbnail. Returns its metadata.
 
         A client may supply its own id. The Mermaid History panel mints uuids locally
@@ -235,6 +235,11 @@ class Store:
             lock = _lock_after((old or {}).get("lock"), proof, lock_new, lock_next)
             if lock:
                 meta["lock"] = lock
+            # Whose it is and who sees it (M13): its first author's, kept when it is saved over.
+            if old and old.get("account"):
+                meta.update({k: old[k] for k in ("account", "seen_by") if k in old})
+            elif marks:
+                meta.update(marks)
             self._write(confine.under(saves, key + ".data"), payload)
             if thumb:
                 self._write(confine.under(saves, key + ".thumb"), thumb)
@@ -461,7 +466,7 @@ class Drop:
         return {"files": len(metas), "bytes": sum(m.get("size", 0) for m in metas),
                 "max_total": DROP_MAX_TOTAL, "max_file": DROP_MAX_FILE, "ttl": DROP_TTL}
 
-    def receive(self, stream, length, name, by="", lock=None):
+    def receive(self, stream, length, name, by="", lock=None, marks=None):
         """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
         ValueError (too large, card too full) or OSError (the body stopped short)."""
         if length > DROP_MAX_FILE:
@@ -486,6 +491,7 @@ class Drop:
                     "by": str(by).strip()[:MAX_NAME], "created": self.clock.ticks()}
             if lock:
                 meta["lock"] = lock
+            meta.update(marks or {})
             with self._lock:
                 os.replace(tmp, confine.under(self.dir, key + ".data"))
                 (confine.under(self.dir, key + ".meta")).write_text(json.dumps(meta))
@@ -539,10 +545,11 @@ def content_disposition(name):
 def _handle_drop(handler, method, path, drop):
     from urllib.parse import unquote
     if path == "/api/drop" and method == "GET":
-        _send_json(handler, 200, {"files": [{**{k: m.get(k) for k in ("id", "name", "size", "by", "age")}, "locked": bool(m.get("lock")),
+        me = VIEWER(handler) if VIEWER else None
+        _send_json(handler, 200, {"files": [{**{k: m.get(k) for k in ("id", "name", "size", "by", "age", "seen_by")}, "locked": bool(m.get("lock")),
                                              "pinned": bool(m.get("pinned")),
                                              **({"lock_n": m["lock"]["n"]} if m.get("lock") else {})}
-                                            for m in drop.list()],
+                                            for m in drop.list() if can_see(m, me)],
                                   "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL})
         return True
     if path == "/api/drop" and method == "POST":
@@ -564,7 +571,8 @@ def _handle_drop(handler, method, path, drop):
         name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
         by = unquote(handler.headers.get("X-Drop-By", "") or "")
         try:
-            meta = drop.receive(handler.rfile, length, name, by, lock=parse_lock(handler.headers.get("X-Lock-New")))
+            meta = drop.receive(handler.rfile, length, name, by, lock=parse_lock(handler.headers.get("X-Lock-New")),
+                                marks=_author_marks(handler, "drop"))
         except ValueError as exc:
             handler.close_connection = True
             _send_json(handler, 507 if "full" in str(exc) else 413, {"error": str(exc)})
@@ -592,6 +600,9 @@ def _handle_drop(handler, method, path, drop):
         return True
     if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
         found = drop.open(path[len("/api/drop/"):])
+        if found and not can_see(found[0], VIEWER(handler) if VIEWER else None):
+            found[1].close()
+            found = None
         if not found:
             _send_json(handler, 404, {"error": "not found (it may have expired)"})
             return True
@@ -680,6 +691,31 @@ def _blob_get(handler, store, namespace, key):
     _send(handler, 200, data, "application/octet-stream", {"ETag": tag})
 
 
+# Who sees what (M13): the hub sets these. VIEWER(handler) is the signed-in account asking, or None;
+# SEEN_BY(account, app) is that account's choice for what it posts ("everyone", "users" or "me").
+# A save or a dropped file made by someone signed in carries their account and, if narrower than
+# everyone, their choice; the listings and the reads leave out what the asker may not see.
+VIEWER = None
+SEEN_BY = None
+
+
+def _author_marks(handler, app):
+    me = VIEWER(handler) if VIEWER else None
+    if not me:
+        return {}
+    seen = SEEN_BY(me, app) if SEEN_BY else "everyone"
+    return {"account": me["name"], **({"seen_by": seen} if seen in ("users", "me") else {})}
+
+
+def can_see(meta, me):
+    seen = meta.get("seen_by")
+    if seen == "users":
+        return bool(me)
+    if seen == "me":
+        return bool(me) and str(meta.get("account", "")).lower() == me["name"].lower()
+    return True
+
+
 def handle(handler, method, path, store, drop=None):
     """Route one request. Returns True if this module owned it.
 
@@ -757,7 +793,8 @@ def _with_state(store, meta):
 def _handle_saves(handler, method, path, store):
     if path == "/api/saves":
         if method == "GET":
-            saves = store.list_saves()
+            me = VIEWER(handler) if VIEWER else None
+            saves = [m for m in store.list_saves() if can_see(m, me)]
             if "full=1" in (handler.path.split("?", 1)[1] if "?" in handler.path else ""):
                 # Opt-in: the listing normally stays metadata-only so a gallery costs
                 # one small read per entry. Text documents are cheap enough to inline,
@@ -798,7 +835,7 @@ def _handle_saves(handler, method, path, store):
 
     if method == "GET":
         meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
-        if meta is None:
+        if meta is None or not can_see(meta, VIEWER(handler) if VIEWER else None):
             _send_json(handler, 404, {"error": "not found"})
             return True
         payload = public_meta(_with_state(store, meta))
@@ -888,7 +925,7 @@ def _create_save(handler, store):
     body = json.dumps(state).encode()
     proof, new, nxt = _lock_headers(handler)
     try:
-        meta = store.save(kind, name, body, thumb, key, proof=proof, lock_new=new, lock_next=nxt)
+        meta = store.save(kind, name, body, thumb, key, proof=proof, lock_new=new, lock_next=nxt, marks=_author_marks(handler, "saves"))
     except LockError as exc:
         _send_locked(handler, exc)
         return

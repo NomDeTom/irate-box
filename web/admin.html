@@ -8,6 +8,7 @@
   <title>Hub admin</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
 </head>
 <body class="admin">
   <header>
@@ -22,42 +23,13 @@
       <button type="button" class="admin-menu" aria-expanded="false" aria-controls="admin-side-list">
         <span aria-hidden="true">☰</span> <span id="admin-current">Overview</span>
       </button>
-      <div class="admin-side-list" id="admin-side-list">
-        <p class="admin-side-group">Box</p>
-        <a href="#welcome" id="welcome-link">Setup steps</a>
-        <a href="#overview">Overview</a>
-        <a href="#addons">Add-ons</a>
-        <a href="#access">Access</a>
-        <a href="#accounts">Accounts</a>
-        <a href="#clock">Clock</a>
-        <p class="admin-side-group">Library</p>
-        <a href="#apps">Apps</a>
-        <a href="#books">Books</a>
-        <a href="#firmware">Firmware</a>
-        <a href="#mirrors">Mirrors</a>
-        <a href="#toolkits">Toolkits</a>
-        <a href="#sources">Schedule and token</a>
-        <p class="admin-side-group">Hub content</p>
-        <a href="#saved">Saved work</a>
-        <a href="#moderation">Moderation</a>
-        <a href="#git">Git</a>
-        <a href="#factory">Firmware Factory</a>
-        <a href="#mesh">Mesh</a>
-        <p class="admin-side-group">System</p>
-        <a href="#network">Network</a>
-        <a href="#security">Security</a>
-        <a href="#updates">Updates</a>
-        <a href="#backup">Backup</a>
-        <p class="admin-side-group">Health</p>
-        <a href="#health">Box doctor</a>
-        <a href="#secdoctor">Security doctor</a>
-        <a href="#updoctor">Updates doctor</a>
-      </div>
+      <!-- Filled by admin-layout.js: the groups and pages, from its table and the apps' manifests. -->
+      <div class="admin-side-list" id="admin-side-list"></div>
     </nav>
 
     <main class="admin-main">
       <!-- Background art by side-bar group (admin.js sets data-art on main). The controller's
-           desk lights, and the Firmware Factory's, are made by krab-desk.js from art/krab-*-lit.webp and -mask.webp. -->
+           desk lit, and the Firmware Factory's, are WebM loops played by krab-loop.js (made by tools/make-krab-loops.cjs). -->
       <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
       <div class="helper-banner" id="helper-banner" role="alert" hidden>
         <strong>The box's root helper is not answering.</strong>
@@ -100,6 +72,9 @@
             <a href="#security">Open Security</a></li>
           <li data-step="addons"><strong>Add-ons</strong> <span></span> <a href="#addons">Choose add-ons</a></li>
           <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
+          <li data-step="decisions"><strong>Decide what the box shows and counts</strong> <span></span>
+            <p class="setting-desc">Everything that touches the security of the box or the people on it. Each has a default
+              already; the tour takes you to each one where it lives.</p></li>
         </ol>
         <div class="library-buttons">
           <button type="button" id="setup-finish">Finish setup</button>
@@ -218,6 +193,16 @@
         </div>
         <p class="setting-desc action-note" id="clock-note" role="status" hidden></p>
         <ul class="admin-checks" id="clock-findings"></ul>
+      </section>
+
+      <section class="admin-pane" id="appearance" aria-labelledby="appearance-title">
+        <h2 id="appearance-title">Appearance</h2>
+        <p class="setting-desc">
+          How wide the pages are, for everyone. The hub and this page use the first; the shoutbox
+          and the forum on the hub page have their own. Text stays at reading width whatever you choose,
+          and on a phone everything fits the screen anyway.
+        </p>
+        <div id="appearance-box"></div>
       </section>
 
       <section class="admin-pane" id="apps" aria-labelledby="apps-title">
@@ -526,8 +511,40 @@
           7 days after their last reply (powered-on time). Deleting is immediate and permanent.
         </p>
         <p class="setting-desc action-note" id="mod-note" role="status" hidden></p>
-        <h3>Starting fresh</h3>
-        <div class="settings" data-note="fresh-note">
+        <h3>Reported</h3>
+        <p class="setting-desc">Anyone on the box can report a shoutbox message or a forum post, with one of the reasons you
+          offer below; each visitor once per post. What you keep leaves the queue (and shows again, if it was hidden).</p>
+        <div id="mod-queue"></div>
+        <h3>What counts as reported</h3>
+        <div id="report-settings"></div>
+        <p class="setting-desc">Each app's own page has what people made with it: the shoutbox's messages, the board's
+          threads, the files in the drop.</p>
+      </section>
+
+      <section class="admin-pane" id="status-tiles" aria-labelledby="status-tiles-title">
+        <h2 id="status-tiles-title">Status tiles</h2>
+        <p class="setting-desc">The row of readouts under the apps on the hub page: which show, in what order, and which
+          take two cells to say more (People: the different devices seen today and this week; memory and disk in full).</p>
+        <div id="status-tiles-box"></div>
+        <h3>Names of those signed in</h3>
+        <div id="names-to-box"></div>
+      </section>
+
+      <!-- The shoutbox and the board: apps drawn on the hub page itself, not as tiles (Tom,
+           2026-10-07), each with its own page in /admin's Apps group (apps.d/93-shoutbox.json,
+           94-board.json; menu overhaul M9). -->
+      <section class="admin-pane" id="shoutbox-settings" aria-labelledby="shoutbox-settings-title">
+        <h2 id="shoutbox-settings-title">Posting</h2>
+        <div class="seen-block" data-app="shoutbox"></div>
+        <form id="shout-posting" class="library-form posting-form" data-note="shout-posting-note">
+          <label>Who may post
+            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          </label>
+          <label class="inline"><input type="checkbox" name="shout_marks"> A user's name marked ✓</label>
+        </form>
+        <p class="setting-desc">A logged-in user always posts under their account's name, and a guest can't use an account's name.</p>
+        <p class="setting-desc action-note" id="shout-posting-note" role="status" hidden></p>
+        <div class="settings" data-note="shout-fresh-note">
           <label class="setting">
             <input type="checkbox" id="shout_reset_on_boot">
             <span>
@@ -535,6 +552,26 @@
               <span class="setting-desc">For an event box: each day starts empty. Only a real boot clears it, not the hub restarting for an update.</span>
             </span>
           </label>
+        </div>
+        <p class="setting-desc action-note" id="shout-fresh-note" role="status" hidden></p>
+      </section>
+      <section class="admin-pane" id="shoutbox-mod" aria-labelledby="shoutbox-mod-title">
+        <h2 id="shoutbox-mod-title">Messages</h2>
+        <p class="setting-desc">They age out by themselves after 24 hours of powered-on time. Deleting is immediate and permanent.</p>
+        <div id="mod-messages" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="board-settings" aria-labelledby="board-settings-title">
+        <h2 id="board-settings-title">Posting</h2>
+        <div class="seen-block" data-app="board"></div>
+        <form id="board-posting" class="library-form posting-form" data-note="board-posting-note">
+          <label>Who may post
+            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          </label>
+          <label class="inline"><input type="checkbox" name="board_marks"> A user's name marked ✓</label>
+        </form>
+        <p class="setting-desc action-note" id="board-posting-note" role="status" hidden></p>
+        <div class="settings" data-note="board-fresh-note">
           <label class="setting">
             <input type="checkbox" id="board_reset_on_boot">
             <span>
@@ -543,13 +580,17 @@
             </span>
           </label>
         </div>
-        <p class="setting-desc action-note" id="fresh-note" role="status" hidden></p>
-        <h3>Shoutbox</h3>
-        <div id="mod-messages" class="admin-list"></div>
-        <h3>File drop</h3>
-        <div id="mod-drops" class="admin-list"></div>
-        <h3>Board</h3>
+        <p class="setting-desc action-note" id="board-fresh-note" role="status" hidden></p>
+      </section>
+      <section class="admin-pane" id="board-mod" aria-labelledby="board-mod-title">
+        <h2 id="board-mod-title">Threads</h2>
+        <p class="setting-desc">A thread ages out 7 days after its last reply (powered-on time). Deleting is immediate and permanent.</p>
         <div id="mod-threads" class="admin-list"></div>
+      </section>
+
+      <section class="admin-pane" id="drop-mod" aria-labelledby="drop-mod-title">
+        <h2 id="drop-mod-title">Files in the drop</h2>
+        <div id="mod-drops" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="git" aria-labelledby="git-title">
@@ -651,18 +692,6 @@
         <p class="acct-code" id="accounts-code" hidden></p>
         <h3>The accounts</h3>
         <div id="accounts-list" class="admin-list"></div>
-        <h3>Shoutbox and forum</h3>
-        <form id="accounts-posting" class="library-form">
-          <label>Shoutbox: who may post
-            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
-          </label>
-          <label class="inline"><input type="checkbox" name="shout_marks"> A user's name marked ✓</label>
-          <label>Forum: who may post
-            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
-          </label>
-          <label class="inline"><input type="checkbox" name="board_marks"> A user's name marked ✓</label>
-        </form>
-        <p class="setting-desc">A logged-in user always posts under their account's name, and a guest can't use an account's name.</p>
         <h3>The box's own admin login</h3>
         <p class="setting-desc" id="accounts-admin-login">Looking…</p>
         <p class="library-buttons"><button type="button" id="accounts-admin-login-switch" hidden></button></p>
@@ -849,6 +878,27 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <ul class="admin-checks" id="security-findings"></ul>
+        <h3>What the box keeps about visitors</h3>
+        <p class="setting-desc">
+          A count of different devices, today and this week, for the People tile: never who they
+          were. A helper of its own reads the network addresses of the devices the box has seen, hashes
+          each with a random salt made for the day (and one for the week) and held only in its memory,
+          and throws the salt away when the day or week ends, so no hash can be turned back into a
+          device or matched with another day's. Only the two numbers are written, and they go at
+          reboot. Phones that use a random address may count more than once, so the numbers are
+          approximate. Off, the helper doesn't run at all. Signed-in people's names show only if each
+          of them says so, on their own account page.
+        </p>
+        <div class="settings" data-note="visitors-note">
+          <label class="setting">
+            <input type="checkbox" id="visitor_counts">
+            <span>
+              <span class="setting-name">Count unique visitors</span>
+              <span class="setting-desc">By salted hashes, as above; on unless you turn it off.</span>
+            </span>
+          </label>
+        </div>
+        <p class="setting-desc action-note" id="visitors-note" role="status" hidden></p>
         <h3>HTTPS</h3>
         <p class="setting-desc">
           The box can serve every page over HTTPS too, with a certificate of its own: phones and
@@ -1120,8 +1170,11 @@
 
   <script src="/hub.js"></script>
 
-  <script src="/krab-desk.js"></script>
+  <script src="/krab-loop.js"></script>
   <script src="/heatmap.js"></script>
+  <script src="/admin-widgets.js"></script>
+  <script src="/admin-layout.js"></script>
   <script src="/admin.js"></script>
+  <script src="/admin-tour.js"></script>
 </body>
 </html>

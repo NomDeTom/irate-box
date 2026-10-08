@@ -8,7 +8,8 @@ const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
+const adminApps = require('./admin-apps-fixture.cjs');
+const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const health = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, 'utf8'));
 health.report.findings.push(
   { id: 'clock', check: 'Clock', status: 'warn', detail: 'No network time.', fix: '', actions: [{ choice: 'clock-set', label: 'Set the clock from this browser' }] },
@@ -71,6 +72,7 @@ w.fetch = async (u, opts = {}) => {
     return new Response('{"id":"x"}', { status: 202 });
   }
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
+  if (u === '/admin/apps') return new Response(JSON.stringify({ apps: adminApps() }), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
@@ -87,10 +89,25 @@ const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'
 setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   const side = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
-  const hi = side.indexOf('Health');
-  check('sidebar: a Health group last, with the three doctors', hi > 0 && side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
-  check('sidebar: Clock under Box', side.indexOf('Clock') > side.indexOf('Box') && side.indexOf('Clock') < side.indexOf('Library'));
-  check('the Clock pane is the one shown', !d.getElementById('clock').hidden && d.getElementById('health').hidden);
+  // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, Box,
+  // the Doctors last; nothing left over.
+  const groups = t('.admin-side-group');
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|Box|Doctors', groups.join('|'));
+  const hi = side.indexOf('Doctors');
+  check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
+  check('sidebar: Clock and Appearance under Box', side.indexOf('Clock') > side.indexOf('Box') && side.indexOf('Appearance') > side.indexOf('Box') && side.indexOf('Clock') < hi);
+  check('sidebar: a page per app that owns sections, in the hub\'s order', (() => { const at = (n) => side.findIndex((x) => x.endsWith(n)); return ['Kiwix', 'Git', 'Web flasher', 'Mesh', 'Firmware Factory'].every((a, i, all) => at(a) > side.indexOf('Apps') && at(a) < side.indexOf('Moderation') && (!i || at(a) > at(all[i - 1]))); })(), side.join('|'));
+  const sections = [...d.querySelectorAll('.admin-pane')];
+  check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
+  const pageOf = (id) => d.getElementById(id).closest('.admin-page');
+  // M6: each app's page starts with who opens it and who sees it, then its own sections (4f).
+  const kiwix = d.getElementById('page-app-wiki');
+  check('an app\'s page starts with its access, then its sections', kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-wiki books',
+    kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' '));
+  check('  its access block filled from /admin/access: who opens it, who sees its tile', kiwix && !!kiwix.querySelector('.access-block .access-toggle [aria-checked="true"]') && !!kiwix.querySelector('.access-block .access-seen .chip.selected'));
+  check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
+  check('no page for an app with nothing to set (About)', !d.getElementById('page-app-about'));
+  check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
   check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));
   check('no clock findings in the services doctor', !t('#health-findings li').some((x) => x.startsWith('🔴 Clock') || /Clock module|^.{0,3}Clock —/.test(x)), t('#health-findings li'));
   check('the clock\'s badge counts its problem', d.querySelector('a[href="#clock"]').dataset.badge === '1');
@@ -110,11 +127,13 @@ setTimeout(() => {
   w.location.hash = '#secdoctor'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
-  check('background art: the librarian for Library', main.dataset.art === 'librarian', main.dataset.art);
+  check('#books opens Kiwix\'s own page, the librarian behind it', !pageOf('books').hidden && pageOf('books').getAttribute('aria-label') === 'Kiwix' && main.dataset.art === 'librarian', main.dataset.art);
+  w.location.hash = '#backup'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('an old address still lands: #backup opens Updates and backup', !pageOf('backup').hidden && pageOf('backup').getAttribute('aria-label') === 'Updates and backup');
   w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
     && /\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp[^}]*width: min\(46vw, 34rem\)/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
-  check('the desk has its lamp host and crab layer, lit by krab-desk.js', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-lit', '-mask', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && fs.existsSync(`${WEB}/krab-desk.js`));
+  check('the desk lit by its WebM loop (krab-loop.js, M3), over the still', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-loop\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && !/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && ['controller', 'factory'].every((n) => fs.existsSync(`${WEB}/art/krab-${n}-loop.webm`)) && /controller: 'art\/krab-controller-loop\.webm'/.test(fs.readFileSync(`${WEB}/krab-loop.js`, 'utf8')));
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const af = d.getElementById('auto-form');
   check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
@@ -136,8 +155,8 @@ setTimeout(() => {
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
   // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
-  check('mirrors: the list and its form are in Library → Mirrors', d.querySelector('#mirrors #git-mirrors') && d.querySelector('#mirrors #git-mirror-add')
-    && [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#firmware #mirrors #toolkits #sources'));
+  check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')
+    && d.querySelector('#page-app-git #git'));
   // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.
   check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
   const cacheForm = d.getElementById('ci-cache-form');

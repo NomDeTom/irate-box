@@ -244,7 +244,7 @@ def req(path, body=None, headers=None, https=False):
 
 try:
     code, d, _ = req("/api/account")
-    check("hub: the page's view, off and nobody", code == 200 and d == {"signup": "off", "http": "warning", "https": False, "me": None}, d)
+    check("hub: the page's view, off and nobody", code == 200 and d == {"signup": "off", "http": "warning", "https": False, "me": None, "prefs": None, "names_to": "users"}, d)
     code, d, _ = req("/admin/accounts", {"action": "settings", "signup": "open", "http": "prevented"}, {"X-Irate-Admin": "1"})
     check("  the admin sets the levels", code == 200 and d["settings"] == {"signup": "open", "http": "prevented"}, d)
     code, d, _ = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"})

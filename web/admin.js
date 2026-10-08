@@ -7,51 +7,15 @@ const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1'
 // loads, the operator has already authenticated. Each toggle saves on change; there is
 // no Save button to forget to press.
 
-// --- panes ------------------------------------------------------------------------------
-// One pane at a time, chosen by the sidebar and kept in the address (#updates), so a
-// reload or a bookmark comes back to the same place. Everything keeps loading in the
-// background, so the sidebar's badges stay current whichever pane is open.
-const panes = [...document.querySelectorAll('.admin-pane')];
-const sideLinks = [...document.querySelectorAll('.admin-side-list a')];
-const menu = document.querySelector('.admin-menu');
-const side = document.querySelector('.admin-side');
-
-function showPane() {
-  const pane = panes.find((p) => `#${p.id}` === location.hash) || panes[0];
-  panes.forEach((p) => { p.hidden = p !== pane; });
-  sideLinks.forEach((a) => {
-    if (a.hash === `#${pane.id}`) a.setAttribute('aria-current', 'page');
-    else a.removeAttribute('aria-current');
-  });
-  // Background art by side-bar group (style.css, web/art/): the controller for Box and System,
-  // the librarian for Library and Hub content, the doctor for Health; a pane may have its own
-  // (the workbench for Toolkits, the production line for the Firmware Factory).
-  const link = sideLinks.find((l) => l.hash === `#${pane.id}`);
-  let group = link && link.previousElementSibling;
-  while (group && !group.classList.contains('admin-side-group')) group = group.previousElementSibling;
-  const ART = { Box: 'controller', System: 'controller', Library: 'librarian', 'Hub content': 'librarian', Health: 'doctor' };
-  const PANE_ART = { welcome: 'welcome-controller', toolkits: 'workbench', factory: 'factory' };
-  document.querySelector('.admin-main').dataset.art = PANE_ART[pane.id]
-    || (group && ART[group.textContent.trim()]) || '';
-  const title = pane.querySelector('h2').textContent;
-  document.getElementById('admin-current').textContent = title;
-  document.title = `${title} · Hub admin`;
-  side.classList.remove('open');
-  menu.setAttribute('aria-expanded', 'false');
-  window.scrollTo(0, 0);
-}
-window.addEventListener('hashchange', showPane);
-menu.addEventListener('click', () => {
-  const open = side.classList.toggle('open');
-  menu.setAttribute('aria-expanded', String(open));
-});
-showPane();
-
-// A word beside a sidebar entry: "new", "working", ... or nothing.
-function badge(pane, text) {
-  const a = sideLinks.find((l) => l.hash === `#${pane}`);
-  if (a) { if (text) a.dataset.badge = text; else delete a.dataset.badge; }
-}
+// --- the menu --------------------------------------------------------------------------
+// Built by admin-layout.js (AL) from its table and the apps' manifests (menu overhaul M4): pages
+// holding the sections below, the address naming a section. Everything keeps loading in the
+// background, so the sidebar's badges stay current whichever page is open.
+const showPane = AL.show;
+// A word beside a section's sidebar entry: "new", "working", ... or nothing.
+const badge = AL.badge;
+// Is this section on the page that's showing? (The loaders that wait to be seen.)
+const paneShown = AL.shown;
 
 // Every answer goes in the note right under the control that asked for it.
 const noteEl = (id) => document.getElementById(id);
@@ -716,6 +680,7 @@ function renderModeration(data) {
     if (!confirm(`Delete ${what}?`)) return;
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
+  renderReports(data, del);
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
       el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)}`),
@@ -744,6 +709,41 @@ function renderModeration(data) {
             i === 0 ? `the whole thread "${t.title}"` : 'this post'), { className: 'small' }))),
     ))
     : [el('p', { className: 'setting-desc', textContent: 'No threads.' })]));
+}
+
+// The queue across the apps (M10): what was reported enough to count, worst first; Keep or Delete.
+function renderReports(data, del) {
+  const queue = data.queue || [], rs = data.reports;
+  const q = document.getElementById('mod-queue');
+  if (q) q.replaceChildren(queue.length ? AW.shortList(queue.map((r) => ({ id: r.key, title: r.text.slice(0, 80) || '(empty)',
+    summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`,
+    badges: Object.keys(r.reasons || {}),
+    detail: () => [
+      AW.h('p', { class: 'admin-text', text: r.text }),
+      AW.dl(Object.fromEntries(Object.entries(r.reasons || {}).map(([k, n]) => [k, `${n}`]))),
+      AW.btn('Keep it', { onclick: async () => { try { renderModeration(await postJSON('/admin/moderation', { action: 'keep', key: r.key })); } catch (err) { say(err.message, false, noteEl('mod-note')); } } }),
+      ' ',
+      AW.btn('Delete it', { onclick: r.key.startsWith('shoutbox:')
+        ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
+        : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
+    ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
+  const box = document.getElementById('report-settings');
+  if (!box || !rs) return;
+  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile.
+  const chosen = new Set(rs.reasons);
+  const reasons = AW.h('div', { class: 'filter-chips', role: 'group', 'aria-label': 'Reasons offered' }, rs.all_reasons.map((r) =>
+    AW.h('button', { type: 'button', class: 'filter-chip' + (chosen.has(r) ? ' active' : ''), 'aria-pressed': String(chosen.has(r)), onclick: async () => {
+      const next = rs.all_reasons.filter((x) => (x === r ? !chosen.has(r) : chosen.has(x)));
+      if (!next.length) return;
+      try { await postJSON('/admin/settings', { report_reasons: next }); loadModeration(); } catch (err) { say(err.message, false, noteEl('mod-note')); }
+    } }, r)));
+  box.replaceChildren(AW.h('div', { class: 'aw-settings' }, AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Reasons offered' }), reasons,
+    AW.h('small', { class: 'setting-desc', text: 'saved as you choose' }))),
+  AW.settings([
+    { key: 'report_threshold', label: 'In the queue after', kind: 'choice', value: rs.threshold, options: [[1, '1 report'], [2, '2'], [3, '3'], [5, '5']] },
+    { key: 'report_hide', label: 'Hidden from everyone else until you look', kind: 'toggle', value: rs.hide,
+      note: 'off: it stays up while waiting; on: it is hidden once it counts, and shows again if you keep it' },
+  ], { save: async (changed) => { const r = await postJSON('/admin/settings', changed); loadModeration(); return r; } }));
 }
 
 async function loadModeration() {
@@ -1418,8 +1418,8 @@ function renderHealth(data) {
   badge('clock', clockProblems ? String(clockProblems) : '');
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
-  const here = location.hash === '#health' || location.hash === '#clock';
-  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, location.hash === '#clock' ? 'clock-scan' : 'scan'); return; }
+  const here = paneShown('health') || paneShown('clock');
+  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, paneShown('clock') ? 'clock-scan' : 'scan'); return; }
   clearTimeout(hlPoll);
   hlPoll = setTimeout(loadHealth, busy ? 2000 : here ? 15000 : 30000);
 }
@@ -1456,7 +1456,7 @@ function hlFix(fid, action) {
 
 hl.scan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'scan'));
 hl.clockScan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'clock-scan'));
-window.addEventListener('hashchange', () => { if (location.hash === '#health' || location.hash === '#clock') loadHealth(); });
+window.addEventListener('hashchange', () => { if (paneShown('health') || paneShown('clock')) loadHealth(); });
 loadHealth();
 
 // --- network ---------------------------------------------------------------------------
@@ -1864,9 +1864,9 @@ function renderNetwork(data) {
   badge('network', down ? '!' : '');
 
   const stale = !inv || Date.now() / 1000 - inv.at > 60 * 60;
-  if (stale && !busy && !netAsked && location.hash === '#network') { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
+  if (stale && !busy && !netAsked && paneShown('network')) { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
   clearTimeout(netPoll);
-  netPoll = setTimeout(loadNetwork, busy ? 2000 : location.hash === '#network' ? 10000 : 60000);
+  netPoll = setTimeout(loadNetwork, busy ? 2000 : paneShown('network') ? 10000 : 60000);
 }
 
 async function loadNetwork() {
@@ -1898,7 +1898,7 @@ net.save.addEventListener('click', () => {
 });
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
 net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 0 }, 'up'));
-window.addEventListener('hashchange', () => { if (location.hash === '#network') loadNetwork(); });
+window.addEventListener('hashchange', () => { if (paneShown('network')) loadNetwork(); });
 
 // --- the hotspot itself (item 2: root/ap.py, the plan from hub/apmode.py) -----------------------------
 const apEl = { state: document.getElementById('ap-state'), form: document.getElementById('ap-form'), radio: document.getElementById('ap-radio'),
@@ -1965,8 +1965,8 @@ apEl.form.addEventListener('submit', (e) => {
 apEl.radio.addEventListener('change', () => renderAp(apRun || {}));
 apEl.tryB.addEventListener('click', () => apAct({ action: 'try' }));
 apEl.confirmB.addEventListener('click', () => apAct({ action: 'confirm' }));
-window.addEventListener('hashchange', () => { if (location.hash === '#network') loadAp(); });
-if (location.hash === '#network') loadAp();
+window.addEventListener('hashchange', () => { if (paneShown('network')) loadAp(); });
+if (paneShown('network')) loadAp();
 loadNetwork();
 
 // --- the hotspot's own WiFi ----------------------------------------------------------------
@@ -2109,7 +2109,7 @@ kitEl.form.addEventListener('submit', async (e) => {
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#backup') loadKit(); });
+window.addEventListener('hashchange', () => { if (paneShown('backup')) loadKit(); });
 loadKit();
 
 // --- who can open each app --------------------------------------------------------------
@@ -2122,6 +2122,23 @@ const accessNodes = new Map(); // id -> { node, app }
 let accessWaiting = null; // { id, app }
 let accessNote = null; // { app, text, ok }
 let accessPoll = null;
+
+const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function seenDesc(a) {
+  a = { ...a, visible: a.visible || 'auto' };
+  if (a.mode === 'off') return 'Off: no tile.';
+  if (a.visible === 'auto') return '';
+  const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'those logged in' : 'the admin';
+  if (a.visible === 'hidden') return 'No tile; its address still works for whoever may open it.';
+  return a.visible === 'guests' && a.mode !== 'public'
+    ? `Everyone sees its tile, with a lock: it opens for ${opens}, and anyone else is asked to sign in.`
+    : `Its tile shows to ${SEEN_LABEL[a.visible]}; it opens for ${opens}.`;
+}
+function visibilitySet(a, v) {
+  if (v === a.visible) return;
+  postJSON('/admin/visibility', { app: a.id, visible: v }).then(() => loadAccess(),
+    (err) => { accessNote = { app: a.id, text: err.message, ok: false }; loadAccess(); });
+}
 
 function accessDesc(a) {
   if (a.mode === 'public') return a.login ? 'Public: on the home page; it still asks for the admin login.' : 'Public: on the home page, open to everyone on the network.';
@@ -2158,27 +2175,70 @@ function renderAccess(data) {
     }
   }
   const builtin = [];
+  lastAccess = data;
   for (const a of data.apps) {
-    const slot = accessSlot(a.id);
-    const group = el('span', { className: 'access-toggle' },
-      ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
-        const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', String(a.mode === mode));
-        return b;
-      }));
-    group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', `Who can open ${a.title}`);
-    const note = accessNote && accessNote.app === a.id
-      ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
-    // No note: left out, not passed as null (replaceChildren would show the word "null").
-    slot.replaceChildren(...[group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }), note].filter(Boolean));
+    accessSlot(a.id).replaceChildren(...accessControls(a));
     if (a.kind === 'builtin') builtin.push(a);
   }
+  fillAccessBlocks();
   document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
     el('span', {}, el('span', { className: 'setting-name', textContent: a.title }), accessSlot(a.id)))));
   clearTimeout(accessPoll);
   if (accessWaiting) accessPoll = setTimeout(loadAccess, 1000);
+}
+
+// Each app's own page starts with its access (M6): the same controls, drawn again there.
+let lastAccess = null;
+const TAB_SEEN = { guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function fillSeenBlocks() {
+  if (!lastAccess) return;
+  document.querySelectorAll('.seen-block[data-app]').forEach((block) => {
+    const app = block.dataset.app, cur = ((lastAccess.pages || {})[app] || 'auto').replace('auto', 'guests');
+    block.replaceChildren(el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Its tab on the hub page, shown to:' }),
+      ...Object.entries(TAB_SEEN).map(([v, label]) => {
+        const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: label,
+          onclick: () => { if (v !== cur) postJSON('/admin/visibility', { app, visible: v }).then(loadAccess, (err) => say(err.message, false, block)); } });
+        b.setAttribute('aria-pressed', String(cur === v));
+        return b;
+      })));
+  });
+}
+function fillAccessBlocks() {
+  if (!lastAccess) return;
+  fillSeenBlocks();
+  document.querySelectorAll('.access-block[data-app]').forEach((block) => {
+    const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
+    block.replaceChildren(...(a ? accessControls(a) : [el('p', { className: 'setting-desc', textContent: 'Always on the hub: no switch.' })]));
+  });
+}
+AL.onBuild(fillAccessBlocks);
+
+function accessControls(a) {
+  a = { ...a, visible: a.visible || 'auto' };  // a hub from before M5 says nothing: as its access
+  const group = el('span', { className: 'access-toggle' },
+    ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
+      const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(a.mode === mode));
+      return b;
+    }));
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-label', `Who can open ${a.title}`);
+  const note = accessNote && accessNote.app === a.id
+    ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
+  // Who sees its tile, apart from who opens it (M5, checklist 4a): the hub's own, saved at once.
+  const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
+    ...Object.entries(SEEN_LABEL).map(([v, label]) => {
+      const b = el('button', { type: 'button', className: 'chip' + (a.visible === v ? ' selected' : ''), textContent: label,
+        disabled: a.mode === 'off', onclick: () => visibilitySet(a, v) });
+      b.setAttribute('aria-pressed', String(a.visible === v));
+      return b;
+    }));
+  seen.setAttribute('role', 'group');
+  seen.setAttribute('aria-label', `Who sees ${a.title}'s tile`);
+  // No note: left out, not passed as null (replaceChildren would show the word "null").
+  return [group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }),
+    seen, el('span', { className: 'setting-desc', textContent: seenDesc(a) }), note].filter(Boolean);
 }
 
 async function loadAccess() {
@@ -2404,7 +2464,6 @@ loadLocal();
 // line is filled in by the part of this page that already loads its data; the pane shows
 // until the owner finishes it, and Overview's link brings it back.
 const setupList = document.getElementById('setup-steps');
-const welcomeLink = document.getElementById('welcome-link');
 
 function setupStep(step, text, status) {
   const li = setupList.querySelector(`[data-step="${step}"]`);
@@ -2413,7 +2472,7 @@ function setupStep(step, text, status) {
 }
 
 function applySetup(done) {
-  welcomeLink.hidden = done;
+  AL.hide('welcome', done);
   if (!done && !location.hash) location.hash = '#welcome';
 }
 
@@ -2836,8 +2895,8 @@ function renderCi(data) {
   let seen = 0;
   try { seen = Number(localStorage.getItem('irate-ci-seen')) || 0; } catch (_) { /* no storage */ }
   const newBad = data.runs.filter((r) => r.finished && r.finished > seen && r.state !== 'passed').length;
-  if (location.hash === '#git') { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
-  badge('git', location.hash !== '#git' && newBad ? String(newBad) : '');
+  if (paneShown('git')) { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
+  badge('git', !paneShown('git') && newBad ? String(newBad) : '');
   clearTimeout(ciPoll);
   if (data.queued || data.runs.some((r) => r.state === 'running')) ciPoll = setTimeout(loadCi, 5000);
 }
@@ -3228,8 +3287,8 @@ document.getElementById('kits-refresh-all').addEventListener('click', async () =
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
   say('Asked for each kit: the root helper fetches them one after another (minutes each).', true, kitsEl.note);
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); } });
-if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); }
+window.addEventListener('hashchange', () => { if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); } });
+if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); }
 
 // --- the Firmware Factory (factory.py): choose a source, a ref and targets; follow the queue ------
 const fac = {
@@ -3312,7 +3371,7 @@ function renderFactory(d) {
     el('span', { className: 'library-buttons' }, actionButton('Remove', () => facAct({ action: 'unpublish', version: rel.version, env: t.board }))))));
   fac.flasher.replaceChildren(...(pub.length ? pub : [el('p', { className: 'setting-desc', textContent: 'Nothing published yet.' })]));
   clearTimeout(facPoll);
-  if (location.hash === '#factory') facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
+  if (paneShown('factory')) facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
 }
 
 async function loadFactoryRefs() {
@@ -3416,8 +3475,8 @@ fac.form.addEventListener('submit', async (e) => {
     renderFactoryTargets();
   } catch (err) { say(err.message, false, fac.note); }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#factory') loadFactory(); });
-if (location.hash === '#factory') loadFactory();
+window.addEventListener('hashchange', () => { if (paneShown('factory')) loadFactory(); });
+if (paneShown('factory')) loadFactory();
 
 // --- HTTPS (step 15: root/tls.py, /admin/tls) -------------------------------------------------------
 const tlsEl = { state: document.getElementById('tls-state'), make: document.getElementById('tls-make'), sw: document.getElementById('tls-switch'),
@@ -3486,8 +3545,8 @@ tlsEl.again.addEventListener('click', () => {
     tlsAct({ action: 'make', again: true });
   }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#security') loadTls(); });
-if (location.hash === '#security') loadTls();
+window.addEventListener('hashchange', () => { if (paneShown('security')) loadTls(); });
+if (paneShown('security')) loadTls();
 
 // --- accounts (step 16: accounts.py, /admin/accounts) ------------------------------------------------
 const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
@@ -3527,7 +3586,7 @@ function renderAccounts(d) {
     return el('div', { className: 'admin-item' },
       el('span', { className: `state state-${a.state === 'user' ? 'running' : 'stopped'}`, textContent: state }),
       el('span', { className: 'setting-name', textContent: ` ${a.name}` }),
-      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}.` }),
+      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}; ${a.shown_online ? 'shown by name online' : 'not shown by name'} (their own choice).` }),
       el('span', { className: 'library-buttons' },
         a.state === 'asked' ? act('accept', 'Accept') : null,
         a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
@@ -3560,27 +3619,28 @@ acctEl.make.addEventListener('submit', (e) => {
   acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
   f.name.value = '';
 });
-// Who may post on the shoutbox and forum, and the users' marks (the hub's settings).
-const acctPosting = document.getElementById('accounts-posting');
-const POSTING_KEYS = ['shout_who', 'shout_marks', 'board_who', 'board_marks'];
+// Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
+// each app's own page (menu overhaul M9).
+const postingForms = [...document.querySelectorAll('.posting-form')];
+const fillPosting = (st) => postingForms.forEach((form) => [...form.elements].forEach((f) => {
+  if (!(f.name in st)) return;
+  if (f.type === 'checkbox') f.checked = st[f.name] === true; else f.value = st[f.name];
+}));
 async function loadPosting() {
-  try {
-    const st = await getJSON('/admin/settings');
-    POSTING_KEYS.forEach((k) => { const f = acctPosting.elements[k]; if (f.type === 'checkbox') f.checked = st[k] === true; else f.value = st[k]; });
-  } catch (_) { /* the rest of the pane says if the hub can't be read */ }
+  try { fillPosting(await getJSON('/admin/settings')); } catch (_) { /* the page says if the hub can't be read */ }
 }
-acctPosting.addEventListener('change', async (e) => {
-  const f = e.target;
+postingForms.forEach((form) => form.addEventListener('change', async (e) => {
+  const f = e.target, note = noteEl(form.dataset.note);
   try {
-    const st = await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value });
-    POSTING_KEYS.forEach((k) => { const g = acctPosting.elements[k]; if (g.type === 'checkbox') g.checked = st[k] === true; else g.value = st[k]; });
-    say('Saved.', true, acctEl.note);
-  } catch (err) { say(err.message, false, acctEl.note); loadPosting(); }
-});
-window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadPosting(); });
-if (location.hash === '#accounts') loadPosting();
-window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadAccounts(); });
-if (location.hash === '#accounts') loadAccounts();
+    fillPosting(await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value }));
+    say('Saved.', true, note);
+  } catch (err) { say(err.message, false, note); loadPosting(); }
+}));
+const postingShown = () => paneShown('shoutbox-settings') || paneShown('board-settings');
+window.addEventListener('hashchange', () => { if (postingShown()) loadPosting(); });
+if (postingShown()) loadPosting();
+window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadAccounts(); });
+if (paneShown('accounts')) loadAccounts();
 
 // --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
@@ -3605,7 +3665,7 @@ function renderMesh(d) {
     el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} from ${names[p.from] || p.from}${p.channel ? ` on ${p.channel}` : ''}` }),
     p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
   clearTimeout(meshPoll);
-  if (location.hash === '#mesh') meshPoll = setTimeout(loadMesh, 15000);
+  if (paneShown('mesh')) meshPoll = setTimeout(loadMesh, 15000);
 }
 async function meshAct(body) {
   try { await postJSON('/admin/mesh', body); say(body.action === 'add-channel' ? `Added ${body.name}.` : `Removed ${body.name}.`, true, meshEl.note); loadMesh(); }
@@ -3618,5 +3678,181 @@ meshEl.form.addEventListener('submit', (e) => {
   f.key.value = '';
 });
 meshEl.longfast.addEventListener('click', () => meshAct({ action: 'add-channel', name: 'LongFast', key: 'AQ==' }));
-window.addEventListener('hashchange', () => { if (location.hash === '#mesh') loadMesh(); });
-if (location.hash === '#mesh') loadMesh();
+window.addEventListener('hashchange', () => { if (paneShown('mesh')) loadMesh(); });
+if (paneShown('mesh')) loadMesh();
+
+// ---- Appearance (menu overhaul M2): the page widths, for everyone, read by every page from
+// /layout.css. A choice shows on this page at once; Save keeps it.
+const WIDTHS = [45, 60, 80, 90, 100];
+let appearanceSettings = null;
+async function loadAppearance() {
+  const box = document.getElementById('appearance-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  appearanceSettings = st;
+  fillWidthBlocks();
+  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
+  box.replaceChildren(AW.settings([
+    row('page_width', 'Hub and admin', 'the tiles, the menu and its pages'),
+    row('shout_width', 'Shoutbox', 'its tab on the hub page'),
+    row('board_width', 'Forum', 'its tab on the hub page'),
+  ], { save: async (changed) => {
+    const now = await postJSON('/admin/settings', changed);
+    document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
+    return now;
+  } }));
+}
+loadAppearance();
+
+// ---- Folders (menu overhaul M7; checklist 5e): each folder's page arranges its entries. The
+// owner may hide an entry from a folder, order a folder's entries, and put an entry in other
+// folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
+let folders = null, folderDraft = null;
+const folderOpen = {};  // folder -> the entry left open, so a change keeps it in view
+const KIND_WORD = { switches: 'starting switches', download: 'a download', page: 'a page' };
+async function loadFolders() {
+  try { folders = await getJSON('/admin/folders'); } catch (e) { return; }
+  folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
+  fillFolderBlocks();
+}
+function fillFolderBlocks() {
+  if (!folders) return;
+  document.querySelectorAll('.folder-block[data-folder]').forEach((b) => drawFolder(b, b.dataset.folder));
+}
+AL.onBuild(fillFolderBlocks);
+// The arrangement without its empty parts, sorted by folder: what changed, and nothing else.
+const folderNorm = (s) => Object.fromEntries(Object.entries(s || {}).sort().map(([f, v]) => [f, Object.fromEntries(['hidden', 'order', 'extra'].filter((k) => (v[k] || []).length).map((k) => [k, v[k]]))]).filter(([, v]) => Object.keys(v).length));
+const fpart = (f) => { folderDraft[f] = folderDraft[f] || { hidden: [], order: [], extra: [] }; return folderDraft[f]; };
+// Is an entry in a folder: one of the folder's own and not hidden there, or put in from another.
+function inFolder(f, href) {
+  const own = (folders.folders.find((x) => x.id === f) || { entries: [] }).entries.some((e) => e.href === href && !e.extra);
+  const st = folderDraft[f] || {};
+  return own ? !(st.hidden || []).includes(href) : (st.extra || []).includes(href);
+}
+function setInFolder(f, href, yes) {
+  const own = (folders.folders.find((x) => x.id === f) || { entries: [] }).entries.some((e) => e.href === href && !e.extra);
+  const st = fpart(f);
+  const without = (list) => list.filter((h) => h !== href);
+  if (own) st.hidden = yes ? without(st.hidden) : [...without(st.hidden), href];
+  else st.extra = yes ? [...without(st.extra), href] : without(st.extra);
+}
+function drawFolder(block, f) {
+  const fol = folders.folders.find((x) => x.id === f);
+  if (!fol) { block.replaceChildren(); return; }
+  const st = fpart(f);
+  const pos = (h) => { const i = st.order.indexOf(h); return i < 0 ? 1e6 : i; };
+  // The folder's entries, plus any put in since the last save, in the draft's order.
+  const pool = new Map(folders.folders.flatMap((x) => x.entries).map((e) => [e.href, e]));
+  const hrefs = [...new Set([...fol.entries.map((e) => e.href), ...st.extra])].filter((h) => pool.has(h));
+  const list = hrefs.map((h, i) => ({ h, i })).sort((a, b) => (pos(a.h) - pos(b.h)) || (a.i - b.i)).map((x) => pool.get(x.h));
+  const dirty = JSON.stringify(folderNorm(folderDraft)) !== JSON.stringify(folderNorm(folders.state));
+  const move = (e, d) => {
+    const order = list.map((x) => x.href), i = order.indexOf(e.href), j = i + d;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    st.order = order;
+    folderOpen[f] = e.href; fillFolderBlocks();
+  };
+  const items = list.map((e) => {
+    const shown = inFolder(f, e.href);
+    return { id: e.href, title: e.name, summary: e.desc || e.href, badges: [shown ? 'shown' : 'hidden', KIND_WORD[e.kind] || e.kind].concat(e.from !== f ? ['from ' + e.from] : []),
+      detail: () => [
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'In this folder' }),
+          AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown),
+            onclick: () => { setInFolder(f, e.href, !shown); folderOpen[f] = e.href; fillFolderBlocks(); } }, shown ? 'Shown: On' : 'Shown: Off'),
+          AW.btn('↑ Earlier', { onclick: () => move(e, -1) }), AW.btn('↓ Later', { onclick: () => move(e, 1) })),
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Also in' }),
+          AW.h('div', { class: 'filter-chips' }, folders.folders.filter((x) => x.id !== f).map((x) => {
+            const on = inFolder(x.id, e.href);
+            return AW.h('button', { type: 'button', class: 'filter-chip' + (on ? ' active' : ''), 'aria-pressed': String(on),
+              onclick: () => { setInFolder(x.id, e.href, !on); folderOpen[f] = e.href; fillFolderBlocks(); } }, x.title);
+          }))),
+        AW.dl({ Opens: e.href }),
+      ] };
+  });
+  const shownCount = list.filter((e) => inFolder(f, e.href)).length;
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet (they may touch other folders too).' : 'Settings wait for Save.' });
+  block.replaceChildren(
+    AW.h('p', { class: 'setting-desc', text: `${shownCount} of ${list.length} shown on its page. The entries come from the apps' manifests, from what an app's own index adds, and from starting switches of one page.` }),
+    AW.shortList(items, { id: 'folder-list-' + f }),
+    AW.h('div', { class: 'aw-foot' }, note,
+      AW.btn('Discard', { disabled: !dirty, onclick: () => { folderDraft = JSON.parse(JSON.stringify(folders.state || {})); fillFolderBlocks(); } }),
+      AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+        try { folders = await postJSON('/admin/folders', { state: folderDraft }); folderDraft = JSON.parse(JSON.stringify(folders.state)); fillFolderBlocks(); }
+        catch (err) { note.textContent = err.message; }
+      } })));
+  const open = folderOpen[f] && [...block.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === folderOpen[f]);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadFolders();
+
+// An app drawn on the hub page has its width on its own page too (M9; Tom, 2026-10-08: "in both
+// the apps page and the appearance page"): one row of the same setting.
+const WIDTH_LABEL = { shout_width: 'Its width on the hub page', board_width: 'Its width on the hub page' };
+function fillWidthBlocks() {
+  if (!appearanceSettings) return;
+  document.querySelectorAll('.width-block[data-key]').forEach((block) => {
+    const key = block.dataset.key;
+    block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
+      note: 'also on Box → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+    { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
+  });
+}
+AL.onBuild(fillWidthBlocks);
+
+// ---- Status tiles (M8): the box row arranged, held until Save.
+let stTiles = null, stDraft = null;
+async function loadStatusTiles() {
+  try { stTiles = await getJSON('/admin/status-tiles'); } catch (e) { return; }
+  stDraft = JSON.parse(JSON.stringify(stTiles.state));
+  drawStatusTiles();
+}
+function drawStatusTiles(openId) {
+  const box = document.getElementById('status-tiles-box');
+  if (!box || !stTiles) return;
+  const byId = new Map(stTiles.tiles.map((x) => [x.id, x]));
+  const pos = (i) => { const n = stDraft.order.indexOf(i); return n < 0 ? 1e6 : n; };
+  const list = stTiles.tiles.map((x, i) => ({ x, i })).sort((a, b) => (pos(a.x.id) - pos(b.x.id)) || (a.i - b.i)).map((p) => p.x);
+  const toggle = (k, id, on) => { stDraft[k] = on ? [...new Set([...stDraft[k], id])] : stDraft[k].filter((x) => x !== id); };
+  const redraw = (id) => drawStatusTiles(id);
+  const move = (id, d) => { const order = list.map((x) => x.id), i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
+    [order[i], order[k]] = [order[k], order[i]]; stDraft.order = order; redraw(id); };
+  const norm = (s) => JSON.stringify(['order', 'hidden', 'double'].map((k) => [...(s[k] || [])].sort()).concat([s.order || []]));
+  const dirty = norm(stDraft) !== norm(stTiles.state);
+  const items = list.map((t) => {
+    const shown = !stDraft.hidden.includes(t.id), dbl = stDraft.double.includes(t.id);
+    return { id: t.id, title: t.name, summary: dbl ? 'two cells' : 'one cell', badges: [shown ? 'shown' : 'hidden'], detail: () => [
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'On the hub page' }),
+        AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown), onclick: () => { toggle('hidden', t.id, shown); redraw(t.id); } }, shown ? 'Shown: On' : 'Shown: Off'),
+        AW.btn('↑ Earlier', { onclick: () => move(t.id, -1) }), AW.btn('↓ Later', { onclick: () => move(t.id, 1) })),
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
+        AW.h('div', { class: 'chip-group', role: 'group' }, [['single', false], ['double', true]].map(([label, v]) => AW.h('button', { type: 'button',
+          class: 'chip' + (dbl === v ? ' selected' : ''), 'aria-pressed': String(dbl === v), onclick: () => { toggle('double', t.id, v); redraw(t.id); } }, label))),
+        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'double shows the different devices seen today and this week, if counting is on (Security)' }) : null),
+    ] };
+  });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' });
+  box.replaceChildren(AW.shortList(items, { id: 'status-tiles-list' }), AW.h('div', { class: 'aw-foot' }, note,
+    AW.btn('Discard', { disabled: !dirty, onclick: () => { stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); } }),
+    AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+      try { stTiles = await postJSON('/admin/status-tiles', { state: stDraft }); stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); }
+      catch (err) { note.textContent = err.message; }
+    } })));
+  const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadStatusTiles();
+
+// Who sees the names of those signed in (M12, a setup decision, M14): users or the admin only.
+async function loadNamesTo() {
+  const box = document.getElementById('names-to-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'names_to', label: 'Shown to', kind: 'choice', value: st.names_to, decision: 'names',
+    options: [['users', 'those logged in'], ['admin', 'the admin only']],
+    note: 'only of those who chose to be shown, on their own account page; guests get how many' }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
+}
+loadNamesTo();

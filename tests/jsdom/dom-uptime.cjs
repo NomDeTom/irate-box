@@ -35,6 +35,8 @@ w.fetch = async (u) => (u === '/admin/network' ? new Response(JSON.stringify(dat
   : u === '/admin/box' ? new Response(JSON.stringify(box), { status: 200 }) : new Response('{}', { status: 404 }));
 // A page's scripts share their top-level consts; separate evals do not, so heatmap.js comes in as a var.
 w.eval(fs.readFileSync(`${WEB}/heatmap.js`, 'utf8').replace(/^const Heatmap =/m, 'var Heatmap ='));
+w.eval(fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8'));
+w.eval(fs.readFileSync(`${WEB}/admin-layout.js`, 'utf8'));
 w.eval(fs.readFileSync(`${WEB}/admin.js`, 'utf8'));
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };

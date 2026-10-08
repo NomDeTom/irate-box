@@ -158,6 +158,31 @@ if (grid || document.querySelector('[data-service]')) {
       }
     }
 
+    // People at double width (M8): different devices today and this week (M11), said plainly.
+    const people = document.getElementById('people-card');
+    if (people && people.dataset.size === 'double') {
+      let more = document.getElementById('people-more');
+      if (!more) {
+        more = document.createElement('span');
+        more.id = 'people-more';
+        more.className = 'desc people-more';
+        const how = document.createElement('details');
+        how.className = 'field-help';
+        how.innerHTML = '<summary>How is this counted?</summary><p>Each device\u2019s network address is hashed with a random salt made for the day, and another for the week, held only in a helper\u2019s memory and thrown away when the day or week ends. Only the counts are kept. Phones that use a random address may count more than once, so the numbers are approximate.</p>';
+        people.append(more, how);
+      }
+      const v = data.visitors;
+      more.textContent = (typeof data.signed_in === 'number' ? `Signed in: ${data.signed_in}` : '')
+        + (v ? `${typeof data.signed_in === 'number' ? ' \u00b7 ' : ''}Seen today \u2248 ${v.day} \u00b7 this week \u2248 ${v.week}` : '');
+      people.querySelector('.field-help').hidden = !v;
+      // The names: only of those who said yes, and only to whom the owner allows (M12).
+      let names = document.getElementById('people-names');
+      if (!names) { names = document.createElement('span'); names.id = 'people-names'; names.className = 'people-names'; more.after(names); }
+      const shown = Array.isArray(data.names) ? data.names : null;
+      names.replaceChildren(...(shown || []).map((n) => { const s = document.createElement('span'); s.className = 'info-pill'; s.textContent = n; return s; }));
+      if (shown && data.signed_in > shown.length) names.append(` +${data.signed_in - shown.length} not shown (their choice)`);
+    }
+
     if (data.system) {
       meter('mem', data.system.mem_available, data.system.mem_total);
       meter('disk', data.system.disk_free, data.system.disk_total);

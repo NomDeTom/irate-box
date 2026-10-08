@@ -10,7 +10,7 @@ const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
+const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);
 const snap = (over = {}) => Object.assign({
   sources: [{ name: 'meshtastic-firmware', area: 'public', mirror: true, upstream: 'https://github.com/meshtastic/firmware' },
@@ -120,7 +120,7 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   d.getElementById('factory-pause').click();
   await wait();
   check('Pause: asked, then said, the button now Resume', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume');
-  check('the production line behind the pane (krab-desk.js lights it)', d.querySelector('.admin-main').dataset.art === 'factory');
+  check('the production line behind the pane (krab-loop.js plays it lit)', d.querySelector('.admin-main').dataset.art === 'factory');
   const walker = d.createTreeWalker(d.getElementById('factory'), w.NodeFilter.SHOW_TEXT);
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/\b(undefined|NaN|null)\b|\[object/.test(n.textContent)) stray.push(n.textContent.trim());

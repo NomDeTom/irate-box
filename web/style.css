@@ -9,15 +9,20 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, sans-serif;
-  max-width: 960px;
+  /* The owner's width (/layout.css, set on /admin; menu overhaul M2), 80rem until it loads. */
+  max-width: var(--page-width, 80rem);
   margin: 0 auto;
   padding: 2rem 1rem 4rem;
 }
 /* One page width everywhere, so the header's corner buttons never move between pages. Text
    stays at reading width; the home tiles and the admin tables use the full width. */
 body:not(.admin):not(.app-frame) > :not(header):not(.services):not(script) {
-  max-width: 720px; margin-left: auto; margin-right: auto;
+  max-width: 45rem; margin-left: auto; margin-right: auto;
 }
+/* The shoutbox and the forum on the home page: widths of their own (M2). */
+body.home > #tab-shout { max-width: var(--shout-width, 45rem); }
+body.home > #tab-board { max-width: var(--board-width, 45rem); }
+body.home > .home-tabs { max-width: max(var(--shout-width, 45rem), var(--board-width, 45rem)); }
 
 header {
   position: relative;
@@ -1157,3 +1162,154 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .acct-form input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2em; }
 /* A post by an account of that name (accounts step 16), where the admin shows marks. */
 .verified { color: var(--accent); font-weight: 700; margin: 0 0.25em 0 0.15em; }
+
+/* ---- The control vocabulary (menu overhaul M1; rule 6): the microsite's calculator-template
+   controls in the hub's colours. Each class doubled so it outranks the place-based
+   body.admin section button rule above until every pane uses these (step M4). ---- */
+:root { --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface)); --bad: #e5484d; }
+.action-btn.action-btn {
+  display: inline-block; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  padding: 0.4rem 0.7rem; font: inherit; font-size: 0.88rem; line-height: 1.2; cursor: pointer; text-decoration: none; border-radius: 4px;
+}
+.action-btn.action-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.action-btn.action-btn:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.7; }
+.action-btn.primary.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.action-btn.primary.primary:hover:not(:disabled) { color: var(--accent-ink); filter: brightness(1.1); }
+.chip-group, .filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip.chip { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 0.3rem 0.7rem;
+  border-radius: 999px; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.chip.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.chip.selected { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.filter-chip.filter-chip, .chip-btn.chip-btn { border: 1px solid var(--border); background: var(--surface); color: var(--muted); font: inherit;
+  font-size: 0.8rem; padding: 0.3rem 0.6rem; cursor: pointer; border-radius: 4px; }
+.filter-chip.filter-chip.active, .chip-btn.chip-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.filter-chip.filter-chip:hover, .chip-btn.chip-btn:hover { border-color: var(--accent); color: var(--accent); }
+.view-switch { display: flex; margin: 0 0 0.9rem; }
+.view-switch-btn.view-switch-btn { flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font: inherit;
+  font-size: 0.85rem; padding: 0.45rem 0.6rem; cursor: pointer; border-radius: 0; }
+.view-switch-btn.view-switch-btn + .view-switch-btn { border-left: none; }
+.view-switch-btn.view-switch-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.ok-pill, .warn-pill, .bad-pill, .info-pill { display: inline-block; font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid; padding: 0.05rem 0.35rem; border-radius: 3px; white-space: nowrap; font-weight: 600; }
+.ok-pill { color: var(--ok); } .warn-pill { color: var(--warn); } .bad-pill { color: var(--bad); } .info-pill { color: var(--muted); }
+.field-help { border: 1px solid var(--border); background: var(--accent-soft); padding: 0.35rem 0.55rem; color: var(--muted); font-size: 0.84rem; border-radius: 4px; }
+.field-help summary { cursor: pointer; color: var(--text); }
+.output-value { display: inline-block; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg); font-variant-numeric: tabular-nums; }
+
+/* ---- The shared widgets (web/admin-widgets.js; checklist 3) ---- */
+.aw-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0 0 0.5rem; }
+.aw-filter input[type="search"] { flex: 1 1 12rem; max-width: 22rem; padding: 0.4rem 0.55rem; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit; font-size: 0.88rem; border-radius: 4px; }
+.aw-count { font-size: 0.78rem; color: var(--muted); margin-left: auto; }
+.aw-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.aw-list.bounded { max-height: 26rem; overflow-y: auto; padding-right: 0.25rem; }
+.aw-row { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.aw-row[hidden], .aw-card[hidden], .aw-records > div[hidden] { display: none; }
+.aw-row-head.aw-row-head { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.45rem 0.7rem; background: none; border: 0;
+  border-radius: 6px; color: var(--text); font: inherit; font-size: 0.9rem; text-align: left; cursor: pointer; }
+.aw-row-head::before { content: "▸"; color: var(--muted); font-size: 0.8rem; }
+.aw-row-head[aria-expanded="true"]::before { content: "▾"; color: var(--accent); }
+.aw-row-head .t { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aw-row-head .s { color: var(--muted); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.aw-row-head .p, .aw-card-head .p { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; margin-left: auto; }
+.aw-row-detail { padding: 0.2rem 0.9rem 0.7rem 1.9rem; font-size: 0.85rem; }
+.aw-dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0.3rem 0 0.5rem; }
+.aw-dl dt { color: var(--muted); }
+.aw-records-head { font-size: 0.75rem; color: var(--muted); margin: 0 0 0.3rem; }
+.aw-records { max-height: 16rem; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 0.82rem; }
+.aw-records > div { padding: 0.25rem 0.7rem; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.aw-records > div:first-child { border-top: 0; }
+.aw-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.6rem; }
+.aw-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.aw-card.open { grid-column: 1 / -1; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.aw-card-head.aw-card-head { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; width: 100%; padding: 0.6rem 0.8rem;
+  background: none; border: 0; border-radius: 8px; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.aw-card.open .aw-card-head { padding-right: 3rem; }
+.aw-card-head .t { font-weight: 600; }
+.aw-card-head .s { font-size: 0.8rem; color: var(--muted); }
+.aw-card-head .p { margin-left: 0; }
+.aw-drawer { border-top: 1px solid var(--border); padding: 0.6rem 0.9rem 0.8rem; }
+.aw-close.aw-close { position: absolute; top: 0.45rem; right: 0.6rem; padding: 0.2rem 0.5rem; }
+.aw-foot { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.7rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+.aw-foot[hidden] { display: none; }
+.aw-foot .note { font-size: 0.78rem; color: var(--muted); margin-right: auto; }
+.aw-settings { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.3rem 0.8rem; }
+.aw-field { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; padding: 0.45rem 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
+.aw-field:first-child { border-top: 0; }
+.aw-label { min-width: 10rem; color: var(--muted); }
+.aw-field input[type="text"] { padding: 0.35rem 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; border-radius: 4px; }
+
+/* The admin at a narrow page width (45rem, M2): the sidebar folds into its ☰ button as on a
+   phone, by the page's width rather than the screen's. */
+body.admin { container: page / inline-size; }
+/* A container body no longer lends its background to the whole window (CSS containment), so the
+   root carries it too. */
+html:has(> body.admin) { background: var(--bg); }
+@container page (max-width: 760px) {
+  .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .admin-side { position: relative; top: 0; }
+  .admin-menu {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.55rem 0.8rem;
+    font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer;
+  }
+  .admin-side-list { display: none; margin-top: 0.5rem; padding: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+  .admin-side.open .admin-side-list { display: flex; }
+}
+/* A wide page gives the sidebar a little more room. */
+@container page (min-width: 1200px) { .admin-layout { grid-template-columns: 14rem minmax(0, 1fr); } }
+
+/* The lit desks as WebM loops (krab-loop.js, menu overhaul M3): over the still, which stays as the
+   fallback; the loop has the krab and the lights in it. */
+.admin-art .art-loop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.admin-art.looping .art-lamps, .admin-art.looping .art-krab { display: none; }
+
+/* ---- /admin's pages (menu overhaul M4): each holds one or more of the old panes, now its
+   sections. A page of one section keeps that section's own title; a page of several has its own,
+   and its sections' titles step down a size. ---- */
+.admin-main > .admin-page { position: relative; z-index: 1; }
+.admin-page[hidden] { display: none; }
+.admin-page-title.admin-page-title { margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; text-transform: none; color: var(--text); }
+.admin-page.solo > .admin-page-title { display: none; }
+.admin-page:not(.solo) > .admin-pane > h2 { font-size: 1.2rem; margin: 2rem 0 0.75rem; }
+.admin-page:not(.solo) > .admin-pane:first-of-type > h2 { margin-top: 0.5rem; }
+.admin-side-list a .side-icon { width: 1.3em; text-align: center; flex: none; }
+.admin-side-list a[hidden] { display: none; }
+
+/* A tile shown to someone who can't open it yet (M5): a lock, and the sign-in at its door. */
+.service-card.locked { opacity: 0.85; }
+.service-card .lock { font-size: 0.72rem; color: var(--muted); }
+.access-seen { align-items: center; margin-top: 0.3rem; }
+
+/* A status tile at double width (M8): two cells, room to say more. */
+.service-grid .service-card.wide { grid-column: span 2; }
+.people-card .people-more { margin-top: 0.2rem; }
+.people-card .field-help { margin-top: 0.4rem; text-align: left; font-size: 0.75rem; }
+@media (max-width: 480px) { .service-grid .service-card.wide { grid-column: auto; } }
+
+/* Reporting a message or post (M10): a quiet ⚑, its reasons opening beside it. */
+.report { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-left: 0.4rem; }
+.report-flag { background: none; border: 0; padding: 0 0.2rem; color: var(--muted); cursor: pointer; font: inherit; opacity: 0.6; }
+.report-flag:hover, .report-flag[aria-expanded="true"] { opacity: 1; color: var(--warn); }
+.report-reasons { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; font-size: 0.75rem; color: var(--muted); }
+.report-reasons[hidden] { display: none; }
+.report-reasons .chip { font-size: 0.72rem; padding: 0.1rem 0.5rem; }
+
+/* The account page's own settings (M12) and the names on the People tile. */
+.acct-prefs .acct-pref { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; margin: 0.6rem 0; }
+.acct-prefs .acct-pref > span:first-child { min-width: 14rem; }
+.acct-pref-foot { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.8rem; }
+.people-card .people-names { display: flex; flex-wrap: wrap; gap: 0.25rem; justify-content: center; font-size: 0.75rem; color: var(--muted); }
+
+/* The setup tour (M14): the setting to decide, highlighted where it lives; the bar with its guide. */
+.tour-target { outline: 3px solid var(--warn) !important; outline-offset: 4px; border-radius: 6px; animation: tour-pulse 1.6s ease-in-out 3; }
+@keyframes tour-pulse { 50% { outline-color: color-mix(in srgb, var(--warn) 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .tour-target { animation: none; } }
+.tour-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); z-index: 30; width: min(46rem, calc(100vw - 2rem));
+  display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; justify-content: space-between; padding: 0.7rem 1rem;
+  background: var(--surface); border: 2px solid var(--warn); border-radius: 10px; box-shadow: 0 6px 24px var(--shadow); }
+.tour-guide { width: 4.5rem; height: 4.5rem; object-fit: contain; flex: none; }
+.tour-text { flex: 1 1 18rem; }
+.tour-text p { margin: 0.2rem 0 0; }
+.tour-list { margin: 0.4rem 0 0.5rem 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
+.tour-list li.done a { color: var(--muted); }

@@ -6,5 +6,10 @@
     "name": "File drop",
     "desc": "Leave files for each other",
     "href": "/drop.html"
+  },
+  "admin": {
+    "sections": [
+      "drop-mod"
+    ]
   }
 }
