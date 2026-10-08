@@ -1708,12 +1708,12 @@ function signalWords(dbm) {
   return dbm >= -50 ? 'excellent' : dbm >= -60 ? 'good' : dbm >= -70 ? 'fair' : dbm >= -80 ? 'weak' : 'poor';
 }
 
-// A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
-// by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
-// (linkhistory.py), drawn by heatmap.js.
+// A link's uptime (step 34): a part on its card, the last 72 hours by hour and 72 days by day
+// (githubstatus.com's format, snag 5), from the watchdog's five-minute record (linkhistory.py),
+// drawn by heatmap.js. Open by default (snag 4, findability): folded shut, it went unnoticed.
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
-  const fold = el('details', { className: 'net-uptime' });
+  const fold = el('details', { className: 'net-uptime', open: true });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'

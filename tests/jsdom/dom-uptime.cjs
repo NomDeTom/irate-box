@@ -5,12 +5,13 @@
 // record() calls) for a WiFi uplink (nothing for its first two hours, a 15-minute outage in hour
 // 10, an hour switched off, the current hour partial) and a wired link down every night; the 72
 // days by day mostly empty (only the last ~3 days were recorded). githubstatus.com's format:
-// one row, one cell per hour or day. Each card has a folded Uptime part: the last 72 hours by
-// hour, 72 days by day, a legend, the summary in words; each cell says what it was; a card with
-// no record says how one comes.
-// And the services' (step 35, from svchistory.summarize): a fold under Overview's table, closed,
-// a row per service by hour for the last 72 hours and by day for 72 days, the starts marked, kept
-// open across the pane's redraws. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
+// one row, one cell per hour or day. Each card has an Uptime part, open by default (snag 4,
+// findability): the last 72 hours by hour, 72 days by day, a legend, the summary in words; each
+// cell says what it was; a card with no record says how one comes.
+// And the services' (step 35, from svchistory.summarize): a fold under Overview's table, open by
+// default (snag 4, findability), a row per service by hour for the last 72 hours and by day for
+// 72 days, the starts marked, its open/closed state kept across the pane's redraws.
+// Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -46,7 +47,7 @@ setTimeout(() => {
   const d = w.document;
   const card = (iface) => [...d.querySelectorAll('#net-devices .net-device')].find((c) => c.querySelector('h4').textContent.startsWith(iface));
   const wl = card('wlan0'), up = wl && wl.querySelector('details.net-uptime');
-  check('the uplink\'s card: a folded Uptime part, closed', up && !up.open);
+  check('the uplink\'s card: an Uptime part, open by default (snag 4, findability)', up && up.open);
   check('  its summary in words: the share up, the drop, the longest outage', /Up 98\.2 % over the last 72 hours \(69\.5 hours recorded\); 1 drop; longest outage 15 min,/.test(t(up && up.querySelector('summary'))),
     t(up && up.querySelector('summary')));
   const [hours, month] = up ? [...up.querySelectorAll('.heatmap')] : [];
@@ -72,7 +73,7 @@ setTimeout(() => {
   w.eval('loadBox()');
   setTimeout(() => {
     const fold = d.getElementById('svc-uptime');
-    check('services: a fold under the table, closed by default', fold && !fold.open && /Uptime, last 72 hours/.test(t(fold.querySelector('summary'))));
+    check('services: a fold under the table, open by default (snag 4, findability)', fold && fold.open && /Uptime, last 72 hours/.test(t(fold.querySelector('summary'))));
     const [shours, smonth] = fold ? [...fold.querySelectorAll('.heatmap')] : [];
     const srows = shours ? [...shours.querySelectorAll('.hm-row:not(.hm-head)')] : [];
     check('  a row per recorded service (not one never recorded), 72 hours each', srows.length === 2 && srows.every((r) => r.querySelectorAll('.hm-cell').length === 72)
@@ -84,9 +85,9 @@ setTimeout(() => {
     check('  72 days by day too, with the hub\'s dates', smonth && smonth.querySelectorAll('.hm-row:not(.hm-head)')[0].querySelectorAll('.hm-cell').length === 72
       && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-row:not(.hm-head)')[0].querySelectorAll('.hm-cell')].pop().title));
     check('  the week in a line', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(fold.querySelector('#svc-uptime-body > p'))), t(fold.querySelector('#svc-uptime-body > p')));
-    fold.open = true; w.eval('loadBox()');
+    fold.open = false; w.eval('loadBox()');
     setTimeout(() => {
-      check('  open stays open as the pane redraws', d.getElementById('svc-uptime').open && d.querySelectorAll('#svc-uptime .heatmap').length === 2);
+      check('  closing it is respected across the pane\'s redraws', !d.getElementById('svc-uptime').open && d.querySelectorAll('#svc-uptime .heatmap').length === 2);
       check('no page errors', !errors.length, errors.join(' | '));
       console.log(`failures: ${fails}`);
       process.exit(fails ? 1 : 0);
