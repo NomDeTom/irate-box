@@ -103,8 +103,8 @@ A._fails.clear()
 # Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
 from irate_box.hub import access  # noqa: E402
 st_ = access.clean({"draw": "users", "flasher": "users", "term": "users", "my-addon": "users", "wiki": "users"})
-check("users mode: a built-in app may be for users; not the flasher (its page is cross-site), the shell, nor a local add-on",
-      st_["draw"] == "users" and st_["wiki"] == "users" and st_["flasher"] == "public" and st_["term"] == "public" and "my-addon" not in st_, st_)
+check("users mode: a built-in app may be for users, and a local add-on too; not the flasher (its page is cross-site), nor the shell",
+      st_["draw"] == "users" and st_["wiki"] == "users" and st_["my-addon"] == "users" and st_["flasher"] == "public" and st_["term"] == "public", st_)
 conf = access.nginx_conf(st_)
 check("  nginx: no basic auth for it (the gate asks the hub instead)", "set $irate_box_auth_draw off;" in conf)
 gates = access.nginx_gates(st_)
@@ -112,6 +112,18 @@ check("  a gate for each app for users, and the admin's", sorted(gates) == ["gat
       and "auth_request /_irate_user;" in gates["gate-draw.conf"] and "error_page 401 = @irate_box_login;" in gates["gate-draw.conf"], gates)
 check("  Caddy: forward_auth to the hub's check, which redirects", "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
       and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"])
+
+# A local add-on in users mode (item 6, current-and-next-actions): no per-id location exists
+# ahead of time in the template, so it gets its own, matched before the shared one.
+my_addon = {"id": "my-addon", "capabilities": {}}
+gates = access.addon_gates(st_, [my_addon])
+check("  a local add-on for users gets its own nginx location, the hub's check before the rest",
+      sorted(gates) == ["users-my-addon.conf"]
+      and gates["users-my-addon.conf"].index("auth_request /_irate_user;") < gates["users-my-addon.conf"].index("try_files")
+      and "location ~ ^/my-addon/ {" in gates["users-my-addon.conf"], gates)
+check("  nothing generated for one that is public or off", access.addon_gates(access.clean({}), [my_addon]) == {})
+routes = access.addon_caddy_routes(st_, [my_addon], "HASH")
+check("  Caddy: the same add-on gets forward_auth in its route", "forward_auth 127.0.0.1:8000" in routes and "uri /_irate/user?redirect=1" in routes)
 sn = access.caddy_snippets(access.clean({"tools": "private"}), "HASH")
 check("  Caddy's admin gate: the hub asked (soft), its answer copied onto the request; a private app: the session, else the login",
       "uri /_irate/admin?soft=1" in sn["admin-gate.caddy"] and "copy_headers X-Irate-Session" in sn["admin-gate.caddy"]
@@ -136,17 +148,21 @@ check("  the site: /admin/, /term/ and /sync/ include it; each server block can 
       all(site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc)) for loc in ("location /admin/ {", "location /term/ {", "location /sync/ {"))
       and site.count("location = /_irate_admin") == 4
       and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;") == 4)
+check("  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
+      site.index("include @ADDON_GATES@/*.conf*;") < site.index("location ~ ^/(?<irate_box_addon>"))
 import re as _re  # noqa: E402
 gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check("  the site: every app location with a login has its gate include",
       all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
-      and site.count("location = /_irate_user") == 4 and site.count("location @irate_box_login") == 4, sorted(gated))
+      and site.count("location = /_irate_user") == 5 and site.count("location @irate_box_login") == 5, sorted(gated))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))
 (T / "etc").mkdir()
 from irate_box.root import hub_control as H  # noqa: E402
 H._access_files(st_)
 gd = T / "etc" / "nginx-access.conf.d"
 check("helper: the gates written beside the access include", sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"])
+check("  and the add-on gates directory made, empty here (no real local add-on named my-addon)",
+      (T / "etc" / "nginx-addon-gates.conf.d").is_dir() and not list((T / "etc" / "nginx-addon-gates.conf.d").iterdir()))
 H._access_files(access.clean({"draw": "users"}))
 check("  and the one no longer for users removed", sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf"])
 try:

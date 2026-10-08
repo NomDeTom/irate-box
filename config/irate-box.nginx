@@ -504,6 +504,26 @@ server {
 	add_header X-Content-Type-Options nosniff always;
 	add_header Referrer-Policy no-referrer always;
 	add_header Cache-Control "no-cache" always;
+	# Users mode for a local add-on (access.py, item 6): no per-id location exists ahead of
+	# time (ids aren't known at template time, unlike the built-ins' own locations), so the
+	# root helper writes one here per add-on in users mode (access.addon_gates), matched before
+	# the shared location below; a public or off add-on never pays for the extra round trip.
+	# Always a GET with no body, as /_irate_user elsewhere: see the comment at @ACCESS@ above.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location @irate_box_login { return 302 $scheme://$host/account.html; }
+	include @ADDON_GATES@/*.conf*;
 	location ~ ^/(?<irate_box_addon>[a-z0-9-]+)/ {
 		if ($irate_box_addon_off) { return 404; }
 		auth_basic $irate_box_addon_auth;
