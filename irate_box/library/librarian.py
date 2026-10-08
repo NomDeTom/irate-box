@@ -489,6 +489,7 @@ def fetch_app(src, cand):
             _pack_git(src, cand, part)
         else:
             _download(cand["url"], part, cand["auth"], name, cand["size"])
+            _verify_sha256(part, cand.get("sha256"), name)
         meta = check_bundle(part, name)
         os.replace(part, dest)
     finally:
@@ -848,6 +849,10 @@ def _resolve_actions(src, auth):
 def _resolve_nightly(src, auth):
     run, art = _newest_artifact(src, auth)
     name = urllib.parse.quote(art["name"], safe="")
+    # GitHub's artifacts API gives each artifact's digest ("sha256:<hex>"); nightly.link is a
+    # third party in between, so what it serves is checked against GitHub's own word
+    # (stance review 2026-10-08, N8).
+    digest = str(art.get("digest") or "")
     return {
         "version": f"run-{run['id']}/{art['id']}",
         "url": f"https://nightly.link/{src['repo']}/actions/runs/{run['id']}/{name}.zip",
@@ -855,6 +860,7 @@ def _resolve_nightly(src, auth):
         "zip": True,
         "label": f"run {run['id']} ({run.get('head_branch')}, {run.get('created_at', '')[:10]}) via nightly.link",
         "auth": None,
+        "sha256": digest[7:].lower() if digest.startswith("sha256:") and re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest) else None,
     }
 
 
@@ -902,7 +908,8 @@ def _opds(params):
         out.append({"name": g("name"), "title": g("title"), "summary": g("summary"), "language": g("language"),
                     "category": g("category"), "flavour": g("flavour"), "updated": g("updated")[:10],
                     "size": int(link.get("length") or 0), "articles": int(g("articleCount") or 0),
-                    "url": href[:-len(".meta4")] if href.endswith(".meta4") else href})
+                    "url": href[:-len(".meta4")] if href.endswith(".meta4") else href,
+                    "meta4": href if href.endswith(".meta4") else ""})
     try:
         total = int(root.findtext(f"{_ATOM}totalResults") or len(out))
     except ValueError:
@@ -931,7 +938,9 @@ def _resolve_kiwix(src, auth):
     e = max(entries, key=lambda x: x["updated"])
     file = e["url"].rsplit("/", 1)[-1]
     return {"version": file, "url": e["url"], "size": e["size"], "zip": False,
-            "label": f"{file} ({e['updated']}, from Kiwix's catalogue)", "auth": None}
+            "label": f"{file} ({e['updated']}, from Kiwix's catalogue)", "auth": None,
+            # The metalink carries the file's sha256 (stance review 2026-10-08, N7): checked after the download.
+            "sha256": _meta4_sha256(e.get("meta4"))}
 
 
 RESOLVERS = {"release": _resolve_release, "actions": _resolve_actions, "kiwix": _resolve_kiwix,
@@ -943,6 +952,40 @@ def resolve(src):
 
 
 # --- installing --------------------------------------------------------------
+
+METALINK = "{urn:ietf:params:xml:ns:metalink}"
+
+
+def _meta4_sha256(url):
+    """The sha-256 a Kiwix metalink names for its file, or None (no metalink, or one that could
+    not be read: the download then goes unchecked, as before)."""
+    if not url or not url.startswith("https://"):
+        return None
+    try:
+        import xml.etree.ElementTree as ET
+        with _open(url, timeout=60) as resp:
+            text = resp.read(1 << 20)
+        for h in ET.fromstring(text).iter(f"{METALINK}hash"):
+            if h.get("type") == "sha-256" and re.fullmatch(r"[0-9a-fA-F]{64}", (h.text or "").strip()):
+                return h.text.strip().lower()
+    except (OSError, ValueError, LibrarianError, ET.ParseError):
+        return None
+    return None
+
+
+def _verify_sha256(path, expected, what):
+    """The file at `path` is what its source said it would be, or LibrarianError and the file is
+    gone. With no expected hash (a source that names none) nothing is checked."""
+    if not expected:
+        return
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != expected.lower():
+        Path(path).unlink(missing_ok=True)
+        raise LibrarianError(f"{what}: the download's sha256 is not the one its source names; not kept")
+
 
 def _download(url, dest, auth=None, name=None, expected=0, resume=False):
     """Stream url to dest. While it runs, progress.json says how far it has got (written at
@@ -1167,10 +1210,12 @@ def fetch_book(src, cand, policy, status_entry):
             shutil.copyfile(archived, zim_tmp)
         elif cand["zip"]:
             _download(cand["url"], part, cand["auth"], name, cand["size"])
+            _verify_sha256(part, cand.get("sha256"), name)
             _extract_zim(part, name, zim_tmp)
             part.unlink(missing_ok=True)
         else:
             _download(cand["url"], part, cand["auth"], name, cand["size"])
+            _verify_sha256(part, cand.get("sha256"), name)
             os.replace(part, zim_tmp)
         _check_zim(zim_tmp)
         os.replace(zim_tmp, staged_book(name))
