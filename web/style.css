@@ -1156,6 +1156,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .books-table td.bad { color: #e5484d; }
 .book-card td { background: var(--surface); }
 .books-pager { display: flex; gap: 0.6rem; align-items: center; }
+.books-pager[hidden] { display: none; }  /* display: flex outranks the hidden attribute */
 .scroll-x { overflow-x: auto; }
 /* The mesh (step 18): the traffic a line each; a message set apart. */
 .mesh-packets { padding-left: 1.4rem; font-size: 0.9rem; }
@@ -1360,3 +1361,6 @@ html:has(> body.admin) { background: var(--bg); }
 /* A choice of a few, each said in full: radio buttons in a set (Tom, 2026-10-08, the build cache). */
 .radio-set { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.8rem 0.6rem; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
 .radio-set legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--muted); }
+/* A set of tabs over its panels (the books' sources): the strip above, one panel below. */
+.tab-set > .view-switch { margin-bottom: 0.8rem; }
+.tab-set > [role="tabpanel"] { padding-top: 0.2rem; }

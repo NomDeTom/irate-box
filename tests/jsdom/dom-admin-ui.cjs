@@ -264,6 +264,20 @@ setTimeout(() => {
     check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
     w.AL.badge('apps', '');
   }
+  // The books' sources as tabs (Tom, 2026-10-08): Kiwix library, Other source, USB stick.
+  {
+    const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
+    const panel = (id) => d.getElementById(id);
+    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB stick'
+      && tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden && panel('books-other').hidden && panel('books-usb').hidden);
+    tabs[2].click();
+    check('  a tab opens its panel and closes the rest', !panel('books-usb').hidden && panel('books-kiwix').hidden && tabs[2].classList.contains('active'));
+    tabs[2].dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    check('  the arrow keys move along', tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden);
+    w.location.hash = '#library-add'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+    check('  an address inside a panel opens its tab', !panel('books-other').hidden && tabs[1].getAttribute('aria-selected') === 'true');
+    w.location.hash = '';
+  }
   // The words of the old menu are gone (F1): no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')

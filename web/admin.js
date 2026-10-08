@@ -3975,3 +3975,41 @@ drawAttention();
 // is long, a filter. The catalogue's results have a search of their own, so the height only.
 ['store-saves', 'mod-messages', 'mod-threads', 'mod-drops', 'accounts-list', 'ci-runs'].forEach((id) => AW.bound(document.getElementById(id)));
 AW.bound(document.getElementById('catalogue-results'), { filter: false });
+
+// --- tabs (Tom, 2026-10-08: the books' sources as tabs) ------------------------------------------
+// [data-tabs]: a tablist of .view-switch-btn, each naming its panel (aria-controls). One showing;
+// arrow keys move along; the choice kept in this browser; an address inside a panel opens its tab.
+function initTabs(box) {
+  const tabs = [...box.querySelectorAll('[role="tab"]')];
+  const key = 'irate-tabs-' + box.dataset.tabs;
+  const pick = (tab, focus) => {
+    tabs.forEach((x) => {
+      const on = x === tab;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-selected', String(on));
+      x.tabIndex = on ? 0 : -1;
+      document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+    try { localStorage.setItem(key, tab.id); } catch (_) { /* not kept */ }
+  };
+  tabs.forEach((x, i) => {
+    x.addEventListener('click', () => pick(x));
+    x.addEventListener('keydown', (e) => {
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (k) { e.preventDefault(); pick(tabs[(i + k + tabs.length) % tabs.length], true); }
+    });
+  });
+  let kept = null;
+  try { kept = document.getElementById(localStorage.getItem(key)); } catch (_) { /* none */ }
+  pick(tabs.includes(kept) ? kept : tabs[0]);
+  const follow = () => {
+    const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    const panel = target && target.closest && target.closest('[role="tabpanel"]');
+    const tab = panel && tabs.find((x) => x.getAttribute('aria-controls') === panel.id);
+    if (tab) pick(tab);
+  };
+  window.addEventListener('hashchange', follow);
+  follow();
+}
+document.querySelectorAll('[data-tabs]').forEach(initTabs);
