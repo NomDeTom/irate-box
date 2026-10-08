@@ -65,7 +65,8 @@ const TOUR = (() => {
     const n = left().length;
     li.className = n ? 'step-todo' : 'step-done';
     li.querySelector('span').textContent = n ? `${n} of ${DECISIONS.length} still to decide: the box uses each default until you do.` : 'All decided.';
-    const list = li.querySelector('.tour-list') || li.appendChild(Object.assign(document.createElement('ol'), { className: 'tour-list' }));
+    const actions = li.querySelector('.tour-actions');
+    const list = li.querySelector('.tour-list') || li.insertBefore(Object.assign(document.createElement('ol'), { className: 'tour-list' }), actions);
     list.replaceChildren(...DECISIONS.map((d, i) => {
       const item = document.createElement('li');
       if (decided.has(d.id)) item.className = 'done';
@@ -77,8 +78,9 @@ const TOUR = (() => {
       item.append(a, ' ', Object.assign(document.createElement('span'), { className: decided.has(d.id) ? 'ok-pill' : 'info-pill', textContent: decided.has(d.id) ? 'decided' : 'default' }));
       return item;
     }));
-    const start = li.querySelector('.tour-start') || li.appendChild(Object.assign(document.createElement('button'), { type: 'button', className: 'action-btn primary tour-start' }));
-    start.textContent = !n ? 'Go round again' : n === DECISIONS.length ? 'Start the tour' : 'Carry on the tour';
+    let start = li.querySelector('.tour-start');
+    if (!start) { start = Object.assign(document.createElement('button'), { type: 'button', className: 'action-btn primary tour-start' }); actions.prepend(start); }
+    start.textContent = !n ? 'Take tour again' : n === DECISIONS.length ? 'Start the tour' : 'Carry on the tour';
     start.onclick = () => go(n ? DECISIONS.indexOf(left()[0]) : 0);
   }
 
@@ -91,6 +93,8 @@ const TOUR = (() => {
     const section = document.getElementById(d.section) ? d.section : d.fallback || d.section;
     if (location.hash === '#' + section) show(); else location.hash = '#' + section;
   }
+  // Past the last decision: leave the tour and go back to where it starts (the setup steps, with the list and its start button).
+  function finish() { stop(); location.hash = '#welcome'; }
   function stop() {
     at = null;
     try { sessionStorage.removeItem('irate-tour'); } catch (_) { /* nothing kept */ }
@@ -136,8 +140,8 @@ const TOUR = (() => {
     back.disabled = at === 0;
     const buttons = document.createElement('div');
     buttons.className = 'chip-group';
-    buttons.append(back, btn('Keep this, next →', 'action-btn primary', () => { decide(d.id); go(at + 1 < DECISIONS.length ? at + 1 : -1); }),
-      btn('Skip →', 'action-btn', () => go(at + 1 < DECISIONS.length ? at + 1 : -1)), btn('Leave the tour', 'action-btn', stop));
+    buttons.append(back, btn('Keep this, next →', 'action-btn primary', () => { decide(d.id); (at + 1 < DECISIONS.length ? go(at + 1) : finish()); }),
+      btn('Skip →', 'action-btn', () => (at + 1 < DECISIONS.length ? go(at + 1) : finish())), btn('Leave the tour', 'action-btn', stop));
     bar.replaceChildren(img, text, buttons);
   }
 

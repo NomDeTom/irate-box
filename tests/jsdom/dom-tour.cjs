@@ -69,6 +69,15 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   T.go(T.DECISIONS.findIndex((x) => x.id === 'cockpit'));
   await wait(400);
   check('a finding drawn later is found: Cockpit highlighted', /Cockpit/.test((d.querySelector('.tour-target') || {}).textContent || ''));
+  // Past the last decision, the tour ends back at the setup steps.
+  T.go(T.DECISIONS.length - 1);
+  await wait(400);
+  click([...d.querySelectorAll('.tour-bar button')].find((b) => /Skip/.test(b.textContent)));
+  await wait();
+  p = shownPage();
+  check('past the last decision: the bar is gone and the setup steps show', !d.querySelector('.tour-bar') && p && p.contains(d.getElementById('welcome')) && w.location.hash === '#welcome', p && p.getAttribute('aria-label'));
+  T.go(T.DECISIONS.findIndex((x) => x.id === 'cockpit'));
+  await wait(400);
   click([...d.querySelectorAll('.tour-bar button')].find((b) => /Leave/.test(b.textContent)));
   check('Leave the tour: no bar, no highlight', !d.querySelector('.tour-bar') && !d.querySelector('.tour-target'));
   check('the setup step says how many are left', /9 of 11 still to decide/.test(d.querySelector('#setup-steps [data-step="decisions"] span').textContent), d.querySelector('#setup-steps [data-step="decisions"] span').textContent);

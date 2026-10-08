@@ -26,6 +26,13 @@ async function open(path, storage = {}) {
   check('opened from a tile: no ↑', d.getElementById('app-up').hidden);
   d = await open('/app.html?from=no-such-list#/tools/');
   check('an unknown list: no ↑', d.getElementById('app-up').hidden);
+  d = await open('/app.html#/git/repo.git/');
+  let rp = d.getElementById('app-repos');
+  check('Git: a Repositories link to the public list', !rp.hidden && rp.getAttribute('href') === '/git/', `${rp.hidden} ${rp.getAttribute('href')}`);
+  d = await open('/app.html#/git-private/');
+  check('private Git: the private list', d.getElementById('app-repos').getAttribute('href') === '/git-private/');
+  d = await open('/app.html#/tools/');
+  check('another app: no Repositories link', d.getElementById('app-repos').hidden);
   // A web add-on is told the theme's base in its address (app.js frameSrc).
   d = await open('/app.html#/addons/eliza/eliza.html?script=ELIZA-script-Turing-example1', { theme: 'dark' });
   let src = d.getElementById('app').getAttribute('src');

@@ -187,3 +187,19 @@ if (up && from && /^[a-z0-9-]+$/.test(from)) {
     up.hidden = false;
   }).catch(() => {});
 }
+
+// --- 📚 Repositories: Git's list, from the bar --------------------------------------
+// cgit is on an origin of its own, so its pages cannot link out to the hub's bar, and the bar
+// cannot read where the frame is. The link takes the frame back to the list for the area the app
+// was opened in: public /git/ or private /git-private/.
+const repos = document.getElementById('app-repos');
+const gitArea = target().startsWith('/git-private/') ? '/git-private/' : target().startsWith('/git/') ? '/git/' : null;
+if (repos && gitArea) {
+  repos.hidden = false;
+  repos.href = gitArea;
+  repos.addEventListener('click', (e) => {
+    e.preventDefault();
+    shown = gitArea;
+    frame.src = gitArea;
+  });
+}

@@ -558,7 +558,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
        "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
        out when data-service is down. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>{title}</h1>
     <p class="subtitle">{subtitle}</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
