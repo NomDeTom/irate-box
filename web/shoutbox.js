@@ -98,6 +98,7 @@ function renderMessages(data) {
       (m.account && marks ? '<span class="verified" title="Posted by the box\'s account of that name">✓</span>' : '') +
       `<span class="text">${mdInline(m.text)}</span>` +
       `<span class="time">${formatAge(data.now - m.created)} ago</span>`;
+    if (typeof reportButton === 'function') div.appendChild(reportButton('shoutbox', { created: m.created, name: m.name }, data.report_reasons));
     messagesEl.appendChild(div);
     shown.push(div.querySelector('.time'));
   }

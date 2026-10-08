@@ -1286,3 +1286,11 @@ html:has(> body.admin) { background: var(--bg); }
 .people-card .people-more { margin-top: 0.2rem; }
 .people-card .field-help { margin-top: 0.4rem; text-align: left; font-size: 0.75rem; }
 @media (max-width: 480px) { .service-grid .service-card.wide { grid-column: auto; } }
+
+/* Reporting a message or post (M10): a quiet ⚑, its reasons opening beside it. */
+.report { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-left: 0.4rem; }
+.report-flag { background: none; border: 0; padding: 0 0.2rem; color: var(--muted); cursor: pointer; font: inherit; opacity: 0.6; }
+.report-flag:hover, .report-flag[aria-expanded="true"] { opacity: 1; color: var(--warn); }
+.report-reasons { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; font-size: 0.75rem; color: var(--muted); }
+.report-reasons[hidden] { display: none; }
+.report-reasons .chip { font-size: 0.72rem; padding: 0.1rem 0.5rem; }

@@ -11,6 +11,7 @@ import ipaddress
 import json
 import os
 import re
+import hashlib
 import hmac
 import secrets
 import shutil
@@ -657,9 +658,16 @@ DEFAULT_SETTINGS = {
     # (irate_box/root/visitors.py; M11). On by default (Tom, 2026-10-08), as one of the setup's
     # decisions; off, the helper doesn't run at all.
     "visitor_counts": True,
+    # Reports (M10; Tom, 2026-10-08: "anyone can report a post - admin decides what counts"): the
+    # reasons offered, how many reports put a post in the queue, and whether it is hidden from
+    # everyone else until looked at.
+    "report_reasons": ["spam", "unkind", "personal details", "other"],
+    "report_threshold": 1,
+    "report_hide": False,
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
+REPORT_REASONS = ("spam", "unkind", "personal details", "illegal", "other")
 _settings_lock = threading.Lock()
 
 
@@ -669,6 +677,10 @@ def valid_setting(key, value):
         return value in POSTERS
     if key in ("page_width", "shout_width", "board_width"):
         return type(value) is int and value in WIDTHS
+    if key == "report_reasons":
+        return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
+    if key == "report_threshold":
+        return type(value) is int and 1 <= value <= 20
     return type(value) is want and (want is not int or value >= 0)
 
 
@@ -1676,8 +1688,18 @@ def moderation_snapshot():
     now = CLOCK.ticks()
     with lock:
         msgs = live_messages(now)
+    st = settings_snapshot()
     return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(),
-            "drops": [store.public_meta(m) for m in DROP.list()]}
+            "drops": [store.public_meta(m) for m in DROP.list()], "queue": moderation_queue(),
+            "reports": {"reasons": st["report_reasons"], "all_reasons": list(REPORT_REASONS),
+                        "threshold": st["report_threshold"], "hide": st["report_hide"]}}
+
+
+def forget_report(key):
+    with _reports_lock:
+        data = reports()
+        if data.pop(key, None) is not None:
+            save_reports(data)
 
 
 def delete_message(created, name):
@@ -1692,17 +1714,133 @@ def delete_message(created, name):
 
 def moderation_action(payload):
     action = payload.get("action")
+    if action == "keep" and isinstance(payload.get("key"), str) and REPORT_KEY_RE.match(payload["key"]):
+        # Looked at and kept: out of the queue, and shown again if it was hidden.
+        with _reports_lock:
+            data = reports()
+            ok = payload["key"] in data
+            if ok:
+                data[payload["key"]]["kept"] = True
+                save_reports(data)
+        return (200 if ok else 404), moderation_snapshot()
     if action == "delete_message":
         ok = delete_message(payload.get("created"), payload.get("name"))
+        if ok:
+            forget_report(f"shoutbox:{int(payload.get('created') or 0)}:{str(payload.get('name', ''))[:40]}")
     elif action == "delete_thread" and type(payload.get("id")) is int:
         ok = BOARD.delete_thread(payload["id"])
     elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
+        thread = BOARD.get_thread(payload["id"])
+        posts = thread["thread"]["posts"] if thread else []
         ok = BOARD.delete_post(payload["id"], payload["index"])
+        if ok and 0 <= payload["index"] < len(posts):
+            forget_report(f"board:{payload['id']}:{int(posts[payload['index']].get('created', 0))}")
     elif action == "delete_drop" and isinstance(payload.get("id"), str):
         ok = DROP.delete(payload["id"], force=True)  # moderation removes locked files too
     else:
         return 400, {"error": "unknown action"}
     return (200 if ok else 404), moderation_snapshot()
+
+
+# --- reports (M10) ---------------------------------------------------------------------------
+# Anyone may report a shoutbox message or a forum post, for one of the reasons the owner offers;
+# the owner decides how many reports put it in the queue on /admin → Moderation, and whether it is
+# hidden from everyone else until they have looked. A post is known by where it is and when it was
+# written: shoutbox:<created>:<name>, board:<thread>:<created>. One report per visitor per post: the
+# visitor is known by a hash of their address with a salt made when the hub starts, in memory only.
+REPORTS_FILE = STATE_DIR / "reports.json"
+_reports_lock = threading.Lock()
+_report_salt = secrets.token_bytes(32)
+_reported = set()       # hashes of (visitor, post): who has reported what, this run only
+_report_times = {}      # visitor hash -> recent report times (at most REPORTS_PER_HOUR an hour)
+REPORTS_PER_HOUR = 20
+REPORT_KEY_RE = re.compile(r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20})$")
+
+
+def reports():
+    try:
+        data = json.loads(REPORTS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if REPORT_KEY_RE.match(k) and isinstance(v, dict)} if isinstance(data, dict) else {}
+
+
+def save_reports(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = REPORTS_FILE.parent / (REPORTS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, REPORTS_FILE)
+
+
+def report_key(app, ref):
+    """The key of a post from what the page sends: shoutbox {created, name}; board {thread, created}."""
+    if not isinstance(ref, dict):
+        return None
+    if app == "shoutbox" and type(ref.get("created")) in (int, float) and isinstance(ref.get("name"), str):
+        key = f"shoutbox:{int(ref['created'])}:{ref['name'][:40]}"
+    elif app == "board" and type(ref.get("thread")) is int and type(ref.get("created")) in (int, float):
+        key = f"board:{ref['thread']}:{int(ref['created'])}"
+    else:
+        return None
+    return key if REPORT_KEY_RE.match(key) else None
+
+
+def report(app, ref, reason, addr):
+    """One visitor's report. (status, message)."""
+    st = settings_snapshot()
+    key = report_key(app, ref)
+    if key is None or reason not in st["report_reasons"]:
+        return 400, "app, the post, and one of the reasons offered"
+    who = hmac.new(_report_salt, addr.encode(), hashlib.sha256).digest()[:16]
+    mine = hmac.new(_report_salt, who + key.encode(), hashlib.sha256).digest()[:16]
+    now = time.monotonic()
+    with _reports_lock:
+        recent = [t for t in _report_times.get(who, []) if now - t < 3600]
+        if len(recent) >= REPORTS_PER_HOUR:
+            return 429, "that's a lot of reports: try again later"
+        if mine in _reported:
+            return 200, "already reported, thank you"
+        _reported.add(mine)
+        _report_times[who] = recent + [now]
+        data = reports()
+        r = data.setdefault(key, {"app": app, "count": 0, "reasons": {}, "first": CLOCK.ticks()})
+        r["count"] += 1
+        r["reasons"][reason] = r["reasons"].get(reason, 0) + 1
+        r["last"] = CLOCK.ticks()
+        save_reports(data)
+    return 200, "reported, thank you: the owner will look"
+
+
+def hidden_by_reports():
+    """The posts hidden from everyone else until the owner looks (if they chose that)."""
+    st = settings_snapshot()
+    if not st["report_hide"]:
+        return set()
+    return {k for k, r in reports().items() if r.get("count", 0) >= st["report_threshold"] and not r.get("kept")}
+
+
+def moderation_queue():
+    """The reported posts that count (as many reports as the owner asked), with what they say."""
+    st, now = settings_snapshot(), CLOCK.ticks()
+    with lock:
+        msgs = {f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}": m for m in live_messages(now)}
+    posts = {}
+    for t in BOARD.all_threads()["threads"]:
+        for i, p in enumerate(t["posts"]):
+            posts[f"board:{t['id']}:{int(p.get('created', 0))}"] = (t, i, p)
+    out = []
+    for k, r in reports().items():
+        if r.get("kept") or r.get("count", 0) < st["report_threshold"]:
+            continue
+        if k in msgs:
+            m = msgs[k]
+            out.append(dict(r, key=k, by=m.get("name", ""), text=m.get("text", ""), where="Shoutbox"))
+        elif k in posts:
+            t, i, p = posts[k]
+            out.append(dict(r, key=k, by=p.get("author", ""), text=p.get("text", ""), where=f"Board: {t.get('title', '')}",
+                            thread=t["id"], index=i))
+    out.sort(key=lambda x: (-x["count"], -x.get("last", 0)))
+    return out
 
 
 def store_snapshot():
@@ -2253,7 +2391,11 @@ class Handler(BaseHTTPRequestHandler):
             now = CLOCK.ticks()
             with lock:
                 msgs = live_messages(now)
-            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout")})
+            hide = hidden_by_reports()
+            if hide:
+                msgs = [m for m in msgs if f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}" not in hide]
+            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout"),
+                                 "report_reasons": settings_snapshot()["report_reasons"]})
             return
 
         if path == "/board/threads":
@@ -2638,7 +2780,13 @@ class Handler(BaseHTTPRequestHandler):
             if result is None:
                 self.send_json(404, {"error": "no such thread"})
             else:
-                self.send_json(200, dict(result, posting=self._posting_view("board")))
+                hide = hidden_by_reports()
+                if hide:
+                    t = dict(result["thread"])
+                    t["posts"] = [p if f"board:{t['id']}:{int(p.get('created', 0))}" not in hide
+                                  else dict(p, text="(hidden while the owner looks at a report)", hidden=True) for p in t["posts"]]
+                    result = dict(result, thread=t)
+                self.send_json(200, dict(result, posting=self._posting_view("board"), report_reasons=settings_snapshot()["report_reasons"]))
             return
 
         if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps()):
@@ -3105,6 +3253,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/messages":
             self._post_message(payload)
+            return
+
+        if path == "/api/report":
+            fwd = self.headers.get("X-Forwarded-For", "")
+            addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
+            code, message = report(str(payload.get("app", "")), payload.get("ref"), payload.get("reason"), addr)
+            self.send_json(code, {"message": message} if code == 200 else {"error": message})
             return
 
         if path == "/board/threads":

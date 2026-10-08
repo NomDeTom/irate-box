@@ -680,6 +680,7 @@ function renderModeration(data) {
     if (!confirm(`Delete ${what}?`)) return;
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
+  renderReports(data, del);
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
       el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)}`),
@@ -708,6 +709,41 @@ function renderModeration(data) {
             i === 0 ? `the whole thread "${t.title}"` : 'this post'), { className: 'small' }))),
     ))
     : [el('p', { className: 'setting-desc', textContent: 'No threads.' })]));
+}
+
+// The queue across the apps (M10): what was reported enough to count, worst first; Keep or Delete.
+function renderReports(data, del) {
+  const queue = data.queue || [], rs = data.reports;
+  const q = document.getElementById('mod-queue');
+  if (q) q.replaceChildren(queue.length ? AW.shortList(queue.map((r) => ({ id: r.key, title: r.text.slice(0, 80) || '(empty)',
+    summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`,
+    badges: Object.keys(r.reasons || {}),
+    detail: () => [
+      AW.h('p', { class: 'admin-text', text: r.text }),
+      AW.dl(Object.fromEntries(Object.entries(r.reasons || {}).map(([k, n]) => [k, `${n}`]))),
+      AW.btn('Keep it', { onclick: async () => { try { renderModeration(await postJSON('/admin/moderation', { action: 'keep', key: r.key })); } catch (err) { say(err.message, false, noteEl('mod-note')); } } }),
+      ' ',
+      AW.btn('Delete it', { onclick: r.key.startsWith('shoutbox:')
+        ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
+        : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
+    ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
+  const box = document.getElementById('report-settings');
+  if (!box || !rs) return;
+  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile.
+  const chosen = new Set(rs.reasons);
+  const reasons = AW.h('div', { class: 'filter-chips', role: 'group', 'aria-label': 'Reasons offered' }, rs.all_reasons.map((r) =>
+    AW.h('button', { type: 'button', class: 'filter-chip' + (chosen.has(r) ? ' active' : ''), 'aria-pressed': String(chosen.has(r)), onclick: async () => {
+      const next = rs.all_reasons.filter((x) => (x === r ? !chosen.has(r) : chosen.has(x)));
+      if (!next.length) return;
+      try { await postJSON('/admin/settings', { report_reasons: next }); loadModeration(); } catch (err) { say(err.message, false, noteEl('mod-note')); }
+    } }, r)));
+  box.replaceChildren(AW.h('div', { class: 'aw-settings' }, AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Reasons offered' }), reasons,
+    AW.h('small', { class: 'setting-desc', text: 'saved as you choose' }))),
+  AW.settings([
+    { key: 'report_threshold', label: 'In the queue after', kind: 'choice', value: rs.threshold, options: [[1, '1 report'], [2, '2'], [3, '3'], [5, '5']] },
+    { key: 'report_hide', label: 'Hidden from everyone else until you look', kind: 'toggle', value: rs.hide,
+      note: 'off: it stays up while waiting; on: it is hidden once it counts, and shows again if you keep it' },
+  ], { save: async (changed) => { const r = await postJSON('/admin/settings', changed); loadModeration(); return r; } }));
 }
 
 async function loadModeration() {
