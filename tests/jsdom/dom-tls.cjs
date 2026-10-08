@@ -93,7 +93,10 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   await wait();
   check('/certificate: the download, its fingerprint, what it may vouch for', !p.d.getElementById('cert-about').hidden && t(p.d.getElementById('cert-fingerprint')) === 'AB:CD:EF'
     && t(p.d.getElementById('cert-names')) === 'irate.home.arpa, lyra.local' && p.d.getElementById('cert-download').getAttribute('href') === '/certificate/ca.crt');
-  check('  no platform\'s steps until tried on a device: the general step', !p.d.querySelector('#cert-steps details') && /guides for each kind of phone and computer follow/.test(t(p.d.getElementById('cert-steps'))));
+  const folds = [...p.d.querySelectorAll('#cert-steps details')];
+  check('  the steps tried on real phones (iPhone, Android), each folded', folds.map((f) => t(f.querySelector('summary'))).join('|') === 'iPhone and iPad|Android'
+    && /Install anyway/.test(t(folds[1])) && /Network may be monitored/.test(t(folds[1])) && /Certificate Trust Settings/.test(t(folds[0])));
+  check('  the general step for the rest, named, until tried', /On other devices \(Windows, macOS, Linux\): download it/.test(t(p.d.getElementById('cert-steps'))), t(p.d.getElementById('cert-steps')));
   check('  the self-check: not trusted yet', /does not trust the box yet/.test(t(p.d.getElementById('cert-check'))), t(p.d.getElementById('cert-check')));
   check('  never a click-through: the warning is not to be clicked past', /don't click through/.test(t(p.d.getElementById('cert-about'))));
   p = pub(info, true);
