@@ -1382,7 +1382,7 @@ function renderHealth(data) {
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (hlNote && hlNote.fid === fid
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
-  // The clock and its module have their own pane (Box, Clock); the rest is the services doctor.
+  // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
   const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
   const item = (f) => el('li', { className: `check check-${f.status}` },
     el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
@@ -3791,7 +3791,7 @@ function fillWidthBlocks() {
   document.querySelectorAll('.width-block[data-key]').forEach((block) => {
     const key = block.dataset.key;
     block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
-      note: 'also on Box → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+      note: 'also on System → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
     { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
   });
 }
