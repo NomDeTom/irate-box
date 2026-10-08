@@ -59,8 +59,9 @@ setTimeout(() => {
   check('its own warnings on its card (3)', own === 3, own);
   // Each labelled part a section, a hairline between them (inbox, 2026-10-06: the parts ran together).
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
-  check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
-    && secs.every((n) => n.querySelector('.net-line, .admin-checks')), secs.length);
+  // Since #117 a device's uptime bars are a section of their own, before its warnings.
+  check('the card in sections: what, now, managed by, the hotspot, its uptime, its warnings', secs.length === 6
+    && secs.every((n) => n.querySelector('.net-line, .admin-checks, .net-uptime')) && !!secs[4].querySelector('.net-uptime'), secs.length);
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
