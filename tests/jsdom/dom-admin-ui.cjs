@@ -286,12 +286,18 @@ setTimeout(() => {
     const inp2 = rowOf(d.getElementById('app-access-about'), 'Tile icon').querySelector('input');
     inp2.value = 'INFO'; inp2.dispatchEvent(new w.Event('change'));
     check('  four letters taken, Save offered', !save().disabled);
+    // The tile's size in the same block (Tom, 2026-10-08: "tile icons can't choose their width and height now").
+    const sizes = chipsOf(d.getElementById('app-access-about'), 'Tile size');
+    check('  its size, single (the default) of single, wide, large', sizes.map((c) => c.textContent).join('|') === 'single|wide|large' && sizes[0].getAttribute('aria-pressed') === 'true');
+    sizes[1].click();
+    check('  wide chosen, waiting for Save', chipsOf(d.getElementById('app-access-about'), 'Tile size')[1].getAttribute('aria-pressed') === 'true');
     save().click();
   }
   chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
   [...[...d.querySelectorAll('#builtin-list .library-source')][0].querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   setTimeout(() => {
-    check('the icon saved with the tiles\' state', posted.some((p) => p[0] === '/admin/tiles' && p[1].state.icon && p[1].state.icon.about === 'INFO'), JSON.stringify(posted.filter((p) => p[0] === '/admin/tiles')));
+    check('the icon and the size saved with the tiles\' state', posted.some((p) => p[0] === '/admin/tiles' && p[1].state.icon && p[1].state.icon.about === 'INFO'
+      && p[1].state.size.about === 'wide'), JSON.stringify(posted.filter((p) => p[0] === '/admin/tiles')));
     check('About hidden asks the hub', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about' && p[1].visible === 'hidden'));
     check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' }, icon: {} } }),
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
