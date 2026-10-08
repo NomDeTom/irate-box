@@ -1425,6 +1425,19 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if line:
                 results["toolkits"] = line
                 log(f"toolkits: {line}")
+        # Packages from their makers (root/pkgwatch.py: meshtasticd on its channel): root asked to check
+        # twice a day, so "after N days" counts from when a build first appeared.
+        if scheduled and not names:
+            pw = LIB_DIR / "pkgwatch-state.json"
+            try:
+                last = json.loads(pw.read_text()).get("queued", 0)
+            except (OSError, ValueError):
+                last = 0
+            if time.time() - last >= 12 * 3600:
+                rid = _queue_root({"action": "pkg-check"})
+                pw.write_text(json.dumps({"queued": time.time(), "id": rid}))
+                results["packages"] = f"check queued ({rid})"
+                log(f"packages: check queued ({rid})")
         # The hub's own updates (selfupdate.py): one step per run of the timer.
         if scheduled and not names:
             from irate_box.library import selfupdate

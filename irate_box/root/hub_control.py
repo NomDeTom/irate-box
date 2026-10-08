@@ -38,6 +38,10 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       Guests' onward internet (share.py): the one ruleset with the floor (firewall.apply_all), IPv4
       forwarding and the guests' resolver made to agree; off takes it all back. The level and the
       containment in control/share.json.
+  {"id": ..., "action": "pkg-check", "package": "meshtasticd"?} | "pkg-install" (+ "version") | "pkg-rollback"
+      | "pkg-settings" (+ "channel", "mode": watch|auto|aged, "days")
+      Packages from their makers' channels (pkgwatch.py): checked, cached, installed, rolled back; the
+      owner's channel and mode (on an image with its own tool, mpwrd-menu, its channel written its way).
   {"id": ..., "action": "share-allow", "ip": "192.168.4.x"}
       Let one device out, at a level that lets devices out one by one (the hub asks).
   {"id": ..., "action": "update-signing", "level": "off"|"github"|"tags", "signers": "<allowed_signers>"}
@@ -2222,6 +2226,33 @@ def _guest_policy_follows():
         return f" The guests' rules were not rewritten for it: {exc}"
 
 
+# --- packages from their makers, watched (pkgwatch.py) ----------------------------------------------
+
+def pkg_check(req):
+    """{"package": a watched package, or none for every one on the box}: the channel read, a new build
+    cached, installed if the owner's mode says so."""
+    from irate_box.root import pkgwatch
+    ids = [str(req["package"])] if req.get("package") else pkgwatch.watched()
+    return "; ".join(pkgwatch.check(i, log=lambda *a: None) for i in ids) or "no watched package is on this box"
+
+
+def pkg_install(req):
+    from irate_box.root import pkgwatch
+    return pkgwatch.install(str(req.get("package", "")), str(req.get("version", "")), log=lambda *a: None)
+
+
+def pkg_rollback(req):
+    from irate_box.root import pkgwatch
+    return pkgwatch.rollback(str(req.get("package", "")), log=lambda *a: None)
+
+
+def pkg_settings(req):
+    from irate_box.root import pkgwatch
+    days = req.get("days")
+    return pkgwatch.set_settings(str(req.get("package", "")), str(req.get("channel", "")), str(req.get("mode", "")),
+                                 days if isinstance(days, int) and not isinstance(days, bool) else -1)
+
+
 def ap_on(req):
     try:
         plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
@@ -2351,7 +2382,8 @@ ACTIONS = {"service": service, "password": password,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
+           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

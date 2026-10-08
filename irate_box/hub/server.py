@@ -2850,6 +2850,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, dict(hotspot.snapshot(), share=share_level()))
             return
 
+        if path == "/admin/packages":
+            # Packages from their makers, watched (root/pkgwatch.py): what root published, and its answers.
+            try:
+                pkgs = json.loads((CONTROL_DIR / "pkgwatch.json").read_text())
+            except (OSError, ValueError):
+                pkgs = {}
+            self.send_json(200, {"packages": pkgs, "results": control_results(5)})
+            return
+
         if path == "/admin/network":
             self.send_json(200, network_snapshot())
             return
@@ -3660,6 +3669,27 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
             else:
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
+            return
+
+        if path == "/admin/packages":
+            # Root checks each of these again (pkgwatch.py); here only their shapes.
+            act, pkg = payload.get("action"), payload.get("package")
+            if not isinstance(pkg, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", pkg) and not (act == "check" and pkg == ""):
+                self.send_json(400, {"error": "package: a watched package's name"})
+                return
+            if act == "check":
+                req = {"action": "pkg-check", **({"package": pkg} if pkg else {})}
+            elif act == "install" and isinstance(payload.get("version"), str) and re.fullmatch(r"[A-Za-z0-9.+~:-]{1,100}", payload["version"]):
+                req = {"action": "pkg-install", "package": pkg, "version": payload["version"]}
+            elif act == "rollback":
+                req = {"action": "pkg-rollback", "package": pkg}
+            elif act == "settings" and payload.get("channel") in ("beta", "alpha", "daily") and payload.get("mode") in ("watch", "auto", "aged") \
+                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool):
+                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"]}
+            else:
+                self.send_json(400, {"error": "action: check, install (with version), rollback, or settings (channel, mode, days)"})
+                return
+            self.send_json(202, {"id": control_request(req)})
             return
 
         if path == "/admin/hotspot" and payload.get("action") == "share":

@@ -185,6 +185,7 @@ async function libAct(key, body, confirmText) {
       ? { key, busy: true, text: 'The librarian is already running. The buttons come back when it is free; try again then.' }
       : { key, busy: false, text: e.message };
     loadLibrary();
+
   }
 }
 
@@ -549,6 +550,74 @@ cat.more.addEventListener('click', () => searchCatalogue(true));
 
 showTypeFields();
 loadLibrary();
+
+// --- packages from their makers (root/pkgwatch.py: meshtasticd on its channel) ------------------------
+// Tom, 2026-10-08: "automatically update against beta, alpha or nightly, or alpha/nightly after a certain
+// period of time"; on mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
+const PKG_MODES = [['watch', 'Watch'], ['auto', 'Automatic'], ['aged', 'After a while']];
+let pkgWaiting = null;
+async function loadPackages() {
+  const box = document.getElementById('pkg-list');
+  if (!box) return;
+  let d;
+  try { d = await getJSON('/admin/packages'); } catch (_) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Could not read the watched packages.' })); return; }
+  if (pkgWaiting) {
+    const done = (d.results || []).find((r) => r.id === pkgWaiting.id);
+    if (done) { say(done.ok ? done.message : done.error || done.message, done.ok, noteEl('pkg-note')); pkgWaiting = null; }
+    else if (Date.now() - pkgWaiting.at < 600000) setTimeout(loadPackages, 3000);
+  }
+  const pkgs = Object.entries(d.packages || {});
+  box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => pkgCard(id, p))
+    : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
+      el('p', { className: 'library-buttons' }, actionButton('Check', () => pkgAct({ action: 'check', package: '' })))]));
+}
+async function pkgAct(body, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try {
+    pkgWaiting = { id: (await postJSON('/admin/packages', body)).id, at: Date.now() };
+    say('Asked: the root helper is on it.', true, noteEl('pkg-note'));
+    setTimeout(loadPackages, 2000);
+  } catch (err) { say(err.message, false, noteEl('pkg-note')); }
+}
+function pkgCard(id, p) {
+  const s = p.settings, label = (ch) => (p.labels || {})[ch] || ch;
+  const builds = p.builds || [];
+  const onChannel = builds.filter((b) => b.channel === s.channel);
+  const newest = onChannel.length ? onChannel[onChannel.length - 1] : null;
+  const ageOf = (b) => ago(Date.now() / 1000 - b.first_seen);
+  const lines = [
+    p.installed ? `Installed: ${p.installed}.` : 'Not installed.',
+    p.image ? (p.image.channels.length === 1 ? `${p.image.name} lists ${label(p.image.channels[0])}.`
+      : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
+        : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
+    newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}.` : 'Not checked yet.',
+    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (watching only: press Update to install it).' : ', at the next check.')
+      : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
+        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Update installs it anyway.' : null,
+    s.mode === 'aged' ? `apt upgrade leaves it alone while it waits (${p.held ? 'held' : 'not held yet'}).` : null,
+    p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
+  ];
+  const kept = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
+    el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
+  const settings = AW.settings([
+    { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
+    { key: 'mode', label: 'Updates', kind: 'choice', value: s.mode, options: PKG_MODES,
+      note: 'Watch says what is newer; Automatic installs each new build; After a while installs a build once it has been out the days below' },
+    { key: 'days', label: 'After', kind: 'choice', value: s.days, options: (p.days || [1, 3, 7, 14, 30]).map((n) => [n, `${n} day${n === 1 ? '' : 's'}`]) },
+  ], { save: (v) => pkgAct({ action: 'settings', package: id, channel: v.channel, mode: v.mode, days: v.days },
+    v.mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(v.channel)} by itself${v.mode === 'aged' ? ` once they have been out ${v.days} day${v.days === 1 ? '' : 's'}` : ''}? `
+      + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null) });
+  return el('div', { className: 'setting library-source' }, el('span', {},
+    el('span', { className: 'setting-name', textContent: p.title }),
+    ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
+    kept, settings,
+    el('span', { className: 'library-buttons' },
+      actionButton('Check', () => pkgAct({ action: 'check', package: id })),
+      newest && newest.version !== p.installed ? actionButton(`Update to ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
+        `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
+      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));
+}
+loadPackages();
 loadBooks();
 
 // --- shared helpers for the sections below --------------------------------------

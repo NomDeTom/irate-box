@@ -19,6 +19,7 @@ run() {
 }
 run sim_uplink.py
 run sim_crashwatch.py
+run sim_pkgwatch.py
 run sim_widths.py
 run sim_admin_apps.py
 run sim_visibility.py
