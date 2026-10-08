@@ -1127,7 +1127,13 @@ def _check_for_update(progress):
     tag = None
     if sig["level"] == "tags":
         # Signed releases (signing.py): the newest v* tag, not the branch's tip.
-        _git("-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
+        got = run("git", "-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
+        if got.returncode != 0:
+            # git says nothing when no tag matches: tell that apart from a fetch that failed.
+            remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
+            if remote.returncode == 0 and not remote.stdout.strip():
+                raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+            raise ValueError("git fetch of the release tags: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1])
         tag = signing.newest_tag(src)
         if not tag:
             raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
