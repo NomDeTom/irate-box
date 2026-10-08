@@ -38,6 +38,7 @@ from irate_box.hub import flasher
 from irate_box.hub import gitrepos
 from irate_box.hub import hotspot
 from irate_box.hub import hubclock
+from irate_box.hub import reach
 from irate_box.hub import linkhistory
 from irate_box.library import librarian
 from irate_box.hub import manifests
@@ -2039,6 +2040,7 @@ class Handler(BaseHTTPRequestHandler):
             # Python closes, but says nothing, and the web server would keep the connection for
             # its next request, which then fails (found with the accounts' session check).
             self._close_after = self._close_after or self.headers.get("Connection", "").strip().lower() == "close"
+            reach.note(self._client_addr())   # from the internet? (the security doctor asks)
         return ok
 
     def send_response(self, code, message=None):
