@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Who sees an app's tile, apart from who opens it (menu overhaul M5; checklist 4a), against a hub
 it starts: auto follows access; a users-only or private app shown to everyone carries a lock; off
 is never shown; hidden takes the tile away; only real apps and values taken; /admin/access says

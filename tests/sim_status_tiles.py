@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Status tiles (menu overhaul M8), against a hub it starts: the box row arranged by the owner
 (hidden, ordered, two cells wide), the arrangement checked, and /status carrying the different
 devices seen today and this week only while counting is on. python3 tests/sim_status_tiles.py"""

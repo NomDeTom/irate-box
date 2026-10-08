@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Who sees what a person posts (menu overhaul M13; Tom, 2026-10-08), against a hub it starts:
 alice chooses, per app, everyone here, signed-in people or only her; what bob (signed in) and a
 guest read follows it in the shoutbox, the forum, saved work and the file drop, to the listings

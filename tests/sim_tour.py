@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The setup tour's record (menu overhaul M14), against a hub it starts: setup_decided holds only
 the decisions there are, each once at most; nothing decided to begin with, so the box runs on the
 defaults. python3 tests/sim_tour.py"""

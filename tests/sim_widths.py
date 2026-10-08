@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """The page widths (menu overhaul M2), against a hub it starts: /layout.css public and set from
 the owner's settings, only the offered widths taken (45, 60, 80, 90, 100), the defaults 80 for
 the pages and 45 for the shoutbox and forum. python3 tests/sim_widths.py"""

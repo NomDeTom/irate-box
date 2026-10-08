@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """/admin's app pages (menu overhaul M4): /admin/apps behind the admin gate, each app with the
 /admin sections its manifest owns, in the hub's order; a manifest's admin part checked; every
 section a manifest names is one admin.html has. python3 tests/sim_admin_apps.py"""

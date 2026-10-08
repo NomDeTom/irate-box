@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """A person's own settings (menu overhaul M12; proposed 5f), against a hub it starts: set only
 through their own session, each as it allows, the safe choice the default; names online only of
 those who said yes, and only to whom the owner allows (guests get the count alone); the admin's

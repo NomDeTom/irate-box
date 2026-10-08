@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Reports (menu overhaul M10; Tom, 2026-10-08: "anyone can report a post - admin decides what
 counts"), against a hub it starts: anyone may report a shoutbox message or a forum post, once per
 visitor; only the owner's reasons are taken; what counts (how many reports) reaches the queue on

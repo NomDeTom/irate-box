@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """Unique visitors (menu overhaul M11; checklist 5g), offline: the helper counts each device once
 a day and a week, from the leases and the neighbour table; a new day starts again with a new salt;
 nothing but the numbers reaches its file (no address, no hash); and the hub, against a hub it starts,
