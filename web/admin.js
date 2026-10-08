@@ -3766,7 +3766,16 @@ async function loadAppearance() {
     const now = await postJSON('/admin/settings', changed);
     document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
     return now;
-  } }));
+  } }),
+  // The emoji pickers' set (Tom, 2026-10-08): newer sets have more, but a phone older than a set's
+  // release draws its newest emoji as empty boxes. Chosen by the iPhones each reaches.
+  el('h3', { textContent: 'Emoji' }),
+  el('p', { className: 'setting-desc', textContent: 'Which emoji the pickers offer, for everyone. A newer set has more, '
+    + 'but a phone older than it shows the newest ones as empty boxes. 13.1: iOS 14.5 and Android 12 on (1,812 emoji). '
+    + '15.0: iOS 16.4, every iPhone from the 8 on, and Android 14 (1,870). 16.0: iOS 18.4, iPhone XS on, and Android 16 (1,906).' }),
+  AW.settings([{ key: 'emoji_set', label: 'Emoji set', kind: 'choice', value: st.emoji_set, note: 'what the oldest phones you expect can show',
+    options: [['13.1', 'Emoji 13.1'], ['15.0', 'Emoji 15.0'], ['16.0', 'Emoji 16.0']] }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadAppearance();
 

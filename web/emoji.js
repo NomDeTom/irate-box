@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // Emoji picker for text inputs. No dependencies, and nothing from the internet: the list is the
-// hub's own emoji-data.js (Unicode's emoji up to 13.1, in Unicode's groups, made by
+// hub's own emoji-data.js (Unicode's emoji up to the owner's set, 13.1 to 16.0, in Unicode's groups, made by
 // tools/make-emoji-data.cjs), loaded from the hub the first time a panel opens. Attach with a
 // `data-emoji` attribute on an <input> or <textarea>; a toggle button is added beside it and one
 // shared panel is used for every field on the page: a search, a skin tone, a tab per group.
+
+// The owner's set (/admin → Appearance, from /layout.css): emoji newer than it are left out, as a
+// phone older than their release draws them as empty boxes.
+function emojiSet() {
+  const v = Number(getComputedStyle(document.documentElement).getPropertyValue('--emoji-set').trim());
+  return v >= 13.1 ? v : 13.1;
+}
 
 // The hub's own tab, beside Unicode's groups.
 const PIRATE = ['Pirate', '🏴‍☠️', '🏴‍☠️☠️⚓🦜🗡️⚔️🔱🧭🗺️🏝️🏖️🌊🐙🦑🦈🐚⛵🚤🛶💰🪙💎🍺🍻🥃🍖🔭⏳🪝🦴🎲'];
@@ -38,6 +45,8 @@ const make = (tag, props = {}, ...kids) => {
   return n;
 };
 const withTone = (e) => (tone && e[2] ? e[2][tone - 1] : e[0]);
+// An entry within the set: [emoji, name, tones, its release, its tones' release] (emoji-data.js).
+const within = (cap) => (e) => (e[3] || 0) <= cap && [e[0], e[1], e[2] && (e[4] || 0) <= cap ? e[2] : 0];
 
 function loadData() {
   if (window.EMOJI_DATA) return Promise.resolve();
@@ -118,7 +127,9 @@ function fill() {
   if (groups) return;
   loadData().then(() => {
     const pirate = [PIRATE[0], PIRATE[1], graphemes(PIRATE[2]).map((ch) => [ch, ''])];
-    groups = [...window.EMOJI_DATA.groups, pirate];
+    const cap = emojiSet();
+    const keep = within(cap);
+    groups = [...window.EMOJI_DATA.groups.map(([label, icon, list]) => [label, icon, list.map((e) => keep(e)).filter(Boolean)]), pirate];
     drawTabs();
     drawGrid();
     if (!panel.hidden) position();
