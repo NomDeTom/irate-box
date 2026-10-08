@@ -1202,6 +1202,7 @@ function renderJoint(j) {
     el('p', { className: 'badges' }, el('span', { className: 'badge', textContent: i.about.kind }),
       ...i.sources.map((x) => el('span', { className: 'badge badge-mirror', textContent: SOURCE_WORDS[x] || x }))),
     el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree.` : `Said by ${srcWords(i.sources)}.` }),
+    i.detail ? el('p', { textContent: i.detail }) : null,
     el('ul', { className: 'joint-titles' }, ...i.titles.slice(0, 4).map((x) => el('li', { textContent: x }))),
     i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null)));
   const alone = items.filter((i) => i.alone);

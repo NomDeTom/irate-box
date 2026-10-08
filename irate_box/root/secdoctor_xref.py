@@ -24,6 +24,19 @@ XREF = {
     "sudo-all": {"title": "sudo rules that allow everything", "doctor": ["acct-sudo"], "security-page": ["sudo-nopasswd"], "debian-cis": ["99.1.3_acc_sudoers_no_all"]},
 }
 _BY = {(src, i): key for key, e in XREF.items() for src, ids in e.items() if isinstance(ids, list) for i in ids}
+
+# Findings that are a problem together, each alone only a warning (stance review 2026-10-08 §2):
+# every named (source, id) must be present and not ok for the joint report to add the item.
+COMPOUND = [
+    {"key": "sudo-and-passwords", "title": "A passwordless sudo rule, and SSH takes passwords",
+     "needs": [("security-page", "page-sudo-nopasswd"), ("security-page", "page-ssh-password")],
+     "detail": "One guessed password on the network is root with no step in between.",
+     "fix": "Turn SSH password logins off, or take the rule out (Security)."},
+    {"key": "disk-and-passwords", "title": "An account in the disk group, and SSH takes passwords",
+     "needs": [("security-page", "page-group-disk"), ("security-page", "page-ssh-password")],
+     "detail": "One guessed password reads the raw card: the password file, the CA's key, the admin's hash.",
+     "fix": "Take the account out of the disk group, or turn SSH password logins off (Security)."},
+]
 PORT_RE = re.compile(r"^port-(tcp|udp)-(\d+)$")
 
 

@@ -425,6 +425,69 @@ def _hub_ask(method, path, headers, body=None):
         return None
 
 
+def _raw_response(sock):
+    """The status code of the next HTTP response on `sock`, its body read by Content-Length."""
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            return None
+        buf += chunk
+    head, _, rest = buf.partition(b"\r\n\r\n")
+    m = re.search(rb"Content-Length:\s*(\d+)", head, re.I)
+    want = int(m.group(1)) if m else 0
+    while len(rest) < want:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        rest += chunk
+    try:
+        return int(head.split(b" ", 2)[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def probe_drains():
+    """F2, for real: on one kept-alive connection to the hub, a refused request whose body is
+    itself a request for /admin, then an ordinary one. A hub that reads the body away answers
+    the ordinary one (200 for /status); one that leaves it answers the smuggled one first (403
+    for /admin without the front's word). None when the hub does not answer."""
+    import socket
+    smuggled = b"GET /admin/settings HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+    first = (b"PUT /nothing-here HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: text/plain\r\n"
+             + b"Content-Length: %d\r\n\r\n" % len(smuggled) + smuggled)
+    try:
+        with socket.create_connection(("127.0.0.1", _hub_port()), timeout=5) as s:
+            s.sendall(first)
+            if _raw_response(s) is None:
+                return None
+            s.sendall(b"GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+            code = _raw_response(s)
+    except OSError:
+        return None
+    return None if code is None else code == 200
+
+
+def probe_json_cap():
+    """F15, for real: a JSON body over 256 KB to a guest route must be refused (413) and the
+    connection stay usable. None when the hub does not answer."""
+    import http.client
+    big = b'{"text": "' + b"x" * (300 * 1024) + b'"}'
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", _hub_port(), timeout=10)
+        conn.request("POST", "/messages", body=big, headers={"Host": "127.0.0.1", "Content-Type": "application/json"})
+        r = conn.getresponse()
+        r.read()
+        refused = r.status == 413
+        conn.request("GET", "/status", headers={"Host": "127.0.0.1"})
+        r2 = conn.getresponse()
+        r2.read()
+        conn.close()
+    except OSError:
+        return None
+    return refused and r2.status == 200
+
+
 def step_admin_gate(ctx):
     """F27/F31/F8 and S3, by behaviour: what the hub itself does with an /admin request that did
     not come through the front's /admin route (no secret), and with an /admin change that did
@@ -887,12 +950,18 @@ def step_units(ctx):
             ("ProtectSystem=strict", strict), ("NoNewPrivileges", p.get("NoNewPrivileges") == "yes"),
             ("PrivateTmp", p.get("PrivateTmp") == "yes"), ("ProtectHome", p.get("ProtectHome") not in ("no", "", None)),
             ("ProtectProc=invisible", p.get("ProtectProc") in ("invisible", "noaccess"))) if not ok]
-        if len(weak) >= 4:
-            (root_weak if is_root else hub_weak).append(f"{u[:-8]} ({len(weak)} of 5 missing)")
+        # A root unit is reported for any line it lacks (stance review 2026-10-08 §2): a flaw in one
+        # is root, so each missing line counts. A guest-reachable unit as before: most of them gone.
+        if is_root and weak:
+            root_weak.append(f"{u[:-8]} (missing {', '.join(weak)})")
+        elif not is_root and len(weak) >= 4:
+            hub_weak.append(f"{u[:-8]} ({len(weak)} of 5 missing)")
+        elif not is_root and p.get("CapabilityBoundingSet", "").strip() not in ("", "0"):
+            hub_weak.append(f"{u[:-8]} (keeps capabilities: {p['CapabilityBoundingSet'][:60]})")
     if root_weak:
-        out.append(F("units-root", "Root units without sandboxing", "warn",
-                     f"{_list(root_weak)} run as root with little or no ProtectSystem, NoNewPrivileges, PrivateTmp, ProtectHome "
-                     "or ProtectProc. A flaw in one is root with nothing in between.",
+        out.append(F("units-root", "Root units with a sandbox line missing", "warn",
+                     f"{_list(root_weak, 12)}: a flaw in a root unit is root with nothing in between, and each line missing is one "
+                     "more thing the flaw can reach.",
                      "ProtectSystem=strict with real ReadWritePaths, NoNewPrivileges, PrivateTmp, ProtectHome, "
                      "ProtectProc=invisible; narrow CapabilityBoundingSet and SystemCallFilter where possible.", "F19"))
     else:
@@ -1927,6 +1996,13 @@ def joint(steps, freshness=None):
         could &= ran
         it["alone"] = len(it["sources"]) == 1 and len(could - set(it["sources"])) > 0
         it["could_see"] = sorted(could - set(it["sources"]))
+    # Together a problem (secdoctor_xref.COMPOUND): each named finding present and not ok.
+    present = {(f.get("source", "doctor"), f["id"]): f for s in steps for f in s["findings"]}
+    for c in secdoctor_xref.COMPOUND:
+        if all((src, i) in present and present[(src, i)]["status"] != "ok" for src, i in c["needs"]):
+            items[f"compound:{c['key']}"] = {"about": {"kind": "compound", "key": c["key"]}, "title": c["title"], "sources": sorted({s for s, _ in c["needs"]}),
+                                            "status": "problem", "titles": [f"{s}: {present[(s, i)]['title']}" for s, i in c["needs"]],
+                                            "fix": c["fix"], "detail": c["detail"], "alone": False, "could_see": []}
     merged = sorted((i for i in items.values() if i["status"] != "ok"), key=lambda i: (-rank[i["status"]], i["about"]["kind"], i["about"]["key"]))
     agreed = [i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1]
     after = {"problem": loose["problem"] + sum(1 for i in merged if i["status"] == "problem"),
@@ -2133,6 +2209,63 @@ def step_image(ctx):
     return out
 
 
+APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
+
+
+def _age_days(path):
+    try:
+        return (time.time() - Path(path).stat().st_mtime) / 86400
+    except OSError:
+        return None
+
+
+def step_offline(ctx):
+    """Offline readiness (stance review 2026-10-08 §4 item 5): the box is meant to work with no
+    internet, so how stale what it carries is: the package lists, Debian's security tracker data,
+    the kits' cache, the offline bundle against the installed version, the hub's own update state."""
+    out = []
+    ages = {"the package lists": _age_days(APT_LISTS), "Debian's security tracker data (debsecan)": _age_days(DEBSECAN_FEED / (_codename() or "x"))}
+    stale = [f"{k}: {v:.0f} days" for k, v in ages.items() if v is not None and v > 30]
+    missing = [k for k, v in ages.items() if v is None]
+    fresh = [f"{k}: {v:.0f} days" for k, v in ages.items() if v is not None and v <= 30]
+    out.append(F("offline-lists", "How old what the box knows is", "warn" if stale or missing else "ok",
+                 "; ".join(stale + [f"{k}: never fetched" for k in missing] + fresh) + ".",
+                 "Let the box reach the internet once in a while, or carry the updates on a stick (Library → Toolkits)." if stale or missing else ""))
+    try:
+        from irate_box.root import kits
+        bad = kits.verify()
+    except Exception as exc:  # noqa: BLE001
+        bad = [f"could not check: {exc}"]
+    out.append(F("offline-kits", "The toolkits' cache", "warn" if bad else "ok",
+                 ("Not whole: " + _list(bad, 4)) if bad else "Every cached kit is whole: it can be installed with no internet.",
+                 "Library → Toolkits: refresh the kit while online." if bad else ""))
+    try:
+        kit = json.loads(_read(STATE / "kits" / "kit.json") or "null")
+    except ValueError:
+        kit = None
+    ver_text = _read(CODE / "VERSION") or ""
+    version = ver_text.split()[0] if ver_text.split() else "unknown"
+    if not kit:
+        out.append(F("offline-bundle", "The offline kit (to set up another box with no internet)", "warn", "None made yet.",
+                     "/admin → Backup: make the offline kit, and keep a copy off the box."))
+    else:
+        current = version != "unknown" and version in str(kit.get("name", ""))
+        out.append(F("offline-bundle", "The offline kit", "ok" if current else "warn",
+                     f"{kit.get('name')}, made {time.strftime('%Y-%m-%d', time.localtime(kit.get('at', 0)))}"
+                     + ("; the version installed here." if current else f"; this box runs {version} now."),
+                     "" if current else "Make it again (/admin → Backup) so a box set up from it runs what this one runs."))
+    try:
+        upd = json.loads(_read(CONTROL / "update.json") or "null")
+    except ValueError:
+        upd = None
+    if upd and upd.get("fetched"):
+        age = (time.time() - upd["fetched"]) / 86400
+        out.append(F("offline-update", "The hub's last look for an update", "ok" if age <= 30 else "warn",
+                     f"{age:.0f} days ago" + ("; up to date then." if upd.get("up_to_date") else f"; {upd.get('available')} was available."),
+                     "" if age <= 30 else "Updates are checked when the box is online; this box has not been for a month."))
+    return out
+
+
 # --- reached from the internet (Tom, 2026-10-08) --------------------------------------------------
 # The box is for its own networks. Its web pages are seen from the hub's own note of public visitors
 # (hub/reach.py; the web servers keep no access logs), SSH from sshd's log, and IPv6 from the box's
@@ -2270,6 +2403,7 @@ STEPS = [
     ("tls", "HTTPS: the certificate and the front", "S2", step_tls),
     ("mqtt", "The MQTT broker and the mesh decoder", "S9", step_mqtt),
     ("internet", "Reached from the internet", "", step_internet),
+    ("offline", "Offline readiness", "", step_offline),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
@@ -2296,14 +2430,17 @@ def make_context():
     kind, front, note = load_front()
     src = {n: _hub_source(n) for n in ("server.py", "health.py", "store.py")}
     server = src["server.py"]
-    drains = None
-    caps = None
+    # F2 and F15 are asked of the running hub (probe_drains, probe_json_cap): a marker in the
+    # code only said the line was there (stance review 2026-10-08 §2). The code's word stands
+    # in when the hub does not answer.
+    drains = probe_drains()
+    caps = probe_json_cap()
     if server:
-        # The F2 fix declares itself (DRAINS_REQUEST_BODIES = True in server.py). Only the marker
-        # counts: hub versions before it had _discard_body, but drained only refused requests.
-        drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server))
-        m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
-        caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
+        if drains is None:
+            drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server))
+        if caps is None:
+            m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
+            caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
     units = {u: _show(u, *UNIT_PROPS) for u in _our_units()}
     addons = load_addons()
     addon_props = {a["unit"]: _show(a["unit"], *UNIT_PROPS, "ActiveState", "UnitFileState", "ExecStart", "Environment")
