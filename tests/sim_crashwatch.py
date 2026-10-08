@@ -151,8 +151,8 @@ for good in ("crashwatch-preempt:reboot", "crashwatch-panic:on", "crashwatch-sna
     check(f"  the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
 for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
-print(health.fix("crashwatch-preempt:radio"))
-check("  a switch pressed: the setting changed", cw.load_settings()["preempt"] == "radio")
+said = health.fix("crashwatch-preempt:radio")
+check("  a switch pressed: the setting changed, and said", cw.load_settings()["preempt"] == "radio" and said == "a failing radio is reset at once")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
