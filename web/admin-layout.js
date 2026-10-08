@@ -49,6 +49,7 @@ const AL = (() => {
   const pages = [];
   const badges = {};
   const hiddenLinks = new Set();
+  const onBadge = [];  // told when any section's word changes (Overview's Needs attention, F4)
   const onBuild = [];  // called after each build: admin.js fills the generated sections  // sections whose page's sidebar entry is hidden (the setup steps, once done)
   let built = false;
 
@@ -232,6 +233,7 @@ const AL = (() => {
   function badge(id, text) {
     if (text) badges[id] = text; else delete badges[id];
     paint(id);
+    onBadge.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
   }
   function paint(id) {
     const s = document.getElementById(id);
@@ -266,6 +268,7 @@ const AL = (() => {
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       }
     });
-  return { LAYOUT, show, groups: () => groups, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
+  return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (f) => onBadge.push(f),
+    titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
 })();
 if (typeof window !== 'undefined') window.AL = AL;

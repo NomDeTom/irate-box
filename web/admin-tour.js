@@ -60,6 +60,7 @@ const TOUR = (() => {
 
   // The setup step: each decision a link, its state beside it.
   function drawList() {
+    if (typeof drawAttention === 'function') drawAttention();  // Overview's Needs attention counts what is left (F4)
     const li = document.querySelector('#setup-steps [data-step="decisions"]');
     if (!li) return;
     const n = left().length;

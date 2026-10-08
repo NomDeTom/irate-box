@@ -211,6 +211,17 @@ setTimeout(() => {
     w.AL.badge('secdoctor', '');
     w.location.hash = ''; w.AL.show();
   }
+  // F4: Overview's Needs attention, from the words beside the sidebar's entries.
+  {
+    const links = [...d.querySelectorAll('#attention .attention-list a')].map((a) => a.getAttribute('href'));
+    check('needs attention: the box doctor\'s problems and the failed update check, each a link', links.includes('#health') && links.includes('#updoctor'), links.join(' '));
+    w.AL.badge('moderation', '2');
+    check('needs attention: a reported item appears at once, worded', /2 reported items waiting/.test(t('#attention')[0]));
+    w.AL.badge('moderation', '');
+    w.AL.badge('apps', 'working');
+    check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
+    w.AL.badge('apps', '');
+  }
   // The words of the old menu are gone (F1): no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')

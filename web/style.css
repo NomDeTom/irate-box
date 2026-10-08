@@ -1328,3 +1328,9 @@ html:has(> body.admin) { background: var(--bg); }
 .tour-text p { margin: 0.2rem 0 0; }
 .tour-list { margin: 0.4rem 0 0.5rem 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
 .tour-list li.done a { color: var(--muted); }
+
+/* Overview's Needs attention (menu overhaul F4): what is waiting on the admin, each a link. */
+.attention { margin: 0 0 1rem; padding: 0.5rem 0.9rem; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; background: var(--surface); }
+.attention h3 { margin: 0.2rem 0 0.4rem; font-size: 0.95rem; }
+.attention .attention-list { margin: 0; }
+.attention .attention-list a { font-weight: 600; }

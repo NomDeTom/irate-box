@@ -713,6 +713,7 @@ function renderModeration(data) {
 // The queue across the apps (M10): what was reported enough to count, worst first; Keep or Delete.
 function renderReports(data, del) {
   const queue = data.queue || [], rs = data.reports;
+  badge('moderation', queue.length ? String(queue.length) : '');
   const q = document.getElementById('mod-queue');
   if (q) q.replaceChildren(queue.length ? AW.shortList(queue.map((r) => ({ id: r.key, title: r.text.slice(0, 80) || '(empty)',
     summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`,
@@ -3948,3 +3949,37 @@ async function loadSavesCrossDevice() {
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadSavesCrossDevice();
+
+// --- Needs attention (menu overhaul F4; the mock's ov-attention) --------------------------------
+// One list at the top of Overview of what is waiting on the admin, each a link to where it is dealt
+// with: the words the sections already put beside their sidebar entries, and the setup decisions
+// not yet made. Work in progress ("working") isn't waiting on anyone, so it is left out.
+const ATTENTION = {
+  health: (w) => (w === '!' ? 'The root helper is stuck: nothing the box is asked to do gets done' : `${w} thing${w === '1' ? '' : 's'} wrong with the box`),
+  secdoctor: (w) => `${w} security finding${w === '1' ? '' : 's'} to fix`,
+  security: (w) => `${w} security choice${w === '1' ? '' : 's'} to make or leave`,
+  updoctor: (w) => (w === '!' ? 'An update failed its checks' : `${w} problem${w === '1' ? '' : 's'} with updates`),
+  updates: (w) => ({ ready: 'An update is fetched, checked and ready to install', new: 'An update is available' }[w] || null),
+  clock: (w) => `${w} clock problem${w === '1' ? '' : 's'}`,
+  network: () => 'A network link is down',
+  git: (w) => `${w} build${w === '1' ? '' : 's'} failed since you last looked`,
+  moderation: (w) => `${w} reported item${w === '1' ? '' : 's'} waiting for a decision`,
+};
+function drawAttention() {
+  const box = document.getElementById('attention');
+  if (!box) return;
+  const items = Object.entries(AL.badges()).filter(([, w]) => w && w !== 'working').map(([id, w]) => {
+    const say = ATTENTION[id] ? ATTENTION[id](w) : `${AL.titleOf(id)}: ${w}`;
+    return say && { id, text: say, where: AL.titleOf(id) };
+  }).filter(Boolean);
+  const T = window.TOUR;
+  const left = T ? T.DECISIONS.length - T.decided().size : 0;
+  if (left > 0) items.push({ id: 'welcome', text: `${left} setup decision${left === 1 ? '' : 's'} not made yet: the box runs on the defaults until then`, where: 'Setup steps' });
+  box.replaceChildren(el('h3', { textContent: 'Needs attention' }), items.length
+    ? el('ul', { className: 'admin-checks attention-list' }, ...items.map((i) => el('li', { className: 'check' },
+      el('a', { href: '#' + i.id, textContent: i.text }), el('span', { className: 'setting-desc', textContent: ` — ${i.where}` }))))
+    : el('p', { className: 'setting-desc', textContent: 'Nothing is waiting on you.' }));
+}
+AL.onBadge(drawAttention);
+AL.onBuild(drawAttention);
+drawAttention();
