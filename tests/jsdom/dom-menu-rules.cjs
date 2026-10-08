@@ -150,7 +150,22 @@ check('no page errors', !errors.length, errors.join('; '));
     // is every button the page and its empty states draw, on every page.
     const pagesBuilt = rd.querySelectorAll('.admin-page').length;
     check('the real /admin: a page for every sidebar entry', pagesBuilt > 20 && pagesBuilt === rd.querySelectorAll('.admin-side-list a[data-page]').length, pagesBuilt);
-    console.log(`failures: ${fails}`);
-    process.exit(fails ? 1 : 0);
+    // 3e, 3f on the older lists (F8): bounded, and a filter once long, through every redraw.
+    const msgs = rd.getElementById('mod-messages');
+    check('3e an older record list bounded: the shoutbox\'s messages', msgs.classList.contains('aw-bounded'));
+    msgs.replaceChildren(...Array.from({ length: 20 }, (_, i) => Object.assign(rd.createElement('div'), { textContent: i === 7 ? 'Moth: anyone on 868?' : `Ann: hello ${i}` })));
+    setTimeout(() => {
+      const bar = rd.querySelector('[data-filter-for="mod-messages"]');
+      check('3f past twelve, a filter over it', bar && !bar.hidden && /20 of 20/.test(bar.textContent), bar && bar.textContent);
+      const q = bar.querySelector('input');
+      q.value = '868'; q.dispatchEvent(new rw.Event('input'));
+      check('  the filter shows what matches', [...msgs.children].filter((r) => !r.hidden).length === 1 && /1 of 20/.test(bar.textContent));
+      msgs.replaceChildren(...Array.from({ length: 5 }, () => rd.createElement('div')));
+      setTimeout(() => {
+        check('  a short list again: no filter, everything shown', bar.hidden && [...msgs.children].every((r) => !r.hidden));
+        console.log(`failures: ${fails}`);
+        process.exit(fails ? 1 : 0);
+      }, 20);
+    }, 20);
   }, 2500);
 }
