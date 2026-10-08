@@ -1,0 +1,31 @@
+{
+ "id": "meshtasticd",
+ "title": "meshtasticd (Meshtastic's Linux daemon)",
+ "package": "meshtasticd",
+ "summary": "Meshtastic on Linux: a radio on the box's pins or USB, as a Meshtastic node.",
+ "channels": {
+  "beta": "https://download.opensuse.org/repositories/network:/Meshtastic:/beta/{suite}/",
+  "alpha": "https://download.opensuse.org/repositories/network:/Meshtastic:/alpha/{suite}/",
+  "daily": "https://download.opensuse.org/repositories/network:/Meshtastic:/daily/{suite}/"
+ },
+ "suffixes": {
+  "beta": "~beta",
+  "alpha": "~alpha",
+  "daily": "~unstable"
+ },
+ "default_channel": "beta",
+ "key": "config/signing/meshtastic-obs.asc",
+ "fingerprint": "426AA6B0285C2096B70D9FC2528423A469A77D9A",
+ "unit": "meshtasticd.service",
+ "labels": {
+  "beta": "Beta",
+  "alpha": "Alpha",
+  "daily": "Nightly (daily)"
+ },
+ "image": {
+  "name": "mpwrd-menu (mPWRD-OS)",
+  "tool": "usr/bin/mpwrd-menu",
+  "list": "etc/apt/sources.list.d/network:Meshtastic:{channel}.list",
+  "key": "etc/apt/trusted.gpg.d/network_Meshtastic_{channel}.gpg"
+ }
+}
