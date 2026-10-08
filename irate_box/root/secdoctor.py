@@ -1418,6 +1418,80 @@ def step_accounts(ctx):
     return out
 
 
+def step_accounts_hub(ctx):
+    """The hub's own accounts (step 16, plans/accounts-plan stage 2): no account with a hash that
+    isn't scrypt at today's strength, users mode never left loosely over plain HTTP, and every app
+    in users mode has its gate actually wired in the web server's config."""
+    from irate_box.hub import access as acc, accounts as accmod
+    about = {"kind": "setting", "key": "accounts"}
+    try:
+        data = json.loads(_read(STATE / "accounts.json") or "{}")
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    accounts = data.get("accounts") if isinstance(data.get("accounts"), dict) else {}
+    out = []
+    weak = []
+    for name, a in accounts.items():
+        h = a.get("hash") if isinstance(a, dict) else None
+        if not h:
+            continue  # waiting for its one-time code (make()); it cannot log in yet
+        parts = h.split("$")
+        ok = len(parts) == 6 and parts[0] == "scrypt" and parts[1].isdigit() and int(parts[1]) >= accmod.SCRYPT["n"]
+        if not ok:
+            weak.append(name)
+    if not accounts:
+        out.append(F("accounts-hash", "The hub's own accounts", "ok", "None: no one has signed up.", ref="", about=about))
+    elif weak:
+        out.append(F("accounts-hash", "An account's password hash is not scrypt at today's strength", "problem",
+                     f"{_list(weak)}: accounts.json may have been edited by hand, or made by an older build.",
+                     "Reset the account's password (/admin → Accounts), which hashes it again.", "", about=about))
+    else:
+        out.append(F("accounts-hash", "Password hashes", "ok", "Every account's hash is scrypt, at today's strength.", ref="", about=about))
+
+    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    signup = settings.get("signup") if settings.get("signup") in accmod.SIGNUP else accmod.DEFAULTS["signup"]
+    http = settings.get("http") if settings.get("http") in accmod.HTTP else accmod.DEFAULTS["http"]
+    state = acc.read(ETC / "access.json")
+    users_apps = sorted(i for i in acc.ROUTED if acc.mode_of(state, i) == "users")
+    if signup == "off" or not users_apps:
+        return out
+    from irate_box.root import tls
+    https_on = bool(tls.status().get("on"))
+    if not https_on and http != "prevented":
+        out.append(F("accounts-http", "Apps for users, without HTTPS required", "problem",
+                     f"{_list(users_apps)} ask for an account, but HTTPS is "
+                     + ("not set up" if not https_on else "not required")
+                     + f" and the sign-up page's stance on plain HTTP is '{http}': a password can be read off the air.",
+                     "Turn on HTTPS (/admin → Security → HTTPS), and set Accounts' plain-HTTP stance to 'prevented'.", "", about=about))
+    else:
+        out.append(F("accounts-http", "Apps for users, over HTTPS", "ok",
+                     "HTTPS is set up." if https_on else "Plain HTTP refuses a password (the stance is 'prevented').", ref="", about=about))
+
+    kind = ctx.get("front_kind")
+    missing = []
+    if kind == "nginx":
+        gates_dir = ETC / "nginx-access.conf.d"
+        for i in users_apps:
+            if acc.NGINX_GATE.splitlines()[0] not in (_read(gates_dir / f"gate-{i}.conf") or ""):
+                missing.append(i)
+    elif kind == "caddy":
+        caddy_dir = Path(os.environ.get("HUB_CADDY_DIR", "/etc/caddy"))
+        for i in users_apps:
+            text = _read(caddy_dir / f"{i}.caddy") or ""
+            if "forward_auth" not in text or "/_irate/user" not in text:
+                missing.append(i)
+    if missing:
+        out.append(F("accounts-gate", "An app for users with no gate wired", "problem",
+                     f"{_list(missing)}: access.json says 'users', but the web server's config does not check for a session there. "
+                     "A guest may reach it with no login.",
+                     "Rerun install.sh (it regenerates the gates), or set the app's access again on /admin → Apps.", "", about=about))
+    elif kind in ("nginx", "caddy"):
+        out.append(F("accounts-gate", "Apps for users: the gate is wired", "ok", f"{_list(users_apps)}.", ref="", about=about))
+    return out
+
+
 def _sysctl(name):
     t = _read(SYS_FS / name.replace(".", "/"), 64)
     try:
@@ -2062,6 +2136,7 @@ STEPS = [
     ("secrets", "Secrets at rest", "S13 F30", step_secrets),
     ("git", "Git servers and pushed content", "F17 F18", step_git),
     ("accounts", "Sudo rules and accounts", "", step_accounts),
+    ("accounts-hub", "The hub's own accounts and sign-in", "", step_accounts_hub),
     ("kernel", "Kernel protections", "F3 F9", step_kernel),
     ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
     ("debian-cis", "The CIS benchmark (debian-cis, in the deep audit)", "", step_deep_cis),
