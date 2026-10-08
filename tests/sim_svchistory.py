@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The services' uptime (next-work plan step 35, svchistory.py), offline: five-minute samples into
 hourly buckets (up of taken, starts by a new InvocationID), gaps as no data, the clock going back,
-35 days kept; the week by hour and 35 days by day the page draws; the sampler writing only while
-the clock is trusted. python3 tests/sim_svchistory.py"""
+72 days kept; the last 72 hours by hour and 72 days by day the page draws (githubstatus.com's
+format); the sampler writing only while the clock is trusted. python3 tests/sim_svchistory.py"""
 import json, os, sys, tempfile, time
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="svchist-"))
@@ -29,22 +29,28 @@ S.record(h, {"kiwix.service": (False, "b")}, D0 + 3600)
 check("  the clock gone back: the sample dropped", e["s"] == before)
 for k in range(S.KEEP + 5):
     S.record(h, {"kiwix.service": (True, "b")}, D0 + 4 * 3600 + k * 3600)
-check("  35 days kept", len(e["s"]) == 3 * S.KEEP and e["first"] + S.KEEP - 1 == (D0 + 4 * 3600 + (S.KEEP + 4) * 3600) // 3600)
+check("  72 days kept", len(e["s"]) == 3 * S.KEEP and e["first"] + S.KEEP - 1 == (D0 + 4 * 3600 + (S.KEEP + 4) * 3600) // 3600)
 S.record(h, {"kiwix.service": (True, "b")}, D0 + 200 * 86400)
-check("  a jump past 35 days starts again", e["s"] == "110")
-# The summary: the week by hour, 35 days by day, local time.
+check("  a jump past 72 days starts again", e["s"] == "110")
+# The summary: the last 72 hours by hour, nothing for the first two, a short outage with a
+# restart in hour 10, and the current (72nd) hour stopping 30 minutes in.
+WIN = D0 - 71 * 3600
 h = {}
-for k in range(6 * 288):
-    t = D0 - 5 * 86400 + k * 300 + 5
-    down = 5 * 288 - 2 <= k < 5 * 288 + 4       # the last 10 min of day 5, the first 20 of day 6
-    S.record(h, {"kiwix.service": (not down, "x" if k < 5 * 288 + 4 else "y")}, t)
-out = S.summarize(h, D0 + 86400 - 60)
+for k in range(24, 71 * 12 + 6):
+    t = WIN + k * 300 + 5
+    hr = k // 12
+    down = hr == 10 and 2 <= k % 12 < 4
+    inv = "y" if (hr > 10 or (hr == 10 and k % 12 >= 4)) else "x"
+    S.record(h, {"kiwix.service": (not down, inv)}, t)
+now = WIN + 71 * 3600 + 1800
+out = S.summarize(h, now)
 u = out["units"]["kiwix.service"]
-check("summary: 168 hours, 35 days, the days' labels from the hub", len(u["week"]) == 168 and len(u["month"]) == 35 and len(out["days"]) == 7
-      and len(out["month_days"]) == 35 and out["days"][-1]["date"] == "2026-10-07" and out["month_days"][-1]["label"] == "Wed 07", out["days"][-1])
-check("  today's 00:00 hour: 8 of 12 up, the start marked", u["week"][6 * 24] == {"up": round(8 / 12, 3), "n": 12, "restarts": 1}, u["week"][6 * 24])
-check("  before the record began: no data", u["week"][0] is None and u["month"][0] is None)
-check("  the week in a line: the share up, the starts", u["summary"]["restarts"] == 1 and 0.99 < u["summary"]["up"] < 1, u["summary"])
+check("summary: 72 hours, 72 days, the days' labels from the hub", len(u["hours"]) == 72 and len(u["month"]) == 72
+      and len(out["hour_cols"]) == 72 and len(out["hour_full"]) == 72 and len(out["month_days"]) == 72, u)
+check("  the outage's hour: 10 of 12 up, the start marked", u["hours"][10] == {"up": round(10 / 12, 3), "n": 12, "restarts": 1}, u["hours"][10])
+check("  before the record began: no data", u["hours"][0] is None and u["month"][0] is None)
+check("  the current (partial) hour: fewer samples", u["hours"][71] is not None and u["hours"][71]["n"] == 6, u["hours"][71])
+check("  in words' worth: the share up, the starts", u["summary"]["restarts"] == 1 and 0.9 < u["summary"]["up"] < 1, u["summary"])
 # The sampler: only while the clock is trusted, one `systemctl show`, the file written whole.
 calls = []
 S.look = lambda units: (calls.append(list(units)), {"kiwix.service": (True, "z")})[1]

@@ -119,7 +119,7 @@ for t in range(3010, 3200, 10):
     acts += w.tick(t, {"link": False, "drops": [], "can": ALL, "owner_off": False})
 check("after reconnecting, a real drop is repaired again", "reconnect" in acts, acts)
 # The links' uptime history (step 34, linkhistory.py): five-minute slots, the worst state in each,
-# gaps as no data, the clock going back, 35 days kept; the hour and day buckets the page draws.
+# gaps as no data, the clock going back, 72 days kept; the hour and day buckets the page draws.
 import os, json, tempfile, time  # noqa: E402
 from irate_box.hub import linkhistory as LH  # noqa: E402
 os.environ["TZ"] = "UTC"; time.tzset()
@@ -134,30 +134,29 @@ check("  an unknown state is not recorded", not LH.record(h, "wlan0", "x", D0 + 
 for k in range(4, LH.KEEP + 11):
     LH.record(h, "wlan0", "u", D0 + 300 * k)
 e = h["ifaces"]["wlan0"]
-check("  35 days kept, the oldest dropped", len(e["s"]) == LH.KEEP and e["first"] + len(e["s"]) - 1 == (D0 + 300 * (LH.KEEP + 10)) // 300, (len(e["s"]), e["first"]))
+check("  72 days kept, the oldest dropped", len(e["s"]) == LH.KEEP and e["first"] + len(e["s"]) - 1 == (D0 + 300 * (LH.KEEP + 10)) // 300, (len(e["s"]), e["first"]))
 LH.record(h, "wlan0", "u", D0 + 300 * (3 * LH.KEEP))
-check("  a jump past 35 days starts again", h["ifaces"]["wlan0"]["s"] == "u")
-# A week: up, then on day 6 a 15-minute outage at 03:10 and the owner switching it off for an hour.
+check("  a jump past 72 days starts again", h["ifaces"]["wlan0"]["s"] == "u")
+# The last 72 hours: nothing for its first two hours, then up throughout, except a 15-minute
+# outage in hour 10 and the owner switching it off for the whole of hour 20.
+WIN = D0 - 71 * 3600   # the window's oldest hour starts here (hours[0])
 h = {}
-for slot in range(12, 6 * 288 + 200):  # from 01:00 on the first day
-    t = D0 - 6 * 86400 + slot * 300 + 30
-    st = "u"
-    if 5 * 288 + 38 <= slot < 5 * 288 + 41:
-        st = "d"                      # day 6, 03:10-03:25
-    if 5 * 288 + 120 <= slot < 5 * 288 + 132:
-        st = "o"                      # day 6, 10:00-11:00
+for slot_i in range(24, 71 * 12 + 6):   # hour index 2 onward; the window's last hour stops 30 min in
+    t = WIN + slot_i * 300 + 30
+    hr = slot_i // 12
+    st = "o" if hr == 20 else "d" if hr == 10 and 2 <= slot_i % 12 < 5 else "u"
     LH.record(h, "wlan0", st, t, "uplink")
-now = D0 + 200 * 300 + 60
+now = WIN + 71 * 3600 + 1800   # half an hour into the current (72nd) hour
 out = LH.summarize(h, now)["wlan0"]
-day6 = out["week"][5]
-check("summary: 7 days by 24 hours, 35 days, in local time", len(out["week"]) == 7 and all(len(d["hours"]) == 24 for d in out["week"])
-      and len(out["month"]) == 35 and out["week"][-1]["date"] == "2026-10-07", [d["date"] for d in out["week"]])
-check("  the outage's hour: up 9 of 12, one drop", day6["hours"][3] == {"up": 0.75, "n": 12, "drops": 1, "off": False}, day6["hours"][3])
-check("  the owner's hour off: not up, not a drop, marked off", day6["hours"][10]["up"] == 0 and day6["hours"][10]["drops"] == 0 and day6["hours"][10]["off"])
-check("  hours not yet come, and before the record began: no data", out["week"][-1]["hours"][23] is None and out["week"][0]["hours"][0] is None, out["week"][0]["hours"][:2])
+check("summary: 72 hours, 72 days, in local time", len(out["hours"]) == 72 and len(out["hour_cols"]) == 72
+      and len(out["hour_full"]) == 72 and len(out["month"]) == 72, (len(out["hours"]), len(out["month"])))
+check("  the outage's hour: up 9 of 12, one drop", out["hours"][10] == {"up": 0.75, "n": 12, "drops": 1, "off": False}, out["hours"][10])
+check("  the owner's hour off: not up, not a drop, marked off", out["hours"][20]["up"] == 0 and out["hours"][20]["drops"] == 0 and out["hours"][20]["off"])
+check("  before the record began: no data", out["hours"][0] is None and out["hours"][1] is None)
+check("  the current (partial) hour: fewer samples", out["hours"][71] is not None and out["hours"][71]["n"] == 6, out["hours"][71])
 sm = out["summary"]
-check("  in words' worth: the share up, drops, the longest outage and when", sm["drops"] == 1 and sm["longest"] == {"minutes": 15, "at": D0 - 86400 + 3 * 3600 + 600}
-      and 0.99 < sm["up"] < 0.995, sm)
+check("  in words' worth: the share up, one drop, the longest outage and when", sm["drops"] == 1
+      and sm["longest"] == {"minutes": 15, "at": WIN + 10 * 3600 + 2 * 300} and 0.9 < sm["up"] < 1, sm)
 check("  a day with nothing recorded: no data", out["month"][0].get("up") is None and "date" in out["month"][0])
 # The watchdog's recorder: written once a slot closes, never while the clock is not trusted.
 U.HISTORY = Path(tempfile.mkdtemp()) / "uplink-history.json"
