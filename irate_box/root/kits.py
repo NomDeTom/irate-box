@@ -92,12 +92,12 @@ def arch():
     return run(["dpkg", "--print-architecture"]).stdout.strip()
 
 
-def _packages(kit):
-    """(the kit's packages for this box, those left out). A kit from Debian's debug archive (the
+def _packages(kit, fetching=False):
+    """(the kit's packages for this box, those left out; fetching, its alternatives too). A kit from Debian's debug archive (the
     symbols kit) asks only for the symbols of what is installed here: a -dbgsym package depends on
     its program at exactly the same version, so asking for mosquitto's on a box without it would
     bring mosquitto too."""
-    pkgs, left = kitdefs.packages_for(kit, arch())
+    pkgs, left = kitdefs.packages_for(kit, arch(), fetching)
     if kit.get("debug_archive"):
         here = _installed_packages()
         absent = [p for p in pkgs if p.endswith("-dbgsym") and p[:-len("-dbgsym")] not in here]
@@ -260,7 +260,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         leave_out = _kit_added(installed_state())
         _base_status(stage / "status", leave_out)
         base = {l[len("Package: "):] for l in (stage / "status").read_text().splitlines() if l.startswith("Package: ")}
-        packages, left_out = _packages(kit)
+        packages, left_out = _packages(kit, fetching=True)
         log(f"{kit_id}: downloading {len(packages)} packages and what they need")
         run(["apt-get", *debug, "install", "--download-only", "-y", "-q", "--no-install-recommends",
              "-o", f"Dir::Cache::archives={stage}", "-o", f"Dir::State::status={stage / 'status'}",
@@ -314,7 +314,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         write_index()
         changed = "unchanged" if same else f"{len(pkgs)} packages, {new['bytes'] >> 20} MB"
         return f"{kit['title']}: {changed}" + (f"; already on the box: {', '.join(on_box)}" if on_box else "") + \
-            (f"; left out on this {new['arch']} board (64-bit only): {', '.join(left_out)}" if left_out else "")
+            (f"; left out on this {new['arch']} board: {kitdefs.why_left_out(kit, left_out)}" if left_out else "")
     finally:
         shutil.rmtree(stage, ignore_errors=True)
 
@@ -458,20 +458,58 @@ def set_removal(kit_id, hours):
     return f"{kit_id}: " + ("kept until removed" if hours is None else f"removed in {hours} h")
 
 
+def _purgeable(go, keep):
+    """Of the packages in go, those apt can purge while every package in keep stays, and without
+    taking anything else with them (a purge also removes what depends on what it purges). Asked of
+    apt itself (-s, a simulation), all at once first, then one more at a time until none can join."""
+    def takes(cands):
+        r = run(["apt-get", *_apt_offline(), "-s", "purge", *cands, *[f"{k}+" for k in sorted(keep)]], check=False)
+        return None if r.returncode else {l.split()[1] for l in (r.stdout or "").splitlines() if l.startswith(("Purg ", "Remv "))}
+    gone = takes(go)
+    if gone is not None and gone <= set(go):
+        return list(go)
+    ok, rest, more = [], list(go), True
+    while more:
+        more = False
+        for p in list(rest):
+            gone = takes(ok + [p])
+            if gone is not None and gone <= set(ok + [p]):
+                ok.append(p); rest.remove(p); more = True
+    return ok
+
+
 def remove(kit_id, log=print):
-    """Exactly what the kit's install added, but what another installed kit added too."""
+    """Exactly what the kit's install added, but what another installed kit added or lists (kits
+    overlap: Recovery and System both have smartmontools), and nothing another kit's packages need."""
     state = installed_state()
     if kit_id not in state:
         raise ValueError(f"{kit_id} is not installed")
-    shared = _kit_added(state, but=kit_id)
     present = _installed_packages()
+    defs = definitions()
+    listed_by = {k: set(_packages(defs[k])[0]) for k in state if k != kit_id and k in defs}
+    listed = set().union(*listed_by.values()) if listed_by else set()
+    shared = (_kit_added(state, but=kit_id) | listed) & set(present)
     go = sorted(p for p in state[kit_id].get("added", []) if p not in shared and p in present)
+    if go:
+        can = _purgeable(go, shared)
+        held = sorted(set(go) - set(can))
+        if held:
+            log(f"{kit_id}: keeping {', '.join(held)}: another kit's packages need them")
+        shared |= set(held)
+        go = can
     if go:
         log(f"{kit_id}: removing {len(go)} packages")
         run(["apt-get", *_apt_offline(), "purge", "-y", "-q", *go], timeout=1800)
+    kept = shared & set(state[kit_id].get("added", []))
+    # What this kit added and another still uses passes to the kits that list it (with what those
+    # need), so it goes when the last of them does rather than staying for good; failing those, to
+    # every kit still installed.
+    takers = [k for k, names in listed_by.items() if names & kept] or [k for k in state if k != kit_id]
+    for k in takers if kept else ():
+        state[k]["added"] = sorted(set(state[k].get("added", [])) | kept)
     del state[kit_id]
     _write(INSTALLED, state)
-    return f"{kit_id}: removed {len(go)} packages" + (f"; kept {len(shared & set(present))} another kit uses" if shared else "")
+    return f"{kit_id}: removed {len(go)} packages" + (f"; kept {len(kept)} another kit uses" if kept else "")
 
 
 # --- the owner's own kits, and extra tools in a shipped kit (step 38) -----------------------
