@@ -21,6 +21,8 @@ req = server.CONTROL_REQUESTS / "aaaa.json"
 req.write_text('{"action": "kit-fetch"}')
 old = time.time() - 180
 os.utime(req, (old, old))
+_mono = time.monotonic
+time.monotonic = lambda: _mono() + 1e5  # a freshly booted runner's uptime is under the 240 s the test needs
 unit = {"state": "activating", "since": time.monotonic() - 240}
 def fake_run(cmd, **kw):
     out = f"ActiveState={unit['state']}\nInactiveExitTimestampMonotonic={int(unit['since'] * 1e6)}\n"
