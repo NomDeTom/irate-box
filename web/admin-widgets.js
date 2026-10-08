@@ -34,7 +34,7 @@ const AW = (() => {
   const btn = (label, props = {}) => h('button', { type: 'button', class: 'action-btn', ...props }, label);
 
   // A state, one meaning each (rule 6c): ok, warn, bad or info, from the word unless told.
-  const BAD = /red|fail|down|stopped|invalid|reported|problem/i, WARN = /amber|update|behind|flagged|queued|planned|working|ready|warn/i,
+  const BAD = /red|fail|down|stopped|invalid|reported|problem/i, WARN = /amber|update|behind|flagged|queued|planned|working|ready|warn|^not /i,
     OK = /^ok$|built|installed|cached|stable|running|kept|on$/i;
   function pill(text, tone) {
     const t = tone || (BAD.test(text) ? 'bad' : WARN.test(text) ? 'warn' : OK.test(text) ? 'ok' : 'info');
