@@ -298,6 +298,21 @@ def ssh_findings(settings, keys, rec):
     else:
         out.append(_finding("ssh-password", "SSH password login", "ok", "Keys only.", "",
                             [{"choice": "ssh-password-undo", "label": "Undo"}] if "password" in ours else []))
+    # Forwarding (stance review 2026-10-08, I6): Debian's and Armbian's defaults leave TCP, agent
+    # and X11 forwarding on. TCP forwarding hands anyone with a login a proxy from the hotspot
+    # into the box's other network, which is the separation the hotspot design rests on.
+    fwd = [n for n, k in (("TCP", "allowtcpforwarding"), ("agent", "allowagentforwarding"), ("X11", "x11forwarding"))
+           if settings.get(k, "yes") == "yes"]
+    if fwd:
+        out.append(_finding("ssh-forwarding", "SSH forwarding", "warn",
+                            f"{', '.join(fwd)} forwarding on: a login here is also a tunnel through the box, from the hotspot to its other "
+                            "network, and to an agent or display on the machine that logged in.",
+                            "Off unless you use it (an SSH tunnel to the box's network, from afar through Tailscale, needs TCP forwarding).",
+                            [{"choice": "ssh-forwarding-off", "label": "Turn forwarding off",
+                              "confirm": "Turn off SSH TCP, agent and X11 forwarding? Plain logins and scp still work; tunnels through the box don't."}]))
+    else:
+        out.append(_finding("ssh-forwarding", "SSH forwarding", "ok", "TCP, agent and X11 forwarding off.", "",
+                            [{"choice": "ssh-forwarding-undo", "label": "Undo"}] if "forwarding" in ours else []))
     return out
 
 
@@ -709,6 +724,8 @@ def _write_sshd_dropin(ssh):
             lines.append("PermitRootLogin no")
         if "password" in ssh:
             lines += ["PasswordAuthentication no", "KbdInteractiveAuthentication no"]
+        if "forwarding" in ssh:
+            lines += ["AllowTcpForwarding no", "AllowAgentForwarding no", "X11Forwarding no"]
         SSHD_DROPIN.write_text("\n".join(lines) + "\n")
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     check = run(sshd, "-t")
@@ -730,7 +747,7 @@ def _ssh(rec, what, on):
     rec["ssh"] = {k: rec.get("ssh", {}).get(k, time.strftime("%Y-%m-%d")) for k in ssh}
     if not rec["ssh"]:
         rec.pop("ssh")
-    return {"root": "SSH root login", "password": "SSH password login"}[what] + (" turned off" if on else ": back as it was")
+    return {"root": "SSH root login", "password": "SSH password login", "forwarding": "SSH forwarding"}[what] + (" turned off" if on else ": back as it was")
 
 
 def _cockpit(rec, mode):
@@ -826,6 +843,8 @@ def fix(choice, updates_log):
         msg = _ssh(rec, "root", choice.endswith("off"))
     elif choice in ("ssh-password-off", "ssh-password-undo"):
         msg = _ssh(rec, "password", choice.endswith("off"))
+    elif choice in ("ssh-forwarding-off", "ssh-forwarding-undo"):
+        msg = _ssh(rec, "forwarding", choice.endswith("off"))
     elif choice in ("cockpit-loopback", "cockpit-off", "cockpit-undo"):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
@@ -858,6 +877,7 @@ def undo_all():
     # password back. They stay as they are (the page's own Undo still puts them back before then).
     for choice in (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else []) + \
                   (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else []) + \
+                  (["ssh-forwarding-undo"] if "forwarding" in rec.get("ssh", {}) else []) + \
                   (["cockpit-undo"] if "cockpit" in rec else []) + (["llmnr-undo"] if rec.get("llmnr") else []) + \
                   [f"unit-undo:{u}" for u in rec.get("units", {})] + \
                   [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})]:

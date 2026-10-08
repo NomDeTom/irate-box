@@ -172,5 +172,16 @@ check("  on, but never ran or ran long ago: a warning", uf(True, {"APT::Periodic
       and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30)["status"] == "warn")
 check("  on and ran this week: ok", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2)["status"] == "ok")
 
+# I6 (stance review 2026-10-08): SSH forwarding, found from sshd -T's words and offered off.
+sf = lambda s, rec={}: {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec)}  # noqa: E731
+on = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "yes", "allowagentforwarding": "no", "x11forwarding": "yes"})
+check("ssh forwarding on (the image's default): a warning naming which, with the offer",
+      on["ssh-forwarding"]["status"] == "warn" and "TCP, X11" in on["ssh-forwarding"]["detail"]
+      and on["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-off", on["ssh-forwarding"])
+off = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "no", "allowagentforwarding": "no", "x11forwarding": "no"}, {"ssh": {"forwarding": "2026-10-08"}})
+check("  off by this page: ok, with Undo", off["ssh-forwarding"]["status"] == "ok" and off["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-undo")
+check("  undo_all knows it, fix() takes it", "ssh-forwarding-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
+      and '"ssh-forwarding-off", "ssh-forwarding-undo"' in (REPO / "irate_box/root/security.py").read_text())
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -1377,10 +1377,15 @@ def step_accounts(ctx):
         other = [(f, s) for f, s in nopass if (f, s) not in service]
         if other:
             temp = [f for f, _ in other if "temp" in f]
-            out.append(F("acct-sudo", "Passwordless sudo rules", "warn",
+            # Together a problem (stance review 2026-10-08, I1): a passwordless-sudo account that
+            # sshd lets in by password is root for whoever guesses one password over the WiFi.
+            guessable = _sshd_passwords()
+            out.append(F("acct-sudo", "Passwordless sudo rules" + (", and SSH accepts passwords" if guessable else ""), "problem" if guessable else "warn",
                          f"{_list(f'{f}: {s}' for f, s in other)}."
-                         + (" A '-temp' file is a rule meant to be removed after the work it was added for." if temp else ""),
-                         "Keep each only as long as it is needed: rm /etc/sudoers.d/<file>, then check `sudo -n true` fails.", ""))
+                         + (" A '-temp' file is a rule meant to be removed after the work it was added for." if temp else "")
+                         + (" sshd accepts passwords, so one guessed password on the network is root with no step in between." if guessable else ""),
+                         "Keep each only as long as it is needed: rm /etc/sudoers.d/<file>, then check `sudo -n true` fails."
+                         + (" Until then, turn SSH password logins off (the Security page)." if guessable else ""), ""))
         else:
             out.append(F("acct-sudo", "Passwordless sudo", "ok", "No NOPASSWD rule in sudoers or sudoers.d.", ref=""))
     passwd = _read(PASSWD)
@@ -1490,6 +1495,16 @@ def step_accounts_hub(ctx):
     elif kind in ("nginx", "caddy"):
         out.append(F("accounts-gate", "Apps for users: the gate is wired", "ok", f"{_list(users_apps)}.", ref="", about=about))
     return out
+
+
+def _sshd_passwords():
+    """Whether sshd here lets anyone in by password (sshd -T); False when there is no sshd."""
+    try:
+        from irate_box.root import security
+        s = security.sshd_settings()
+    except Exception:  # noqa: BLE001  (an sshd that will not answer -T is not a password login)
+        return False
+    return bool(s) and s.get("passwordauthentication", "yes") == "yes"
 
 
 def _sysctl(name):
@@ -2067,6 +2082,21 @@ def _ssh_public(days=REACH_DAYS):
     return seen
 
 
+def _ssh_log_since(days=REACH_DAYS):
+    """The date of sshd's oldest journal line within the window, or "" if none can be read."""
+    try:
+        p = subprocess.Popen(("journalctl", "-q", "--no-pager", "-o", "short-iso", "--since", f"-{days}d",
+                              "-u", "ssh.service", "-u", "sshd.service", "-u", "ssh.socket"),
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        first = p.stdout.readline()
+        p.kill()
+        p.wait(timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    m = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})", first)
+    return m.group(1).replace("T", " ") if m else ""
+
+
 def _global_v6():
     try:
         r = subprocess.run(("ip", "-6", "-o", "addr", "show", "scope", "global"), capture_output=True, text=True, timeout=20)
@@ -2101,6 +2131,10 @@ def step_internet(ctx):
                      f"No request from a public address in the last {REACH_DAYS} days (as the hub sees them: "
                      "the pages it serves, not static files alone)."))
     ssh = _ssh_public()
+    # How far back the evidence goes (stance review 2026-10-08, I7): Armbian keeps the journal
+    # in RAM and trims it, so "the last 7 days" may be since the last boot.
+    since = _ssh_log_since()
+    span = f" sshd's log here goes back to {since}." if since else ""
     if ssh is None:
         out.append(_cannot("reach-ssh", "SSH reached from the internet", "sshd's log could not be read"))
     elif ssh:
@@ -2108,11 +2142,11 @@ def step_internet(ctx):
         out.append(F("reach-ssh", "SSH reached from the internet", "problem",
                      f"In the last {REACH_DAYS} days sshd heard from {len(ssh)} public address{'es' if len(ssh) != 1 else ''} "
                      f"({_list(sorted(ssh))})" + (f", {accepted} login{'s' if accepted != 1 else ''} accepted" if accepted else ", none let in")
-                     + ". Anyone can try passwords on it.",
+                     + ". Anyone can try passwords on it." + span,
                      "Take the router's forward to port 22 off; with it on, turn SSH password logins off (the Security page)."))
     else:
         out.append(F("reach-ssh", "SSH reached from the internet", "ok",
-                     f"sshd heard from no public address in the last {REACH_DAYS} days."))
+                     f"sshd heard from no public address in the last {REACH_DAYS} days." + span))
     v6 = _global_v6()
     out.append(F("reach-ipv6", "A public IPv6 address", "warn" if v6 else "ok",
                  (f"This box has {_list(v6)}: anything listening on all its addresses can be reached from the internet "
