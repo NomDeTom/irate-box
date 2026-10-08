@@ -451,8 +451,8 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         if how == "signup" and not (sign_up_open and access.mode_of(access_state, m["id"]) == "users"):
             how = "signin"  # no sign-up to offer, or an app for the admin only
         dead = how in ("padlock", "grey")
-        attrs = [f'class="service-card{" locked" if how else ""}{" greyed" if how == "grey" else ""}{" padlock" if how == "padlock" else ""}'
-                 f'{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"']
+        attrs = [(f'class="service-card{" locked" if how else ""}{" greyed" if how == "grey" else ""}{" padlock" if how == "padlock" else ""}'
+                  f'{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"')]  # one attribute, two lines
         if size:
             attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
