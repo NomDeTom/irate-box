@@ -2206,10 +2206,90 @@ function fillAccessBlocks() {
   fillSeenBlocks();
   document.querySelectorAll('.access-block[data-app]').forEach((block) => {
     const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
-    block.replaceChildren(...(a ? accessControls(a) : [el('p', { className: 'setting-desc', textContent: 'Always on the hub: no switch.' })]));
+    const seen = (lastAccess.seen || {})[block.dataset.app];
+    block.replaceChildren(...(a ? accessControls(a) : seen ? seenControls(block.dataset.app, seen)
+      : [el('p', { className: 'setting-desc', textContent: 'Always on the hub: no switch.' })]));
   });
+  drawTileOrder();
 }
 AL.onBuild(fillAccessBlocks);
+
+// A tile with no switch of its own (a folder, About; F3): anyone may open it, so only who sees
+// its tile is to choose. Hidden, its address still works.
+const SEEN_ONLY = { auto: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function seenControls(app, cur) {
+  const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
+    ...Object.entries(SEEN_ONLY).map(([v, label]) => {
+      const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: label,
+        onclick: () => visibilitySet({ id: app, visible: cur }, v) });
+      b.setAttribute('aria-pressed', String(cur === v));
+      return b;
+    }));
+  seen.setAttribute('role', 'group');
+  seen.setAttribute('aria-label', 'Who sees its tile');
+  return [seen, el('span', { className: 'setting-desc', textContent: cur === 'hidden' ? 'No tile; its address still works.'
+    : 'Open to anyone who reaches it: it has no switch of its own.' })];
+}
+
+// The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
+// "as its access", shows its tile to guests too, locked, leading to sign-in.
+async function loadSignInOffer() {
+  const box = document.getElementById('sign-in-offer-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'sign_in_offer', label: 'Show guests the tiles of apps for users, locked, with sign-in', kind: 'toggle',
+    value: !!st.sign_in_offer, decision: 'sign-in-offer',
+    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); loadAccess(); } }));
+}
+loadSignInOffer();
+
+// The apps row's order (F3), on "All apps": each tile with who opens it and who sees it; moved
+// with ↑/↓, held until Save, kept by the hub (/admin/tiles).
+let tilesData = null;
+let tilesDraft = null;
+async function loadTileOrder() {
+  try { tilesData = await getJSON('/admin/tiles'); } catch (e) { return; }
+  tilesDraft = { order: tilesData.tiles.map((x) => x.id) };
+  drawTileOrder();
+}
+const OPENS = { public: 'everyone', users: 'users', private: 'the admin', off: 'off' };
+function tileWords(id) {
+  const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
+  if (a) {
+    const seen = a.mode === 'off' ? 'nobody' : a.visible === 'auto' || !a.visible ? 'as its access' : SEEN_LABEL[a.visible];
+    return { summary: `opens: ${OPENS[a.mode] || a.mode} · seen: ${seen}`, badges: [a.mode === 'off' ? 'off' : a.mode] };
+  }
+  const s = lastAccess && (lastAccess.seen || {})[id];
+  return { summary: `opens: everyone · seen: ${SEEN_ONLY[s || 'auto']}`, badges: [s === 'hidden' ? 'hidden' : 'shown'] };
+}
+function drawTileOrder(openId) {
+  const box = document.getElementById('tile-order-box');
+  if (!box || !tilesData || !tilesDraft) return;
+  const byId = new Map(tilesData.tiles.map((x) => [x.id, x]));
+  const order = tilesDraft.order.filter((i) => byId.has(i));
+  const move = (id, d) => { const i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
+    [order[i], order[k]] = [order[k], order[i]]; tilesDraft.order = order; drawTileOrder(id); };
+  const saved = tilesData.tiles.map((x) => x.id);
+  const dirty = order.join() !== saved.join();
+  const items = order.map((id) => { const t = byId.get(id), w = tileWords(id);
+    return { id, title: `${t.icon} ${t.name}`.trim(), summary: w.summary, badges: w.badges, detail: () => [
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Place' }),
+        AW.btn('↑ Earlier', { onclick: () => move(id, -1) }), AW.btn('↓ Later', { onclick: () => move(id, 1) })),
+      document.getElementById('page-app-' + id) ? AW.h('a', { href: '#page-app-' + id, class: 'action-btn' }, 'Its page →') : null,
+    ].filter(Boolean) }; });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'The order waits for Save.' });
+  box.replaceChildren(AW.shortList(items, { id: 'tile-order-list' }), AW.h('div', { class: 'aw-foot' }, note,
+    AW.btn('Discard', { disabled: !dirty, onclick: () => { tilesDraft = { order: saved.slice() }; drawTileOrder(); } }),
+    AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+      try { tilesData = await postJSON('/admin/tiles', { state: { order } }); tilesDraft = { order: tilesData.tiles.map((x) => x.id) }; drawTileOrder(); }
+      catch (err) { note.textContent = err.message; }
+    } })));
+  const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadTileOrder();
 
 function accessControls(a) {
   a = { ...a, visible: a.visible || 'auto' };  // a hub from before M5 says nothing: as its access

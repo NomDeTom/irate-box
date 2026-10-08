@@ -21,7 +21,8 @@ const accessData = { apps: [
   { id: 'git', title: 'Git', mode: 'public', login: false, kind: 'builtin', unit: false },
   { id: 'notes', title: 'Notes', mode: 'off', login: false, kind: 'addon', unit: true },
   { id: 'term', title: 'Terminal', mode: 'public', login: true, kind: 'addon', unit: true },
-], results: [] };
+], results: [], seen: { about: 'auto', 'tools-rf': 'hidden' } };
+const tilesData = { tiles: [{ id: 'drop', name: 'File drop', icon: '📥' }, { id: 'about', name: 'About', icon: 'ℹ️' }], state: { order: [] } };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
   { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true }], progress: null, pending: 0, results: [], log: [] };
 const update = { state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
@@ -65,6 +66,7 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST') {
     posted.push([u, JSON.parse(opts.body)]);
     if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
+    if (u === '/admin/tiles') return new Response(JSON.stringify({ tiles: [...tilesData.tiles].reverse(), state: { order: ['about', 'drop'] } }), { status: 200 });
     if (u === '/admin/firmware') {
       if (posted[posted.length - 1][1].action === 'flush-cache') return new Response(JSON.stringify({ ...fwFix, status: { ...fwFix.status, cache: null } }), { status: 200 });
       return new Response(JSON.stringify(fwFix), { status: 200 });
@@ -76,6 +78,7 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
+  if (u === '/admin/tiles') return new Response(JSON.stringify(tilesData), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
   if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
     progress: null, pending: 0, books: { count: 2, bytes: 3000000000 }, results: [] }), { status: 200 });
@@ -106,7 +109,29 @@ setTimeout(() => {
     kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' '));
   check('  its access block filled from /admin/access: who opens it, who sees its tile', kiwix && !!kiwix.querySelector('.access-block .access-toggle [aria-checked="true"]') && !!kiwix.querySelector('.access-block .access-seen .chip.selected'));
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
-  check('no page for an app with nothing to set (About)', !d.getElementById('page-app-about'));
+  // F3: a tile with no switch (About, the folders) has who sees it, and nothing else of access.
+  check('About\'s page holds only who sees its tile', !!d.querySelector('#page-app-about #app-access-about')
+    && /Who sees it/.test(t('#app-access-about h2')[0]) && !d.querySelector('#page-app-about .access-toggle'));
+  check('a folder\'s page starts with who sees it, then what\'s in it', [...d.querySelectorAll('#page-app-tools-rf > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-tools-rf folder-tools-rf');
+  check('apps with a switch and no tile have a page: Serial, the calculators\' site, Syncthing', ['serial', 'tools', 'sync'].every((i) => d.querySelector(`#page-app-${i} .access-block`)));
+  {
+    // F3: the seen-only chips, and the tiles' order held until Save.
+    const chips = [...d.querySelectorAll('#app-access-about .access-seen .chip')];
+    check('About: "Tile shown to" everyone (the default), as chips', chips.map((c) => c.textContent).join('|') === 'everyone|those logged in|nobody'
+      && chips[0].getAttribute('aria-pressed') === 'true', chips.map((c) => c.textContent).join('|'));
+    chips[2].click();
+    const folderChips = [...d.querySelectorAll('#app-access-tools-rf .access-seen .chip')];
+    check('a hidden folder says so', folderChips[2] && folderChips[2].getAttribute('aria-pressed') === 'true' && /address still works/.test(t('#app-access-tools-rf .access-block')[0]));
+    const rows = [...d.querySelectorAll('#tile-order-list .aw-row')];
+    check('the tiles in order, each saying who opens it and who sees it', rows.length === 2 && /opens: everyone · seen: as its access/.test(rows[0].textContent)
+      && /opens: everyone · seen: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
+    rows[0].querySelector('.aw-row-head').click();
+    [...d.querySelectorAll('#tile-order-list button')].find((b) => /Later/.test(b.textContent)).click();
+    const save = [...d.querySelectorAll('#tile-order-box button')].find((b) => b.textContent === 'Save');
+    check('moved: Save offered, nothing sent yet', save && !save.disabled && !posted.some((p) => p[0] === '/admin/tiles'));
+    save.click();
+  }
+  check('All apps starts with the tiles in order', [...d.querySelectorAll('#page-tile-order > .admin-pane')].map((x) => x.id).join(' ') === 'tile-order apps addons');
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
   check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));
   check('no clock findings in the services doctor', !t('#health-findings li').some((x) => x.startsWith('🔴 Clock') || /Clock module|^.{0,3}Clock —/.test(x)), t('#health-findings li'));
@@ -207,6 +232,9 @@ setTimeout(() => {
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
   [...drop.querySelectorAll('button')].find((b) => b.textContent.includes('Private')).click();
   setTimeout(() => {
+    check('About hidden asks the hub', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about' && p[1].visible === 'hidden'));
+    check('the order saved: About, then the drop', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'] } }),
+      JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));
