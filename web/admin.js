@@ -1201,14 +1201,20 @@ function renderJoint(j) {
   box('joint-summary').textContent = `After merging what the sources agree on: ${a.problem} to fix, ${a.warn} to look at` +
     (j.agreed_ok ? `; ${j.agreed_ok} thing${j.agreed_ok === 1 ? '' : 's'} several sources agree are fine` : '') + '.';
   const items = (j.items || []);
-  box('joint-items').replaceChildren(...items.map((i) => el('div', { className: `git-card joint-item joint-${i.status}` },
-    el('h4', { textContent: `${MARK[i.status]} ${i.title}` }),
-    el('p', { className: 'badges' }, el('span', { className: 'badge', textContent: i.about.kind }),
-      ...i.sources.map((x) => el('span', { className: 'badge badge-mirror', textContent: SOURCE_WORDS[x] || x }))),
-    el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree.` : `Said by ${srcWords(i.sources)}.` }),
-    i.detail ? el('p', { textContent: i.detail }) : null,
-    el('ul', { className: 'joint-titles' }, ...i.titles.slice(0, 4).map((x) => el('li', { textContent: x }))),
-    i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null)));
+  // One list, worst first (item 11 step 4): filters for to fix / to look at, the area and the sources, and a
+  // search; each entry opens to who said it, what they said, and what to do.
+  const WORD = { problem: 'to fix', warn: 'to look at', ok: 'fine' };
+  const RANK = { problem: 0, warn: 1, ok: 2 };
+  box('joint-items').replaceChildren(AW.shortList([...items].sort((x, y) => RANK[x.status] - RANK[y.status]).map((i, n) => ({
+    id: `joint-${n}`, title: `${MARK[i.status]} ${i.title}`,
+    summary: i.sources.length > 1 ? `${i.sources.length} sources agree` : `said by ${srcWords(i.sources)}`,
+    badges: [WORD[i.status] || i.status, i.about.kind, ...i.sources.map((x) => SOURCE_WORDS[x] || x)],
+    detail: () => [
+      el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree: ${srcWords(i.sources)}.` : `Said by ${srcWords(i.sources)}.` }),
+      i.detail ? el('p', { textContent: i.detail }) : null,
+      el('ul', { className: 'joint-titles' }, ...i.titles.map((x) => el('li', { textContent: x }))),
+      i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null],
+  })), { id: 'joint-list', empty: 'Nothing to fix or look at.' }));
   const alone = items.filter((i) => i.alone);
   box('joint-alone').hidden = !alone.length;
   box('joint-alone-list').replaceChildren(...alone.map((i) => el('li', { className: `check check-${i.status}` },
