@@ -157,17 +157,14 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   check('switching builds off asks the hub', posted.some(([, b]) => b.action === 'build' && b.name === 'fw-ci' && b.on === false));
 
-  // The same, as a side panel beside the grid.
-  const as = d.getElementById('git-manage-as');
-  as.value = 'side'; as.dispatchEvent(new w.Event('change'));
-  check('as a side panel: beside the grid, not in it', !d.querySelector('#git-grid .git-manage') && !d.getElementById('git-side').hidden
-    && d.querySelector('#git-side .git-sidepanel') && d.getElementById('git-layout').classList.contains('with-side'));
-  [...d.querySelectorAll('#git-side button')].find((b) => t(b) === 'Close').click();
-  check('Close hides it', d.getElementById('git-side').hidden && !d.getElementById('git-layout').classList.contains('with-side'));
+  // Manage opens under its card only (checklist 3a, F7): no side panel, nothing beside the grid.
+  check('no side panel, nor its choice', !d.getElementById('git-side') && !d.getElementById('git-manage-as'));
+  [...d.querySelectorAll('.git-drawer button')].find((b) => t(b) === 'Close').click();
+  check('Close folds the drawer', !d.querySelector('#git-grid .git-drawer'));
 
-  // New: an empty repository, or a mirror (in Library).
+  // New: an empty repository, or a mirror (under Mirrors).
   d.querySelector('#git-grid .git-new').click();
-  const np = d.querySelector('#git-side .git-manage');
+  const np = d.querySelector('#git-grid .git-drawer.git-manage, #git-grid .git-drawer .git-manage, #git-grid .git-manage');
   check('New offers an empty repository or a mirror', np && /An empty repository/.test(t(np)) && np.querySelector('a[href="#mirrors"]') && np.querySelector('#git-create'));
   const f = d.getElementById('git-create').elements;
   f.name.value = 'notes'; f.area.value = 'private';
@@ -191,7 +188,6 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   button(rv, 'Delete').click();
   await wait();
   check('  Delete asks the hub (the builder does it)', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'delete' && b.run === 'fw-ci/3') && rv.hidden);
-  as.value = 'drawer'; as.dispatchEvent(new w.Event('change'));
   [...card('fw-ci').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();
   const dr = d.querySelector('.git-drawer');
   check('Manage: Build now, and Set up builds with the variables and templates', button(dr, 'Build now') && /Set up builds/.test(t(dr.querySelector('details.ci-setup')))
