@@ -279,62 +279,72 @@
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
-        <h3>Find books in Kiwix's catalogue</h3>
-        <p class="setting-desc">
-          Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
-          manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
-          as a source that follows its newest release; Update fetches it.
-        </p>
-        <form id="catalogue-form" class="books-tools">
-          <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
-          <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
-          <button class="action-btn primary" type="submit">Search</button>
-        </form>
-        <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
-        <div id="catalogue-results" class="admin-list"></div>
-        <p class="books-pager" id="catalogue-pager" hidden><button class="action-btn" type="button" id="catalogue-more">More</button></p>
-
-        <h3>Add a book source</h3>
-        <p class="setting-desc">
-          Quick fill:
-          <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
-          <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
-          <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
-        </p>
-        <form id="library-add" class="library-form">
-          <label>Book name <input name="name" required placeholder="mermaid-docs" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*"></label>
-          <label>Source
-            <select name="type">
-              <option value="release">GitHub releases</option>
-              <option value="actions">GitHub Actions artifacts (token)</option>
-              <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
-              <option value="url">A URL</option>
-            </select>
-          </label>
-          <p class="setting-desc" id="library-type-help"></p>
-          <label data-for="release actions nightly-link">Repository <input name="repo" placeholder="owner/repo"></label>
-          <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
-          <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
-          <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
-          <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
-          <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
-          <button class="action-btn primary" type="submit">Add source</button>
-        </form>
-        <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
-
-        <h3>From or to a USB stick</h3>
-        <p class="setting-desc">
-          Plug a stick into the box, then scan. Books on it can be copied into the library, and the
-          hub's books copied onto it to carry to another box. The stick is only mounted for the
-          scan or the copy, read-only unless something is being copied to it.
-        </p>
-        <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB sticks</button></div>
-        <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
-        <div class="admin-progress" id="usb-progress" hidden>
-          <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
-          <p class="setting-desc" id="usb-step"></p>
+        <h3>Add books</h3>
+        <!-- Where new books come from, as tabs (Tom, 2026-10-08): Kiwix's library, a source of your own, a USB stick. -->
+        <div class="tab-set" data-tabs="book-sources">
+          <div class="view-switch" role="tablist" aria-label="Where new books come from">
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-kiwix" aria-controls="books-kiwix">Kiwix library</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-other" aria-controls="books-other">Other source</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-usb" aria-controls="books-usb">USB stick</button>
+          </div>
+          <div role="tabpanel" id="books-kiwix" aria-labelledby="tab-books-kiwix">
+          <p class="setting-desc">
+            Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
+            manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
+            as a source that follows its newest release; Update fetches it.
+          </p>
+          <form id="catalogue-form" class="books-tools">
+            <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
+            <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
+            <button class="action-btn primary" type="submit">Search</button>
+          </form>
+          <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
+          <div id="catalogue-results" class="admin-list"></div>
+          <p class="books-pager" id="catalogue-pager" hidden><button class="action-btn" type="button" id="catalogue-more">More</button></p>
+          </div>
+          <div role="tabpanel" id="books-other" aria-labelledby="tab-books-other" hidden>
+          <p class="setting-desc">
+            Quick fill:
+            <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
+            <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
+            <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
+          </p>
+          <form id="library-add" class="library-form">
+            <label>Book name <input name="name" required placeholder="mermaid-docs" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*"></label>
+            <label>Source
+              <select name="type">
+                <option value="release">GitHub releases</option>
+                <option value="actions">GitHub Actions artifacts (token)</option>
+                <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
+                <option value="url">A URL</option>
+              </select>
+            </label>
+            <p class="setting-desc" id="library-type-help"></p>
+            <label data-for="release actions nightly-link">Repository <input name="repo" placeholder="owner/repo"></label>
+            <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
+            <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
+            <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
+            <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
+            <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
+            <button class="action-btn primary" type="submit">Add source</button>
+          </form>
+          <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
+          </div>
+          <div role="tabpanel" id="books-usb" aria-labelledby="tab-books-usb" hidden>
+          <p class="setting-desc">
+            Plug a stick into the box, then scan. Books on it can be copied into the library, and the
+            hub's books copied onto it to carry to another box. The stick is only mounted for the
+            scan or the copy, read-only unless something is being copied to it.
+          </p>
+          <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB sticks</button></div>
+          <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
+          <div class="admin-progress" id="usb-progress" hidden>
+            <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
+            <p class="setting-desc" id="usb-step"></p>
+          </div>
+          <div id="usb-devices"></div>
+          </div>
         </div>
-        <div id="usb-devices"></div>
       </section>
 
       <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
@@ -658,12 +668,12 @@
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
         <form id="ci-cache-form" class="library-form">
-          <label>Firmware build cache (PlatformIO's packages for the newest Meshtastic release), so firmware builds here need no internet
-            <select name="cache">
-              <option value="discard">Don't keep it</option>
-              <option value="native">Keep what a headless build needs (~215 MB)</option>
-              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
-            </select></label>
+          <fieldset class="radio-set">
+            <legend>Firmware build cache: PlatformIO's packages for the newest Meshtastic release, so firmware builds here need no internet</legend>
+            <label class="inline"><input type="radio" name="cache" value="discard"> Don't keep it</label>
+            <label class="inline"><input type="radio" name="cache" value="native"> Keep what a headless build needs (~215 MB)</label>
+            <label class="inline"><input type="radio" name="cache" value="whole"> Keep all of it (~700 MB, includes the touchscreen UI)</label>
+          </fieldset>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc" id="ci-cache-status"></p>

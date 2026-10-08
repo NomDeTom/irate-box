@@ -2349,6 +2349,10 @@ loadTileOrder();
 // setting is; drafts kept per app, so a poll redrawing the page doesn't lose one.
 const OPEN_CHIPS = [['public', 'guests'], ['users', 'users'], ['private', 'admin'], ['off', 'off']];
 const SEEN_CHIPS = [['guests', 'guests'], ['users', 'users'], ['admin', 'admin'], ['hidden', 'hidden']];
+// What the tile does for one who sees it but may not open it (Tom, 2026-10-08).
+const LOCK_CHIPS = [['signin', 'sign in'], ['signup', 'sign up'], ['padlock', 'padlock'], ['grey', 'greyed']];
+const LOCK_WORDS = { signin: 'it leads to the sign-in page', signup: 'it leads to sign-up, while accounts are open or by application (otherwise to sign-in)',
+  padlock: 'it shows a padlock and does nothing', grey: 'it is greyed out and does nothing' };
 // "As its access" (auto), shown as the chip it amounts to.
 const seenOf = (mode, visible) => (visible && visible !== 'auto' ? visible
   : { public: 'guests', users: 'users', private: 'admin', off: 'hidden' }[mode] || 'guests');
@@ -2366,7 +2370,8 @@ function chipRow(label, opts, cur, set, disabledOf = () => false) {
 }
 // The block: a (an app with a switch) or, for a tile with none (a folder, About), only who sees it.
 function accessBlock(id, a, seenOnly) {
-  const base = { mode: a ? a.mode : 'public', seen: a ? seenOf(a.mode, a.visible) : seenOf('public', seenOnly), order: null };
+  const base = { mode: a ? a.mode : 'public', seen: a ? seenOf(a.mode, a.visible) : seenOf('public', seenOnly), order: null,
+    lock: ((lastAccess && lastAccess.locked_as) || {})[id] || 'signin' };
   const d = accessDrafts.get(id) || { ...base };
   const redraw = () => { accessDrafts.set(id, d); fillAccessBlocks(); };
   const order = d.order || tileOrderNow();
@@ -2377,7 +2382,8 @@ function accessBlock(id, a, seenOnly) {
   if (d.icon === iconNow) delete d.icon;
   const sizeNow = (tileOf && tileOf.size) || 'single';
   if (d.size === sizeNow) delete d.size;
-  const dirty = d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined || d.size !== undefined;
+  if (d.lock === undefined) d.lock = base.lock;
+  const dirty = d.lock !== base.lock || d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined || d.size !== undefined;
   const waiting = !!(accessWaiting && accessWaiting.app === id);
   const note = accessNote && accessNote.app === id
     ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
@@ -2385,6 +2391,7 @@ function accessBlock(id, a, seenOnly) {
     const auto = a ? seenOf(d.mode, 'auto') : 'guests';
     try {
       if (d.seen !== base.seen) await postJSON('/admin/visibility', { app: id, visible: d.seen === auto ? 'auto' : d.seen });
+      if (a && d.lock !== base.lock) await postJSON('/admin/visibility', { app: id, locked: d.lock });
       const icons = { ...((tilesData && tilesData.state.icon) || {}) };
       if (d.icon !== undefined) { if (d.icon) icons[id] = d.icon; else delete icons[id]; }
       const sizes = { ...((tilesData && tilesData.state.size) || {}) };
@@ -2411,7 +2418,9 @@ function accessBlock(id, a, seenOnly) {
     tileOf ? iconField(d, tileOf, iconNow, redraw) : null,
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
       : seenWords(d.seen, 'public') }),
-    el('p', { className: 'field-help', textContent: 'Seen but not opened: a visitor who sees a tile they can\'t open gets a lock on it, and the sign-in page when they open it, so they can see what is on the box (checklist 4a). Hidden, its address still works for whoever may open it.' }),
+    a ? chipRow('When seen but not opened', LOCK_CHIPS, d.lock, (v) => { d.lock = v; redraw(); },
+      (v) => waiting || (v === 'signup' && d.mode !== 'users')) : null,
+    a ? el('p', { className: 'setting-desc', textContent: `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
@@ -3967,3 +3976,41 @@ drawAttention();
 // is long, a filter. The catalogue's results have a search of their own, so the height only.
 ['store-saves', 'mod-messages', 'mod-threads', 'mod-drops', 'accounts-list', 'ci-runs'].forEach((id) => AW.bound(document.getElementById(id)));
 AW.bound(document.getElementById('catalogue-results'), { filter: false });
+
+// --- tabs (Tom, 2026-10-08: the books' sources as tabs) ------------------------------------------
+// [data-tabs]: a tablist of .view-switch-btn, each naming its panel (aria-controls). One showing;
+// arrow keys move along; the choice kept in this browser; an address inside a panel opens its tab.
+function initTabs(box) {
+  const tabs = [...box.querySelectorAll('[role="tab"]')];
+  const key = 'irate-tabs-' + box.dataset.tabs;
+  const pick = (tab, focus) => {
+    tabs.forEach((x) => {
+      const on = x === tab;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-selected', String(on));
+      x.tabIndex = on ? 0 : -1;
+      document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+    try { localStorage.setItem(key, tab.id); } catch (_) { /* not kept */ }
+  };
+  tabs.forEach((x, i) => {
+    x.addEventListener('click', () => pick(x));
+    x.addEventListener('keydown', (e) => {
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (k) { e.preventDefault(); pick(tabs[(i + k + tabs.length) % tabs.length], true); }
+    });
+  });
+  let kept = null;
+  try { kept = document.getElementById(localStorage.getItem(key)); } catch (_) { /* none */ }
+  pick(tabs.includes(kept) ? kept : tabs[0]);
+  const follow = () => {
+    const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    const panel = target && target.closest && target.closest('[role="tabpanel"]');
+    const tab = panel && tabs.find((x) => x.getAttribute('aria-controls') === panel.id);
+    if (tab) pick(tab);
+  };
+  window.addEventListener('hashchange', follow);
+  follow();
+}
+document.querySelectorAll('[data-tabs]').forEach(initTabs);

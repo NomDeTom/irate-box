@@ -130,6 +130,8 @@ kits.run = fake
 
 defs = kits.definitions()
 check("the shipped kits load: debug, build, capture, security", {"debug", "build", "capture", "security"} <= set(defs), sorted(defs))
+check("  and the off-grid ones (stance review, resources): recovery, network, gpstime (kept, gpsd running), radio",
+      {"recovery", "network", "gpstime", "radio"} <= set(defs) and defs["gpstime"].get("remove_after_hours") is None and defs["gpstime"].get("services") == ["gpsd.socket"], sorted(defs))
 check("a kit naming an option, or a broken file, is left out", "bad" not in defs and "notjson" not in defs)
 check("every shipped kit has a consent text and a summary", all(defs[k].get("consent") and defs[k].get("summary") for k in ("debug", "build", "capture", "security")))
 check("the debug kit has valgrind and perf in it (Tom)", {"valgrind", "linux-perf"} <= set(defs["debug"]["packages"]))
@@ -433,12 +435,12 @@ kits.fetch("small", budget_mb=10, log=lambda *a: None)
 check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
 (T / "defs" / "odd.json").unlink()
 # Step 38: the owner's own kits, and extra tools in a shipped kit.
-line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "radio", "title": "Radio tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
+line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "scanner", "title": "Scanner tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
                                                   "remove_after_hours": 4}})
-own = kits.definitions().get("radio")
+own = kits.definitions().get("scanner")
 check("an own kit: kept by root, marked as the owner's, repeats dropped, its consent names the packages", own and own["owner"] and own["packages"] == ["gdb", "tcpdump"]
-      and "gdb, tcpdump" in own["consent"] and "added" in line and (kits.ROOT / "owner" / "radio.json").stat().st_mode & 0o777 == 0o644, (line, own))
-check("  and the hub sees it too (kitdefs, readable)", "radio" in toolkits.definitions() and toolkits.settings()["kits"]["radio"]["remove_after"] == 4)
+      and "gdb, tcpdump" in own["consent"] and "added" in line and (kits.ROOT / "owner" / "scanner.json").stat().st_mode & 0o777 == 0o644, (line, own))
+check("  and the hub sees it too (kitdefs, readable)", "scanner" in toolkits.definitions() and toolkits.settings()["kits"]["scanner"]["remove_after"] == 4)
 for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "one of the box's own kits"), ({"id": "r2", "title": "x", "packages": ["no-such-pkg"]}, "not in this box's package lists"),
                  ({"id": "r2", "title": "x", "packages": ["--force"]}, "Debian package names"), ({"id": "r2", "title": "", "packages": ["gdb"]}, "title"),
                  ({"id": "../x", "title": "x", "packages": ["gdb"]}, "id"), ({"id": "extras", "title": "x", "packages": ["gdb"]}, "id"),
@@ -447,17 +449,17 @@ for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "one of th
         kits.define(bad); check(f"define refuses: {why}", False)
     except ValueError as exc:
         check(f"define refuses: {why}", why in str(exc), str(exc))
-kits.fetch("radio", budget_mb=10, log=lambda *a: None)
-check("an own kit is fetched like the others", kits.manifest("radio") and {p["name"] for p in kits.manifest("radio")["packages"]} >= {"gdb"})
-kits.install("radio", hours=1, log=lambda *a: None)
+kits.fetch("scanner", budget_mb=10, log=lambda *a: None)
+check("an own kit is fetched like the others", kits.manifest("scanner") and {p["name"] for p in kits.manifest("scanner")["packages"]} >= {"gdb"})
+kits.install("scanner", hours=1, log=lambda *a: None)
 try:
-    kits.undefine("radio"); check("an installed own kit can't be deleted", False)
+    kits.undefine("scanner"); check("an installed own kit can't be deleted", False)
 except ValueError:
     check("an installed own kit can't be deleted", True)
-kits.remove("radio", log=lambda *a: None)
-print_ = hub_control.ACTIONS["kit-undefine"]({"kit": "radio"})
-check("deleted: its definition and its cache", "radio" not in kits.definitions() and not kits.manifest("radio")
-      and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("radio") is None, print_)
+kits.remove("scanner", log=lambda *a: None)
+print_ = hub_control.ACTIONS["kit-undefine"]({"kit": "scanner"})
+check("deleted: its definition and its cache", "scanner" not in kits.definitions() and not kits.manifest("scanner")
+      and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("scanner") is None, print_)
 try:
     kits.undefine("debug"); check("a shipped kit can't be deleted", False)
 except ValueError:
@@ -467,7 +469,7 @@ cap = kits.definitions()["capture"]
 check("extra tools in a shipped kit: added to its packages, one it has already left out", cap["packages"] == ["tcpdump", "tshark", "gdb"] and cap["extra"] == ["gdb"], (line, cap))
 hub_control.ACTIONS["kit-extra"]({"kit": "capture", "packages": []})
 check("  and cleared", kits.definitions()["capture"]["packages"] == ["tcpdump", "tshark"] and "extra" not in kits.definitions()["capture"])
-for bad in ({"kit": "radio", "packages": ["gdb"]}, {"kit": "capture", "packages": ["no-such-pkg"]}, {"kit": "capture", "packages": "gdb"}):
+for bad in ({"kit": "scanner", "packages": ["gdb"]}, {"kit": "capture", "packages": ["no-such-pkg"]}, {"kit": "capture", "packages": "gdb"}):
     try:
         hub_control.ACTIONS["kit-extra"](bad); check(f"extra refused: {bad}", False)
     except ValueError:

@@ -1,0 +1,24 @@
+{
+ "id": "recovery",
+ "title": "Recovery",
+ "summary": "Rescue a failing SD card or stick, test one before trusting it, copy and pack files: ddrescue, testdisk, f3, smartmontools and the rest.",
+ "packages": [
+  "gddrescue",
+  "testdisk",
+  "f3",
+  "smartmontools",
+  "usbutils",
+  "pv",
+  "rsync",
+  "zip",
+  "unzip",
+  "7zip"
+ ],
+ "consent": "These tools read and write raw storage. ddrescue and testdisk can overwrite a disk if pointed at the wrong one: read their prompts. Install the kit only while you need it.",
+ "notes": [
+  "An offline box has no way to fetch these when the card starts failing: keep the kit cached (Library → Toolkits) so it installs from the cache.",
+  "f3write and f3read show a fake or failing card in a few minutes; ddrescue copies what a failing card still gives, in passes, into an image a new card can be written from.",
+  "smartctl reads SMART data from USB disks that give it; SD cards do not."
+ ],
+ "remove_after_hours": 24
+}

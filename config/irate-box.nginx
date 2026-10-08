@@ -130,11 +130,17 @@ server {
 	# (captive.apple.com, connectivitycheck.gstatic.com, ...) still fires. / and /index.html
 	# go to the hub, which fills in the tiles; other files under web/ come off disk.
 	root @STATIC@;
+	# A baseline Content-Security-Policy on every answer of this origin (stance review N11): no plugins,
+	# no <base> hijack, framed by this origin alone. add_header is per location (a location with one
+	# of its own loses the server's), so the line is repeated wherever Cache-Control is set.
+	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'";
+	add_header Content-Security-Policy $irate_box_csp always;
 	location = / { proxy_pass http://irate_box_hub; }
 	location = /index.html { proxy_pass http://irate_box_hub; }
 	location / {
 		try_files $uri @irate_box_hub;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 	}
 	location @irate_box_hub { proxy_pass http://irate_box_hub; }
 	# The drawing store and the gallery take whole drawings (store.py MAX_BODY, 50 MB).
@@ -147,6 +153,7 @@ server {
 		include @ACCESS@.d/gate-drop.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 	}
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
 	# page; the 🎨 in every page's header stays.
@@ -156,6 +163,7 @@ server {
 		include @ACCESS@.d/gate-themes.conf*;
 		auth_basic_user_file @HTPASSWD@;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 	}
 	location ^~ /api/drop/ {
 		if ($irate_box_off_drop) { return 404; }
@@ -197,9 +205,11 @@ server {
 		alias @APPS@/draw/;
 		try_files $uri /draw/index.html;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 		location ^~ /draw/assets/ {
 			try_files $uri /draw/index.html;
 			add_header Cache-Control "public, max-age=31536000, immutable";
+			add_header Content-Security-Policy $irate_box_csp always;
 		}
 	}
 
@@ -213,9 +223,11 @@ server {
 		alias @APPS@/mermaid/;
 		try_files $uri $uri.html /mermaid/index.html;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 		location ^~ /mermaid/_app/immutable/ {
 			try_files $uri $uri.html /mermaid/index.html;
 			add_header Cache-Control "public, max-age=31536000, immutable";
+			add_header Content-Security-Policy $irate_box_csp always;
 		}
 	}
 
@@ -229,6 +241,7 @@ server {
 		alias @APPS@/tools/;
 		try_files $uri $uri/index.html =404;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 	}
 
 	# --- /serial -> Meshtastic serial terminal / log analyser, static ----------------
@@ -240,14 +253,17 @@ server {
 		auth_basic_user_file @HTPASSWD@;
 		alias @APPS@/serial/;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 		# The one-file build, for live USB from a file opened on the guest's own machine (Web
 		# Serial needs a secure context, which this plain HTTP is not): saved, never opened here.
 		location = /serial/serial-terminal.html {
 			add_header Cache-Control "no-cache";
+			add_header Content-Security-Policy $irate_box_csp always;
 			add_header Content-Disposition 'attachment; filename="serial-terminal.html"';
 		}
 		location ^~ /serial/assets/ {
 			add_header Cache-Control "public, max-age=31536000, immutable";
+			add_header Content-Security-Policy $irate_box_csp always;
 		}
 	}
 
@@ -341,12 +357,14 @@ server {
 		alias @APPS@/flasher/THIRD-PARTY-NOTICES.txt;
 		default_type text/plain;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 	}
 	location ^~ /flasher/firmware/ {
 		if ($irate_box_off_flasher) { return 404; }
 		alias @FIRMWARE@/;
 		add_header Access-Control-Allow-Origin "*" always;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 		if ($request_method = OPTIONS) {
 			add_header Access-Control-Allow-Origin "*";
 			add_header Access-Control-Allow-Methods "GET, OPTIONS";
@@ -361,6 +379,7 @@ server {
 		alias @APPS@/flasher/public/;
 		add_header Access-Control-Allow-Origin "*" always;
 		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
 		if ($request_method = OPTIONS) {
 			add_header Access-Control-Allow-Origin "*";
 			add_header Access-Control-Allow-Methods "GET, OPTIONS";
@@ -388,6 +407,7 @@ server {
 		gzip on;
 		gzip_types application/javascript text/javascript;
 		add_header Cache-Control "public, max-age=86400";
+		add_header Content-Security-Policy $irate_box_csp always;
 		add_header X-Content-Type-Options nosniff;
 	}
 	# The hub says whether this request needs no login (a fetch, or a push to a repository

@@ -19,7 +19,7 @@ XREF = {
     "ssh-root-login": {"title": "SSH: logging in as root", "security-page": ["ssh-root"], "debian-cis": ["5.2.10_disable_root_login"]},
     "ssh-password": {"title": "SSH: passwords rather than keys", "security-page": ["ssh-password"],
                      "debian-cis": ["99.5.2.1_ssh_auth_pubk_only"]},
-    "firewall": {"title": "Firewall rules", "debian-cis": ["3.5.4.1.1_net_fw_default_policy_drop"], "lynis": ["FIRE-4512"]},
+    "firewall": {"title": "Firewall rules", "doctor": ["firewall"], "security-page": ["firewall"], "debian-cis": ["3.5.4.1.1_net_fw_default_policy_drop"], "lynis": ["FIRE-4512"]},
     "security-updates": {"title": "Security updates installed", "security-page": ["security-updates"], "debian-cis": ["1.9_install_updates"]},
     "sudo-all": {"title": "sudo rules that allow everything", "doctor": ["acct-sudo"], "security-page": ["sudo-nopasswd"], "debian-cis": ["99.1.3_acc_sudoers_no_all"]},
 }

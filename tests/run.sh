@@ -64,6 +64,7 @@ run sim_secdoctor_debsecan.py
 run sim_deepaudit.py
 run sim_image_step.py
 run sim_offline_step.py
+run sim_firewall.py
 run sim_secdoctor_joint.py
 
 state="$(mktemp -d)"

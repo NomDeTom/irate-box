@@ -57,6 +57,8 @@ function render(d) {
   $('acct-subtitle').textContent = d.signup === 'off' ? 'This box has no accounts: everything here is open to guests, or kept for its admin.'
     : next ? 'That page is for the box\'s users: log in, or make an account.' : 'Log in, or make an account.';
   $('acct-signup-form').hidden = !signup;
+  // From a locked tile that offers sign-up (Tom, 2026-10-08): straight to the form.
+  if (signup && location.hash === '#signup') { $('acct-signup-form').scrollIntoView?.({ block: 'center' }); ($('acct-signup-form').elements.name || {}).focus?.(); }
   $('acct-signup-title').textContent = d.signup === 'apply' ? 'Ask for an account' : 'Make an account';
   $('acct-signup-button').textContent = d.signup === 'apply' ? 'Ask' : 'Make it';
   $('acct-login-form').hidden = d.signup === 'off';

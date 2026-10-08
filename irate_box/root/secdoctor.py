@@ -688,6 +688,12 @@ def step_front(ctx):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
                          f"The route exists in the front with no auth_basic/auth_request.", "Put it behind the admin login.", "S1"))
+    # N11 (stance review 2026-10-08): a baseline CSP on the hub's own origin, where /admin lives.
+    csp = [d for s, d in directives if d.startswith("add_header Content-Security-Policy") and s and s[0] == "server"]
+    out.append(F("front-csp", "A Content-Security-Policy on the hub's origin", "ok" if csp else "warn",
+                 "Set server-wide (no plugins, no <base> hijack, framed by this origin alone)." if csp else
+                 "None on the hub's origin: a script that gets in (a bug in a bundled editor) has the browser's whole toolbox.",
+                 "" if csp else "add_header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\" always; (irate-box.nginx)", "S4"))
     return out
 
 
@@ -2378,8 +2384,31 @@ def step_internet(ctx):
     return out
 
 
+def step_firewall(ctx):
+    """The network floor (stance review §4 item 3): the hotspot's traffic goes through a
+    default-drop chain, or it does not."""
+    from irate_box.root import firewall
+    about = {"kind": "setting", "key": "firewall"}
+    loaded = firewall.loaded()
+    hotspot_up = False
+    try:
+        hotspot_up = bool(json.loads(_read(ETC / "ap.json") or "{}").get("up"))
+    except ValueError:
+        pass
+    if loaded is None:
+        return [F("firewall", "The network floor", "warn", "nftables is not installed: nothing limits what a guest on the hotspot can reach.",
+                  "Update the box (install.sh installs nftables), then switch the floor on (Security).", "", about=about)]
+    if loaded:
+        return [F("firewall", "The network floor", "ok", f"Loaded: a guest on {firewall.hotspot_iface()} reaches the hub, its apps, DNS, DHCP and what "
+                  "the owner opened; the rest is dropped, and nothing is forwarded.", "", "", about=about)]
+    return [F("firewall", "The network floor", "problem" if hotspot_up else "warn",
+              ("The hotspot is up and " if hotspot_up else "") + "no floor is loaded: a guest on the hotspot reaches every listener on the box "
+              "(SSH, Syncthing, MQTT, Tailscale, the rest).", "Security → What a guest on the hotspot can reach: switch the floor on.", "", about=about)]
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
+    ("firewall", "The network floor", "", step_firewall),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
     ("admin-gate", "/admin from inside the box", "F27 F31 S3", step_admin_gate),
     ("web-addons", "Web add-ons", "", step_web_addons),
