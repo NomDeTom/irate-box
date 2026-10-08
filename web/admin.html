@@ -72,6 +72,9 @@
             <a href="#security">Open Security</a></li>
           <li data-step="addons"><strong>Add-ons</strong> <span></span> <a href="#addons">Choose add-ons</a></li>
           <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
+          <li data-step="decisions"><strong>Decide what the box shows and counts</strong> <span></span>
+            <p class="setting-desc">Everything that touches the security of the box or the people on it. Each has a default
+              already; the tour takes you to each one where it lives.</p></li>
         </ol>
         <div class="library-buttons">
           <button type="button" id="setup-finish">Finish setup</button>
@@ -523,6 +526,8 @@
         <p class="setting-desc">The row of readouts under the apps on the hub page: which show, in what order, and which
           take two cells to say more (People: the different devices seen today and this week; memory and disk in full).</p>
         <div id="status-tiles-box"></div>
+        <h3>Names of those signed in</h3>
+        <div id="names-to-box"></div>
       </section>
 
       <!-- The shoutbox and the board: apps drawn on the hub page itself, not as tiles (Tom,
@@ -1170,5 +1175,6 @@
   <script src="/admin-widgets.js"></script>
   <script src="/admin-layout.js"></script>
   <script src="/admin.js"></script>
+  <script src="/admin-tour.js"></script>
 </body>
 </html>

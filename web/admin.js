@@ -3843,3 +3843,16 @@ function drawStatusTiles(openId) {
   if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
 }
 loadStatusTiles();
+
+// Who sees the names of those signed in (M12, a setup decision, M14): users or the admin only.
+async function loadNamesTo() {
+  const box = document.getElementById('names-to-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'names_to', label: 'Shown to', kind: 'choice', value: st.names_to, decision: 'names',
+    options: [['users', 'those logged in'], ['admin', 'the admin only']],
+    note: 'only of those who chose to be shown, on their own account page; guests get how many' }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
+}
+loadNamesTo();

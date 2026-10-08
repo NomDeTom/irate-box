@@ -1300,3 +1300,16 @@ html:has(> body.admin) { background: var(--bg); }
 .acct-prefs .acct-pref > span:first-child { min-width: 14rem; }
 .acct-pref-foot { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.8rem; }
 .people-card .people-names { display: flex; flex-wrap: wrap; gap: 0.25rem; justify-content: center; font-size: 0.75rem; color: var(--muted); }
+
+/* The setup tour (M14): the setting to decide, highlighted where it lives; the bar with its guide. */
+.tour-target { outline: 3px solid var(--warn) !important; outline-offset: 4px; border-radius: 6px; animation: tour-pulse 1.6s ease-in-out 3; }
+@keyframes tour-pulse { 50% { outline-color: color-mix(in srgb, var(--warn) 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .tour-target { animation: none; } }
+.tour-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); z-index: 30; width: min(46rem, calc(100vw - 2rem));
+  display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; justify-content: space-between; padding: 0.7rem 1rem;
+  background: var(--surface); border: 2px solid var(--warn); border-radius: 10px; box-shadow: 0 6px 24px var(--shadow); }
+.tour-guide { width: 4.5rem; height: 4.5rem; object-fit: contain; flex: none; }
+.tour-text { flex: 1 1 18rem; }
+.tour-text p { margin: 0.2rem 0 0; }
+.tour-list { margin: 0.4rem 0 0.5rem 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
+.tour-list li.done a { color: var(--muted); }

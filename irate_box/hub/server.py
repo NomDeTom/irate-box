@@ -681,9 +681,16 @@ DEFAULT_SETTINGS = {
     # Who sees the names of those signed in and around (M12): users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
+    # The setup tour (M14): which of the decisions that touch security (5h) the owner has made,
+    # by keeping the default or changing it where it lives. The box runs on the defaults until then.
+    "setup_decided": [],
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
+# The setup decisions (M14; Tom, 2026-10-08: "anything that has an impact on user or box security"):
+# web/admin-tour.js has each one's words and where it lives.
+SETUP_DECISIONS = ("visitors", "names", "signup", "sign-in-offer", "https", "hotspot", "guest-net", "ssh",
+                   "tailscale", "cockpit", "terminal")
 REPORT_REASONS = ("spam", "unkind", "personal details", "illegal", "other")
 _settings_lock = threading.Lock()
 
@@ -696,6 +703,8 @@ def valid_setting(key, value):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
+    if key == "setup_decided":
+        return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "names_to":
         return value in ("users", "admin")
     if key == "report_threshold":
