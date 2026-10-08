@@ -10,7 +10,11 @@
   const expand = document.getElementById('tab-expand');
   if (!expand || !panes.shout || !panes.board) return;
 
-  const currentTab = () => (/^#(board|t\d+)$/.test(location.hash) ? 'board' : 'shout');
+  // A tab the hub left out for this visitor (data-off, menu overhaul M9) is never chosen.
+  const on = (name) => !panes[name].hasAttribute('data-off');
+  const want = () => (/^#(board|t\d+)$/.test(location.hash) ? 'board' : 'shout');
+  const currentTab = () => (on(want()) ? want() : on('shout') ? 'shout' : on('board') ? 'board' : null);
+  if (!on('shout') && !on('board')) { document.querySelector('.home-tabs').hidden = true; return; }
 
   function showTab() {
     const tab = currentTab();

@@ -8,12 +8,13 @@
   <title>Services · Hub</title>
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
 </head>
 <body data-art="controller">
   <!-- Read-only and public: the same facts /status gives every page. Starting and
        stopping stays with ttyd and hubctl, behind the admin login. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>Services</h1>
     <p class="subtitle">What is on the box, and what is running.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
@@ -34,7 +35,7 @@
   <!-- The controller at its desk, as on /admin's Box and System panes (style.css). -->
   <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
   <script src="hub.js"></script>
-  <script src="krab-desk.js"></script>
+  <script src="krab-loop.js"></script>
   <script src="services.js"></script>
 </body>
 </html>

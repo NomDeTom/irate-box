@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
+# DEVELOPMENT ONLY: the hub from a checkout under /home/pi, as root, with no sandbox. Never
+# install this on a box: install.sh writes the real unit (User=hub, ProtectSystem=strict and
+# the rest). Kept for running the hub by hand while developing (BUILDING.md).
 [Unit]
 Description=Irate-Box hub
 After=network.target

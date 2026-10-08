@@ -92,6 +92,17 @@ def resign(k):
     p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
     p.write_text(p.read_text().replace("SIGNED BY: good key", "SIGNED BY: someone else"))
 refused(resign, "an index signed by a key the box doesn't trust")
+# N12 (stance review 2026-10-08): a stick cannot replay an old signed set.
+def expired(k):
+    p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
+    p.write_text(p.read_text().replace("Origin: Debian\n", "Origin: Debian\nValid-Until: Thu, 01 Jan 2026 00:00:00 UTC\n"))
+refused(expired, "a signed release past its Valid-Until")
+def older(k):
+    (L / "deb.debian.org_debian_dists_trixie_InRelease").write_text((L / "deb.debian.org_debian_dists_trixie_InRelease").read_text().replace("Origin: Debian\n", "Origin: Debian\nDate: Sat, 03 Oct 2026 00:00:00 UTC\n"))
+    p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
+    p.write_text(p.read_text().replace("Origin: Debian\n", "Origin: Debian\nDate: Thu, 01 Jan 2026 00:00:00 UTC\n"))
+refused(older, "a signed release older than the one this box already has")
+(L / "deb.debian.org_debian_dists_trixie_InRelease").write_text((L / "deb.debian.org_debian_dists_trixie_InRelease").read_text().replace("Date: Sat, 03 Oct 2026 00:00:00 UTC\n", ""))
 def no_lists(k):
     shutil.rmtree(k / "lists"); (k / "lists").mkdir()
 refused(no_lists, "no signed index at all")

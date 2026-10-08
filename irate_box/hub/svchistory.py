@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The services' uptime, for the folded grid under /admin → Overview's services (next-work plan
 step 35, new-feature-input). The hub samples every service's state every five minutes (one
-`systemctl show`, no root) and keeps hourly buckets for 35 days.
+`systemctl show`, no root) and keeps hourly buckets for 72 days.
 
 Per unit, one three-character group per hour, from the hour numbered `first` (Unix time // 3600):
 samples up and samples taken (a hex digit each, at most 12 in an hour), and how many times it
@@ -28,7 +28,7 @@ FILE = STATE / "service-history.json"
 RUN = Path(os.environ.get("HUB_RUN_DIR", "/run/irate-box"))
 EVERY = 300
 HOUR = 3600
-KEEP = 35 * 24
+KEEP = 72 * 24
 
 
 def clock_trusted():
@@ -106,28 +106,30 @@ def _midnight(t):
 
 
 def summarize(hist, now=None):
-    """Per unit: the last 7 days by hour (168 cells, oldest first) and the last 35 by day, in the
-    box's local time, with the days' labels; and the week's share up and restarts."""
+    """Per unit: the last 72 hours by hour (oldest first) and the last 72 by day, in the box's
+    local time (githubstatus.com's format), with the days' labels; and those hours' share up and
+    restarts."""
     now = time.time() if now is None else now
     today = _midnight(now)
+    anchor = int(now // HOUR)                 # the hour now in progress
     days = []
-    for back in range(34, -1, -1):
+    for back in range(71, -1, -1):
         s = _midnight(today - back * 86400 + 43200)
         days.append((s, _midnight(s + 36 * 3600)))
     label = lambda s: {"date": time.strftime("%Y-%m-%d", time.localtime(s)), "label": time.strftime("%a %d", time.localtime(s))}  # noqa: E731
-    out = {"days": [label(s) for s, _ in days[-7:]], "month_days": [label(s) for s, _ in days], "units": {}}
+    hour_at = lambda i: (anchor - 71 + i) * HOUR  # noqa: E731
+    hour_cols = [time.strftime("%H:00", time.localtime(hour_at(i))) if i % 12 == 0 else "" for i in range(72)]
+    hour_full = [time.strftime("%a %d %H:00", time.localtime(hour_at(i)))
+                 + "–" + time.strftime("%H:00", time.localtime(hour_at(i) + HOUR)) for i in range(72)]
+    out = {"month_days": [label(s) for s, _ in days], "hour_cols": hour_cols, "hour_full": hour_full, "units": {}}
     for unit, e in sorted((hist or {}).get("units", {}).items()):
         if not isinstance(e, dict) or not isinstance(e.get("first"), int) or not isinstance(e.get("s"), str):
             continue
-        week = []
-        for s, t in days[-7:]:
-            for h in range(24):
-                hs = int((s + h * 3600) // HOUR)
-                week.append(_cell(_hours(e, hs, hs + 1)) if s + h * 3600 < t else None)
+        hours = [_cell(_hours(e, anchor - 71 + i, anchor - 71 + i + 1)) for i in range(72)]
         month = [_cell(_hours(e, int(s // HOUR), int(t // HOUR))) for s, t in days]
-        seen = [c for c in week if c]
+        seen = [c for c in hours if c]
         n = sum(c["n"] for c in seen)
-        out["units"][unit] = {"week": week, "month": month, "summary": {
+        out["units"][unit] = {"hours": hours, "month": month, "summary": {
             "up": round(sum(c["up"] * c["n"] for c in seen) / n, 4) if n else None,
             "restarts": sum(c["restarts"] for c in seen)}}
     return out

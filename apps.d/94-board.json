@@ -1,0 +1,14 @@
+{
+  "id": "board",
+  "order": 94,
+  "admin": {
+    "title": "Board",
+    "icon": "📌",
+    "page": true,
+    "width": "board_width",
+    "sections": [
+      "board-settings",
+      "board-mod"
+    ]
+  }
+}

@@ -13,6 +13,12 @@
   const limits = document.getElementById('drop-limits');
   const lockBox = document.getElementById('drop-lock');
   lockBox.checked = localStorage.getItem('drop-lock') === '1';
+  // Signed in, and no choice made in this browser yet: the account's own default (M12).
+  if (localStorage.getItem('drop-lock') === null) {
+    fetch('/api/account').then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (d && d.prefs && localStorage.getItem('drop-lock') === null) lockBox.checked = !!d.prefs.lock_default;
+    }).catch(() => {});
+  }
   lockBox.addEventListener('change', () => localStorage.setItem('drop-lock', lockBox.checked ? '1' : '0'));
   let maxFile = 25 * 2 ** 20;
 

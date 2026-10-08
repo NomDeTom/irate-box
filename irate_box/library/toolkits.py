@@ -133,7 +133,9 @@ def ensure_git_sources(log=print):
             if g["upstream"].rstrip("/").lower() in have:
                 continue
             mirrors.add({"name": g["name"], "area": "public", "upstream": g["upstream"], "branches": [g.get("branch", "main")],
-                         "groups": [], "history": "shallow", "budget_mb": 64, "submodules": False})
+                         "groups": [], "history": "shallow", "budget_mb": 64, "submodules": False,
+                         # Pinned where the kit pins it: root runs that commit alone (deepaudit.py).
+                         **({"follow": "pinned", "pin": g["pin"]} if g.get("pin") else {})})
             have.add(g["upstream"].rstrip("/").lower())
             added.append(g["name"])
     return added

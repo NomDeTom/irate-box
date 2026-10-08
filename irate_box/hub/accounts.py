@@ -185,7 +185,59 @@ def set_settings(signup=None, http=None, keep_admin=False):
 
 
 def _public(acc):
-    return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {"password_set": bool(acc.get("hash"))}
+    return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {
+        "password_set": bool(acc.get("hash")),
+        # The admin sees each person's choice to be shown online, and can't change it (5f).
+        "shown_online": bool((acc.get("prefs") or {}).get("show_online"))}
+
+
+# --- a person's own settings (menu overhaul M12; Tom, 2026-10-08: "the users themselves, upon
+# sign-up, will need to be able to access their own user settings, including online visibility";
+# "locking, visibility of posts by app, font colour"). Theirs alone, through their own session;
+# the safe choice is each default: not shown by name, no lock, no email.
+PREFS = {"show_online": False, "hue": None, "lock_default": False, "email": "",
+         # Who sees what they post, per app (M13): everyone here, signed-in people, or only them.
+         # Never wider than the app itself (its access); Notes, SilverBullet's one shared notebook,
+         # has no posts of anyone's own to hide.
+         "posts": {"shoutbox": "everyone", "board": "everyone", "saves": "everyone", "drop": "everyone"}}
+POST_SEEN = ("everyone", "users", "me")
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}$")
+
+
+def prefs(name):
+    """One account's settings, with the defaults for any not chosen."""
+    acc = _load()["accounts"].get(str(name or "").lower())
+    out = dict(PREFS, **{k: v for k, v in ((acc or {}).get("prefs") or {}).items() if k in PREFS})
+    out["posts"] = dict(PREFS["posts"], **{k: v for k, v in (out.get("posts") or {}).items() if k in PREFS["posts"] and v in POST_SEEN})
+    return out
+
+
+def set_prefs(token, changes):
+    """Change the settings of the account this session is: only those, only as each allows."""
+    me = session(token)
+    if not me:
+        raise AccountError("log in first")
+    if not isinstance(changes, dict) or not changes or not set(changes) <= set(PREFS):
+        raise AccountError("settings: show_online, hue, lock_default, email")
+    for k in ("show_online", "lock_default"):
+        if k in changes and type(changes[k]) is not bool:
+            raise AccountError(f"{k}: true or false")
+    if "hue" in changes and changes["hue"] is not None and not (type(changes["hue"]) is int and 0 <= changes["hue"] < 360):
+        raise AccountError("hue: 0 to 359")
+    if "posts" in changes and not (isinstance(changes["posts"], dict) and changes["posts"]
+                                   and all(k in PREFS["posts"] and v in POST_SEEN for k, v in changes["posts"].items())):
+        raise AccountError("posts: per app (shoutbox, board, saves, drop), everyone, users or me")
+    if "email" in changes and not (changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.match(changes["email"]))):
+        raise AccountError("email: an address, or nothing")
+    with _lock:
+        data = _load()
+        acc = data["accounts"][me["name"].lower()]
+        merged = dict(acc.get("prefs") or {}, **changes)
+        if "posts" in changes:
+            merged["posts"] = dict((acc.get("prefs") or {}).get("posts") or {}, **changes["posts"])
+        acc["prefs"] = merged
+        _save(data)
+    return prefs(me["name"])
 
 
 def exists(name):
@@ -262,6 +314,12 @@ def login(name, password, addr="", https=False):
 
 
 _basic_ok = {}   # (name, sha256 of the password) -> when it was last right: a push is several requests
+
+
+def _forget_basic(name):
+    """A changed or reset password is not right any more, this minute included (stance review 2026-10-08, N14)."""
+    for k in [k for k in _basic_ok if k[0] == (name or "").lower()]:
+        _basic_ok.pop(k, None)
 
 
 def check_basic(header, addr=""):
@@ -343,6 +401,7 @@ def change_password(token, old, new, addr=""):
             _failed(acc["name"], addr, now)
             raise AccountError("the current password is not right")
         stored["hash"] = hash_password(new)
+        _forget_basic(acc["name"])
         # Every other session of the account ends: a password changed because it leaked.
         keep = _digest(token)
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != acc["name"].lower() or k == keep}
@@ -365,6 +424,7 @@ def use_code(code, password, addr=""):
             raise AccountError("that code is not one this box gave, or it has been used or has expired")
         acc = data["accounts"][c["name"]]
         acc["hash"] = hash_password(password)
+        _forget_basic(c["name"])
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != c["name"]}
         _save(data)
     return acc["name"]

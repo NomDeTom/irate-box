@@ -4,5 +4,12 @@
   "tile": {
     "row": "box",
     "widget": "factory"
+  },
+  "admin": {
+    "sections": [
+      "factory"
+    ],
+    "title": "Firmware Factory",
+    "icon": "🏭🔧"
   }
 }

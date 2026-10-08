@@ -7,8 +7,9 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
-const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
+const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);
 const def = (id, title, packages, extra = {}) => Object.assign({ id, title, summary: `${title} tools.`, consent: `${title}: read this first.`,
   packages, notes: [`${title} note`], remove_after_hours: 24 }, extra);
@@ -59,28 +60,36 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   await wait();
   const d = w.document;
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-  const card = (title) => [...d.querySelectorAll('#kits-grid .kit-card')].find((c) => t(c.querySelector('h4')) === title);
+  // Item 8: a card per kit, its details in a drawer inside the card (AW.cards); open one to see them.
+  const head = (title) => [...d.querySelectorAll('#kits-grid .aw-card')].find((c) => t(c.querySelector('.aw-card-head .t')) === title);
+  const card = (title) => { const c = head(title); if (c && !c.classList.contains('open')) c.querySelector('.aw-card-head').click(); return head(title); };
+  const pills = (title) => t(head(title).querySelector('.aw-card-head .p'));
   const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
-  check('Toolkits sits in Library, after Mirrors', [...d.querySelectorAll('.admin-side-list a')].map((a) => a.getAttribute('href')).join(' ').includes('#mirrors #toolkits #sources'));
+  const save = (title) => button(card(title).querySelector('.aw-drawer'), 'Save');
+  check('Toolkits has its page under System, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
+    return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('System') && links.indexOf('Toolkits') < links.indexOf('Doctors'); })());
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB; newest fetch \d{4}-\d\d-\d\d\. Cached kits install with no internet\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));
-  check('a card per kit', d.querySelectorAll('#kits-grid .kit-card').length === 5);
-  check('installed: its time left, and what installing it upgraded', /Installed: removed in [45] h/.test(t(card('Debugging').querySelector('.badges')))
-    && /also brought these up to date .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
+  check('a card per kit, and the custom one last', d.querySelectorAll('#kits-grid .aw-card').length === 6 && /\+ Custom toolkit/.test(t([...d.querySelectorAll('#kits-grid .aw-card')].pop())));
+  check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /installed: removed in [45] h/.test(pills('Debugging')));
+  check('installed: what installing it upgraded, in its drawer', /also brought these up to date .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
+  check('one open at a time, with a ✕', d.querySelectorAll('#kits-grid .aw-card.open').length === 1 && !!card('Debugging').querySelector('.aw-close'));
   check('not cached: Install is off, and says why', button(card('Building'), 'Install…').disabled && /Refresh it while the box has internet/.test(t(card('Building'))));
-  check('two versions: the badge, and Roll back with its date', /2 versions/.test(t(card('Security').querySelector('.badges')))
+  check('two versions: the pill, and Roll back with its date', /2 versions/.test(pills('Security'))
     && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to \d{4}-/.test(t(b))));
-  check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging').querySelector('details')))
-    && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging').querySelector('details')))
-    && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security').querySelector('details'))));
-  check('what a 32-bit board leaves out is said', /Left out on this armhf board, as they need a 64-bit one: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging').querySelector('details'))));
-  check('keep current shown as set', !card('Capture').querySelector('input[type=checkbox]').checked && card('Debugging').querySelector('input[type=checkbox]').checked);
+  check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging')))
+    && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging')))
+    && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security'))));
+  check('what a 32-bit board leaves out is said', /Left out on this armhf board, as they need a 64-bit one: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging'))));
+  check('keep current shown as set', /Keep current: Off/.test(t(card('Capture'))) && /Keep current: On/.test(t(card('Debugging'))));
+  d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
+  check('Esc closes it', !d.querySelector('#kits-grid .aw-card.open'));
 
   button(card('Debugging'), 'Remove now').click();
   await wait();
   check('Remove asks the hub', posted[0] && posted[0].action === 'remove' && posted[0].kit === 'debug', JSON.stringify(posted));
-  check('  and the page says it is working on it', /Working…/.test(t(d.getElementById('kits-summary'))));
+  check('  and the page says it is working on it, the card still open', /Working…/.test(t(d.getElementById('kits-summary'))) && head('Debugging').classList.contains('open'));
   answered = true;
   await wait(3300);
   check('the root helper\'s answer is shown when it comes', /removed 1 packages/.test(t(d.getElementById('kits-note'))) && !/Working…/.test(t(d.getElementById('kits-summary'))),
@@ -91,14 +100,14 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const consent = card('Capture').querySelector('.kit-consent');
   check('Install… shows the consent and when it goes again, before anything happens', consent && /Capture: read this first\./.test(t(consent))
     && consent.querySelector('select.kit-hours').value === '24' && posted.length === 1);
-  check('a kit the doctor flags: a badge, and the reason in the Install step, before anything happens',
-    /Flagged by the doctor/.test(t(card('Capture').querySelector('.badges'))) && /security doctor flags this kit's cache: Cached versions of tcpdump/.test(t(consent))
-    && !/Flagged/.test(t(card('Security').querySelector('.badges'))));
+  check('a kit the doctor flags: a pill, and the reason in the Install step, before anything happens',
+    /flagged by the doctor/.test(pills('Capture')) && /security doctor flags this kit's cache: Cached versions of tcpdump/.test(t(consent))
+    && !/flagged/.test(pills('Security')));
   consent.querySelector('select.kit-hours').value = '168';
   button(consent, 'Install').click();
   await wait();
   check('Install sends the kit and the time chosen', JSON.stringify(posted[1]) === JSON.stringify({ action: 'install', kit: 'capture', hours: 168 }), JSON.stringify(posted[1]));
-  const keep = card('Debugging').querySelector('select.kit-hours');
+  const keep = card('Debugging').querySelector('.kit-jobs select.kit-hours');
   keep.value = 'never';
   button(card('Debugging'), 'Keep longer').click();
   await wait();
@@ -106,10 +115,13 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   [...card('Security').querySelectorAll('button')].find((b) => /^Roll back/.test(t(b))).click();
   await wait();
   check('Roll back asks, then asks the hub', posted[3] && posted[3].action === 'rollback' && posted[3].kit === 'security');
-  const kc = card('Capture').querySelector('input[type=checkbox]');
-  kc.checked = true; kc.dispatchEvent(new w.Event('change'));
+  // Settings wait for Save (item 8, step 3).
+  button(card('Capture'), 'Keep current: Off').click();
   await wait();
-  check('keep current is a setting', JSON.stringify(posted[4]) === JSON.stringify({ action: 'settings', kits: { capture: { keep_current: true } } }), JSON.stringify(posted[4]));
+  check('keep current: a setting, held until Save', posted.length === 4 && save('Capture') && !save('Capture').disabled);
+  save('Capture').click();
+  await wait();
+  check('  Save sends it', JSON.stringify(posted[4]) === JSON.stringify({ action: 'settings', kits: { capture: { keep_current: true } } }), JSON.stringify(posted[4]));
   const f = d.getElementById('kits-budget');
   f.elements.budget.value = '800';
   f.dispatchEvent(new w.Event('submit', { cancelable: true }));
@@ -120,20 +132,20 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   await wait();
   check('a problem with the cache is shown', /has changed since it was fetched/.test(t(d.getElementById('kits-problems'))));
   // Step 38: your own kits, and extra tools in a shipped kit.
-  check('your own kit says so, with Edit and Delete', /Yours/.test(t(card('Radio tools').querySelector('.badges')))
+  check('your own kit says so, with Edit and Delete', /yours/.test(pills('Radio tools'))
     && button(card('Radio tools'), 'Edit') && button(card('Radio tools'), 'Delete'));
   check('a shipped kit has no Delete, and offers extra tools', !button(card('Debugging'), 'Delete') && card('Debugging').querySelector('input.kit-extra'));
-  check('a kit with extra tools says so, and lists them', /\+1 extra/.test(t(card('Capture').querySelector('.badges'))) && card('Capture').querySelector('input.kit-extra').value === 'ngrep');
+  check('a kit with extra tools says so, and lists them', /\+1 extra/.test(pills('Capture')) && card('Capture').querySelector('input.kit-extra').value === 'ngrep');
   const ex = card('Debugging').querySelector('input.kit-extra');
-  ex.value = 'ltrace,  gdbserver';
-  button(ex.parentNode, 'Save').click();
+  ex.value = 'ltrace,  gdbserver'; ex.dispatchEvent(new w.Event('input'));
+  save('Debugging').click();
   await wait();
   check('extra tools: Save sends the names', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'extra', kit: 'debug', packages: ['ltrace', 'gdbserver'] }),
     JSON.stringify(posted[posted.length - 1]));
   button(card('Radio tools'), 'Edit').click();
   const af = d.getElementById('kits-add').elements;
-  check('Edit fills the form, and says it is a change', af.id.value === 'radio' && af.packages.value === 'rtl-sdr sox' && af.hours.value === '4'
-    && /Change Radio tools/.test(t(d.getElementById('kits-form-title'))));
+  check('Edit opens the custom card with the form filled, and says it is a change', head('+ Custom toolkit').contains(d.getElementById('kits-add'))
+    && af.id.value === 'radio' && af.packages.value === 'rtl-sdr sox' && af.hours.value === '4' && /Change Radio tools/.test(t(d.getElementById('kits-form-title'))));
   af.packages.value = 'rtl-sdr sox gqrx-sdr';
   d.getElementById('kits-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
@@ -144,6 +156,9 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   d.getElementById('kits-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
   check('adding one: no id (the hub makes it), never removed', JSON.stringify(posted[posted.length - 1].kit) === JSON.stringify({ title: 'Mesh', summary: '', packages: ['mosquitto-clients'], remove_after_hours: null }));
+  button(head('+ Custom toolkit').querySelector('.aw-drawer'), '✕').click();
+  await wait();
+  check('the custom card closed: its form waits on the page, out of sight', !!d.getElementById('kits-add') && d.getElementById('kits-custom').contains(d.getElementById('kits-add')));
   button(card('Radio tools'), 'Delete').click();
   await wait();
   check('Delete asks, then asks the hub', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'undefine', kit: 'radio' }));

@@ -8,6 +8,7 @@
   <title>Your account · Hub</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
 </head>
 <body class="help account">
   <header>
@@ -29,6 +30,34 @@
       <label>Current password <input type="password" name="old" autocomplete="current-password" required></label>
       <label>New password <input type="password" name="new" autocomplete="new-password" minlength="8" maxlength="128" required></label>
       <button type="submit">Change it</button>
+    </form>
+    <form id="acct-prefs-form" class="acct-form acct-prefs">
+      <h2>Your settings</h2>
+      <p class="setting-desc">Yours to decide: the box's owner decides what is possible here, you decide about yourself.</p>
+      <div class="acct-pref">
+        <span>Show me by name in "here now"</span>
+        <button type="button" class="chip-btn" data-pref="show_online" aria-pressed="false">Off</button>
+        <small class="setting-desc" id="acct-names-to"></small>
+      </div>
+      <div class="acct-pref">
+        <span>Name and text colour</span>
+        <span class="chip-group" role="group" aria-label="Name and text colour" id="acct-hues"></span>
+      </div>
+      <div class="acct-pref">
+        <span>Lock my files in the drop by default</span>
+        <button type="button" class="chip-btn" data-pref="lock_default" aria-pressed="false">Off</button>
+        <small class="setting-desc">Locked: others can open it but not change or remove it. You can still choose for each one.</small>
+      </div>
+      <h3>Who sees what I post</h3>
+      <div id="acct-posts"></div>
+      <p class="setting-desc">Never wider than the box's owner lets each app be. Notes is one notebook everyone who can
+        open it shares, so it has nothing of yours alone to hide.</p>
+      <label>Email for a password reset <input type="email" name="email" autocomplete="email" placeholder="optional"></label>
+      <p class="setting-desc">Only used if the box can send mail; never shown to anyone. New accounts start not shown by name.</p>
+      <div class="acct-pref-foot">
+        <button type="button" class="action-btn" id="acct-prefs-discard" disabled>Discard</button>
+        <button type="submit" class="action-btn primary" id="acct-prefs-save" disabled>Save</button>
+      </div>
     </form>
     <p><button type="button" id="acct-logout">Log out</button></p>
   </section>

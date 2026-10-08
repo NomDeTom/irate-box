@@ -29,6 +29,9 @@
 #                             by irate-box-ci.service as the unprivileged hubci user
 #   irate-box-uplink.service  the uplink watchdog (uplink.py, root): keeps the box on its network
 #                             as eagerly as --uplink or /admin's Network page says
+#   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
+#                             hashed with daily and weekly salts held in memory, only the counts
+#                             written; runs only while counting is on (irate-box-visitors-switch.path)
 #   /var/lib/hub/control/netinv.json   what the box has for networking (netinv.py), looked
 #                             at once here and again from /admin
 #
@@ -695,7 +698,7 @@ CADDY_FROM_RELEASE=0
 # on cgit's about pages (scripts/cgit-about.py), ~1 MB. libjs-highlight.js: code highlighted
 # in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base)
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base nftables procps)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -984,8 +987,8 @@ done
 UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
 UNCLAIMED=0
 if [ -n "$ADMIN_PW" ]; then
-	printf '%s\n' "$ADMIN_PW" >"$ETC/admin-password"
-	chmod 600 "$ETC/admin-password"
+	# Root's alone from the moment it exists: a new file under umask 077, renamed over the old.
+	(umask 077 && printf '%s\n' "$ADMIN_PW" >"$ETC/.admin-password.new") && mv -f "$ETC/.admin-password.new" "$ETC/admin-password"
 elif [ -s "$ETC/admin-password" ]; then
 	chmod 600 "$ETC/admin-password"
 	ADMIN_PW="$(head -1 "$ETC/admin-password")"
@@ -1128,7 +1131,7 @@ nginx_config() {
 	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/web|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" -e "s|@FIRMWARE@|$STATE/firmware|g" \
 		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" -e "s|@ACCESS@|$ETC/nginx-access.conf|g" \
 		-e "s|@FRONT@|$NGINX_FRONT|g" -e "s|@ADDON_PORT@|$ADDON_PORT|g" -e "s|@NOTES_PORT@|$NOTES_PORT|g" -e "s|@WIKI_PORT@|$WIKI_PORT|g" -e "s|@GIT_PORT@|$GIT_PORT|g" -e "s|@ADDONS@|$STATE/addons|g" \
-		-e "s|@ADDON_ACCESS@|$ETC/nginx-addons.conf|g" -e "s|@TLS@|$ETC/tls/front|g" -e "s|@TLS_PORT@|$TLS_PORT|g" \
+		-e "s|@ADDON_ACCESS@|$ETC/nginx-addons.conf|g" -e "s|@ADDON_GATES@|$ETC/nginx-addon-gates.conf.d|g" -e "s|@TLS@|$ETC/tls/front|g" -e "s|@TLS_PORT@|$TLS_PORT|g" \
 		-e "s|@ADDON_TLS_PORT@|$ADDON_TLS_PORT|g" -e "s|@NOTES_TLS_PORT@|$NOTES_TLS_PORT|g" -e "s|@WIKI_TLS_PORT@|$WIKI_TLS_PORT|g" \
 		-e "s|@GIT_TLS_PORT@|$GIT_TLS_PORT|g" "$CODE/config/irate-box.nginx" |
 		# A kernel without IPv6: the [::] listener would stop nginx from starting at all.
@@ -1893,7 +1896,7 @@ say "Publishing this box's own source"
 src_ver="$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
 # No git version (installed from a copy without its history): name it after the install date.
 case "$src_ver" in "" | unknown) src_ver="local-$(date -u +%Y%m%d)" ;; esac
-state_dir root root 755 "$STATE/source"
+state_dir root root 755 "$STATE/source" "$STATE/kits"
 src_tar="$STATE/source/irate-box-source.tar.gz"
 src_tmp="$(mktemp "$STATE/source/.irate-box-source.XXXXXX")"
 if tar -C "$(dirname "$CODE")" --exclude=__pycache__ --exclude='*.pyc' \
@@ -2021,6 +2024,88 @@ RandomizedDelaySec=5min
 WantedBy=timers.target
 EOF
 
+# The security doctor, daily (stance review 2026-10-08 §2): a read-only audit as root, its report
+# where /admin reads it, so a new listener, sudo rule or port forward is seen without anyone
+# pressing the button; the page says what is new since the last run.
+cat >/etc/systemd/system/irate-box-secdoctor.service <<EOF
+[Unit]
+Description=Irate-Box security doctor: a read-only audit, its report for /admin
+
+[Service]
+Type=oneshot
+ExecStart=$CODE/irate-box secdoctor run
+Nice=19
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths=$STATE/control
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectHome=read-only
+EOF
+cat >/etc/systemd/system/irate-box-secdoctor.timer <<EOF
+[Unit]
+Description=Irate-Box security doctor, daily
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=1d
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# --- Unique visitors (menu overhaul M11) -------------------------------------------
+# A helper of its own reads the leases and the neighbour table every minute, hashes each address
+# with a salt made for the day (and one for the week) that it holds only in memory, and writes two
+# numbers for the hub. It runs only while counting is on: the hub records the owner's choice in
+# $STATE/visitors.want (on by default, one of the setup's decisions) and the path unit applies it.
+cat >/etc/systemd/system/irate-box-visitors.service <<EOF
+[Unit]
+Description=Irate-Box: unique visitors, counted from salted hashes kept in memory only
+
+[Service]
+ExecStart=$CODE/irate-box visitors
+# Not root: the leases and /proc/net/arp are readable by anyone; it writes one file in its runtime folder.
+DynamicUser=yes
+RuntimeDirectory=irate-box-visitors
+RuntimeDirectoryMode=0755
+Restart=on-failure
+MemoryDenyWriteExecute=yes
+$HUB_SANDBOX
+
+[Install]
+WantedBy=multi-user.target
+EOF
+cat >/etc/systemd/system/irate-box-visitors-switch.service <<EOF
+[Unit]
+Description=Irate-Box: apply the visitor-counting switch ($STATE/visitors.want)
+
+[Service]
+Type=oneshot
+Environment=HUB_STATE_DIR=$STATE
+ExecStart=$CODE/scripts/visitors-apply.sh
+EOF
+cat >/etc/systemd/system/irate-box-visitors-switch.path <<EOF
+[Unit]
+Description=Irate-Box: watch the visitor-counting switch
+
+[Path]
+PathChanged=$STATE/visitors.want
+Unit=irate-box-visitors-switch.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+if [ ! -f "$STATE/visitors.want" ]; then
+	# Written as the hub, in its folder (F13): on, as the setting's default.
+	echo on | runuser -u "$HUB_USER" -- sh -c 'cat >"$1"' sh "$STATE/visitors.want"
+fi
+systemctl daemon-reload
+systemctl enable --quiet --now irate-box-visitors-switch.path || problem "irate-box-visitors-switch.path did not start"
+HUB_STATE_DIR="$STATE" "$CODE/scripts/visitors-apply.sh" || problem "visitor counting: journalctl -u irate-box-visitors -n 30"
+
 # --- Tailscale remote access -------------------------------------------------------
 # Not installed by this script. Where it is already present, it stops being a boot
 # service and comes under the switch on /admin: the hub records the choice in
@@ -2111,7 +2196,7 @@ done
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ "$KIWIX" = 1 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
-for u in irate-box-librarian.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.

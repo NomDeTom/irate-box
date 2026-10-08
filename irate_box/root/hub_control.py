@@ -193,6 +193,9 @@ NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"
 # The add-on server's maps (http level), and Caddy's add-on routes: from access.json and the
 # local add-ons' manifests, re-checked here (the hub writes those).
 NGINX_ADDON_ACCESS = Path(os.environ.get("HUB_NGINX_ADDON_ACCESS", ETC / "nginx-addons.conf"))
+# A local add-on in users mode (item 6, current-and-next-actions): one location per such add-on,
+# ahead of the add-on server's shared one (access.addon_gates).
+NGINX_ADDON_GATES = Path(os.environ.get("HUB_NGINX_ADDON_GATES", ETC / "nginx-addon-gates.conf.d"))
 CADDY_ACCESS = Path(os.environ.get("HUB_ACCESS_DIR", "/etc/caddy/irate-box-access"))
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
@@ -306,8 +309,14 @@ def set_login(pw, keep=True):
 
     secret = ETC / "admin-password"
     if keep:
-        secret.write_text(pw + "\n")
-        secret.chmod(0o600)
+        # Root's alone from the moment it exists (a write then a chmod left it readable by every
+        # account for that moment), into a new file renamed over the old.
+        tmp = secret.with_name(f".{secret.name}.new")
+        tmp.unlink(missing_ok=True)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(pw + "\n")
+        os.replace(tmp, secret)
     else:
         secret.unlink(missing_ok=True)
     # ttyd has no credential of its own any more (F9); a box installed before then has one, the
@@ -371,15 +380,27 @@ def offline_kit(req):
     arch = platform.machine()
     base = _du(apps, Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
     need = 2 * base + sum(z.stat().st_size for z in zims) + (64 << 20)
-    KITS.mkdir(mode=0o755, exist_ok=True)
-    os.chown(KITS, 0, 0)
-    os.chmod(KITS, 0o755)
-    free = shutil.disk_usage(KITS).free
+    # The hub owns $STATE, so kits/ is made root's through its own fd (never a link the hub
+    # planted), and every path below goes through that fd: a kits/ renamed away and replaced by
+    # a link while this runs changes nothing, and HOME for the installer is a root-only folder
+    # (security stance review 2026-10-08, N1).
+    safeio.mkdir(KITS, 0, 0, 0o755)
+    kits_fd = safeio._dir_fd(KITS)
+    try:
+        if os.fstat(kits_fd).st_uid != 0:
+            raise ValueError(f"{KITS} is not root's: refused")
+        return _offline_kit(Path(f"/proc/self/fd/{kits_fd}"), zims, apps, arch, need)
+    finally:
+        os.close(kits_fd)
+
+
+def _offline_kit(kdir, zims, apps, arch, need):
+    free = shutil.disk_usage(kdir).free
     if free - need < _min_free():
         raise ValueError(f"not enough space: the kit needs about {need >> 20} MB and {free >> 20} MB is free "
                          f"(keeping {_min_free() >> 20} MB spare)" + (" — try without the books" if zims else ""))
     with Progress("kit", 3, path=KIT_PROGRESS) as progress:
-        work = Path(tempfile.mkdtemp(prefix=".kit-", dir=KITS))
+        work = Path(tempfile.mkdtemp(prefix=".kit-", dir=kdir))
         try:
             progress.step("Gathering the code, the apps and the downloads")
             kit = work / "irate-box-kit"
@@ -403,7 +424,11 @@ def offline_kit(req):
             progress.step("Packing it into one file")
             ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
             name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
-            part = KITS / f".{name}.part"
+            # kits/ may hold entries the hub made before root took the folder: the part file is
+            # made fresh at exactly this name (a planted link there is removed, never written through).
+            part = kdir / f".{name}.part"
+            part.unlink(missing_ok=True)
+            safeio.create(part, 0o644).close()
             tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
             if tar.returncode == 0 and zims:
                 tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
@@ -412,14 +437,13 @@ def offline_kit(req):
                 part.unlink(missing_ok=True)
                 raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
             part.chmod(0o644)
-            for old in KITS.glob("irate-box-kit-*.tar"):
+            for old in kdir.glob("irate-box-kit-*.tar"):
                 old.unlink()
-            final = KITS / name
+            final = kdir / name
             os.replace(part, final)
             meta = {"name": name, "size": final.stat().st_size, "at": time.time(), "arch": arch,
                     "books": [z.name for z in zims], "contents": report[:40]}
-            (KITS / "kit.json").write_text(json.dumps(meta, indent=2))
-            (KITS / "kit.json").chmod(0o644)
+            safeio.write(kdir / "kit.json", json.dumps(meta, indent=2))
         finally:
             shutil.rmtree(work, ignore_errors=True)
     return f"offline kit ready: {name} ({meta['size'] >> 20} MB)"
@@ -457,7 +481,10 @@ def _access_files(state):
         gates_dir = NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d")   # the template's @ACCESS@.d/gate-<id>.conf*
         gates = access.nginx_gates(state, admin_login=not ADMIN_LOGIN_OFF.exists())
         gates_dir.mkdir(mode=0o755, exist_ok=True)
-        paths = [NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
+        addon_gates = access.addon_gates(state, local)
+        NGINX_ADDON_GATES.mkdir(mode=0o755, exist_ok=True)
+        paths = ([NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
+                 + sorted(set(NGINX_ADDON_GATES.glob("users-*.conf")) | {NGINX_ADDON_GATES / n for n in addon_gates}))
         old = {p: p.read_text() if p.exists() else None for p in paths}
         _write_root_file(NGINX_ACCESS, access.nginx_conf(state))
         _write_root_file(NGINX_ADDON_ACCESS, access.addon_nginx_conf(state, local))
@@ -466,6 +493,11 @@ def _access_files(state):
                 p.unlink()
         for name, text in gates.items():
             _write_root_file(gates_dir / name, text)
+        for p in NGINX_ADDON_GATES.glob("users-*.conf"):
+            if p.name not in addon_gates:
+                p.unlink()
+        for name, text in addon_gates.items():
+            _write_root_file(NGINX_ADDON_GATES / name, text)
         return old
     login = _caddy_hash()
     if not login:
@@ -918,10 +950,16 @@ def verify_update(src, installed, opts, progress=None):
     if installed:
         known = run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
         ff = known and run("git", "-C", str(src), "merge-base", "--is-ancestor", installed, "HEAD").returncode == 0
+        # A rewritten branch (the installed commit is known, and not behind HEAD) blocks: the
+        # update path is root, and a history that no longer contains what runs here is the
+        # sign of a source taken over (stance review 2026-10-08, N3). A commit the fetched
+        # history does not know at all (a box installed from a copy) is only a warning.
         checks.append(_check("A fast-forward of the installed version", ff,
                              "history continues from the installed commit" if ff else
-                             f"{installed} is not an ancestor: the branch was rewritten, or the box was "
-                             "installed from elsewhere. Read the changes before installing.", warn=True))
+                             f"{installed} is not an ancestor: the branch was rewritten. Read the changes, then "
+                             "Install anyway (Health → Updates doctor) if they are yours." if known else
+                             f"{installed} is not in the fetched history: the box was installed from elsewhere. "
+                             "Read the changes before installing.", warn=not known))
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
@@ -991,7 +1029,7 @@ def _nginx_check(src, opts):
         (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
         # The TLS twins' includes: an empty folder (a box with no certificate), their ports as set.
         (Path(tmp) / "tls").mkdir()
-        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
+        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_GATES@": f"{tmp}/addon-gates.d", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
                            "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491",
                            "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons")}.items():
             text = text.replace(key, value)
@@ -2165,16 +2203,25 @@ def main():
             rid = path.stem if ID_RE.match(path.stem) else "invalid"
             what = None
             try:
-                req = json.loads(safeio.read_request(path))  # never a link or a FIFO (F3)
+                text = safeio.read_request(path)  # never a link or a FIFO (F3)
+                # Gone before anything else can fail on it: a request this process cannot handle
+                # must never be found again by the next one, or the path unit restarts the helper
+                # for ever and nothing queued behind it is served (stance review 2026-10-08, N6).
+                path.unlink(missing_ok=True)
+                req = json.loads(text)
+                if not isinstance(req, dict):
+                    raise ValueError("not a request")
                 what = req.get("action")
-                path.unlink()
-                action = ACTIONS.get(req.get("action"))
+                action = ACTIONS.get(what)
                 if not action:
                     raise ValueError("unknown action")
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 path.unlink(missing_ok=True)
                 answer(rid, False, str(exc))
+            except Exception as exc:  # a handler's own bug: answered, and the queue goes on
+                path.unlink(missing_ok=True)
+                answer(rid, False, f"{type(exc).__name__}: {exc}")
             if what in UPDATES:
                 # The code on disk is new now; this process still has the old in memory. Stop, and
                 # the path unit starts a fresh helper for what is still queued (the Lyra,

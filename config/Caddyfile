@@ -186,7 +186,9 @@
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
 		@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
 		respond @capability 403
-		reverse_proxy unix//run/silverbullet/silverbullet.sock
+		reverse_proxy unix//run/silverbullet/silverbullet.sock {
+			header_up Cookie "irate_session=[^;]*;?\s*" ""
+		}
 	}
 	redir /notes /notes/ permanent
 
@@ -209,6 +211,7 @@
 		}
 		reverse_proxy 127.0.0.1:8384 {
 			header_up Host {upstream_hostport}
+			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}
 	redir /sync /sync/ permanent
@@ -352,6 +355,7 @@
 			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
 			header X-Content-Type-Options nosniff
 			reverse_proxy unix//run/irate-box-git.sock {
+				header_up Cookie "irate_session=[^;]*;?\s*" ""
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
 					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-public
@@ -409,6 +413,7 @@
 			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
 			header X-Content-Type-Options nosniff
 			reverse_proxy unix//run/irate-box-git.sock {
+				header_up Cookie "irate_session=[^;]*;?\s*" ""
 				transport fastcgi {
 					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
 					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-private

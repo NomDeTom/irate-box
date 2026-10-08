@@ -24,5 +24,20 @@ check("every step names a function of its own", len(fns) == len(set(fns)), [f fo
 server = (Path(__file__).resolve().parents[1] / "irate_box" / "hub" / "server.py").read_text()
 check("server.py declares DRAINS_REQUEST_BODIES = True (the doctor's F2 check reads it)",
       re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server) is not None)
+# The doctor runs daily from a timer (stance review 2026-10-08 §2), and says what is new since the last run.
+inst = (Path(__file__).resolve().parents[1] / "install.sh").read_text()
+uninst = (Path(__file__).resolve().parents[1] / "uninstall.sh").read_text()
+check("install.sh writes and enables irate-box-secdoctor.timer, running `secdoctor run` as a hardened oneshot",
+      "irate-box-secdoctor.timer" in inst and "ExecStart=$CODE/irate-box secdoctor run" in inst
+      and "irate-box-secdoctor.timer irate-box-control.path" in inst and "ProtectSystem=strict\nReadWritePaths=$STATE/control" in inst)
+check("uninstall.sh takes the timer and its unit away", "irate-box-secdoctor.timer irate-box-secdoctor.service" in uninst and 'irate-box-secdoctor.{service,timer}' in uninst)
+check("secdoctor.py has the `run` command the timer calls", '"run"' in src and "write_report(rep)" in src)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from irate_box.root import secdoctor as sd  # noqa: E402
+prev = {"at": 1, "steps": [{"findings": [{"id": "a", "status": "ok"}, {"id": "b", "status": "warn"}]}]}
+now = [{"id": "a", "status": "problem"}, {"id": "b", "status": "problem"}, {"id": "c", "status": "warn"}, {"id": "d", "status": "ok"}]
+check("new_since: what was fine or absent and is not now; not what was already wrong, nor what is fine",
+      sd.new_since(prev, now) == ["a", "c"] and sd.new_since(None, now) == [], sd.new_since(prev, now))
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

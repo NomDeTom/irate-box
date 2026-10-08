@@ -7,51 +7,15 @@ const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1'
 // loads, the operator has already authenticated. Each toggle saves on change; there is
 // no Save button to forget to press.
 
-// --- panes ------------------------------------------------------------------------------
-// One pane at a time, chosen by the sidebar and kept in the address (#updates), so a
-// reload or a bookmark comes back to the same place. Everything keeps loading in the
-// background, so the sidebar's badges stay current whichever pane is open.
-const panes = [...document.querySelectorAll('.admin-pane')];
-const sideLinks = [...document.querySelectorAll('.admin-side-list a')];
-const menu = document.querySelector('.admin-menu');
-const side = document.querySelector('.admin-side');
-
-function showPane() {
-  const pane = panes.find((p) => `#${p.id}` === location.hash) || panes[0];
-  panes.forEach((p) => { p.hidden = p !== pane; });
-  sideLinks.forEach((a) => {
-    if (a.hash === `#${pane.id}`) a.setAttribute('aria-current', 'page');
-    else a.removeAttribute('aria-current');
-  });
-  // Background art by side-bar group (style.css, web/art/): the controller for Box and System,
-  // the librarian for Library and Hub content, the doctor for Health; a pane may have its own
-  // (the workbench for Toolkits, the production line for the Firmware Factory).
-  const link = sideLinks.find((l) => l.hash === `#${pane.id}`);
-  let group = link && link.previousElementSibling;
-  while (group && !group.classList.contains('admin-side-group')) group = group.previousElementSibling;
-  const ART = { Box: 'controller', System: 'controller', Library: 'librarian', 'Hub content': 'librarian', Health: 'doctor' };
-  const PANE_ART = { welcome: 'welcome-controller', toolkits: 'workbench', factory: 'factory' };
-  document.querySelector('.admin-main').dataset.art = PANE_ART[pane.id]
-    || (group && ART[group.textContent.trim()]) || '';
-  const title = pane.querySelector('h2').textContent;
-  document.getElementById('admin-current').textContent = title;
-  document.title = `${title} · Hub admin`;
-  side.classList.remove('open');
-  menu.setAttribute('aria-expanded', 'false');
-  window.scrollTo(0, 0);
-}
-window.addEventListener('hashchange', showPane);
-menu.addEventListener('click', () => {
-  const open = side.classList.toggle('open');
-  menu.setAttribute('aria-expanded', String(open));
-});
-showPane();
-
-// A word beside a sidebar entry: "new", "working", ... or nothing.
-function badge(pane, text) {
-  const a = sideLinks.find((l) => l.hash === `#${pane}`);
-  if (a) { if (text) a.dataset.badge = text; else delete a.dataset.badge; }
-}
+// --- the menu --------------------------------------------------------------------------
+// Built by admin-layout.js (AL) from its table and the apps' manifests (menu overhaul M4): pages
+// holding the sections below, the address naming a section. Everything keeps loading in the
+// background, so the sidebar's badges stay current whichever page is open.
+const showPane = AL.show;
+// A word beside a section's sidebar entry: "new", "working", ... or nothing.
+const badge = AL.badge;
+// Is this section on the page that's showing? (The loaders that wait to be seen.)
+const paneShown = AL.shown;
 
 // Every answer goes in the note right under the control that asked for it.
 const noteEl = (id) => document.getElementById(id);
@@ -188,6 +152,8 @@ const PRESETS = {
 let libPoll = null;
 
 const el = (tag, props = {}, ...kids) => {
+  // A button with no class of its own is an action button (rule 6a: the control vocabulary).
+  if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
   const node = Object.assign(document.createElement(tag), props);
   node.append(...kids.filter((k) => k !== null && k !== undefined));
   return node;
@@ -267,11 +233,13 @@ function sourceRow(src, st, busy) {
   );
 }
 
+let lastLibrary = null;  // drawn again when the menu is rebuilt, for the apps' own pages
+AL.onBuild(() => { if (lastLibrary) renderApps(lastLibrary, lastLibrary.running); });
 function renderApps(snap, busy) {
   const apps = snap.apps || {};
   const sources = Object.fromEntries(snap.sources.filter((s) => s.kind === 'app').map((s) => [s.name, s]));
   const post = (key, body, confirmText) => () => libAct(key, body, confirmText);
-  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => {
+  const row = (name, a, withAccess) => {
     const inst = a.installed;
     const src = sources[name];
     const st = snap.status[name] || {};
@@ -297,7 +265,7 @@ function renderApps(snap, busy) {
     ];
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: a.title }),
-      accessSlot(name),
+      withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
@@ -315,7 +283,14 @@ function renderApps(snap, busy) {
             title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
-  }));
+  };
+  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => row(name, a, true)));
+  // Each app's own page has its row too (F6), its access being at the top of that page already.
+  document.querySelectorAll('.updates-block[data-app]').forEach((b) => {
+    const a = apps[b.dataset.app];
+    b.replaceChildren(a ? row(b.dataset.app, a, false) : el('p', { className: 'setting-desc', textContent: 'The librarian has nothing on it yet.' }));
+  });
+  lastLibrary = snap;
 }
 
 function renderLibrary(snap) {
@@ -604,7 +579,7 @@ async function postJSON(url, body) {
   return data;
 }
 const actionButton = (label, onclick, extra = {}) =>
-  el('button', { type: 'button', textContent: label, onclick, ...extra });
+  el('button', { type: 'button', textContent: label, onclick, ...extra, className: `action-btn${extra.className ? ' ' + extra.className : ''}` });
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };
@@ -619,30 +594,29 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
-// The services' uptime (step 35): a row per service, the week by hour and 35 days by day, from
-// the hub's five-minute samples (svchistory.py); a dot where it started (a reboot starts them all).
+// The services' uptime (step 35): a row per service, the last 72 hours by hour and 72 days by
+// day (githubstatus.com's format), from the hub's five-minute samples (svchistory.py); a dot
+// where it started (a reboot starts them all).
 function renderServiceUptime(services, u) {
   const body = document.getElementById('svc-uptime-body');
   const units = (u && u.units) || {};
   const mine = services.filter((s) => s.unit && units[s.unit]);
   if (!mine.length) {
     body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing recorded yet: the hub looks at every service every five minutes, '
-      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 35 days.' }));
+      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return;
   }
-  const hourCols = [];
-  u.days.forEach((d) => { for (let h = 0; h < 24; h++) hourCols.push(h ? '' : d.label); });
-  const at = (i) => `${u.days[Math.floor(i / 24)].label} ${String(i % 24).padStart(2, '0')}:00–${String((i + 1) % 24).padStart(2, '0')}:00`;
   const said = (s) => { const sm = units[s.unit].summary;
-    return sm.up == null ? `${s.name}: no data this week` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
-  const dayLabel = (back) => u.month_days[34 - back].label;
+    return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
+  const dayLabel = (back) => u.month_days[71 - back].label;
   body.replaceChildren(
     el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
-    Heatmap.grid({ caption: 'Each service, the last 7 days by hour', cols: hourCols,
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].week, where: (i) => `${s.name}, ${at(i)}` })) }),
-    el('p', { className: 'setting-desc', textContent: 'The last 35 days, by day:' }),
-    Heatmap.grid({ caption: 'Each service, the last 35 days by day', cols: Array.from({ length: 35 }, (_, i) => (i % 7 ? '' : dayLabel(34 - i))),
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(34 - i)}` })) }),
+    el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
+    Heatmap.grid({ caption: 'Each service, the last 72 hours by hour', cols: u.hour_cols,
+      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].hours, where: (i) => `${s.name}, ${u.hour_full[i]}` })) }),
+    el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
+    Heatmap.grid({ caption: 'Each service, the last 72 days by day', cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : dayLabel(71 - i))),
+      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` })) }),
     Heatmap.legend(),
     el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
 }
@@ -716,6 +690,7 @@ function renderModeration(data) {
     if (!confirm(`Delete ${what}?`)) return;
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
+  renderReports(data, del);
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
       el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)}`),
@@ -744,6 +719,53 @@ function renderModeration(data) {
             i === 0 ? `the whole thread "${t.title}"` : 'this post'), { className: 'small' }))),
     ))
     : [el('p', { className: 'setting-desc', textContent: 'No threads.' })]));
+}
+
+// The queue across the apps (M10): what was reported enough to count, worst first; Keep or Delete.
+let lastReports = null;
+AL.onBuild(() => { if (lastReports) renderReports(...lastReports); });
+function renderReports(data, del) {
+  const queue = data.queue || [], rs = data.reports;
+  badge('moderation', queue.length ? String(queue.length) : '');
+  const q = document.getElementById('mod-queue');
+  if (q) q.replaceChildren(queue.length ? AW.shortList(queue.map((r) => ({ id: r.key, title: r.text.slice(0, 80) || '(empty)',
+    summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`,
+    badges: Object.keys(r.reasons || {}),
+    detail: () => [
+      AW.h('p', { class: 'admin-text', text: r.text }),
+      AW.dl(Object.fromEntries(Object.entries(r.reasons || {}).map(([k, n]) => [k, `${n}`]))),
+      AW.btn('Keep it', { onclick: async () => { try { renderModeration(await postJSON('/admin/moderation', { action: 'keep', key: r.key })); } catch (err) { say(err.message, false, noteEl('mod-note')); } } }),
+      ' ',
+      AW.btn('Delete it', { onclick: r.key.startsWith('shoutbox:')
+        ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
+        : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
+    ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
+  // Each app's slice of it, on its own page (F6): the same lines, its posts only.
+  lastReports = [data, del];
+  document.querySelectorAll('.flagged-block[data-app]').forEach((b) => {
+    const mine = queue.filter((r) => r.key.startsWith(b.dataset.app + ':'));
+    b.replaceChildren(mine.length ? AW.shortList(mine.map((r) => ({ id: 'own-' + r.key, title: r.text.slice(0, 80) || '(empty)',
+      summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`, badges: Object.keys(r.reasons || {}),
+      detail: () => [AW.h('p', { class: 'admin-text', text: r.text }), AW.h('a', { href: '#moderation', class: 'action-btn' }, 'Keep or delete it under Moderation →')] })),
+    { id: 'mod-queue-' + b.dataset.app }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported here.' }));
+  });
+  const box = document.getElementById('report-settings');
+  if (!box || !rs) return;
+  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile.
+  const chosen = new Set(rs.reasons);
+  const reasons = AW.h('div', { class: 'filter-chips', role: 'group', 'aria-label': 'Reasons offered' }, rs.all_reasons.map((r) =>
+    AW.h('button', { type: 'button', class: 'filter-chip' + (chosen.has(r) ? ' active' : ''), 'aria-pressed': String(chosen.has(r)), onclick: async () => {
+      const next = rs.all_reasons.filter((x) => (x === r ? !chosen.has(r) : chosen.has(x)));
+      if (!next.length) return;
+      try { await postJSON('/admin/settings', { report_reasons: next }); loadModeration(); } catch (err) { say(err.message, false, noteEl('mod-note')); }
+    } }, r)));
+  box.replaceChildren(AW.h('div', { class: 'aw-settings' }, AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Reasons offered' }), reasons,
+    AW.h('small', { class: 'setting-desc', text: 'saved as you choose' }))),
+  AW.settings([
+    { key: 'report_threshold', label: 'In the queue after', kind: 'choice', value: rs.threshold, options: [[1, '1 report'], [2, '2'], [3, '3'], [5, '5']] },
+    { key: 'report_hide', label: 'Hidden from everyone else until you look', kind: 'toggle', value: rs.hide,
+      note: 'off: it stays up while waiting; on: it is hidden once it counts, and shows again if you keep it' },
+  ], { save: async (changed) => { const r = await postJSON('/admin/settings', changed); loadModeration(); return r; } }));
 }
 
 async function loadModeration() {
@@ -960,7 +982,7 @@ function renderUpdate(data) {
     if (done) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
       updSay(updWaiting.action, failed && updWaiting.action !== 'doctor'
-        ? `${done.message} — the Updates doctor (under Health) can say why.` : done.message, !failed);
+        ? `${done.message} — the Updates doctor (under Doctors) can say why.` : done.message, !failed);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -1071,6 +1093,29 @@ let secNote = null; // { fid, text, ok }
 let secPoll = null;
 let secAsked = false;
 
+// Which page a line of the box's scan belongs on (S1, done in the page: the root helper and its
+// allow-list are untouched). A cure has one right answer (5d): the kernel's protections, root's own
+// login and password, its first-login script, SSH's root login, LLMNR. Debian's security updates
+// are system updates (4d). The rest are the owner's real choices.
+const CURE_ID = /^(kernel-|root-password|root-firstrun|ssh-root|llmnr)/;
+const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
+function secKind(f) {
+  if (f.id === 'security-updates' || f.id === 'unattended') return 'update';
+  if (CURE_ID.test(f.id) || (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))) return 'cure';
+  return 'choice';
+}
+// Passwordless sudo as a toggle (Tom, 2026-10-08: "I like the idea of a toggle"): On while a
+// NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
+function sudoToggle(f, busy) {
+  return el('span', { className: 'library-buttons' }, ...f.actions.map((a) => {
+    const on = /^sudo-drop:/.test(a.choice), file = a.choice.split(':')[1];
+    const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : ''), disabled: busy,
+      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secFix(f.id, a) });
+    b.setAttribute('aria-pressed', String(on));
+    return b;
+  }));
+}
+
 function renderSecurity(data) {
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
@@ -1086,14 +1131,21 @@ function renderSecurity(data) {
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (secNote && secNote.fid === fid
     ? el('span', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
-  sec.findings.replaceChildren(...all.map((f) => el('li', { className: `check check-${f.status}` },
+  const line = (f) => el('li', { className: `check check-${f.status}` },
     el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
-    f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
+    f.id === 'sudo-nopasswd' ? sudoToggle(f, busy) : f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
       type: 'button', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
     }))) : null,
-    noteUnder(f.id))));
+    noteUnder(f.id));
+  // Each where it belongs (checklist 4d, 5d; S of the menu overhaul): the real choices here, the
+  // cures beside the doctor's findings, Debian's security updates on Updates. The same scan and the
+  // same fix request everywhere, so root's rule (only what its last scan offered) is unchanged.
+  const by = (k) => all.filter((f) => secKind(f) === k);
+  sec.findings.replaceChildren(...by('choice').map(line));
+  noteEl('secdoctor-cures').replaceChildren(...(by('cure').length ? by('cure').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to cure.' : 'Not scanned yet.' })]));
+  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
@@ -1120,8 +1172,10 @@ function renderSecurity(data) {
     el('td', { textContent: l.addr }))));
   sec.output.hidden = !data.log.length;
   sec.log.textContent = data.log.join('\n');
-  const problems = all.filter((f) => f.status === 'problem').length;
+  const problems = by('choice').filter((f) => f.status === 'problem').length;
   badge('security', problems ? String(problems) : '');
+  const updProblems = by('update').filter((f) => f.status === 'problem').length;
+  badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention (F4) words it
   if (scan) setupStep('security', problems ? `${problems} thing${problems === 1 ? '' : 's'} to fix or leave.` : 'Nothing to fix.', problems ? 'problem' : 'ok');
 
   const stale = !scan || Date.now() / 1000 - scan.at > 15 * 60;
@@ -1243,6 +1297,8 @@ function parseScanReport(text, name) {
 }
 
 function renderAudit(audit, busy) {
+  // The cures are lines of the box's scan, which the joint report already counts (its "security-page"
+  // source): the badge stays the merged count.
   badge('secdoctor', audit ? String((audit.joint && audit.joint.after ? audit.joint.after.problem : audit.counts.problem) || '') : '');
   renderJoint(audit && audit.joint);
   if (!audit) {
@@ -1253,6 +1309,7 @@ function renderAudit(audit, busy) {
   }
   const c = audit.counts;
   sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}: ${c.problem} to fix, ${c.warn} to look at, ${c.ok} fine`
+    + ((audit.new || []).length ? `; ${audit.new.length} new since ${new Date(audit.previous_at * 1000).toLocaleDateString()}` : '')
     + (audit.root ? '.' : ' (not run as root: some checks could not read what they need).') + (busy ? ' Running…' : '');
   sec.auditSteps.replaceChildren(...audit.steps.map((st) => {
     const worst = st.findings.some((f) => f.status === 'problem') ? 'problem' : st.findings.some((f) => f.status === 'warn') ? 'warn' : 'ok';
@@ -1261,6 +1318,7 @@ function renderAudit(audit, busy) {
       el('summary', { textContent: `${MARK[worst]} ${st.title}${st.ref ? ` (${st.ref})` : ''}` }),
       el('ul', { className: 'admin-checks' }, ...lines.map((f) => el('li', { className: `check check-${f.status}` },
         el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
+        (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
         el('span', { textContent: ` — ${f.detail}` }),
         f.fix ? el('span', { className: 'setting-desc', textContent: `To do: ${f.fix}` }) : null))));
@@ -1383,7 +1441,7 @@ function renderHealth(data) {
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (hlNote && hlNote.fid === fid
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
-  // The clock and its module have their own pane (Box, Clock); the rest is the services doctor.
+  // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
   const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
   const item = (f) => el('li', { className: `check check-${f.status}` },
     el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
@@ -1418,8 +1476,8 @@ function renderHealth(data) {
   badge('clock', clockProblems ? String(clockProblems) : '');
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
-  const here = location.hash === '#health' || location.hash === '#clock';
-  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, location.hash === '#clock' ? 'clock-scan' : 'scan'); return; }
+  const here = paneShown('health') || paneShown('clock');
+  if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, paneShown('clock') ? 'clock-scan' : 'scan'); return; }
   clearTimeout(hlPoll);
   hlPoll = setTimeout(loadHealth, busy ? 2000 : here ? 15000 : 30000);
 }
@@ -1456,7 +1514,7 @@ function hlFix(fid, action) {
 
 hl.scan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'scan'));
 hl.clockScan.addEventListener('click', () => hlRequest({ action: 'scan' }, 'clock-scan'));
-window.addEventListener('hashchange', () => { if (location.hash === '#health' || location.hash === '#clock') loadHealth(); });
+window.addEventListener('hashchange', () => { if (paneShown('health') || paneShown('clock')) loadHealth(); });
 loadHealth();
 
 // --- network ---------------------------------------------------------------------------
@@ -1709,34 +1767,31 @@ function signalWords(dbm) {
   return dbm >= -50 ? 'excellent' : dbm >= -60 ? 'good' : dbm >= -70 ? 'fair' : dbm >= -80 ? 'weak' : 'poor';
 }
 
-// A link's uptime (step 34): a folded part on its card, the week by hour and 35 days by day,
-// from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
+// A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
+// by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
+// (linkhistory.py), drawn by heatmap.js.
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
   const fold = el('details', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'
-    : `Up ${Heatmap.percent(sm.up)} over the last 7 days (${sm.hours_seen} hours recorded)`
+    : `Up ${Heatmap.percent(sm.up)} over the last 72 hours (${sm.hours_seen} hours recorded)`
       + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
       + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
   fold.append(el('summary', {}, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: ` ${said}` })));
   if (!u) {
     fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
-      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 35 days.' }));
+      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return fold;
   }
-  const hours = Array.from({ length: 24 }, (_, h) => (h % 6 ? '' : String(h).padStart(2, '0')));
-  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 7 days, by hour:' }),
-    Heatmap.grid({ caption: `${iface}, the last 7 days by hour`, cols: hours,
-      rows: u.week.map((d) => ({ label: d.label, cells: d.hours,
-        where: (h) => `${d.label} ${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00` })) }));
-  const weeks = [];
-  for (let i = 0; i < u.month.length; i += 7) weeks.push(u.month.slice(i, i + 7));
+  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
+    Heatmap.grid({ caption: `${iface}, the last 72 hours by hour`, cols: u.hour_cols,
+      rows: [{ label: iface, cells: u.hours, where: (i) => u.hour_full[i] }] }));
   const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 35 days, by day:' }),
-    Heatmap.grid({ caption: `${iface}, the last 35 days by day`, cols: Array.from({ length: 7 }, () => ''),
-      rows: weeks.map((w) => ({ label: day(w[0].date), cells: w.map((c) => (c.n ? c : null)), where: (i) => day(w[i].date) })) }),
+  fold.append(el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
+    Heatmap.grid({ caption: `${iface}, the last 72 days by day`, cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : day(u.month[i].date))),
+      rows: [{ label: iface, cells: u.month.map((c) => (c.n ? c : null)), where: (i) => day(u.month[i].date) }] }),
     Heatmap.legend());
   fold.append(el('p', { className: 'setting-desc', textContent: u.kind === 'uplink'
     ? 'Up means the link was up and the gateway answered. A drop is the link going down after being up; switched off by you is not counted.'
@@ -1864,9 +1919,9 @@ function renderNetwork(data) {
   badge('network', down ? '!' : '');
 
   const stale = !inv || Date.now() / 1000 - inv.at > 60 * 60;
-  if (stale && !busy && !netAsked && location.hash === '#network') { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
+  if (stale && !busy && !netAsked && paneShown('network')) { netAsked = true; netRequest({ action: 'scan' }, 'scan'); return; }
   clearTimeout(netPoll);
-  netPoll = setTimeout(loadNetwork, busy ? 2000 : location.hash === '#network' ? 10000 : 60000);
+  netPoll = setTimeout(loadNetwork, busy ? 2000 : paneShown('network') ? 10000 : 60000);
 }
 
 async function loadNetwork() {
@@ -1898,7 +1953,7 @@ net.save.addEventListener('click', () => {
 });
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
 net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 0 }, 'up'));
-window.addEventListener('hashchange', () => { if (location.hash === '#network') loadNetwork(); });
+window.addEventListener('hashchange', () => { if (paneShown('network')) loadNetwork(); });
 
 // --- the hotspot itself (item 2: root/ap.py, the plan from hub/apmode.py) -----------------------------
 const apEl = { state: document.getElementById('ap-state'), form: document.getElementById('ap-form'), radio: document.getElementById('ap-radio'),
@@ -1965,8 +2020,8 @@ apEl.form.addEventListener('submit', (e) => {
 apEl.radio.addEventListener('change', () => renderAp(apRun || {}));
 apEl.tryB.addEventListener('click', () => apAct({ action: 'try' }));
 apEl.confirmB.addEventListener('click', () => apAct({ action: 'confirm' }));
-window.addEventListener('hashchange', () => { if (location.hash === '#network') loadAp(); });
-if (location.hash === '#network') loadAp();
+window.addEventListener('hashchange', () => { if (paneShown('network')) loadAp(); });
+if (paneShown('network')) loadAp();
 loadNetwork();
 
 // --- the hotspot's own WiFi ----------------------------------------------------------------
@@ -2041,8 +2096,14 @@ hs.wpa2.addEventListener('change', hsShowFields);
 hs.generate.addEventListener('click', () => {
   // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
   const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
-  const n = crypto.getRandomValues(new Uint32Array(12));
-  const chars = [...n].map((v) => abc[v % abc.length]);
+  // Bytes past the last whole multiple of the alphabet are dropped, so every letter is as likely.
+  const chars = [];
+  const limit = 256 - (256 % abc.length);
+  while (chars.length < 12) {
+    for (const v of crypto.getRandomValues(new Uint8Array(16))) {
+      if (v < limit && chars.length < 12) chars.push(abc[v % abc.length]);
+    }
+  }
   hs.password.value = [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
 });
 hs.save.addEventListener('click', async () => {
@@ -2103,7 +2164,7 @@ kitEl.form.addEventListener('submit', async (e) => {
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#backup') loadKit(); });
+window.addEventListener('hashchange', () => { if (paneShown('backup')) loadKit(); });
 loadKit();
 
 // --- who can open each app --------------------------------------------------------------
@@ -2116,6 +2177,23 @@ const accessNodes = new Map(); // id -> { node, app }
 let accessWaiting = null; // { id, app }
 let accessNote = null; // { app, text, ok }
 let accessPoll = null;
+
+const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function seenDesc(a) {
+  a = { ...a, visible: a.visible || 'auto' };
+  if (a.mode === 'off') return 'Off: no tile.';
+  if (a.visible === 'auto') return '';
+  const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'those logged in' : 'the admin';
+  if (a.visible === 'hidden') return 'No tile; its address still works for whoever may open it.';
+  return a.visible === 'guests' && a.mode !== 'public'
+    ? `Everyone sees its tile, with a lock: it opens for ${opens}, and anyone else is asked to sign in.`
+    : `Its tile shows to ${SEEN_LABEL[a.visible]}; it opens for ${opens}.`;
+}
+function visibilitySet(a, v) {
+  if (v === a.visible) return;
+  postJSON('/admin/visibility', { app: a.id, visible: v }).then(() => loadAccess(),
+    (err) => { accessNote = { app: a.id, text: err.message, ok: false }; loadAccess(); });
+}
 
 function accessDesc(a) {
   if (a.mode === 'public') return a.login ? 'Public: on the home page; it still asks for the admin login.' : 'Public: on the home page, open to everyone on the network.';
@@ -2152,27 +2230,205 @@ function renderAccess(data) {
     }
   }
   const builtin = [];
+  lastAccess = data;
   for (const a of data.apps) {
-    const slot = accessSlot(a.id);
-    const group = el('span', { className: 'access-toggle' },
-      ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
-        const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', String(a.mode === mode));
-        return b;
-      }));
-    group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', `Who can open ${a.title}`);
-    const note = accessNote && accessNote.app === a.id
-      ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
-    // No note: left out, not passed as null (replaceChildren would show the word "null").
-    slot.replaceChildren(...[group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }), note].filter(Boolean));
+    accessSlot(a.id).replaceChildren(...accessControls(a));
     if (a.kind === 'builtin') builtin.push(a);
   }
+  fillAccessBlocks();
   document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
     el('span', {}, el('span', { className: 'setting-name', textContent: a.title }), accessSlot(a.id)))));
   clearTimeout(accessPoll);
   if (accessWaiting) accessPoll = setTimeout(loadAccess, 1000);
+}
+
+// Each app's own page starts with its access (M6): the same controls, drawn again there.
+let lastAccess = null;
+const TAB_SEEN = { guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+function fillSeenBlocks() {
+  if (!lastAccess) return;
+  document.querySelectorAll('.seen-block[data-app]').forEach((block) => {
+    const app = block.dataset.app, cur = ((lastAccess.pages || {})[app] || 'auto').replace('auto', 'guests');
+    block.replaceChildren(el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Its tab on the hub page, shown to:' }),
+      ...Object.entries(TAB_SEEN).map(([v, label]) => {
+        const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: label,
+          onclick: () => { if (v !== cur) postJSON('/admin/visibility', { app, visible: v }).then(loadAccess, (err) => say(err.message, false, block)); } });
+        b.setAttribute('aria-pressed', String(cur === v));
+        return b;
+      })));
+  });
+}
+function fillAccessBlocks() {
+  if (!lastAccess) return;
+  fillSeenBlocks();
+  // The rows in the lists (Apps, the built-in parts, add-ons) carry the same block: redrawn too.
+  for (const a of lastAccess.apps) if (accessNodes.has(a.id)) accessSlot(a.id).replaceChildren(...accessControls(a));
+  document.querySelectorAll('.access-block[data-app]').forEach((block) => {
+    const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
+    const seen = (lastAccess.seen || {})[block.dataset.app];
+    block.replaceChildren(...(a ? accessControls(a) : seen ? seenControls(block.dataset.app, seen)
+      : [el('p', { className: 'setting-desc', textContent: 'Always on the hub: no switch.' })]));
+  });
+  drawTileOrder();
+}
+AL.onBuild(fillAccessBlocks);
+
+// A tile with no switch of its own (a folder, About; F3): anyone may open it, so only who sees
+// its tile is to choose. Hidden, its address still works.
+const SEEN_ONLY = { auto: 'everyone', guests: 'everyone', users: 'those logged in', admin: 'the admin', hidden: 'nobody' };
+function seenControls(app, cur) { return [accessBlock(app, null, cur)]; }
+
+// The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
+// "as its access", shows its tile to guests too, locked, leading to sign-in.
+async function loadSignInOffer() {
+  const box = document.getElementById('sign-in-offer-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'sign_in_offer', label: 'Show guests the tiles of apps for users, locked, with sign-in', kind: 'toggle',
+    value: !!st.sign_in_offer, decision: 'sign-in-offer',
+    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); loadAccess(); } }));
+}
+loadSignInOffer();
+
+// The apps row's order (F3), on "All apps": each tile with who opens it and who sees it; moved
+// with ↑/↓, held until Save, kept by the hub (/admin/tiles).
+let tilesData = null;
+let tilesDraft = null;
+async function loadTileOrder() {
+  try { tilesData = await getJSON('/admin/tiles'); } catch (e) { return; }
+  tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
+  drawTileOrder();
+}
+const OPENS = { public: 'everyone', users: 'users', private: 'the admin', off: 'off' };
+function tileWords(id) {
+  const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
+  if (a) {
+    const seen = a.mode === 'off' ? 'nobody' : a.visible === 'auto' || !a.visible ? 'as its access' : SEEN_LABEL[a.visible];
+    return { summary: `opens: ${OPENS[a.mode] || a.mode} · seen: ${seen}`, badges: [a.mode === 'off' ? 'off' : a.mode] };
+  }
+  const s = lastAccess && (lastAccess.seen || {})[id];
+  return { summary: `opens: everyone · seen: ${SEEN_ONLY[s || 'auto']}`, badges: [s === 'hidden' ? 'hidden' : 'shown'] };
+}
+function drawTileOrder(openId) {
+  const box = document.getElementById('tile-order-box');
+  if (!box || !tilesData || !tilesDraft) return;
+  const byId = new Map(tilesData.tiles.map((x) => [x.id, x]));
+  const order = tilesDraft.order.filter((i) => byId.has(i));
+  const move = (id, d) => { const i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
+    [order[i], order[k]] = [order[k], order[i]]; tilesDraft.order = order; drawTileOrder(id); };
+  const saved = tilesData.tiles.map((x) => x.id);
+  const sizesOf = (s) => JSON.stringify(Object.entries(s || {}).sort());
+  const dirty = order.join() !== saved.join() || sizesOf(tilesDraft.size) !== sizesOf(tilesData.state.size);
+  const items = order.map((id) => { const t = byId.get(id), w = tileWords(id);
+    const sz = (tilesDraft.size || {})[id];
+    return { id, title: `${t.own_icon || t.icon} ${t.name}`.trim(), summary: w.summary + (sz ? ` · ${sz}` : ''), badges: w.badges, detail: () => [
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Place' }),
+        AW.btn('↑ Earlier', { onclick: () => move(id, -1) }), AW.btn('↓ Later', { onclick: () => move(id, 1) })),
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
+        sizeChips((tilesDraft.size || {})[id] || 'single', (v) => { setSize(tilesDraft, id, v); drawTileOrder(id); })),
+      document.getElementById('page-app-' + id) ? AW.h('a', { href: '#page-app-' + id, class: 'action-btn' }, 'Its page →') : null,
+    ].filter(Boolean) }; });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'The order waits for Save.' });
+  box.replaceChildren(AW.shortList(items, { id: 'tile-order-list' }), AW.h('div', { class: 'aw-foot' }, note,
+    AW.btn('Discard', { disabled: !dirty, onclick: () => { tilesDraft = { order: saved.slice(), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); } }),
+    AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+      try { tilesData = await postJSON('/admin/tiles', { state: { order, size: tilesDraft.size || {}, icon: tilesData.state.icon || {} } }); tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); }
+      catch (err) { note.textContent = err.message; }
+    } })));
+  const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadTileOrder();
+
+// Who opens it, who sees it, and its place on the hub, as the mock has it (Tom, 2026-10-08: "a
+// consistent set of 4 chips, and then two buttons for moving it earlier and later"): guests,
+// users, admin, off; guests, users, admin, hidden; ↑ Earlier, ↓ Later. Held until Save, as every
+// setting is; drafts kept per app, so a poll redrawing the page doesn't lose one.
+const OPEN_CHIPS = [['public', 'guests'], ['users', 'users'], ['private', 'admin'], ['off', 'off']];
+const SEEN_CHIPS = [['guests', 'guests'], ['users', 'users'], ['admin', 'admin'], ['hidden', 'hidden']];
+// "As its access" (auto), shown as the chip it amounts to.
+const seenOf = (mode, visible) => (visible && visible !== 'auto' ? visible
+  : { public: 'guests', users: 'users', private: 'admin', off: 'hidden' }[mode] || 'guests');
+const accessDrafts = new Map();  // app id -> { mode, seen, order }
+function tileOrderNow() { return tilesDraft ? tilesDraft.order.slice() : tilesData ? tilesData.tiles.map((x) => x.id) : []; }
+function chipRow(label, opts, cur, set, disabledOf = () => false) {
+  const g = el('div', { className: 'chip-group' }, ...opts.map(([v, word]) => {
+    const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: word, disabled: disabledOf(v), onclick: () => set(v) });
+    b.setAttribute('aria-pressed', String(cur === v));
+    return b;
+  }));
+  g.setAttribute('role', 'group');
+  g.setAttribute('aria-label', label);
+  return el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: label }), g);
+}
+// The block: a (an app with a switch) or, for a tile with none (a folder, About), only who sees it.
+function accessBlock(id, a, seenOnly) {
+  const base = { mode: a ? a.mode : 'public', seen: a ? seenOf(a.mode, a.visible) : seenOf('public', seenOnly), order: null };
+  const d = accessDrafts.get(id) || { ...base };
+  const redraw = () => { accessDrafts.set(id, d); fillAccessBlocks(); };
+  const order = d.order || tileOrderNow();
+  const at = order.indexOf(id);
+  const move = (k) => { const o = order.slice(), n = at + k; if (at < 0 || n < 0 || n >= o.length) return; [o[at], o[n]] = [o[n], o[at]]; d.order = o; redraw(); };
+  const tileOf = tilesData && tilesData.tiles.find((x) => x.id === id);
+  const iconNow = (tileOf && tileOf.own_icon) || '';
+  if (d.icon === iconNow) delete d.icon;
+  const dirty = d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined;
+  const waiting = !!(accessWaiting && accessWaiting.app === id);
+  const note = accessNote && accessNote.app === id
+    ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
+  const save = async () => {
+    const auto = a ? seenOf(d.mode, 'auto') : 'guests';
+    try {
+      if (d.seen !== base.seen) await postJSON('/admin/visibility', { app: id, visible: d.seen === auto ? 'auto' : d.seen });
+      const icons = { ...((tilesData && tilesData.state.icon) || {}) };
+      if (d.icon !== undefined) { if (d.icon) icons[id] = d.icon; else delete icons[id]; }
+      if ((d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined) {
+        tilesData = await postJSON('/admin/tiles', { state: { order: d.order || tileOrderNow(), size: (tilesData && tilesData.state.size) || {}, icon: icons } });
+        tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
+      }
+      accessDrafts.delete(id);
+      if (a && d.mode !== base.mode) { accessSet(a, d.mode); return; }  // root's, answered by poll
+      loadAccess();
+    } catch (err) { accessNote = { app: id, text: err.message, ok: false }; loadAccess(); }
+  };
+  return el('div', { className: 'access-set' },
+    a ? chipRow('Who can open it', OPEN_CHIPS, d.mode, (v) => { d.mode = v; if (v === 'off') d.seen = 'hidden'; redraw(); },
+      (v) => waiting || (v === 'users' && !a.users)) : null,
+    chipRow('Who sees the tile', SEEN_CHIPS, d.seen, (v) => { d.seen = v; redraw(); }, () => waiting || (a && d.mode === 'off')),
+    at >= 0 ? el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Order on the hub' }),
+      el('button', { type: 'button', className: 'action-btn', textContent: '↑ Earlier', disabled: at === 0, onclick: () => move(-1) }),
+      el('button', { type: 'button', className: 'action-btn', textContent: '↓ Later', disabled: at === order.length - 1, onclick: () => move(1) }),
+      el('span', { className: 'setting-desc', textContent: `${at + 1} of ${order.length}` })) : null,
+    tileOf ? iconField(d, tileOf, iconNow, redraw) : null,
+    el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
+      : seenWords(d.seen, 'public') }),
+    el('details', { className: 'field-help' }, el('summary', { textContent: 'Seen but not opened?' }),
+      el('p', { textContent: 'A visitor who sees a tile they can\'t open gets a lock on it, and the sign-in page when they open it: they can see what is on the box (checklist 4a). Hidden, its address still works for whoever may open it.' })),
+    el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
+      el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
+      el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
+    note);
+}
+const SEEN_WORDS = { guests: 'Its tile shows to everyone', users: 'Its tile shows to those signed in', admin: 'Its tile shows only to an admin account signed in', hidden: 'No tile' };
+function seenWords(seen, mode) {
+  if (mode === 'off') return 'No tile while it is off.';
+  return `${SEEN_WORDS[seen]}${seen !== 'hidden' && (mode === 'users' && seen === 'guests' || mode === 'private' && seen !== 'admin') ? ', with a lock for those who can\'t open it' : ''}.`;
+}
+function accessControls(a) { return [accessBlock(a.id, a, null)]; }
+// The tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits drawn as text;
+// blank goes back to the app's own. Checked here as the hub checks it (server.valid_icon).
+const ICON_OK = (s) => /^[A-Za-z0-9]{1,4}$/.test(s) || (s.length > 0 && [...s].length <= 16 && [...s].every((c) => c.codePointAt(0) > 0x7f));
+function iconField(d, tile, iconNow, redraw) {
+  const val = d.icon !== undefined ? d.icon : iconNow;
+  const input = el('input', { type: 'text', value: val, placeholder: tile.icon, maxLength: 16, size: 8, spellcheck: false });
+  input.setAttribute('aria-label', 'Tile icon: emoji, or up to four letters and digits');
+  const bad = val && !ICON_OK(val);
+  const hint = el('span', { className: 'setting-desc' + (bad ? ' bad' : ''), textContent: bad ? 'Emoji, or up to four letters and digits (no spaces).'
+    : val ? 'Its own; blank goes back to the app\'s.' : `The app's own: ${tile.icon}` });
+  input.addEventListener('change', () => { d.icon = input.value.trim(); redraw(); });
+  return el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
 }
 
 async function loadAccess() {
@@ -2398,7 +2654,6 @@ loadLocal();
 // line is filled in by the part of this page that already loads its data; the pane shows
 // until the owner finishes it, and Overview's link brings it back.
 const setupList = document.getElementById('setup-steps');
-const welcomeLink = document.getElementById('welcome-link');
 
 function setupStep(step, text, status) {
   const li = setupList.querySelector(`[data-step="${step}"]`);
@@ -2407,7 +2662,7 @@ function setupStep(step, text, status) {
 }
 
 function applySetup(done) {
-  welcomeLink.hidden = done;
+  AL.hide('welcome', done);
   if (!done && !location.hash) location.hash = '#welcome';
 }
 
@@ -2515,16 +2770,16 @@ loadUsb();
 const git = {
   usage: noteEl('git-usage'), note: noteEl('git-note'),
   form: document.getElementById('git-create'), createNote: noteEl('git-create-note'),
-  grid: noteEl('git-grid'), side: noteEl('git-side'), search: document.getElementById('git-search'),
-  chipsKind: noteEl('git-chips-kind'), chipsArea: noteEl('git-chips-area'), manageAs: document.getElementById('git-manage-as'),
+  grid: noteEl('git-grid'), search: document.getElementById('git-search'),
+  chipsKind: noteEl('git-chips-kind'), chipsArea: noteEl('git-chips-area'),
   mirrors: noteEl('git-mirrors'), mirrorForm: document.getElementById('git-mirror-add'), mirrorNote: noteEl('git-mirror-note'),
 };
 const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 // The Git page as cards (git-ci-plan §1, Kiwix's library as the model): a filter bar, a card per
-// repository with its badges in words, and Manage, opening under the card or beside the grid.
+// repository with its badges in words, and Manage, opening under its card (checklist 3a: the
+// side panel beside the grid went, F7).
 let gitData = null;
 const gitView = { kind: 'all', area: 'all', q: '', open: null };
-try { git.manageAs.value = localStorage.getItem('irate-git-manage-as') || 'drawer'; } catch (_) { /* no storage */ }
 const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'the admin pushes', nobody: 'read-only' };
 const builds = (r) => r.can_build && r.build && r.has_script;
 const repoKey = (r) => `${r.area}/${r.name}`;
@@ -2553,7 +2808,7 @@ function renderGit(data) {
   git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
     (data.free != null ? `; ${size(data.free)} free on the card` : '') +
     `. A single push can be up to ${size(data.max_push)}.`;
-  // Submodule mirrors have no card of their own: Library → Mirrors lists them under their parent.
+  // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
   const shown = data.repos.filter((r) => !r.submodule_of);
   const chips = (box, list, key) => box.replaceChildren(...list.map(([id, label, test]) => el('button', {
     type: 'button', className: `chip${gitView[key] === id ? ' on' : ''}`, textContent: `${label} ${shown.filter(test).length}`,
@@ -2565,19 +2820,14 @@ function renderGit(data) {
   const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
   const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
   const list = shown.filter((r) => kindTest(r) && areaTest(r) && (!q || r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)));
-  const side = git.manageAs.value === 'side';
   const cards = [newCard()];
   for (const r of list) {
     cards.push(repoCard(r, data));
-    if (!side && gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
+    if (gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
   }
-  if (!side && gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
+  if (gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
   if (!list.length) cards.push(el('p', { className: 'setting-desc', textContent: shown.length ? 'Nothing matches.' : 'No repositories yet.' }));
   git.grid.replaceChildren(...cards);
-  const openRepo = shown.find((r) => repoKey(r) === gitView.open);
-  git.side.hidden = !(side && (openRepo || gitView.open === 'new'));
-  git.side.replaceChildren(...(git.side.hidden ? [] : [openRepo ? managePanel(openRepo, data, 'git-sidepanel') : newPanel('git-sidepanel')]));
-  document.getElementById('git-layout').classList.toggle('with-side', !git.side.hidden);
 }
 
 function newCard() {
@@ -2597,8 +2847,8 @@ function newPanel(cls) {
       el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Public: anyone on the network can browse and clone it; only the admin pushes until you choose otherwise. Private: everything needs the admin login.' }),
       git.form, git.createNote),
     el('section', {}, el('h4', { textContent: 'A mirror of a repository on the internet' }),
-      el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed in Library → Mirrors.' }),
-      el('a', { href: '#mirrors', className: 'button-link', textContent: 'Add a mirror in Library → Mirrors' })));
+      el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed under Mirrors, below.' }),
+      el('a', { href: '#mirrors', className: 'button-link', textContent: 'Add a mirror' })));
 }
 
 const closeButton = () => actionButton('Close', () => { gitView.open = null; renderGit(gitData); }, { className: 'small' });
@@ -2628,7 +2878,7 @@ function repoCard(r, data) {
     el('p', { className: 'setting-desc git-facts', textContent: facts.filter(Boolean).join(' · ') }),
     el('p', { className: 'setting-desc git-access', textContent: accessSentence(r) }),
     el('p', { className: 'library-buttons' }, copyUrl(r),
-      r.mirror_of ? el('a', { href: '#mirrors', className: 'button-link small', textContent: 'Manage in Library' })
+      r.mirror_of ? el('a', { href: '#mirrors', className: 'button-link small', textContent: 'Manage the mirror' })
         : withAttrs(actionButton('Manage', () => { gitView.open = open ? null : repoKey(r); renderGit(gitData); },
           { className: 'small' }), { 'aria-expanded': String(open) })));
 }
@@ -2706,10 +2956,6 @@ function managePanel(r, data, cls) {
 }
 
 git.search.addEventListener('input', () => { gitView.q = git.search.value.trim(); if (gitData) renderGit(gitData); });
-git.manageAs.addEventListener('change', () => {
-  try { localStorage.setItem('irate-git-manage-as', git.manageAs.value); } catch (_) { /* no storage */ }
-  if (gitData) renderGit(gitData);
-});
 
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {
@@ -2814,7 +3060,7 @@ function renderCi(data) {
   if (!kf.contains(document.activeElement)) kf.elements.keep.value = data.keep_runs;
   noteEl('ci-offline').textContent = 'With no internet: ' + ((data.mirrored || []).length
     ? `a build's git fetches of ${data.mirrored.length} URL${data.mirrored.length === 1 ? '' : 's'} come from this box's mirrors (${data.mirrored.slice(0, 3).map((u) => u.replace(/^https:\/\//, '')).join(', ')}${data.mirrored.length > 3 ? '…' : ''})`
-    : 'no mirrors yet, so a build that fetches from the internet needs it (Library → Mirrors)')
+    : 'no mirrors yet, so a build that fetches from the internet needs it (Git → Mirrors)')
     + (data.pio_deps ? '; PlatformIO\'s packages come from the library\'s cache (CI_PIO_DEPS).' : '; no PlatformIO cache kept (Builds above, the firmware build cache).')
     + (data.wheelhouse ? ' pip installs (platformio itself) come from the Building kit\'s wheelhouse (PIP_NO_INDEX, PIP_FIND_LINKS).'
       : ' The Building kit has no wheelhouse yet: a build\'s pip install still needs the internet.');
@@ -2830,8 +3076,8 @@ function renderCi(data) {
   let seen = 0;
   try { seen = Number(localStorage.getItem('irate-ci-seen')) || 0; } catch (_) { /* no storage */ }
   const newBad = data.runs.filter((r) => r.finished && r.finished > seen && r.state !== 'passed').length;
-  if (location.hash === '#git') { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
-  badge('git', location.hash !== '#git' && newBad ? String(newBad) : '');
+  if (paneShown('git')) { try { localStorage.setItem('irate-ci-seen', String(Date.now() / 1000)); } catch (_) { /* no storage */ } }
+  badge('git', !paneShown('git') && newBad ? String(newBad) : '');
   clearTimeout(ciPoll);
   if (data.queued || data.runs.some((r) => r.state === 'running')) ciPoll = setTimeout(loadCi, 5000);
 }
@@ -3009,14 +3255,19 @@ loadFirmware();
 // Each action is a request for the root helper; the page shows "Working…" until its answer is in.
 const kitsEl = { summary: noteEl('kits-summary'), note: noteEl('kits-note'), grid: noteEl('kits-grid'),
   problems: noteEl('kits-problems'), budget: document.getElementById('kits-budget'),
-  add: document.getElementById('kits-add'), addTitle: noteEl('kits-form-title'), addCancel: document.getElementById('kits-add-cancel') };
+  add: document.getElementById('kits-add'), addTitle: noteEl('kits-form-title'), addCancel: document.getElementById('kits-add-cancel'),
+  custom: document.getElementById('kits-custom') };
+const kitsHome = document.getElementById('kits-custom');  // where the form waits while its card is closed
+const kitsFormNodes = [...kitsHome.childNodes];
+const kitsFormHome = () => { if (!kitsEl.add.isConnected || !kitsHome.contains(kitsEl.add) && !kitsEl.grid.contains(kitsEl.add)) kitsHome.append(...kitsFormNodes); };
+// Its card closed (✕, Esc, another card): the form goes back to wait.
+new MutationObserver(kitsFormHome).observe(kitsEl.grid, { childList: true, subtree: true });
 const REMOVE_AFTER = [[1, 'an hour'], [4, '4 hours'], [24, 'a day'], [168, 'a week'], [720, 'a month'], [null, 'never']];
 const hoursWords = (h) => (REMOVE_AFTER.find(([v]) => v === h) || [h, h == null ? 'never' : `${h} hours`])[1];
 const dayOf = (unix) => (unix ? new Date(unix * 1000).toISOString().slice(0, 10) : '');
 const kitsWaiting = new Set();
 let kitsData = null;
 let kitsPoll = null;
-let kitsOpen = null; // the card whose Install… step is showing
 
 function hoursPicker(value) {
   return el('select', { className: 'kit-hours' }, ...REMOVE_AFTER.map(([v, label]) =>
@@ -3051,89 +3302,112 @@ function renderKits(data) {
   if (!kitsEl.budget.contains(document.activeElement)) kitsEl.budget.elements.budget.value = cfg.budget_mb;
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
     'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
-  kitsEl.grid.replaceChildren(...kits.map((k) => kitCard(k, st, cfg)));
+  // Item 8 (and checklist 3): a card per kit, its details in a drawer inside the card; not redrawn
+  // under an open drawer with changes not saved.
+  const open = kitsEl.grid.querySelector('.aw-card.open');
+  if (!(open && open._dirty && open._dirty())) {
+    const openId = open && open.dataset.awId;
+    kitsHome.append(...kitsFormNodes);
+    kitsEl.grid.replaceChildren(AW.cards([...kits.map((k) => kitItem(k, st, cfg)),
+      { id: 'kit-custom', title: '+ Custom toolkit', summary: 'Packages of your own, kept by the librarian', badges: [] }],
+    { id: 'kits-cards', body: (it, setDirty) => (it.id === 'kit-custom' ? customBody() : kitBody(it.kit, st, cfg, setDirty)),
+      save: (it) => kitSave(it) }));
+    const again = openId && kitsEl.grid.querySelector(`.aw-card[data-aw-id="${openId}"] .aw-card-head`);
+    if (again) again.click();
+  }
   clearTimeout(kitsPoll);
   if (kitsWaiting.size) kitsPoll = setTimeout(loadKits, 3000);
 }
 
-function kitCard(k, st, cfg) {
-  const s = (st.kits || {})[k.id] || {};
-  const c = s.cached;
-  const inst = (st.installed || {})[k.id];
-  const mine = cfg.kits[k.id];
+// A kit's card: its name, what it is for and its state in words (item 8, step 1).
+function kitItem(k, st, cfg) {
+  const s = (st.kits || {})[k.id] || {}, c = s.cached, inst = (st.installed || {})[k.id];
   const left = inst && inst.remove_at ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600)) : null;
   const badges = [
-    c ? [`Cached ${dayOf(c.fetched)}, ${size(c.bytes)}`, 'badge-public'] : ['Not cached', 'badge-push'],
-    s.previous ? ['2 versions', 'badge-push'] : null,
-    k.owner ? ['Yours', 'badge-mirror'] : null,
-    ((kitsData || {}).flag_details || {})[k.id] ? ['Flagged by the doctor', 'badge-push bad'] : null,
-    (k.extra || []).length ? [`+${k.extra.length} extra`, 'badge-mirror'] : null,
-    inst ? [inst.remove_at ? `Installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'Installed, kept', 'badge-private'] : null,
+    c ? `cached ${dayOf(c.fetched)}, ${size(c.bytes)}` : 'not cached',
+    s.previous ? '2 versions' : null,
+    k.owner ? 'yours' : null,
+    ((kitsData || {}).flag_details || {})[k.id] ? 'flagged by the doctor' : null,
+    (k.extra || []).length ? `+${k.extra.length} extra` : null,
+    inst ? (inst.remove_at ? `installed: removed in ${left < 1 ? 'under an hour' : `${left} h`}` : 'installed, kept') : null,
   ].filter(Boolean);
-  const body = [];
+  return { id: 'kit-' + k.id, title: k.title, summary: k.summary || '', badges, kit: k };
+}
+// Its drawer (steps 2, 3): settings held until Save (keep current, removed after by default, extra
+// tools); jobs at once (install, remove, keep longer, refresh, roll back, edit, delete), said so.
+const kitDrafts = new Map();
+function kitBody(k, st, cfg, setDirty) {
+  const s = (st.kits || {})[k.id] || {}, c = s.cached, inst = (st.installed || {})[k.id], mine = cfg.kits[k.id];
+  const draft = { keep_current: mine.keep_current, remove_after: mine.remove_after, extra: (k.extra || []).join(' ') };
+  kitDrafts.set(k.id, draft);
+  const jobs = el('div', { className: 'kit-jobs' });
+  const jobRow = (...kids) => el('p', { className: 'library-buttons' }, ...kids);
   if (inst) {
     const keep = hoursPicker(mine.remove_after);
-    body.push(el('p', { className: 'library-buttons' },
-      actionButton('Remove now', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
+    jobs.append(jobRow(actionButton('Remove now', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
       el('span', { className: 'setting-desc', textContent: 'Keep it for ' }), keep,
-      actionButton('Keep longer', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })),
-    inst.upgraded && inst.upgraded.length ? el('p', { className: 'setting-desc', textContent:
-      `Installing it also brought these up to date (they stay when it goes): ${inst.upgraded.join(', ')}.` }) : null);
-  } else if (kitsOpen === k.id) {
-    // The consent step: what the kit can do, and when it goes again.
-    const hours = hoursPicker(mine.remove_after);
-    const flag = ((kitsData || {}).flag_details || {})[k.id];
-    body.push(el('div', { className: 'kit-consent' },
-      el('p', { textContent: k.consent }),
-      flag ? el('p', { className: 'kit-flag', textContent: `The security doctor flags this kit's cache: ${flag} Refresh it first if the box can reach the internet.` }) : null,
-      el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
-        actionButton('Install', () => { kitsOpen = null; kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }); }, { className: 'small' }),
-        actionButton('Cancel', () => { kitsOpen = null; renderKits(kitsData); }, { className: 'small' }))));
+      actionButton('Keep longer', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })));
+    if (inst.upgraded && inst.upgraded.length) jobs.append(el('p', { className: 'setting-desc', textContent:
+      `Installing it also brought these up to date (they stay when it goes): ${inst.upgraded.join(', ')}.` }));
   } else {
-    body.push(el('p', { className: 'library-buttons' },
-      actionButton('Install…', () => { kitsOpen = k.id; renderKits(kitsData); },
+    // Install… first shows the consent step: what the kit can do, and when it goes again.
+    const consent = () => {
+      const hours = hoursPicker(mine.remove_after);
+      const flag = ((kitsData || {}).flag_details || {})[k.id];
+      return el('div', { className: 'kit-consent' }, el('p', { textContent: k.consent }),
+        flag ? el('p', { className: 'kit-flag', textContent: `The security doctor flags this kit's cache: ${flag} Refresh it first if the box can reach the internet.` }) : null,
+        jobRow(el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
+          actionButton('Install', () => kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }), { className: 'small' }),
+          actionButton('Cancel', (e) => e.target.closest('.kit-consent').replaceWith(installRow()), { className: 'small' })));
+    };
+    const installRow = () => jobRow(
+      actionButton('Install…', (e) => e.target.closest('p').replaceWith(consent()),
         { className: 'small', disabled: !c, title: c ? '' : 'Not cached yet: Refresh it while the box has internet.' }),
-      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' })));
+      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' }));
+    jobs.append(installRow());
   }
-  if (k.owner) {
-    body.push(el('p', { className: 'library-buttons' },
-      actionButton('Edit', () => editKit(k, mine), { className: 'small' }),
-      actionButton('Delete', () => {
-        if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id });
-      }, { className: 'small', disabled: !!inst, title: inst ? 'Remove it first' : '' })));
-  }
+  jobs.append(jobRow(
+    actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
+    s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
+      if (confirm(`Go back to ${k.title}'s set fetched ${dayOf(s.previous.fetched)}?${inst ? ' Its installed packages are put back to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
+    }, { className: 'small' }) : null,
+    k.owner ? actionButton('Edit', () => editKit(k, mine), { className: 'small' }) : null,
+    k.owner ? actionButton('Delete', () => { if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id }); },
+      { className: 'small', disabled: !!inst, title: inst ? 'Remove it first' : '' }) : null));
+  const keepBtn = el('button', { type: 'button', className: 'chip-btn' + (draft.keep_current ? ' active' : ''), textContent: `Keep current: ${draft.keep_current ? 'On' : 'Off'}` });
+  keepBtn.setAttribute('aria-pressed', String(draft.keep_current));
+  keepBtn.addEventListener('click', () => { draft.keep_current = !draft.keep_current; keepBtn.classList.toggle('active', draft.keep_current);
+    keepBtn.setAttribute('aria-pressed', String(draft.keep_current)); keepBtn.textContent = `Keep current: ${draft.keep_current ? 'On' : 'Off'}`; setDirty(); });
   const def = hoursPicker(mine.remove_after);
-  def.addEventListener('change', () => kitAct({ action: 'settings', kits: { [k.id]: { remove_after: pickedHours(def) } } }));
-  const details = el('details', { className: 'kit-details' }, el('summary', { textContent: 'Details' }),
+  def.addEventListener('change', () => { draft.remove_after = pickedHours(def); setDirty(); });
+  const extra = k.owner ? null : el('input', { className: 'kit-extra', value: draft.extra, placeholder: 'e.g. ltrace gdbserver' });
+  if (extra) extra.addEventListener('input', () => { draft.extra = extra.value; setDirty(); });
+  const field = (label, ...kids) => el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: label }), ...kids);
+  return [
+    el('p', { className: 'setting-desc', textContent: 'Jobs, at once:' }), jobs,
+    field('Keep current', keepBtn, el('span', { className: 'setting-desc', textContent: 'the library refreshes it on its schedule' })),
+    field('Removed after, by default', def),
+    extra ? field('Extra tools', extra) : null,
     el('ul', { className: 'kit-notes' }, ...(k.notes || []).map((n) => el('li', { textContent: n }))),
-    c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` +
-      Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ') +
-      (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
-    k.owner ? null : extraTools(k),
+    c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` + Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ')
+      + (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
     c && c.left_out && c.left_out.length ? el('p', { className: 'setting-desc', textContent: `Left out on this ${c.arch || ''} board, as they need a 64-bit one: ${c.left_out.join(', ')}.` }) : null,
     (k.git || []).length ? el('p', { className: 'setting-desc', textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, '')}, a mirror)`).join(', ')}.` }) : null,
-    el('p', { className: 'library-buttons' },
-      actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
-      s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
-        if (confirm(`Go back to ${k.title}'s set fetched ${dayOf(s.previous.fetched)}?${inst ? ' Its installed packages are put back to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
-      }, { className: 'small' }) : null),
-    el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Removed after, by default: ' }), def));
-  const keepCurrent = el('input', { type: 'checkbox', checked: mine.keep_current,
-    onchange: (e) => kitAct({ action: 'settings', kits: { [k.id]: { keep_current: e.target.checked } } }) });
-  return el('div', { className: `git-card kit-card${inst ? ' open' : ''}` },
-    el('h4', { textContent: k.title }),
-    el('p', { className: 'badges' }, ...badges.map(([text, cls]) => el('span', { className: `badge ${cls}`, textContent: text }))),
-    el('p', { className: 'git-about', textContent: k.summary }),
-    ...body,
-    el('label', { className: 'inline setting-desc' }, keepCurrent, ' Keep current (the library refreshes it on its schedule)'),
-    details);
+  ];
 }
-
-// Extra tools tracked in a shipped kit (Tom, 2026-10-06: "the toolkit may want an extra tool").
-function extraTools(k) {
-  const input = el('input', { className: 'kit-extra', value: (k.extra || []).join(' '), placeholder: 'e.g. ltrace gdbserver' });
-  return el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Extra tools: ' }), input,
-    actionButton('Save', () => kitAct({ action: 'extra', kit: k.id, packages: input.value.trim().split(/[\s,]+/).filter(Boolean) }), { className: 'small' }));
+async function kitSave(it) {
+  const k = it.kit, d = kitDrafts.get(k.id), mine = kitsData.settings.kits[k.id];
+  const ch = {};
+  if (d.keep_current !== mine.keep_current) ch.keep_current = d.keep_current;
+  if (d.remove_after !== mine.remove_after) ch.remove_after = d.remove_after;
+  const extra = d.extra.trim().split(/[\s,]+/).filter(Boolean);
+  if (Object.keys(ch).length) await kitAct({ action: 'settings', kits: { [k.id]: ch } });
+  if (!k.owner && extra.join(' ') !== (k.extra || []).join(' ')) await kitAct({ action: 'extra', kit: k.id, packages: extra });
+}
+// The "+ Custom toolkit" card (step 4): the form, moved into its drawer while it is open.
+function customBody() {
+  const box = el('div', { className: 'kit-custom' }, ...kitsFormNodes);
+  return [box];
 }
 
 function editKit(k, mine) {
@@ -3143,6 +3417,9 @@ function editKit(k, mine) {
   kitsEl.addTitle.textContent = `Change ${k.title}`;
   kitsEl.addCancel.hidden = false;
   kitsEl.add.querySelector('button[type=submit]').textContent = 'Save toolkit';
+  // In the custom card's drawer: open it if it isn't.
+  const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
+  if (card && !card.classList.contains('open')) card.querySelector('.aw-card-head').click();
   kitsEl.add.scrollIntoView?.({ block: 'center' });
 }
 function resetKitForm() {
@@ -3222,196 +3499,8 @@ document.getElementById('kits-refresh-all').addEventListener('click', async () =
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
   say('Asked for each kit: the root helper fetches them one after another (minutes each).', true, kitsEl.note);
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); } });
-if (location.hash === '#toolkits') { loadKits(); loadKitsUsb(); }
-
-// --- the Firmware Factory (factory.py): choose a source, a ref and targets; follow the queue ------
-const fac = {
-  form: document.getElementById('factory-form'), source: document.getElementById('factory-source'),
-  ref: document.getElementById('factory-ref'), search: document.getElementById('factory-search'),
-  targets: document.getElementById('factory-targets'), chosen: document.getElementById('factory-chosen'),
-  queue: document.getElementById('factory-queue'), note: noteEl('factory-note'), paused: document.getElementById('factory-paused'),
-  pause: document.getElementById('factory-pause'), waiting: document.getElementById('factory-waiting'), runs: document.getElementById('factory-runs'),
-  flasher: document.getElementById('factory-flasher'),
-};
-let facData = null;
-let facTargets = null;
-const facChosen = new Set();
-let facPoll = null;
-let facFlasher = null; // the boards the Firmware pane keeps for the flasher: ticked to start with
-const facDur = (s) => (s == null ? '?' : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
-const facClock = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-const facReady = (f) => (facData && facData.readiness[f]) || 'untested on this box: its first build downloads its toolchain';
-const facEst = (f) => { const e = facData && facData.estimates[f]; return e ? `about ${facDur(e.seconds)} a target here` : 'no estimate yet'; };
-
-async function loadFactory() {
-  try { renderFactory(await getJSON('/admin/factory')); } catch (_) { fac.waiting.textContent = 'Could not read the Firmware Factory.'; }
-}
-
-function renderFactory(d) {
-  facData = d;
-  fac.paused.hidden = !d.paused;
-  fac.pause.textContent = d.paused ? 'Resume' : 'Pause';
-  const names = d.sources.map((s) => s.name).join('\n');
-  if (fac.source.dataset.names !== names) {
-    const was = fac.source.value;
-    fac.source.dataset.names = names;
-    fac.source.replaceChildren(...d.sources.map((s) => el('option', { value: s.name, textContent: `${s.name} (${s.mirror ? 'a mirror' : 'private'})` })));
-    if (d.sources.some((s) => s.name === was)) fac.source.value = was;
-    if (d.sources.length) loadFactoryRefs();
-    else fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No source yet: mirror meshtastic/firmware in Library → Mirrors, or push a fork to a private repository.' }));
-  }
-  const describe = (j) => `${j.name && j.name !== j.env ? `${j.name} (${j.env})` : j.env}, ${j.family}: ${j.source} ${j.ref}`;
-  const rows = [];
-  if (d.running) {
-    const e = d.estimates[d.running.family];
-    rows.push(el('div', { className: 'admin-item' }, el('span', { className: 'state state-running', textContent: 'Building' }),
-      el('span', { textContent: ` ${describe(d.running)}` }),
-      el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - d.running.started)}${e ? `; done about ${facClock(d.running.started + e.seconds)}` : ''}.` })));
-  }
-  d.waiting.forEach((j, i) => {
-    rows.push(el('div', { className: 'admin-item' }, el('span', { textContent: `${i + 1}. ${describe(j)}` }),
-      el('span', { className: 'setting-desc', textContent: j.start ? ` Starts about ${facClock(j.start)}${j.finish ? `, done about ${facClock(j.finish)}` : ''}.`
-        : ' No estimate: a family before it, or its own, has not been built here.' }),
-      el('span', { className: 'library-buttons' },
-        i ? actionButton('Up', () => facAct({ action: 'up', id: j.id })) : null,
-        actionButton('Cancel', () => facAct({ action: 'cancel', id: j.id })))));
-  });
-  fac.waiting.replaceChildren(...(rows.length ? rows : [el('p', { className: 'setting-desc', textContent: 'Nothing building or waiting.' })]));
-  const mbs = (b) => (b == null ? '?' : `${Math.round(b / 2 ** 20)} MB`);
-  const published = new Set((d.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
-  fac.runs.replaceChildren(...(d.runs.filter((r) => r.state !== 'running').map((r) => {
-    const u = r.resources || {};
-    const used = r.resources ? [`${facDur(r.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
-      u.hottest != null ? `hottest ${Math.round(u.hottest)} °C` : null,
-      r.offline ? 'no network' : u.received ? `the box received ${mbs(u.received)} meanwhile` : null,
-      r.tools_only && u.tools_bytes ? `PlatformIO's tools now ${mbs(u.tools_bytes)}` : null,
-      u.from_cache ? `${u.from_cache} of ${u.from_cache + (u.compiled || 0)} objects from the build cache` : null].filter(Boolean).join(', ') : facDur(r.duration);
-    const file = (n) => `/admin/ci/file?run=${encodeURIComponent(r.run)}&name=${encodeURIComponent(n)}`;
-    return el('div', { className: 'admin-item' },
-      el('span', { className: `state state-${r.state === 'passed' ? 'running' : 'stopped'}`, textContent: r.state === 'passed' ? (r.tools_only ? 'Tools fetched' : r.offline ? 'Built offline' : 'Built') : r.state }),
-      el('span', { textContent: ` ${describe(r)} (${String(r.commit || '').slice(0, 7)})` }),
-      el('span', { className: 'setting-desc', textContent: ` ${r.finished ? ago(Date.now() / 1000 - r.finished) : ''}; ${used}.` }),
-      el('span', { className: 'factory-files' }, ...(r.artifacts || []).map((n) => el('a', { href: file(n), textContent: n, download: n })),
-        el('a', { href: file('log.txt'), textContent: 'log', target: '_blank', rel: 'noopener' })),
-      r.state === 'passed' && (r.artifacts || []).some((n) => n.endsWith('.mt.json'))
-        ? el('span', { className: 'library-buttons' }, actionButton(published.has(r.run) ? 'Publish again' : 'Publish to the web flasher',
-          () => facAct({ action: 'publish', run: r.run.split('/')[1] }),
-          { title: 'Offer this build in the web flasher, as a release built on this box' })) : null);
-  })));
-  if (!fac.runs.children.length) fac.runs.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing built here yet.' }));
-  const pub = (d.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
-    el('span', { textContent: `${t.board}, ${t.platform}: ${rel.version.replace(/-built$/, '')}` }),
-    el('span', { className: 'setting-desc', textContent: ` from ${t.ref || '?'}${t.epoch ? `, built ${new Date(t.epoch * 1000).toLocaleDateString()}` : ''}.` }),
-    el('span', { className: 'library-buttons' }, actionButton('Remove', () => facAct({ action: 'unpublish', version: rel.version, env: t.board }))))));
-  fac.flasher.replaceChildren(...(pub.length ? pub : [el('p', { className: 'setting-desc', textContent: 'Nothing published yet.' })]));
-  clearTimeout(facPoll);
-  if (location.hash === '#factory') facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
-}
-
-async function loadFactoryRefs() {
-  try {
-    const d = await getJSON(`/admin/factory/targets?source=${encodeURIComponent(fac.source.value)}`);
-    const group = (label, list) => (list.length ? el('optgroup', { label }, ...list.map((r) => el('option', { value: r.ref, textContent: r.ref }))) : null);
-    fac.ref.replaceChildren(...[group('Releases and tags', d.refs.tags), group('Branches', d.refs.branches)].filter(Boolean));
-    loadFactoryTargets();
-  } catch (err) { say(err.message, false, fac.note); }
-}
-
-async function loadFactoryTargets() {
-  if (!fac.ref.value) { fac.targets.replaceChildren(); return; }
-  fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Reading its platformio.ini files…' }));
-  try {
-    if (facFlasher === null) {
-      try { const fw = await getJSON('/admin/firmware'); facFlasher = Array.isArray(fw.settings && fw.settings.boards) ? fw.settings.boards : []; } catch (_) { facFlasher = []; }
-    }
-    facTargets = await getJSON(`/admin/factory/targets?source=${encodeURIComponent(fac.source.value)}&ref=${encodeURIComponent(fac.ref.value)}`);
-    facChosen.clear();
-    facTargets.targets.forEach((t) => { if (facFlasher.includes(t.env)) facChosen.add(t.env); });
-    renderFactoryTargets();
-  } catch (err) { fac.targets.replaceChildren(el('p', { className: 'setting-desc bad', textContent: err.message })); }
-}
-
-// Each family's test target for Fetch tools and Test offline: a board people use (the hub suggests
-// one: the flasher's, a common board, a best-supported one), not the project's CI target; the
-// owner may pick another, kept while the page is open.
-const facTest = {};
-function facTestSelect(f) {
-  const all = facTargets.targets.filter((t) => t.family === f);
-  if (!all.some((t) => t.env === facTest[f])) facTest[f] = (facTargets.suggested || {})[f] || all[0].env;
-  const sel = el('select', { onchange: (e) => { facTest[f] = e.target.value; } },
-    ...all.map((t) => el('option', { value: t.env, textContent: t.name !== t.env ? `${t.name} (${t.env})` : t.env })));
-  sel.value = facTest[f];
-  return sel;
-}
-
-function renderFactoryTargets() {
-  if (!facTargets) return;
-  const q = fac.search.value.trim().toLowerCase();
-  const fams = {};
-  facTargets.targets.forEach((t) => {
-    if (!q || t.env.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)) (fams[t.family] = fams[t.family] || []).push(t);
-  });
-  fac.targets.replaceChildren(...Object.keys(fams).sort().map((f) => {
-    const list = fams[f];
-    const picked = list.filter((t) => facChosen.has(t.env)).length;
-    const fold = el('details', { className: 'factory-family', open: !!q || picked > 0 },
-      el('summary', {}, el('strong', { textContent: f }),
-        el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}${picked ? `, ${picked} chosen` : ''}; ${facReady(f)}; ${facEst(f)}.` })),
-      el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(f)),
-      actionButton('Fetch tools', async () => {
-        try {
-          const r = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-          say(`Fetching ${f}'s tools (by ${r.env}): queued. Nothing is compiled; once fetched, its builds need no internet.`, true, fac.note);
-          renderFactory(r.snapshot);
-        } catch (err) { say(err.message, false, fac.note); }
-      }, { title: 'Install what this family needs (toolchain, framework, libraries) without building: a later build needs no internet' }),
-      actionButton('Test offline', async () => {
-        try {
-          const r = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-          say(`Building ${r.env} with no network at all: queued. If it passes, ${f} is offline ready.`, true, fac.note);
-          renderFactory(r.snapshot);
-        } catch (err) { say(err.message, false, fac.note); }
-      }, { title: 'Build one target of this family with the network cut off: proves the box can build it offline' })),
-      el('div', { className: 'factory-boards' }, ...list.map((t) => el('label', { title: [t.file, t.level ? `board_level ${t.level}` : '', t.support ? `support level ${t.support}` : ''].filter(Boolean).join(', ') },
-        el('input', { type: 'checkbox', value: t.env, checked: facChosen.has(t.env),
-          onchange: (e) => { if (e.target.checked) facChosen.add(t.env); else facChosen.delete(t.env); factoryChosen(); } }),
-        el('span', { textContent: t.name !== t.env ? ` ${t.name} (${t.env})` : ` ${t.env}` })))));
-    return fold;
-  }));
-  factoryChosen();
-}
-
-function factoryChosen() {
-  const n = facChosen.size;
-  const fams = new Set(facTargets.targets.filter((t) => facChosen.has(t.env)).map((t) => t.family));
-  const secs = [...facChosen].reduce((a, env) => { const t = facTargets.targets.find((x) => x.env === env); const e = facData && facData.estimates[t.family]; return e && a !== null ? a + e.seconds : null; }, 0);
-  const max = facData ? facData.max_per_request : 50;
-  fac.chosen.textContent = n ? `${n} chosen, in ${fams.size} famil${fams.size === 1 ? 'y' : 'ies'}${secs !== null ? `; about ${facDur(secs)} in all` : ''}${n > max ? `; at most ${max} at a time` : ''}.` : 'None chosen.';
-  fac.queue.disabled = !n || n > max;
-  fac.queue.textContent = n ? `Queue ${n}` : 'Queue';
-}
-
-async function facAct(body) {
-  try { renderFactory(await postJSON('/admin/factory', body)); } catch (err) { say(err.message, false, fac.note); }
-}
-
-fac.source.addEventListener('change', loadFactoryRefs);
-fac.ref.addEventListener('change', loadFactoryTargets);
-fac.search.addEventListener('input', renderFactoryTargets);
-fac.pause.addEventListener('click', () => facAct({ action: facData && facData.paused ? 'resume' : 'pause' }));
-fac.form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  try {
-    const r = await postJSON('/admin/factory', { action: 'queue', source: fac.source.value, ref: fac.ref.value, targets: [...facChosen] });
-    say(`Queued ${r.queued} target${r.queued === 1 ? '' : 's'} at ${r.commit.slice(0, 7)}.`, true, fac.note);
-    facChosen.clear();
-    renderFactory(r.snapshot);
-    renderFactoryTargets();
-  } catch (err) { say(err.message, false, fac.note); }
-});
-window.addEventListener('hashchange', () => { if (location.hash === '#factory') loadFactory(); });
-if (location.hash === '#factory') loadFactory();
+window.addEventListener('hashchange', () => { if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); } });
+if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); }
 
 // --- HTTPS (step 15: root/tls.py, /admin/tls) -------------------------------------------------------
 const tlsEl = { state: document.getElementById('tls-state'), make: document.getElementById('tls-make'), sw: document.getElementById('tls-switch'),
@@ -3480,8 +3569,8 @@ tlsEl.again.addEventListener('click', () => {
     tlsAct({ action: 'make', again: true });
   }
 });
-window.addEventListener('hashchange', () => { if (location.hash === '#security') loadTls(); });
-if (location.hash === '#security') loadTls();
+window.addEventListener('hashchange', () => { if (paneShown('security')) loadTls(); });
+if (paneShown('security')) loadTls();
 
 // --- accounts (step 16: accounts.py, /admin/accounts) ------------------------------------------------
 const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
@@ -3521,7 +3610,7 @@ function renderAccounts(d) {
     return el('div', { className: 'admin-item' },
       el('span', { className: `state state-${a.state === 'user' ? 'running' : 'stopped'}`, textContent: state }),
       el('span', { className: 'setting-name', textContent: ` ${a.name}` }),
-      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}.` }),
+      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}; ${a.shown_online ? 'shown by name online' : 'not shown by name'} (their own choice).` }),
       el('span', { className: 'library-buttons' },
         a.state === 'asked' ? act('accept', 'Accept') : null,
         a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
@@ -3554,27 +3643,28 @@ acctEl.make.addEventListener('submit', (e) => {
   acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
   f.name.value = '';
 });
-// Who may post on the shoutbox and forum, and the users' marks (the hub's settings).
-const acctPosting = document.getElementById('accounts-posting');
-const POSTING_KEYS = ['shout_who', 'shout_marks', 'board_who', 'board_marks'];
+// Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
+// each app's own page (menu overhaul M9).
+const postingForms = [...document.querySelectorAll('.posting-form')];
+const fillPosting = (st) => postingForms.forEach((form) => [...form.elements].forEach((f) => {
+  if (!(f.name in st)) return;
+  if (f.type === 'checkbox') f.checked = st[f.name] === true; else f.value = st[f.name];
+}));
 async function loadPosting() {
-  try {
-    const st = await getJSON('/admin/settings');
-    POSTING_KEYS.forEach((k) => { const f = acctPosting.elements[k]; if (f.type === 'checkbox') f.checked = st[k] === true; else f.value = st[k]; });
-  } catch (_) { /* the rest of the pane says if the hub can't be read */ }
+  try { fillPosting(await getJSON('/admin/settings')); } catch (_) { /* the page says if the hub can't be read */ }
 }
-acctPosting.addEventListener('change', async (e) => {
-  const f = e.target;
+postingForms.forEach((form) => form.addEventListener('change', async (e) => {
+  const f = e.target, note = noteEl(form.dataset.note);
   try {
-    const st = await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value });
-    POSTING_KEYS.forEach((k) => { const g = acctPosting.elements[k]; if (g.type === 'checkbox') g.checked = st[k] === true; else g.value = st[k]; });
-    say('Saved.', true, acctEl.note);
-  } catch (err) { say(err.message, false, acctEl.note); loadPosting(); }
-});
-window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadPosting(); });
-if (location.hash === '#accounts') loadPosting();
-window.addEventListener('hashchange', () => { if (location.hash === '#accounts') loadAccounts(); });
-if (location.hash === '#accounts') loadAccounts();
+    fillPosting(await postJSON('/admin/settings', { [f.name]: f.type === 'checkbox' ? f.checked : f.value }));
+    say('Saved.', true, note);
+  } catch (err) { say(err.message, false, note); loadPosting(); }
+}));
+const postingShown = () => paneShown('shoutbox-settings') || paneShown('board-settings');
+window.addEventListener('hashchange', () => { if (postingShown()) loadPosting(); });
+if (postingShown()) loadPosting();
+window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadAccounts(); });
+if (paneShown('accounts')) loadAccounts();
 
 // --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
@@ -3599,7 +3689,7 @@ function renderMesh(d) {
     el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} from ${names[p.from] || p.from}${p.channel ? ` on ${p.channel}` : ''}` }),
     p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
   clearTimeout(meshPoll);
-  if (location.hash === '#mesh') meshPoll = setTimeout(loadMesh, 15000);
+  if (paneShown('mesh')) meshPoll = setTimeout(loadMesh, 15000);
 }
 async function meshAct(body) {
   try { await postJSON('/admin/mesh', body); say(body.action === 'add-channel' ? `Added ${body.name}.` : `Removed ${body.name}.`, true, meshEl.note); loadMesh(); }
@@ -3612,5 +3702,242 @@ meshEl.form.addEventListener('submit', (e) => {
   f.key.value = '';
 });
 meshEl.longfast.addEventListener('click', () => meshAct({ action: 'add-channel', name: 'LongFast', key: 'AQ==' }));
-window.addEventListener('hashchange', () => { if (location.hash === '#mesh') loadMesh(); });
-if (location.hash === '#mesh') loadMesh();
+window.addEventListener('hashchange', () => { if (paneShown('mesh')) loadMesh(); });
+if (paneShown('mesh')) loadMesh();
+
+// ---- Appearance (menu overhaul M2): the page widths, for everyone, read by every page from
+// /layout.css. A choice shows on this page at once; Save keeps it.
+const WIDTHS = [45, 60, 80, 90, 100];
+let appearanceSettings = null;
+async function loadAppearance() {
+  const box = document.getElementById('appearance-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  appearanceSettings = st;
+  fillWidthBlocks();
+  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
+  box.replaceChildren(AW.settings([
+    row('page_width', 'Hub and admin', 'the tiles, the menu and its pages'),
+    row('shout_width', 'Shoutbox', 'its tab on the hub page'),
+    row('board_width', 'Forum', 'its tab on the hub page'),
+  ], { save: async (changed) => {
+    const now = await postJSON('/admin/settings', changed);
+    document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
+    return now;
+  } }));
+}
+loadAppearance();
+
+// ---- Folders (menu overhaul M7; checklist 5e): each folder's page arranges its entries. The
+// owner may hide an entry from a folder, order a folder's entries, and put an entry in other
+// folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
+let folders = null, folderDraft = null;
+const folderOpen = {};  // folder -> the entry left open, so a change keeps it in view
+const KIND_WORD = { switches: 'starting switches', download: 'a download', page: 'a page' };
+async function loadFolders() {
+  try { folders = await getJSON('/admin/folders'); } catch (e) { return; }
+  folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
+  fillFolderBlocks();
+}
+function fillFolderBlocks() {
+  if (!folders) return;
+  document.querySelectorAll('.folder-block[data-folder]').forEach((b) => drawFolder(b, b.dataset.folder));
+}
+AL.onBuild(fillFolderBlocks);
+// The arrangement without its empty parts, sorted by folder: what changed, and nothing else.
+const folderNorm = (s) => Object.fromEntries(Object.entries(s || {}).sort().map(([f, v]) => [f, Object.fromEntries(['hidden', 'order', 'extra'].filter((k) => (v[k] || []).length).map((k) => [k, v[k]]))]).filter(([, v]) => Object.keys(v).length));
+const fpart = (f) => { folderDraft[f] = folderDraft[f] || { hidden: [], order: [], extra: [] }; return folderDraft[f]; };
+// Is an entry in a folder: one of the folder's own and not hidden there, or put in from another.
+function inFolder(f, href) {
+  const own = (folders.folders.find((x) => x.id === f) || { entries: [] }).entries.some((e) => e.href === href && !e.extra);
+  const st = folderDraft[f] || {};
+  return own ? !(st.hidden || []).includes(href) : (st.extra || []).includes(href);
+}
+function setInFolder(f, href, yes) {
+  const own = (folders.folders.find((x) => x.id === f) || { entries: [] }).entries.some((e) => e.href === href && !e.extra);
+  const st = fpart(f);
+  const without = (list) => list.filter((h) => h !== href);
+  if (own) st.hidden = yes ? without(st.hidden) : [...without(st.hidden), href];
+  else st.extra = yes ? [...without(st.extra), href] : without(st.extra);
+}
+function drawFolder(block, f) {
+  const fol = folders.folders.find((x) => x.id === f);
+  if (!fol) { block.replaceChildren(); return; }
+  const st = fpart(f);
+  const pos = (h) => { const i = st.order.indexOf(h); return i < 0 ? 1e6 : i; };
+  // The folder's entries, plus any put in since the last save, in the draft's order.
+  const pool = new Map(folders.folders.flatMap((x) => x.entries).map((e) => [e.href, e]));
+  const hrefs = [...new Set([...fol.entries.map((e) => e.href), ...st.extra])].filter((h) => pool.has(h));
+  const list = hrefs.map((h, i) => ({ h, i })).sort((a, b) => (pos(a.h) - pos(b.h)) || (a.i - b.i)).map((x) => pool.get(x.h));
+  const dirty = JSON.stringify(folderNorm(folderDraft)) !== JSON.stringify(folderNorm(folders.state));
+  const move = (e, d) => {
+    const order = list.map((x) => x.href), i = order.indexOf(e.href), j = i + d;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    st.order = order;
+    folderOpen[f] = e.href; fillFolderBlocks();
+  };
+  const items = list.map((e) => {
+    const shown = inFolder(f, e.href);
+    return { id: e.href, title: e.name, summary: e.desc || e.href, badges: [shown ? 'shown' : 'hidden', KIND_WORD[e.kind] || e.kind].concat(e.from !== f ? ['from ' + e.from] : []),
+      detail: () => [
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'In this folder' }),
+          AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown),
+            onclick: () => { setInFolder(f, e.href, !shown); folderOpen[f] = e.href; fillFolderBlocks(); } }, shown ? 'Shown: On' : 'Shown: Off'),
+          AW.btn('↑ Earlier', { onclick: () => move(e, -1) }), AW.btn('↓ Later', { onclick: () => move(e, 1) })),
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Also in' }),
+          AW.h('div', { class: 'filter-chips' }, folders.folders.filter((x) => x.id !== f).map((x) => {
+            const on = inFolder(x.id, e.href);
+            return AW.h('button', { type: 'button', class: 'filter-chip' + (on ? ' active' : ''), 'aria-pressed': String(on),
+              onclick: () => { setInFolder(x.id, e.href, !on); folderOpen[f] = e.href; fillFolderBlocks(); } }, x.title);
+          }))),
+        AW.dl({ Opens: e.href }),
+      ] };
+  });
+  const shownCount = list.filter((e) => inFolder(f, e.href)).length;
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet (they may touch other folders too).' : 'Settings wait for Save.' });
+  block.replaceChildren(
+    AW.h('p', { class: 'setting-desc', text: `${shownCount} of ${list.length} shown on its page. The entries come from the apps' manifests, from what an app's own index adds, and from starting switches of one page.` }),
+    AW.shortList(items, { id: 'folder-list-' + f }),
+    AW.h('div', { class: 'aw-foot' }, note,
+      AW.btn('Discard', { disabled: !dirty, onclick: () => { folderDraft = JSON.parse(JSON.stringify(folders.state || {})); fillFolderBlocks(); } }),
+      AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+        try { folders = await postJSON('/admin/folders', { state: folderDraft }); folderDraft = JSON.parse(JSON.stringify(folders.state)); fillFolderBlocks(); }
+        catch (err) { note.textContent = err.message; }
+      } })));
+  const open = folderOpen[f] && [...block.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === folderOpen[f]);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadFolders();
+
+// An app drawn on the hub page has its width on its own page too (M9; Tom, 2026-10-08: "in both
+// the apps page and the appearance page"): one row of the same setting.
+const WIDTH_LABEL = { shout_width: 'Its width on the hub page', board_width: 'Its width on the hub page' };
+function fillWidthBlocks() {
+  if (!appearanceSettings) return;
+  document.querySelectorAll('.width-block[data-key]').forEach((block) => {
+    const key = block.dataset.key;
+    block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
+      note: 'also on System → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+    { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
+  });
+}
+AL.onBuild(fillWidthBlocks);
+
+// ---- Status tiles (M8): the box row arranged, held until Save.
+let stTiles = null, stDraft = null;
+// A tile's size (F5; Tom: "All tiles"): one cell, wide (two across) or large (two by two).
+const TILE_SIZES = [['single', 'one cell'], ['wide', 'wide: two across'], ['large', 'large: two by two']];
+function sizeChips(cur, set) {
+  return AW.h('div', { class: 'chip-group', role: 'group', 'aria-label': 'Size' }, TILE_SIZES.map(([v, label]) => AW.h('button', { type: 'button',
+    class: 'chip' + (cur === v ? ' selected' : ''), 'aria-pressed': String(cur === v), title: label, onclick: () => set(v) }, v)));
+}
+function setSize(draft, id, v) { draft.size = { ...(draft.size || {}) }; if (v === 'single') delete draft.size[id]; else draft.size[id] = v; }
+async function loadStatusTiles() {
+  try { stTiles = await getJSON('/admin/status-tiles'); } catch (e) { return; }
+  stDraft = JSON.parse(JSON.stringify(stTiles.state));
+  drawStatusTiles();
+}
+function drawStatusTiles(openId) {
+  const box = document.getElementById('status-tiles-box');
+  if (!box || !stTiles) return;
+  const byId = new Map(stTiles.tiles.map((x) => [x.id, x]));
+  const pos = (i) => { const n = stDraft.order.indexOf(i); return n < 0 ? 1e6 : n; };
+  const list = stTiles.tiles.map((x, i) => ({ x, i })).sort((a, b) => (pos(a.x.id) - pos(b.x.id)) || (a.i - b.i)).map((p) => p.x);
+  const toggle = (k, id, on) => { stDraft[k] = on ? [...new Set([...stDraft[k], id])] : stDraft[k].filter((x) => x !== id); };
+  const redraw = (id) => drawStatusTiles(id);
+  const move = (id, d) => { const order = list.map((x) => x.id), i = order.indexOf(id), k = i + d; if (k < 0 || k >= order.length) return;
+    [order[i], order[k]] = [order[k], order[i]]; stDraft.order = order; redraw(id); };
+  const norm = (s) => JSON.stringify(['order', 'hidden'].map((k) => [...(s[k] || [])].sort()).concat([s.order || []], [Object.entries(s.size || {}).sort()]));
+  const dirty = norm(stDraft) !== norm(stTiles.state);
+  const items = list.map((t) => {
+    const shown = !stDraft.hidden.includes(t.id), size = (stDraft.size || {})[t.id] || 'single';
+    return { id: t.id, title: t.name, summary: { single: 'one cell', wide: 'wide: two cells', large: 'large: two by two' }[size], badges: [shown ? 'shown' : 'hidden'], detail: () => [
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'On the hub page' }),
+        AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown), onclick: () => { toggle('hidden', t.id, shown); redraw(t.id); } }, shown ? 'Shown: On' : 'Shown: Off'),
+        AW.btn('↑ Earlier', { onclick: () => move(t.id, -1) }), AW.btn('↓ Later', { onclick: () => move(t.id, 1) })),
+      AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
+        sizeChips(size, (v) => { setSize(stDraft, t.id, v); redraw(t.id); }),
+        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'wide or large shows the different devices seen today and this week, if counting is on (Security)' }) : null),
+    ] };
+  });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' });
+  box.replaceChildren(AW.shortList(items, { id: 'status-tiles-list' }), AW.h('div', { class: 'aw-foot' }, note,
+    AW.btn('Discard', { disabled: !dirty, onclick: () => { stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); } }),
+    AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+      try { stTiles = await postJSON('/admin/status-tiles', { state: stDraft }); stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); }
+      catch (err) { note.textContent = err.message; }
+    } })));
+  const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
+  if (open) AW.foldRow(open.querySelector('.aw-row-head'), true);
+}
+loadStatusTiles();
+
+// Who sees the names of those signed in (M12, a setup decision, M14): users or the admin only.
+async function loadNamesTo() {
+  const box = document.getElementById('names-to-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'names_to', label: 'Shown to', kind: 'choice', value: st.names_to, decision: 'names',
+    options: [['users', 'those logged in'], ['admin', 'the admin only']],
+    note: 'only of those who chose to be shown, on their own account page; guests get how many' }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
+}
+loadNamesTo();
+
+// Saves tied to accounts (accounts-plan stage 6, item 6): off by default, so a device lock is
+// the only thing that guards a save unless the admin turns this on.
+async function loadSavesCrossDevice() {
+  const box = document.getElementById('saves-cross-device-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'saves_cross_device', label: 'A user may change or remove their own save from another device', kind: 'toggle',
+    value: st.saves_cross_device,
+    note: 'Off: only the device that made or locked a save may change it, as before. On: once logged in, a user may change or remove any save of their own account’s, on any device, past its lock. A guest’s saves are unaffected either way.' }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
+}
+loadSavesCrossDevice();
+
+// --- Needs attention (menu overhaul F4; the mock's ov-attention) --------------------------------
+// One list at the top of Overview of what is waiting on the admin, each a link to where it is dealt
+// with: the words the sections already put beside their sidebar entries, and the setup decisions
+// not yet made. Work in progress ("working") isn't waiting on anyone, so it is left out.
+const ATTENTION = {
+  health: (w) => (w === '!' ? 'The root helper is stuck: nothing the box is asked to do gets done' : `${w} thing${w === '1' ? '' : 's'} wrong with the box`),
+  secdoctor: (w) => `${w} security finding${w === '1' ? '' : 's'} to fix`,
+  security: (w) => `${w} security choice${w === '1' ? '' : 's'} to make or leave`,
+  updoctor: (w) => (w === '!' ? 'An update failed its checks' : `${w} problem${w === '1' ? '' : 's'} with updates`),
+  updates: (w) => ({ ready: 'An update is fetched, checked and ready to install', new: 'An update is available' }[w] || null),
+  clock: (w) => `${w} clock problem${w === '1' ? '' : 's'}`,
+  network: () => 'A network link is down',
+  git: (w) => `${w} build${w === '1' ? '' : 's'} failed since you last looked`,
+  moderation: (w) => `${w} reported item${w === '1' ? '' : 's'} waiting for a decision`,
+  'updates-security': () => 'Debian security updates waiting to be installed',
+};
+function drawAttention() {
+  const box = document.getElementById('attention');
+  if (!box) return;
+  const items = Object.entries(AL.badges()).filter(([, w]) => w && w !== 'working').map(([id, w]) => {
+    const say = ATTENTION[id] ? ATTENTION[id](w) : `${AL.titleOf(id)}: ${w}`;
+    return say && { id, text: say, where: AL.titleOf(id) };
+  }).filter(Boolean);
+  const T = window.TOUR;
+  const left = T ? T.DECISIONS.length - T.decided().size : 0;
+  if (left > 0) items.push({ id: 'welcome', text: `${left} setup decision${left === 1 ? '' : 's'} not made yet: the box runs on the defaults until then`, where: 'Setup steps' });
+  box.replaceChildren(el('h3', { textContent: 'Needs attention' }), items.length
+    ? el('ul', { className: 'admin-checks attention-list' }, ...items.map((i) => el('li', { className: 'check' },
+      el('a', { href: '#' + i.id, textContent: i.text }), el('span', { className: 'setting-desc', textContent: ` — ${i.where}` }))))
+    : el('p', { className: 'setting-desc', textContent: 'Nothing is waiting on you.' }));
+}
+AL.onBadge(drawAttention);
+AL.onBuild(drawAttention);
+drawAttention();
+
+// --- older lists, bounded (menu overhaul F8; checklist 3e, 3f) -------------------------------------
+// What people made and the box's records grow without end: each gets a limited height and, once it
+// is long, a filter. The catalogue's results have a search of their own, so the height only.
+['store-saves', 'mod-messages', 'mod-threads', 'mod-drops', 'accounts-list', 'ci-runs'].forEach((id) => AW.bound(document.getElementById(id)));
+AW.bound(document.getElementById('catalogue-results'), { filter: false });

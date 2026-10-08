@@ -50,8 +50,9 @@ say "Stopping and disabling services"
 for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room \
 	irate-box-git.socket irate-box-git.service irate-box-ci.path irate-box-ci.service \
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
-	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service \
-	irate-box-control.path irate-box-control.service irate-box-uplink.service; do
+	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service \
+	irate-box-control.path irate-box-control.service irate-box-uplink.service \
+	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
 # install.sh enables mosquitto only for --with-mqtt; with its config gone it would come
@@ -97,7 +98,8 @@ say "Removing unit files and drop-ins"
 rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
-	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-control.{path,service} \
+	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-control.{path,service} \
+	"$UNITDIR"/irate-box-visitors.service "$UNITDIR"/irate-box-visitors-switch.{path,service} \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
 	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf" "$UNITDIR/ngircd.service.d/irate-box.conf"
 rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" "$UNITDIR/ngircd.service.d" 2>/dev/null || true

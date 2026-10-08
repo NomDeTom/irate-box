@@ -13,5 +13,6 @@
     "title": "Syncthing",
     "summary": "Keeps folders (the notes, books) in step between the box and your own machines when they share a network. Its page at /sync/ is behind the admin login. About 40 MB of memory.",
     "consent": "Syncthing opens its own ports to the box's network (22000 and 21027) so your machines can find it and pair. Add it?"
-  }
+  },
+  "admin": {"title": "Syncthing", "icon": "🔄"}
 }

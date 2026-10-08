@@ -6,7 +6,8 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const strip = (h) => h.replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const strip = (h) => h;
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
@@ -95,11 +96,14 @@ function page(file, url, fetcher, scripts) {
     accounts: [{ name: 'bob', state: 'asked', role: 'user', created: now - 60, seen: null, by: 'signed up', password_set: true },
       { name: 'carol', state: 'user', role: 'admin', created: now - 7200, seen: now - 30, by: 'admin', password_set: true }] };
   const aposted = [];
+  const sposted = [];
   const a = page('admin.html', 'http://box.local/admin/#accounts', async (u, o = {}) => {
     if (o.method === 'POST' && u === '/admin/accounts') { const b = JSON.parse(o.body); aposted.push(b); return json(Object.assign({}, state, b.action === 'make' ? { code: 'ABCD-EFGH-JKLM-NPQR' } : {})); }
     if (u === '/admin/accounts') return json(state);
+    if (o.method === 'POST' && u === '/admin/settings') { const b = JSON.parse(o.body); sposted.push(b); return json(b); }
+    if (u === '/admin/settings') return json({ saves_cross_device: false });
     return json({}, 404);
-  }, ['admin.js']);
+  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait(300); d = a.d;
   check('admin: a side-bar entry, the levels as set, the counts', [...d.querySelectorAll('.admin-side-list a')].some((x) => x.hash === '#accounts')
     && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 admin\), 1 asking, 0 switched off\./.test(t(d.getElementById('accounts-counts'))));
@@ -117,6 +121,12 @@ function page(file, url, fetcher, scripts) {
   sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
   sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();
   check('  Save: both levels sent', aposted.some((b) => b.action === 'settings' && b.signup === 'assigned' && b.http === 'prevented'));
+  await wait(50);
+  const cdBox = d.getElementById('saves-cross-device-box');
+  check('  saves across devices: off by default', t(cdBox).includes('Off'));
+  cdBox.querySelector('.chip-btn').click();
+  cdBox.querySelector('.action-btn.primary').click(); await wait();
+  check('  turning it on sends the setting', sposted.some((b) => b.saves_cross_device === true), sposted);
   check('admin: no errors', !a.errors.length, a.errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

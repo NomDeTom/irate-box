@@ -5,7 +5,8 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs'); const crypto = require('crypto');
 const BASE = process.env.BASE; const errors = [];
-const strip = (h) => h.replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const strip = (h) => h;
 function page(file, scripts, seedStore) {
   const vc = new VirtualConsole(); vc.on('jsdomError', (e) => { if (!/scrollTo|navigation/.test(e.message)) errors.push(e.message); });
   const dom = new JSDOM(strip(fs.readFileSync(`${WEB}/${file}`, 'utf8')), { url: `${BASE}/${file}`, runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });

@@ -43,6 +43,12 @@ on it. Every part but "id" and "order" is optional:
     "access":  {"title", "note"}       who may open it is set on /admin (public, private, off) for
                                       the apps access.py names; these word its line there
     "core": true                      kept current by default ("Keep all apps current")
+    "admin":   {"sections": ["books", …], "title", "icon", "page": bool, "width": "shout_width"}
+                                      the /admin sections this app owns, by their id in admin.html:
+                                      the app's own page in /admin's Apps group (menu overhaul M4)
+                                      holds them; title and icon name the page when the tile does not;
+                                      page: drawn on the hub page itself, not as a tile (the shoutbox,
+                                      the board: M9), its width the setting named
   }
 
 Local add-ons (plans/no-root-addons-plan): a static web app the owner adds from /admin, with
@@ -84,6 +90,7 @@ ADDONS = STATE / "addons"             # and their files, one folder each (the ad
 CATALOGUE = Path(os.environ.get("HUB_ADDON_CATALOGUE", CHECKOUT / "addons"))  # what /admin offers
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+SECTION_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")  # no leading "-" (F14)
 DIR_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -167,6 +174,15 @@ def _check(m, where):
             need(isinstance(addon.get(k), str), f"addon.{k}: a string")
         need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")
         need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
+    adm = m.get("admin")
+    if adm is not None:
+        need(isinstance(adm, dict) and isinstance(adm.get("sections", []), list)
+             and all(isinstance(x, str) and SECTION_RE.match(x) for x in adm.get("sections", [])),
+             "admin.sections: a list of /admin section ids")
+        for k in ("title", "icon"):
+            need(k not in adm or isinstance(adm[k], str), f"admin.{k}: a string")
+        need(type(adm.get("page", False)) is bool, "admin.page: true for an app drawn on the hub page itself")
+        need("width" not in adm or adm["width"] in ("shout_width", "board_width"), "admin.width: shout_width or board_width")
     src = m.get("source")
     if src is not None:
         need(inst is not None, "a source needs an install")
@@ -329,6 +345,22 @@ def catalogue():
         m = json.loads(path.read_text(encoding="utf-8"))
         check_local(m, f"addons/{path.name}", builtin_ids)
         out[m["id"]] = m
+    return out
+
+
+def admin_apps(manifests):
+    """/admin's Apps and Folders groups (menu overhaul M4): one entry per app or list page, in the
+    hub's order, with the /admin sections it owns. Box widgets without an admin part are left out."""
+    out = []
+    for m in sorted(manifests, key=lambda x: x["order"]):
+        tile, adm, menu = m.get("tile") or {}, m.get("admin") or {}, m.get("menu")
+        name = adm.get("title") or tile.get("name") or (menu or {}).get("title")
+        if not name or (tile.get("widget") and not adm):
+            continue
+        out.append({"id": m["id"], "name": name, "icon": adm.get("icon") or tile.get("icon", ""),
+                    "sections": list(adm.get("sections", [])), "folder": bool(menu),
+                    "art": (menu or {}).get("art"), "local": bool(m.get("local")),
+                    "page": bool(adm.get("page")), "width": adm.get("width"), "updates": bool(m.get("source"))})
     return out
 
 

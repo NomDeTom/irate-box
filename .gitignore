@@ -5,3 +5,6 @@ __pycache__/
 store-state/
 irate.code-workspace
 dist/
+# Claude Code: worktrees, local settings, session state and notes stay out of the project
+/.claude/
+CLAUDE.local.md

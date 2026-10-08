@@ -17,6 +17,8 @@ import re
 import time
 from pathlib import Path
 
+from irate_box import confine
+
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 DIR = STATE / "security-imports"
 SECURITY_SCAN = STATE / "control" / "security.json"
@@ -78,13 +80,13 @@ def save(report):
     kept = validate(report)
     kept.update(imported=time.time(), box_ports=_box_ports())
     DIR.mkdir(parents=True, exist_ok=True)
-    tmp = DIR / f".{kept['kind']}.json.tmp"
+    tmp = confine.under(DIR, f".{kept['kind']}.json.tmp")
     tmp.write_text(json.dumps(kept))
-    os.replace(tmp, DIR / f"{kept['kind']}.json")
+    os.replace(tmp, confine.under(DIR, f"{kept['kind']}.json"))
     return f"{kept['kind']}: {len(kept['results'])} results kept; the next run of the doctor includes them"
 
 
 def remove(kind):
     if kind not in KINDS:
         raise ValueError(f"kind: one of {', '.join(KINDS)}")
-    (DIR / f"{kind}.json").unlink(missing_ok=True)
+    confine.under(DIR, f"{kind}.json").unlink(missing_ok=True)

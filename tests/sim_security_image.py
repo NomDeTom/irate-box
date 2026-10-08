@@ -44,11 +44,24 @@ for name, body in {
               "elif sys.argv[1] == '-u': st.write_text('P')\n",
     "systemctl": f"import sys, os\nif sys.argv[1:] == ['restart', 'systemd-sysctl.service'] and os.path.exists('{T}/installed'):\n"
                  f"    [open('{PROC}/fs/' + k, 'w').write('1\\n') for k in ('protected_symlinks', 'protected_hardlinks')]",
+    "sshd": f"import sys, os\nif '-T' in sys.argv: print('passwordauthentication ' + ('no' if os.path.exists('{T}/pw-off') else 'yes')); print('authorizedkeysfile %h/.ssh/keys_%u .ssh/authorized_keys')",
+    "findmnt": f"import os\nprint('/dev/mmcblk0p1 ext4' if os.path.exists('{T}/log-on-card') else '/dev/zram1 ext4')",
 }.items():
     (BIN / name).write_text("#!/usr/bin/env python3\n" + body + "\n"); (BIN / name).chmod(0o755)
 (T / "root-pw").write_text("P")
 (T / "firstrun").write_text("armbian first login pending\n")
 os.environ.update(HUB_ARMBIAN_FIRSTRUN=str(T / "firstrun"))
+# The gates (stance review 2026-10-08): sudoers, apt, ramlog and journald files of the fixture's own.
+(T / "sudoers.d").mkdir(); (T / "sudoers.d" / "claude-temp").write_text("lyra ALL=(ALL) NOPASSWD: ALL\n")
+(T / "sudoers").write_text("root ALL=(ALL:ALL) ALL\n%sudo ALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n")
+(T / "apt" / "sources.list.d").mkdir(parents=True); (T / "apt" / "trusted.gpg.d").mkdir(); (T / "keyrings").mkdir()
+(T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").write_text("deb http://download.opensuse.org/repositories/home:/mPWRD:/OS/Debian_13/ /\n")
+(T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").write_bytes(b"KEY")
+(T / "apt" / "trusted.gpg.d" / "debian-archive-trixie-stable.asc").write_text("debian\n")
+(T / "ramlog").write_text("# ramlog\nENABLED=true\nSIZE=50M\n")
+(T / "log").mkdir()
+os.environ.update(HUB_SUDOERS=str(T / "sudoers"), HUB_SUDOERS_DIR=str(T / "sudoers.d"), HUB_APT_DIR=str(T / "apt"), HUB_KEYRINGS_DIR=str(T / "keyrings"),
+                  HUB_RAMLOG_DEFAULT=str(T / "ramlog"), HUB_JOURNALD_DROPIN=str(T / "journald.conf.d" / "irate-box.conf"), HUB_LOG_DIR=str(T / "log"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_PROC_SYS=str(PROC), HUB_GROUP_FILE=str(T / "group"),
                   HUB_PASSWD_FILE=str(T / "passwd"), HUB_SYSCTL_DROPIN=str(T / "sysctl.d" / "60-irate-box.conf"),
                   PATH=f"{BIN}:{os.environ['PATH']}")
@@ -160,5 +173,81 @@ import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
       ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "root-lock", "firstrun-off", "firstrun-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
+# I3 (stance review 2026-10-08): automatic security updates judged by what would run, not by
+# the binary being there. Armbian ships APT::Periodic::Enable "0".
+uf = security.unattended_finding
+check("unattended: not installed is a warning", uf(False, {}, None)["status"] == "warn")
+check("  installed but apt's periodic work off (the image's setting): a warning that says so",
+      uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "7"}, None)["status"] == "warn"
+      and "never runs" in uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "7"}, None)["detail"])
+check("  Unattended-Upgrade unset or 0: likewise", uf(True, {}, 1)["status"] == "warn" and uf(True, {"APT::Periodic::Unattended-Upgrade": "0"}, 1)["status"] == "warn")
+check("  on, but never ran or ran long ago: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None)["status"] == "warn"
+      and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30)["status"] == "warn")
+check("  on and ran this week: ok", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2)["status"] == "ok")
+
+# I6 (stance review 2026-10-08): SSH forwarding, found from sshd -T's words and offered off.
+sf = lambda s, rec={}: {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec)}  # noqa: E731
+on = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "yes", "allowagentforwarding": "no", "x11forwarding": "yes"})
+check("ssh forwarding on (the image's default): a warning naming which, with the offer",
+      on["ssh-forwarding"]["status"] == "warn" and "TCP, X11" in on["ssh-forwarding"]["detail"]
+      and on["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-off", on["ssh-forwarding"])
+off = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "no", "allowagentforwarding": "no", "x11forwarding": "no"}, {"ssh": {"forwarding": "2026-10-08"}})
+check("  off by this page: ok, with Undo", off["ssh-forwarding"]["status"] == "ok" and off["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-undo")
+check("  undo_all knows it, fix() takes it", "ssh-forwarding-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
+      and '"ssh-forwarding-off", "ssh-forwarding-undo"' in (REPO / "irate_box/root/security.py").read_text())
+
+# The gates (stance review 2026-10-08, item 4): a NOPASSWD rule for an account sshd lets in by
+# password, a repository key trusted for everything, logs in RAM; each found, fixed, undone.
+(T / "home" / "lyra" / ".ssh").mkdir(parents=True)
+(T / "passwd").write_text("root:x:0:0::/root:/bin/bash\nlyra:x:1000:1000::" + str(T / "home" / "lyra") + ":/bin/bash\nsvc:x:1001:1001::/srv:/usr/sbin/nologin\n")
+security.PASSWD_FILE = T / "passwd"
+def gate():
+    rec = security.load_record()
+    return {f["id"]: f for f in security.sudo_findings(rec) + security.apt_findings(rec) + security.log_findings(rec)}
+g = gate()
+check("sudo: a NOPASSWD rule for a login account while sshd takes passwords: a problem, the file offered",
+      g["sudo-nopasswd"]["status"] == "problem" and "claude-temp: lyra" in g["sudo-nopasswd"]["detail"]
+      and g["sudo-nopasswd"]["actions"][0]["choice"] == "sudo-drop:claude-temp", g["sudo-nopasswd"])
+(T / "pw-off").touch()
+check("  with passwords off: a warning", gate()["sudo-nopasswd"]["status"] == "warn")
+(T / "pw-off").unlink()
+print(security.fix("sudo-drop:claude-temp", None))
+check("  removed, kept under /etc/hub, ok with Undo", not (T / "sudoers.d" / "claude-temp").exists() and (T / "etc" / "sudoers-removed" / "claude-temp").is_file()
+      and gate()["sudo-nopasswd"]["status"] == "ok" and gate()["sudo-nopasswd"]["actions"][0]["choice"] == "sudo-undo:claude-temp")
+print(security.fix("sudo-undo:claude-temp", None))
+check("  undone: the file back", (T / "sudoers.d" / "claude-temp").read_text().startswith("lyra ALL") and gate()["sudo-nopasswd"]["status"] == "problem")
+try:
+    security.fix("sudo-drop:sudoers", None); check("  sudoers itself refused", False)
+except ValueError:
+    check("  sudoers itself refused", True)
+check("keys where sshd looks (AuthorizedKeysFile with %h and %u): none yet", security.keys_on_box() == [])
+(T / "home" / "lyra" / ".ssh" / "keys_lyra").write_text("ssh-ed25519 AAAA test\n")
+check("  a key in the file sshd names: found", security.keys_on_box() == ["lyra"])
+check("apt: a key in trusted.gpg.d with a source of its name: warned, the tie offered",
+      g["apt-trust"]["status"] == "warn" and "home_mPWRD_OS.gpg" in g["apt-trust"]["detail"] and "debian-archive" not in g["apt-trust"]["detail"]
+      and g["apt-trust"]["actions"][0]["choice"] == "apt-signedby:home_mPWRD_OS.gpg", g["apt-trust"])
+print(security.fix("apt-signedby:home_mPWRD_OS.gpg", None))
+lst = (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text()
+check("  the key moved to keyrings and named in the source; trusted.gpg.d without it; ok with Undo",
+      lst.startswith("deb [signed-by=" + str(T / "keyrings" / "home_mPWRD_OS.gpg") + "] http://") and (T / "keyrings" / "home_mPWRD_OS.gpg").read_bytes() == b"KEY"
+      and not (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists() and gate()["apt-trust"]["status"] == "ok", lst)
+print(security.fix("apt-undo:home_mPWRD_OS.gpg", None))
+check("  undone: both back as they were", (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text().startswith("deb http://")
+      and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists() and not (T / "keyrings" / "home_mPWRD_OS.gpg").exists())
+check("logs in RAM (zram on /var/log): warned, the card offered", g["logs-ram"]["status"] == "warn" and g["logs-ram"]["actions"][0]["choice"] == "logs-card")
+print(security.fix("logs-card", None))
+check("  ramlog off and the journal kept, from the next boot", "ENABLED=false" in (T / "ramlog").read_text() and "Storage=persistent" in (T / "journald.conf.d" / "irate-box.conf").read_text()
+      and gate()["logs-ram"]["actions"][-1]["choice"] == "logs-undo")
+(T / "log-on-card").touch()
+check("  on the card: ok", gate()["logs-ram"]["status"] == "ok")
+(T / "log-on-card").unlink()
+print(security.fix("logs-undo", None))
+check("  undone", "ENABLED=true" in (T / "ramlog").read_text() and not (T / "journald.conf.d" / "irate-box.conf").exists())
+security.fix("sudo-drop:claude-temp", None); security.fix("apt-signedby:home_mPWRD_OS.gpg", None); security.fix("logs-card", None)
+done = security.undo_all()
+check("undo_all puts the three back", (T / "sudoers.d" / "claude-temp").exists() and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists()
+      and not (T / "journald.conf.d" / "irate-box.conf").exists() and not security.load_record(), done)
+
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

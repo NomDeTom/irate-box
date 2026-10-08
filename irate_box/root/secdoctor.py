@@ -762,7 +762,7 @@ def step_folders(ctx):
     # Links planted in the folders root works in.
     watch = [CONTROL, CONTROL / "results", STATE / "zim", STATE / "library", STATE / "firmware",
              STATE / "git", STATE / "ci", STATE / "ci" / "queue", STATE / "ci" / "runs", STATE / "ci" / "work",
-             STATE / "ci" / "home", STATE / "notes"]
+             STATE / "ci" / "home", STATE / "notes", STATE / "kits"]
     links, truncated = [], False
     for w in watch:
         depth = 1 if w in (STATE / "notes", STATE / "git", STATE / "zim") else 2
@@ -770,7 +770,7 @@ def step_folders(ctx):
         links += found
         truncated = truncated or cut
     # Folders root recreates itself at every install are the interesting ones.
-    risky = [p for p, _ in links if Path(p).parent.name in ("control", "results", "zim", "library", "firmware", "ci", "queue", "runs", "work", "home")
+    risky = [p for p, _ in links if Path(p).parent.name in ("control", "results", "zim", "library", "firmware", "ci", "queue", "runs", "work", "home", "kits")
              or Path(p).name == "quarantine"]
     if links:
         shown = [f"{Path(p).relative_to(STATE)} → {t}" for p, t in links[:MAX_LISTED]]
@@ -1399,10 +1399,15 @@ def step_accounts(ctx):
         other = [(f, s) for f, s in nopass if (f, s) not in service]
         if other:
             temp = [f for f, _ in other if "temp" in f]
-            out.append(F("acct-sudo", "Passwordless sudo rules", "warn",
+            # Together a problem (stance review 2026-10-08, I1): a passwordless-sudo account that
+            # sshd lets in by password is root for whoever guesses one password over the WiFi.
+            guessable = _sshd_passwords()
+            out.append(F("acct-sudo", "Passwordless sudo rules" + (", and SSH accepts passwords" if guessable else ""), "problem" if guessable else "warn",
                          f"{_list(f'{f}: {s}' for f, s in other)}."
-                         + (" A '-temp' file is a rule meant to be removed after the work it was added for." if temp else ""),
-                         "Keep each only as long as it is needed: rm /etc/sudoers.d/<file>, then check `sudo -n true` fails.", ""))
+                         + (" A '-temp' file is a rule meant to be removed after the work it was added for." if temp else "")
+                         + (" sshd accepts passwords, so one guessed password on the network is root with no step in between." if guessable else ""),
+                         "Keep each only as long as it is needed: rm /etc/sudoers.d/<file>, then check `sudo -n true` fails."
+                         + (" Until then, turn SSH password logins off (the Security page)." if guessable else ""), ""))
         else:
             out.append(F("acct-sudo", "Passwordless sudo", "ok", "No NOPASSWD rule in sudoers or sudoers.d.", ref=""))
     passwd = _read(PASSWD)
@@ -1438,6 +1443,90 @@ def step_accounts(ctx):
     elif any(u in users for u in (HUB_USER, CI_USER)):
         out.append(F("acct-shells", "Service accounts", "ok", "The hub and build users have no login shell.", ref="F19"))
     return out
+
+
+def step_accounts_hub(ctx):
+    """The hub's own accounts (step 16, plans/accounts-plan stage 2): no account with a hash that
+    isn't scrypt at today's strength, users mode never left loosely over plain HTTP, and every app
+    in users mode has its gate actually wired in the web server's config."""
+    from irate_box.hub import access as acc, accounts as accmod
+    about = {"kind": "setting", "key": "accounts"}
+    try:
+        data = json.loads(_read(STATE / "accounts.json") or "{}")
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    accounts = data.get("accounts") if isinstance(data.get("accounts"), dict) else {}
+    out = []
+    weak = []
+    for name, a in accounts.items():
+        h = a.get("hash") if isinstance(a, dict) else None
+        if not h:
+            continue  # waiting for its one-time code (make()); it cannot log in yet
+        parts = h.split("$")
+        ok = len(parts) == 6 and parts[0] == "scrypt" and parts[1].isdigit() and int(parts[1]) >= accmod.SCRYPT["n"]
+        if not ok:
+            weak.append(name)
+    if not accounts:
+        out.append(F("accounts-hash", "The hub's own accounts", "ok", "None: no one has signed up.", ref="", about=about))
+    elif weak:
+        out.append(F("accounts-hash", "An account's password hash is not scrypt at today's strength", "problem",
+                     f"{_list(weak)}: accounts.json may have been edited by hand, or made by an older build.",
+                     "Reset the account's password (/admin → Accounts), which hashes it again.", "", about=about))
+    else:
+        out.append(F("accounts-hash", "Password hashes", "ok", "Every account's hash is scrypt, at today's strength.", ref="", about=about))
+
+    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    signup = settings.get("signup") if settings.get("signup") in accmod.SIGNUP else accmod.DEFAULTS["signup"]
+    http = settings.get("http") if settings.get("http") in accmod.HTTP else accmod.DEFAULTS["http"]
+    state = acc.read(ETC / "access.json")
+    users_apps = sorted(i for i in acc.ROUTED if acc.mode_of(state, i) == "users")
+    if signup == "off" or not users_apps:
+        return out
+    from irate_box.root import tls
+    https_on = bool(tls.status().get("on"))
+    if not https_on and http != "prevented":
+        out.append(F("accounts-http", "Apps for users, without HTTPS required", "problem",
+                     f"{_list(users_apps)} ask for an account, but HTTPS is "
+                     + ("not set up" if not https_on else "not required")
+                     + f" and the sign-up page's stance on plain HTTP is '{http}': a password can be read off the air.",
+                     "Turn on HTTPS (/admin → Security → HTTPS), and set Accounts' plain-HTTP stance to 'prevented'.", "", about=about))
+    else:
+        out.append(F("accounts-http", "Apps for users, over HTTPS", "ok",
+                     "HTTPS is set up." if https_on else "Plain HTTP refuses a password (the stance is 'prevented').", ref="", about=about))
+
+    kind = ctx.get("front_kind")
+    missing = []
+    if kind == "nginx":
+        gates_dir = ETC / "nginx-access.conf.d"
+        for i in users_apps:
+            if acc.NGINX_GATE.splitlines()[0] not in (_read(gates_dir / f"gate-{i}.conf") or ""):
+                missing.append(i)
+    elif kind == "caddy":
+        caddy_dir = Path(os.environ.get("HUB_CADDY_DIR", "/etc/caddy"))
+        for i in users_apps:
+            text = _read(caddy_dir / f"{i}.caddy") or ""
+            if "forward_auth" not in text or "/_irate/user" not in text:
+                missing.append(i)
+    if missing:
+        out.append(F("accounts-gate", "An app for users with no gate wired", "problem",
+                     f"{_list(missing)}: access.json says 'users', but the web server's config does not check for a session there. "
+                     "A guest may reach it with no login.",
+                     "Rerun install.sh (it regenerates the gates), or set the app's access again on /admin → Apps.", "", about=about))
+    elif kind in ("nginx", "caddy"):
+        out.append(F("accounts-gate", "Apps for users: the gate is wired", "ok", f"{_list(users_apps)}.", ref="", about=about))
+    return out
+
+
+def _sshd_passwords():
+    """Whether sshd here lets anyone in by password (sshd -T); False when there is no sshd."""
+    try:
+        from irate_box.root import security
+        s = security.sshd_settings()
+    except Exception:  # noqa: BLE001  (an sshd that will not answer -T is not a password login)
+        return False
+    return bool(s) and s.get("passwordauthentication", "yes") == "yes"
 
 
 def _sysctl(name):
@@ -1977,6 +2066,207 @@ def step_mqtt(ctx):
     return out
 
 
+# --- the image underneath (stance review 2026-10-08, §2: I4, I5, I9, I10) ---------------------------
+# What Armbian and mPWRD-OS ship that the hub inherited and nothing else here looks at. Sudo
+# rules, root's groups, apt's periodic switch and SSH's defaults have steps and offers of their
+# own (accounts, the Security page).
+APT_DIR = Path(os.environ.get("HUB_APT_DIR", "/etc/apt"))
+PROC_VERSION = Path(os.environ.get("HUB_PROC_VERSION", "/proc/version"))
+NM_DIR = Path(os.environ.get("HUB_NM_DIR", "/etc/NetworkManager/system-connections"))
+DEBIAN_KEYS = ("debian-archive-", "debian-ports-archive-")
+
+
+def _apt_sources(apt_dir):
+    """[(file, uri, suite, signed)] from sources.list, *.list (one line each: signed when the
+    options carry signed-by) and *.sources (deb822: signed when the stanza has Signed-By)."""
+    out = []
+    files = ([apt_dir / "sources.list"] if (apt_dir / "sources.list").is_file() else []) + \
+        sorted((apt_dir / "sources.list.d").glob("*.list")) + sorted((apt_dir / "sources.list.d").glob("*.sources")) \
+        if apt_dir.is_dir() else []
+    for f in files:
+        text = _read(f) or ""
+        if f.suffix == ".sources":
+            for stanza in re.split(r"\n\s*\n", text):
+                fields = {k.strip().lower(): v.strip() for k, _, v in (l.partition(":") for l in stanza.splitlines() if ":" in l and not l.startswith("#"))}
+                if fields.get("uris"):
+                    out.append((f.name, fields["uris"].split()[0], fields.get("suites", ""), bool(fields.get("signed-by"))))
+        else:
+            for line in text.splitlines():
+                m = re.match(r"^\s*deb(?:-src)?\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S*)", line)
+                if m:
+                    out.append((f.name, m.group(2), m.group(3), "signed-by=" in (m.group(1) or "")))
+    return out
+
+
+def step_image(ctx):
+    out = []
+    # apt's trust: a key in trusted.gpg.d vouches for every repository, not its own.
+    trusted = APT_DIR / "trusted.gpg.d"
+    keys = sorted(p.name for p in trusted.iterdir() if p.is_file() and not p.name.startswith(DEBIAN_KEYS)) if trusted.is_dir() else []
+    sources = _apt_sources(APT_DIR)
+    unsigned = [f"{f}: {uri}" for f, uri, _, signed in sources if not signed]
+    if keys or unsigned:
+        out.append(F("image-apt-trust", "Repository keys trusted for every repository", "warn",
+                     (f"Keys in trusted.gpg.d ({_list(keys)}) can sign packages for any repository, Debian's included. " if keys else "")
+                     + (f"Sources with no Signed-By of their own: {_list(unsigned)}." if unsigned else ""),
+                     "Move each key to /usr/share/keyrings and name it in its source's Signed-By (or [signed-by=…]); then the key vouches for that repository alone."))
+    else:
+        out.append(F("image-apt-trust", "Repository keys", "ok", "Every source names its own key; nothing in trusted.gpg.d but Debian's."))
+    daily = [f"{f}: {uri} {suite}".strip() for f, uri, suite, _ in sources if re.search(r"daily|nightly|snapshot", f"{uri} {suite}", re.I)]
+    if daily:
+        out.append(F("image-apt-daily", "A daily or nightly package channel", "warn",
+                     f"{_list(daily)}: whatever its project built last lands on this box at the next upgrade, untested.",
+                     "A release channel (stable or beta), unless the daily one is the point."))
+    # The kernel: a vendor build has no Debian security tracking (debsecan says so in its coverage; here with its age).
+    ver = _read(PROC_VERSION, 4096) or ""
+    m = re.search(r"\((\S+)\)|$", ver)
+    built = re.search(r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\w{3}) +(\d+) [\d:]+ \w+ (\d{4})", ver)
+    release = ver.split()[2] if len(ver.split()) > 2 else "?"
+    if ver and ("vendor" in release or "armbian" in ver.lower()):
+        when = f"{built.group(3)}-{built.group(1)}-{built.group(2).zfill(2)}" if built else "an unknown date"
+        out.append(F("image-kernel", "A vendor kernel", "warn",
+                     f"{release}, built {when}: Debian's security tracker does not cover it, so debsecan's view of the box is "
+                     "blind to the kernel, and its fixes arrive only with a new image or kernel package from its maker.",
+                     "Keep the kernel package current from its maker's repository when online (apt list --upgradable | grep linux-image)."))
+    elif ver:
+        out.append(F("image-kernel", "The kernel", "ok", f"{release}: not a vendor build."))
+    # Radios and daemons the hub does not use.
+    if _show("bluetooth.service", "ActiveState").get("ActiveState") == "active":
+        out.append(F("image-bluetooth", "Bluetooth is on", "warn",
+                     "bluetoothd runs, with a radio the hub does not use: a listener and a stack of its own, reachable by anyone in range.",
+                     "systemctl disable --now bluetooth.service (and rtk-bluetooth.service where there is one); enable --now puts it back."))
+    else:
+        out.append(F("image-bluetooth", "Bluetooth", "ok", "Not running."))
+    # Access-point profiles the image left in NetworkManager, beside irate-box's own.
+    aps = []
+    for f in sorted(NM_DIR.glob("*.nmconnection")) if NM_DIR.is_dir() else []:
+        text = _read(f, 65536) or ""
+        if re.search(r"(?m)^mode=ap\s*$", text) and "irate-box" not in text:
+            name = (re.search(r"(?m)^id=(.*)$", text) or [None, f.stem])[1]
+            open_ = "[wifi-security]" not in text
+            auto = not re.search(r"(?m)^autoconnect=false\s*$", text)
+            aps.append(f"{name} ({'open' if open_ else 'encrypted'}{', brought up on its own' if auto else ''})")
+    if aps:
+        out.append(F("image-ap-profiles", "Access-point profiles not the hub's", "warn",
+                     f"{_list(aps)} in NetworkManager's connections: an access point the image set up, which could come up beside "
+                     "or instead of the hub's.", "nmcli connection delete <name>, if it is not yours."))
+    else:
+        out.append(F("image-ap-profiles", "Access-point profiles", "ok", "None but the hub's own."))
+    return out
+
+
+# --- reached from the internet (Tom, 2026-10-08) --------------------------------------------------
+# The box is for its own networks. Its web pages are seen from the hub's own note of public visitors
+# (hub/reach.py; the web servers keep no access logs), SSH from sshd's log, and IPv6 from the box's
+# own addresses: a global one is reachable wherever the router's IPv6 firewall lets traffic in.
+REACH_DAYS = 7
+SSH_FROM = re.compile(r"\b(?:from|by)(?: (?:invalid |authenticating )?user \S+)? ([0-9A-Fa-f:.]+) port \d+")
+
+
+def _public(addr):
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_global
+
+
+def _ssh_public(days=REACH_DAYS):
+    """{address: (accepted, other)} from sshd's log, public addresses only; None if unreadable."""
+    try:
+        r = subprocess.run(("journalctl", "-q", "--no-pager", "-o", "cat", "--since", f"-{days}d",
+                            "-u", "ssh.service", "-u", "sshd.service", "-u", "ssh.socket"),
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    seen = {}
+    for line in r.stdout.splitlines():
+        m = SSH_FROM.search(line)
+        if m and _public(m.group(1)):
+            ok, other = seen.get(m.group(1), (0, 0))
+            seen[m.group(1)] = (ok + 1, other) if line.startswith("Accepted ") else (ok, other + 1)
+    return seen
+
+
+def _ssh_log_since(days=REACH_DAYS):
+    """The date of sshd's oldest journal line within the window, or "" if none can be read."""
+    try:
+        p = subprocess.Popen(("journalctl", "-q", "--no-pager", "-o", "short-iso", "--since", f"-{days}d",
+                              "-u", "ssh.service", "-u", "sshd.service", "-u", "ssh.socket"),
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        first = p.stdout.readline()
+        p.kill()
+        p.wait(timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    m = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})", first)
+    return m.group(1).replace("T", " ") if m else ""
+
+
+def _global_v6():
+    try:
+        r = subprocess.run(("ip", "-6", "-o", "addr", "show", "scope", "global"), capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    out = []
+    for line in r.stdout.splitlines():
+        f = line.split()
+        if len(f) > 3 and f[2] == "inet6" and "deprecated" not in f and _public(f[3].split("/")[0]):
+            out.append(f"{f[3].split('/')[0]} ({f[1]})")
+    return out
+
+
+def step_internet(ctx):
+    out, now = [], time.time()
+    try:
+        nets = json.loads(_read(STATE / "public-visits.json") or "{}").get("nets", {})
+        nets = {n: e for n, e in nets.items() if isinstance(e, dict) and isinstance(e.get("last"), (int, float))
+                and now - e["last"] < REACH_DAYS * 86400}
+    except (ValueError, AttributeError):
+        nets = {}
+    if nets:
+        recent = sorted(nets.items(), key=lambda kv: kv[1]["last"], reverse=True)
+        out.append(F("reach-web", "Web pages reached from the internet", "problem",
+                     f"In the last {REACH_DAYS} days the hub answered requests from public addresses: "
+                     + _list(f"{n} ({e.get('count', '?')}, last {time.strftime('%Y-%m-%d %H:%M', time.localtime(e['last']))})" for n, e in recent)
+                     + ". The box's pages and its login forms are open to the internet.",
+                     "If you didn't mean that, take the port forward off your router (or its DMZ host), and use Tailscale "
+                     "(/admin → Network) to reach the box from afar."))
+    else:
+        out.append(F("reach-web", "Web pages reached from the internet", "ok",
+                     f"No request from a public address in the last {REACH_DAYS} days (as the hub sees them: "
+                     "the pages it serves, not static files alone)."))
+    ssh = _ssh_public()
+    # How far back the evidence goes (stance review 2026-10-08, I7): Armbian keeps the journal
+    # in RAM and trims it, so "the last 7 days" may be since the last boot.
+    since = _ssh_log_since()
+    span = f" sshd's log here goes back to {since}." if since else ""
+    if ssh is None:
+        out.append(_cannot("reach-ssh", "SSH reached from the internet", "sshd's log could not be read"))
+    elif ssh:
+        accepted = sum(a for a, _ in ssh.values())
+        out.append(F("reach-ssh", "SSH reached from the internet", "problem",
+                     f"In the last {REACH_DAYS} days sshd heard from {len(ssh)} public address{'es' if len(ssh) != 1 else ''} "
+                     f"({_list(sorted(ssh))})" + (f", {accepted} login{'s' if accepted != 1 else ''} accepted" if accepted else ", none let in")
+                     + ". Anyone can try passwords on it." + span,
+                     "Take the router's forward to port 22 off; with it on, turn SSH password logins off (the Security page)."))
+    else:
+        out.append(F("reach-ssh", "SSH reached from the internet", "ok",
+                     f"sshd heard from no public address in the last {REACH_DAYS} days." + span))
+    v6 = _global_v6()
+    out.append(F("reach-ipv6", "A public IPv6 address", "warn" if v6 else "ok",
+                 (f"This box has {_list(v6)}: anything listening on all its addresses can be reached from the internet "
+                  "wherever the router's IPv6 firewall lets traffic in. Most home routers don't, by default.")
+                 if v6 else "This box has no public IPv6 address.",
+                 "Check your router's IPv6 firewall blocks incoming connections." if v6 else ""))
+    return out
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
@@ -1991,6 +2281,8 @@ STEPS = [
     ("secrets", "Secrets at rest", "S13 F30", step_secrets),
     ("git", "Git servers and pushed content", "F17 F18", step_git),
     ("accounts", "Sudo rules and accounts", "", step_accounts),
+    ("accounts-hub", "The hub's own accounts and sign-in", "", step_accounts_hub),
+    ("image", "The image underneath (Armbian, mPWRD-OS)", "", step_image),
     ("kernel", "Kernel protections", "F3 F9", step_kernel),
     ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
     ("debian-cis", "The CIS benchmark (debian-cis, in the deep audit)", "", step_deep_cis),
@@ -1999,6 +2291,7 @@ STEPS = [
     ("imports", "Imported scans (OpenVAS, nmap)", "", step_imports),
     ("tls", "HTTPS: the certificate and the front", "S2", step_tls),
     ("mqtt", "The MQTT broker and the mesh decoder", "S9", step_mqtt),
+    ("internet", "Reached from the internet", "", step_internet),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
@@ -2067,9 +2360,29 @@ def audit(progress=None):
             f["about"] = secdoctor_xref.about(f.get("source", "doctor"), f["id"].removeprefix("cis-").removeprefix("lynis-"))
     flat = [f for s in steps for f in s["findings"]]
     version = (_read(CODE / "VERSION") or "unknown").strip()
+    previous = _previous()
     return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps, "joint": joint(steps, freshness()),
             "counts": {k: sum(1 for f in flat if f["status"] == k) for k in ("problem", "warn", "ok")},
-            "not_covered": NOT_COVERED}
+            "not_covered": NOT_COVERED, "new": new_since(previous, flat), "previous_at": (previous or {}).get("at")}
+
+
+def _previous():
+    """The last report, so this one can say what changed."""
+    try:
+        rep = json.loads(_read(REPORT, limit=8 << 20) or "null")
+    except ValueError:
+        return None
+    return rep if isinstance(rep, dict) and isinstance(rep.get("steps"), list) else None
+
+
+def new_since(previous, findings):
+    """Ids of findings that are a problem or a warning now and were fine, or not there, in the
+    last report: what changed, for a box nobody audits by hand every day (the doctor runs daily
+    from irate-box-secdoctor.timer; stance review 2026-10-08 §2)."""
+    if not previous:
+        return []
+    was = {f.get("id"): f.get("status", "ok") for s in previous["steps"] for f in s.get("findings", []) if isinstance(f, dict)}
+    return sorted(f["id"] for f in findings if f["status"] != "ok" and was.get(f["id"], "ok") == "ok")
 
 
 def write_report(report, path=REPORT):
@@ -2101,10 +2414,16 @@ def print_report(report, only_bad=False, out=sys.stdout):
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "report"
-    if cmd not in ("report", "summary", "json"):
-        sys.exit("usage: secdoctor.py [report | summary | json]")
+    if cmd not in ("report", "summary", "json", "run"):
+        sys.exit("usage: secdoctor.py [report | summary | json | run]")
     if cmd == "json":
         print(json.dumps(audit(), indent=2))
+    elif cmd == "run":
+        # The timer's: the audit, kept where /admin reads it, one line said.
+        rep = audit()
+        write_report(rep)
+        c = rep["counts"]
+        print(f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)" + (f", {len(rep['new'])} new since the last run" if rep["new"] else ""))
     else:
         rep = audit(progress=(lambda n, t, s: print(f"[{n}/{t}] {s['title']} ...", file=sys.stderr)) if cmd == "report" and sys.stderr.isatty() else None)
         print_report(rep, only_bad=(cmd == "summary"))
