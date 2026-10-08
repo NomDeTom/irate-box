@@ -145,6 +145,14 @@ check('no page errors', !errors.length, errors.join('; '));
     const odd2 = [...rd.querySelectorAll('.admin-main button, .admin-side button')].filter((b) => ![...VOCAB, ...SHELL].some((c) => b.classList.contains(c)));
     const kinds = [...new Set(odd2.map((b) => b.className || '(none)'))];
     check('6a on the real /admin: every button one of the vocabulary', !odd2.length, `${odd2.length}: ${kinds.join(' | ')}`);
+    // The lists drawn from data stay empty here, so their buttons are looked for in the source: each
+    // el('button', {…}) the admin's scripts make names its class (the base button rule is gone).
+    const unclassed = ['admin.js', 'admin-layout.js', 'admin-tour.js', 'factory.js'].flatMap((f) => {
+      const src = fs.readFileSync(`${WEB}/${f}`, 'utf8');
+      return [...src.matchAll(/el\('button', \{([^}]*)/g)].filter((m) => !/class(Name)?:/.test(m[1]))
+        .map((m) => `${f}:${src.slice(0, m.index).split('\n').length}`);
+    });
+    check('6a in the admin\'s scripts: every button they make names its class', !unclassed.length, unclassed.join(' '));
     check('6b on the real /admin: every sidebar group head says its state', [...rd.querySelectorAll('.admin-side-group')].every((b) => b.hasAttribute('aria-expanded')));
     // The stub answers {} beyond the apps, so lists drawn from data are empty here: what is looked at
     // is every button the page and its empty states draw, on every page.
