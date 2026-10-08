@@ -762,7 +762,7 @@ def step_folders(ctx):
     # Links planted in the folders root works in.
     watch = [CONTROL, CONTROL / "results", STATE / "zim", STATE / "library", STATE / "firmware",
              STATE / "git", STATE / "ci", STATE / "ci" / "queue", STATE / "ci" / "runs", STATE / "ci" / "work",
-             STATE / "ci" / "home", STATE / "notes"]
+             STATE / "ci" / "home", STATE / "notes", STATE / "kits"]
     links, truncated = [], False
     for w in watch:
         depth = 1 if w in (STATE / "notes", STATE / "git", STATE / "zim") else 2
@@ -770,7 +770,7 @@ def step_folders(ctx):
         links += found
         truncated = truncated or cut
     # Folders root recreates itself at every install are the interesting ones.
-    risky = [p for p, _ in links if Path(p).parent.name in ("control", "results", "zim", "library", "firmware", "ci", "queue", "runs", "work", "home")
+    risky = [p for p, _ in links if Path(p).parent.name in ("control", "results", "zim", "library", "firmware", "ci", "queue", "runs", "work", "home", "kits")
              or Path(p).name == "quarantine"]
     if links:
         shown = [f"{Path(p).relative_to(STATE)} → {t}" for p, t in links[:MAX_LISTED]]

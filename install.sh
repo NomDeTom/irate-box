@@ -1814,7 +1814,7 @@ say "Publishing this box's own source"
 src_ver="$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
 # No git version (installed from a copy without its history): name it after the install date.
 case "$src_ver" in "" | unknown) src_ver="local-$(date -u +%Y%m%d)" ;; esac
-state_dir root root 755 "$STATE/source"
+state_dir root root 755 "$STATE/source" "$STATE/kits"
 src_tar="$STATE/source/irate-box-source.tar.gz"
 src_tmp="$(mktemp "$STATE/source/.irate-box-source.XXXXXX")"
 if tar -C "$(dirname "$CODE")" --exclude=__pycache__ --exclude='*.pyc' \

@@ -166,6 +166,19 @@ os.unlink(real); os.rename(T / "apps.real", real)
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
 check("F7: the check and the extraction read root's copy only", "_install_taken(app, taken, zip_path)" in src_ and "Path(zip_path).unlink" not in src_)
 
+# --- the offline kit: kits/ as a link the hub planted (stance review 2026-10-08, N1) -------------
+target = T / "kit-target"; target.mkdir(); target.chmod(0o700)
+(STATE / "kits").symlink_to(target)
+try:
+    hub_control.offline_kit({"books": False}); refused = False
+except (ValueError, OSError):
+    refused = True
+check("N1: kits/ as a link: refused, its target untouched", refused and (target.stat().st_mode & 0o777) == 0o700 and not any(target.iterdir()))
+(STATE / "kits").unlink()
+src_ = (REPO / "irate_box/root/hub_control.py").read_text()
+check("N1: the kit is built through kits/'s own fd, with no chown or chmod by path",
+      "/proc/self/fd/{kits_fd}" in src_ and "os.chown(KITS" not in src_ and "os.chmod(KITS" not in src_)
+
 # --- install.sh's state_dir, for real --------------------------------------------------------
 fn = inst[inst.index("state_dir() {"):]
 fn = fn[:fn.index("\n}\n") + 3]

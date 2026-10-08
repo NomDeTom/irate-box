@@ -380,15 +380,27 @@ def offline_kit(req):
     arch = platform.machine()
     base = _du(apps, Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
     need = 2 * base + sum(z.stat().st_size for z in zims) + (64 << 20)
-    KITS.mkdir(mode=0o755, exist_ok=True)
-    os.chown(KITS, 0, 0)
-    os.chmod(KITS, 0o755)
-    free = shutil.disk_usage(KITS).free
+    # The hub owns $STATE, so kits/ is made root's through its own fd (never a link the hub
+    # planted), and every path below goes through that fd: a kits/ renamed away and replaced by
+    # a link while this runs changes nothing, and HOME for the installer is a root-only folder
+    # (security stance review 2026-10-08, N1).
+    safeio.mkdir(KITS, 0, 0, 0o755)
+    kits_fd = safeio._dir_fd(KITS)
+    try:
+        if os.fstat(kits_fd).st_uid != 0:
+            raise ValueError(f"{KITS} is not root's: refused")
+        return _offline_kit(Path(f"/proc/self/fd/{kits_fd}"), zims, apps, arch, need)
+    finally:
+        os.close(kits_fd)
+
+
+def _offline_kit(kdir, zims, apps, arch, need):
+    free = shutil.disk_usage(kdir).free
     if free - need < _min_free():
         raise ValueError(f"not enough space: the kit needs about {need >> 20} MB and {free >> 20} MB is free "
                          f"(keeping {_min_free() >> 20} MB spare)" + (" — try without the books" if zims else ""))
     with Progress("kit", 3, path=KIT_PROGRESS) as progress:
-        work = Path(tempfile.mkdtemp(prefix=".kit-", dir=KITS))
+        work = Path(tempfile.mkdtemp(prefix=".kit-", dir=kdir))
         try:
             progress.step("Gathering the code, the apps and the downloads")
             kit = work / "irate-box-kit"
@@ -412,7 +424,11 @@ def offline_kit(req):
             progress.step("Packing it into one file")
             ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
             name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
-            part = KITS / f".{name}.part"
+            # kits/ may hold entries the hub made before root took the folder: the part file is
+            # made fresh at exactly this name (a planted link there is removed, never written through).
+            part = kdir / f".{name}.part"
+            part.unlink(missing_ok=True)
+            safeio.create(part, 0o644).close()
             tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
             if tar.returncode == 0 and zims:
                 tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
@@ -421,14 +437,13 @@ def offline_kit(req):
                 part.unlink(missing_ok=True)
                 raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
             part.chmod(0o644)
-            for old in KITS.glob("irate-box-kit-*.tar"):
+            for old in kdir.glob("irate-box-kit-*.tar"):
                 old.unlink()
-            final = KITS / name
+            final = kdir / name
             os.replace(part, final)
             meta = {"name": name, "size": final.stat().st_size, "at": time.time(), "arch": arch,
                     "books": [z.name for z in zims], "contents": report[:40]}
-            (KITS / "kit.json").write_text(json.dumps(meta, indent=2))
-            (KITS / "kit.json").chmod(0o644)
+            safeio.write(kdir / "kit.json", json.dumps(meta, indent=2))
         finally:
             shutil.rmtree(work, ignore_errors=True)
     return f"offline kit ready: {name} ({meta['size'] >> 20} MB)"
