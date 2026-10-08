@@ -5,7 +5,8 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 const BASE = process.env.BASE;
-const strip = (h) => h.replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const strip = (h) => h;
 const errors = [];
 function page(storage) {
   const vc = new VirtualConsole(); vc.on('jsdomError', (e) => { if (!/scrollTo|navigation/.test(e.message)) errors.push(e.message); });

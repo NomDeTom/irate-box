@@ -8,7 +8,8 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
 const T = 1790950000;
 const repo = (o) => Object.assign({ area: 'public', write: 'admin', preset: 'public-admin-writes', preset_text: '', mirror_of: null,

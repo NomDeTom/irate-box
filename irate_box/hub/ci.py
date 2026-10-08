@@ -38,6 +38,8 @@ import threading
 import time
 from pathlib import Path
 
+from irate_box import confine
+
 ROOT = Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
 # Builds come only from here (F23): the queue is writable by the hub, and guests may push to public repos.
 PRIVATE = Path(os.environ.get("HUB_GIT_PRIVATE", ROOT.parent / "git" / "private"))
@@ -216,7 +218,10 @@ def queue_build(repo, branch=None):
     """Build now: a private repository's branch (its default one if none), queued as a push would
     queue it, with the same refusals: public, switched off, no .irate-ci.sh at that commit."""
     repo = Path(repo).resolve()
-    if repo.parent != PRIVATE.resolve() or not NAME_RE.match(repo.name[:-4]) or not (repo / "HEAD").exists():
+    if repo.parent != PRIVATE.resolve() or not NAME_RE.match(repo.name[:-4]):
+        raise ValueError("only private repositories build")
+    repo = confine.under(PRIVATE.resolve(), repo.name)
+    if not (repo / "HEAD").exists():
         raise ValueError("only private repositories build")
     off = _git("config", "--get", "irate-box.ci", cwd=repo)
     if off.returncode == 0 and off.stdout.strip() == "off":

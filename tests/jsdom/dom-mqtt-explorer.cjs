@@ -9,7 +9,8 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const fs = require('fs');
 const DIR = require('path').resolve(__dirname, '../../extras/mqtt-explorer');
-const html = fs.readFileSync(`${DIR}/index.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const html = fs.readFileSync(`${DIR}/index.html`, 'utf8');
 const js = fs.readFileSync(`${DIR}/explorer.js`, 'utf8');
 const errors = [];
 const vc = new VirtualConsole();

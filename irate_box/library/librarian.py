@@ -72,6 +72,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from irate_box import confine
 from irate_box.hub import manifests
 from irate_box.library import zimcheck
 
@@ -661,11 +662,11 @@ def remove_source(name, delete_book=False):
     status.pop(name, None)
     save_status(status)
     staged_book(name).unlink(missing_ok=True)
-    (APP_STAGING / f"{name}.zip").unlink(missing_ok=True)
+    confine.under(APP_STAGING, f"{name}.zip").unlink(missing_ok=True)
     if delete_book and name not in APPS:
         with Lock():
-            (ZIM_DIR / f"{name}.zim").unlink(missing_ok=True)
-            shutil.rmtree(ARCHIVE_DIR / name, ignore_errors=True)
+            confine.under(ZIM_DIR, f"{name}.zim").unlink(missing_ok=True)
+            shutil.rmtree(confine.under(ARCHIVE_DIR, name), ignore_errors=True)
             library_drop(f"{name}.zim")
 
 
@@ -1122,7 +1123,7 @@ def _prune_archive(name, keep):
 def staged_book(name):
     """A fetched version waiting to be swapped in: beside the book, on the same filesystem
     for an atomic rename, and not named *.zim, so Kiwix never lists it."""
-    return ZIM_DIR / f".{name}.zim.fetched"
+    return confine.under(ZIM_DIR, f".{name}.zim.fetched")
 
 
 def books_bytes():

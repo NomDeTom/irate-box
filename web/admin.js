@@ -2041,8 +2041,14 @@ hs.wpa2.addEventListener('change', hsShowFields);
 hs.generate.addEventListener('click', () => {
   // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
   const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
-  const n = crypto.getRandomValues(new Uint32Array(12));
-  const chars = [...n].map((v) => abc[v % abc.length]);
+  // Bytes past the last whole multiple of the alphabet are dropped, so every letter is as likely.
+  const chars = [];
+  const limit = 256 - (256 % abc.length);
+  while (chars.length < 12) {
+    for (const v of crypto.getRandomValues(new Uint8Array(16))) {
+      if (v < limit && chars.length < 12) chars.push(abc[v % abc.length]);
+    }
+  }
   hs.password.value = [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
 });
 hs.save.addEventListener('click', async () => {

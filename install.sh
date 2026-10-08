@@ -974,8 +974,8 @@ done
 UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
 UNCLAIMED=0
 if [ -n "$ADMIN_PW" ]; then
-	printf '%s\n' "$ADMIN_PW" >"$ETC/admin-password"
-	chmod 600 "$ETC/admin-password"
+	# Root's alone from the moment it exists: a new file under umask 077, renamed over the old.
+	(umask 077 && printf '%s\n' "$ADMIN_PW" >"$ETC/.admin-password.new") && mv -f "$ETC/.admin-password.new" "$ETC/admin-password"
 elif [ -s "$ETC/admin-password" ]; then
 	chmod 600 "$ETC/admin-password"
 	ADMIN_PW="$(head -1 "$ETC/admin-password")"

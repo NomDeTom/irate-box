@@ -33,6 +33,7 @@ run doctor_guard.py
 run sim_netinv.py
 run sim_apmode.py
 run sim_syncthing_gui.py
+run sim_confine.py
 run theme_guard.py
 run root_routes_guard.py
 run sim_root_links.py

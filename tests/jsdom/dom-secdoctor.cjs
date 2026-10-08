@@ -8,7 +8,8 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+// The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
+const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = fs.readFileSync(`${WEB}/admin.js`, 'utf8');
 const now = Math.floor(Date.now() / 1000);
 const NMAP = `<?xml version="1.0"?><nmaprun scanner="nmap" start="1791300000" version="7.95"><host><address addr="192.168.4.1" addrtype="ipv4"/>
