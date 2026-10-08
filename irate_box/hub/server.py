@@ -1306,6 +1306,20 @@ def update_snapshot():
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
+
+
+def setup_blocked():
+    """Why "Finish setup" is refused: the Security page's last scan says a passwordless sudo rule
+    names an account sshd lets in by password, the one state an image leaves that makes a guessed
+    password root (stance review 2026-10-08, I1). None when it does not, or no scan has run."""
+    try:
+        scan = json.loads(SECURITY_STATE.read_text())
+    except (OSError, ValueError):
+        return None
+    for f in scan.get("findings", []) if isinstance(scan, dict) else []:
+        if isinstance(f, dict) and f.get("id") == "sudo-nopasswd" and f.get("status") == "problem":
+            return f"Not finished yet: {f.get('detail', '')} The Security page (System) offers the fixes; then finish here."
+    return None
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
@@ -3013,6 +3027,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/settings":
+            if payload.get("setup_done") is True:
+                why = setup_blocked()
+                if why:
+                    self.send_json(409, {"error": why})
+                    return
             with _settings_lock:
                 was_counting = _settings.get("visitor_counts")
                 for key in DEFAULT_SETTINGS:

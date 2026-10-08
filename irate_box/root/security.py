@@ -246,7 +246,7 @@ def _login_users():
     """(name, home) for root and every account with a login shell and uid >= 1000."""
     users = []
     try:
-        for line in Path("/etc/passwd").read_text().splitlines():
+        for line in PASSWD_FILE.read_text().splitlines():
             name, _, uid, _, _, home, shell = line.split(":")
             if (uid == "0" or int(uid) >= 1000) and not shell.endswith(("nologin", "false")):
                 users.append((name, home))
@@ -255,16 +255,36 @@ def _login_users():
     return users
 
 
+def _authorized_keys_files(name, home):
+    """Where sshd would look for this account's keys (sshd -T -C user=…: AuthorizedKeysFile, a
+    Match block's included), %h, %u and %% expanded, a relative path under the home; OpenSSH's
+    default when sshd will not say (stance review 2026-10-08, the gates' item 4)."""
+    files = [".ssh/authorized_keys", ".ssh/authorized_keys2"]
+    sshd = shutil.which("sshd") or "/usr/sbin/sshd"
+    if os.path.exists(sshd):
+        out = run(sshd, "-T", "-C", f"user={name},host=localhost,addr=127.0.0.1")
+        for line in out.stdout.splitlines() if out.returncode == 0 else []:
+            if line.startswith("authorizedkeysfile ") and len(line.split()) > 1:
+                files = line.split()[1:]
+    expanded = []
+    for f in files:
+        f = f.replace("%%", "\0").replace("%h", home).replace("%u", name).replace("\0", "%")
+        expanded.append(Path(f) if f.startswith("/") else Path(home, f))
+    return expanded
+
+
 def keys_on_box():
-    """Accounts that have at least one key in ~/.ssh/authorized_keys."""
+    """Accounts that have at least one key where sshd looks for them."""
     have = []
     for name, home in _login_users():
-        try:
-            lines = Path(home, ".ssh", "authorized_keys").read_text().splitlines()
-        except OSError:
-            continue
-        if any(line.strip() and not line.lstrip().startswith("#") for line in lines):
-            have.append(name)
+        for path in _authorized_keys_files(name, home):
+            try:
+                lines = path.read_text().splitlines()
+            except OSError:
+                continue
+            if any(line.strip() and not line.lstrip().startswith("#") for line in lines):
+                have.append(name)
+                break
     return have
 
 
@@ -692,14 +712,227 @@ def _root(rec, what, on):
     return msg
 
 
+# --- sudo rules, apt's trust, logs in RAM (stance review 2026-10-08: I1, I4, I7) -----------------
+# What the image left that the first review's offers did not reach: a passwordless sudo rule for
+# an account sshd lets in by password (one guess is root), repository keys in trusted.gpg.d
+# (trusted for every repository), and /var/log on a RAM disk (the evidence goes with the power).
+SUDOERS = Path(os.environ.get("HUB_SUDOERS", "/etc/sudoers"))
+SUDOERS_DIR = Path(os.environ.get("HUB_SUDOERS_DIR", "/etc/sudoers.d"))
+SUDOERS_KEPT = ETC / "sudoers-removed"
+APT_DIR = Path(os.environ.get("HUB_APT_DIR", "/etc/apt"))
+KEYRINGS = Path(os.environ.get("HUB_KEYRINGS_DIR", "/usr/share/keyrings"))
+KEYS_KEPT = ETC / "apt-keys-removed"
+RAMLOG_DEFAULT = Path(os.environ.get("HUB_RAMLOG_DEFAULT", "/etc/default/armbian-ramlog"))
+JOURNALD_DROPIN = Path(os.environ.get("HUB_JOURNALD_DROPIN", "/etc/systemd/journald.conf.d/irate-box.conf"))
+LOG_DIR = os.environ.get("HUB_LOG_DIR", "/var/log")
+DEBIAN_KEYS = ("debian-archive-", "debian-ports-archive-")
+FILE_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*$")
+
+
+def _nopasswd_rules():
+    """[(file name, rule, account)]: NOPASSWD rules naming a login account, or a group it is in."""
+    members, logins = _group_members(), _login_accounts()
+    files = ([SUDOERS] if SUDOERS.is_file() else []) + \
+        (sorted(p for p in SUDOERS_DIR.iterdir() if p.is_file() and "." not in p.name and not p.name.endswith("~")) if SUDOERS_DIR.is_dir() else [])
+    out = []
+    for f in files:
+        try:
+            text = f.read_text(errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "NOPASSWD" not in s:
+                continue
+            who = s.split()[0]
+            accounts = (members.get(who[1:], set()) & logins) if who.startswith("%") else ({who} & logins)
+            out.extend((f.name, s, a) for a in sorted(accounts))
+    return out
+
+
+def sudo_findings(rec, settings=None):
+    ours = rec.get("sudo", {})
+    undo = [{"choice": f"sudo-undo:{f}", "label": f"Put {f} back"} for f in ours]
+    rules = _nopasswd_rules()
+    if not rules:
+        return [_finding("sudo-nopasswd", "Passwordless sudo", "ok", "No NOPASSWD rule names a login account.", "", undo)]
+    settings = sshd_settings() if settings is None else settings
+    guessable = bool(settings) and settings.get("passwordauthentication", "yes") == "yes"
+    by_file = {}
+    for f, _, a in rules:
+        by_file.setdefault(f, set()).add(a)
+    shown = "; ".join(f"{f}: {', '.join(sorted(a))}" for f, a in by_file.items())
+    drops = [f for f in by_file if f != SUDOERS.name and FILE_RE.match(f)]
+    return [_finding("sudo-nopasswd", "Passwordless sudo" + (", and SSH accepts passwords" if guessable else ""),
+                     "problem" if guessable else "warn",
+                     f"{shown}: root with no password for whoever is that account"
+                     + (", and sshd lets anyone on the network try that account's password: one guess is root." if guessable else "."),
+                     "Remove the rule once the work it was added for is done"
+                     + (", and until then turn SSH password logins off (above)." if guessable else "."),
+                     [{"choice": f"sudo-drop:{f}", "label": f"Remove {f}",
+                       "confirm": f"Remove /etc/sudoers.d/{f}? sudo then asks the account's password (it stays in the sudo group); Undo puts the file back."}
+                      for f in drops] + undo)]
+
+
+def _sudo(rec, name, on):
+    if not FILE_RE.match(name) or name == SUDOERS.name:
+        raise ValueError(f"{name} is not a sudoers.d file this page removes")
+    ours = rec.setdefault("sudo", {})
+    src, kept = SUDOERS_DIR / name, SUDOERS_KEPT / name
+    if on:
+        if not src.is_file():
+            raise ValueError(f"/etc/sudoers.d/{name} is not there")
+        SUDOERS_KEPT.mkdir(mode=0o700, exist_ok=True)
+        shutil.move(str(src), str(kept))
+        ours[name] = time.strftime("%Y-%m-%d")
+        return f"/etc/sudoers.d/{name} removed (kept under /etc/hub for Undo)"
+    if name not in ours or not kept.is_file():
+        raise ValueError(f"{name} was not removed from this page")
+    shutil.move(str(kept), str(src))
+    os.chmod(src, 0o440)
+    ours.pop(name)
+    if not ours:
+        rec.pop("sudo")
+    return f"/etc/sudoers.d/{name} is back"
+
+
+def _norm(s):
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _key_for(stem, keys):
+    """The trusted.gpg.d key whose name is the source's (OBS writes home_mPWRD_OS.gpg beside home:mPWRD:OS.list)."""
+    return next((k for k in keys if _norm(k.rsplit(".", 1)[0]) == _norm(stem)), None)
+
+
+def _apt_keys():
+    trusted = APT_DIR / "trusted.gpg.d"
+    return sorted(p.name for p in trusted.iterdir() if p.is_file() and not p.name.startswith(DEBIAN_KEYS)) if trusted.is_dir() else []
+
+
+def _unsigned_lists():
+    from irate_box.root import secdoctor
+    return [(f, uri) for f, uri, _, signed in secdoctor._apt_sources(APT_DIR) if not signed and f.endswith(".list")]
+
+
+def apt_findings(rec):
+    ours = rec.get("apt", {})
+    keys, unsigned = _apt_keys(), _unsigned_lists()
+    undo = [{"choice": f"apt-undo:{k}", "label": f"Put {k} back"} for k in ours]
+    if not keys and not unsigned:
+        return [_finding("apt-trust", "Repository keys", "ok", "Every source names its own key; nothing in trusted.gpg.d but Debian's.", "", undo)]
+    actions = []
+    for f, _ in unsigned:
+        k = _key_for(f[:-len(".list")], keys)
+        if k and FILE_RE.match(k):
+            actions.append({"choice": f"apt-signedby:{k}", "label": f"Tie {k} to {f}",
+                            "confirm": f"Move {k} out of trusted.gpg.d into /usr/share/keyrings, and name it in {f} as that source's "
+                                       "signed-by key? apt then trusts it for that repository alone. Undo puts both back."})
+    return [_finding("apt-trust", "Repository keys trusted for every repository", "warn",
+                     (f"Keys in trusted.gpg.d ({', '.join(keys)}) can sign packages for any repository, Debian's included. " if keys else "")
+                     + (f"Sources with no key of their own: {', '.join(f for f, _ in unsigned)}." if unsigned else ""),
+                     "Each key named in its own source's signed-by. A key no source matches is removed by hand: rm /etc/apt/trusted.gpg.d/<key>.",
+                     actions + undo)]
+
+
+def _apt(rec, key, on):
+    if not FILE_RE.match(key):
+        raise ValueError(f"{key} is not a key this page moves")
+    ours = rec.setdefault("apt", {})
+    trusted, ring, kept = APT_DIR / "trusted.gpg.d" / key, KEYRINGS / key, KEYS_KEPT / key
+    if on:
+        lst = next((APT_DIR / "sources.list.d" / f for f, _ in _unsigned_lists() if _key_for(f[:-len(".list")], [key])), None)
+        if not trusted.is_file() or lst is None:
+            raise ValueError(f"{key} is not in trusted.gpg.d, or no source of its name lacks a key")
+        text = lst.read_text()
+        new = re.sub(r"(?m)^(\s*deb(?:-src)?)\s+(?!\[)", rf"\1 [signed-by={ring}] ", text)
+        new = re.sub(r"(?m)^(\s*deb(?:-src)?\s+\[)(?![^\]]*signed-by=)", rf"\1signed-by={ring} ", new)
+        KEYS_KEPT.mkdir(mode=0o700, exist_ok=True)
+        (KEYS_KEPT / f"{key}.list").write_text(text)
+        KEYRINGS.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(trusted, ring)
+        os.chmod(ring, 0o644)
+        lst.write_text(new)
+        shutil.move(str(trusted), str(kept))
+        ours[key] = {"source": lst.name, "date": time.strftime("%Y-%m-%d")}
+        return f"{key} vouches for {lst.name} alone now (apt-get update reads it at the next refresh)"
+    if key not in ours or not kept.is_file():
+        raise ValueError(f"{key} was not moved from this page")
+    lst = APT_DIR / "sources.list.d" / ours[key]["source"]
+    saved = KEYS_KEPT / f"{key}.list"
+    if saved.is_file():
+        lst.write_text(saved.read_text())
+        saved.unlink()
+    shutil.move(str(kept), str(trusted))
+    ring.unlink(missing_ok=True)
+    ours.pop(key)
+    if not ours:
+        rec.pop("apt")
+    return f"{key} is back in trusted.gpg.d, and {lst.name} as it was"
+
+
+def _log_in_ram():
+    """True when /var/log is a RAM disk (tmpfs, or Armbian's zram), False when on the card, None unknown."""
+    if not _have("findmnt"):
+        return None
+    out = run("findmnt", "-no", "SOURCE,FSTYPE", LOG_DIR)
+    f = out.stdout.split()
+    if out.returncode != 0 or len(f) < 2:
+        return None
+    return f[1] == "tmpfs" or f[0].startswith("/dev/zram")
+
+
+def log_findings(rec):
+    ours = rec.get("logs")
+    undo = [{"choice": "logs-undo", "label": "Undo"}] if ours else []
+    ram = _log_in_ram()
+    if ram is None:
+        return [_finding("logs-ram", "Logs on the card", "ok", "Set from this page; it applies from the next boot.", "", undo)] if ours else []
+    if not ram:
+        return [_finding("logs-ram", "Logs on the card", "ok",
+                         "/var/log is on the card: what sshd and the hub log survives a reboot or a power cut." + (" Set from this page." if ours else ""), "", undo)]
+    return [_finding("logs-ram", "Logs live in RAM", "warn",
+                     "/var/log is a RAM disk (Armbian's ramlog): sshd's log and the journal are trimmed every 15 minutes and gone at a "
+                     "power cut, so the evidence of an intrusion goes with them; the doctor's \"reached from the internet\" sees only since the last boot.",
+                     "Logs on the card, a few MB a week: Armbian's ramlog off and the journal kept, capped at 32 MB. It applies from the next boot.",
+                     [{"choice": "logs-card", "label": "Keep logs on the card",
+                       "confirm": "Turn Armbian's ramlog off and keep the journal on the card (32 MB cap)? It applies at the next boot; the card does a little more writing."}]
+                     + undo)]
+
+
+def _logs(rec, on):
+    if on:
+        was = None
+        if RAMLOG_DEFAULT.is_file():
+            was = RAMLOG_DEFAULT.read_text()
+            new = re.sub(r"(?m)^ENABLED=.*$", "ENABLED=false", was) if re.search(r"(?m)^ENABLED=", was) else was + "\nENABLED=false\n"
+            RAMLOG_DEFAULT.write_text(new)
+        JOURNALD_DROPIN.parent.mkdir(parents=True, exist_ok=True)
+        JOURNALD_DROPIN.write_text("# Written by irate-box's Security page (/admin): logs on the card. Undo there, or delete this file.\n"
+                                   "[Journal]\nStorage=persistent\nSystemMaxUse=32M\n")
+        rec["logs"] = {"date": time.strftime("%Y-%m-%d"), "ramlog": was}
+        return "logs on the card from the next boot (ramlog off, the journal kept, 32 MB cap)"
+    if "logs" not in rec:
+        raise ValueError("logs were not moved to the card from this page")
+    if rec["logs"].get("ramlog") is not None and RAMLOG_DEFAULT.is_file():
+        RAMLOG_DEFAULT.write_text(rec["logs"]["ramlog"])
+    JOURNALD_DROPIN.unlink(missing_ok=True)
+    rec.pop("logs")
+    return "logs back in RAM from the next boot, as the image had them"
+
+
 def scan():
     rec = load_record()
     found = listeners()
     findings = listener_findings(found, rec)
-    findings += ssh_findings(sshd_settings(), keys_on_box(), rec)
+    settings = sshd_settings()
+    findings += ssh_findings(settings, keys_on_box(), rec)
+    findings += sudo_findings(rec, settings or {})
     findings += kernel_findings(rec)
     findings += group_findings(rec)
     findings += root_findings(rec)
+    findings += apt_findings(rec)
+    findings += log_findings(rec)
     upd, _ = update_findings()
     findings += upd
     return {"at": time.time(), "listeners": found, "findings": findings}
@@ -861,6 +1094,12 @@ def fix(choice, updates_log):
         msg = _group(rec, choice.split(":", 1)[1], choice.startswith("group-drop:"))
     elif choice.startswith(("unit-off:", "unit-undo:")):
         msg = _unit(rec, choice.split(":", 1)[1], choice.startswith("unit-off:"))
+    elif choice.startswith(("sudo-drop:", "sudo-undo:")):
+        msg = _sudo(rec, choice.split(":", 1)[1], choice.startswith("sudo-drop:"))
+    elif choice.startswith(("apt-signedby:", "apt-undo:")):
+        msg = _apt(rec, choice.split(":", 1)[1], choice.startswith("apt-signedby:"))
+    elif choice in ("logs-card", "logs-undo"):
+        msg = _logs(rec, choice == "logs-card")
     elif choice == "security-updates":
         return install_security_updates(updates_log)
     else:
@@ -880,7 +1119,9 @@ def undo_all():
                   (["ssh-forwarding-undo"] if "forwarding" in rec.get("ssh", {}) else []) + \
                   (["cockpit-undo"] if "cockpit" in rec else []) + (["llmnr-undo"] if rec.get("llmnr") else []) + \
                   [f"unit-undo:{u}" for u in rec.get("units", {})] + \
-                  [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})]:
+                  [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})] + \
+                  [f"sudo-undo:{f}" for f in rec.get("sudo", {})] + [f"apt-undo:{k}" for k in rec.get("apt", {})] + \
+                  (["logs-undo"] if "logs" in rec else []):
         try:
             done.append(fix(choice, None))
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
