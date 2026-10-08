@@ -67,6 +67,9 @@ const AL = (() => {
       'aria-label': def.title }, el('h2', { class: 'admin-page-title', text: def.title }));
     if (ids.length === 1 && !def.app) p.classList.add('solo');  // an app's page keeps the app's name over its sections
     ids.forEach((sid) => { placed.add(sid); p.append(sections.get(sid)); });
+    // A section headed with the page's own title (Git on Git's page) doesn't say it twice: its
+    // heading stays, for its aria-labelledby, but isn't shown.
+    p.querySelectorAll(':scope > .admin-pane > h2').forEach((h) => h.classList.toggle('same-as-page', !p.classList.contains('solo') && h.textContent.trim() === def.title));
     p.hidden = true;
     main.append(p);
     const link = el('a', { href: '#' + (def.app ? id : ids[0] || id), 'data-page': id }, def.icon ? el('span', { class: 'side-icon', 'aria-hidden': 'true', text: def.icon }) : null, def.title);

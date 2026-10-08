@@ -15,6 +15,7 @@ module.exports = function adminApps() {
       const tile = m.tile || {}, adm = m.admin || {}, menu = m.menu;
       const name = adm.title || tile.name || (menu || {}).title;
       if (!name || (tile.widget && !m.admin)) return [];
-      return [{ id: m.id, name, icon: adm.icon || tile.icon || '', sections: adm.sections || [], folder: !!menu, art: (menu || {}).art || null, local: false, switch: ROUTED.includes(m.id) }];
+      return [{ id: m.id, name, icon: adm.icon || tile.icon || '', sections: adm.sections || [], folder: !!menu, art: (menu || {}).art || null, local: false,
+        page: !!adm.page, width: adm.width || null, switch: ROUTED.includes(m.id) }];
     });
 };

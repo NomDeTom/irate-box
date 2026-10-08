@@ -106,8 +106,8 @@
           Apps that run in the visitor's browser, added here in a minute with no installer and no
           restart. Each is served on its own address (this box, port <span id="local-port">8090</span>),
           so it cannot reach this page, the hub's settings or anything else on the box. An added one
-          starts <strong>off</strong>: switch it public or private when you are ready. The Library
-          pane's Apps keeps it current, at the commit the hub's code checked unless you choose the newest.
+          starts <strong>off</strong>: open it to everyone, to users or to the admin when you are ready. The
+          Apps list on this page keeps it current, at the commit the hub's code checked unless you choose the newest.
         </p>
         <div id="local-added"></div>
         <h4>The catalogue</h4>
@@ -221,10 +221,13 @@
         <div id="builtin-list"></div>
         <h3>Who can open each one</h3>
         <p class="setting-desc">
-          <strong>Public</strong>: on the home page, for everyone on the box's network.
-          <strong>Private</strong>: off the home page, and its address asks for the admin login.
-          <strong>Off</strong>: off the home page, and its address answers "not found"; an add-on's
-          service is stopped too. The same switch is on each add-on, under Add-ons.
+          <strong>Public</strong>: everyone on the box's network can open it.
+          <strong>Users</strong>: anyone signed in to an account can open it; anyone else is asked to sign in.
+          <strong>Private</strong>: only the admin; its address asks for the admin login.
+          <strong>Off</strong>: its address answers "not found"; an add-on's service is stopped too.
+          <strong>Tile shown to</strong> is apart from that: a tile can show to everyone with a lock, so
+          guests see what is on the box, or to nobody while its address still works. Each app's own
+          page under Apps has the same two switches.
         </p>
       </section>
 
@@ -608,7 +611,7 @@
           <dl>
             <dt>Public, Private</dt><dd>Where it lives: /git/ (anyone on the network sees it) or /git-private/ (only with the admin login). Moving it changes its clone URL.</dd>
             <dt>Who pushes</dt><dd>Anyone; only the admin; or nobody (read-only). The hub decides each push; git's own setting is the backstop.</dd>
-            <dt>Mirror</dt><dd>A copy of a repository on the internet, kept to a policy by the librarian (Library → Mirrors). Read-only here.</dd>
+            <dt>Mirror</dt><dd>A copy of a repository on the internet, kept to a policy by the librarian (Mirrors, below). Read-only here.</dd>
             <dt>Builds</dt><dd>A push to a private repository that only the admin pushes to, whose commit has a .irate-ci.sh, is built on the box (Builds, below), if its switch is on.</dd>
           </dl>
         </details>

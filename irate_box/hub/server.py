@@ -219,7 +219,7 @@ def refresh_manifests():
     SERVICES = _services()
     MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
     librarian.reload_apps()
-    _home_page["mtime"] = None
+    _home_page.clear()  # both copies (guests, signed in): a new add-on's tile shows at once
 
 
 # The hub's live tiles (a manifest names one with "widget"); hub.js and home.js fill them in.
