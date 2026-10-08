@@ -1446,6 +1446,36 @@ UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
 SIGNING_STATE = CONTROL_DIR / "update-signing.json"  # root's: the level, and the keys' names
+# Guests' onward internet (root/share.py): the level root keeps, and the devices this hub has asked
+# root to let out (for the captive API's answer; root's table holds the real list, each for 12 h).
+SHARE_STATE = CONTROL_DIR / "share.json"
+SHARE_LEVELS = ("off", "users-web", "sheet-web", "sheet-all", "open")
+SHARE_LET_OUT = ("users-web", "sheet-web", "sheet-all")
+SHARE_HOURS = 12
+_let_out = {}            # address -> until (time.time())
+_let_out_lock = threading.Lock()
+
+
+def share_level():
+    try:
+        level = json.loads(SHARE_STATE.read_text()).get("level")
+    except (OSError, ValueError, AttributeError):
+        return "off"
+    return level if level in SHARE_LEVELS else "off"
+
+
+def on_hotspot(addr):
+    try:
+        return ipaddress.ip_address(addr) in ipaddress.ip_network("192.168.4.0/24") and addr != "192.168.4.1"
+    except ValueError:
+        return False
+
+
+def let_out(addr):
+    with _let_out_lock:
+        return _let_out.get(addr, 0) > time.time()
+
+
 UPDATE_ACTIONS = {"check": "update-check", "fetch": "update-fetch", "install": "update-install",
                   "force-install": "update-force-install",
                   "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
@@ -2817,7 +2847,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/hotspot":
-            self.send_json(200, hotspot.snapshot())
+            self.send_json(200, dict(hotspot.snapshot(), share=share_level()))
             return
 
         if path == "/admin/network":
@@ -2967,11 +2997,22 @@ class Handler(BaseHTTPRequestHandler):
             # Mesh's Heard, the messages' texts too (item 9, as the Factory's page): behind /admin's login.
             path = "/admin-mesh.html"
 
+        if path == "/api/guest-net":
+            # What the sheet shows a guest: whether the owner shares the connection, at what level,
+            # and whether this device is out. (root/share.py; the home page's banner, home.js.)
+            level, addr = share_level(), self._client_addr()
+            self.send_json(200, {"level": level, "here": on_hotspot(addr), "out": level == "open" or let_out(addr),
+                                 "signed_in": bool(self._signed_in()), "hours": SHARE_HOURS})
+            return
+
         if path == "/api/captive":
             # RFC 8908's captive-portal API, named by the hotspot's DHCP (option 114, RFC 8910):
             # tells a phone outright that this network has a sign-in page and where, so it need
-            # not guess from probes. captive stays true: the box never gives "internet".
-            body = json.dumps({"captive": True, "user-portal-url": HUB_URL if HUB_HOST else "/"}).encode()
+            # not guess from probes. Captive unless the owner shares the connection and this device
+            # is let out (or everyone is: "open"); root/share.py.
+            level, addr = share_level(), self._client_addr()
+            out = level == "open" or (level in SHARE_LET_OUT and let_out(addr))
+            body = json.dumps({"captive": not out, "user-portal-url": HUB_URL if HUB_HOST else "/"}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/captive+json")
             self.send_header("Cache-Control", "private, no-store")
@@ -3621,6 +3662,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
             return
 
+        if path == "/admin/hotspot" and payload.get("action") == "share":
+            # The owner's level (root/share.py), on Network → The hotspot.
+            level = payload.get("level")
+            if level not in SHARE_LEVELS:
+                self.send_json(400, {"error": f"level is one of {', '.join(SHARE_LEVELS)}"})
+                return
+            self.send_json(202, {"id": control_request({"action": "share-set", "level": level})})
+            return
+
         if path == "/admin/hotspot" and payload.get("action") in ("on", "off", "try", "confirm"):
             # The hotspot itself (root/ap.py through the root helper): on with the owner's choices,
             # off, the try of a channel of its own beside the WiFi link, or keeping one that took it.
@@ -3667,6 +3717,29 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/messages":
             self._post_message(payload)
+            return
+
+        if path == "/api/guest-net":
+            # A guest taps through the sheet (or, at users-web, is signed in): root lets the device out.
+            level, addr = share_level(), self._client_addr()
+            if level not in SHARE_LET_OUT:
+                self.send_json(409, {"error": "this box does not let devices out one by one now"})
+                return
+            if not on_hotspot(addr):
+                self.send_json(400, {"error": "only a device on the box's hotspot is let out"})
+                return
+            if level == "users-web" and not self._signed_in():
+                self.send_json(403, {"error": "sign in first: the owner shares the connection with users only"})
+                return
+            if payload.get("agree") is not True:
+                self.send_json(400, {"error": "agree: true, after reading what sharing means"})
+                return
+            with _let_out_lock:
+                if _let_out.get(addr, 0) > time.time() + SHARE_HOURS * 3600 - 60:
+                    self.send_json(200, {"out": True})   # asked a moment ago
+                    return
+                _let_out[addr] = time.time() + SHARE_HOURS * 3600
+            self.send_json(202, {"id": control_request({"action": "share-allow", "ip": addr}), "out": True})
             return
 
         if path == "/api/report":

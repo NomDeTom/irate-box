@@ -894,6 +894,21 @@
           <button class="action-btn" type="button" id="hs-save">Save</button>
         </div>
         <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
+        <h4>Guests reach the internet</h4>
+        <p class="setting-desc">
+          Whether guests on the hotspot can go on through this box's own connection, from nobody to
+          everyone. Their traffic then leaves as the box's: whatever they do online comes from your
+          connection. The safest is the default; each step out says what it opens. However far it goes,
+          guests are kept out of your own network and the box's Tailscale, let out by their device's
+          hardware address, and can't look names up before tapping through: each of those can be turned
+          off on <a href="#security">Security</a>, where the doctor warns while one is.
+        </p>
+        <div id="guest-net-box">
+          <div class="chip-group" role="radiogroup" aria-label="Guests reach the internet" id="guest-net-chips"></div>
+          <p class="setting-desc" id="guest-net-said"></p>
+          <p class="library-buttons"><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
+        </div>
+        <p class="setting-desc action-note" id="guest-net-note" role="status" hidden></p>
 
         <h3>Staying on the network</h3>
         <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
