@@ -32,6 +32,9 @@ SYSCTL_DROPIN = Path(os.environ.get("HUB_SYSCTL_DROPIN", "/etc/sysctl.d/60-irate
 PROC_SYS = Path(os.environ.get("HUB_PROC_SYS", "/proc/sys"))
 GROUP_FILE = Path(os.environ.get("HUB_GROUP_FILE", "/etc/group"))
 PASSWD_FILE = Path(os.environ.get("HUB_PASSWD_FILE", "/etc/passwd"))
+# Armbian's first-login marker: present until someone logs in as root at the console and answers its
+# setup (a root password, a user). Left on a box set up some other way, its image's defaults stand.
+FIRSTRUN = Path(os.environ.get("HUB_ARMBIAN_FIRSTRUN", "/root/.not_logged_in_yet"))
 UPDATES_LOG_NAME = "security-updates.log"
 
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
@@ -357,6 +360,23 @@ KERNEL = {
 }
 
 
+# Debian's own kernel defaults: the link protections and the rest a stock Debian box has (FIFOs and
+# regular files in shared folders, source routes refused, the SysRq mask). Armbian builds leave
+# recommended packages out, so mPWRD-OS images lack it (the Lyra, 2026-10-07; Armbian fixed it
+# upstream on 2026-08-26). Offered before the hub's own file wherever apt can get it.
+DEBIAN_SYSCTL = "linux-sysctl-defaults"
+
+
+def debian_sysctl():
+    """'installed', 'available' (apt has a candidate, from the network or its cache), or None."""
+    if not _have("dpkg-query") or not _have("apt-cache"):
+        return None
+    if "install ok installed" in (run("dpkg-query", "-W", "-f=${Status}", DEBIAN_SYSCTL).stdout or ""):
+        return "installed"
+    m = re.search(r"Candidate:\s*(\S+)", run("apt-cache", "policy", DEBIAN_SYSCTL).stdout or "")
+    return "available" if m and m.group(1) != "(none)" else None
+
+
 def _sysctl_path(key):
     return PROC_SYS / key.replace(".", "/")
 
@@ -378,6 +398,16 @@ def kernel_findings(rec):
         if all(now[key] == want for key, want in k["keys"].items()):
             out.append(_finding(f"kernel-{name}", k["title"], "ok", shown + ".", "",
                                 [{"choice": f"kernel-{name}-undo", "label": "Undo"}] if name in ours else []))
+        elif name == "links" and debian_sysctl() == "available":
+            out.append(_finding(f"kernel-{name}", k["title"], k["status"], f"{shown}. {k['why']}",
+                                f"Debian's own defaults ({DEBIAN_SYSCTL}) set these and the rest a stock Debian "
+                                "box has; or the hub sets just these two (a file in /etc/sysctl.d). Either one now "
+                                "and at every boot.",
+                                [{"choice": "kernel-links-debian", "label": "Install Debian's defaults",
+                                  "confirm": f"Install {DEBIAN_SYSCTL} from Debian and apply it now? It also "
+                                             "protects FIFOs and files in shared folders and refuses source routes, "
+                                             "as on any Debian box."},
+                                 {"choice": f"kernel-{name}-on", "label": "Just these two"}]))
         else:
             out.append(_finding(f"kernel-{name}", k["title"], k["status"], f"{shown}. {k['why']}",
                                 "Set them, now and at every boot (a file in /etc/sysctl.d).",
@@ -386,7 +416,7 @@ def kernel_findings(rec):
 
 
 def _write_sysctl_dropin(kernel):
-    keys = {key: want for name in kernel for key, want in KERNEL[name]["keys"].items()}
+    keys = {key: want for name, e in kernel.items() if not e.get("by") for key, want in KERNEL[name]["keys"].items()}
     if not keys:
         SYSCTL_DROPIN.unlink(missing_ok=True)
         return
@@ -409,6 +439,11 @@ def _kernel(rec, name, on):
     entry = kernel.pop(name, None)
     if entry is None:
         raise ValueError(f"{KERNEL[name]['title']} were not changed from this page")
+    if entry.get("by") == DEBIAN_SYSCTL:
+        out = run("apt-get", "remove", "-y", DEBIAN_SYSCTL, timeout=600)
+        if out.returncode != 0:
+            kernel[name] = entry
+            raise ValueError(f"apt-get remove {DEBIAN_SYSCTL}: {(out.stderr or out.stdout).strip()[-200:]}")
     for key, v in (entry.get("old") or {}).items():
         if v is not None:
             _sysctl_path(key).write_text(v + "\n")
@@ -416,6 +451,27 @@ def _kernel(rec, name, on):
     if not kernel:
         rec.pop("kernel")
     return f"{KERNEL[name]['title']}: back as they were"
+
+
+def _kernel_debian(rec):
+    """Debian's own defaults installed and applied (systemd-sysctl reads every sysctl.d file again)."""
+    kernel = rec.setdefault("kernel", {})
+    old = kernel.get("links", {}).get("old") or {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
+    env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+    out = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
+                         capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, timeout=600)
+    if out.returncode != 0:
+        raise ValueError(f"apt-get install {DEBIAN_SYSCTL}: {(out.stderr or out.stdout).strip()[-200:]} "
+                         "(Just these two works without it)")
+    kernel["links"] = {"old": old, "at": time.strftime("%Y-%m-%d"), "by": DEBIAN_SYSCTL}
+    _write_sysctl_dropin(kernel)   # the hub's own file no longer carries these two
+    save_record(rec)               # installed: Undo must be possible even if what follows fails
+    _systemctl("restart", "systemd-sysctl.service")
+    now = {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
+    if any(now[key] != want for key, want in KERNEL["links"]["keys"].items()):
+        raise ValueError(f"{DEBIAN_SYSCTL} is installed but the link protections are still off "
+                         f"({', '.join(f'{k}={v}' for k, v in now.items())}): something later in sysctl.d sets them back")
+    return f"{KERNEL['links']['title']}: on, from Debian's own defaults ({DEBIAN_SYSCTL}), now and at every boot"
 
 
 # Groups that are root by another name: docker runs containers as root with any folder mounted;
@@ -490,6 +546,101 @@ def _group(rec, arg, on):
     return f"{user} is back in the {group} group"
 
 
+# --- root's own login (Tom, 2026-10-08: "is root being available as an unlocked user, or with no
+# first-run, a security checkpoint?") ------------------------------------------------------------
+
+def _root_password():
+    """P (a password), NP (none), L (locked), or None: from `passwd -S`, never the hash itself."""
+    if not _have("passwd"):
+        return None
+    f = (run("passwd", "-S", "root").stdout or "").split()
+    return f[1] if len(f) > 1 and f[0] == "root" and f[1] in ("P", "NP", "L") else None
+
+
+def _sudoers():
+    """The login accounts that can use sudo (the sudo or wheel group): who reaches root once it's locked."""
+    members = _group_members()
+    return sorted((members.get("sudo", set()) | members.get("wheel", set())) & _login_accounts())
+
+
+def root_findings(rec):
+    out, ours = [], rec.get("root", {})
+    state, firstrun, admins = _root_password(), FIRSTRUN.exists(), _sudoers()
+    lock = [{"choice": "root-lock", "label": "Lock root's password",
+             "confirm": f"Lock root's password? Root is then reached only through sudo ({', '.join(admins)}); "
+                        "the console's root login stops working."}] if admins else []
+    no_lock = "" if admins else " No other account here can use sudo, so it isn't locked from here: add one first."
+    undo = [{"choice": "root-lock-undo", "label": "Undo"}] if "lock" in ours else []
+    if state == "L":
+        out.append(_finding("root-password", "Root's password", "ok", "Locked: root is reached through sudo.", "", undo))
+    elif state == "NP":
+        out.append(_finding("root-password", "Root's password", "problem",
+                            "Root has no password: anyone at the console, or wherever root may log in, is root.",
+                            "Lock it, so root is reached only through sudo." + no_lock, lock))
+    elif state == "P" and firstrun:
+        out.append(_finding("root-password", "Root's password", "problem",
+                            "Root still has the image's own password: Armbian's first-login setup never ran, so it's "
+                            "the one every image of this kind ships with (usually 1234), and anyone who knows it is root.",
+                            "Lock it, so root is reached only through sudo." + no_lock, lock))
+    elif state == "P":
+        out.append(_finding("root-password", "Root's password", "warn",
+                            "Root has a password of its own: fine if you chose it, and know it's strong.",
+                            "Or lock it, so root is reached only through sudo." + no_lock, lock))
+    if firstrun:
+        out.append(_finding("root-firstrun", "First-login setup", "problem",
+                            "Armbian's first-login setup never ran (/root/.not_logged_in_yet): the image's defaults "
+                            "were never changed, and any root login starts it, asking for a new root password and user.",
+                            "This box was set up another way: put the marker aside (kept, to undo).",
+                            [{"choice": "firstrun-off", "label": "Put it aside"}]))
+    elif "firstrun" in ours:
+        out.append(_finding("root-firstrun", "First-login setup", "ok", "Its marker is put aside.", "",
+                            [{"choice": "firstrun-undo", "label": "Put it back"}]))
+    return out
+
+
+def _root(rec, what, on):
+    root = rec.setdefault("root", {})
+    if what == "lock":
+        if on:
+            if not _sudoers():
+                raise ValueError("no other account here can use sudo: locking root would leave nobody who can be root")
+            was = _root_password()
+            r = run("passwd", "-l", "root")
+            if r.returncode:
+                raise ValueError(f"passwd -l: {(r.stderr or r.stdout).strip()[:160]}")
+            root["lock"] = {"was": was, "at": time.strftime("%Y-%m-%d")}
+            msg = "root's password is locked: root is reached through sudo"
+        else:
+            entry = root.pop("lock", None)
+            if entry is None:
+                raise ValueError("root's password was not locked from this page")
+            if entry.get("was") in ("P", "NP"):
+                r = run("passwd", "-u", "root")
+                if r.returncode:
+                    root["lock"] = entry
+                    raise ValueError(f"passwd -u: {(r.stderr or r.stdout).strip()[:160]}")
+            msg = "root's password is as it was"
+    else:
+        kept = ETC / "armbian-firstrun.kept"
+        if on:
+            if not FIRSTRUN.exists():
+                raise ValueError("there is no first-login marker to put aside")
+            kept.write_bytes(FIRSTRUN.read_bytes())
+            kept.chmod(0o600)
+            FIRSTRUN.unlink()
+            root["firstrun"] = time.strftime("%Y-%m-%d")
+            msg = "the first-login marker is put aside: a root login no longer starts Armbian's setup"
+        else:
+            if root.pop("firstrun", None) is None or not kept.exists():
+                raise ValueError("the first-login marker was not put aside from this page")
+            FIRSTRUN.write_bytes(kept.read_bytes())
+            kept.unlink()
+            msg = "the first-login marker is back"
+    if not root:
+        rec.pop("root")
+    return msg
+
+
 def scan():
     rec = load_record()
     found = listeners()
@@ -497,6 +648,7 @@ def scan():
     findings += ssh_findings(sshd_settings(), keys_on_box(), rec)
     findings += kernel_findings(rec)
     findings += group_findings(rec)
+    findings += root_findings(rec)
     upd, _ = update_findings()
     findings += upd
     return {"at": time.time(), "listeners": found, "findings": findings}
@@ -642,6 +794,12 @@ def fix(choice, updates_log):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
         msg = _llmnr(rec, choice == "llmnr-off")
+    elif choice in ("root-lock", "root-lock-undo"):
+        msg = _root(rec, "lock", choice == "root-lock")
+    elif choice in ("firstrun-off", "firstrun-undo"):
+        msg = _root(rec, "firstrun", choice == "firstrun-off")
+    elif choice == "kernel-links-debian":
+        msg = _kernel_debian(rec)
     elif choice in [f"kernel-{n}-{w}" for n in KERNEL for w in ("on", "undo")]:
         msg = _kernel(rec, choice.split("-")[1], choice.endswith("-on"))
     elif choice.startswith(("group-drop:", "group-undo:")):
@@ -660,6 +818,8 @@ def undo_all():
     """Put back everything this page changed (uninstall.sh). Returns what was undone."""
     rec = load_record()
     done = []
+    # Not root's lock nor the first-login marker: undoing those would bring the image's known default
+    # password back. They stay as they are (the page's own Undo still puts them back before then).
     for choice in (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else []) + \
                   (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else []) + \
                   (["cockpit-undo"] if "cockpit" in rec else []) + (["llmnr-undo"] if rec.get("llmnr") else []) + \

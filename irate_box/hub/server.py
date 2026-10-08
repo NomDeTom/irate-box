@@ -1764,8 +1764,8 @@ class Handler(BaseHTTPRequestHandler):
         """The front's questions (nginx auth_request, Caddy forward_auth), never with a body.
         /_irate/admin: is this an admin account's session? (Asked beside the box's own login for
         /admin, the shell, Syncthing and private apps: either will do.) Yes too while the box is
-        unclaimed, when /admin shows only the set-the-password page and asks no login (nginx's
-        satisfy any would otherwise refuse it).
+        unclaimed, for /admin alone (X-Original-URI), which then shows only the set-the-password page
+        and asks no login (nginx's satisfy any would otherwise refuse it); never for the shell.
         /_irate/user: is this visitor logged in? (An app in users mode, access.py.) No: 401 for
         nginx (its gate sends them to log in), or for Caddy (?redirect=1) the redirect itself,
         back to where they were going on this origin.
@@ -1786,7 +1786,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             ok = False
         elif path == "/_irate/admin":
-            ok = unclaimed() or admin
+            # Unclaimed: /admin shows only the set-the-password page, so it asks no login; the shell,
+            # Syncthing and private apps behind the same gate must not open (nginx says which page).
+            uri = self.headers.get("X-Original-URI", "")
+            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith(("/admin/", "/admin?"))))
         else:
             ok = me is not None
         if ok:
