@@ -2044,6 +2044,95 @@ def step_mqtt(ctx):
     return out
 
 
+# --- the image underneath (stance review 2026-10-08, §2: I4, I5, I9, I10) ---------------------------
+# What Armbian and mPWRD-OS ship that the hub inherited and nothing else here looks at. Sudo
+# rules, root's groups, apt's periodic switch and SSH's defaults have steps and offers of their
+# own (accounts, the Security page).
+APT_DIR = Path(os.environ.get("HUB_APT_DIR", "/etc/apt"))
+PROC_VERSION = Path(os.environ.get("HUB_PROC_VERSION", "/proc/version"))
+NM_DIR = Path(os.environ.get("HUB_NM_DIR", "/etc/NetworkManager/system-connections"))
+DEBIAN_KEYS = ("debian-archive-", "debian-ports-archive-")
+
+
+def _apt_sources(apt_dir):
+    """[(file, uri, suite, signed)] from sources.list, *.list (one line each: signed when the
+    options carry signed-by) and *.sources (deb822: signed when the stanza has Signed-By)."""
+    out = []
+    files = ([apt_dir / "sources.list"] if (apt_dir / "sources.list").is_file() else []) + \
+        sorted((apt_dir / "sources.list.d").glob("*.list")) + sorted((apt_dir / "sources.list.d").glob("*.sources")) \
+        if apt_dir.is_dir() else []
+    for f in files:
+        text = _read(f) or ""
+        if f.suffix == ".sources":
+            for stanza in re.split(r"\n\s*\n", text):
+                fields = {k.strip().lower(): v.strip() for k, _, v in (l.partition(":") for l in stanza.splitlines() if ":" in l and not l.startswith("#"))}
+                if fields.get("uris"):
+                    out.append((f.name, fields["uris"].split()[0], fields.get("suites", ""), bool(fields.get("signed-by"))))
+        else:
+            for line in text.splitlines():
+                m = re.match(r"^\s*deb(?:-src)?\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S*)", line)
+                if m:
+                    out.append((f.name, m.group(2), m.group(3), "signed-by=" in (m.group(1) or "")))
+    return out
+
+
+def step_image(ctx):
+    out = []
+    # apt's trust: a key in trusted.gpg.d vouches for every repository, not its own.
+    trusted = APT_DIR / "trusted.gpg.d"
+    keys = sorted(p.name for p in trusted.iterdir() if p.is_file() and not p.name.startswith(DEBIAN_KEYS)) if trusted.is_dir() else []
+    sources = _apt_sources(APT_DIR)
+    unsigned = [f"{f}: {uri}" for f, uri, _, signed in sources if not signed]
+    if keys or unsigned:
+        out.append(F("image-apt-trust", "Repository keys trusted for every repository", "warn",
+                     (f"Keys in trusted.gpg.d ({_list(keys)}) can sign packages for any repository, Debian's included. " if keys else "")
+                     + (f"Sources with no Signed-By of their own: {_list(unsigned)}." if unsigned else ""),
+                     "Move each key to /usr/share/keyrings and name it in its source's Signed-By (or [signed-by=…]); then the key vouches for that repository alone."))
+    else:
+        out.append(F("image-apt-trust", "Repository keys", "ok", "Every source names its own key; nothing in trusted.gpg.d but Debian's."))
+    daily = [f"{f}: {uri} {suite}".strip() for f, uri, suite, _ in sources if re.search(r"daily|nightly|snapshot", f"{uri} {suite}", re.I)]
+    if daily:
+        out.append(F("image-apt-daily", "A daily or nightly package channel", "warn",
+                     f"{_list(daily)}: whatever its project built last lands on this box at the next upgrade, untested.",
+                     "A release channel (stable or beta), unless the daily one is the point."))
+    # The kernel: a vendor build has no Debian security tracking (debsecan says so in its coverage; here with its age).
+    ver = _read(PROC_VERSION, 4096) or ""
+    m = re.search(r"\((\S+)\)|$", ver)
+    built = re.search(r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\w{3}) +(\d+) [\d:]+ \w+ (\d{4})", ver)
+    release = ver.split()[2] if len(ver.split()) > 2 else "?"
+    if ver and ("vendor" in release or "armbian" in ver.lower()):
+        when = f"{built.group(3)}-{built.group(1)}-{built.group(2).zfill(2)}" if built else "an unknown date"
+        out.append(F("image-kernel", "A vendor kernel", "warn",
+                     f"{release}, built {when}: Debian's security tracker does not cover it, so debsecan's view of the box is "
+                     "blind to the kernel, and its fixes arrive only with a new image or kernel package from its maker.",
+                     "Keep the kernel package current from its maker's repository when online (apt list --upgradable | grep linux-image)."))
+    elif ver:
+        out.append(F("image-kernel", "The kernel", "ok", f"{release}: not a vendor build."))
+    # Radios and daemons the hub does not use.
+    if _show("bluetooth.service", "ActiveState").get("ActiveState") == "active":
+        out.append(F("image-bluetooth", "Bluetooth is on", "warn",
+                     "bluetoothd runs, with a radio the hub does not use: a listener and a stack of its own, reachable by anyone in range.",
+                     "systemctl disable --now bluetooth.service (and rtk-bluetooth.service where there is one); enable --now puts it back."))
+    else:
+        out.append(F("image-bluetooth", "Bluetooth", "ok", "Not running."))
+    # Access-point profiles the image left in NetworkManager, beside irate-box's own.
+    aps = []
+    for f in sorted(NM_DIR.glob("*.nmconnection")) if NM_DIR.is_dir() else []:
+        text = _read(f, 65536) or ""
+        if re.search(r"(?m)^mode=ap\s*$", text) and "irate-box" not in text:
+            name = (re.search(r"(?m)^id=(.*)$", text) or [None, f.stem])[1]
+            open_ = "[wifi-security]" not in text
+            auto = not re.search(r"(?m)^autoconnect=false\s*$", text)
+            aps.append(f"{name} ({'open' if open_ else 'encrypted'}{', brought up on its own' if auto else ''})")
+    if aps:
+        out.append(F("image-ap-profiles", "Access-point profiles not the hub's", "warn",
+                     f"{_list(aps)} in NetworkManager's connections: an access point the image set up, which could come up beside "
+                     "or instead of the hub's.", "nmcli connection delete <name>, if it is not yours."))
+    else:
+        out.append(F("image-ap-profiles", "Access-point profiles", "ok", "None but the hub's own."))
+    return out
+
+
 # --- reached from the internet (Tom, 2026-10-08) --------------------------------------------------
 # The box is for its own networks. Its web pages are seen from the hub's own note of public visitors
 # (hub/reach.py; the web servers keep no access logs), SSH from sshd's log, and IPv6 from the box's
@@ -2171,6 +2260,7 @@ STEPS = [
     ("git", "Git servers and pushed content", "F17 F18", step_git),
     ("accounts", "Sudo rules and accounts", "", step_accounts),
     ("accounts-hub", "The hub's own accounts and sign-in", "", step_accounts_hub),
+    ("image", "The image underneath (Armbian, mPWRD-OS)", "", step_image),
     ("kernel", "Kernel protections", "F3 F9", step_kernel),
     ("debsecan", "Debian's packages against Debian's security tracker (debsecan)", "", step_debsecan),
     ("debian-cis", "The CIS benchmark (debian-cis, in the deep audit)", "", step_deep_cis),
