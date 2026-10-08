@@ -88,6 +88,8 @@ server {
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header X-Irate-Front "";
 		proxy_set_header Connection "";
+		# Which page: the hub says yes for an unclaimed box only to /admin itself (never the shell).
+		proxy_set_header X-Original-URI $request_uri;
 		proxy_pass http://irate_box_hub/_irate/admin;
 	}
 	location @irate_box_login { return 302 /account.html?next=$uri; }
@@ -562,6 +564,8 @@ server {
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header X-Irate-Front "";
 		proxy_set_header Connection "";
+		# Which page: the hub says yes for an unclaimed box only to /admin itself (never the shell).
+		proxy_set_header X-Original-URI $request_uri;
 		proxy_pass http://irate_box_hub/_irate/admin;
 	}
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
@@ -631,6 +635,8 @@ server {
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header X-Irate-Front "";
 		proxy_set_header Connection "";
+		# Which page: the hub says yes for an unclaimed box only to /admin itself (never the shell).
+		proxy_set_header X-Original-URI $request_uri;
 		proxy_pass http://irate_box_hub/_irate/admin;
 	}
 	location @irate_box_login { return 302 $scheme://$host/account.html; }
@@ -706,6 +712,8 @@ server {
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header X-Irate-Front "";
 		proxy_set_header Connection "";
+		# Which page: the hub says yes for an unclaimed box only to /admin itself (never the shell).
+		proxy_set_header X-Original-URI $request_uri;
 		proxy_pass http://irate_box_hub/_irate/admin;
 	}
 	location @irate_box_login { return 302 $scheme://$host/account.html; }

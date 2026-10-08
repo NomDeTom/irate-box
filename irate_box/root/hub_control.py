@@ -114,7 +114,7 @@ from irate_box.hub import netinv
 from irate_box.root import secdoctor
 from irate_box.root import security
 from irate_box.hub import uplink
-from irate_box.root import kits, safeio, usbstick
+from irate_box.root import ap, kits, safeio, usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -282,26 +282,10 @@ def _set_caddy_login(pw):
     hashed = run("caddy", "hash-password", input=pw + "\n")
     if hashed.returncode != 0:
         raise ValueError("caddy hash-password failed")
-    new_hash = hashed.stdout.strip()
-    target = _login_file()
-    text = target.read_text()
-    updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
-    if not count:
-        raise ValueError(f"no admin login found in {target}")
-    candidate = target.with_name(target.name + ".new")
-    candidate.write_text(updated)
-    check = run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate))
-    if check.returncode != 0:
-        candidate.unlink(missing_ok=True)
-        raise ValueError("the new Caddy config did not validate; nothing was changed")
-    os.replace(candidate, target)
+    count = _caddy_login_swap(hashed.stdout.strip())
     # The private apps' snippets carry the hash too.
     if CADDY_ACCESS.is_dir():
         _access_files(access.read(ACCESS_FILE))
-    # The hub's site inside the owner's config: the whole of it must still validate.
-    if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
-        target.write_text(text)
-        raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
     subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
     return f"Caddy ({count} logins)"
@@ -316,7 +300,7 @@ def set_login(pw, keep=True):
     if ADMIN_LOGIN_OFF.exists():
         ADMIN_LOGIN_OFF.unlink()
         _access_files(access.read(ACCESS_FILE))
-        run("systemctl", "reload", "nginx")
+        _reload_web()
         web += ", the box's own login on again"
     _admin_login_record()
 
@@ -338,10 +322,12 @@ def set_login(pw, keep=True):
 SYNCTHING_GUI = "http://127.0.0.1:8384"
 
 
-def syncthing_gui_password(pw):
+def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
     """Syncthing's GUI password, through its REST API with the API key from its own config: the
     password travels in the request body, never on a command line (F9: `syncthing cli … password
-    set` put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves."""
+    set` put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves.
+    Tried again for a while: install.sh's `gui user set` just before restarts the GUI's listener,
+    and a request in that gap finds nothing there (the Lyra, 2026-10-07: /sync/ kept its old one)."""
     cfg = next((t for t in (STATE / ".local/state/syncthing/config.xml", STATE / ".config/syncthing/config.xml")
                 if t.exists()), None)
     m = re.search(r"<apikey>([^<]+)</apikey>", cfg.read_text()) if cfg else None
@@ -350,11 +336,14 @@ def syncthing_gui_password(pw):
     req = urllib.request.Request(f"{SYNCTHING_GUI}/rest/config/gui", method="PATCH",
                                  data=json.dumps({"password": pw}).encode(),
                                  headers={"X-API-Key": m.group(1), "Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return resp.status == 200
-    except OSError:
-        return False
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return resp.status == 200
+        except OSError:
+            if attempt + 1 < tries:
+                sleep(1)
+    return False
 
 
 # --- an offline kit of this box (/admin, Backup) ------------------------------------------
@@ -484,7 +473,7 @@ def _access_files(state):
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
-    files = dict(access.caddy_snippets(state, login, _caddy_directive()))
+    files = dict(access.caddy_snippets(state, login, _caddy_directive(), admin_login=not ADMIN_LOGIN_OFF.exists()))
     files["addons-routes.caddy"] = access.addon_caddy_routes(state, local, login, _caddy_directive())
     for name, text in files.items():
         path = CADDY_ACCESS / name
@@ -606,12 +595,58 @@ def _https_admins():
                   if isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash") and a.get("https_login"))
 
 
+def _reload_web():
+    if WEB_SERVER == "nginx":
+        run("systemctl", "reload", "nginx")
+    else:
+        # The Caddyfile turns Caddy's admin API off, which reload needs.
+        subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+
+
+def _caddy_login_swap(new_hash):
+    """Every admin hash in the hub's Caddy config replaced by new_hash, checked before it's kept
+    (the owner's whole Caddyfile too, when the hub's site is imported into it)."""
+    target = _login_file()
+    text = target.read_text()
+    updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
+    if not count:
+        raise ValueError(f"no admin login found in {target}")
+    candidate = target.with_name(target.name + ".new")
+    candidate.write_text(updated)
+    if run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate)).returncode != 0:
+        candidate.unlink(missing_ok=True)
+        raise ValueError("the new Caddy config did not validate; nothing was changed")
+    os.replace(candidate, target)
+    if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
+        target.write_text(text)
+        raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
+    return count
+
+
+def _caddy_login_off():
+    """Caddy: the login's hashes swapped for one of a password nobody knows (as nginx's login file
+    is emptied); the real one kept in ADMIN_LOGIN_OFF to put back."""
+    real = _caddy_hash()
+    if not real:
+        raise ValueError(f"no admin login found in {_login_file()}")
+    hashed = run("caddy", "hash-password", input=secrets.token_urlsafe(32) + "\n")
+    if hashed.returncode != 0 or not hashed.stdout.strip().startswith("$2"):
+        raise ValueError("caddy hash-password failed")
+    fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(real + "\n")
+    try:
+        _caddy_login_swap(hashed.stdout.strip())
+    except ValueError:
+        ADMIN_LOGIN_OFF.unlink()
+        raise
+
+
 def admin_login(req):
     """The box's own admin login (basic auth) on or off. Off only while an admin account has
     logged in over HTTPS, so the box can't be locked out from /admin; reset-password at the
-    console (or a new password) turns it on again. nginx only: Caddy's routes have no gate yet."""
-    if WEB_SERVER != "nginx":
-        raise ValueError("switching the box's own login off needs nginx in front (Caddy can't yet)")
+    console (or a new password) turns it on again. nginx: its login file emptied; Caddy: its
+    hashes swapped for an unknown one, and its admin gate made a hard one (access.py)."""
     on = req.get("on") is True
     if on == (not ADMIN_LOGIN_OFF.exists()):
         return f"the box's own admin login is already {'on' if on else 'off'}"
@@ -619,6 +654,17 @@ def admin_login(req):
         admins = _https_admins()
         if not admins:
             raise ValueError("first make an admin account, and log in with it over HTTPS: then it can stand in for this login")
+    if WEB_SERVER != "nginx":
+        if not on:
+            _caddy_login_off()
+        else:
+            _caddy_login_swap(ADMIN_LOGIN_OFF.read_text().strip())
+            ADMIN_LOGIN_OFF.unlink()
+        _access_files(access.read(ACCESS_FILE))
+        _reload_web()
+        _admin_login_record()
+        return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
+    if not on:
         fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as fh:
             fh.write(NGINX_LOGINS.read_text())
@@ -637,7 +683,7 @@ def admin_login(req):
     if on:
         ADMIN_LOGIN_OFF.unlink()
     _access_files(access.read(ACCESS_FILE))
-    run("systemctl", "reload", "nginx")
+    _reload_web()
     _admin_login_record()
     return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
 
@@ -1909,6 +1955,105 @@ def net_scan(req):
             + (f", link {inv['uplink']['iface']} run by {inv['uplink']['backend']}" if inv["uplink"].get("iface") else ", no link"))
 
 
+# --- the hotspot (item 2: root/ap.py does the work, hub/apmode.py the plan) ------------------------
+
+AP_STATUS = CONTROL / "ap.json"      # the hub's copy: the plan, whether it's up, the tries
+
+
+def _ap_settings():
+    """The owner's security choice for the hotspot (the hub's hotspot.json), checked again here."""
+    from irate_box.hub import hotspot
+    try:
+        raw = json.loads((STATE / "hotspot.json").read_text())
+    except (OSError, ValueError):
+        raw = {}
+    try:
+        return hotspot.validate(raw, hotspot.capabilities())
+    except ValueError:
+        return dict(hotspot.DEFAULT)
+
+
+def _ap_owner(req):
+    """The owner's choices for the hotspot, checked: a radio by name, a band, a channel, and whether to
+    give the box's WiFi link up for it (only where a radio can't do both)."""
+    out = {}
+    if req.get("radio"):
+        if not IFACE_RE.match(str(req["radio"])):
+            raise ValueError("not an interface name")
+        out["radio"] = str(req["radio"])
+    if req.get("band") in ("2.4 GHz", "5 GHz"):
+        out["band"] = req["band"]
+    if req.get("channel") is not None:
+        if type(req["channel"]) is not int or not 1 <= req["channel"] <= 196:
+            raise ValueError("channel: a channel number")
+        out["channel"] = req["channel"]
+    if req.get("take_radio") is True:
+        out["take_radio"] = True
+    return out
+
+
+def _ap_record_status(plan=None, note=""):
+    rec = ap._load(ap.RECORD, {})
+    safeio.write(AP_STATUS, json.dumps({"up": bool(rec.get("up")), "plan": rec.get("plan") if rec.get("up") else plan,
+                                        "confirmed": rec.get("confirmed", True), "since": rec.get("since"),
+                                        "owner": rec.get("owner") or {}, "tried": ap._load(ap.TRIED, {}),
+                                        "note": note, "at": time.time()}))
+
+
+def _ap_inventory():
+    inv = netinv.scan()
+    netinv.write(inv, CONTROL / "netinv.json")
+    return inv
+
+
+def _ap_failed(exc):
+    """A step that failed (ap.start has undone what it did): said on the Network page and to the hub."""
+    note = f"the hotspot didn't start: {exc}"
+    _ap_record_status(None, note)
+    return ValueError(note)
+
+
+def ap_on(req):
+    try:
+        plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
+    except RuntimeError as exc:
+        raise _ap_failed(exc) from exc
+    if plan.get("needs_choice") or plan["kind"] == "none":
+        _ap_record_status(plan, plan["text"])
+        return plan["text"] + (f" ({plan['why']})" if plan.get("why") else "")
+    note = f"up on {ap.ap_iface(plan)}, channel {plan['channel']}: {plan['text']}"
+    if plan.get("drops_uplink"):
+        note += f" Your WiFi link is off: open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm, or it comes back by itself."
+    _ap_record_status(plan, note)
+    return note
+
+
+def ap_off(req):
+    note = ap.stop(run)
+    _ap_record_status(None, note)
+    return note
+
+
+def ap_try(req):
+    try:
+        worked, plan = ap.try_own_channel(run, _ap_inventory(), _ap_settings())
+    except RuntimeError as exc:
+        raise _ap_failed(exc) from exc
+    if worked is None:
+        note = "nothing to try: " + plan["text"]
+    else:
+        note = ("it holds a channel of its own beside your WiFi: guests won't notice your WiFi roam" if worked
+                else "it can't hold a channel of its own here, so it follows your WiFi's channel")
+    _ap_record_status(plan, note)
+    return note
+
+
+def ap_confirm(req):
+    note = ap.confirm(run)
+    _ap_record_status(None, note)
+    return note
+
+
 def _uplink_running():
     if run("systemctl", "is-active", "--quiet", "irate-box-uplink.service").returncode:
         run("systemctl", "enable", "--now", "irate-box-uplink.service")
@@ -1995,7 +2140,7 @@ ACTIONS = {"service": service, "password": password,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "admin-login": admin_login, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
@@ -2042,6 +2187,37 @@ UPDATES = ("update-install", "update-force-install")
 
 
 if __name__ == "__main__":
+    # NetworkManager's dispatcher (root/ap.py's hook): a link came up; a following hotspot moves.
+    if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.match(sys.argv[2]):
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        rec = ap._load(ap.RECORD, {})
+        if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink"):
+            sys.exit(0)   # every link change calls this (ap0's own too): leave the last note alone
+        try:
+            note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
+            if note.startswith("moved"):
+                _ap_record_status(None, note)
+        except RuntimeError as exc:
+            sys.exit(str(_ap_failed(exc)))
+        sys.exit(0)
+    # The boot unit (root/ap.py): the hotspot as it was before the reboot.
+    if sys.argv[1:] == ["ap-boot"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        try:
+            _ap_record_status(None, ap.boot(run, _ap_inventory(), _ap_settings()))
+        except RuntimeError as exc:
+            sys.exit(str(_ap_failed(exc)))
+        sys.exit(0)
+    # The dead-man timer: the owner didn't confirm a hotspot that took the box's own link.
+    if sys.argv[1:] == ["ap-revert"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        rec = ap._load(ap.RECORD, {})
+        if rec.get("up") and not rec.get("confirmed"):
+            _ap_record_status(None, ap.stop(run) + ": not confirmed in time, so the box's WiFi link is back")
+        sys.exit(0)
     if sys.argv[1:] == ["reset-password"]:
         if os.geteuid() != 0:
             sys.exit("run as root: sudo ./irate-box hub_control reset-password")

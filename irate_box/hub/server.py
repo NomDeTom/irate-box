@@ -71,6 +71,35 @@ try:
 except ValueError:
     AP_NET = None
 HUB_HOST = urlparse(HUB_URL).hostname if HUB_URL.startswith(("http://", "https://")) else None
+# Without HUB_AP_NET and an absolute HUB_URL set, the hotspot's own (root/ap.py: 192.168.4.1/24) are
+# used while the root helper says it is up (control/ap.json), and never otherwise: a home network
+# that happens to be 192.168.4.0/24 is not the hotspot.
+HOTSPOT_NET = ipaddress.ip_network("192.168.4.0/24")
+HOTSPOT_URL = "http://192.168.4.1/"
+_ap_up = {"mtime": None, "up": False}
+
+
+def hotspot_up():
+    path = STATE_DIR / "control" / "ap.json"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return False
+    if _ap_up["mtime"] != mtime:
+        try:
+            _ap_up["up"] = bool(json.loads(path.read_text()).get("up"))
+        except (OSError, ValueError, AttributeError):
+            _ap_up["up"] = False
+        _ap_up["mtime"] = mtime
+    return _ap_up["up"]
+
+
+def ap_net():
+    return AP_NET or (HOTSPOT_NET if hotspot_up() else None)
+
+
+def hub_host():
+    return HUB_HOST or (urlparse(HOTSPOT_URL).hostname if hotspot_up() else None)
 
 CLOCK = hubclock.HubClock(STATE_DIR / "clock.json")
 BOARD = board.Board(STATE_DIR / "board.json", CLOCK)
@@ -1675,12 +1704,14 @@ class Handler(BaseHTTPRequestHandler):
         # A redirect, and a page as well: some phones act only on a 3xx, others only on a
         # 200 with content where they expected an empty 204, so the probe gets both -- a 302
         # whose body is a page that goes to the hub by itself.
-        url = html.escape(HUB_URL, quote=True)
+        # A guest on the hotspot goes to the hub's own address (not "/" under whatever name they typed).
+        target = HUB_URL if HUB_HOST or not self._from_hotspot() else HOTSPOT_URL
+        url = html.escape(target, quote=True)
         body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>Irate-Box</title>'
                 f'<meta http-equiv="refresh" content="0; url={url}"></head>'
                 f'<body><p><a href="{url}">Open the hub</a></p></body></html>').encode()
         self.send_response(302)
-        self.send_header("Location", HUB_URL)
+        self.send_header("Location", target)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -1733,21 +1764,39 @@ class Handler(BaseHTTPRequestHandler):
         """The front's questions (nginx auth_request, Caddy forward_auth), never with a body.
         /_irate/admin: is this an admin account's session? (Asked beside the box's own login for
         /admin, the shell, Syncthing and private apps: either will do.) Yes too while the box is
-        unclaimed, when /admin shows only the set-the-password page and asks no login (nginx's
-        satisfy any would otherwise refuse it).
+        unclaimed, for /admin alone (X-Original-URI), which then shows only the set-the-password page
+        and asks no login (nginx's satisfy any would otherwise refuse it); never for the shell.
         /_irate/user: is this visitor logged in? (An app in users mode, access.py.) No: 401 for
         nginx (its gate sends them to log in), or for Caddy (?redirect=1) the redirect itself,
-        back to where they were going on this origin."""
+        back to where they were going on this origin.
+        Caddy's admin gate (access.caddy_admin_gate) asks /_irate/admin?soft=1 (the box's own login
+        on: always 204, and X-Irate-Session: admin for an admin account's session, which skips the
+        login after it) or ?redirect=1 (the own login off: the same, or the redirect). Not "yes" for
+        an unclaimed box there: Caddy's /admin lets that through itself, and the shell and Syncthing
+        must not be."""
         me = accounts.session(self._session_token())
-        if path == "/_irate/admin":
-            ok = unclaimed() or (me is not None and me.get("role") == "admin")
+        query = self.path.partition("?")[2].split("&")
+        admin = me is not None and me.get("role") == "admin"
+        if path == "/_irate/admin" and ("soft=1" in query or "redirect=1" in query):
+            if admin or "soft=1" in query:
+                self.send_response(204)
+                self.send_header("X-Irate-Session", "admin" if admin else "")   # always: see git-access
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            ok = False
+        elif path == "/_irate/admin":
+            # Unclaimed: /admin shows only the set-the-password page, so it asks no login; the shell,
+            # Syncthing and private apps behind the same gate must not open (nginx says which page).
+            uri = self.headers.get("X-Original-URI", "")
+            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith(("/admin/", "/admin?"))))
         else:
             ok = me is not None
         if ok:
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self.end_headers()
-        elif path == "/_irate/user" and "redirect=1" in self.path.partition("?")[2].split("&"):
+        elif "redirect=1" in query:
             back = self.headers.get("X-Forwarded-Uri", "/")
             nxt = back if back.startswith("/") and not back.startswith("//") else "/"
             self.send_response(302)
@@ -1846,12 +1895,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _off_hub_name(self):
         """A hotspot guest asking under a name that is not the hub's own (see AP_NET)."""
-        if not (AP_NET and HUB_HOST) or self.headers.get("Host", "").split(":")[0] == HUB_HOST:
+        net, host = ap_net(), hub_host()
+        if not (net and host) or self.headers.get("Host", "").split(":")[0] == host:
+            return False
+        return self._from_hotspot(net)
+
+    def _from_hotspot(self, net=None):
+        net = net or ap_net()
+        if not net:
             return False
         fwd = self.headers.get("X-Forwarded-For", "")
         addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
         try:
-            return ipaddress.ip_address(addr) in AP_NET
+            return ipaddress.ip_address(addr) in net
         except ValueError:
             return False
 
@@ -2184,6 +2240,20 @@ class Handler(BaseHTTPRequestHandler):
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
             account = accounts.check_basic(self.headers.get("Authorization", ""), self.headers.get("X-Forwarded-For", ""))
             ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode, account)
+            if "soft=1" in self.path.partition("?")[2].split("&"):
+                # Caddy's git routes (no satisfy any): always 204, saying "ok" when the box's own login
+                # isn't needed, and the account's name for the push hook's REMOTE_USER (nginx passes
+                # $remote_user). Credentials that aren't an account's (the box's own) aren't
+                # vouched for here: Caddy's login checks them, so a wrong password isn't let through.
+                # Both always sent, empty for nothing: Caddy 2.6's copy_headers otherwise sets the
+                # placeholder's own text ({http.reverse_proxy.header.…}) on the request.
+                vouched = ok and (account is not None or not self.headers.get("Authorization"))
+                self.send_response(204)
+                self.send_header("X-Irate-Session", "ok" if vouched else "")
+                self.send_header("X-Irate-User", account["name"] if vouched and account is not None else "")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             self.send_empty(204 if ok else 403)
             return
 
@@ -2660,6 +2730,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
             return
 
+        if path == "/admin/hotspot" and payload.get("action") in ("on", "off", "try", "confirm"):
+            # The hotspot itself (root/ap.py through the root helper): on with the owner's choices,
+            # off, the try of a channel of its own beside the WiFi link, or keeping one that took it.
+            req = {"action": "ap-" + payload["action"]}
+            if payload["action"] == "on":
+                for k in ("radio", "band", "channel", "take_radio"):
+                    if payload.get(k) is not None:
+                        req[k] = payload[k]
+            self.send_json(202, {"id": control_request(req)})
+            return
+
         if path == "/admin/hotspot":
             try:
                 saved = hotspot.save(payload.get("settings"))
@@ -2667,7 +2748,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": str(exc)})
                 return
             self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
-                                 "It takes effect when the hotspot add-on is set up."})
+                                 "It takes effect the next time the hotspot is switched on (Network)."})
             return
 
         if path == "/admin/security":

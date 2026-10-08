@@ -788,6 +788,28 @@
         <div class="net-devices" id="net-devices"></div>
         <ul class="admin-checks" id="net-hazards"></ul>
 
+        <h3>The hotspot</h3>
+        <p class="setting-desc">
+          The box's own WiFi, for guests: address 192.168.4.1, every name answered with the hub. It
+          fits itself to the radios here: a radio of its own if there is one, beside your WiFi on a
+          channel of its own where the radio can, following your WiFi's channel where it can't. How
+          guests join (open or encrypted) is chosen on <a href="#security">Security</a>.
+        </p>
+        <p class="setting-desc" id="ap-state">Looking…</p>
+        <form class="net-settings" id="ap-form">
+          <label class="setting-name" for="ap-radio">Radio</label>
+          <select id="ap-radio"><option value="">Automatic</option></select>
+          <label class="setting-name" for="ap-channel">Channel</label>
+          <select id="ap-channel"><option value="">Automatic</option></select>
+          <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot: the box leaves your WiFi while it runs</label>
+          <span class="library-buttons">
+            <button type="submit" id="ap-switch">Switch on</button>
+            <button type="button" id="ap-try" hidden>Try a channel of its own</button>
+            <button type="button" id="ap-confirm" hidden>Keep it</button>
+          </span>
+        </form>
+        <p class="setting-desc action-note" id="ap-note" role="status" hidden></p>
+
         <h3>Staying on the network</h3>
         <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
         <div class="net-settings">
@@ -865,9 +887,8 @@
         <p class="setting-desc">
           How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
           cannot read what guests do. Encryption shuts out older devices, so this is a trade between
-          who can join and what is protected. The hotspot itself is still to come (the hotspot add-on):
-          the choice is kept and applied when it is set up. What the radios here allow comes from
-          <a href="#network">Network</a>.
+          who can join and what is protected. The choice applies the next time the hotspot is switched on,
+          on <a href="#network">Network</a>, which also says what the radios here allow.
         </p>
         <div class="hs-modes" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
         <div class="net-settings" id="hs-fields">
