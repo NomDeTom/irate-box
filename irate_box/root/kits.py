@@ -694,6 +694,35 @@ def _verified_release(inrelease, work):
     return out.read_text(errors="replace")
 
 
+def _release_date(text, field):
+    """A Release file's Date or Valid-Until, as a timestamp, or None."""
+    import email.utils
+    for line in text.splitlines():
+        if line.startswith(field + ":"):
+            try:
+                return email.utils.parsedate_to_datetime(line.split(":", 1)[1].strip()).timestamp()
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _not_stale(text, name):
+    """A signed release from a stick must be within its Valid-Until and no older than the same
+    release this box already holds: a stick could otherwise replay an old, signed, since-fixed set
+    (stance review 2026-10-08, N12). ValueError if not."""
+    until = _release_date(text, "Valid-Until")
+    if until is not None and until < time.time():
+        raise ValueError(f"{name}: the stick's signed release expired on {time.strftime('%Y-%m-%d', time.gmtime(until))}: "
+                         "export the kit again from a box that has been online since")
+    date = _release_date(text, "Date")
+    mine = APT_LISTS / name
+    if date is not None and mine.is_file() and not mine.is_symlink():
+        own = _release_date(mine.read_text(errors="replace"), "Date")
+        if own is not None and date < own:
+            raise ValueError(f"{name}: the stick's release ({time.strftime('%Y-%m-%d', time.gmtime(date))}) is older than the one this box "
+                             f"already has ({time.strftime('%Y-%m-%d', time.gmtime(own))}): not imported")
+
+
 def _sha256_section(release_text):
     """{path: sha256} from a Release file's SHA256 section."""
     out, inside = {}, False
@@ -729,7 +758,9 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
             rel = folder / "lists" / f"{m.group('release')}_InRelease" if m else None
             if not rel or not rel.is_file() or pk.is_symlink() or rel.is_symlink():
                 continue
-            listed = _sha256_section(_verified_release(rel, work))
+            text = _verified_release(rel, work)
+            _not_stale(text, rel.name)
+            listed = _sha256_section(text)
             path = m.group("path").replace("_", "/")
             if listed.get(path) != sha256(pk):
                 raise ValueError(f"{pk.name} is not the index its signed release lists")
