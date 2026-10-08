@@ -34,24 +34,6 @@
     (hljs.highlightElement || hljs.highlightBlock).call(hljs, code);
   }
 
-  // A bar of the hub's own at the top: back to the hub, and back to this area's index (public
-  // /git/ or private /git-private/, from the address), so a visitor deep in a repository is
-  // never far from the list. Without this script the page is plain cgit.
-  function bar() {
-    var area = location.pathname.indexOf('/git-private/') === 0 ? '/git-private/' : '/git/';
-    var nav = document.createElement('nav');
-    nav.className = 'hub-bar';
-    var links = [['🏠 Hub', '/', 'Back to the hub'],
-                 ['📚 Repositories', area, 'The list of repositories']];
-    links.forEach(function (l) {
-      var a = document.createElement('a');
-      a.href = l[1]; a.title = l[2]; a.textContent = l[0];
-      nav.appendChild(a);
-    });
-    document.body.insertBefore(nav, document.body.firstChild);
-  }
-
-  function start() { bar(); run(); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
 })();

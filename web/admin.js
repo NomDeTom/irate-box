@@ -1382,7 +1382,7 @@ function renderHealth(data) {
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (hlNote && hlNote.fid === fid
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
-  // The clock and its module have their own pane (Box, Clock); the rest is the services doctor.
+  // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
   const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
   const item = (f) => el('li', { className: `check check-${f.status}` },
     el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
@@ -3791,7 +3791,7 @@ function fillWidthBlocks() {
   document.querySelectorAll('.width-block[data-key]').forEach((block) => {
     const key = block.dataset.key;
     block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
-      note: 'also on Box → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+      note: 'also on System → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
     { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
   });
 }
@@ -3852,3 +3852,17 @@ async function loadNamesTo() {
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadNamesTo();
+
+// Saves tied to accounts (accounts-plan stage 6, item 6): off by default, so a device lock is
+// the only thing that guards a save unless the admin turns this on.
+async function loadSavesCrossDevice() {
+  const box = document.getElementById('saves-cross-device-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  box.replaceChildren(AW.settings([{ key: 'saves_cross_device', label: 'A user may change or remove their own save from another device', kind: 'toggle',
+    value: st.saves_cross_device,
+    note: 'Off: only the device that made or locked a save may change it, as before. On: once logged in, a user may change or remove any save of their own account’s, on any device, past its lock. A guest’s saves are unaffected either way.' }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
+}
+loadSavesCrossDevice();

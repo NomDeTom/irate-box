@@ -193,6 +193,9 @@ NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"
 # The add-on server's maps (http level), and Caddy's add-on routes: from access.json and the
 # local add-ons' manifests, re-checked here (the hub writes those).
 NGINX_ADDON_ACCESS = Path(os.environ.get("HUB_NGINX_ADDON_ACCESS", ETC / "nginx-addons.conf"))
+# A local add-on in users mode (item 6, current-and-next-actions): one location per such add-on,
+# ahead of the add-on server's shared one (access.addon_gates).
+NGINX_ADDON_GATES = Path(os.environ.get("HUB_NGINX_ADDON_GATES", ETC / "nginx-addon-gates.conf.d"))
 CADDY_ACCESS = Path(os.environ.get("HUB_ACCESS_DIR", "/etc/caddy/irate-box-access"))
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
@@ -463,7 +466,10 @@ def _access_files(state):
         gates_dir = NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d")   # the template's @ACCESS@.d/gate-<id>.conf*
         gates = access.nginx_gates(state, admin_login=not ADMIN_LOGIN_OFF.exists())
         gates_dir.mkdir(mode=0o755, exist_ok=True)
-        paths = [NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
+        addon_gates = access.addon_gates(state, local)
+        NGINX_ADDON_GATES.mkdir(mode=0o755, exist_ok=True)
+        paths = ([NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
+                 + sorted(set(NGINX_ADDON_GATES.glob("users-*.conf")) | {NGINX_ADDON_GATES / n for n in addon_gates}))
         old = {p: p.read_text() if p.exists() else None for p in paths}
         _write_root_file(NGINX_ACCESS, access.nginx_conf(state))
         _write_root_file(NGINX_ADDON_ACCESS, access.addon_nginx_conf(state, local))
@@ -472,6 +478,11 @@ def _access_files(state):
                 p.unlink()
         for name, text in gates.items():
             _write_root_file(gates_dir / name, text)
+        for p in NGINX_ADDON_GATES.glob("users-*.conf"):
+            if p.name not in addon_gates:
+                p.unlink()
+        for name, text in addon_gates.items():
+            _write_root_file(NGINX_ADDON_GATES / name, text)
         return old
     login = _caddy_hash()
     if not login:
@@ -997,7 +1008,7 @@ def _nginx_check(src, opts):
         (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
         # The TLS twins' includes: an empty folder (a box with no certificate), their ports as set.
         (Path(tmp) / "tls").mkdir()
-        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
+        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_GATES@": f"{tmp}/addon-gates.d", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
                            "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491",
                            "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons")}.items():
             text = text.replace(key, value)

@@ -89,13 +89,13 @@ const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'
 setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   const side = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
-  // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, Box,
-  // the Doctors last; nothing left over.
+  // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, System
+  // (accounts under System, not Box: item 6), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|Box|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|System|Doctors', groups.join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
-  check('sidebar: Clock and Appearance under Box', side.indexOf('Clock') > side.indexOf('Box') && side.indexOf('Appearance') > side.indexOf('Box') && side.indexOf('Clock') < hi);
+  check('sidebar: Clock and Appearance under System', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Appearance') > side.indexOf('System') && side.indexOf('Clock') < hi);
   check('sidebar: a page per app that owns sections, in the hub\'s order', (() => { const at = (n) => side.findIndex((x) => x.endsWith(n)); return ['Kiwix', 'Git', 'Web flasher', 'Mesh', 'Firmware Factory'].every((a, i, all) => at(a) > side.indexOf('Apps') && at(a) < side.indexOf('Moderation') && (!i || at(a) > at(all[i - 1]))); })(), side.join('|'));
   const sections = [...d.querySelectorAll('.admin-pane')];
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
@@ -123,7 +123,7 @@ setTimeout(() => {
   const term = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Terminal'));
   check('Terminal public still says it asks for the login', term && term.textContent.includes('still asks for the admin login'));
   const main = d.querySelector('.admin-main');
-  check('background art: the controller for Box (Clock)', main.dataset.art === 'controller', main.dataset.art);
+  check('background art: the controller for System (Clock)', main.dataset.art === 'controller', main.dataset.art);
   w.location.hash = '#secdoctor'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the doctor for Health', main.dataset.art === 'doctor', main.dataset.art);
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));

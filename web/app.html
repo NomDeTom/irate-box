@@ -17,6 +17,8 @@
     <a href="/" class="app-home" target="_top">🏠 Hub</a>
     <!-- Back up to the list page the app was opened from (app.js: ?from=<list>). -->
     <a href="/" class="app-up" id="app-up" target="_top" hidden></a>
+    <!-- Git only (app.js): back to the repository list, which cgit's own origin cannot link to. -->
+    <a href="/git/" class="app-up" id="app-repos" hidden>📚 Repositories</a>
     <button type="button" class="app-help" id="app-help" aria-expanded="false" aria-controls="help-pop" title="What is this?"><span aria-hidden="true">🛟</span> Help</button>
     <span class="app-title" id="app-title"></span>
     <!-- One theme for the hub and every app in it: app.js writes each app's own

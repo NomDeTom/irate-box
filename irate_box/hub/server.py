@@ -493,7 +493,17 @@ def status_tiles_snapshot():
 
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
+ACCOUNT_MARK = "<!-- account nav -->"
 _home_page = {}   # signed in or not -> {"mtime", "body"}
+
+
+def _account_nav(signed_in):
+    """A link to /account.html in the hub bar, item 6 of current-and-next-actions: while sign-up
+    is on, "Sign in" for a guest, "My account" for anyone already in."""
+    if accounts.settings()["signup"] == "off":
+        return ""
+    title, label = (("Your account", "My account") if signed_in else ("Sign in or sign up", "Sign in"))
+    return f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
 
 
 def home_page(signed_in=False):
@@ -510,7 +520,8 @@ def home_page(signed_in=False):
         except OSError:
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
-    mtime = (path.stat().st_mtime, chosen, show_factory)
+    signup = accounts.settings()["signup"]
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -522,6 +533,7 @@ def home_page(signed_in=False):
                 text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
+        text = text.replace(ACCOUNT_MARK, _account_nav(signed_in))
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -546,7 +558,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
        "entries" aimed at it). Each entry opens under the hub bar in a new tab, and greys
        out when data-service is down. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>{title}</h1>
     <p class="subtitle">{subtitle}</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
@@ -679,6 +691,10 @@ DEFAULT_SETTINGS = {
     "report_reasons": ["spam", "unkind", "personal details", "other"],
     "report_threshold": 1,
     "report_hide": False,
+    # A save tied to its account, so its person may open and change it from another device once
+    # logged in (accounts-plan stage 6, item 6 of current-and-next-actions): off by default (the
+    # admin's choice), a guest's saves stay exactly as they are either way.
+    "saves_cross_device": False,
     # Who sees the names of those signed in and around (M12): users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
@@ -1778,6 +1794,8 @@ def moderation_action(payload):
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
 store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
+# Saves tied to accounts (accounts-plan stage 6, item 6): the admin's setting, off by default.
+store.CROSS_DEVICE = lambda: settings_snapshot()["saves_cross_device"]
 
 
 def seen_by_of(account, app):

@@ -15,8 +15,9 @@
   --font-head:system-ui,'Segoe UI',sans-serif;
   --font-body:ui-monospace,Consolas,monospace;
 }
-[data-theme="cybercore"] body {
-  font-family:var(--font-body);
+/* The backdrop sits on the root, so it spans the screen rather than the body's max-width column
+   (admin pages give the root a background of its own, which stops the body's from spreading). */
+html[data-theme="cybercore"]:has(> body) {
   background-color:var(--bg);
   background-image:
     linear-gradient(rgba(0,240,255,.06) 1px, transparent 1px),
@@ -25,6 +26,10 @@
     radial-gradient(ellipse at 90% 100%, rgba(255,46,136,.07), transparent 55%);
   background-size:42px 42px, 42px 42px, cover, cover;
   background-attachment:fixed;
+}
+[data-theme="cybercore"] body {
+  font-family:var(--font-body);
+  background:none;
 }
 /* scanlines */
 [data-theme="cybercore"] body::before {

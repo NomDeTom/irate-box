@@ -4,7 +4,7 @@
 // "as it is now"). admin.html keeps every section as it was, each a <section class="admin-pane">
 // with its own id, so admin.js binds to them unchanged; this file gathers them into pages:
 //   Overview · Apps (a page per app, from /admin/apps: what each app's manifest says it owns)
-//   · Folders · Moderation · Box · Doctors, the doctors last.
+//   · Folders · Moderation · System · Doctors, the doctors last.
 // The address names a section (#books, #backup): the page holding it opens, scrolled to it, so
 // every old link and bookmark still lands. A section no page claims goes to "More" at the end
 // rather than vanish (the jsdom tests check none does).
@@ -23,7 +23,7 @@ const AL = (() => {
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'Saved work and files', sections: ['saved'] }] },
-    { name: 'Box', art: 'controller', pages: [
+    { name: 'System', art: 'controller', pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security'] },

@@ -1121,7 +1121,7 @@ nginx_config() {
 	sed -e "s|@PORT@|$1|g" -e "s|@STATIC@|$CODE/web|g" -e "s|@APPS@|$APPS|g" -e "s|@GIT_ROOT@|$STATE/git|g" -e "s|@FIRMWARE@|$STATE/firmware|g" \
 		-e "s|@HTPASSWD@|$NGINX_LOGINS|g" -e "s|@UNCLAIMED@|$UNCLAIMED_MARK|g" -e "s|@ACCESS@|$ETC/nginx-access.conf|g" \
 		-e "s|@FRONT@|$NGINX_FRONT|g" -e "s|@ADDON_PORT@|$ADDON_PORT|g" -e "s|@NOTES_PORT@|$NOTES_PORT|g" -e "s|@WIKI_PORT@|$WIKI_PORT|g" -e "s|@GIT_PORT@|$GIT_PORT|g" -e "s|@ADDONS@|$STATE/addons|g" \
-		-e "s|@ADDON_ACCESS@|$ETC/nginx-addons.conf|g" -e "s|@TLS@|$ETC/tls/front|g" -e "s|@TLS_PORT@|$TLS_PORT|g" \
+		-e "s|@ADDON_ACCESS@|$ETC/nginx-addons.conf|g" -e "s|@ADDON_GATES@|$ETC/nginx-addon-gates.conf.d|g" -e "s|@TLS@|$ETC/tls/front|g" -e "s|@TLS_PORT@|$TLS_PORT|g" \
 		-e "s|@ADDON_TLS_PORT@|$ADDON_TLS_PORT|g" -e "s|@NOTES_TLS_PORT@|$NOTES_TLS_PORT|g" -e "s|@WIKI_TLS_PORT@|$WIKI_TLS_PORT|g" \
 		-e "s|@GIT_TLS_PORT@|$GIT_TLS_PORT|g" "$CODE/config/irate-box.nginx" |
 		# A kernel without IPv6: the [::] listener would stop nginx from starting at all.

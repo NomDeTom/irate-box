@@ -18,18 +18,6 @@ div#cgit { font-family: inherit; font-size: 0.9rem; max-width: 1100px; margin: 0
 div#cgit a { color: var(--accent); }
 div#cgit a:hover { color: var(--accent); text-decoration: underline; }
 
-/* The hub's bar (cgit-hub.js): Hub and Repositories, kept in view while scrolling. */
-nav.hub-bar {
-  position: sticky; top: 0; z-index: 10; display: flex; gap: 0.5rem; flex-wrap: wrap;
-  max-width: 1100px; margin: -0.75rem auto 0.5rem; padding: 0.5rem 0;
-  background: var(--bg); border-bottom: 1px solid var(--border);
-}
-nav.hub-bar a {
-  color: var(--text); background: var(--surface); border: 1px solid var(--border);
-  border-radius: 6px; padding: 0.35rem 0.75rem; text-decoration: none; min-height: 1.4rem;
-}
-nav.hub-bar a:hover { color: var(--accent); border-color: var(--accent); }
-
 /* The header: no cgit logo; the title in the hub's accent. */
 div#cgit table#header { margin-bottom: 0.5rem; }
 div#cgit table#header td.logo { display: none; }

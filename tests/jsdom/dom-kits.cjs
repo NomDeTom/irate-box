@@ -62,8 +62,8 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
   const card = (title) => [...d.querySelectorAll('#kits-grid .kit-card')].find((c) => t(c.querySelector('h4')) === title);
   const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
-  check('Toolkits has its page under Box, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
-    return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('Box') && links.indexOf('Toolkits') < links.indexOf('Doctors'); })());
+  check('Toolkits has its page under System, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list > *')].map((n) => n.textContent.trim());
+    return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('System') && links.indexOf('Toolkits') < links.indexOf('Doctors'); })());
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB; newest fetch \d{4}-\d\d-\d\d\. Cached kits install with no internet\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));

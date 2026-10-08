@@ -12,7 +12,7 @@
 </head>
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>Admin</h1>
     <p class="subtitle">Options for whoever owns the box.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
@@ -74,11 +74,12 @@
           <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
           <li data-step="decisions"><strong>Decide what the box shows and counts</strong> <span></span>
             <p class="setting-desc">Everything that touches the security of the box or the people on it. Each has a default
-              already; the tour takes you to each one where it lives.</p></li>
+              already; the tour takes you to each one where it lives.</p>
+            <div class="library-buttons tour-actions">
+              <button type="button" id="setup-finish">Hide this setup page</button>
+            </div>
+            <p class="setting-desc">This can be reopened from the Overview page.</p></li>
         </ol>
-        <div class="library-buttons">
-          <button type="button" id="setup-finish">Finish setup</button>
-        </div>
         <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
       </section>
 
@@ -695,6 +696,8 @@
         <h3>The box's own admin login</h3>
         <p class="setting-desc" id="accounts-admin-login">Looking…</p>
         <p class="library-buttons"><button type="button" id="accounts-admin-login-switch" hidden></button></p>
+        <h3>Saves across devices</h3>
+        <div id="saves-cross-device-box"></div>
       </section>
 
       <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">
