@@ -3710,8 +3710,7 @@ if (paneShown('accounts')) loadAccounts();
 
 // --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
-  form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note'),
-  counts: document.getElementById('mesh-admin-counts'), packets: document.getElementById('mesh-admin-packets') };
+  form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note') };
 let meshPoll = null;
 async function loadMesh() {
   try { renderMesh(await getJSON('/admin/mesh')); } catch (_) { meshEl.state.textContent = 'Could not read the mesh.'; }
@@ -3724,12 +3723,6 @@ function renderMesh(d) {
     el('span', { className: 'setting-desc', textContent: c.public_key ? ' Meshtastic\'s public default key: anyone can read this channel.' : c.no_key ? ' No key: unencrypted.' : ' Its own key (not shown).' }),
     el('span', { className: 'library-buttons' }, actionButton('Remove', () => meshAct({ action: 'remove-channel', name: c.name })))))
     : [el('p', { className: 'setting-desc', textContent: 'None yet: every packet stays encrypted. Add a channel and its key, as your Meshtastic app shows them.' })]));
-  const names = Object.fromEntries(d.nodes.map((n) => [n.id, n.long_name || n.id]));
-  const counts = Object.entries(d.counts || {}).map(([k, n]) => `${n} ${k}`);
-  meshEl.counts.textContent = counts.length ? `Since the hub started: ${counts.join(', ')}.` : 'Nothing heard yet.';
-  meshEl.packets.replaceChildren(...d.packets.map((p) => el('li', {},
-    el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} from ${names[p.from] || p.from}${p.channel ? ` on ${p.channel}` : ''}` }),
-    p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
   clearTimeout(meshPoll);
   if (paneShown('mesh')) meshPoll = setTimeout(loadMesh, 15000);
 }

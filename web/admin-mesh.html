@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mesh heard · Hub admin</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>Mesh heard</h1>
+    <p class="subtitle">What the box decoded from the mesh, the messages too: for the admin only. <a href="/mesh.html">The public map and nodes</a>; <a href="/admin/#page-mesh">the channels and their keys are in /admin</a>.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <main class="admin-main">
+    <section class="admin-pane" id="mesh-heard" aria-label="Mesh heard">
+      <p class="setting-desc" id="mesh-heard-state">Looking…</p>
+      <p class="setting-desc" id="mesh-heard-counts"></p>
+      <ol class="mesh-packets" id="mesh-heard-packets"></ol>
+    </section>
+  </main>
+  <script src="/hub.js"></script>
+  <script src="/mesh-heard.js"></script>
+</body>
+</html>
