@@ -923,6 +923,16 @@ def _logs(rec, on):
 
 # --- the network floor (stance review §4 item 3): what a guest on the hotspot can reach -----------
 
+FLOOR_WORDS = {"hub": "the hub's pages, DNS and DHCP", "apps": "the hub, its apps, DNS and DHCP"}
+
+
+def _floor_apply(floor):
+    """The floor as given (None: off) with guests' internet as it is: one ruleset (firewall.apply_all)."""
+    from irate_box.root import firewall, share
+    fl = dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None
+    firewall.apply_all(fl, share.load())
+
+
 def firewall_findings(rec):
     from irate_box.root import firewall
     ours = rec.get("firewall")
@@ -933,49 +943,101 @@ def firewall_findings(rec):
                          "nftables is not installed, so nothing limits what a guest on the hotspot can reach: every listener on the box.",
                          "Update the box (install.sh installs nftables), then switch the floor on here.")]
     wanted = sorted(ours.get("services", [])) if ours else []
+    level = (ours or {}).get("level", "apps")
     if not ours or not loaded:
         tcp, udp = firewall.ports(firewall.services_here(["mqtt", "sync"]))
+        on = lambda lv: {"choice": f"firewall-{lv}", "label": "Hub and apps" if lv == "apps" else "Hub only",  # noqa: E731
+                         "confirm": f"Limit what a guest on the hotspot ({iface}) can reach to {FLOOR_WORDS[lv]}, and MQTT and Syncthing "
+                                    "where installed? SSH from the hotspot is closed until you open it here. Your own network is not affected."}
         return [_finding("firewall", "What a guest on the hotspot can reach", "warn" if not ours else "problem",
                          ("Everything that listens on the box, SSH and the rest: there is no floor." if not ours else
                           "The floor is switched on, but its rules are not loaded (nft list table inet irate_box).")
                          + f" The floor would allow, on {iface} alone: TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; "
                          "and drop the rest. The box's other networks are not touched.",
-                         "A default-drop ruleset on the hotspot's interface, loaded at boot; MQTT and Syncthing open to guests where "
-                         "installed, SSH only if you say so. Undo here.",
-                         [{"choice": "firewall-on", "label": "Switch the floor on",
-                           "confirm": f"Limit what a guest on the hotspot ({iface}) can reach to the hub, its apps, DNS, DHCP, "
-                                      "and MQTT and Syncthing where installed? SSH from the hotspot is closed until you open it here. "
-                                      "Your own network is not affected."}])]
-    tcp, udp = firewall.ports(firewall.services_here(wanted))
+                         "A default-drop ruleset on the hotspot's interface, loaded at boot, at one of two levels: the hub and its "
+                         "apps, or the hub alone (its apps' ports closed to guests). MQTT and Syncthing open to guests where installed, "
+                         "SSH only if you say so. Undo here.",
+                         [on("apps"), on("hub")])]
+    tcp, udp = firewall.ports(firewall.services_here(wanted), level)
     ssh = "ssh" in wanted
+    other = "hub" if level == "apps" else "apps"
     return [_finding("firewall", "What a guest on the hotspot can reach", "ok",
-                     f"On {iface}: TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; the rest dropped"
+                     f"{'Hub and apps' if level == 'apps' else 'Hub only'}: on {iface}, TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; the rest dropped"
                      + (" (SSH from the hotspot open, by your choice)." if ssh else "; SSH from the hotspot closed."),
                      "",
-                     [{"choice": "firewall-ssh-off" if ssh else "firewall-ssh-on",
+                     [{"choice": f"firewall-{other}", "label": "Hub only: close the apps' ports" if other == "hub" else "Hub and apps: open the apps' ports",
+                       "confirm": None},
+                      {"choice": "firewall-ssh-off" if ssh else "firewall-ssh-on",
                        "label": "Close SSH from the hotspot" if ssh else "Open SSH from the hotspot",
                        "confirm": None if ssh else "Let guests on the hotspot reach SSH (port 22)? Keys-only logins are strongly advised first (above)."},
                       {"choice": "firewall-off", "label": "Switch the floor off", "confirm": "Take the floor away? Every listener on the box is then reachable from the hotspot again."}])]
 
 
 def _firewall(rec, what):
-    from irate_box.root import firewall
     if what == "off":
         if "firewall" not in rec:
             raise ValueError("the floor is not on from this page")
-        firewall.remove()
+        _floor_apply(None)
         rec.pop("firewall")
         return "the floor is off: every listener is reachable from the hotspot again"
-    cur = rec.get("firewall") or {"services": ["mqtt", "sync"]}
+    cur = rec.get("firewall") or {"services": ["mqtt", "sync"], "level": "apps"}
     services = set(cur.get("services", []))
+    level = {"on": "apps", "apps": "apps", "hub": "hub"}.get(what, cur.get("level", "apps"))
     if what == "ssh-on":
         services.add("ssh")
     elif what == "ssh-off":
         services.discard("ssh")
-    firewall.apply(firewall.services_here(sorted(services)))
-    rec["firewall"] = {"services": sorted(services), "date": time.strftime("%Y-%m-%d")}
-    return {"on": "the floor is on: guests on the hotspot reach the hub, its apps, DNS and DHCP" + (", MQTT and Syncthing where installed" if services - {"ssh"} else ""),
+    floor = {"services": sorted(services), "level": level, "date": time.strftime("%Y-%m-%d")}
+    _floor_apply(floor)
+    rec["firewall"] = floor
+    return {"on": f"the floor is on: guests on the hotspot reach {FLOOR_WORDS[level]}" + (", MQTT and Syncthing where installed" if services - {"ssh"} else ""),
+            "apps": f"the floor: guests on the hotspot reach {FLOOR_WORDS['apps']}", "hub": f"the floor: guests on the hotspot reach {FLOOR_WORDS['hub']} only",
             "ssh-on": "SSH open from the hotspot", "ssh-off": "SSH closed from the hotspot"}[what]
+
+
+def share_findings():
+    """Guests' internet (share.py), while the owner shares it: what is shared, and each part of the
+    containment the owner has turned off, a finding of its own with the way back (Tom, 2026-10-08)."""
+    from irate_box.root import firewall, share
+    st = share.load()
+    if not share.on(st):
+        return []
+    t = "Guests' internet through the box"
+    out = []
+    if not firewall.loaded():
+        out.append(_finding("guest-net-rules", t, "problem", f"Sharing is set ({share.WORDS[st['level']]}), but its rules are not loaded.",
+                            "Set the level again on Network → the hotspot, or switch it off there."))
+    off = [k for k in share.CONTAIN if not st["contain"][k]]
+    for k in off:
+        out.append(_finding(f"guest-net-{k}", f"{t}: containment part off", "warn",
+                            f"Off by your choice: {share.CONTAIN_WORDS[k]}.",
+                            {"lan": "Guests can reach your own network behind the box: the router's page, printers, shares.",
+                             "tunnels": "Guests' traffic can go into Tailscale or a container's network, as the box.",
+                             "by_mac": "A device given an address another had within the last 12 hours is let out without the sheet.",
+                             "dns_hold": "A device that hasn't tapped through can look outside names up through the box (a way to tunnel data out)."}[k],
+                            [{"choice": f"share-contain-{k}-on", "label": "Turn it back on", "confirm": None}]))
+    on_parts = [k for k in share.CONTAIN if st["contain"][k]]
+    out.append(_finding("guest-net", t, "ok" if not off else "warn",
+                        f"Shared: {share.WORDS[st['level']]}. Contained: " + ("; ".join(share.CONTAIN_WORDS[k] for k in on_parts) or "nothing") + ".",
+                        "", [{"choice": f"share-contain-{k}-off", "label": f"Turn off: {share.CONTAIN_WORDS[k]}",
+                              "confirm": f"Turn this part of the containment off ({share.CONTAIN_WORDS[k]})? The Security doctor will warn while it is."}
+                             for k in on_parts]))
+    return out
+
+
+def _share_contain(what):
+    from irate_box.root import firewall, share
+    k, _, onoff = what.rpartition("-")
+    if k not in share.CONTAIN or onoff not in ("on", "off"):
+        raise ValueError(f"share-contain-{what} is not something the Security page does")
+    st = share.load()
+    if not share.on(st):
+        raise ValueError("guests' internet is off: nothing to contain")
+    st["contain"][k] = onoff == "on"
+    floor = load_record().get("firewall")
+    firewall.apply_all(dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None, st)
+    share.save(st)
+    return f"{'on' if onoff == 'on' else 'off'}: {share.CONTAIN_WORDS[k]}"
 
 
 def scan():
@@ -991,6 +1053,7 @@ def scan():
     findings += apt_findings(rec)
     findings += log_findings(rec)
     findings += firewall_findings(rec)
+    findings += share_findings()
     upd, _ = update_findings()
     findings += upd
     return {"at": time.time(), "listeners": found, "findings": findings}
@@ -1158,8 +1221,10 @@ def fix(choice, updates_log):
         msg = _apt(rec, choice.split(":", 1)[1], choice.startswith("apt-signedby:"))
     elif choice in ("logs-card", "logs-undo"):
         msg = _logs(rec, choice == "logs-card")
-    elif choice in ("firewall-on", "firewall-off", "firewall-ssh-on", "firewall-ssh-off"):
+    elif choice in ("firewall-on", "firewall-apps", "firewall-hub", "firewall-off", "firewall-ssh-on", "firewall-ssh-off"):
         msg = _firewall(rec, choice[len("firewall-"):])
+    elif choice.startswith("share-contain-"):
+        return _share_contain(choice[len("share-contain-"):])
     elif choice == "security-updates":
         return install_security_updates(updates_log)
     else:

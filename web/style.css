@@ -1368,3 +1368,6 @@ html:has(> body.admin) { background: var(--bg); }
 /* A set of tabs over its panels (the books' sources): the strip above, one panel below. */
 .tab-set > .view-switch { margin-bottom: 0.8rem; }
 .tab-set > [role="tabpanel"] { padding-top: 0.2rem; }
+/* The sign-in sheet's offer of the internet (guest-net.js). */
+.guest-net { margin: 0 auto 1rem; padding: 0.7rem 1rem; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
+.guest-net p { margin: 0 0 0.5rem; }

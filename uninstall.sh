@@ -55,6 +55,16 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
+# Guests' onward internet (root/share.py): its rules went with irate-box-firewall.service above (one
+# table with the floor); the guests' resolver goes; forwarding goes back to what the box had before
+# sharing, and its sysctl file goes.
+systemctl disable --now irate-box-guest-dns.service 2>/dev/null || true
+rm -f /etc/systemd/system/irate-box-guest-dns.service
+if [ -f /etc/sysctl.d/90-irate-box-share.conf ]; then
+	rm -f /etc/sysctl.d/90-irate-box-share.conf
+	was="$(python3 -c 'import json; print(json.load(open("/etc/hub/share.json")).get("forward_was") or "")' 2>/dev/null || true)"
+	if [ "$was" = 0 ]; then sysctl -q -w net.ipv4.ip_forward=0 || true; fi
+fi
 # install.sh enables mosquitto only for --with-mqtt; with its config gone it would come
 # back up as a bare broker on :1883, so it is stopped here and purged or left disabled.
 systemctl disable --now mosquitto >/dev/null 2>&1 || true

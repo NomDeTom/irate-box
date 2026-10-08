@@ -34,6 +34,12 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
+  {"id": ..., "action": "share-set", "level": "off"|"users-web"|"sheet-web"|"sheet-all"|"open"}
+      Guests' onward internet (share.py): the one ruleset with the floor (firewall.apply_all), IPv4
+      forwarding and the guests' resolver made to agree; off takes it all back. The level and the
+      containment in control/share.json.
+  {"id": ..., "action": "share-allow", "ip": "192.168.4.x"}
+      Let one device out, at a level that lets devices out one by one (the hub asks).
   {"id": ..., "action": "update-signing", "level": "off"|"github"|"tags", "signers": "<allowed_signers>"}
       How far an update must be vouched for (signing.py): kept in /etc/hub/update-signing.json,
       root's; what /admin may show (the level, each key's name and type) in control/.
@@ -118,7 +124,7 @@ from irate_box.hub import netinv
 from irate_box.root import secdoctor
 from irate_box.root import security
 from irate_box.hub import uplink
-from irate_box.root import ap, kits, safeio, usbstick
+from irate_box.root import ap, kits, safeio, share, usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -2108,6 +2114,114 @@ def _ap_failed(exc):
     return ValueError(note)
 
 
+# --- guests' onward internet (share.py) ------------------------------------------------------------
+
+
+def _forward(on, rec):
+    """IPv4 forwarding: on while sharing (a file in sysctl.d, so a reboot keeps it), and back to
+    what the box had before when it stops."""
+    rec = dict(rec)
+    if on:
+        if rec.get("forward_was") is None:
+            try:
+                rec["forward_was"] = Path("/proc/sys/net/ipv4/ip_forward").read_text().strip()
+            except OSError:
+                rec["forward_was"] = "0"
+        share.SYSCTL.parent.mkdir(parents=True, exist_ok=True)
+        safeio.write(share.SYSCTL, "# Written by irate-box (root/share.py) while guests share the box's connection.\n"
+                     "net.ipv4.ip_forward = 1\n")
+        run("sysctl", "-q", "-w", "net.ipv4.ip_forward=1")
+    else:
+        share.SYSCTL.unlink(missing_ok=True)
+        was = rec.get("forward_was")
+        if was in ("0", "1"):
+            run("sysctl", "-q", "-w", f"net.ipv4.ip_forward={was}")
+        rec["forward_was"] = None
+    return rec
+
+
+def _guest_dns(on, iface=None):
+    """The guests' resolver (share.py's dns_hold): its unit written and running while sharing, gone after."""
+    unit = share.UNIT_DIR / share.GUEST_DNS_UNIT
+    if on:
+        text = share.guest_dns_unit(iface)
+        if not unit.exists() or unit.read_text() != text:
+            safeio.write(unit, text)
+            run("systemctl", "daemon-reload")
+        run("systemctl", "enable", share.GUEST_DNS_UNIT)
+        run("systemctl", "restart", share.GUEST_DNS_UNIT)
+    else:
+        run("systemctl", "disable", "--now", share.GUEST_DNS_UNIT)
+        unit.unlink(missing_ok=True)
+
+
+def share_apply(rec):
+    """Guests' internet as rec says (share.load()'s shape), with the floor as it is: one ruleset
+    (firewall.apply_all). Turning on: the rules first, then forwarding, then the guests' resolver;
+    off: forwarding first, then the rest, so at no moment does anything pass unfiltered."""
+    from irate_box.root import firewall, security
+    floor = security.load_record().get("firewall")
+    floor = dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None
+    iface = firewall.hotspot_iface()
+    if share.on(rec):
+        firewall.apply_all(floor, rec, iface)
+        rec = _forward(True, rec)
+        _guest_dns(True, iface)
+    else:
+        rec = _forward(False, rec)
+        _guest_dns(False)
+        firewall.apply_all(floor, rec, iface)
+    share.save(rec)
+    return rec
+
+
+def share_set(req):
+    """{"level": one of share.LEVELS}: the rules, forwarding and the guests' resolver made to agree
+    with it; off takes all of it back. The containment stays as the owner set it (Security page)."""
+    level = str(req.get("level", ""))
+    if level not in share.LEVELS:
+        raise ValueError(f"level is one of {', '.join(share.LEVELS)}")
+    rec = share.load()
+    rec["level"] = level
+    share_apply(rec)
+    return f"guests' internet: {share.WORDS[level]}"
+
+
+def share_allow(req):
+    """{"ip": a guest's address}: let that device out (by its hardware address, while by_mac is on),
+    at a level that lets devices out one by one. The hub asks when a guest taps through the sheet (or
+    signs in, at users-web)."""
+    rec = share.load()
+    if rec["level"] not in share.LET_OUT:
+        raise ValueError(f"devices are not let out one by one at level {rec['level']}")
+    addr = share.guest_address(req.get("ip"))
+    if not addr:
+        raise ValueError("not an address on the hotspot")
+    key = addr
+    if rec["contain"]["by_mac"]:
+        r = run("ip", "neigh", "show", addr)
+        key = share.mac_of(addr, r.stdout if r.returncode == 0 else "")
+        if not key:
+            raise ValueError(f"no hardware address known for {addr}: is it still on the hotspot?")
+    r = run(*share.allow_command(key))
+    if r.returncode != 0:
+        raise ValueError("could not let it out: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+    return f"{addr} ({key}) let out for {share.OUT_HOURS} h" if key != addr else f"{addr} let out for {share.OUT_HOURS} h"
+
+
+def _guest_policy_follows():
+    """After the hotspot comes up (its interface may be ap0 or a radio of its own): the floor and
+    guests' internet rewritten for it, when either is on. Said, not raised: the hotspot is up."""
+    from irate_box.root import security
+    if not security.load_record().get("firewall") and not share.on():
+        return ""
+    try:
+        share_apply(share.load())
+        return ""
+    except (ValueError, OSError) as exc:
+        return f" The guests' rules were not rewritten for it: {exc}"
+
+
 def ap_on(req):
     try:
         plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
@@ -2119,6 +2233,7 @@ def ap_on(req):
     note = f"up on {ap.ap_iface(plan)}, channel {plan['channel']}: {plan['text']}"
     if plan.get("drops_uplink"):
         note += f" Your WiFi link is off: open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm, or it comes back by itself."
+    note += _guest_policy_follows()
     _ap_record_status(plan, note)
     return note
 
@@ -2139,6 +2254,7 @@ def ap_try(req):
     else:
         note = ("it holds a channel of its own beside your WiFi: guests won't notice your WiFi roam" if worked
                 else "it can't hold a channel of its own here, so it follows your WiFi's channel")
+        note += _guest_policy_follows()
     _ap_record_status(plan, note)
     return note
 
@@ -2235,7 +2351,7 @@ ACTIONS = {"service": service, "password": password,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

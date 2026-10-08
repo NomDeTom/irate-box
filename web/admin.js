@@ -2096,7 +2096,55 @@ function renderHotspot(data) {
   hs.wpa2.checked = !!s.allow_wpa2;
   hs.wpa2Desc.textContent = 'Let older WPA2 devices join too (WPA3 transition mode).';
   hsShowFields();
+  drawGuestNet(data.share || 'off', data.results);
 }
+
+// Guests' onward internet (root/share.py; Tom, 2026-10-08: "give options, and a sliding scale"):
+// five stops from nobody to everyone, the safest the default; held until Save.
+const GUEST_NET = [
+  ['off', 'Off', 'Guests reach the box and nothing else.'],
+  ['users-web', 'Users, web only', 'A device signed in to an account on the hub reaches the web (ports 80 and 443).'],
+  ['sheet-web', 'After the sheet, web only', 'Any device reaches the web once it has tapped through the sign-in sheet.'],
+  ['sheet-all', 'After the sheet, everything', 'Any device reaches everything once through the sheet.'],
+  ['open', 'Everyone, no sheet', 'Every device on the hotspot reaches everything. The sheet stops appearing.'],
+];
+let guestNetSaved = 'off', guestNetDraft = null, guestNetWaiting = null;
+function drawGuestNet(level, results) {
+  const box = document.getElementById('guest-net-chips');
+  if (!box) return;
+  // Asked: done when the box says the level it was asked for (or, after 40 s, said to look again).
+  if (guestNetWaiting && level === guestNetWaiting.level) {
+    guestNetWaiting = null; guestNetDraft = null;
+    say(`Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`, true, noteEl('guest-net-note'));
+  } else if (guestNetWaiting && Date.now() - guestNetWaiting.at > 40000) {
+    guestNetWaiting = null;
+    say('The box has not changed it yet: see the Security doctor, or try again.', false, noteEl('guest-net-note'));
+  } else if (guestNetWaiting) setTimeout(loadHotspot, 2000);
+  guestNetSaved = level;
+  const cur = guestNetDraft || level;
+  box.replaceChildren(...GUEST_NET.map(([v, label]) => {
+    const b = el('button', { type: 'button', className: 'chip' + (v === cur ? ' selected' : ''), textContent: label,
+      onclick: () => { guestNetDraft = v === guestNetSaved ? null : v; drawGuestNet(guestNetSaved); } });
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(v === cur));
+    return b;
+  }));
+  document.getElementById('guest-net-said').textContent = GUEST_NET.find((x) => x[0] === cur)[2]
+    + (['users-web', 'sheet-web', 'sheet-all'].includes(cur) ? ' Each device is let out for 12 hours at a time.' : '');
+  document.getElementById('guest-net-save').disabled = !guestNetDraft || !!guestNetWaiting;
+}
+document.getElementById('guest-net-save').addEventListener('click', async () => {
+  const level = guestNetDraft;
+  if (!level) return;
+  if (level !== 'off' && !confirm(`Share this box's connection with guests (${GUEST_NET.find((x) => x[0] === level)[1]})? What they do online will come from your connection.`)) return;
+  try {
+    await postJSON('/admin/hotspot', { action: 'share', level });
+    guestNetWaiting = { level, at: Date.now() };
+    say('Asked: the root helper sets it.', true, noteEl('guest-net-note'));
+    drawGuestNet(guestNetSaved);
+    setTimeout(loadHotspot, 1500);
+  } catch (err) { say(err.message, false, noteEl('guest-net-note')); }
+});
 
 async function loadHotspot() {
   try { renderHotspot(await getJSON('/admin/hotspot')); } catch (err) {
