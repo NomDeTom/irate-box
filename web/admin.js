@@ -1190,6 +1190,9 @@ function renderSecurity(data) {
 // --- the joint report (secdoctor.joint): what several sources say about one thing, once ------------
 const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page', debsecan: 'debsecan', 'debian-cis': 'debian-cis',
   lynis: 'Lynis', openvas: 'OpenVAS', nmap: 'nmap' };
+// How old each source may be before the strip warns (days): the deep audit runs weekly, debsecan's
+// tracker data is fetched daily, the Security page scans when opened, imported scans are by hand.
+const STALE_DAYS = { doctor: 1, 'security-page': 1, debsecan: 3, 'debian-cis': 8, lynis: 8, openvas: 30, nmap: 30 };
 const srcWords = (list) => list.map((x) => SOURCE_WORDS[x] || x).join(', ');
 function renderJoint(j) {
   const box = (id) => document.getElementById(id);
@@ -1211,12 +1214,15 @@ function renderJoint(j) {
   box('joint-alone-list').replaceChildren(...alone.map((i) => el('li', { className: `check check-${i.status}` },
     el('strong', { textContent: i.title }),
     el('span', { textContent: ` — only ${srcWords(i.sources)} said so; ${srcWords(i.could_see)} could have seen it and did not.` }))));
+  // One strip at the top (item 11 step 6): each source, its age, and a warning once it is older than it
+  // should be; what it covers and what it said in the pill's title.
   const fresh = j.freshness || {};
-  box('joint-sources').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
-    const c = j.sources[src];
-    return el('tr', {}, el('td', { textContent: SOURCE_WORDS[src] || src }), el('td', { className: 'setting-desc', textContent: (j.coverage || {})[src] || '' }),
-      el('td', { textContent: fresh[src] ? new Date(fresh[src] * 1000).toISOString().slice(0, 10) : '—' }),
-      el('td', { textContent: `${c.problem || 0} / ${c.warn || 0}` }));
+  const now = Date.now() / 1000;
+  box('joint-fresh').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
+    const c = j.sources[src], at = fresh[src], old = !at || now - at > (STALE_DAYS[src] || 30) * 86400;
+    return el('span', { className: old ? 'warn-pill' : 'info-pill',
+      title: `${(j.coverage || {})[src] || ''} To fix: ${c.problem || 0}; to look at: ${c.warn || 0}.`.trim(),
+      textContent: `${SOURCE_WORDS[src] || src}: ${at ? ago(now - at) : 'never'}${old ? ', stale' : ''}` });
   }));
 }
 

@@ -1196,6 +1196,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .ok-pill, .warn-pill, .bad-pill, .info-pill { display: inline-block; font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
   border: 1px solid; padding: 0.05rem 0.35rem; border-radius: 3px; white-space: nowrap; font-weight: 600; }
 .ok-pill { color: var(--ok); } .warn-pill { color: var(--warn); } .bad-pill { color: var(--bad); } .info-pill { color: var(--muted); }
+.fresh-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0 0.8rem; }
 .field-help { border: 1px solid var(--border); background: var(--accent-soft); padding: 0.35rem 0.55rem; color: var(--muted); font-size: 0.84rem; border-radius: 4px; }
 .field-help summary { cursor: pointer; color: var(--text); }
 .output-value { display: inline-block; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg); font-variant-numeric: tabular-nums; }
