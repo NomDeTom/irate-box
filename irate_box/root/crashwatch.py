@@ -188,11 +188,22 @@ def kind(line):
 
 
 def floods(lines, limit=FLOOD):
-    """(the lines worth keeping, {kind: count} of the kinds that flooded)."""
-    key = kind
-    counts = Counter(key(l) for l in lines)
+    """(the lines worth keeping, {kind: count} of the kinds that flooded). Once a kind floods, the
+    lines naming its word go with it ("usb 1-1.1: 4addr Frame received" with the "4addr" dump)."""
+    counts = Counter(kind(l) for l in lines)
     flood = {k: n for k, n in counts.items() if n >= limit}
-    return [l for l in lines if key(l) not in flood], flood
+    words = {k: next((w for w in k.split() if "#" not in w), None) for k in flood}
+    keep = []
+    for l in lines:
+        k = kind(l)
+        if k not in flood:
+            hit = next((f for f, w in words.items() if w and f" {w} " in f" {l.split('] ', 1)[-1]} "), None)
+            if not hit:
+                keep.append(l)
+                continue
+            k = hit
+        flood[k] = flood.get(k, 0) + (0 if counts[kind(l)] >= limit else 1)
+    return keep, flood
 
 
 # --- a snapshot --------------------------------------------------------------------------------

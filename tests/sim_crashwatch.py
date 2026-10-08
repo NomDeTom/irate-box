@@ -40,7 +40,7 @@ dump = ["[20916.1] usb 1-1.1: 4addr Frame received (0), skb->len:115"] + ["[2091
     + ["[20916.1] 4addr 00 00 78"]
 lines = dump * 4 + ["[21000.0] usb 1-1.2: USB disconnect, device number 5"]
 keep, flood = cw.floods(lines)
-check("a driver's hex dump: one kind, counted not kept", flood == {"4addr #": 32} and not any(" 4addr 37" in l for l in keep), (flood, keep))
+check("a driver's hex dump: one kind, counted not kept, its header lines with it", flood == {"4addr #": 36} and not any("4addr" in l for l in keep), (flood, keep))
 check("  the rest kept", "[21000.0] usb 1-1.2: USB disconnect, device number 5" in keep)
 check("  under the flood line, kept as they are", cw.floods(lines[:20])[1] == {})
 
@@ -48,7 +48,7 @@ check("  under the flood line, kept as they are", cw.floods(lines[:20])[1] == {}
 snap = cw.snapshot(keep, flood)
 check("a snapshot: time, uptime, load and boot; memory; temperature; the heaviest; links; wifi; the flood counted",
       "up 5210s load 0.10 0.17 0.31 boot 163672e1" in snap and "MemAvailable 290 MB" in snap and "temp 42C" in snap
-      and "47032 KB node" in snap and "links: wlan0 up" in snap and "wifi wlan0:" in snap and 'kernel: 32 lines like "4addr #"' in snap, snap)
+      and "47032 KB node" in snap and "links: wlan0 up" in snap and "wifi wlan0:" in snap and 'kernel: 36 lines like "4addr #"' in snap, snap)
 cw.SNAP_MAX = 2000
 for _ in range(10):
     cw.append_snapshot(snap)
