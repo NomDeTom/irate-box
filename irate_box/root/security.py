@@ -1000,14 +1000,17 @@ def share_findings():
     containment the owner has turned off, a finding of its own with the way back (Tom, 2026-10-08)."""
     from irate_box.root import firewall, share
     st = share.load()
-    if not share.on(st):
-        return []
     t = "Guests' internet through the box"
+    off = [k for k in share.CONTAIN if not st["contain"][k]]
+    if not share.on(st):
+        # Nothing shared, nothing at risk; but a part left off would be off again the moment sharing is.
+        return [_finding("guest-net", t, "ok", "Not shared: guests reach the box and nothing else. When it is, these parts of the "
+                         "containment will be off, as you left them: " + "; ".join(share.CONTAIN_WORDS[k] for k in off) + ".", "",
+                         [{"choice": f"share-contain-{k}-on", "label": f"Turn back on: {share.CONTAIN_WORDS[k]}", "confirm": None} for k in off])] if off else []
     out = []
     if not firewall.loaded():
         out.append(_finding("guest-net-rules", t, "problem", f"Sharing is set ({share.WORDS[st['level']]}), but its rules are not loaded.",
                             "Set the level again on Network → the hotspot, or switch it off there."))
-    off = [k for k in share.CONTAIN if not st["contain"][k]]
     for k in off:
         out.append(_finding(f"guest-net-{k}", f"{t}: containment part off", "warn",
                             f"Off by your choice: {share.CONTAIN_WORDS[k]}.",
@@ -1031,13 +1034,12 @@ def _share_contain(what):
     if k not in share.CONTAIN or onoff not in ("on", "off"):
         raise ValueError(f"share-contain-{what} is not something the Security page does")
     st = share.load()
-    if not share.on(st):
-        raise ValueError("guests' internet is off: nothing to contain")
     st["contain"][k] = onoff == "on"
-    floor = load_record().get("firewall")
-    firewall.apply_all(dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None, st)
+    if share.on(st):
+        floor = load_record().get("firewall")
+        firewall.apply_all(dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None, st)
     share.save(st)
-    return f"{'on' if onoff == 'on' else 'off'}: {share.CONTAIN_WORDS[k]}"
+    return f"{'On again' if onoff == 'on' else 'Turned off'}: {share.CONTAIN_WORDS[k]}"
 
 
 def scan():

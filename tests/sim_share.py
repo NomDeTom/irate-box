@@ -169,6 +169,14 @@ check("off: forwarding off first, then the resolver, then the rules (no floor: t
       and share.load()["level"] == "off" and share.load()["forward_was"] is None, order)
 check("  the containment kept for next time", share.load()["contain"] == ALL)
 check("  the doctor says nothing about sharing", security.share_findings() == [])
+ran.clear()
+security.fix("share-contain-dns_hold-off", None)
+f = security.share_findings()
+check("a part turned off while nothing is shared: kept, no rules touched, and the doctor says it will be off, with the way back",
+      share.load()["contain"]["dns_hold"] is False and not any(c[0] == "nft" for c in ran) and len(f) == 1 and f[0]["status"] == "ok"
+      and "will be off" in f[0]["detail"] and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on", f)
+security.fix("share-contain-dns_hold-on", None)
+check("  back on: the doctor says nothing again", security.share_findings() == [] and share.load()["contain"] == ALL)
 
 import shutil
 shutil.rmtree(T, ignore_errors=True)
