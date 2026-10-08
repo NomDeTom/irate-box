@@ -921,6 +921,63 @@ def _logs(rec, on):
     return "logs back in RAM from the next boot, as the image had them"
 
 
+# --- the network floor (stance review §4 item 3): what a guest on the hotspot can reach -----------
+
+def firewall_findings(rec):
+    from irate_box.root import firewall
+    ours = rec.get("firewall")
+    loaded = firewall.loaded()
+    iface = firewall.hotspot_iface()
+    if loaded is None:
+        return [_finding("firewall", "What a guest on the hotspot can reach", "warn",
+                         "nftables is not installed, so nothing limits what a guest on the hotspot can reach: every listener on the box.",
+                         "Update the box (install.sh installs nftables), then switch the floor on here.")]
+    wanted = sorted(ours.get("services", [])) if ours else []
+    if not ours or not loaded:
+        tcp, udp = firewall.ports(firewall.services_here(["mqtt", "sync"]))
+        return [_finding("firewall", "What a guest on the hotspot can reach", "warn" if not ours else "problem",
+                         ("Everything that listens on the box, SSH and the rest: there is no floor." if not ours else
+                          "The floor is switched on, but its rules are not loaded (nft list table inet irate_box).")
+                         + f" The floor would allow, on {iface} alone: TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; "
+                         "and drop the rest. The box's other networks are not touched.",
+                         "A default-drop ruleset on the hotspot's interface, loaded at boot; MQTT and Syncthing open to guests where "
+                         "installed, SSH only if you say so. Undo here.",
+                         [{"choice": "firewall-on", "label": "Switch the floor on",
+                           "confirm": f"Limit what a guest on the hotspot ({iface}) can reach to the hub, its apps, DNS, DHCP, "
+                                      "and MQTT and Syncthing where installed? SSH from the hotspot is closed until you open it here. "
+                                      "Your own network is not affected."}])]
+    tcp, udp = firewall.ports(firewall.services_here(wanted))
+    ssh = "ssh" in wanted
+    return [_finding("firewall", "What a guest on the hotspot can reach", "ok",
+                     f"On {iface}: TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; the rest dropped"
+                     + (" (SSH from the hotspot open, by your choice)." if ssh else "; SSH from the hotspot closed."),
+                     "",
+                     [{"choice": "firewall-ssh-off" if ssh else "firewall-ssh-on",
+                       "label": "Close SSH from the hotspot" if ssh else "Open SSH from the hotspot",
+                       "confirm": None if ssh else "Let guests on the hotspot reach SSH (port 22)? Keys-only logins are strongly advised first (above)."},
+                      {"choice": "firewall-off", "label": "Switch the floor off", "confirm": "Take the floor away? Every listener on the box is then reachable from the hotspot again."}])]
+
+
+def _firewall(rec, what):
+    from irate_box.root import firewall
+    if what == "off":
+        if "firewall" not in rec:
+            raise ValueError("the floor is not on from this page")
+        firewall.remove()
+        rec.pop("firewall")
+        return "the floor is off: every listener is reachable from the hotspot again"
+    cur = rec.get("firewall") or {"services": ["mqtt", "sync"]}
+    services = set(cur.get("services", []))
+    if what == "ssh-on":
+        services.add("ssh")
+    elif what == "ssh-off":
+        services.discard("ssh")
+    firewall.apply(firewall.services_here(sorted(services)))
+    rec["firewall"] = {"services": sorted(services), "date": time.strftime("%Y-%m-%d")}
+    return {"on": "the floor is on: guests on the hotspot reach the hub, its apps, DNS and DHCP" + (", MQTT and Syncthing where installed" if services - {"ssh"} else ""),
+            "ssh-on": "SSH open from the hotspot", "ssh-off": "SSH closed from the hotspot"}[what]
+
+
 def scan():
     rec = load_record()
     found = listeners()
@@ -933,6 +990,7 @@ def scan():
     findings += root_findings(rec)
     findings += apt_findings(rec)
     findings += log_findings(rec)
+    findings += firewall_findings(rec)
     upd, _ = update_findings()
     findings += upd
     return {"at": time.time(), "listeners": found, "findings": findings}
@@ -1100,6 +1158,8 @@ def fix(choice, updates_log):
         msg = _apt(rec, choice.split(":", 1)[1], choice.startswith("apt-signedby:"))
     elif choice in ("logs-card", "logs-undo"):
         msg = _logs(rec, choice == "logs-card")
+    elif choice in ("firewall-on", "firewall-off", "firewall-ssh-on", "firewall-ssh-off"):
+        msg = _firewall(rec, choice[len("firewall-"):])
     elif choice == "security-updates":
         return install_security_updates(updates_log)
     else:
@@ -1121,7 +1181,7 @@ def undo_all():
                   [f"unit-undo:{u}" for u in rec.get("units", {})] + \
                   [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})] + \
                   [f"sudo-undo:{f}" for f in rec.get("sudo", {})] + [f"apt-undo:{k}" for k in rec.get("apt", {})] + \
-                  (["logs-undo"] if "logs" in rec else []):
+                  (["logs-undo"] if "logs" in rec else []) + (["firewall-off"] if "firewall" in rec else []):
         try:
             done.append(fix(choice, None))
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
