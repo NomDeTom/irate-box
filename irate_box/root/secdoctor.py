@@ -2214,9 +2214,29 @@ def audit(progress=None):
             f["about"] = secdoctor_xref.about(f.get("source", "doctor"), f["id"].removeprefix("cis-").removeprefix("lynis-"))
     flat = [f for s in steps for f in s["findings"]]
     version = (_read(CODE / "VERSION") or "unknown").strip()
+    previous = _previous()
     return {"at": time.time(), "version": version, "root": os.geteuid() == 0, "steps": steps, "joint": joint(steps, freshness()),
             "counts": {k: sum(1 for f in flat if f["status"] == k) for k in ("problem", "warn", "ok")},
-            "not_covered": NOT_COVERED}
+            "not_covered": NOT_COVERED, "new": new_since(previous, flat), "previous_at": (previous or {}).get("at")}
+
+
+def _previous():
+    """The last report, so this one can say what changed."""
+    try:
+        rep = json.loads(_read(REPORT, limit=8 << 20) or "null")
+    except ValueError:
+        return None
+    return rep if isinstance(rep, dict) and isinstance(rep.get("steps"), list) else None
+
+
+def new_since(previous, findings):
+    """Ids of findings that are a problem or a warning now and were fine, or not there, in the
+    last report: what changed, for a box nobody audits by hand every day (the doctor runs daily
+    from irate-box-secdoctor.timer; stance review 2026-10-08 §2)."""
+    if not previous:
+        return []
+    was = {f.get("id"): f.get("status", "ok") for s in previous["steps"] for f in s.get("findings", []) if isinstance(f, dict)}
+    return sorted(f["id"] for f in findings if f["status"] != "ok" and was.get(f["id"], "ok") == "ok")
 
 
 def write_report(report, path=REPORT):
@@ -2248,10 +2268,16 @@ def print_report(report, only_bad=False, out=sys.stdout):
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "report"
-    if cmd not in ("report", "summary", "json"):
-        sys.exit("usage: secdoctor.py [report | summary | json]")
+    if cmd not in ("report", "summary", "json", "run"):
+        sys.exit("usage: secdoctor.py [report | summary | json | run]")
     if cmd == "json":
         print(json.dumps(audit(), indent=2))
+    elif cmd == "run":
+        # The timer's: the audit, kept where /admin reads it, one line said.
+        rep = audit()
+        write_report(rep)
+        c = rep["counts"]
+        print(f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)" + (f", {len(rep['new'])} new since the last run" if rep["new"] else ""))
     else:
         rep = audit(progress=(lambda n, t, s: print(f"[{n}/{t}] {s['title']} ...", file=sys.stderr)) if cmd == "report" and sys.stderr.isatty() else None)
         print_report(rep, only_bad=(cmd == "summary"))

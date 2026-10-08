@@ -692,7 +692,7 @@ CADDY_FROM_RELEASE=0
 # on cgit's about pages (scripts/cgit-about.py), ~1 MB. libjs-highlight.js: code highlighted
 # in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base)
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base nftables procps)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -1942,6 +1942,38 @@ RandomizedDelaySec=5min
 WantedBy=timers.target
 EOF
 
+# The security doctor, daily (stance review 2026-10-08 §2): a read-only audit as root, its report
+# where /admin reads it, so a new listener, sudo rule or port forward is seen without anyone
+# pressing the button; the page says what is new since the last run.
+cat >/etc/systemd/system/irate-box-secdoctor.service <<EOF
+[Unit]
+Description=Irate-Box security doctor: a read-only audit, its report for /admin
+
+[Service]
+Type=oneshot
+ExecStart=$CODE/irate-box secdoctor run
+Nice=19
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths=$STATE/control
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectHome=read-only
+EOF
+cat >/etc/systemd/system/irate-box-secdoctor.timer <<EOF
+[Unit]
+Description=Irate-Box security doctor, daily
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=1d
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # --- Unique visitors (menu overhaul M11) -------------------------------------------
 # A helper of its own reads the leases and the neighbour table every minute, hashes each address
 # with a salt made for the day (and one for the week) that it holds only in memory, and writes two
@@ -2081,7 +2113,7 @@ done
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ "$KIWIX" = 1 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
-for u in irate-box-librarian.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.
