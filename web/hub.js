@@ -172,8 +172,15 @@ if (grid || document.querySelector('[data-service]')) {
         people.append(more, how);
       }
       const v = data.visitors;
-      more.textContent = v ? `Seen today \u2248 ${v.day} \u00b7 this week \u2248 ${v.week}` : '';
+      more.textContent = (typeof data.signed_in === 'number' ? `Signed in: ${data.signed_in}` : '')
+        + (v ? `${typeof data.signed_in === 'number' ? ' \u00b7 ' : ''}Seen today \u2248 ${v.day} \u00b7 this week \u2248 ${v.week}` : '');
       people.querySelector('.field-help').hidden = !v;
+      // The names: only of those who said yes, and only to whom the owner allows (M12).
+      let names = document.getElementById('people-names');
+      if (!names) { names = document.createElement('span'); names.id = 'people-names'; names.className = 'people-names'; more.after(names); }
+      const shown = Array.isArray(data.names) ? data.names : null;
+      names.replaceChildren(...(shown || []).map((n) => { const s = document.createElement('span'); s.className = 'info-pill'; s.textContent = n; return s; }));
+      if (shown && data.signed_in > shown.length) names.append(` +${data.signed_in - shown.length} not shown (their choice)`);
     }
 
     if (data.system) {

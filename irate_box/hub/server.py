@@ -606,6 +606,20 @@ _seen = {}
 _seen_lock = threading.Lock()
 
 
+_online_names = {}   # account name -> when last seen (ticks), in memory only (M12)
+
+
+def note_account(name):
+    with _seen_lock:
+        _online_names[name] = CLOCK.ticks()
+
+
+def online_names(now):
+    """The accounts seen in the last ONLINE_WINDOW: every one, whatever they chose to show."""
+    with _seen_lock:
+        return sorted(n for n, t in _online_names.items() if now - t <= ONLINE_WINDOW)
+
+
 def note_client(handler):
     """Record that this address is around. Behind the web server every request arrives from
     loopback, so the forwarded address is what distinguishes one guest from another."""
@@ -664,6 +678,9 @@ DEFAULT_SETTINGS = {
     "report_reasons": ["spam", "unkind", "personal details", "other"],
     "report_threshold": 1,
     "report_hide": False,
+    # Who sees the names of those signed in and around (M12): users, or the admin only. Guests
+    # only ever get the count; and each person decides whether their own name shows at all.
+    "names_to": "users",
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -679,6 +696,8 @@ def valid_setting(key, value):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
+    if key == "names_to":
+        return value in ("users", "admin")
     if key == "report_threshold":
         return type(value) is int and 1 <= value <= 20
     return type(value) is want and (want is not int or value >= 0)
@@ -2213,6 +2232,22 @@ class Handler(BaseHTTPRequestHandler):
         fwd = self.headers.get("X-Forwarded-For", "")
         return fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
 
+    def _hue(self, payload, poster):
+        """The colour a post is written in: the page's choice, or for someone logged in with none, their
+        account's own (M12)."""
+        hue = payload.get("hue")
+        if hue is None and poster and poster[1]:
+            hue = accounts.prefs(poster[0])["hue"]
+        return hue
+
+    def _note_account(self):
+        """A signed-in visitor's name, as around now (M12): in memory only."""
+        token = self._session_token()
+        if token:
+            me = accounts.session(token)
+            if me:
+                note_account(me["name"])
+
     def _account_post(self, payload):
         """/api/account: sign up, log in or out, change a password, set one with a code. A page
         elsewhere can't make these (the header, as /admin's), nor is a password taken over plain
@@ -2247,8 +2282,11 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "code":
                 name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
                 self.send_json(200, {"name": name})
+            elif action == "prefs":
+                # A person's own settings (M12): theirs alone, through their own session.
+                self.send_json(200, {"prefs": accounts.set_prefs(self._session_token(), payload.get("prefs"))})
             else:
-                self.send_json(400, {"error": "action is signup, login, logout, password or code"})
+                self.send_json(400, {"error": "action is signup, login, logout, password, code or prefs"})
         except accounts.Wait as exc:
             self.send_json(429, {"error": str(exc)})
         except accounts.AccountError as exc:
@@ -2349,6 +2387,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         note_client(self)
+        self._note_account()
         refresh_manifests()
         if self._is_captive_probe() or self._off_hub_name():
             self._redirect_to_hub()
@@ -2371,8 +2410,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/account":
-            # The account page's view: what the admin allows, and who this is (accounts.py).
-            self.send_json(200, dict(accounts.settings(), https=self._https(), me=accounts.session(self._session_token())))
+            # The account page's view: what the admin allows, who this is, and their own settings.
+            me = accounts.session(self._session_token())
+            self.send_json(200, dict(accounts.settings(), https=self._https(), me=me,
+                                     prefs=accounts.prefs(me["name"]) if me else None, names_to=settings_snapshot()["names_to"]))
             return
 
         if path == "/admin/accounts":
@@ -2771,6 +2812,13 @@ class Handler(BaseHTTPRequestHandler):
             counted = visitor_counts()
             if counted is not None:
                 payload["visitors"] = counted
+            # Signed in and around (M12): the count for everyone; the names only to whom the owner
+            # allows, and only of those who said yes on their own account page.
+            around = online_names(now)
+            payload["signed_in"] = len(around)
+            me = accounts.session(self._session_token())
+            if me and (settings_snapshot()["names_to"] == "users" or me.get("role") == "admin"):
+                payload["names"] = [n for n in around if accounts.prefs(n)["show_online"]]
             self.send_json(200, payload)
             return
 
@@ -2839,6 +2887,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         note_client(self)
+        self._note_account()
         refresh_manifests()
         path = self.path.split("?")[0]
 
@@ -3270,7 +3319,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = BOARD.create_thread(poster[0],
                                              payload.get("title"),
                                              payload.get("text"),
-                                             payload.get("hue"), poster[1])
+                                             self._hue(payload, poster), poster[1])
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -3284,7 +3333,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 result = BOARD.reply(tid, poster[0], payload.get("text"),
-                                     payload.get("hue"), poster[1])
+                                     self._hue(payload, poster), poster[1])
             except ValueError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
@@ -3399,7 +3448,7 @@ class Handler(BaseHTTPRequestHandler):
         # Optional author colour, stored as a hue only (0-359) -- the client's palette
         # picks saturation and lightness. Absent means "derive it from the name", so a
         # guest who renames re-colours instead of carrying a stale hue around.
-        hue = payload.get("hue")
+        hue = self._hue(payload, poster)
         if hue is not None:
             try:
                 hue = int(hue) % 360

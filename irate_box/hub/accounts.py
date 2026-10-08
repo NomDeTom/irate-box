@@ -185,7 +185,46 @@ def set_settings(signup=None, http=None, keep_admin=False):
 
 
 def _public(acc):
-    return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {"password_set": bool(acc.get("hash"))}
+    return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {
+        "password_set": bool(acc.get("hash")),
+        # The admin sees each person's choice to be shown online, and can't change it (5f).
+        "shown_online": bool((acc.get("prefs") or {}).get("show_online"))}
+
+
+# --- a person's own settings (menu overhaul M12; Tom, 2026-10-08: "the users themselves, upon
+# sign-up, will need to be able to access their own user settings, including online visibility";
+# "locking, visibility of posts by app, font colour"). Theirs alone, through their own session;
+# the safe choice is each default: not shown by name, no lock, no email.
+PREFS = {"show_online": False, "hue": None, "lock_default": False, "email": ""}
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}$")
+
+
+def prefs(name):
+    """One account's settings, with the defaults for any not chosen."""
+    acc = _load()["accounts"].get(str(name or "").lower())
+    return dict(PREFS, **{k: v for k, v in ((acc or {}).get("prefs") or {}).items() if k in PREFS})
+
+
+def set_prefs(token, changes):
+    """Change the settings of the account this session is: only those, only as each allows."""
+    me = session(token)
+    if not me:
+        raise AccountError("log in first")
+    if not isinstance(changes, dict) or not changes or not set(changes) <= set(PREFS):
+        raise AccountError("settings: show_online, hue, lock_default, email")
+    for k in ("show_online", "lock_default"):
+        if k in changes and type(changes[k]) is not bool:
+            raise AccountError(f"{k}: true or false")
+    if "hue" in changes and changes["hue"] is not None and not (type(changes["hue"]) is int and 0 <= changes["hue"] < 360):
+        raise AccountError("hue: 0 to 359")
+    if "email" in changes and not (changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.match(changes["email"]))):
+        raise AccountError("email: an address, or nothing")
+    with _lock:
+        data = _load()
+        acc = data["accounts"][me["name"].lower()]
+        acc["prefs"] = dict(acc.get("prefs") or {}, **changes)
+        _save(data)
+    return prefs(me["name"])
 
 
 def exists(name):

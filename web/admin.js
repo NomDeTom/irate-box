@@ -3586,7 +3586,7 @@ function renderAccounts(d) {
     return el('div', { className: 'admin-item' },
       el('span', { className: `state state-${a.state === 'user' ? 'running' : 'stopped'}`, textContent: state }),
       el('span', { className: 'setting-name', textContent: ` ${a.name}` }),
-      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}.` }),
+      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}; ${a.shown_online ? 'shown by name online' : 'not shown by name'} (their own choice).` }),
       el('span', { className: 'library-buttons' },
         a.state === 'asked' ? act('accept', 'Accept') : null,
         a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
