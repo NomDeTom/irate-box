@@ -2225,6 +2225,8 @@ function fillSeenBlocks() {
 function fillAccessBlocks() {
   if (!lastAccess) return;
   fillSeenBlocks();
+  // The rows in the lists (Apps, the built-in parts, add-ons) carry the same block: redrawn too.
+  for (const a of lastAccess.apps) if (accessNodes.has(a.id)) accessSlot(a.id).replaceChildren(...accessControls(a));
   document.querySelectorAll('.access-block[data-app]').forEach((block) => {
     const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
     const seen = (lastAccess.seen || {})[block.dataset.app];
@@ -2237,20 +2239,8 @@ AL.onBuild(fillAccessBlocks);
 
 // A tile with no switch of its own (a folder, About; F3): anyone may open it, so only who sees
 // its tile is to choose. Hidden, its address still works.
-const SEEN_ONLY = { auto: 'everyone', users: 'those logged in', hidden: 'nobody' };
-function seenControls(app, cur) {
-  const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
-    ...Object.entries(SEEN_ONLY).map(([v, label]) => {
-      const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: label,
-        onclick: () => visibilitySet({ id: app, visible: cur }, v) });
-      b.setAttribute('aria-pressed', String(cur === v));
-      return b;
-    }));
-  seen.setAttribute('role', 'group');
-  seen.setAttribute('aria-label', 'Who sees its tile');
-  return [seen, el('span', { className: 'setting-desc', textContent: cur === 'hidden' ? 'No tile; its address still works.'
-    : 'Open to anyone who reaches it: it has no switch of its own.' })];
-}
+const SEEN_ONLY = { auto: 'everyone', guests: 'everyone', users: 'those logged in', admin: 'the admin', hidden: 'nobody' };
+function seenControls(app, cur) { return [accessBlock(app, null, cur)]; }
 
 // The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
 // "as its access", shows its tile to guests too, locked, leading to sign-in.
@@ -2297,7 +2287,7 @@ function drawTileOrder(openId) {
   const dirty = order.join() !== saved.join() || sizesOf(tilesDraft.size) !== sizesOf(tilesData.state.size);
   const items = order.map((id) => { const t = byId.get(id), w = tileWords(id);
     const sz = (tilesDraft.size || {})[id];
-    return { id, title: `${t.icon} ${t.name}`.trim(), summary: w.summary + (sz ? ` · ${sz}` : ''), badges: w.badges, detail: () => [
+    return { id, title: `${t.own_icon || t.icon} ${t.name}`.trim(), summary: w.summary + (sz ? ` · ${sz}` : ''), badges: w.badges, detail: () => [
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Place' }),
         AW.btn('↑ Earlier', { onclick: () => move(id, -1) }), AW.btn('↓ Later', { onclick: () => move(id, 1) })),
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
@@ -2308,7 +2298,7 @@ function drawTileOrder(openId) {
   box.replaceChildren(AW.shortList(items, { id: 'tile-order-list' }), AW.h('div', { class: 'aw-foot' }, note,
     AW.btn('Discard', { disabled: !dirty, onclick: () => { tilesDraft = { order: saved.slice(), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); } }),
     AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
-      try { tilesData = await postJSON('/admin/tiles', { state: { order, size: tilesDraft.size || {} } }); tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); }
+      try { tilesData = await postJSON('/admin/tiles', { state: { order, size: tilesDraft.size || {}, icon: tilesData.state.icon || {} } }); tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } }; drawTileOrder(); }
       catch (err) { note.textContent = err.message; }
     } })));
   const open = openId && [...box.querySelectorAll('.aw-row')].find((r) => r.dataset.awId === openId);
@@ -2316,32 +2306,93 @@ function drawTileOrder(openId) {
 }
 loadTileOrder();
 
-function accessControls(a) {
-  a = { ...a, visible: a.visible || 'auto' };  // a hub from before M5 says nothing: as its access
-  const group = el('span', { className: 'access-toggle' },
-    ...['public', 'users', 'private', 'off'].filter((mode) => mode !== 'users' || a.users).map((mode) => {
-      const b = el('button', { type: 'button', textContent: ACCESS_LABEL[mode], disabled: !!accessWaiting, onclick: () => accessSet(a, mode) });
-      b.setAttribute('role', 'radio');
-      b.setAttribute('aria-checked', String(a.mode === mode));
-      return b;
-    }));
-  group.setAttribute('role', 'radiogroup');
-  group.setAttribute('aria-label', `Who can open ${a.title}`);
-  const note = accessNote && accessNote.app === a.id
+// Who opens it, who sees it, and its place on the hub, as the mock has it (Tom, 2026-10-08: "a
+// consistent set of 4 chips, and then two buttons for moving it earlier and later"): guests,
+// users, admin, off; guests, users, admin, hidden; ↑ Earlier, ↓ Later. Held until Save, as every
+// setting is; drafts kept per app, so a poll redrawing the page doesn't lose one.
+const OPEN_CHIPS = [['public', 'guests'], ['users', 'users'], ['private', 'admin'], ['off', 'off']];
+const SEEN_CHIPS = [['guests', 'guests'], ['users', 'users'], ['admin', 'admin'], ['hidden', 'hidden']];
+// "As its access" (auto), shown as the chip it amounts to.
+const seenOf = (mode, visible) => (visible && visible !== 'auto' ? visible
+  : { public: 'guests', users: 'users', private: 'admin', off: 'hidden' }[mode] || 'guests');
+const accessDrafts = new Map();  // app id -> { mode, seen, order }
+function tileOrderNow() { return tilesDraft ? tilesDraft.order.slice() : tilesData ? tilesData.tiles.map((x) => x.id) : []; }
+function chipRow(label, opts, cur, set, disabledOf = () => false) {
+  const g = el('div', { className: 'chip-group' }, ...opts.map(([v, word]) => {
+    const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: word, disabled: disabledOf(v), onclick: () => set(v) });
+    b.setAttribute('aria-pressed', String(cur === v));
+    return b;
+  }));
+  g.setAttribute('role', 'group');
+  g.setAttribute('aria-label', label);
+  return el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: label }), g);
+}
+// The block: a (an app with a switch) or, for a tile with none (a folder, About), only who sees it.
+function accessBlock(id, a, seenOnly) {
+  const base = { mode: a ? a.mode : 'public', seen: a ? seenOf(a.mode, a.visible) : seenOf('public', seenOnly), order: null };
+  const d = accessDrafts.get(id) || { ...base };
+  const redraw = () => { accessDrafts.set(id, d); fillAccessBlocks(); };
+  const order = d.order || tileOrderNow();
+  const at = order.indexOf(id);
+  const move = (k) => { const o = order.slice(), n = at + k; if (at < 0 || n < 0 || n >= o.length) return; [o[at], o[n]] = [o[n], o[at]]; d.order = o; redraw(); };
+  const tileOf = tilesData && tilesData.tiles.find((x) => x.id === id);
+  const iconNow = (tileOf && tileOf.own_icon) || '';
+  if (d.icon === iconNow) delete d.icon;
+  const dirty = d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined;
+  const waiting = !!(accessWaiting && accessWaiting.app === id);
+  const note = accessNote && accessNote.app === id
     ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
-  // Who sees its tile, apart from who opens it (M5, checklist 4a): the hub's own, saved at once.
-  const seen = el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Tile shown to:' }),
-    ...Object.entries(SEEN_LABEL).map(([v, label]) => {
-      const b = el('button', { type: 'button', className: 'chip' + (a.visible === v ? ' selected' : ''), textContent: label,
-        disabled: a.mode === 'off', onclick: () => visibilitySet(a, v) });
-      b.setAttribute('aria-pressed', String(a.visible === v));
-      return b;
-    }));
-  seen.setAttribute('role', 'group');
-  seen.setAttribute('aria-label', `Who sees ${a.title}'s tile`);
-  // No note: left out, not passed as null (replaceChildren would show the word "null").
-  return [group, el('span', { className: 'setting-desc', textContent: accessWaiting && accessWaiting.app === a.id ? 'Changing…' : accessDesc(a) }),
-    seen, el('span', { className: 'setting-desc', textContent: seenDesc(a) }), note].filter(Boolean);
+  const save = async () => {
+    const auto = a ? seenOf(d.mode, 'auto') : 'guests';
+    try {
+      if (d.seen !== base.seen) await postJSON('/admin/visibility', { app: id, visible: d.seen === auto ? 'auto' : d.seen });
+      const icons = { ...((tilesData && tilesData.state.icon) || {}) };
+      if (d.icon !== undefined) { if (d.icon) icons[id] = d.icon; else delete icons[id]; }
+      if ((d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined) {
+        tilesData = await postJSON('/admin/tiles', { state: { order: d.order || tileOrderNow(), size: (tilesData && tilesData.state.size) || {}, icon: icons } });
+        tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
+      }
+      accessDrafts.delete(id);
+      if (a && d.mode !== base.mode) { accessSet(a, d.mode); return; }  // root's, answered by poll
+      loadAccess();
+    } catch (err) { accessNote = { app: id, text: err.message, ok: false }; loadAccess(); }
+  };
+  return el('div', { className: 'access-set' },
+    a ? chipRow('Who can open it', OPEN_CHIPS, d.mode, (v) => { d.mode = v; if (v === 'off') d.seen = 'hidden'; redraw(); },
+      (v) => waiting || (v === 'users' && !a.users)) : null,
+    chipRow('Who sees the tile', SEEN_CHIPS, d.seen, (v) => { d.seen = v; redraw(); }, () => waiting || (a && d.mode === 'off')),
+    at >= 0 ? el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Order on the hub' }),
+      el('button', { type: 'button', className: 'action-btn', textContent: '↑ Earlier', disabled: at === 0, onclick: () => move(-1) }),
+      el('button', { type: 'button', className: 'action-btn', textContent: '↓ Later', disabled: at === order.length - 1, onclick: () => move(1) }),
+      el('span', { className: 'setting-desc', textContent: `${at + 1} of ${order.length}` })) : null,
+    tileOf ? iconField(d, tileOf, iconNow, redraw) : null,
+    el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
+      : seenWords(d.seen, 'public') }),
+    el('details', { className: 'field-help' }, el('summary', { textContent: 'Seen but not opened?' }),
+      el('p', { textContent: 'A visitor who sees a tile they can\'t open gets a lock on it, and the sign-in page when they open it: they can see what is on the box (checklist 4a). Hidden, its address still works for whoever may open it.' })),
+    el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
+      el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
+      el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
+    note);
+}
+const SEEN_WORDS = { guests: 'Its tile shows to everyone', users: 'Its tile shows to those signed in', admin: 'Its tile shows only to an admin account signed in', hidden: 'No tile' };
+function seenWords(seen, mode) {
+  if (mode === 'off') return 'No tile while it is off.';
+  return `${SEEN_WORDS[seen]}${seen !== 'hidden' && (mode === 'users' && seen === 'guests' || mode === 'private' && seen !== 'admin') ? ', with a lock for those who can\'t open it' : ''}.`;
+}
+function accessControls(a) { return [accessBlock(a.id, a, null)]; }
+// The tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits drawn as text;
+// blank goes back to the app's own. Checked here as the hub checks it (server.valid_icon).
+const ICON_OK = (s) => /^[A-Za-z0-9]{1,4}$/.test(s) || (s.length > 0 && [...s].length <= 16 && [...s].every((c) => c.codePointAt(0) > 0x7f));
+function iconField(d, tile, iconNow, redraw) {
+  const val = d.icon !== undefined ? d.icon : iconNow;
+  const input = el('input', { type: 'text', value: val, placeholder: tile.icon, maxLength: 16, size: 8, spellcheck: false });
+  input.setAttribute('aria-label', 'Tile icon: emoji, or up to four letters and digits');
+  const bad = val && !ICON_OK(val);
+  const hint = el('span', { className: 'setting-desc' + (bad ? ' bad' : ''), textContent: bad ? 'Emoji, or up to four letters and digits (no spaces).'
+    : val ? 'Its own; blank goes back to the app\'s.' : `The app's own: ${tile.icon}` });
+  input.addEventListener('change', () => { d.icon = input.value.trim(); redraw(); });
+  return el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
 }
 
 async function loadAccess() {

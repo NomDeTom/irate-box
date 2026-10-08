@@ -50,6 +50,17 @@ try:
     _, home = go("GET", "/")
     i = home.find('<span class="name">Excalidraw</span>')
     check("an app's tile large", st == 200 and 'class="service-card large" data-size="large"' in home[home.rfind("<a ", 0, i):i], home[home.rfind("<a ", 0, i):i])
+    # A tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits drawn as text.
+    st, body = go("POST", "/admin/tiles", {"state": {"order": [], "size": {}, "icon": {"draw": "DRAW", "about": "🦀"}}})
+    _, home = go("GET", "/")
+    i = home.find('<span class="name">Excalidraw</span>')
+    check("an icon of letters: drawn as text", st == 200 and '<span class="icon icon-text">DRAW</span>' in home[home.rfind("<a ", 0, i):i], home[home.rfind("<a ", 0, i):i])
+    i = home.find('<span class="name">About</span>')
+    check("an icon of emoji: in place of the manifest's", '<span class="icon">🦀</span>' in home[home.rfind("<a ", 0, i):i])
+    check("/admin/tiles says each tile's own", {t["id"]: t["own_icon"] for t in json.loads(body)["tiles"]}.get("draw") == "DRAW")
+    for bad in ({"icon": {"draw": "DRAWS"}}, {"icon": {"draw": "a b"}}, {"icon": {"draw": "<b>"}}, {"icon": {"draw": "x🦀"}}, {"icon": {"draw": ""}}, {"icon": {"nothing": "AB"}}):
+        st, _ = go("POST", "/admin/tiles", {"state": bad})
+        check(f"icon refused: {str(bad)[:40]}", st == 400, st)
     for bad in ({"size": {"draw": "huge"}}, {"size": {"nothing": "wide"}}, {"size": ["draw"]}):
         st, _ = go("POST", "/admin/tiles", {"state": bad})
         check(f"apps row refused: {str(bad)[:40]}", st == 400, st)

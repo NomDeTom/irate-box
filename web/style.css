@@ -1339,3 +1339,11 @@ html:has(> body.admin) { background: var(--bg); }
 .attention h3 { margin: 0.2rem 0 0.4rem; font-size: 0.95rem; }
 .attention .attention-list { margin: 0; }
 .attention .attention-list a { font-weight: 600; }
+
+/* A tile only an admin sees (Tom, 2026-10-08: "obvious as special to the admin user"). */
+.service-card.admin-only { border-style: dashed; border-color: var(--accent); }
+.tile-pill.admin-pill { display: inline-block; margin-top: 0.2rem; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600;
+  color: var(--accent-ink); background: var(--accent); }
+/* A tile's own icon of letters and digits (up to four): a word, not an emoji. */
+.service-card .icon.icon-text { font-weight: 800; letter-spacing: 0.04em; font-size: 1.35rem; line-height: 1.6rem; }
+.service-grid .service-card.large .icon.icon-text { font-size: 2.4rem; line-height: 3rem; }

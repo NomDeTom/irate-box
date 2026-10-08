@@ -254,7 +254,15 @@ WIDGET_HTML = {
 # draws, not the web server's gates. auto: as its access (public: everyone; users: those logged
 # in; private or off: nobody). An app that is off is never shown, whatever is chosen here.
 VISIBILITY_FILE = STATE_DIR / "visibility.json"
-VISIBLE = ("auto", "guests", "users", "hidden")
+# admin: only to an admin account signed in on the hub (the mock's four levels, guests, users,
+# admin and hidden; Tom, 2026-10-08: "a consistent set of 4 chips"). signed_in, in what follows,
+# is the visitor's level: False (a guest), True (an account) or "admin" (an admin account).
+VISIBLE = ("auto", "guests", "users", "admin", "hidden")
+
+
+def _unseen(v, signed_in):
+    """Is a tile at visibility v hidden from this visitor?"""
+    return v == "hidden" or (v == "users" and not signed_in) or (v == "admin" and signed_in != "admin")
 
 
 def visibility():
@@ -284,8 +292,7 @@ PAGE_APPS = {"shoutbox": "shout", "board": "board"}
 
 
 def page_app_hidden(i, signed_in):
-    v = visibility().get(i, "auto")
-    return v == "hidden" or (v == "users" and not signed_in)
+    return _unseen(visibility().get(i, "auto"), signed_in)
 
 
 def hidden_apps(signed_in=False):
@@ -298,13 +305,10 @@ def hidden_apps(signed_in=False):
     out = set()
     for i in _switched():
         mode, v = access.mode_of(state, i), vis.get(i, "auto")
-        if mode == "off" or v == "hidden":
+        if mode == "off" or (v != "auto" and _unseen(v, signed_in)):
             out.add(i)
-        elif v == "users":
-            if not signed_in:
-                out.add(i)
         elif v == "auto" and mode != "public" and not (signed_in and mode == "users") \
-                and not (mode == "users" and offer):
+                and not (mode == "users" and offer) and not (mode == "private" and signed_in == "admin"):
             out.add(i)
     return out
 
@@ -324,10 +328,20 @@ def hidden_tiles(signed_in=False):
     vis = visibility()
     out = set(hidden_apps(signed_in))
     for i in seen_only():
-        v = vis.get(i, "auto")
-        if v == "hidden" or (v == "users" and not signed_in):
+        if _unseen(vis.get(i, "auto"), signed_in):
             out.add(i)
     return out
+
+
+def admin_only_tiles():
+    """The tiles only an admin sees: shown to the admin, by choice or (as its access) for a private
+    app, and not switched off."""
+    state, vis, out = access.read(ACCESS_STATE), visibility(), set()
+    for i in _switched():
+        mode, v = access.mode_of(state, i), vis.get(i, "auto")
+        if mode != "off" and (v == "admin" or (v == "auto" and mode == "private")):
+            out.add(i)
+    return out | {i for i in seen_only() if vis.get(i) == "admin"}
 
 
 def locked_apps(signed_in=False):
@@ -338,11 +352,12 @@ def locked_apps(signed_in=False):
             or (access.mode_of(state, i) == "users" and not signed_in)}
 
 
-def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=frozenset()):
+def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=frozenset(), admin_only=frozenset()):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
     list page left with nothing on it. factory_tile: the owner's choice to show the factory's.
-    locked: apps shown to this visitor that ask for a login at their door (M5)."""
+    locked: apps shown to this visitor that ask for a login at their door (M5). admin_only: tiles
+    only an admin sees, marked so (Tom, 2026-10-08: "obvious as special to the admin user")."""
     out = []
     ms = MANIFESTS
     st = status_tiles_state() if row == "box" else None
@@ -350,8 +365,10 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         pos = {i: n for n, i in enumerate(st["order"])}
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
         hidden = set(hidden) | set(st["hidden"])
-    elif row == "apps":
+    own_icons = {}
+    if row == "apps":
         st = tiles_state()
+        own_icons = st["icon"]
         pos = {i: n for n, i in enumerate(st["order"])}
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
     for m in ms:
@@ -367,7 +384,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
             w = WIDGET_HTML[tile["widget"]]
             out.append(w.replace('class="service-card ', f'class="service-card {size} ', 1).replace('<div ', f'<div data-size="{size}" ', 1) if size else w)
             continue
-        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" " + size if size else ""}"']
+        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"']
         if size:
             attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
@@ -379,10 +396,11 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         if tile.get("new_tab"):
             attrs.append('target="_blank"')
         out.append(f'      <a {" ".join(attrs)}>\n'
-                   f'        <span class="icon">{html.escape(tile["icon"])}</span>\n'
-                   f'        <span class="name">{html.escape(tile["name"])}</span>\n'
+                   + icon_html(own_icons.get(m["id"]) or tile["icon"])
+                   + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
                    f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
                    + ('        <span class="lock">🔒 sign in to open</span>\n' if m["id"] in locked else '')
+                   + ('        <span class="tile-pill admin-pill" title="Only an admin sees this tile">admin only</span>\n' if m["id"] in admin_only else '')
                    + f'      </a>')
     return "\n".join(out)
 
@@ -539,13 +557,26 @@ def status_tiles_snapshot():
 TILES_FILE = STATE_DIR / "tiles.json"
 
 
+# A tile's own icon (Tom, 2026-10-08: "change the emoji(s) that are used on the tile, and swap them
+# with up to 4 alphanumerics"): emoji, or up to four letters and digits drawn as text.
+ICON_TEXT = re.compile(r"^[A-Za-z0-9]{1,4}$")
+
+
+def valid_icon(s):
+    """Up to four letters and digits; or emoji (up to 16 code points, none of them ASCII, so no
+    letters, markup or spaces among them)."""
+    return isinstance(s, str) and (bool(ICON_TEXT.match(s)) or (0 < len(s) <= 16 and all(ord(c) > 0x7F for c in s)))
+
+
 def tiles_state():
     try:
         data = json.loads(TILES_FILE.read_text())
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
-    return {"order": [x for x in data.get("order", []) if isinstance(x, str)][:100], "size": _sizes(data)}
+    icon = data.get("icon", {})
+    icon = {k: v for k, v in icon.items() if isinstance(k, str) and valid_icon(v)} if isinstance(icon, dict) else {}
+    return {"order": [x for x in data.get("order", []) if isinstance(x, str)][:100], "size": _sizes(data), "icon": icon}
 
 
 def app_tiles():
@@ -558,7 +589,14 @@ def tiles_snapshot():
     st = tiles_state()
     pos = {i: n for n, i in enumerate(st["order"])}
     tiles = sorted(app_tiles(), key=lambda t: pos.get(t[0], len(pos)))
-    return {"tiles": [{"id": i, "name": n, "icon": c, "size": st["size"].get(i, "single")} for i, n, c in tiles], "state": st}
+    return {"tiles": [{"id": i, "name": n, "icon": c, "own_icon": st["icon"].get(i), "size": st["size"].get(i, "single")} for i, n, c in tiles],
+            "state": st}
+
+
+def icon_html(icon):
+    """A tile's icon: emoji as they are, letters and digits as a word of their own (F-icons)."""
+    cls = "icon icon-text" if ICON_TEXT.match(icon) else "icon"
+    return f'        <span class="{cls}">{html.escape(icon)}</span>\n'
 
 
 TILES_MARK = "<!-- apps.d tiles -->"
@@ -597,12 +635,13 @@ def home_page(signed_in=False):
         text = path.read_text(encoding="utf-8")
         hidden = hidden_tiles(signed_in)
         locked = locked_apps(signed_in)
+        admin_only = admin_only_tiles() if signed_in == "admin" else set()
         # A tab its visitor isn't to see (M9): its link and its pane left out of the page.
         for app, tab in PAGE_APPS.items():
             if page_app_hidden(app, signed_in):
                 text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
-        text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
+        text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         text = text.replace(ACCOUNT_MARK, _account_nav(signed_in))
         cached["body"] = text.encode()
         cached["mtime"] = mtime
@@ -2355,6 +2394,11 @@ class Handler(BaseHTTPRequestHandler):
     def _signed_in(self):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
 
+    def _viewer(self):
+        """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account)."""
+        me = accounts.session(self._session_token()) if self._session_token() else None
+        return False if me is None else "admin" if me.get("role") == "admin" else True
+
     def _session_token(self):
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
@@ -2830,7 +2874,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/menus.json":
             # The list pages, for the hub bar's ↑ (app.js): {id: {title, href}}, public ones only.
-            hidden = hidden_apps(self._signed_in())
+            hidden = hidden_apps(self._viewer())
             self.send_json(200, {i: {"title": mm["menu"]["title"], "href": mm["tile"]["href"]}
                                  for i, mm in manifests.menus(MANIFESTS).items() if i not in hidden})
             return
@@ -2994,8 +3038,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, dict(result, posting=self._posting_view("board"), report_reasons=settings_snapshot()["report_reasons"]))
             return
 
-        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps(self._signed_in())):
-            body = menu_page(MENU_PAGES[path], self._signed_in())
+        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps(self._viewer())):
+            body = menu_page(MENU_PAGES[path], self._viewer())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
@@ -3004,7 +3048,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/", "/index.html"):
-            body = home_page(self._signed_in())
+            body = home_page(self._viewer())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
@@ -3334,13 +3378,16 @@ class Handler(BaseHTTPRequestHandler):
             # The apps row's order (F3): a list of its tiles' ids, the rest after them as before.
             data, ids = payload.get("state"), {i for i, _, _ in app_tiles()}
             size = data.get("size", {}) if isinstance(data, dict) else None
+            icon = data.get("icon", {}) if isinstance(data, dict) else None
             if not isinstance(data, dict) or not isinstance(data.get("order", []), list) or not set(data.get("order", [])) <= ids \
-                    or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES):
-                self.send_json(400, {"error": "state: order, a list of the apps row's tiles; size, wide or large by tile"})
+                    or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES) \
+                    or not isinstance(icon, dict) or not set(icon) <= ids or not all(valid_icon(v) for v in icon.values()):
+                self.send_json(400, {"error": "state: order, a list of the apps row's tiles; size, wide or large by tile; "
+                                              "icon, emoji or up to four letters and digits by tile"})
                 return
             tmp = TILES_FILE.parent / (TILES_FILE.name + ".tmp")
             STATE_DIR.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps({"order": list(dict.fromkeys(data.get("order", []))), "size": size}))
+            tmp.write_text(json.dumps({"order": list(dict.fromkeys(data.get("order", []))), "size": size, "icon": icon}))
             os.replace(tmp, TILES_FILE)
             self.send_json(200, tiles_snapshot())
             return
