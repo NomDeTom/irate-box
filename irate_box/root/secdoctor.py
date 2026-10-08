@@ -1955,6 +1955,99 @@ def step_mqtt(ctx):
     return out
 
 
+# --- reached from the internet (Tom, 2026-10-08) --------------------------------------------------
+# The box is for its own networks. Its web pages are seen from the hub's own note of public visitors
+# (hub/reach.py; the web servers keep no access logs), SSH from sshd's log, and IPv6 from the box's
+# own addresses: a global one is reachable wherever the router's IPv6 firewall lets traffic in.
+REACH_DAYS = 7
+SSH_FROM = re.compile(r"\b(?:from|by)(?: (?:invalid |authenticating )?user \S+)? ([0-9A-Fa-f:.]+) port \d+")
+
+
+def _public(addr):
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_global
+
+
+def _ssh_public(days=REACH_DAYS):
+    """{address: (accepted, other)} from sshd's log, public addresses only; None if unreadable."""
+    try:
+        r = subprocess.run(("journalctl", "-q", "--no-pager", "-o", "cat", "--since", f"-{days}d",
+                            "-u", "ssh.service", "-u", "sshd.service", "-u", "ssh.socket"),
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    seen = {}
+    for line in r.stdout.splitlines():
+        m = SSH_FROM.search(line)
+        if m and _public(m.group(1)):
+            ok, other = seen.get(m.group(1), (0, 0))
+            seen[m.group(1)] = (ok + 1, other) if line.startswith("Accepted ") else (ok, other + 1)
+    return seen
+
+
+def _global_v6():
+    try:
+        r = subprocess.run(("ip", "-6", "-o", "addr", "show", "scope", "global"), capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    out = []
+    for line in r.stdout.splitlines():
+        f = line.split()
+        if len(f) > 3 and f[2] == "inet6" and "deprecated" not in f and _public(f[3].split("/")[0]):
+            out.append(f"{f[3].split('/')[0]} ({f[1]})")
+    return out
+
+
+def step_internet(ctx):
+    out, now = [], time.time()
+    try:
+        nets = json.loads(_read(STATE / "public-visits.json") or "{}").get("nets", {})
+        nets = {n: e for n, e in nets.items() if isinstance(e, dict) and isinstance(e.get("last"), (int, float))
+                and now - e["last"] < REACH_DAYS * 86400}
+    except (ValueError, AttributeError):
+        nets = {}
+    if nets:
+        recent = sorted(nets.items(), key=lambda kv: kv[1]["last"], reverse=True)
+        out.append(F("reach-web", "Web pages reached from the internet", "problem",
+                     f"In the last {REACH_DAYS} days the hub answered requests from public addresses: "
+                     + _list(f"{n} ({e.get('count', '?')}, last {time.strftime('%Y-%m-%d %H:%M', time.localtime(e['last']))})" for n, e in recent)
+                     + ". The box's pages and its login forms are open to the internet.",
+                     "If you didn't mean that, take the port forward off your router (or its DMZ host), and use Tailscale "
+                     "(/admin → Network) to reach the box from afar."))
+    else:
+        out.append(F("reach-web", "Web pages reached from the internet", "ok",
+                     f"No request from a public address in the last {REACH_DAYS} days (as the hub sees them: "
+                     "the pages it serves, not static files alone)."))
+    ssh = _ssh_public()
+    if ssh is None:
+        out.append(_cannot("reach-ssh", "SSH reached from the internet", "sshd's log could not be read"))
+    elif ssh:
+        accepted = sum(a for a, _ in ssh.values())
+        out.append(F("reach-ssh", "SSH reached from the internet", "problem",
+                     f"In the last {REACH_DAYS} days sshd heard from {len(ssh)} public address{'es' if len(ssh) != 1 else ''} "
+                     f"({_list(sorted(ssh))})" + (f", {accepted} login{'s' if accepted != 1 else ''} accepted" if accepted else ", none let in")
+                     + ". Anyone can try passwords on it.",
+                     "Take the router's forward to port 22 off; with it on, turn SSH password logins off (the Security page)."))
+    else:
+        out.append(F("reach-ssh", "SSH reached from the internet", "ok",
+                     f"sshd heard from no public address in the last {REACH_DAYS} days."))
+    v6 = _global_v6()
+    out.append(F("reach-ipv6", "A public IPv6 address", "warn" if v6 else "ok",
+                 (f"This box has {_list(v6)}: anything listening on all its addresses can be reached from the internet "
+                  "wherever the router's IPv6 firewall lets traffic in. Most home routers don't, by default.")
+                 if v6 else "This box has no public IPv6 address.",
+                 "Check your router's IPv6 firewall blocks incoming connections." if v6 else ""))
+    return out
+
+
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
@@ -1977,6 +2070,7 @@ STEPS = [
     ("imports", "Imported scans (OpenVAS, nmap)", "", step_imports),
     ("tls", "HTTPS: the certificate and the front", "S2", step_tls),
     ("mqtt", "The MQTT broker and the mesh decoder", "S9", step_mqtt),
+    ("internet", "Reached from the internet", "", step_internet),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
