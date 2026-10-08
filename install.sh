@@ -1962,7 +1962,7 @@ ProtectHome=read-only
 EOF
 # The network floor (root/firewall.py): loads /etc/hub/firewall.nft when the Security page has
 # written one, nothing otherwise; the page enables it, uninstall.sh takes it away.
-python3 -c "from irate_box.root import firewall; print(firewall.unit_text(\"$CODE\"), end=\"\")" >/etc/systemd/system/irate-box-firewall.service
+PYTHONPATH="$CODE" python3 -c "from irate_box.root import firewall; print(firewall.unit_text(\"$CODE\"), end=\"\")" >/etc/systemd/system/irate-box-firewall.service
 
 cat >/etc/systemd/system/irate-box-secdoctor.timer <<EOF
 [Unit]
