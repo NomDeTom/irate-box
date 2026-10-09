@@ -130,8 +130,8 @@ check("sshd options: a file in sshd_config.d, checked by sshd -t before the relo
 check("a package to install, or to remove", info["install_auditd"]["cmd"] == "sudo apt-get install auditd" and info["disable_telnet_client"]["cmd"] == "sudo apt-get purge telnet")
 check("never the removal of what the hub uses (dnsmasq): said instead", "cmd" not in info["dnsmasq_is_disabled"] and "The hub uses dnsmasq" in info["dnsmasq_is_disabled"]["say"])
 check("a file's owner and mode", info["crontab_perm_ownership"]["cmd"] == "sudo chown root:root /etc/crontab && sudo chmod 600 /etc/crontab")
-check("another file's settings in words, not its prerequisite package", info["set_password_exp_days"] == {"what": "Set password expiration days.", "say": "In /etc/login.defs, set: PASS_MAX_DAYS=90."},
-      info["set_password_exp_days"])
+# (Not printed on failure: CodeQL takes anything named for a password as a secret logged.)
+check("another file's settings in words, not its prerequisite package", info["set_password_exp_days"] == {"what": "Set password expiration days.", "say": "In /etc/login.defs, set: PASS_MAX_DAYS=90."})
 check("a value built from a variable: no command", info["logfile_sudo"] == {"what": "Ensure sudo log files exists."}, info["logfile_sudo"])
 check("an unknown or odd check name: nothing", da.cis_check_info(src0, "9.9_nothing_here") == {} and da.cis_check_info(src0, "9.9_../../etc/passwd") == {})
 withinfo = {f["id"]: f for f in da.cis_findings([("KO", "3.2.2_disable_send_packet_redirects", ["net.ipv4.conf.all.send_redirects was not set to 0"])], {},
