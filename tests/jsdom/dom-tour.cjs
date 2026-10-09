@@ -90,6 +90,18 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   click(d.querySelector('#backup a[download]'));
   await wait();
   check('downloading a backup is the backup step done', posted.some((b) => (b.setup_decided || []).includes('backup')) && /done/.test(d.querySelector('#setup-steps [data-step="backup"]').textContent));
+  check('the global override of "seen but not opened": offered, Per app by default',
+    /When seen but not opened, for every app/.test(d.getElementById('sign-in-offer-box').textContent) && /Per app/.test(d.getElementById('sign-in-offer-box').textContent));
+  // Muted: still listed, greyed, but not counted as left to do (Tom, 2026-10-09).
+  const before = T.left();
+  const row = d.querySelector('#setup-steps [data-step="cockpit"]');
+  [...row.querySelectorAll('button.mute-step')][0].click();
+  await wait();
+  check('mute: asked of the hub, still listed with a muted word, and no longer counted', posted.some((b) => (b.setup_muted || []).includes('cockpit'))
+    && /muted/.test(d.querySelector('#setup-steps [data-step="cockpit"]').textContent) && T.left() === before - 1, `${before} -> ${T.left()}`);
+  [...d.querySelector('#setup-steps [data-step="cockpit"]').querySelectorAll('button.mute-step')][0].click();
+  await wait();
+  check('  Unmute counts it again', T.left() === before);
   check('no page errors', !errors.length, errors.join('; '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

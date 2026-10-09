@@ -325,7 +325,15 @@ function renderLibrary(snap) {
   if (libWasBusy && !busy) loadBooks();
   libWasBusy = busy;
   libBusy = busy;
-  document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
+  document.getElementById('library-adapt').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted: GitHub was asked what it allows.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.getElementById('library-adapt-off').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
   document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
@@ -342,6 +350,13 @@ function renderLibrary(snap) {
   lib.tokenState.textContent = (snap.token_set ? 'A token is set.' : 'No token is set.')
     + (gh.limit && gh.reset * 1000 > Date.now() ? ` GitHub: ${gh.remaining} of ${gh.limit} requests left this hour (until ${resets})`
       + (gh.remaining < 10 ? '; scheduled checks wait for the next hour.' : '.') : '');
+
+  const pc = snap.pace || {};
+  const paceEl = document.getElementById('library-pace-state');
+  if (paceEl) paceEl.textContent = pc.budget
+    ? `Adapted: a budget of ${pc.budget} requests an hour (GitHub allows ${pc.limit}), ${pc.left} left this hour${pc.backed_off ? '; it has backed off after refusals' : ''}.`
+    : 'Not adapted: the librarian asks as it likes, and stops only when GitHub says it is nearly out.';
+  document.getElementById('library-adapt-off').hidden = !pc.budget;
 
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.
@@ -663,29 +678,33 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
-// The services' uptime (step 35): a row per service, the last 72 hours by hour and 72 days by
-// day (githubstatus.com's format), from the hub's five-minute samples (svchistory.py); a dot
-// where it started (a reboot starts them all).
+// The services' uptime (step 35): in each service's own row, a thin strip of the last 72 hours by
+// hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
+// (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
+// and each service's week in words (Tom, 2026-10-09: put the heatmap with the service).
+function serviceStrips(s, u) {
+  const rec = u && s.unit && (u.units || {})[s.unit];
+  if (!rec) return el('span', { className: 'setting-desc', textContent: '—' });
+  const dayLabel = (back) => u.month_days[71 - back].label;
+  return el('div', { className: 'svc-strips' },
+    Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 hours by hour`, cols: u.hour_cols,
+      rows: [{ label: s.name, cells: rec.hours, where: (i) => `${s.name}, ${u.hour_full[i]}` }] }),
+    Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 days by day`, cols: rec.month,
+      rows: [{ label: s.name, cells: rec.month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` }] }));
+}
 function renderServiceUptime(services, u) {
   const body = document.getElementById('svc-uptime-body');
   const units = (u && u.units) || {};
   const mine = services.filter((s) => s.unit && units[s.unit]);
   if (!mine.length) {
-    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing recorded yet: the hub looks at every service every five minutes, '
+    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Uptime: nothing recorded yet. The hub looks at every service every five minutes, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return;
   }
   const said = (s) => { const sm = units[s.unit].summary;
     return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
-  const dayLabel = (back) => u.month_days[71 - back].label;
   body.replaceChildren(
     el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
-    el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
-    Heatmap.grid({ caption: 'Each service, the last 72 hours by hour', cols: u.hour_cols,
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].hours, where: (i) => `${s.name}, ${u.hour_full[i]}` })) }),
-    el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
-    Heatmap.grid({ caption: 'Each service, the last 72 days by day', cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : dayLabel(71 - i))),
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` })) }),
     Heatmap.legend(),
     el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
 }
@@ -707,11 +726,12 @@ function renderBox(data) {
         : op === 'enable' ? !s.enabled
           : op === 'disable' ? s.enabled : true));
     return el('tr', {},
-      el('td', {}, el('span', { className: 'setting-name', textContent: s.name }),
+      el('td', { className: 'svc-name' }, el('span', { className: 'setting-name', textContent: s.name }),
         el('span', { className: 'setting-desc', textContent: s.unit || s.note || s.path || '' }),
         s.why ? el('span', { className: 'setting-desc bad', textContent: s.why }) : null),
       el('td', {}, el('span', { className: `state state-${s.state}`, textContent: STATE_LABEL[s.state] || s.state })),
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
+      el('td', {}, serviceStrips(s, data.service_uptime)),
       el('td', {}, el('span', { className: 'library-buttons' },
         ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op)))))),
     );
@@ -760,9 +780,13 @@ function renderModeration(data) {
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
   renderReports(data, del);
+  // What was reported, marked where the content is listed too, so it is all in one place (Tom, 2026-10-09).
+  const reportedN = new Map((data.queue || []).map((r) => [r.key, r.count]));
+  const flag = (key) => (reportedN.has(key)
+    ? AW.pill(`reported ×${reportedN.get(key)}`, 'bad') : null);
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
-      el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)}`),
+      el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)} `, flag(`shoutbox:${m.created}:${String(m.name).slice(0, 40)}`)),
       el('span', { className: 'admin-text', textContent: m.text }),
       actionButton('Delete', del({ action: 'delete_message', created: m.created, name: m.name }), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No messages.' })]));
@@ -779,9 +803,10 @@ function renderModeration(data) {
   document.getElementById('mod-threads').replaceChildren(...(threads.length ? threads.map((t) =>
     el('details', { className: 'admin-item' },
       el('summary', {}, el('strong', { textContent: t.title }),
-        ` · ${t.posts.length} post${t.posts.length === 1 ? '' : 's'} · active ${ago(now - t.active)}`),
+        ` · ${t.posts.length} post${t.posts.length === 1 ? '' : 's'} · active ${ago(now - t.active)} `,
+        t.posts.some((p) => reportedN.has(`board:${t.id}:${p.created}`)) ? AW.pill('has reported posts', 'bad') : null),
       ...t.posts.map((p, i) => el('div', { className: 'admin-subitem' },
-        el('span', {}, el('strong', { textContent: p.author }), ` · ${ago(now - p.created)}${i === 0 ? ' · opening post' : ''}`),
+        el('span', {}, el('strong', { textContent: p.author }), ` · ${ago(now - p.created)}${i === 0 ? ' · opening post' : ''} `, flag(`board:${t.id}:${p.created}`)),
         el('span', { className: 'admin-text', textContent: p.text }),
         actionButton(i === 0 ? 'Delete thread' : 'Delete post',
           del(i === 0 ? { action: 'delete_thread', id: t.id } : { action: 'delete_post', id: t.id, index: i },
@@ -2068,7 +2093,7 @@ function renderAp(run) {
   apEl.state.textContent = run.up
     ? `On${where(p)}. ${p.text}${run.confirmed === false ? ' Your WiFi link is off: press Keep it from the hotspot, or it comes back by itself.' : ''}`
     : p ? `Off. Switched on, it would run${where(p)}. ${p.text}${p.to_try ? ' Whether it can keep a channel of its own here is still to be tried.' : ''}${p.why ? ` (${p.why})` : ''}`
-      : 'Off. The radios have not been looked at yet: Look again, above.';
+      : 'Off. The radios have not been looked at yet: Refresh, above.';
   if (run.note) say(run.note, true, apEl.note);
   const radio = apEl.radio.value;
   apFill(apEl.radio, (run.radios || []).map((r) => r.iface), (run.owner || {}).radio || radio);
@@ -2175,13 +2200,15 @@ function renderHotspot(data) {
 }
 
 // Guests' onward internet (root/share.py; Tom, 2026-10-08: "give options, and a sliding scale"):
-// five stops from nobody to everyone, the safest the default; held until Save.
+// five stops from nobody to everyone, the safest the default; held until Save. "The sheet" is the
+// page a phone is shown when it joins the hotspot (Tom, 2026-10-09: "what does after the sheet mean?"),
+// so the labels now say "welcome page" and the lines say what that is.
 const GUEST_NET = [
   ['off', 'Off', 'Guests reach the box and nothing else.'],
   ['users-web', 'Users, web only', 'A device signed in to an account on the hub reaches the web (ports 80 and 443).'],
-  ['sheet-web', 'After the sheet, web only', 'Any device reaches the web once it has tapped through the sign-in sheet.'],
-  ['sheet-all', 'After the sheet, everything', 'Any device reaches everything once through the sheet.'],
-  ['open', 'Everyone, no sheet', 'Every device on the hotspot reaches everything. The sheet stops appearing.'],
+  ['sheet-web', 'After the welcome page, web only', 'A phone that joins the hotspot is shown the box\'s welcome page; any device that taps through it reaches the web.'],
+  ['sheet-all', 'After the welcome page, everything', 'Any device reaches everything once it has tapped through the welcome page.'],
+  ['open', 'Everyone, no welcome page', 'Every device on the hotspot reaches everything, straight away. The welcome page stops appearing.'],
 ];
 let guestNetSaved = 'off', guestNetDraft = null, guestNetWaiting = null;
 function drawGuestNet(level, results) {
@@ -2417,15 +2444,20 @@ function seenControls(app, cur) { return [accessBlock(app, null, cur)]; }
 
 // The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
 // "as its access", shows its tile to guests too, locked, leading to sign-in.
+let lockAll = '';   // the box-wide way a seen-but-unopenable tile behaves ('' = each app's own)
 async function loadSignInOffer() {
   const box = document.getElementById('sign-in-offer-box');
   if (!box) return;
   let st;
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  lockAll = st.locked_all || '';
   box.replaceChildren(AW.settings([{ key: 'sign_in_offer', label: 'Show guests the tiles of apps for users, locked, with sign-in', kind: 'toggle',
     value: !!st.sign_in_offer, decision: 'sign-in-offer',
-    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' }],
-  { save: async (changed) => { await postJSON('/admin/settings', changed); loadAccess(); } }));
+    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' },
+  { key: 'locked_all', label: 'When seen but not opened, for every app', kind: 'choice', value: lockAll,
+    options: [['', 'Per app'], ['signin', 'Sign in'], ['signup', 'Sign up'], ['padlock', 'Padlock'], ['grey', 'Greyed']],
+    note: 'Per app (the default): each app\'s own page chooses. Any other: every app does that, over its own choice. Sign up only where accounts are open or by application.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); await loadSignInOffer(); loadAccess(); } }));
 }
 loadSignInOffer();
 
@@ -2555,8 +2587,10 @@ function accessBlock(id, a, seenOnly) {
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
       : seenWords(d.seen, 'public') }),
     a ? chipRow('When seen but not opened', LOCK_CHIPS, d.lock, (v) => { d.lock = v; redraw(); },
-      (v) => waiting || (v === 'signup' && d.mode !== 'users')) : null,
-    a ? el('p', { className: 'setting-desc', textContent: `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
+      (v) => waiting || !!lockAll || (v === 'signup' && d.mode !== 'users')) : null,
+    a ? el('p', { className: 'setting-desc', textContent: lockAll
+      ? `All apps are set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one: change that on All apps, under "Who can open each one".`
+      : `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
@@ -3811,7 +3845,7 @@ acctEl.settings.addEventListener('submit', (e) => {
 acctEl.make.addEventListener('submit', (e) => {
   e.preventDefault();
   const f = acctEl.make.elements;
-  acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
+  acctAct({ action: 'make', name: f.name.value.trim(), role: (e.submitter && e.submitter.value) || 'user' });
   f.name.value = '';
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on

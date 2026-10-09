@@ -32,18 +32,22 @@ const Heatmap = (() => {
     return e;
   }
   // rows: [{label, cells: [cell], where: (i) => text}], cols: column labels (a few shown).
-  function grid({ rows, cols, caption }) {
+  // bare: no label column or column heads, for a strip inside a row of something else.
+  function grid({ rows, cols, caption, bare }) {
     const g = make('div', 'heatmap');
     g.setAttribute('role', 'group');
     g.style.setProperty('--hm-cols', String(cols.length));
     if (caption) g.setAttribute('aria-label', caption);
-    const head = make('div', 'hm-row hm-head');
-    head.append(make('span', 'hm-label', ''));
-    cols.forEach((c) => head.append(make('span', 'hm-col', c)));
-    g.append(head);
+    if (bare) g.classList.add('hm-bare');
+    else {
+      const head = make('div', 'hm-row hm-head');
+      head.append(make('span', 'hm-label', ''));
+      cols.forEach((c) => head.append(make('span', 'hm-col', c)));
+      g.append(head);
+    }
     for (const r of rows) {
       const row = make('div', 'hm-row');
-      row.append(make('span', 'hm-label', r.label));
+      if (!bare) row.append(make('span', 'hm-label', r.label));
       r.cells.forEach((c, i) => {
         const cell = make('span', `hm-cell hm-${level(c)}${c && (c.drops || c.restarts) ? ' hm-mark' : ''}`);
         cell.title = words(r.where(i), c);

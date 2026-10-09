@@ -84,7 +84,7 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/tiles') return new Response(JSON.stringify(tilesData), { status: 200 });
-  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [], threads: [],
+  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [{ created: 1790949000, name: 'Moth', text: 'buy cheap things' }, { created: 1790949500, name: 'Ant', text: 'hello' }], board: { threads: [] }, drops: [], threads: [],
     queue: [{ key: 'shoutbox:1790949000:Moth', by: 'Moth', text: 'buy cheap things', where: 'Shoutbox', count: 3, reasons: { spam: 3 } }] }), { status: 200 });
   if (u.startsWith('/admin/library')) return new Response(JSON.stringify(library), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
@@ -103,7 +103,8 @@ setTimeout(() => {
   // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box: item 6), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
   check('sidebar: Clock and Appearance under System', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Appearance') > side.indexOf('System') && side.indexOf('Clock') < hi);
@@ -159,6 +160,18 @@ setTimeout(() => {
     check('moved: Save offered, nothing sent yet', save && !save.disabled && !posted.some((p) => p[0] === '/admin/tiles'));
     save.click();
   }
+  check('moderation: a reported message is marked where all the messages are listed; an unreported one is not',
+    /reported ×3/.test(t('#mod-messages .admin-item')[0]) && !/reported/.test(t('#mod-messages .admin-item')[1]), t('#mod-messages .admin-item').join(' | '));
+  {
+    const f = d.getElementById('accounts-settings'), sb = f.querySelector('button.primary');
+    check('save buttons: unfilled while there is nothing to save', sb.classList.contains('idle'));
+    f.querySelector('.select-chips .chip:not(.selected)').click();
+    check('  a change filled it', !sb.classList.contains('idle'));
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    setTimeout(() => check('  saved: unfilled again', sb.classList.contains('idle')), 20);
+  }
+  check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
+    && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
   // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
@@ -231,7 +244,7 @@ setTimeout(() => {
     const heads = [...d.querySelectorAll('button.admin-side-group')];
     const head = (n) => heads.find((h) => h.dataset.group === n);
     const box = (n) => d.getElementById(head(n).getAttribute('aria-controls'));
-    check('fold: every group head a button, open by default', heads.length >= 6 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
+    check('fold: every group head a button, open by default', heads.length >= 5 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
     w.AL.badge('secdoctor', '3');
     head('Doctors').click();
     check('fold: a head folds its group, kept in the browser', box('Doctors').hidden && head('Doctors').getAttribute('aria-expanded') === 'false'

@@ -13,7 +13,9 @@ const AL = (() => {
   // The box-wide groups. A page: its title, the sections it holds, its art if not the group's.
   // The Apps and Folders groups also get a page per app from the manifests (apps: true).
   const LAYOUT = [
-    { name: 'Overview', art: 'controller', pages: [
+    // flat: no group head to fold (Tom, 2026-10-09: Overview and the setup steps "just leave them visible all
+    // the time. It's fewer clicks all around"): the links stand at the top of the sidebar.
+    { name: 'Overview', art: 'controller', flat: true, pages: [
       { title: 'Overview', sections: ['overview'] },
       { title: 'Setup steps', sections: ['welcome'], art: 'welcome-controller' }] },
     { name: 'Apps', art: 'librarian', apps: 'apps', pages: [
@@ -203,7 +205,8 @@ const AL = (() => {
       }
       if (g.apps === 'apps') slots.apps = entries;
       if (!entries.length) continue;
-      list.append(...group(g.name, entries.map((e) => e.link)));
+      if (g.flat) list.append(el('div', { class: 'admin-side-links', role: 'group', 'aria-label': g.name }, entries.map((e) => e.link)));
+      else list.append(...group(g.name, entries.map((e) => e.link)));
     }
     // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
     const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-|app-updates-|app-flagged-)/.test(id));

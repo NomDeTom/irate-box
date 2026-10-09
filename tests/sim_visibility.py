@@ -96,6 +96,16 @@ try:
     t = tile(home, "Notes")
     check("offer on: the tile shows to a guest, with a lock", st == 200 and t and "locked" in t, t)
     check("offer on: a private app still has no tile", tile(home, "Git") is None)
+    # The global override of what a seen-but-unopenable tile does (Tom, 2026-10-09).
+    st, _ = go("POST", "/admin/settings", {"locked_all": "grey"})
+    _, home = go("GET", "/")
+    t = tile(home, "Notes")
+    check("override: every locked tile greyed, over the per-app choice", st == 200 and t and "greyed" in t, t)
+    st, _ = go("POST", "/admin/settings", {"locked_all": "nonsense"})
+    check("  refused: an unknown way", st in (200, 400) and json.loads(go("GET", "/admin/settings")[1])["locked_all"] == "grey")
+    go("POST", "/admin/settings", {"locked_all": ""})
+    _, home = go("GET", "/")
+    check("  cleared: back to each app's own choice", "greyed" not in (tile(home, "Notes") or ""))
     go("POST", "/admin/settings", {"sign_in_offer": False})
     # The apps row's order (F3): kept by the hub; the rest after the ones named, as before.
     _, home = go("GET", "/")

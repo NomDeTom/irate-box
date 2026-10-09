@@ -69,29 +69,28 @@ setTimeout(() => {
   const none = card('eth1'), noneUp = none && none.querySelector('div.net-uptime');
   check('a link with no record: says so, and how one comes', noneUp && /Not recorded yet\./.test(t(noneUp.querySelector('.net-line'))) && !noneUp.querySelector('.heatmap')
     && /once the box's clock is known to be right/.test(t(noneUp)));
-  // The services' fold, under Overview's table.
+  // The services' strips, each in its own row of Overview's table (Tom, 2026-10-09).
   w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   w.eval('loadBox()');
   setTimeout(() => {
-    const fold = d.getElementById('svc-uptime');
-    check('services: a fold under the table, closed by default', fold && !fold.open && /Uptime, last 72 hours/.test(t(fold.querySelector('summary'))));
-    const [shours, smonth] = fold ? [...fold.querySelectorAll('.heatmap')] : [];
-    const srows = shours ? [...shours.querySelectorAll('.hm-row:not(.hm-head)')] : [];
-    check('  a row per recorded service (not one never recorded), 72 hours each', srows.length === 2 && srows.every((r) => r.querySelectorAll('.hm-cell').length === 72)
-      && t(srows[0].querySelector('.hm-label')) === 'Library (Kiwix)', srows.map((r) => t(r.querySelector('.hm-label'))));
-    const k = srows[0] ? [...srows[0].querySelectorAll('.hm-cell')] : [];
+    check('services: no fold; the strips are in the table', !d.getElementById('svc-uptime').closest('details') && !d.querySelector('#svc-uptime summary')
+      && d.querySelectorAll('#service-table .svc-strips').length >= 2);
+    const rowOf = (name) => [...d.querySelectorAll('#service-table tbody tr')].find((r) => t(r.querySelector('.svc-name .setting-name')) === name);
+    const kiwix = rowOf('Library (Kiwix)');
+    const [shours, smonth] = kiwix ? [...kiwix.querySelectorAll('.heatmap')] : [];
+    check('  a recorded service\'s row has its 72 hours and its 72 days, bare strips', shours && smonth && shours.classList.contains('hm-bare')
+      && shours.querySelectorAll('.hm-cell').length === 72 && smonth.querySelectorAll('.hm-cell').length === 72);
+    check('  name and unit on one line (one cell)', kiwix && kiwix.querySelectorAll('.svc-name .setting-desc').length >= 1);
+    const k = shours ? [...shours.querySelectorAll('.hm-cell')] : [];
     const marked = k.filter((c) => c.classList.contains('hm-mark'));
     check('  the hour it stopped and started again: partly down, marked, said', marked.length === 1 && marked[0].classList.contains('hm-part')
       && /Library \(Kiwix\), Mon 05 03:00–04:00: up 83 %, 1 restart$/.test(marked[0].title), marked.map((c) => c.title).join(' | '));
-    check('  72 days by day too, with the hub\'s dates', smonth && smonth.querySelectorAll('.hm-row:not(.hm-head)')[0].querySelectorAll('.hm-cell').length === 72
-      && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-row:not(.hm-head)')[0].querySelectorAll('.hm-cell')].pop().title));
-    check('  the week in a line', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(fold.querySelector('#svc-uptime-body > p'))), t(fold.querySelector('#svc-uptime-body > p')));
-    fold.open = true; w.eval('loadBox()');
-    setTimeout(() => {
-      check('  open stays open as the pane redraws', d.getElementById('svc-uptime').open && d.querySelectorAll('#svc-uptime .heatmap').length === 2);
-      check('no page errors', !errors.length, errors.join(' | '));
-      console.log(`failures: ${fails}`);
-      process.exit(fails ? 1 : 0);
-    }, 200);
+    check('  72 days by day too, with the hub\'s dates', smonth && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-cell')].pop().title));
+    check('  a service never recorded: a dash, no strip', [...d.querySelectorAll('#service-table tbody tr')].some((r) => !r.querySelector('.heatmap')));
+    const body = d.getElementById('svc-uptime-body');
+    check('  the week in a line, and the legend, under the table', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(d.querySelector('#svc-uptime-body > p'))) && body.querySelectorAll('.hm-legend .hm-key').length === 6, t(d.querySelector('#svc-uptime-body > p')));
+    check('no page errors', !errors.length, errors.join(' | '));
+    console.log(`failures: ${fails}`);
+    process.exit(fails ? 1 : 0);
   }, 300);
 }, 300);
