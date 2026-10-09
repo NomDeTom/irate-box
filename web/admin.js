@@ -2028,6 +2028,7 @@ function upStatusText(u) {
     if (o && (o.skipped || []).length) parts.push(`Not possible here: ${o.skipped.join(', ')}.`);
     if (u.next) parts.push(`Next: ${u.next.label} at ${when(u.next.at)}.`);
     if (u.state === 'stalled' && u.stall) parts.push(u.stall.text);
+    else if (u.wedged) parts.push(`The radio's driver looks wedged: ${u.wedged}.`);
     const ep = u.episode;
     if (ep && ep.outages > 1) parts.push(`Outage ${ep.outages} since ${when(ep.since)}` + (ep.failed.length ? `; did not hold: ${ep.failed.join(', ')}.` : '.'));
   }
@@ -2180,7 +2181,10 @@ function renderNetwork(data) {
   net.status.textContent = upStatusText(u);
   // Stalled (uplink-ladder-plan, stage 2): the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
-  const need = u && !u.stale && u.state === 'stalled' && u.stall && u.stall.needs;
+  // Or a wedged driver, with a radio reset possible: offered by hand whatever the ladder is doing.
+  const wedgedRadio = u && !u.stale && u.wedged && (u.repairs || []).includes('radio') && !((u.outage || {}).done || []).includes('radio');
+  const need = u && !u.stale && ((u.state === 'stalled' && u.stall && u.stall.needs) || (wedgedRadio && 'radio'));
+  if (need && !(u.stall && u.stall.needs)) u = { ...u, stall: { needs: 'radio', label: 'reset the radio' } };
   net.stall.hidden = !need;
   net.stall.replaceChildren(...(need ? [el('button', { type: 'button', className: 'action-btn primary', disabled: busy,
     textContent: `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now`,

@@ -32,6 +32,11 @@ last one's end continues it, the steps' times count from its start, and a step t
 but was followed by a relapse did not hold, so it is passed over while a heavier one is left
 (a flapping link's repair climbs the same way). It ends after `relapse` steady.
 
+A wedged radio driver (wedge_evidence: the backend gone though the interface is there, no
+supplicant for it, scans failing as busy, crash watch's radio failure) is said, with the
+evidence; with `on_wedge: radio` (the owner's, off by default) it goes straight to a radio
+reset if the level reaches it, as reconnecting and restarting can't mend it.
+
 When nothing the level allows can be done here (NetworkManager gone, say, and the level
 stops before a radio reset) it has stalled: it says so, and what could help, and /admin
 offers that step by hand (hub_control's uplink-do, through /etc/hub/uplink-now.json).
@@ -110,7 +115,11 @@ FORGIVENESS = {
 }
 COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
           "relapse": 900}
-DEFAULT = {"eagerness": "patient", "forgiveness": "normal", "iface": "auto", "overrides": {}, "hold_until": 0}
+DEFAULT = {"eagerness": "patient", "forgiveness": "normal", "iface": "auto", "overrides": {}, "hold_until": 0,
+           "on_wedge": "ladder"}
+# When the evidence says the radio's driver has wedged (wedge_evidence): keep to the ladder as set,
+# or go straight to a radio reset if the level reaches it (Tom, 2026-10-09: a setting per box, off).
+ON_WEDGE = ("ladder", "radio")
 DESCRIBE = {
     "off": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
     "patient": "Reconnect after an outage, and again every 10 minutes or so. Nothing heavier.",
@@ -135,6 +144,7 @@ def effective(chosen):
     """The numbers the watchdog runs on: forgiveness, then eagerness, then the overrides."""
     eff = dict(COMMON, **FORGIVENESS[chosen["forgiveness"]], **EAGERNESS[chosen["eagerness"]])
     eff["steps"] = dict(eff["steps"])
+    eff["on_wedge"] = chosen.get("on_wedge", "ladder")
     for k, v in chosen.get("overrides", {}).items():
         if k == "steps":
             for s, t in v.items():
@@ -158,7 +168,10 @@ def validate(raw):
     iface = str(raw.get("iface", "auto"))
     if not IFACE_RE.match(iface):
         raise ValueError("not an interface name")
-    out.update(eagerness=e, forgiveness=f, iface=iface, overrides={})
+    w = raw.get("on_wedge", "ladder")
+    if w not in ON_WEDGE:
+        raise ValueError(f"on_wedge must be one of {', '.join(ON_WEDGE)}")
+    out.update(eagerness=e, forgiveness=f, iface=iface, overrides={}, on_wedge=w)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
         raise ValueError("overrides must be an object")
@@ -367,12 +380,34 @@ class Watch:
 
     def _repair(self, now, obs):
         eff, o = self.eff, self.outage
+        wedged = obs.get("wedged")
+        if wedged and not o.get("wedged"):
+            o["wedged"] = wedged
+            self.log(now, "wedged", f"The radio's driver looks wedged: {wedged}.")
         if now - o["since"] < eff["grace"] or self._paused(now, obs):
             return []
+        can = obs.get("can", set())
+        # The owner's choice (on_wedge "radio"): reconnecting and restarting can't mend a wedged
+        # driver, and on the Lyra they made it worse, so straight to the radio reset if the level
+        # reaches it. Beyond the level, or held, it waits or stalls, saying why.
+        if o.get("wedged") and eff["on_wedge"] == "radio" and "radio" not in o["done"]:
+            for s in ("reconnect", "restart"):
+                if s not in o["done"]:
+                    o["done"].append(s)
+                    o["skipped"].append(s)
+            if "radio" in eff["steps"] and "radio" in can:
+                why = self._held(now, obs, "radio")
+                if not why:
+                    o["done"].append("radio")
+                    o["next_reconnect"] = None
+                    self.log(now, "repair", f"Reset the radio ({human(now - o['since'])} down): reconnecting or restarting can't mend a wedged driver.")
+                    return ["radio"]
+                if "radio" not in o["held"]:
+                    o["held"].append("radio")
+                    self.log(now, "held", f"Would reset the radio, but {why}.")
         # Each step's time counts from the episode's start, so relapses climb as one long outage
         # would; a step that did not hold earlier in it is passed over (_passed).
         t = now - (self.episode or o)["since"] - eff["grace"]
-        can = obs.get("can", set())
         due = [s for s in STEPS if s in eff["steps"] and eff["steps"][s] <= t and s not in o["done"] and not self._passed(s)]
         for step in reversed(due):  # the heaviest step that is due, once
             if step not in can:
@@ -397,7 +432,7 @@ class Watch:
             self.log(now, "repair", f"{STEP_LABEL[step].capitalize()} ({human(now - o['since'])} down).")
             return [step]
         if ("reconnect" in o["done"] and eff["repeat"] and "reconnect" in can and o["next_reconnect"]
-                and now >= o["next_reconnect"]):
+                and now >= o["next_reconnect"] and not (o.get("wedged") and eff["on_wedge"] == "radio")):
             o["gap"] = min(o["gap"] * eff["backoff"], eff["max_repeat"])
             o["next_reconnect"] = now + o["gap"]
             self.log(now, "repair", f"Reconnect again ({human(now - o['since'])} down; next in {human(o['gap'])}).")
@@ -432,9 +467,10 @@ class Watch:
             return None
         o, eff = self.outage, self.eff
         start, floor = (self.episode or o)["since"] + eff["grace"], o["since"] + eff["grace"]
+        skip = ("reconnect", "restart") if o.get("wedged") and eff["on_wedge"] == "radio" else ()
         rest = [(max(start + eff["steps"][s], floor), s) for s in STEPS
-                if s in eff["steps"] and s not in o["done"] and s in self.can and not self._passed(s)]
-        if o["next_reconnect"] and eff["repeat"] and "reconnect" in self.can:
+                if s in eff["steps"] and s not in o["done"] and s in self.can and not self._passed(s) and s not in skip]
+        if o["next_reconnect"] and eff["repeat"] and "reconnect" in self.can and not skip:
             rest.append((o["next_reconnect"], "reconnect"))
         if not rest:
             return None
@@ -448,11 +484,13 @@ class Watch:
         o, eff = self.outage, self.eff
         if not o or not eff["steps"] or now - o["since"] < eff["grace"] or self.next_step(now):
             return None
-        needs = next((s for s in STEPS if s in self.can and s not in eff["steps"]), None)
+        needs = next((s for s in STEPS if s in self.can and s not in eff["steps"] and s not in o["done"]), None)
         top = max(eff["steps"], key=STEPS.index)
         text = (f"Stalled: what could help now is to {STEP_LABEL[needs]}, and this level goes no further than to "
                 f"{STEP_LABEL[top]}." if needs else "Stalled: nothing the box can do from here could help "
                 f"(possible now: {', '.join(sorted(self.can)) or 'nothing'}).")
+        if o.get("wedged"):
+            text += f" The radio's driver looks wedged: {o['wedged']}."
         return {"needs": needs, "label": STEP_LABEL[needs] if needs else None, "text": text}
 
     def by_hand(self, now, obs, step):
@@ -589,6 +627,49 @@ def repairs_for(backend, iface):
     return can
 
 
+SCAN_BUSY = re.compile(r"CTRL-EVENT-SCAN-FAILED ret=-16\b")
+NO_SUPPLICANT = re.compile(r"Couldn't initialize supplicant interface|supplicant interface keeps failing|Failed to initialize driver interface")
+
+
+def wedge_evidence(iface, backend, was_backend, journal, cw_events, now, exists=True, wifi=True):
+    """Why the radio's driver looks wedged, in words, or None (uplink-ladder-plan, stage 4). From
+    the last two minutes of NetworkManager's and wpa_supplicant's journal, crash watch's radio
+    events, and the backend: any one of
+      - the backend gone (it was there before) while the interface still exists
+      - NetworkManager unable to initialise the supplicant for it
+      - scans failing as busy (ret=-16) more than 5 times
+      - crash watch's radio failure for it in the last 30 minutes, not since recovered
+    as the Lyra's AIC8800 showed when its firmware wedged (2026-10-09)."""
+    if not wifi:
+        return None
+    why = []
+    if exists and backend == "none" and was_backend not in (None, "none"):
+        why.append(f"{was_backend} no longer runs {iface}, though it is still there")
+    mine = [l for l in journal if f"{iface}:" in l or f"({iface})" in l or f"'{iface}'" in l]
+    if any(NO_SUPPLICANT.search(l) for l in mine):
+        why.append(f"the supplicant cannot be started for {iface}")
+    busy = sum(1 for l in mine if SCAN_BUSY.search(l))
+    if busy > 5:
+        why.append(f"scans keep failing as busy ({busy} in 2 minutes)")
+    last = next((e for e in reversed(cw_events or []) if e.get("iface") == iface), None)
+    if last and last.get("kind") == "failed" and now - last.get("at", 0) < 1800:
+        why.append(f"crash watch saw the radio fail ({last.get('text', '')[:120]})")
+    return "; ".join(why) or None
+
+
+def recent_journal(secs=120):
+    code, out = run("journalctl", f"--since=@{int(time.time() - secs)}", "--no-pager", "-o", "cat",
+                    "-t", "NetworkManager", "-t", "wpa_supplicant", timeout=20)
+    return out.splitlines() if code == 0 else []
+
+
+def crashwatch_events():
+    try:
+        return json.loads((STATE / "crashwatch" / "events.json").read_text())
+    except (OSError, ValueError):
+        return []
+
+
 def nm_owner_off(iface):
     """NetworkManager's device autoconnect is off: `nmcli device disconnect` does that, and it
     stays off until someone connects the device again."""
@@ -640,7 +721,11 @@ class Actor:
     def _restart(self):
         i = self.iface
         if self.backend == "networkmanager":
-            return run("systemctl", "restart", "NetworkManager", timeout=90)[1] or "NetworkManager restarted"
+            out = run("systemctl", "restart", "NetworkManager", timeout=90)[1] or "NetworkManager restarted"
+            # Its restart takes the box's hotspot down too (the Lyra, 2026-10-09): start it again.
+            from irate_box.root import radio
+            hs = radio.restore_hotspot()
+            return out + (f"; {hs}" if hs else "")
         if self.backend == "wpa_supplicant":
             if netinv.active(f"wpa_supplicant@{i}"):
                 return run("systemctl", "restart", f"wpa_supplicant@{i}", timeout=90)[1] or f"wpa_supplicant@{i} restarted"
@@ -660,22 +745,12 @@ class Actor:
         return "no network service to restart here"
 
     def _radio(self):
+        # The one reset crash watch uses too (root/radio.py): NetworkManager stopped around it,
+        # unbind/bind, then `authorized` 0/1, then the driver; the hotspot started again after.
+        from irate_box.root import radio
         facts = netinv.device_facts(self.iface)
-        usb = facts.get("usb")
-        if usb and re.fullmatch(r"[0-9]+-[0-9.]+", usb.get("port") or ""):
-            drv = Path("/sys/bus/usb/drivers/usb")
-            (drv / "unbind").write_text(usb["port"])
-            time.sleep(3)
-            (drv / "bind").write_text(usb["port"])
-            return f"USB device {usb['port']} ({usb.get('product') or usb['id']}) unbound and bound again"
-        mod = facts.get("driver")
-        if not mod or not re.fullmatch(r"[A-Za-z0-9_-]+", mod):
-            return "radio driver not known"
-        code, out = run("modprobe", "-r", mod, timeout=60)
-        if code:
-            return f"modprobe -r {mod}: {out}"
-        time.sleep(2)
-        return run("modprobe", mod, timeout=60)[1] or f"{mod} reloaded"
+        usb = facts.get("usb") or {}
+        return radio.reset(self.iface, usb.get("port"), facts.get("driver"), usb.get("product") or usb.get("id"))
 
     def _reboot(self):
         run("sync")
@@ -902,6 +977,7 @@ def serve(dry=False):
     watcher = DropWatcher(wake)
     watcher.start()
     iface, backend, actor, can, looked = None, None, None, set(), 0
+    known_backend = None  # the last real backend seen, so its going away can be told
     pinned = None
     history = History()
     tls_at = 0  # HTTPS (step 15): the certificate renewed when due, looked at every six hours
@@ -948,6 +1024,18 @@ def serve(dry=False):
         obs = {"link": up, "gateway": answers, "drops": watcher.take(), "guests": guests(), "busy": busy(),
                "uptime": uptime(), "can": can, "hold_until": chosen.get("hold_until", 0),
                "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface)}
+        if w.outage or w.misses:
+            # In trouble: look closer, each check, for a wedged driver (and the backend afresh).
+            was, backend = backend, backend_of(iface)
+            if backend != was:
+                can = obs["can"] = repairs_for(backend, iface)
+                actor.backend = backend
+                w.log(now, "info", f"{iface} is now run by {backend} (was {was}).")
+            known = was if was != "none" else known_backend
+            obs["wedged"] = wedge_evidence(iface, backend, known, recent_journal(), crashwatch_events(), now,
+                                           (SYS_NET / iface).exists(), (SYS_NET / iface / "phy80211").exists())
+        elif backend and backend != "none":
+            known_backend = backend
         actions = w.tick(now, obs)
         asked = take_request(now) if NOW.exists() else None
         if asked:
@@ -992,6 +1080,7 @@ def _status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, d
             "link": link, "gateway": gw, "gateway_answers": answers, "since": w.outage["since"] if w.outage else w.last_ok,
             "misses": w.misses, "drops_in_window": len(w.drops), "guests": obs["guests"],
             "outage": ({k: w.outage[k] for k in ("since", "declared", "done", "held", "skipped")} if w.outage else None),
+            "wedged": (w.outage or {}).get("wedged"),
             "episode": ({k: w.episode[k] for k in ("since", "outages", "failed", "tried")} if w.episode else None),
             "next": w.next_step(now), "stall": stall, "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
             "pinned": pinned, "events": list(w.events), "reboots": w.reboots[-10:], "chosen": chosen,
