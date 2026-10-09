@@ -3672,13 +3672,15 @@ function renderGit(data) {
   const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
   const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
   const list = shown.filter((r) => kindTest(r) && areaTest(r) && (!q || r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)));
-  const cards = [newCard()];
+  const cards = [];
   for (const r of list) {
     cards.push(repoCard(r, data));
     if (gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
   }
-  if (gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
   if (!list.length) cards.push(el('p', { className: 'setting-desc', textContent: shown.length ? 'Nothing matches.' : 'No repositories yet.' }));
+  // The New card last, after the repositories (Tom, 2026-10-09: "move the new tile to the end"), its drawer after it.
+  cards.push(newCard());
+  if (gitView.open === 'new') cards.push(newPanel('git-drawer'));
   git.grid.replaceChildren(...cards);
 }
 

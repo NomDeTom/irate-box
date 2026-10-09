@@ -1484,3 +1484,13 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .kit-pick { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.7rem; margin: 0; }
 .kit-pick > div { display: flex; flex-direction: column; gap: 0.2rem; max-height: 12rem; overflow-y: auto; }
 .kit-total.bad { color: var(--bad); }
+
+/* A narrow screen (Tom, 2026-10-09: "on mobile the help/hub/admin/login/theme picker all overlap each other"):
+   the header's buttons and the theme picker in rows of their own above the title, wrapping, never over each
+   other or the title. Wide screens keep them in the corners (from 960 px, where nothing meets). */
+@media (max-width: 960px) {
+  header { display: flex; flex-direction: column; align-items: center; padding-top: 0; }
+  header > .head-nav { position: static; order: -2; flex-wrap: wrap; justify-content: center; margin-bottom: 0.5rem; }
+  header > .theme-picker { position: relative; top: auto; right: auto; order: -1; margin-bottom: 0.9rem; max-width: 100%; flex-wrap: wrap; justify-content: center; }
+  header > .theme-picker .theme-menu { right: 50%; transform: translateX(50%); }
+}
