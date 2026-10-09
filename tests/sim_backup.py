@@ -156,6 +156,11 @@ out = run("--dry-run")
 check("import.sh --dry-run: says what it would add and replace, changes nothing", out.returncode == 0
       and f"would add {box}/git/public/mine.git" in out.stdout and "settings.json" in out.stdout and "would replace" in out.stdout
       and not (box / "git/public/mine.git").exists(), out.stdout + out.stderr)
+out = subprocess.run(["sh", str(top / "import.sh"), "--dry-run"], capture_output=True, text=True,
+                     env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)))
+listed = [l.strip() for l in out.stdout.split("state: the export holds:")[1].split("state: would")[0].splitlines() if l.strip()]
+check("  settings only: it lists where the settings are, not the data's folders left empty in the tar",
+      "settings.json" in listed and "notes" not in listed and "store" not in listed and "drop" not in listed, listed)
 out = subprocess.run(["sh", str(stick / "irate-box/import.sh"), "--dry-run"], capture_output=True, text=True,
                      env=dict(os.environ, IRATE_BOX_CLI=str(T / "nosuch"), HUB_STATE_DIR=str(box)))
 check("  on a box without irate-box: refused, saying why", out.returncode == 1 and "not installed here" in out.stderr, out.stderr)

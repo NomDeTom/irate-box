@@ -28,7 +28,7 @@ for repo in "$here"/git/public/*.git "$here"/git/private/*.git; do
 done
 if [ -f "$here/state-backup.tar.gz" ]; then
 	echo "state: the export holds:"
-	tar -tzf "$here/state-backup.tar.gz" | cut -d/ -f2 | grep -v -e '^$' -e '^BACKUP-CONTENTS.txt$' | sort -u | sed 's/^/    /'
+	tar -tzf "$here/state-backup.tar.gz" | grep -v '/$' | cut -d/ -f2 | grep -v -e '^$' -e '^BACKUP-CONTENTS.txt$' | sort -u | sed 's/^/    /'
 	if [ "$dry" = 1 ]; then
 		echo "state: would replace those in $state"
 	else
@@ -48,7 +48,7 @@ if [ -f "$here/state-backup.tar.gz" ]; then
 fi
 if [ -d "$here/kits" ]; then
 	if [ "$dry" = 1 ]; then
-		echo "toolkits: would import $(ls "$here/kits" | tr '\n' ' ')"
+		echo "toolkits: would import $(cd "$here/kits" && ls -d */*/ 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ')"
 	else
 		echo "toolkits (each package checked against Debian's signatures):"
 		"$hub" kits import-dir "$here/kits" | sed 's/^/    /'
