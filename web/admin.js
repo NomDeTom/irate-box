@@ -2068,7 +2068,7 @@ function renderAp(run) {
   apEl.state.textContent = run.up
     ? `On${where(p)}. ${p.text}${run.confirmed === false ? ' Your WiFi link is off: press Keep it from the hotspot, or it comes back by itself.' : ''}`
     : p ? `Off. Switched on, it would run${where(p)}. ${p.text}${p.to_try ? ' Whether it can keep a channel of its own here is still to be tried.' : ''}${p.why ? ` (${p.why})` : ''}`
-      : 'Off. The radios have not been looked at yet: Look again, above.';
+      : 'Off. The radios have not been looked at yet: Refresh, above.';
   if (run.note) say(run.note, true, apEl.note);
   const radio = apEl.radio.value;
   apFill(apEl.radio, (run.radios || []).map((r) => r.iface), (run.owner || {}).radio || radio);
