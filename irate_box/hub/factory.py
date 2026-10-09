@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The Firmware Factory (next-work plan step 36, git-ci-plan §4b): choose a source, a ref and
+"""The Firmware Factory: choose a source, a ref and
 targets; queue them; the builder (ci.py, as hubci) builds one at a time.
 
 Sources: the owner's mirrors (library/mirrors.json: meshtastic/firmware, its forks) and private
@@ -46,7 +46,7 @@ RUNS_NAME = "firmware-factory"              # ci.RUNS/firmware-factory/<n>: the 
 MIRRORS = STATE / "library" / "mirrors.json"
 REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
-MAX_PER_REQUEST = 50     # a sanity cap until the tracking says more (Tom: limits "played by ear")
+MAX_PER_REQUEST = 50     # a sanity cap until the tracking says more
 MAX_FILES = 2000
 MAX_BYTES = 8 << 20
 
@@ -278,8 +278,8 @@ def queue(name, ref, envs, floor_mb=512):
 
 
 # A family's test target (Fetch tools, Test offline), when the owner hasn't chosen one: a board
-# people use, not the project's CI choice (board_level = pr: Tom, 2026-10-07, "the PR-level
-# targets are for the project CI tests, not for the common user"). First a board the owner keeps
+# people use, not the project's CI choice (board_level = pr targets are for the project's CI
+# tests). First a board the owner keeps
 # for the web flasher, then these, then one Meshtastic supports best (support level 1).
 COMMON = ("rak4631", "heltec-v3", "tbeam", "t-echo", "heltec-v4", "tbeam-s3-core", "station-g2", "picow", "pico2w", "rak3172")
 
@@ -307,7 +307,7 @@ def _flasher_boards():
 
 
 def queue_tools(name, ref, family, offline=False, env=None):
-    """Fetch a family's tools (git-ci-plan §4b item 7): PlatformIO installs what one of its targets
+    """Fetch a family's tools: PlatformIO installs what one of its targets
     needs (platform, toolchain, framework, libraries) with nothing compiled, so a later build of
     that family needs no internet; and whether PlatformIO has these tools for this board's processor
     at all is known in minutes, not after hours of compiling.
@@ -521,7 +521,7 @@ def public_file(run_number, name):
     return f if f.is_file() and not f.is_symlink() else None
 
 
-# --- the web flasher (git-ci-plan §4b item 5: the owner's choice, build by build) --------------------
+# --- the web flasher (the owner's choice, build by build) ------------------------------------------
 # A passed build's manifest (firmware-<env>-<version>.mt.json, which the firmware's own
 # bin/platformio-custom.py writes) and the files it names are copied to <firmware root>/<version>-built/,
 # laid out as release.meshtastic.org's folders are, with that folder's board list

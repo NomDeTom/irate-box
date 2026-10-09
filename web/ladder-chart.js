@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The uplink watchdog's escalations over time, for the box doctor (Tom, 2026-10-09: "a line chart
-// showing the escalation steps over the last x period would show if more patience or more
-// aggression is required"). From uplink.py's ladder record ({at, k: kind, s: step, b: by, t: text}):
+// The uplink watchdog's escalations over time, for the box doctor, to show whether
+// more patience or more aggression is needed. From uplink.py's ladder record
+// ({at, k: kind, s: step, b: by, t: text}):
 // a step line of the heaviest rung each outage reached (up, down, reconnect, restart, radio reset,
 // reboot), the outages as bands, and a marker for each step taken whose shape says who took it
 // (● the watchdog, ◆ by hand, ▲ a flapping link's repair) and, hollow, one held or a stall.
@@ -15,7 +15,7 @@ const LadderChart = (() => {
   const PERIODS = [['24 h', 86400], ['7 days', 7 * 86400], ['30 days', 30 * 86400], ['72 days', 72 * 86400]];
   const SVG = 'http://www.w3.org/2000/svg';
   const W = 640, H = 310, L = 84, R = 12, T = 10, B = 26;   // the drawing's own units (viewBox)
-  // Two panels on one time axis (Tom, 2026-10-09: "plot the symptoms on the chart as well"): above,
+  // Two panels on one time axis: above,
   // the missed checks within the pace's window and the sensitivity's line; below, the ladder.
   const SYM_H = 84, LAD_T = T + SYM_H + 28;
 
@@ -29,7 +29,7 @@ const LadderChart = (() => {
 
   // The line and the bands: the level at each moment, from the start of the record (so the window
   // opens at the level it was at), the heaviest rung an outage reached held until it ended.
-  // Rows that are not events: the symptoms (m) and the roams between access points (item 35's marks).
+  // Rows that are not events: the symptoms (m) and the roams between access points.
   const isEvent = (r) => r.k !== 'm' && r.k !== 'roam';
   function model(rows, from, to) {
     const pts = [], bands = [], marks = [];
@@ -93,7 +93,7 @@ const LadderChart = (() => {
       svg.append(make('path', { d, class: 'ladder-th' }));
       svg.append(make('text', { x: W - R, y: ys(th) - 4, class: 'ladder-axis', 'text-anchor': 'end' }, `sensitivity ${th}`));
     }
-    // A roam between access points (item 35): a short tick on the baseline, muted, one each.
+    // A roam between access points: a short tick on the baseline, muted, one each.
     const roams = rows.filter((r) => r.k === 'roam' && r.at >= from && r.at <= now);
     if (roams.length) svg.append(make('path', { d: roams.map((r) => `M${x(r.at)},${ys(0)}v-7`).join(''), class: 'ladder-roam' }));
     return { most: Math.max(0, ...sym.map((r) => r.n)), over: sym.filter((r) => r.th && r.n >= r.th).length, roams: roams.length };

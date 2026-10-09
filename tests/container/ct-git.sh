@@ -60,7 +60,7 @@ cd priv && echo s >S && git add S && git commit -qm s && git push -q origin HEAD
 cd "$W"
 check 1 sh -c "curl -s -u admin:$PW http://$H/git-private/ | grep -c 'secret.git' | sed 's/^[1-9][0-9]*$/1/'"
 
-echo "== push presets (step 10)"
+echo "== push presets"
 preset() { admin "{\"action\":\"preset\",\"area\":\"public\",\"name\":\"demo\",\"preset\":\"$1\"}" >/dev/null; }
 preset public-everything
 cd pub && echo more >>README && git commit -qam second

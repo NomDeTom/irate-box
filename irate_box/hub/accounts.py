@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Accounts on the box (next-work plan step 16, plans/accounts-plan, agreed 2026-10-07): guests (no
+"""Accounts on the box: guests (no
 login), users (an account), and admins (an account with the admin role, or the box's own basic-auth
 `admin`, which the web server checks and the hub never sees).
 
@@ -187,16 +187,15 @@ def set_settings(signup=None, http=None, keep_admin=False):
 def _public(acc):
     return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {
         "password_set": bool(acc.get("hash")),
-        # The admin sees each person's choice to be shown online, and can't change it (5f).
+        # The admin sees each person's choice to be shown online, and can't change it.
         "shown_online": bool((acc.get("prefs") or {}).get("show_online"))}
 
 
-# --- a person's own settings (menu overhaul M12; Tom, 2026-10-08: "the users themselves, upon
-# sign-up, will need to be able to access their own user settings, including online visibility";
-# "locking, visibility of posts by app, font colour"). Theirs alone, through their own session;
-# the safe choice is each default: not shown by name, no lock, no email.
+# --- a person's own settings: online visibility, locking, who sees their posts per app, colour.
+# Theirs alone, through their own session; the safe choice is each default: not shown by name, no
+# lock, no email.
 PREFS = {"show_online": False, "hue": None, "lock_default": False, "email": "",
-         # Who sees what they post, per app (M13): everyone here, signed-in people, or only them.
+         # Who sees what they post, per app: everyone here, signed-in people, or only them.
          # Never wider than the app itself (its access); Notes, SilverBullet's one shared notebook,
          # has no posts of anyone's own to hide.
          "posts": {"shoutbox": "everyone", "board": "everyone", "saves": "everyone", "drop": "everyone"}}
@@ -293,9 +292,8 @@ def login(name, password, addr="", https=False):
         _limited(name, addr, now)
     acc = _load()["accounts"].get((name or "").lower()) if isinstance(name, str) else None
     ok = check_password(password if isinstance(password, str) else "", acc["hash"] if acc and acc.get("hash") else _DUMMY)
-    # With sign-up off the box has no users' accounts, but its admins still sign in here: the one login
-    # (Tom, 2026-10-09: "get rid of the admin-specific login, and have them log in through the standard
-    # user login"). Judged after the password check, so the answer takes as long either way.
+    # With sign-up off the box has no users' accounts, but its admins still sign in here: the one login.
+    # Judged after the password check, so the answer takes as long either way.
     if settings()["signup"] == "off" and not (acc and acc.get("role") == "admin"):
         with _lock:
             _failed(name, addr, now)
@@ -322,7 +320,7 @@ _basic_ok = {}   # (name, sha256 of the password) -> when it was last right: a p
 
 
 def _forget_basic(name):
-    """A changed or reset password is not right any more, this minute included (stance review 2026-10-08, N14)."""
+    """A changed or reset password is not right any more, this minute included."""
     for k in [k for k in _basic_ok if k[0] == (name or "").lower()]:
         _basic_ok.pop(k, None)
 
@@ -331,7 +329,7 @@ def check_basic(header, addr=""):
     """An HTTP Basic Authorization header that is an account's name and password (git over HTTP:
     a client sends no cookie): {name, role}, or None. Limited as logins are; a right one is
     remembered for a minute, as git asks several times a push and a check takes half a second on
-    the Lyra."""
+    a small board."""
     import base64
     if not isinstance(header, str) or not header.startswith("Basic ") or settings()["signup"] == "off":
         return None

@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Each network link's history, for the uptime heatmaps on /admin → Network (next-work plan step
-34, new-feature-input). The uplink watchdog (uplink.py, root) records; the hub reads and sums.
+"""Each network link's history, for the uptime heatmaps on /admin → Network. The uplink watchdog (uplink.py, root) records; the hub reads and sums.
 
 Five-minute slots, 72 days of them, one character each per interface, holding the worst state
 seen in the slot:

@@ -105,10 +105,10 @@ DEFAULT_POLICY = {
     "hub_auto": 0,
     "hub_window_start": 2,
     "hub_window_end": 5,
-    # Item 36: every surface its own pair, how often (hours, 0 only by hand) and what to do. Where fetching
+    # Every surface its own pair, how often (hours, 0 only by hand) and what to do. Where fetching
     # is the update (the git mirrors, the firmware mirror) 0 only notes what is newer, 1 fetches it; the
-    # toolkits' cache is looked at by fetching it, so it has the first only. Saved before item 36: as
-    # apps and books were (SURFACES, below).
+    # toolkits' cache is looked at by fetching it, so it has the first only. Settings saved without
+    # these: as apps and books were (SURFACES, below).
     "mirrors_every_hours": 24,
     "mirrors_auto": 1,
     "firmware_every_hours": 24,
@@ -252,7 +252,7 @@ def validate_source(src):
         if out["type"] not in ("actions", "nightly-link"):
             raise LibrarianError("an app bundle comes from actions or nightly-link")
         # A bundle app comes from the repository, workflow and artifact its manifest names, and
-        # nowhere else (F11): a request may choose only the branch. Otherwise a forged request
+        # nowhere else: a request may choose only the branch. Otherwise a forged request
         # could repoint draw, the flasher or the room relay at someone else's build.
         spec = APPS[out["name"]]["source"]
         branch = str(src.get("branch") or spec.get("branch", "main")).strip()
@@ -281,7 +281,7 @@ def validate_source(src):
         url = str(src.get("url", "")).strip()
         if urllib.parse.urlparse(url).scheme != "https":
             # A book over plain HTTP can be swapped on the way, and its pages are served on the
-            # hub's own origin (F22).
+            # hub's own origin.
             raise LibrarianError("url must be https://…")
         out["url"] = url
     else:
@@ -421,8 +421,8 @@ def check_bundle(zip_path, name):
 
 def _queue_root(req):
     """Hand a request to hub_control.py, as server.py's control_request does: written in the
-    hub's own folder and renamed in. Not in control/, which is root's (F3): writing there failed
-    every app update that needed root, from the timer and from /admin alike (found 2026-10-06)."""
+    hub's own folder and renamed in. Not in control/, which is root's: writing there fails
+    every app update that needs root, from the timer and from /admin alike."""
     requests = STATE_DIR / "control" / "requests"
     requests.mkdir(parents=True, exist_ok=True)
     rid = os.urandom(8).hex()
@@ -471,7 +471,7 @@ def _pack_git(src, cand, part):
         if want and commit != want:
             raise LibrarianError(f"asked {src['repo']} for {want[:7]} and got {commit[:7]}")
         shutil.rmtree(tree / ".git")
-        # No links from the repository survive (F30): the adapt script and the zip below would
+        # No links from the repository survive: the adapt script and the zip below would
         # follow them, writing or packing files of the hub's own.
         for path in sorted(tree.rglob("*"), reverse=True):
             if path.is_symlink():
@@ -707,7 +707,7 @@ def _request(url, auth=None, method="GET", extra=None):
     headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json", **(extra or {})}
     req = urllib.request.Request(url, headers=headers, method=method)
     if auth and urllib.parse.urlparse(url).hostname == "api.github.com":
-        # Not carried on a redirect (F28): an artifact download answers with a 302 to GitHub's
+        # Not carried on a redirect: an artifact download answers with a 302 to GitHub's
         # blob storage, and urllib would hand the token to that host as well.
         req.add_unredirected_header("Authorization", f"Bearer {auth}")
     return req
@@ -742,10 +742,10 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
         raise LibrarianError(f"cannot reach {urllib.parse.urlparse(url).hostname}: {reason}")
 
 
-# GitHub's API at hundreds of sources (next-work plan step 14). Without a token it allows 60 requests
+# GitHub's API at hundreds of sources. Without a token it allows 60 requests
 # an hour, from this address. So: one request per address per run (books sharing a repository share
 # its listing), the answer's ETag kept and sent back (a 304 saves the download always, and the
-# hourly allowance only with a token: tried 2026-10-07, without one each 304 still counted), and
+# hourly allowance only with a token: without one each 304 still counts), and
 # what is left of the allowance recorded, so a scheduled run stops checking before it runs out and
 # leaves the rest for the next one (update(), RESERVE).
 API_CACHE = LIB_DIR / "api-cache"   # one file per address: {url, etag, body, at}
@@ -757,8 +757,7 @@ _memo = {}          # path -> (when, body)
 _rate = {}
 
 
-# Adapting to the rate limit (Tom, 2026-10-09: "Adapt to rate limit": try the 60 an hour, and after
-# several failures back off). The owner presses Adapt: GitHub is asked what it really allows (the
+# Adapting to the rate limit (try the 60 an hour, and after several failures back off). The owner presses Adapt: GitHub is asked what it really allows (the
 # /rate_limit call is free), and an hourly budget set just under it (the allowance less RESERVE: 50 of
 # 60 without a token). Every API request is then counted over a rolling hour, and a scheduled run stops
 # asking when the budget is spent. A rate-limit refusal counts as a failure; PACE_FAILS of them in a row
@@ -901,11 +900,10 @@ def _resolve_release(src, auth):
     raise LibrarianError(f"no release of {src['repo']} has an asset matching {src['pattern']}")
 
 
-# Which runs' artifacts a book or an app may come from (F30): a push to the repository, a run
+# Which runs' artifacts a book or an app may come from: a push to the repository, a run
 # started by hand (workflow_dispatch) or on the workflow's own schedule. All three need write
 # access to the repository, so they build what its owner has taken. Never a pull request's run,
-# nor one from a fork. (Pushes only, until mermaid-docs' run started by hand on develop, the only
-# one there, was refused: 2026-10-07.)
+# nor one from a fork.
 TRUSTED_EVENTS = ("push", "workflow_dispatch", "schedule")
 
 
@@ -949,8 +947,7 @@ def _resolve_nightly(src, auth):
     run, art = _newest_artifact(src, auth)
     name = urllib.parse.quote(art["name"], safe="")
     # GitHub's artifacts API gives each artifact's digest ("sha256:<hex>"); nightly.link is a
-    # third party in between, so what it serves is checked against GitHub's own word
-    # (stance review 2026-10-08, N8).
+    # third party in between, so what it serves is checked against GitHub's own word.
     digest = str(art.get("digest") or "")
     return {
         "version": f"run-{run['id']}/{art['id']}",
@@ -1038,7 +1035,7 @@ def _resolve_kiwix(src, auth):
     file = e["url"].rsplit("/", 1)[-1]
     return {"version": file, "url": e["url"], "size": e["size"], "zip": False,
             "label": f"{file} ({e['updated']}, from Kiwix's catalogue)", "auth": None,
-            # The metalink carries the file's sha256 (stance review 2026-10-08, N7): checked after the download.
+            # The metalink carries the file's sha256: checked after the download.
             "sha256": _meta4_sha256(e.get("meta4"))}
 
 
@@ -1089,8 +1086,7 @@ def _verify_sha256(path, expected, what):
 def _download(url, dest, auth=None, name=None, expected=0, resume=False):
     """Stream url to dest. While it runs, progress.json says how far it has got (written at
     most once a second), so /admin can show a 60 MB book arriving at hotspot speed. With resume,
-    a part already at dest (from a run the hub's restart cut off: the Lyra's 507 MB build cache
-    stopped at 498 MB, 2026-10-06) is continued with a range request when the server allows one."""
+    a part already at dest (from a run the hub's restart cut off) is continued with a range request when the server allows one."""
     started = time.monotonic()
     done, last = 0, 0.0
     have = dest.stat().st_size if resume and expected and dest.is_file() and not dest.is_symlink() else 0
@@ -1099,7 +1095,7 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
     try:
         resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
         if urllib.parse.urlparse(url).scheme == "https" and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https":
-            resp.close()  # a book is never taken over plain HTTP, even on a redirect (F22)
+            resp.close()  # a book is never taken over plain HTTP, even on a redirect
             raise LibrarianError(f"{urllib.parse.urlparse(url).hostname} redirected to plain HTTP: not taken")
         go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
         done = have if go_on else 0
@@ -1158,7 +1154,7 @@ def _safe(version):
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", version)[:80]
 
 
-# Kiwix's catalogue at hundreds of books (next-work plan step 14). Measured on the Lyra, 2026-10-07:
+# Kiwix's catalogue at hundreds of books. Measured on a small board:
 # one kiwix-manage run per book, each rewriting the whole library.xml, took over 10 minutes for 300
 # small books, and ran again in full for every new one. One run takes many books (49 in 1.5 s),
 # but a single unreadable one makes it write nothing: so a failing batch is halved until that book
@@ -1203,8 +1199,8 @@ def rebuild_library():
 
 def _splice(drop_name, add_from=None):
     """library.xml with the entries for file `drop_name` taken out and, if given, the <book> entries
-    of the scratch library `add_from` put in: edited as XML, on a copy swapped in. Measured on the
-    Lyra (2026-10-07, 300 books): kiwix-manage opens every book already in a library on each run,
+    of the scratch library `add_from` put in: edited as XML, on a copy swapped in. Measured on a
+    small board (300 books): kiwix-manage opens every book already in a library on each run,
     so even one `add` took 17 s; describing the new book alone, in an empty library beside the
     real one, and splicing its entry in takes a fraction of that. None if library.xml is unreadable."""
     import xml.etree.ElementTree as ET
@@ -1534,7 +1530,7 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                 results["toolkits"] = line
                 log(f"toolkits: {line}")
         # Packages from their makers (root/pkgwatch.py: meshtasticd on its channel): root asked to check each
-        # as often as its owner chose (item 36: 6 hours, a day, a week, or only by hand), so "after N days"
+        # as often as its owner chose (6 hours, a day, a week, or only by hand), so "after N days"
         # counts from when a build first appeared.
         if scheduled and not names:
             line = packages_step()
@@ -1559,7 +1555,7 @@ def packages_step(now=None):
     now = now or time.time()
     pub = _read_json(PKGWATCH_PUBLIC, {})
     state = _read_json(PKGWATCH_STATE, {})
-    if "queued" in state and not isinstance(state.get("each"), dict):   # before item 36: one clock for all
+    if "queued" in state and not isinstance(state.get("each"), dict):   # an older state: one clock for all
         state = {"each": {pid: state["queued"] for pid in pub}}
     each = state.setdefault("each", {})
     queued = []
@@ -1581,8 +1577,8 @@ LAST_RUN = LIB_DIR / "last-run.json"
 def record_run(fn, scheduled):
     """Run update() and keep a record of it, for the page and both doctors: when it started and
     ended, whether it finished, the error if it crashed, which stages it reached, and (for the
-    timer's runs) when one last reached the hub's own update. Before 2026-10-06 a crash was only
-    in the journal, and every scheduled run failed for hours without a doctor noticing."""
+    timer's runs) when one last reached the hub's own update, so a crash is not left only in the
+    journal while every scheduled run fails for hours without a doctor noticing."""
     import traceback
     rec = _read_json(LAST_RUN, {})
     run = {"started": time.time(), "scheduled": scheduled, "finished": None, "ok": None, "error": None, "stages": []}
@@ -1634,7 +1630,7 @@ def snapshot():
             "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
 
 
-# --- the books, a page at a time (next-work plan step 14) ---------------------------------------
+# --- the books, a page at a time -------------------------------------------------------------
 # What the Books page lists: every book in Kiwix's catalogue (its title, language and date), every
 # .zim in the folder (one Kiwix can't read has a row too), and every book source (one not installed
 # yet has a row). A book with a source is "kept current"; one without came by hand or USB.

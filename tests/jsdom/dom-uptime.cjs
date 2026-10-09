@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The links' uptime on /admin → Network → Status (next-work plan step 34; a card per link since item 37) in jsdom, static: no hub needed.
+// The links' uptime on /admin → Network → Status (a card per link) in jsdom, static: no hub needed.
 // uptime-fixture.json is linkhistory.summarize's own output (made by a one-off script, from real
 // record() calls) for a WiFi uplink (nothing for its first two hours, a 15-minute outage in hour
 // 10, an hour switched off, the current hour partial) and a wired link down every night; the 72
@@ -8,7 +8,7 @@
 // one row, one cell per hour or day. Each card has a folded Uptime part: the last 72 hours by
 // hour, 72 days by day, a legend, the summary in words; each cell says what it was; a card with
 // no record says how one comes.
-// And the services' (step 35, from svchistory.summarize): a fold under Overview's table, closed,
+// And the services' (from svchistory.summarize): a fold under Overview's table, closed,
 // a row per service by hour for the last 72 hours and by day for 72 days, the starts marked, kept
 // open across the pane's redraws. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
@@ -69,7 +69,7 @@ setTimeout(() => {
   const none = card('eth1'), noneUp = none && none.querySelector('div.net-uptime');
   check('a link with no record: says so, and how one comes', noneUp && /Not recorded yet\./.test(t(noneUp.querySelector('.net-line'))) && !noneUp.querySelector('.heatmap')
     && /once the box's clock is known to be right/.test(t(noneUp)));
-  // The services' strips, each in its own row of Overview's table (Tom, 2026-10-09).
+  // The services' strips, each in its own row of Overview's table.
   w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   w.eval('loadBox()');
   setTimeout(() => {

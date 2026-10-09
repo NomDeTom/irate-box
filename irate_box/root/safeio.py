@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Root's file I/O in folders the hub can change (security review F3, F4, F13).
+"""Root's file I/O in folders the hub can change.
 
 The hub owns $STATE, so wherever root writes under it, the hub may have put a link first: a
 symlink at the name, a hardlink to a file of root's, the folder itself swapped for a link. A
@@ -129,7 +129,7 @@ class NotOurs(OSError):
 
 def read_own(path, limit=4 << 20):
     """The text of a file this process's user wrote, root's for the helpers: the file and its
-    folder both owned by us and neither a link, checked through their fds (F14). The hub owns
+    folder both owned by us and neither a link, checked through their fds. The hub owns
     $STATE, so it could swap control/ for a folder of its own holding a forged update.json or
     rtc-find.json; that one is refused."""
     path = Path(path)

@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Guests' onward internet as a scale (root/share.py; Tom, 2026-10-08: "give options, and a sliding
-scale"), contained ("Fix the network sharing issue with a containment plan … Give the admin the option
-to disable various parts (with security doctor findings against them when they're too much)"), and
+"""Guests' onward internet as a scale (root/share.py), contained (each part of the containment can be
+switched off, with security doctor findings against it when too much is off), and
 the floor with it as one ruleset (root/firewall.py), offline: each level's rules, each part of the
 containment on and off, the guests' resolver reached only by the redirect, a guest's hardware address
 found, the root helper's share-set and share-allow in a safe order with the system's commands

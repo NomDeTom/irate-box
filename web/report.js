@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Reporting a shoutbox message or a forum post (menu overhaul M10; Tom, 2026-10-08: "anyone can
-// report a post - admin decides what counts"). A small ⚑ beside each one opens the reasons the
-// owner offers; one tap sends it to /api/report, and the owner sees it on /admin → Moderation.
+// Reporting a shoutbox message or a forum post: anyone can report, the admin decides what counts.
+// A small ⚑ beside each one opens the reasons the owner offers; one tap sends it to /api/report, and the owner sees it on /admin → Moderation.
 // The hub takes one report per visitor per post.
 const reportButton = (() => {
   'use strict';

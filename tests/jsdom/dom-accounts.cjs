@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Accounts (next-work plan step 16) in jsdom, static: /account.html (logged out as each sign-up
+// Accounts in jsdom, static: /account.html (logged out as each sign-up
 // level shows it; plain HTTP warned or prevented; logged in) and /admin → Accounts (the levels,
 // the list and its buttons, a one-time code shown once). Usage: [JSDOM=…/jsdom] node dom-accounts.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
@@ -59,7 +59,7 @@ function page(file, url, fetcher, scripts) {
   view = { signup: 'off', http: 'prevented', https: true, me: null };
   p = page('account.html', 'https://box.local/account.html', async () => json(view), ['account.js']);
   await wait(); d = p.d;
-  // One login (Tom, 2026-10-09): with sign-up off the box's admins still sign in here.
+  // One login: with sign-up off the box's admins still sign in here.
   check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /admins sign in here/.test(t(d.getElementById('acct-subtitle')))
     && !d.getElementById('acct-login-form').hidden && d.getElementById('acct-signup-form').hidden, t(d.getElementById('acct-subtitle')));
   check('account page: no errors', !p.errors.length, p.errors.join(' | '));
@@ -118,7 +118,7 @@ function page(file, url, fetcher, scripts) {
   mf.elements.name.value = 'dave';
   check('  Role: two bigger buttons, Make user and Make admin, no second button', [...mf.querySelectorAll('button')].map((b) => t(b)).join() === 'Make user,Make admin');
   mf.querySelector('button[value="user"]').click(); await wait();
-  // The code beside the account it is for, in a box to copy (Tom, 2026-10-08); a line by the form says so.
+  // The code beside the account it is for, in a box to copy; a line by the form says so.
   const daveRow = [...d.querySelectorAll('#accounts-list .admin-item')].find((r) => / dave /.test(` ${t(r)} `));
   check('  Make: the code shown, once, beside the account', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /dave's one-time code is beside their name/.test(t(d.getElementById('accounts-code')))
     && (!daveRow || (daveRow.querySelector('.code-box') || {}).value === 'ABCD-EFGH-JKLM-NPQR'));

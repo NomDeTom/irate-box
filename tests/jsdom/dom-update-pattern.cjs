@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// One pattern for every update (item 36; Tom, 2026-10-09: "off/6 hours/24 hours/weekly, and then a choice of
-// flag/fetch/auto-update"; "perhaps the off becomes manual?"; "buttons for check/fetch/install as well") in
-// jsdom, static: every surface on /admin drawn from the one widget, with the same choices, chips and words;
+// One pattern for every update (how often to look, from off to weekly; then flag, fetch
+// or install; and Check, Fetch and Install buttons) in jsdom, static: every surface on /admin drawn from the one widget, with the same choices, chips and words;
 // a subset where fetching is the update; the three buttons greyed with why. Usage: [JSDOM=…/jsdom] node dom-update-pattern.cjs
 const { JSDOM } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');

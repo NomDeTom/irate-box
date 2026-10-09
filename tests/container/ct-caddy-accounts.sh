@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# Accounts under Caddy (item 7): Debian's own Caddy in front of the hub, the admin gate
+# Accounts under Caddy: Debian's own Caddy in front of the hub, the admin gate
 # (access.py caddy_admin_gate) with the box's own login on, then off, then with no gate files.
 # Usage, from the checkout: docker run --rm -v "$PWD":/src:ro debian:trixie bash /src/tests/container/ct-caddy-accounts.sh
 set -u

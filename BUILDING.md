@@ -96,7 +96,7 @@ cd ~/hub-apps/room && npm init -y >/dev/null &&
   npm install --omit=dev debug@4.3.1 dotenv@10 express@4.17.1 socket.io@4.6.1
 ```
 
-That is the relay plus its four runtime dependencies (~8 MB, all plain JS, so it runs on any architecture). `install.sh --with-collab --apps ~/hub-apps` copies it to `/usr/share/hub/room` and runs it with Debian's `nodejs` as `excalidraw-room.service`, bound to `127.0.0.1:3002` (`HOST`, in the fork). The web server routes `/socket.io/*` to it. Measured on the Lyra: ~8 MB anon idle, ~19 MB and about one core with twelve busy clients, and Kiwix search latency barely moved (see `plans/offline-storage-plan.md` in the notes).
+That is the relay plus its four runtime dependencies (~8 MB, all plain JS, so it runs on any architecture). `install.sh --with-collab --apps ~/hub-apps` copies it to `/usr/share/hub/room` and runs it with Debian's `nodejs` as `excalidraw-room.service`, bound to `127.0.0.1:3002` (`HOST`, in the fork). The web server routes `/socket.io/*` to it. Measured on a Luckfox Lyra: ~8 MB anon idle, ~19 MB and about one core with twelve busy clients, and Kiwix search latency barely moved.
 
 ## 4. Caddy in front (development)
 
@@ -136,7 +136,7 @@ The landing page asks `/status` every 15 s and greys out any tile whose backend 
 
 Neither is built from source; both are single upstream binaries. Neither is part of any profile. Without them, the Notes card is greyed out and `/sync/` returns 502.
 
-**SilverBullet** (`/notes/`, a Markdown notebook over a plain folder). Take the `silverbullet-server-linux-<arch>.zip` from its GitHub releases. Only x86_64, armv7 and aarch64 builds exist, so this runs on the Lyra but not on the Zero W.
+**SilverBullet** (`/notes/`, a Markdown notebook over a plain folder). Take the `silverbullet-server-linux-<arch>.zip` from its GitHub releases. Only x86_64, armv7 and aarch64 builds exist, so this runs on a Luckfox Lyra but not on the Zero W.
 
 ```sh
 mkdir -p ~/hub-notes
@@ -162,7 +162,7 @@ git clone https://github.com/NomDeTom/irate-box && cd irate-box
 sudo ./install.sh --with-notes --with-sync --apps ~/hub-apps
 ```
 
-The web server in front is nginx, from Debian's package (ARMv6 included). Measured on the Lyra, it uses about 40 MB less RAM than Caddy and a fraction of the CPU per request (notes: `2026-10-02-caddy-vs-nginx-benchmark`). The script writes `irate-box.nginx`, with this box's paths and port, to `/etc/nginx/conf.d/irate-box.conf`, and switches off the package's default site if it is untouched (recorded; `uninstall.sh` turns it back on). The admin login goes in `/etc/nginx/irate-box.htpasswd` as SHA-512-crypt, not bcrypt: nginx checks it on every request and caches nothing, and bcrypt at cost 14 takes about 5.8 s a check on the Lyra, against 38 ms. An nginx the owner already runs is used as it is; if its config serves `:80`, the hub goes on its own port.
+The web server in front is nginx, from Debian's package (ARMv6 included). Measured on a Luckfox Lyra, it uses about 40 MB less RAM than Caddy and a fraction of the CPU per request. The script writes `irate-box.nginx`, with this box's paths and port, to `/etc/nginx/conf.d/irate-box.conf`, and switches off the package's default site if it is untouched (recorded; `uninstall.sh` turns it back on). The admin login goes in `/etc/nginx/irate-box.htpasswd` as SHA-512-crypt, not bcrypt: nginx checks it on every request and caches nothing, and bcrypt at cost 14 takes about 5.8 s a check on a Luckfox Lyra, against 38 ms. An nginx the owner already runs is used as it is; if its config serves `:80`, the hub goes on its own port.
 
 Caddy is the fallback, with the same routes in the `Caddyfile`. `--web caddy` chooses it, and the script also uses it when the box runs the owner's Caddy and no nginx, when irate-box set the box up with Caddy before nginx became the default (it says so and offers `--web nginx`), and when nginx cannot be installed. The choice is recorded in `/etc/hub/install-options`, so updates keep it; naming the other server switches over and stops and disables irate-box's copy of the first, which stays installed. Caddy comes from Caddy's own apt repository. Distro packages lag behind: Debian trixie ships 2.6, and the Caddyfile is written for 2.8+. ARMv6 is the exception, because that repository's armhf build targets ARMv7 and would crash on a Zero W. There the script uses the distro's genuine ARMv6 build and rewrites `basic_auth` to the 2.6 spelling, `basicauth`. The generated Caddyfile replaces `/etc/caddy/Caddyfile`, and the original is kept as `Caddyfile.pre-irate-box`.
 

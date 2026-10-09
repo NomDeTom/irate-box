@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Mirrored git repositories (next-work plan step 12): a bare repository on the box that the
+"""Mirrored git repositories: a bare repository on the box that the
 librarian keeps from an upstream, by a policy, as firmware.py keeps the firmware.
 
 A mirror's settings ($HUB_STATE_DIR/library/mirrors.json, set on /admin's Git page):

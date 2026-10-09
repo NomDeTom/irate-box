@@ -33,7 +33,7 @@ function randomName() {
 let signature = '';
 let shown = [];
 let marks = false;
-// Who may post, as the box's admin set it (accounts step 16): the form says so, and a logged-in
+// Who may post, as the box's admin set it: the form says so, and a logged-in
 // user posts under their account's name, marked ✓ where the admin shows marks.
 const postNote = document.createElement('p');
 postNote.className = 'setting-desc shout-post-note';

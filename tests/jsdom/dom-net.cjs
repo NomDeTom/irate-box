@@ -24,9 +24,9 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/network') {
     // The root helper's answer to what was posted: done, so the page is not left busy.
     const data = await (await fetch(new URL(u, BASE), opts)).json();
-    // A real inventory (the Lyra's, 2026-10-06, its network's names taken out).
+    // A real inventory, its network's names taken out.
     data.inventory = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
-    // Roaming as the hardware scan reports it (item 35, stage 1): three access points, two channels, the hotspot on the radio.
+    // Roaming as the hardware scan reports it: three access points, two channels, the hotspot on the radio.
     const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
     wl.roaming = { ssid: wl.link.ssid, aps: [{ bssid: 'aa:00:00:00:00:01', channel: 6, freq: 2437, signal: 100 }, { bssid: 'aa:00:00:00:00:02', channel: 6, freq: 2437, signal: 87 },
       { bssid: 'aa:00:00:00:00:03', channel: 11, freq: 2462, signal: 80 }], channels: [6, 11], bgscan: 'simple:30:-65:300', nm_version: '1.52.1',
@@ -50,7 +50,7 @@ setTimeout(() => {
   const t = (sel) => [...d.querySelectorAll(sel)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('WHEN:', t('#net-when')[0]);
   console.log('DEVICES:', [...d.querySelectorAll('#up-iface option')].map((o) => o.value).join(', '));
-  // A card per device (2026-10-06): plain lines, the hotspot's conditions one per line, its warnings on it.
+  // A card per device: plain lines, the hotspot's conditions one per line, its warnings on it.
   const cards = [...d.querySelectorAll('#net-devices .net-device')];
   check('a card per device', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('wlan0'), cards.length);
   const card = cards[0] ? cards[0].textContent : '';
@@ -62,12 +62,12 @@ setTimeout(() => {
   check('its conditions one per line, untested marked', conds.join(' ') === 'cond-how cond-limit cond-untested', conds.join(' '));
   const own = cards[0] ? [...cards[0].querySelectorAll('.admin-checks li')].length : 0;
   check('its own warnings on its card (3)', own === 3, own);
-  // Each labelled part a section, a hairline between them (inbox, 2026-10-06: the parts ran together).
+  // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
-  // Since item 37 a device's uptime is on the Status tab, with the link it belongs to.
+  // A device's uptime is on the Status tab, with the link it belongs to.
   check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
     && secs.every((n) => n.querySelector('.net-line, .admin-checks')) && !cards[0].querySelector('.net-uptime'), secs.length);
-  // The page in tabs by role (item 37; Tom, 2026-10-09: "tabs by role is the way to do it, with cards per device/connection type within there").
+  // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
   check('four tabs: Status, Hardware, The box\'s access, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|The box\'s access|Hotspot');
   const panel = (id) => d.getElementById(id);
@@ -88,7 +88,7 @@ setTimeout(() => {
   w.location.hash = '#up-sens';
   w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('  and so does any setting\'s own (#up-sens on access)', !panel('network/access').hidden);
-  // A network for the box to join (item 37): open hides the password; each add asked first; the form sent and the password cleared.
+  // A network for the box to join: open hides the password; each add asked first; the form sent and the password cleared.
   const jf = d.getElementById('net-join-form');
   jf.elements.ssid.value = 'Cafe'; jf.elements.security.value = 'open'; jf.elements.security.dispatchEvent(new w.Event('change'));
   check('join: an open network asks no password', d.getElementById('net-join-psk').hidden && !jf.elements.psk.required);
@@ -120,8 +120,8 @@ setTimeout(() => {
   console.log('FIELDS:', [...d.querySelectorAll('#up-fields [data-key]')].map((i) => `${i.dataset.key}=${i.value || '(' + (i.placeholder || i.options?.[0]?.textContent) + ')'}`).join('  '));
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
-  // Staying on the network: two dials, pace and reach (Tom, 2026-10-09), guests, a wedged driver and
-  // the sensitivity, a number of missed checks (Tom, 2026-10-09), each choice as radio cards (2026-10-06).
+  // Staying on the network: two dials, pace and reach, guests, a wedged driver and
+  // the sensitivity, a number of missed checks, each choice as radio cards.
   const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
   const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
   const pace = tiles('up-pace'), reach = tiles('up-reach');
@@ -141,7 +141,7 @@ setTimeout(() => {
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
   check('Save is off until something changes', save.disabled && save.textContent === 'Save');
-  // Roaming (item 35; Tom, 2026-10-09: R1 a checkbox to ignore, R3 "it should roam naturally"): three tiles, roam chosen; a checkbox apart.
+  // Roaming: three tiles, roam naturally chosen; a checkbox apart to ignore it.
   check('roaming: three tiles, Roam naturally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
     && tiles('up-roaming')[0].classList.contains('chosen') && !d.getElementById('up-ignore-roams').checked, vals('up-roaming'));
   check('  the WiFi card says how many access points share the network, and that the hotspot moves with it', /3 access points share .*channel 6, channel 11/.test(t('#net-roaming')[0])

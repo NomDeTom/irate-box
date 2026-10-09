@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // /account.html's ?next= (where a login goes on to): a path on this origin only. The expression is
 // taken from account.js and run against each address as a browser would read it (it drops tabs and
-// newlines, so "/<tab>/elsewhere" is "//elsewhere": CodeQL's open-redirect alert, 2026-10-08).
+// newlines, so "/<tab>/elsewhere" is "//elsewhere": an open redirect).
 // Usage: node dom-account-next.cjs
 const fs = require('fs');
 const vm = require('vm');

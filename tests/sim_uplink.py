@@ -46,7 +46,7 @@ check("gentle: reconnects back off 900→1800→…", gaps[:2] == [900, 1800], g
 a, w = outage("gentle/reboot", 3, 8000)
 check("gentle pace, reach reboot (the defaults): restart at +30 min, radio +60, reboot +120 from going on the ladder",
       [x for x in a if x[1] != "reconnect"] == [(1810, "restart"), (3610, "radio"), (7210, "reboot")], [x for x in a if x[1] != "reconnect"])
-check("the defaults are the gentlest pace, the highest reach and 3 missed checks (Tom)", U.DEFAULT["pace"] == "gentle"
+check("the defaults are the gentlest pace, the highest reach and 3 missed checks", U.DEFAULT["pace"] == "gentle"
       and U.DEFAULT["reach"] == "reboot" and U.DEFAULT["sensitivity"] == 3 and U.load_settings()["reach"] == "reboot")
 a, w = outage("standard", 3, 3600)
 check("steady pace: reconnect at 10+60, restart at 10+600", a[0] == (70, "reconnect") and (610, "restart") in a, a)
@@ -71,7 +71,7 @@ check("  the two have left steady's 10-minute window: one miss, still not on it"
 w = U.Watch(U.effective(C("standard", 3)))
 for t in (0, 200, 400):   # a miss every 200 s, fine between: spread out, still 3 within 10 min
     w.tick(t, {"link": True, "gateway": False, "drops": [], "can": ALL}); w.tick(t + 60, {"link": True, "gateway": True, "drops": [], "can": ALL})
-check("misses spread out within the window count as much as ones together (Tom: \"trips the level of misses within the pace window\")",
+check("misses spread out within the window count as much as ones together",
       w.events and w.events[0]["kind"] == "down", list(w.events))
 try:
     U.validate({"sensitivity": 0}); check("sensitivity 0 refused", False)
@@ -138,7 +138,7 @@ check("off the ladder, and the outage's misses cleared (a link that came back is
 w.tick(705, {"link": True, "gateway": False, "drops": [], "can": ALL})
 check("  so one miss after it is just one", w.outage is None and w.misses == 1)
 
-# 7. The night of 2026-10-09 on the Lyra (uplink-ladder-plan, stage 1), replayed: the link lost at 0–2,
+# 7. A night on a real board, replayed: the link lost at 0–2,
 # 3.5–5 and 11–22 min with NetworkManager there; then NM's restart left no backend (only a radio reset
 # or a reboot possible) and the link stayed down for 5 hours.
 def night(e="standard", sens=3, over=None, step=30, hours=5):
@@ -203,7 +203,7 @@ try:
 except ValueError:
     check("request_step refuses a made-up step", True)
 
-# 7c. Episodes (stage 3): relapses climb within reach, a single outage is as before, an episode ends.
+# 7c. Episodes: relapses climb within reach, a single outage is as before, an episode ends.
 def relapses(e, downs, can=NO_PIN, total=None, step=10, sens=3):
     w = U.Watch(U.effective(C(e, sens)))
     acts = []
@@ -232,7 +232,7 @@ a, w = flap(reach="persistent", n=30, every=60)
 check("flapping on: climbs the ladder by the episode's times (prompt: restart at +5 min, radio at +15)",
       [x for _, x in a if x != "pin"][:2] == ["restart", "radio"] and a[0][1] == "pin", a)
 
-# 7d. A wedged driver (stage 4): the evidence, from the Lyra's own journal lines, and what is done with it.
+# 7d. A wedged driver: the evidence, from a real board's journal lines, and what is done with it.
 J = (Path(REPO) / "tests/fixtures/aic8800-wedge-2026-10-09/journal.txt").read_text().splitlines()
 minute5 = [l for l in J if l.startswith("Oct 09 04:05")]
 ev = U.wedge_evidence("wlan0", "networkmanager", "networkmanager", minute5, [], 0)
@@ -276,7 +276,7 @@ try:
 except ValueError:
     check("validate refuses on_wedge reboot", True)
 
-# 7e. Stage 5: two dials, the restart guard on a shared radio, settings from before carried over.
+# 7e. Two dials, the restart guard on a shared radio, settings from before carried over.
 def shared(guests, sharing, ignore=False):
     w = U.Watch(U.effective(C("prompt/radio", guests="ignore" if ignore else "protect")))
     acts = []
@@ -284,7 +284,7 @@ def shared(guests, sharing, ignore=False):
         acts += [(t, x) for x in w.tick(t, {"link": False, "drops": [], "can": ALL, "guests": guests, "shared_radio": sharing})]
     return acts, w
 a, w = shared(2, True)
-check("D3: guests on a hotspot that shares the radio: the restart held too, said why", "restart" not in [x for _, x in a]
+check("guests on a hotspot that shares the radio: the restart held too, said why", "restart" not in [x for _, x in a]
       and any("2 guests are on the hotspot, which shares the radio" in e["text"] for e in w.events), [e["text"] for e in w.events if e["kind"] == "held"])
 a, w = shared(2, False)
 check("  a hotspot on a radio of its own: the restart goes ahead (the radio reset is held)", (320, "restart") in a and "radio" not in [x for _, x in a], a)
@@ -355,7 +355,7 @@ acts = []
 for t in range(3010, 3200, 10):
     acts += w.tick(t, {"link": False, "drops": [], "can": ALL, "owner_off": False})
 check("after reconnecting, a real drop is repaired again", "reconnect" in acts, acts)
-# The links' uptime history (step 34, linkhistory.py): five-minute slots, the worst state in each,
+# The links' uptime history (linkhistory.py): five-minute slots, the worst state in each,
 # gaps as no data, the clock going back, 72 days kept; the hour and day buckets the page draws.
 import os, json, tempfile, time  # noqa: E402
 from irate_box.hub import linkhistory as LH  # noqa: E402
@@ -414,8 +414,7 @@ check("  written as the slot closes: the uplink's full state, the others' link (
 check("  the watched link's letter from its state", [U.history_state(x, l) for x, l in (("up", True), ("checking", True), ("down", True), ("down", False), ("off", False))]
       == ["u", "g", "g", "d", "o"])
 
-# Roaming (item 35; uplink-roaming-options-plan; Tom, 2026-10-09: R1 "add a checkbox to ignore them as an option",
-# R2 "20s is sensible", R3 "there are 3 APs and it should roam naturally").
+# Roaming: by default it roams naturally between access points; ignoring short roams is a checkbox; the blip is 20 s.
 check("roaming: roam naturally by default, no scans or a lock as choices; a lock needs a BSSID, kept only with lock", U.ROAMING == ("roam", "no-scan", "lock")
       and U.validate({})["roaming"] == "roam" and U.validate({"roaming": "lock", "lock_bssid": "AA:BB:CC:00:00:01"})["lock_bssid"] == "aa:bb:cc:00:00:01"
       and U.validate({"roaming": "roam", "lock_bssid": "aa:bb:cc:00:00:01"})["lock_bssid"] is None)
@@ -428,7 +427,7 @@ for bad in ({"roaming": "never"}, {"roaming": "lock"}, {"roaming": "lock", "lock
         U.validate(bad); check(f"  {bad} refused", False)
     except ValueError:
         check(f"  {bad} refused", True)
-check("  the blip 20 s unless set (R2 proposed), and said in the settings' words", U.effective(C("gentle/reboot"))["blip"] == 20
+check("  the blip 20 s unless set, and said in the settings' words", U.effective(C("gentle/reboot"))["blip"] == 20
       and "roams not counted" in U.words(U.validate({"ignore_roams": True})) and "locked to aa:bb:cc:00:00:01" in U.words(U.validate({"roaming": "lock", "lock_bssid": "aa:bb:cc:00:00:01"})))
 # The drop watcher keeps when the link came back; a drop still down and younger than the blip waits.
 dw = U.DropWatcher.__new__(U.DropWatcher)
@@ -454,7 +453,7 @@ def roaming_night(ignore, every=300, hours=3, gw_fail_at=()):
 a, w = roaming_night(True)
 check("roams ignored: a roam every 5 min, gentle pace, sensitivity 3: never on the ladder", a == [] and w.outage is None and not w.misses, a[:3])
 a, w = roaming_night(False)
-check("roams counted (as since #175, the default): the same roams put it on the ladder as flapping, a reconnect locked to the strongest", any(x == "pin" or x == "reconnect" for _, x in a)
+check("roams counted (the default): the same roams put it on the ladder as flapping, a reconnect locked to the strongest", any(x == "pin" or x == "reconnect" for _, x in a)
       and any(e["kind"] == "down" and "flaps" in e["text"] for e in w.events), a[:3])
 a, w = roaming_night(True, gw_fail_at=(1200, 1320, 1440))
 check("  ignore still counts failed gateway checks: three in the window, on the ladder", any(e["kind"] == "down" and "gateway" in e["text"] for e in w.events),

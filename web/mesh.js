@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The mesh heard through the box (next-work plan step 18): the nodes the decoder bridge knows
+// The mesh heard through the box: the nodes the decoder bridge knows
 // (meshbridge.py, /mesh.json) and the recent traffic, refreshed every 15 seconds. Messages are
 // guests' words: /mesh.json never has them (only /admin does).
 const $ = (id) => document.getElementById(id);

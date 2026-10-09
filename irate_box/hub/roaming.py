@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Roaming between access points that share a name: the two choices that change the owner's own WiFi
-(item 35; uplink-roaming-options-plan §2, C and D). Root's (the watchdog's and hub_control's), by consent,
+"""Roaming between access points that share a name: the two choices that change the owner's own WiFi.
+Root's (the watchdog's and hub_control's), by consent,
 recorded in /etc/hub/uplink-roaming.json and undone the way "Keep retrying" is: here, by undo-all, and by
 uninstalling.
 
@@ -10,8 +10,8 @@ uninstalling.
            once (a reconnect); should the locked access point not answer, the old value goes back and the
            link up again, so a lock can't strand the box.
   no-scan  wpa_supplicant's background scan cleared for the network in use while the hotspot shares the
-           radio (wpa_cli set_network … bgscan ""; taken live, no re-association: proven on the Lyra,
-           2026-10-09, see the plan's stage 5). NetworkManager sets it again each time it connects, so the
+           radio (wpa_cli set_network … bgscan ""; taken live, no re-association).
+           NetworkManager sets it again each time it connects, so the
            watchdog (uplink.py, root's, every check) clears it again: at most one check's worth of scans.
 
 ignore and count are the watchdog's own (uplink.py): nothing on the box changes for them."""

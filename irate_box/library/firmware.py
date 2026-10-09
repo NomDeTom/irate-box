@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Firmware as content: the librarian's mirror of Meshtastic releases for the web flasher, and
-the optional build cache (plan §5, web-flasher stage 2).
+the optional build cache.
 
 What it keeps, under $HUB_FIRMWARE_ROOT (/var/lib/hub/firmware), in release.meshtastic.org's own
 layout so the flasher (flasher.py, /flasher/firmware/) reads it unchanged:
@@ -16,7 +16,7 @@ layout so the flasher (flasher.py, /flasher/firmware/) reads it unchanged:
                                                    calculators' pinout map lists offline
   status.json                                      what is kept, when it was checked, errors
 
-Measured 2026-10-02: a whole GitHub release is 1.8-2.9 GB, the firmware zips 260-315 MB, but one
+A whole GitHub release is 1.8-2.9 GB, the firmware zips 260-315 MB, but one
 board's flash files 4-9 MB. So it takes only what the boards' manifests name, each file checked
 against the manifest's size and MD5, and never the debug-elfs, deps or source assets.
 
@@ -38,7 +38,7 @@ Settings ($HUB_STATE_DIR/library/firmware.json, /admin's Firmware page):
                download cache only the small archives (36 MB at 2.8.1), as the platform itself
                (platform-native) is only there; the big ones are the UI libraries'. Only the
                newest kept release keeps one. A build matter, not the
-               flasher's (git-ci-plan 4a): set on the Git page's Builds, and kept whether or
+               flasher's: set on the Git page's Builds, and kept whether or
                not flash files are.
 
 The firmware's source is not kept here: it is a mirror like any other repository (mirrors.py,
@@ -203,9 +203,9 @@ def _mirror_version(rel, cfg, policy, log):
         try:
             n, b = _mirror_board(base, vdir, version, mt, policy)
         except _Unavailable as exc:
-            # One board's file missing from the release (2.8.1's canaryone .hex: HTTP 404, found
-            # 2026-10-07) stopped every board after it, and the build cache. Now only that board
-            # is left out, unoffered (its manifest is not published), and said.
+            # One board's file missing from the release (an HTTP 404) must not stop every board
+            # after it, nor the build cache: only that board is left out, unoffered (its manifest is
+            # not published), and said.
             log(f"firmware {version}: {board} left out: {exc}")
             unavailable.append({"board": board, "why": str(exc)[:200]})
             continue
@@ -258,7 +258,7 @@ DEPS_RESERVE = 512 << 20  # free space the deps extraction leaves on the card
 def _subset(name, mode, size=0):
     """Where a deps-zip entry goes under pio-deps/, or None to leave it out."""
     parts = name.split("/")
-    # No empty part (a "//" made the rest absolute, and joining that discarded the folder: F10),
+    # No empty part (a "//" made the rest absolute, and joining that discarded the folder),
     # no "." or "..", no backslash.
     if len(parts) < 3 or any(p in ("", ".", "..") for p in parts[:-1]) or parts[-1] in (".", "..") or "\\" in name:
         return None
@@ -301,7 +301,7 @@ def _carry_cache(rel, cfg, policy, log):
     shutil.rmtree(work, ignore_errors=True)
     try:
         with zipfile.ZipFile(tmp) as zf:
-            # What it unpacks to must fit, with room left (F30): a small zip can claim gigabytes.
+            # What it unpacks to must fit, with room left: a small zip can claim gigabytes.
             wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir())
             free = shutil.disk_usage(ROOT).free
             if wanted > free - DEPS_RESERVE:
@@ -329,8 +329,8 @@ def _carry_cache(rel, cfg, policy, log):
 
 def flush_cache(log=print):
     """Git -> Builds, Flush: the build cache is gone now, whatever the policy. The next check or
-    update re-fetches it if the policy still wants one (git-ci-plan: "a Flush per cache beside
-    it", so flushing is the builds' call, not only the librarian's schedule)."""
+    update re-fetches it if the policy still wants one (flushing is the builds' call, not only the
+    librarian's schedule)."""
     gone = 0
     for other in ROOT.glob("*/pio-deps"):
         gone += _du(other)
@@ -543,7 +543,7 @@ def sync(check_only=False, log=print):
                 configs = f"configs: {exc}"
             st["configs"] = configs
         if not cfg["enabled"]:
-            # The build cache is the builds' (git-ci-plan 4a): kept whether or not flash files are.
+            # The build cache is the builds': kept whether or not flash files are.
             # Flash files already held go: they are what "Keep firmware on this box" keeps.
             gone = _drop_flash_files()
             st.pop("versions", None)

@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Packages from their makers' own repositories, watched for updates on the channel the owner picks
-(Tom, 2026-10-08: "Add Meshtasticd to the list of apps being watched for updates, with options to
-automatically update against beta, alpha or nightly, or alpha/nightly after a certain period of
-time"). Root's half; the hub asks through hub_control.py, the librarian on its schedule.
+"""Packages from their makers' own repositories, watched for updates on the channel the owner picks.
+Root's half; the hub asks through hub_control.py, the librarian on its schedule.
 
 A watched package is packages.d/<id>.json in the hub's code (root-owned): the Debian package, its
 maker's channels (each an apt repository, {suite} standing for this box's Debian_13 or the like),
@@ -27,8 +25,8 @@ With aged, apt's preferences keep the box's own `apt upgrade` from taking the pa
 maker's repositories before its time (/etc/apt/preferences.d/irate-box-<id>.pref); only this installs
 it then. Update (a build now) and Roll back (the one before) work in any mode.
 
-An image may have a tool of its own for the same package (mPWRD-OS's mpwrd-menu, for meshtasticd; Tom,
-2026-10-08: "There's tools in mpwrd-os for this as well - it needs to adapt"). A manifest's "image" says
+An image may have a tool of its own for the same package (mPWRD-OS's mpwrd-menu, for meshtasticd). A
+manifest's "image" says
 how that tool keeps the channel (one apt list per channel, and its key, by name); then the channel is
 read the way the tool reads it (exactly one list: that channel; none or several: from the installed
 build), and choosing one here writes the same files the tool would (the other channels' taken away,
@@ -59,7 +57,7 @@ OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
 IMAGE_ROOT = Path(os.environ.get("HUB_IMAGE_ROOT", "/"))   # where an image's own files are (tests move it)
 MODES = ("flag", "watch", "auto", "aged")
 DAYS = (1, 3, 7, 14, 30)
-# How often the librarian asks for a check (item 36's pattern: hours, 0 only when Check now is pressed).
+# How often the librarian asks for a check (the update pattern: hours, 0 only when Check now is pressed).
 EVERY = (0, 6, 24, 168)
 KEEP = 8                     # builds kept in the cache, besides the installed and the previous
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")

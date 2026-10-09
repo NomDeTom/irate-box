@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The admin's shared widgets (web/admin-widgets.js) against checklist 3, as Tom settled it on the
-// menu mock: drawers inside their card (3a), the title folds it (3b), a ✕ on an opened card (3c),
-// short entries (3d), records with a limited height (3e), a filter on long lists (3f), one open at
-// a time, settings held until Save, and the control vocabulary (6a, 6b).
+// The admin's shared widgets (web/admin-widgets.js) against the menu's rules: drawers inside their
+// card, the title folds it, a ✕ on an opened card, short entries, records with a limited height, a
+// filter on long lists, one open at a time, settings held until Save, and the control vocabulary.
 // Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-menu-rules.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const fs = require('fs');
@@ -24,39 +23,39 @@ const click = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true
 const type = (el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
 const paneA = d.getElementById('a'), paneB = d.getElementById('b');
 
-// ---- 3d, 3f, 3b: a short list of 30 ----
+// ---- a short list of 30 ----
 const items = Array.from({ length: 30 }, (_, i) => ({ id: 'e' + i, title: `Entry ${i}`, summary: i % 7 ? 'fine' : 'needs a look', badges: [i % 7 ? 'ok' : 'warn'], detail: { More: 'x' + i } }));
 paneA.append(AW.shortList(items, { id: 'list1' }));
 const rows = paneA.querySelectorAll('#list1 .aw-row');
-check('3d every entry starts as one line', [...rows].every((r) => r.querySelector('.aw-row-detail').hidden), rows.length);
-check('3f a list of 30 has a filter', !!paneA.querySelector('[data-filter-for="list1"]'));
-check('3d over 20 entries scroll in their own box', w.getComputedStyle(d.getElementById('list1')).maxHeight !== 'none');
+check('every entry starts as one line', [...rows].every((r) => r.querySelector('.aw-row-detail').hidden), rows.length);
+check('a list of 30 has a filter', !!paneA.querySelector('[data-filter-for="list1"]'));
+check('over 20 entries scroll in their own box', w.getComputedStyle(d.getElementById('list1')).maxHeight !== 'none');
 const q = paneA.querySelector('[data-filter-for="list1"] input');
 type(q, 'entry 2');
-check('3f the search narrows the list', [...rows].filter((r) => !r.hidden).length === 11, [...rows].filter((r) => !r.hidden).length);
+check('the search narrows the list', [...rows].filter((r) => !r.hidden).length === 11, [...rows].filter((r) => !r.hidden).length);
 type(q, '');
 click(paneA.querySelector('[data-filter-for="list1"] .filter-chip'));
-check('3f a state chip narrows the list', [...rows].filter((r) => !r.hidden).length === 25 || [...rows].filter((r) => !r.hidden).length === 5);
+check('a state chip narrows the list', [...rows].filter((r) => !r.hidden).length === 25 || [...rows].filter((r) => !r.hidden).length === 5);
 click(paneA.querySelector('[data-filter-for="list1"] .filter-chip'));
 const h0 = rows[0].querySelector('.aw-row-head'), h1 = rows[1].querySelector('.aw-row-head');
 click(h0);
 check('an entry opens from its line, its details filled', !rows[0].querySelector('.aw-row-detail').hidden && /x0/.test(rows[0].textContent));
-check('6b its head says it is open', h0.getAttribute('aria-expanded') === 'true');
+check('its head says it is open', h0.getAttribute('aria-expanded') === 'true');
 click(h1);
 check('one open at a time: the next entry closes the first', rows[0].querySelector('.aw-row-detail').hidden && !rows[1].querySelector('.aw-row-detail').hidden);
 click(h1);
-check('3b the line itself folds it again', rows[1].querySelector('.aw-row-detail').hidden && h1.getAttribute('aria-expanded') === 'false');
-check('3b no separate collapse button (Tom, 2026-10-07)', !paneA.querySelector('[data-act="collapse"]'));
+check('the line itself folds it again', rows[1].querySelector('.aw-row-detail').hidden && h1.getAttribute('aria-expanded') === 'false');
+check('no separate collapse button', !paneA.querySelector('[data-act="collapse"]'));
 
-// ---- 3e: records ----
+// ---- records ----
 paneA.append(AW.records(Array.from({ length: 60 }, (_, i) => ({ id: 'r' + i, title: `10-08 00:${String(i).padStart(2, '0')} an event` })), { id: 'rec1' }));
 const rs = w.getComputedStyle(d.getElementById('rec1'));
-check('3e records have a limited height and scroll', rs.maxHeight !== 'none' && /auto|scroll/.test(rs.overflowY), `${rs.maxHeight} ${rs.overflowY}`);
-check('3f 60 records have a filter', !!paneA.querySelector('[data-filter-for="rec1"]'));
+check('records have a limited height and scroll', rs.maxHeight !== 'none' && /auto|scroll/.test(rs.overflowY), `${rs.maxHeight} ${rs.overflowY}`);
+check('60 records have a filter', !!paneA.querySelector('[data-filter-for="rec1"]'));
 paneA.append(AW.records([{ id: 'x', title: 'one' }], { id: 'rec2' }));
-check('3f a short list has none', !paneA.querySelector('[data-filter-for="rec2"]'));
+check('a short list has none', !paneA.querySelector('[data-filter-for="rec2"]'));
 
-// ---- 3a, 3b, 3c: cards, with settings in the drawer ----
+// ---- cards, with settings in the drawer ----
 let saved = null;
 const cardItems = Array.from({ length: 14 }, (_, i) => ({ id: 'c' + i, title: `Card ${i}`, summary: 'a card', badges: i === 3 ? ['installed'] : [] }));
 paneB.append(AW.cards(cardItems, { id: 'cards1', body: (it, setDirty) => [AW.h('p', { text: 'about ' + it.title }),
@@ -64,10 +63,10 @@ paneB.append(AW.cards(cardItems, { id: 'cards1', body: (it, setDirty) => [AW.h('
 const c0 = paneB.querySelector('[data-aw-id="c0"]'), c1 = paneB.querySelector('[data-aw-id="c1"]');
 click(c0.querySelector('.aw-card-head'));
 const dr = c0.querySelector('.aw-drawer');
-check('3a the drawer opens inside its card', !!dr && c0.contains(dr));
-check('3a the card widens to the row', c0.classList.contains('open'));
-check('3c an opened card has a ✕', !!dr.querySelector('[data-act="close"]'));
-check('3f 14 cards have a filter', !!paneB.querySelector('[data-filter-for="cards1"]'));
+check('the drawer opens inside its card', !!dr && c0.contains(dr));
+check('the card widens to the row', c0.classList.contains('open'));
+check('an opened card has a ✕', !!dr.querySelector('[data-act="close"]'));
+check('14 cards have a filter', !!paneB.querySelector('[data-filter-for="cards1"]'));
 const saveB = [...dr.querySelectorAll('.aw-foot .action-btn')].find((b) => b.textContent === 'Save');
 check('Save waits until something changes', saveB.disabled && dr.querySelector('.aw-foot').hidden);
 click(dr.querySelector('.chip-btn'));
@@ -77,13 +76,13 @@ check('Save sends it', saved === 'c0');
 click(c1.querySelector('.aw-card-head'));
 check('one open at a time: the next card closes the first', !c0.classList.contains('open') && c1.classList.contains('open'));
 click(c1.querySelector('.aw-card-head'));
-check('3b the title folds it again', !c1.classList.contains('open') && !c1.querySelector('.aw-drawer'));
+check('the title folds it again', !c1.classList.contains('open') && !c1.querySelector('.aw-drawer'));
 click(c1.querySelector('.aw-card-head'));
 d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
-check('3c Esc closes it', !c1.classList.contains('open'));
+check('Esc closes it', !c1.classList.contains('open'));
 click(c1.querySelector('.aw-card-head'));
 click(c1.querySelector('[data-act="close"]'));
-check('3c the ✕ closes it', !c1.classList.contains('open'));
+check('the ✕ closes it', !c1.classList.contains('open'));
 click(c0.querySelector('.aw-card-head'));
 click(paneB.ownerDocument.querySelector('#a .aw-row-head'));
 check('one open per pane: another pane keeps its card open', c0.classList.contains('open'));
@@ -119,14 +118,14 @@ click(fr[0].querySelector('.aw-row-head'));
 click([...fr[0].querySelectorAll('.action-btn')].find((b) => b.textContent === 'Turn on'));
 check('findings: the cure beside the finding acts', acted === 'kernel-links');
 
-// ---- 6a, 6b: every button is one of the vocabulary; every disclosure says its state ----
+// ---- every button is one of the vocabulary; every disclosure says its state ----
 const VOCAB = ['action-btn', 'chip', 'filter-chip', 'chip-btn', 'view-switch-btn', 'aw-row-head', 'aw-card-head'];
 const odd = [...d.querySelectorAll('button')].filter((b) => !VOCAB.some((c) => b.classList.contains(c)));
-check('6a every button is one of the vocabulary', !odd.length, odd.map((b) => b.outerHTML.slice(0, 60)).join(' | '));
-check('6b every disclosure carries aria-expanded', [...d.querySelectorAll('[data-disclosure]')].every((b) => b.hasAttribute('aria-expanded')));
+check('every button is one of the vocabulary', !odd.length, odd.map((b) => b.outerHTML.slice(0, 60)).join(' | '));
+check('every disclosure carries aria-expanded', [...d.querySelectorAll('[data-disclosure]')].every((b) => b.hasAttribute('aria-expanded')));
 check('no page errors', !errors.length, errors.join('; '));
 
-// ---- The same, on the real /admin (F8): every page built, every button and disclosure looked at ----
+// ---- The same, on the real /admin: every page built, every button and disclosure looked at ----
 {
   const adminApps = require('./admin-apps-fixture.cjs');
   const page = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
@@ -144,7 +143,7 @@ check('no page errors', !errors.length, errors.join('; '));
     const SHELL = ['admin-menu', 'admin-side-group', 'link-button', 'emoji-toggle'];
     const odd2 = [...rd.querySelectorAll('.admin-main button, .admin-side button')].filter((b) => ![...VOCAB, ...SHELL].some((c) => b.classList.contains(c)));
     const kinds = [...new Set(odd2.map((b) => b.className || '(none)'))];
-    check('6a on the real /admin: every button one of the vocabulary', !odd2.length, `${odd2.length}: ${kinds.join(' | ')}`);
+    check('on the real /admin: every button one of the vocabulary', !odd2.length, `${odd2.length}: ${kinds.join(' | ')}`);
     // The lists drawn from data stay empty here, so their buttons are looked for in the source: each
     // el('button', {…}) the admin's scripts make names its class (the base button rule is gone).
     const unclassed = ['admin.js', 'admin-layout.js', 'admin-tour.js', 'factory.js'].flatMap((f) => {
@@ -152,19 +151,19 @@ check('no page errors', !errors.length, errors.join('; '));
       return [...src.matchAll(/el\('button', \{([^}]*)/g)].filter((m) => !/class(Name)?:/.test(m[1]))
         .map((m) => `${f}:${src.slice(0, m.index).split('\n').length}`);
     });
-    check('6a in the admin\'s scripts: every button they make names its class', !unclassed.length, unclassed.join(' '));
-    check('6b on the real /admin: every sidebar group head says its state', [...rd.querySelectorAll('.admin-side-group')].every((b) => b.hasAttribute('aria-expanded')));
+    check('in the admin\'s scripts: every button they make names its class', !unclassed.length, unclassed.join(' '));
+    check('on the real /admin: every sidebar group head says its state', [...rd.querySelectorAll('.admin-side-group')].every((b) => b.hasAttribute('aria-expanded')));
     // The stub answers {} beyond the apps, so lists drawn from data are empty here: what is looked at
     // is every button the page and its empty states draw, on every page.
     const pagesBuilt = rd.querySelectorAll('.admin-page').length;
     check('the real /admin: a page for every sidebar entry', pagesBuilt > 20 && pagesBuilt === rd.querySelectorAll('.admin-side-list a[data-page]').length, pagesBuilt);
-    // 3e, 3f on the older lists (F8): bounded, and a filter once long, through every redraw.
+    // The older lists: bounded, and a filter once long, through every redraw.
     const msgs = rd.getElementById('mod-messages');
-    check('3e an older record list bounded: the shoutbox\'s messages', msgs.classList.contains('aw-bounded'));
+    check('an older record list bounded: the shoutbox\'s messages', msgs.classList.contains('aw-bounded'));
     msgs.replaceChildren(...Array.from({ length: 20 }, (_, i) => Object.assign(rd.createElement('div'), { textContent: i === 7 ? 'Moth: anyone on 868?' : `Ann: hello ${i}` })));
     setTimeout(() => {
       const bar = rd.querySelector('[data-filter-for="mod-messages"]');
-      check('3f past twelve, a filter over it', bar && !bar.hidden && /20 of 20/.test(bar.textContent), bar && bar.textContent);
+      check('past twelve, a filter over it', bar && !bar.hidden && /20 of 20/.test(bar.textContent), bar && bar.textContent);
       const q = bar.querySelector('input');
       q.value = '868'; q.dispatchEvent(new rw.Event('input'));
       check('  the filter shows what matches', [...msgs.children].filter((r) => !r.hidden).length === 1 && /1 of 20/.test(bar.textContent));

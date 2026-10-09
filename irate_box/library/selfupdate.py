@@ -56,7 +56,7 @@ def _save(state):
 def _queue(action):
     rid = os.urandom(8).hex()
     (CONTROL / "requests").mkdir(parents=True, exist_ok=True)
-    tmp = STATE_DIR / f".request-{rid}.tmp"  # the hub's folder: control/ is root's (F3)
+    tmp = STATE_DIR / f".request-{rid}.tmp"  # the hub's folder: control/ is root's
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
         json.dump({"action": action, "id": rid, "by": "librarian"}, fh)

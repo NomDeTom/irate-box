@@ -7,8 +7,7 @@ Here, not in root/, because the hub cannot read root's code.
   the owner's own      <kits root>/owner/<id>.json, written only by root (kits.define), after
                        checking every package name against the box's package lists
   extra tools          <kits root>/owner/extras.json, {shipped kit: [package, ...]}, likewise:
-                       added to that kit's packages (Tom, 2026-10-06: "the toolkit may want an
-                       extra tool to be tracked")"""
+                       added to that kit's packages"""
 import json
 import os
 import re
@@ -18,22 +17,22 @@ DEFS = Path(os.environ.get("HUB_KITS_DEFS", Path(__file__).resolve().parents[2] 
 OWNER = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits")) / "owner"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 PKG_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{1,62}$")
-# PyPI's own name rule (PEP 508), for a kit's "pip" list (toolkits-plan §5: the build kit's wheelhouse).
+# PyPI's own name rule (PEP 508), for a kit's "pip" list (the build kit's wheelhouse).
 PIP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 # Packages a kit marks "needs_64bit" (the debug kit's bpftrace, bcc and bpftool: BPF programs that
-# a 32-bit ARM kernel will not load; tried on the Lyra, 2026-10-06) are left out on other boards.
+# a 32-bit ARM kernel will not load) are left out on other boards.
 ARCH_64 = {"amd64", "arm64", "riscv64", "ppc64el", "s390x", "mips64el", "loong64"}
 
 
-# Packages a kit gives "only_where" a condition (the System kit, os-image-plan §2: each package only
+# Packages a kit gives "only_where" a condition (the System kit: each package only
 # where it fits) are left out where the board doesn't meet it. Read from the board itself; the paths
 # can be moved for the tests (HUB_SYSFS, HUB_ROOTFS).
 SYSFS = Path(os.environ.get("HUB_SYSFS", "/sys"))
 ROOTFS = Path(os.environ.get("HUB_ROOTFS", "/"))
 CONDITIONS = {
-    # PCI devices to list (pciutils): the Lyra has none.
+    # PCI devices to list (pciutils): many small boards have none.
     "pci": lambda: any((SYSFS / "bus/pci/devices").glob("*")),
     # A disk that may report SMART (smartmontools): SATA, SCSI, USB disks and NVMe, not SD cards.
     "smart-disk": lambda: any((SYSFS / "block").glob("sd*")) or any((SYSFS / "block").glob("nvme*")),

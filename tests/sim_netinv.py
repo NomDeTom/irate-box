@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The hotspot verdicts (hub/netinv.py ap_verdicts) for each kind of radio, offline: the one-line
-detail the doctor and install.sh print, and the conditions /admin lists one per line (2026-10-06).
+detail the doctor and install.sh print, and the conditions /admin lists one per line.
 python3 tests/sim_netinv.py"""
 import sys
 from pathlib import Path
@@ -38,8 +38,8 @@ check("no AP mode at all: not possible, one limit", not v["possible"] and kinds(
 h = netinv._h("x", "warn", "t", "d", iface="wlan0")
 check("a finding can name its device", h["iface"] == "wlan0" and "iface" not in netinv._h("y", "ok", "t", "d"))
 
-# Roaming (item 35, stage 1): the access points sharing the network, the background scan, the choices that work.
-# nmcli's and wpa_cli's own output, as the Lyra gave them (2026-10-09), the addresses and names changed.
+# Roaming: the access points sharing the network, the background scan, the choices that work.
+# nmcli's and wpa_cli's own output from a real board, the addresses and names changed.
 LIST = ("04\\:95\\:E6\\:00\\:00\\:01:6:2437 MHz:100:HomeNet\n50\\:0F\\:F5\\:00\\:00\\:02:6:2437 MHz:87:HomeNet\n"
         "50\\:0F\\:F5\\:00\\:00\\:03:11:2462 MHz:80:HomeNet\nB2\\:41\\:D9\\:00\\:00\\:04:6:2437 MHz:0:Irate-Box\n")
 aps = netinv.parse_wifi_list(LIST, "HomeNet")
@@ -62,7 +62,7 @@ f = netinv.roaming_facts(dict(r, owner="wpa_supplicant"), None, fake)
 check("  wpa_supplicant alone: no lock (NetworkManager's), said why", "lock" not in f["choices"] and "NetworkManager" in f["why"]["lock"] and f["aps"] == [], f)
 f = netinv.roaming_facts(r, {}, lambda *c, **_: (1, ""))
 check("  no control socket: no background-scan choice, said why", "no-scan" not in f["choices"] and "control socket" in f["why"]["no-scan"], f)
-# iw dev on the Lyra (2026-10-09): a P2P device between the hotspot and the link, with no interface of its own.
+# iw dev on a board with a P2P device between the hotspot and the link, with no interface of its own.
 IW = ("phy#3\n\tInterface ap0\n\t\tifindex 9\n\t\taddr b2:00:00:00:00:01\n\t\tssid Irate-Box\n\t\ttype AP\n"
       "\t\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz\n\tUnnamed/non-netdev interface\n\t\twdev 0x300000002\n"
       "\t\taddr be:00:00:00:00:02\n\t\ttype P2P-device\n\tInterface wlan0\n\t\tifindex 8\n\t\taddr b8:00:00:00:00:03\n"

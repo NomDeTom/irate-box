@@ -2,8 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The themes stay in one place (web/themes.js and web/themes/): no other file names a theme
 other than light and dark, every page with a picker loads themes.js after style.css, and no
-page carries its own copy of the boot script or of the picker's buttons. A theme that leaks
-into the pages is how the Cybercore theme came to touch thirteen files.
+page carries its own copy of the boot script or of the picker's buttons.
 python3 tests/theme_guard.py"""
 import re
 import sys
@@ -49,7 +48,7 @@ for p in sorted(WEB.glob("*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
     check(f"{name}: no boot script of its own", "localStorage.getItem('theme')" not in text)
     check(f"{name}: no hand-written theme buttons", "data-theme-choice" not in text)
 
-# Not a theme, but the same kind of drift: every page's 🏠 is labelled "Hub" (Tom, 2026-10-06).
+# Not a theme, but the same kind of drift: every page's 🏠 is labelled "Hub".
 bare = [str(p.relative_to(REPO)) for p in sorted(WEB.glob("*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
         if re.search(r'>🏠</a>', p.read_text(encoding="utf-8"))]
 check("every 🏠 link says Hub", not bare, bare)

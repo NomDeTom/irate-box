@@ -9,7 +9,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, sans-serif;
-  /* The owner's width (/layout.css, set on /admin; menu overhaul M2), 80rem until it loads. */
+  /* The owner's width (/layout.css, set on /admin), 80rem until it loads. */
   max-width: var(--page-width, 80rem);
   margin: 0 auto;
   padding: 2rem 1rem 4rem;
@@ -19,7 +19,7 @@ body {
 body:not(.admin):not(.app-frame) > :not(header):not(.services):not(script) {
   max-width: 45rem; margin-left: auto; margin-right: auto;
 }
-/* The shoutbox and the forum on the home page: widths of their own (M2). */
+/* The shoutbox and the forum on the home page: widths of their own. */
 body.home > #tab-shout { max-width: var(--shout-width, 45rem); }
 body.home > #tab-board { max-width: var(--board-width, 45rem); }
 body.home > .home-tabs { max-width: max(var(--shout-width, 45rem), var(--board-width, 45rem)); }
@@ -685,7 +685,7 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .update-card .aw-field { display: grid; gap: 0.25rem; padding: 0; border-top: 0; font-size: 0.85rem; }
 .update-card .aw-label { min-width: 0; color: inherit; }
 /* Centred, not stretched: a button beside something taller (a label over its chips) keeps its own
-   height (Tom, 2026-10-09: Network's Refresh was twice the height of the device chips beside it). */
+   height. */
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 /* display: flex outranks the browser's own [hidden] rule: without this, a hidden row stays on screen. */
 .library-buttons[hidden], .library-actions[hidden] { display: none; }
@@ -737,7 +737,7 @@ body.admin button.link-button {
 }
 .admin-side-group:first-child { margin-top: 0; }
 .admin-side-group:hover { color: var(--text); background: var(--surface); }
-/* The group's fold, as on list entries: ▾ open, ▸ folded (F2). */
+/* The group's fold, as on list entries: ▾ open, ▸ folded. */
 .admin-side-group::before { content: '▾'; font-size: 0.8rem; width: 0.8rem; flex: none; }
 .admin-side-group[aria-expanded="false"]::before { content: '▸'; }
 .admin-side-group[data-badge]::after {
@@ -768,7 +768,7 @@ body.admin button.link-button {
 /* The same art on a public page (Services: data-art on its body), behind its sections. */
 body[data-art] > header, body[data-art] > section { position: relative; z-index: 1; }
 /* The header one layer above: with both on 1, a later section painted over the header's open
-   🎨 theme menu (Tom, 2026-10-06). */
+   🎨 theme menu. */
 body[data-art] > header { z-index: 2; }
 [data-art-side="left"] .admin-art { right: auto; left: 1rem; background-position: left bottom; }
 .admin-art {
@@ -981,8 +981,7 @@ body.home.full { max-width: 960px; padding-top: 1rem; }
 body.full #messages { height: calc(100dvh - 13rem); min-height: 280px; }
 
 /* --- File drop (drop.html) --- */
-/* The upload section is a column with one gap between its blocks (Tom, 2026-10-06: they were
-   1rem, 0.75rem and none, and the capture buttons touched the lock box). */
+/* The upload section is a column with one gap between its blocks. */
 body.drop > section:first-of-type { display: flex; flex-direction: column; gap: 1rem; }
 body.drop > section:first-of-type > * { margin-top: 0; margin-bottom: 0; }
 body.drop > section + section { margin-top: 2.5rem; }
@@ -1069,7 +1068,7 @@ body.drop > section + section { margin-top: 2.5rem; }
 .net-fields label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.9em; }
 .net-fields input, .net-fields select { width: 100%; box-sizing: border-box; }
 /* The watchdog's events: one line each, the time then what happened; no bullets. Limited
-   height with a scroll bar (checklist 3e): the list keeps the last 25, which can still run long. */
+   height with a scroll bar: the list keeps the last 25, which can still run long. */
 .net-events { list-style: none; margin: 0.5rem 0; padding: 0; gap: 0; font-size: 0.85rem; max-height: 14rem; overflow-y: auto; }
 .net-events li { display: flex; gap: 0.75rem; align-items: baseline; padding: 0.2rem 0; border-top: 1px solid var(--border); }
 .net-events li:first-child { border-top: 0; }
@@ -1093,7 +1092,7 @@ body.drop > section + section { margin-top: 2.5rem; }
 .access-toggle button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
 .access-toggle button:disabled { cursor: progress; opacity: 0.7; }
 
-/* The Git page as cards (git-ci-plan §1, Kiwix's library as the model): a filter bar, a grid,
+/* The Git page as cards (Kiwix's library as the model): a filter bar, a grid,
    and Manage opening under the card (a drawer across the grid) or beside it (a side panel). */
 .git-filter { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; margin: 0.75rem 0; }
 .git-filter input[type=search] { flex: 1 1 14rem; min-width: 0; }
@@ -1172,7 +1171,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .factory-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.15rem 1rem; padding: 0.4rem 0 0.4rem 1rem; }
 .factory-boards label { font-size: 0.9rem; }
 .factory-files { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; font-size: 0.85rem; }
-/* The books (step 14): the tools above the table, the table compact, a book's card under its row. */
+/* The books: the tools above the table, the table compact, a book's card under its row. */
 .books-tools { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.5rem 0; }
 .books-tools label { display: flex; gap: 0.35rem; align-items: center; }
 .books-bulk { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0.4rem 0; }
@@ -1183,7 +1182,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .books-pager { display: flex; gap: 0.6rem; align-items: center; }
 .books-pager[hidden] { display: none; }  /* display: flex outranks the hidden attribute */
 .scroll-x { overflow-x: auto; }
-/* The mesh (step 18): the traffic a line each; a message set apart. */
+/* The mesh: the traffic a line each; a message set apart. */
 .mesh-packets { padding-left: 1.4rem; font-size: 0.9rem; }
 .mesh-text { color: var(--text); font-style: italic; }
 .mesh-map { width: 100%; max-width: 600px; height: auto; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -1192,14 +1191,14 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .mesh-map-label { fill: var(--text); font-size: 12px; }
 .mesh-map-scale { stroke: var(--text); stroke-width: 2; }
 
-/* /account.html (step 16): the forms, one column. */
+/* /account.html: the forms, one column. */
 .acct-form { margin: 1.2em 0; max-width: 28em; }
 .acct-form label { display: block; margin: 0.5em 0; }
 .acct-form input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2em; }
-/* A post by an account of that name (accounts step 16), where the admin shows marks. */
+/* A post by an account of that name, where the admin shows marks. */
 .verified { color: var(--accent); font-weight: 700; margin: 0 0.25em 0 0.15em; }
 
-/* ---- The control vocabulary (menu overhaul M1; rule 6): the microsite's calculator-template
+/* ---- The control vocabulary: the microsite's calculator-template
    controls in the hub's colours. Each class doubled so it outranks the per-form `button` rules (the
    shoutbox's and the board's), which paint a submit button in the accent colour. ---- */
 :root { --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface)); --bad: #e5484d; }
@@ -1238,7 +1237,7 @@ label > .select-chips { margin-top: 0.25rem; }
 .field-help summary { cursor: pointer; color: var(--text); }
 .output-value { display: inline-block; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg); font-variant-numeric: tabular-nums; }
 
-/* ---- The shared widgets (web/admin-widgets.js; checklist 3) ---- */
+/* ---- The shared widgets (web/admin-widgets.js) ---- */
 .aw-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0 0 0.5rem; }
 .aw-filter input[type="search"] { flex: 1 1 12rem; max-width: 22rem; padding: 0.4rem 0.55rem; border: 1px solid var(--border);
   background: var(--bg); color: var(--text); font: inherit; font-size: 0.88rem; border-radius: 4px; }
@@ -1283,7 +1282,7 @@ label > .select-chips { margin-top: 0.25rem; }
 .aw-label { min-width: 10rem; color: var(--muted); }
 .aw-field input[type="text"] { padding: 0.35rem 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; border-radius: 4px; }
 
-/* The admin at a narrow page width (45rem, M2): the sidebar folds into its ☰ button as on a
+/* The admin at a narrow page width (45rem): the sidebar folds into its ☰ button as on a
    phone, by the page's width rather than the screen's. */
 body.admin { container: page / inline-size; }
 /* A container body no longer lends its background to the whole window (CSS containment), so the
@@ -1303,12 +1302,12 @@ html:has(> body.admin) { background: var(--bg); }
 /* A wide page gives the sidebar a little more room. */
 @container page (min-width: 1200px) { .admin-layout { grid-template-columns: 14rem minmax(0, 1fr); } }
 
-/* The lit desks as WebM loops (krab-loop.js, menu overhaul M3): over the still, which stays as the
+/* The lit desks as WebM loops (krab-loop.js): over the still, which stays as the
    fallback; the loop has the krab and the lights in it. */
 .admin-art .art-loop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .admin-art.looping .art-lamps, .admin-art.looping .art-krab { display: none; }
 
-/* ---- /admin's pages (menu overhaul M4): each holds one or more of the old panes, now its
+/* ---- /admin's pages: each holds one or more of the old panes, now its
    sections. A page of one section keeps that section's own title; a page of several has its own,
    and its sections' titles step down a size. ---- */
 .admin-main > .admin-page { position: relative; z-index: 1; }
@@ -1321,14 +1320,14 @@ html:has(> body.admin) { background: var(--bg); }
 .admin-side-list a .side-icon { width: 1.3em; text-align: center; flex: none; }
 .admin-side-list a[hidden] { display: none; }
 
-/* A tile shown to someone who can't open it yet (M5): a lock, and the sign-in at its door. */
+/* A tile shown to someone who can't open it yet: a lock, and the sign-in at its door. */
 .service-card.locked { opacity: 0.85; }
 .service-card .lock { font-size: 0.72rem; color: var(--muted); }
 .access-seen { align-items: center; margin-top: 0.3rem; }
 
-/* A status tile at double width (M8): two cells, room to say more. */
+/* A status tile at double width: two cells, room to say more. */
 .service-grid .service-card.wide { grid-column: span 2; }
-/* Large: two across and two down (F5; Tom: "All tiles"). The grid packs the gaps a large tile
+/* Large: two across and two down. The grid packs the gaps a large tile
    leaves with later tiles, so no row has a hole; the order still reads left to right. */
 .service-grid { grid-auto-flow: row dense; }
 .service-grid .service-card.large { grid-column: span 2; grid-row: span 2; justify-content: center; }
@@ -1340,7 +1339,7 @@ html:has(> body.admin) { background: var(--bg); }
 .people-card .field-help { margin-top: 0.4rem; text-align: left; font-size: 0.75rem; }
 @media (max-width: 480px) { .service-grid .service-card.wide { grid-column: auto; } .service-grid .service-card.large { grid-column: 1 / -1; grid-row: auto; } }
 
-/* Reporting a message or post (M10): a quiet ⚑, its reasons opening beside it. */
+/* Reporting a message or post: a quiet ⚑, its reasons opening beside it. */
 .report { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-left: 0.4rem; }
 .report-flag { background: none; border: 0; padding: 0 0.2rem; color: var(--muted); cursor: pointer; font: inherit; opacity: 0.6; }
 .report-flag:hover, .report-flag[aria-expanded="true"] { opacity: 1; color: var(--warn); }
@@ -1348,13 +1347,13 @@ html:has(> body.admin) { background: var(--bg); }
 .report-reasons[hidden] { display: none; }
 .report-reasons .chip { font-size: 0.72rem; padding: 0.1rem 0.5rem; }
 
-/* The account page's own settings (M12) and the names on the People tile. */
+/* The account page's own settings and the names on the People tile. */
 .acct-prefs .acct-pref { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; margin: 0.6rem 0; }
 .acct-prefs .acct-pref > span:first-child { min-width: 14rem; }
 .acct-pref-foot { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.8rem; }
 .people-card .people-names { display: flex; flex-wrap: wrap; gap: 0.25rem; justify-content: center; font-size: 0.75rem; color: var(--muted); }
 
-/* The setup tour (M14): the setting to decide, highlighted where it lives; the bar with its guide. */
+/* The setup tour: the setting to decide, highlighted where it lives; the bar with its guide. */
 .tour-target { outline: 3px solid var(--warn) !important; outline-offset: 4px; border-radius: 6px; animation: tour-pulse 1.6s ease-in-out 3; }
 @keyframes tour-pulse { 50% { outline-color: color-mix(in srgb, var(--warn) 30%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .tour-target { animation: none; } }
@@ -1367,13 +1366,13 @@ html:has(> body.admin) { background: var(--bg); }
 .tour-list { margin: 0.4rem 0 0.5rem 1.3rem; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
 .tour-list li.done a { color: var(--muted); }
 
-/* Overview's Needs attention (menu overhaul F4): what is waiting on the admin, each a link. */
+/* Overview's Needs attention: what is waiting on the admin, each a link. */
 .attention { margin: 0 0 1rem; padding: 0.5rem 0.9rem; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; background: var(--surface); }
 .attention h3 { margin: 0.2rem 0 0.4rem; font-size: 0.95rem; }
 .attention .attention-list { margin: 0; }
 .attention .attention-list a { font-weight: 600; }
 
-/* A tile only an admin sees (Tom, 2026-10-08: "obvious as special to the admin user"). */
+/* A tile only an admin sees, marked as special. */
 .service-card.admin-only { border-style: dashed; border-color: var(--accent); }
 .tile-pill.admin-pill { display: inline-block; margin-top: 0.2rem; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600;
   color: var(--accent-ink); background: var(--accent); }
@@ -1383,12 +1382,12 @@ html:has(> body.admin) { background: var(--bg); }
 /* A primary button that cannot act yet (nothing to save) looks it. */
 .action-btn.primary.primary:disabled { opacity: 0.45; filter: none; }
 .action-btn.action-btn.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
-/* An older list bounded (F8; checklist 3e): a limited height, a scroll. */
+/* An older list bounded: a limited height, a scroll. */
 .aw-bounded { max-height: 26rem; overflow-y: auto; padding-right: 0.25rem; }
 /* A one-time code beside its account, to copy. */
 .code-copy { display: inline-flex; align-items: center; gap: 0.3rem; }
 .code-box { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.2rem 0.4rem; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--text); border-radius: 4px; }
-/* A locked tile as its owner chose (Tom, 2026-10-08): a padlock that does nothing, or greyed out. */
+/* A locked tile as its owner chose: a padlock that does nothing, or greyed out. */
 .service-card.padlock { cursor: not-allowed; }
 .service-card.greyed { opacity: 0.4; filter: grayscale(1); cursor: default; }
 /* A set of tabs over its panels (the books' sources): the strip above, one panel below. */
@@ -1397,7 +1396,7 @@ html:has(> body.admin) { background: var(--bg); }
 /* The sign-in sheet's offer of the internet (guest-net.js). */
 .guest-net { margin: 0 auto 1rem; padding: 0.7rem 1rem; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
 .guest-net p { margin: 0 0 0.5rem; }
-/* Findings (the Security page and the Security doctor, item 11): one shape everywhere. A status word
+/* Findings (the Security page and the Security doctor): one shape everywhere. A status word
    on the left edge's colour, the title, what it means, and one thing to do; no emoji to decode. */
 .findings { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0 1rem; }
 .finding { --f: var(--muted); background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--f);
@@ -1471,13 +1470,13 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .ladder-table th, .ladder-table td { text-align: left; padding: 0.15rem 0.6rem 0.15rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .ladder-table td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* One pattern for every update (item 36): the two choices, then Check now / Fetch / Install. */
+/* One pattern for every update: the two choices, then Check now / Fetch / Install. */
 .update-pattern { display: grid; gap: 0.5rem; }
 .update-pattern .update-choice { display: grid; gap: 0.25rem; }
 .update-actions { margin: 0.5rem 0; }
 .update-why { margin-top: 0.25rem; }
 
-/* The Network page in tabs (item 37): a card per connection or device within each tab. */
+/* The Network page in tabs: a card per connection or device within each tab. */
 .net-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 0.75rem; margin: 0.75rem 0; }
 .net-card { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
 .net-card h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.25rem; padding-bottom: 0.45rem; font-size: 1rem;
@@ -1490,13 +1489,13 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .net-known li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
 #ap-health-card { margin: 0.75rem 0; }
 
-/* Backup and a new box (item 34): offers with their sizes; a list of checkboxes per kind, bounded. */
+/* Backup and a new box: offers with their sizes; a list of checkboxes per kind, bounded. */
 .kit-offer { max-width: 44rem; }
 .kit-pick { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.7rem; margin: 0; }
 .kit-pick > div { display: flex; flex-direction: column; gap: 0.2rem; max-height: 12rem; overflow-y: auto; }
 .kit-total.bad { color: var(--bad); }
 
-/* A narrow screen (Tom, 2026-10-09: "on mobile the help/hub/admin/login/theme picker all overlap each other"):
+/* A narrow screen:
    the header's buttons and the theme picker in rows of their own above the title, wrapping, never over each
    other or the title. Wide screens keep them in the corners (from 960 px, where nothing meets). */
 @media (max-width: 960px) {

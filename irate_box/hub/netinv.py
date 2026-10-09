@@ -44,7 +44,7 @@ from pathlib import Path
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 OUT = STATE / "control" / "netinv.json"
 SYS_NET = Path("/sys/class/net")
-AP_PROFILE = "irate-box-ap"  # the hub's own hotspot profile (plan §3), when it exists
+AP_PROFILE = "irate-box-ap"  # the hub's own hotspot profile, when it exists
 MESH_CONFIG = Path("/var/lib/meshtasticd/.portduino/default/prefs/config.proto")
 # Driver options that bear on power save and roaming, read when the driver has them.
 DRIVER_PARAMS = ("ps_on", "dpsm", "roamoff", "feature_disable", "power_save", "rtw_power_mgnt",
@@ -192,7 +192,7 @@ def parse_iw_dev(text):
             continue
         if s.startswith("Unnamed/non-netdev interface"):
             # A P2P device (wpa_supplicant's p2p-dev-wlan0): not an interface, and its own type and address are
-            # not the one above's (on the Lyra, 2026-10-09, ap0 read as "P2P-device" and the hotspot went unseen).
+            # not the one above's (ap0 would read as "P2P-device" and the hotspot go unseen).
             cur = None
             continue
         if cur is None:
@@ -234,11 +234,11 @@ def freq_channel(f):
     return None
 
 
-# --- roaming (item 35; Tom, 2026-10-09: "if necessary, add that capability to the hardware scan") ---------
+# --- roaming -----------------------------------------------------------------------------------------------
 # Which access points share the uplink's network name, the background scan that makes it roam, and which
 # of the owner's choices can work here: roaming as the WiFi stack does, always (and ignoring short roams, the
-# watchdog's own); no background scans where wpa_supplicant takes them live (its control socket; proven on
-# the Lyra, uplink-roaming-options-plan stage 5); a lock to one access point wherever NetworkManager runs it.
+# watchdog's own); no background scans where wpa_supplicant takes them live (its control
+# socket); a lock to one access point wherever NetworkManager runs it.
 ROAMING = ("roam", "no-scan", "lock")
 
 
@@ -625,7 +625,7 @@ def scan(focus=None):
         elif info.get("type") == "AP":
             r["stations"] = ap_stations(iface)
         radios.append(r)
-    # The hotspot on the same radio as a roaming link moves with it (uplink-roaming-options-plan §1).
+    # The hotspot on the same radio as a roaming link moves with it.
     for r in radios:
         if r.get("roaming") is not None:
             r["roaming"]["hotspot_shares"] = any(a.get("type") == "AP" and a.get("phy") == r.get("phy") for a in radios)
@@ -810,7 +810,7 @@ def ap_verdicts(inv):
 
 def write(inv, path=OUT):
     path = Path(path)
-    # As root, in control/, which the hub can change: never through a link it planted (F13).
+    # As root, in control/, which the hub can change: never through a link it planted.
     from irate_box.root import safeio
     path.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(path, json.dumps(inv, indent=2))

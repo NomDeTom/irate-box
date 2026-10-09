@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The setup tour (menu overhaul M14; proposed 5h) on /admin, in jsdom: the setup step lists every
+// The setup tour on /admin, in jsdom: the setup step lists every
 // decision as a link; each lives in a real section, with its part to highlight; the tour opens
 // each one's page and highlights it, the clipboard krab beside; Keep and next records it on the hub;
 // changing the setting where it lives decides it too; Leave takes the highlight away.
@@ -40,7 +40,7 @@ const T = w.TOUR;
 const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hidden);
 (async () => {
   await wait(400);
-  // One list, every step in the same form (Tom, 2026-10-08): the setup's own steps, the decisions, a backup last.
+  // One list, every step in the same form: the setup's own steps, the decisions, a backup last.
   const rows = [...d.querySelectorAll('#setup-steps > li[data-step]')];
   check('one list: every step and decision, the backup last', rows.length === T.STEPS.length && T.STEPS.length === 17 && rows[rows.length - 1].dataset.step === 'backup', rows.length);
   check('  each the same form: its name, its pill, a line, Go there', rows.every((r) => r.querySelector('strong') && r.querySelector('[class$="-pill"]') && r.querySelector('.step-text') && r.querySelector('a[data-tour]')));
@@ -92,7 +92,7 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   check('downloading a backup is the backup step done', posted.some((b) => (b.setup_decided || []).includes('backup')) && /done/.test(d.querySelector('#setup-steps [data-step="backup"]').textContent));
   check('the global override of "seen but not opened": offered, Per app by default',
     /When seen but not opened, for every app/.test(d.getElementById('sign-in-offer-box').textContent) && /Per app/.test(d.getElementById('sign-in-offer-box').textContent));
-  // Muted: still listed, greyed, but not counted as left to do (Tom, 2026-10-09).
+  // Muted: still listed, greyed, but not counted as left to do.
   const before = T.left();
   const row = d.querySelector('#setup-steps [data-step="cockpit"]');
   [...row.querySelectorAll('button.mute-step')][0].click();

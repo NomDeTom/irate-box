@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The setup tour (menu overhaul M14; proposed 5h). Tom, 2026-10-08: "anything that has an impact
-// on user or box security" is one of the setup's decisions; "the checklist should be hyperlinks to
-// the settings - and some kind of highlighting of the setting that needs deciding. It's a
-// quick-tour wizard"; and "use the clipboard krab as the tour guide".
+// The setup tour: anything that affects user or box security is one of the setup's decisions. The
+// setup step links to each setting and highlights it; the clipboard krab is the tour guide.
 //
 // Each decision has a default already, and the box runs on it until the owner decides: by keeping
 // it ("Keep this, next"), or by changing the setting where it lives (any change inside the
@@ -35,13 +33,12 @@ const TOUR = (() => {
     { id: 'tailscale', label: 'Remote access (Tailscale)', section: 'access', target: '#remote-section',
       said: 'Left as found. Only where the image has Tailscale; otherwise there is nothing to decide.' },
     { id: 'cockpit', label: 'Cockpit (a root login on :9090)', section: 'security', target: finding(/Cockpit/),
-      said: 'Every guest can reach its login while it runs (security review, S1). Only where the image has it.' },
+      said: 'Every guest can reach its login while it runs. Only where the image has it.' },
     { id: 'terminal', label: 'Terminal (a shell in the browser)', section: 'app-access-term', fallback: 'apps', target: '#app-access-term',
       said: 'Behind the admin login by default: a root shell, which is its whole point.' },
   ];
-  // The setup's own steps, around the decisions: what the box is, first; a backup, last (Tom,
-  // 2026-10-08: "make them follow the same format throughout, and make them all part of the tour";
-  // "the final step - take a backup - has been missed entirely"). Their state comes from the
+  // The setup's own steps, around the decisions, in the same form: what the box is, first; a backup,
+  // last. Their state comes from the
   // parts of the page that know it (setupStep in admin.js).
   const OWN = [
     { id: 'password', label: 'Admin password', section: 'access', target: '#access form, #access', said: 'Set at first use. Change it here whenever you like.' },
@@ -91,7 +88,7 @@ const TOUR = (() => {
   // The setup page: every step in one numbered list, each its short name, its pill, a line of what
   // it is now, and a link that starts the tour there.
   function drawList() {
-    if (typeof drawAttention === 'function') drawAttention();  // Overview's Needs attention counts what is left (F4)
+    if (typeof drawAttention === 'function') drawAttention();  // Overview's Needs attention counts what is left
     const list = document.getElementById('setup-steps');
     if (!list) return;
     const n = left().length;

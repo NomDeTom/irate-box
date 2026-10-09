@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The joint report (secdoctor.joint) over the Lyra's own saved audit (tests/fixtures/lyra-secdoctor-2026-10-09.json,
-its /admin/security of 2026-10-09 01:57, scrubbed): nothing the sources said is lost; what several say about one thing
+"""The joint report (secdoctor.joint) over a real board's saved audit (tests/fixtures/lyra-secdoctor-2026-10-09.json,
+its /admin/security, scrubbed): nothing the sources said is lost; what several say about one thing
 is one item; every item ends in something to do; the CIS sections tiered as on the page; the counts the page's badge
 shows. When the cross-reference table grows (secdoctor_xref), the counts here move on purpose. python3 tests/sim_secdoctor_lyra.py"""
 import json, sys
@@ -20,7 +20,7 @@ items = {i["key"]: i for i in j["items"]}
 said = {(l["source"], l["id"]) for i in j["items"] for l in i["lines"]}
 loose = [(f.get("source", "doctor"), f["id"]) for s in fx["steps"] for f in s["findings"]
          if f["status"] != "ok" and not f.get("accepted") and (f.get("source", "doctor"), f["id"]) not in said]
-check("nothing lost: every finding not fine is in an item (before #164 most of the doctor's were only counted)", not loose, loose)
+check("nothing lost: every finding not fine is in an item", not loose, loose)
 merged = {k: sorted(i["sources"]) for k, i in items.items() if len(i["sources"]) > 1}
 check("what the doctor and the Security page both say is one item each", all(merged.get(k) == ["doctor", "security-page"] for k in
       ("setting:firewall", "service:tcp/1883", "setting:kernel-info", "setting:sudo-all", "setting:apt-trust")), merged)
@@ -49,7 +49,7 @@ check("the counts after merging (the badge): 1 to fix, 20 to look at, 19 suggest
       j["after"] == {"problem": 1, "warn": 20, "suggest": 19, "not_here": 6}, j["after"])
 check("the one to fix is the floor", [k for k, i in items.items() if i["status"] == "problem" and not i["tier"]] == ["setting:firewall"])
 
-# The deep audit as it ran on the Lyra after #166 (tests/fixtures/lyra-security-deep-2026-10-09.json, 10:46): its
+# A real board's deep audit (tests/fixtures/lyra-security-deep-2026-10-09.json): its
 # CIS checks one by one, Lynis matched by test and by sshd option. Read as the doctor reads its kept report,
 # beside the doctor's and the Security page's own findings above.
 import os, shutil, tempfile  # noqa: E402
@@ -76,7 +76,7 @@ nothing2 = [k for k, i in it2.items() if not (i["do"] or i["fix"] or i["cmd"] or
 check("every item ends in something to do: a check's own command is the item's (ASLR, core dumps)", not nothing2
       and it2["setting:aslr"]["do"]["cmd"].startswith("echo kernel.randomize_va_space=2"), nothing2)
 check("the CIS checks keep a command each where their script says one plainly", sum(1 for i in it2.values() for c in i["checks"] if c.get("cmd")) >= 40)
-check("the counts with the Lyra's deep audit: 1 to fix, 20 to look at (as before), the rest suggestions or not for this board",
+check("the counts with the deep audit: 1 to fix, 20 to look at, the rest suggestions or not for this board",
       (j2["after"]["problem"], j2["after"]["warn"]) == (1, 20), j2["after"])
 shutil.rmtree(T, ignore_errors=True)
 print("ok" if not fails else f"{fails} failure(s)")

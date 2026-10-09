@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Library → Toolkits (next-work plan step 28, toolkits-plan §7) in jsdom, against a fixture: the
+// Library → Toolkits in jsdom, against a fixture: the
 // summary, a card per kit with its badges, the consent step before an install, remove and keep
 // longer, roll back, keep current, the budget, a problem with the cache, and the answer from the
 // root helper shown when it comes. Static: no hub needed. Usage: [JSDOM=…/jsdom] node dom-kits.cjs
@@ -60,7 +60,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   await wait();
   const d = w.document;
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-  // Item 8: a card per kit, its details in a drawer inside the card (AW.cards); open one to see them.
+  // A card per kit, its details in a drawer inside the card (AW.cards); open one to see them.
   const head = (title) => [...d.querySelectorAll('#kits-grid .aw-card')].find((c) => t(c.querySelector('.aw-card-head .t')) === title);
   const card = (title) => { const c = head(title); if (c && !c.classList.contains('open')) c.querySelector('.aw-card-head').click(); return head(title); };
   const pills = (title) => t(head(title).querySelector('.aw-card-head .p'));
@@ -115,7 +115,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   [...card('Security').querySelectorAll('button')].find((b) => /^Roll back/.test(t(b))).click();
   await wait();
   check('Roll back asks, then asks the hub', posted[3] && posted[3].action === 'rollback' && posted[3].kit === 'security');
-  // Settings wait for Save (item 8, step 3).
+  // Settings wait for Save.
   button(card('Capture'), 'Keep current: Off').click();
   await wait();
   check('keep current: a setting, held until Save', posted.length === 4 && save('Capture') && !save('Capture').disabled);
@@ -131,7 +131,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   w.eval('loadKits()');
   await wait();
   check('a problem with the cache is shown', /has changed since it was fetched/.test(t(d.getElementById('kits-problems'))));
-  // Step 38: your own kits, and extra tools in a shipped kit.
+  // Your own kits, and extra tools in a shipped kit.
   check('your own kit says so, with Edit and Delete', /yours/.test(pills('Radio tools'))
     && button(card('Radio tools'), 'Edit') && button(card('Radio tools'), 'Delete'));
   check('a shipped kit has no Delete, and offers extra tools', !button(card('Debugging'), 'Delete') && card('Debugging').querySelector('input.kit-extra'));

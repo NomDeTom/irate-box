@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Packages from their makers, watched (root/pkgwatch.py; Tom, 2026-10-08: meshtasticd on beta, alpha or
-nightly, updated by itself or after a while; "There's tools in mpwrd-os for this as well - it needs to
-adapt"), offline: the channel read the way mpwrd-menu reads it, each new build cached with when it was
+"""Packages from their makers, watched (root/pkgwatch.py: meshtasticd on beta, alpha or nightly,
+updated by itself or after a while, compatible with mpwrd-os's tools), offline: the channel read the way mpwrd-menu reads it, each new build cached with when it was
 first seen, watch / auto / aged, Update and Roll back, a build that doesn't match its index refused, and a
 channel chosen here written the way mpwrd-menu writes it. apt and dpkg are stood in (dpkg's version
 order is the real one when dpkg is here). python3 tests/sim_pkgwatch.py"""
@@ -199,7 +198,7 @@ ran.clear()
 check("pkg-check through the root helper (by \"package\", every one on the box without)", "meshtasticd" in hub_control.ACTIONS["pkg-check"]({"action": "pkg-check"})
       or "new on daily" in hub_control.ACTIONS["pkg-check"]({"action": "pkg-check"}))
 check("pkg-settings through it", "on beta" in hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3}))
-# How often (item 36's pattern): kept per package, published for the librarian, the old settings without it as 24 h.
+# How often (the update pattern): kept per package, published for the librarian, the old settings without it as 24 h.
 check("how often: 24 h when never chosen, kept when a save leaves it out", pkgwatch.settings("meshtasticd")["every"] == 24)
 hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3, "every": 6})
 check("  6 hours chosen, and published", pkgwatch.settings("meshtasticd")["every"] == 6

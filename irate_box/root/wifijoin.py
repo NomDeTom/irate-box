@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Networks the box may join, added on /admin's Network page (item 37; Tom, 2026-10-09: tab 3 holds "the
-security settings for the network(s) that the box can associate with (including ones that it hasn't seen
-yet - SSID and PSK, etc.)"). Root's half, through hub_control.py.
+"""Networks the box may join, added on /admin's Network page, including ones it hasn't seen yet (SSID
+and password). Root's half, through hub_control.py.
 
 Only where NetworkManager runs the box's WiFi. A network is a NetworkManager profile of its own, written
 as a keyfile (root's, 0600) and loaded, so the password never appears on a command line or in a process

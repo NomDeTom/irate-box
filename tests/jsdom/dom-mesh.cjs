@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The mesh pages (next-work plan step 18) in jsdom, static: /mesh.html (the nodes, the traffic by
+// The mesh pages in jsdom, static: /mesh.html (the nodes, the traffic by
 // kind, recent packets, never a message; the page when its owner hasn't made it public) and
 // /admin → Mesh (the bridge's state, the channels without their keys, adding one and the public
 // LongFast, removing, and the messages). Usage: [JSDOM=…/jsdom] node dom-mesh.cjs
@@ -78,7 +78,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     && /Listening to the broker: 2 nodes/.test(t(d.getElementById('mesh-admin-state'))));
   check('  the channels, without their keys', /LongFast Meshtastic's public default key: anyone can read this channel\./.test(t(d.getElementById('mesh-channels')))
     && /Family Its own key \(not shown\)\./.test(t(d.getElementById('mesh-channels'))));
-  check('  Heard on a page of its own (item 9): a link, and no messages on /admin', d.getElementById('mesh-open').getAttribute('href') === '/admin/mesh.html'
+  check('  Heard on a page of its own: a link, and no messages on /admin', d.getElementById('mesh-open').getAttribute('href') === '/admin/mesh.html'
     && !/meet at the gate/.test(t(d.getElementById('mesh'))));
   const f = d.getElementById('mesh-channel-form');
   f.elements.name.value = 'Hikers'; f.elements.key.value = 'q2Fc9u0aBcDeFgHiJkLmNw==';

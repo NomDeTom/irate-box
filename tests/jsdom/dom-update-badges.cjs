@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The update badge (Tom, 2026-10-09) in jsdom: "update available" when a check found one, "up to
+// The update badge in jsdom: "update available" when a check found one, "up to
 // date" only when found so within a week, how old an older look is, a failed or missing check.
 // Static: no hub needed. Usage: [JSDOM=…/jsdom] node dom-update-badges.cjs
 const { JSDOM } = require(process.env.JSDOM || 'jsdom');

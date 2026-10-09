@@ -10,7 +10,7 @@
   const expand = document.getElementById('tab-expand');
   if (!expand || !panes.shout || !panes.board) return;
 
-  // A tab the hub left out for this visitor (data-off, menu overhaul M9) is never chosen.
+  // A tab the hub left out for this visitor (data-off) is never chosen.
   const on = (name) => !panes[name].hasAttribute('data-off');
   const want = () => (/^#(board|t\d+)$/.test(location.hash) ? 'board' : 'shout');
   const currentTab = () => (on(want()) ? want() : on('shout') ? 'shout' : on('board') ? 'board' : null);

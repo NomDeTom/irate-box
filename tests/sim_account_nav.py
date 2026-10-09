@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The home page's link to /account.html (item 6 of plans/current-and-next-actions): nothing while
+"""The home page's link to /account.html: nothing while
 sign-up is off (the default), "Sign in" for a guest once it's on, "My account" once signed in.
 python3 tests/sim_account_nav.py"""
 import os, sys, tempfile

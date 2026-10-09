@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// /account.html (next-work plan step 16, accounts-plan stage 1): log in or out, make an account
+// /account.html: log in or out, make an account
 // (as the admin allows: open, or asking the admin), set a password with a one-time code, change
 // it. Over plain HTTP it says what that means, or (when the admin has prevented it) takes no
 // password at all and points at the certificate and the HTTPS page.
@@ -54,13 +54,13 @@ function render(d) {
     return;
   }
   const signup = d.signup === 'open' || d.signup === 'apply';
-  // One login for everyone (Tom, 2026-10-09): the box's admins sign in here too, sign-up or not.
+  // One login for everyone: the box's admins sign in here too, sign-up or not.
   const forAdmin = !!next && /^\/(admin|term|sync)(\/|$)/.test(next);
   $('acct-subtitle').textContent = forAdmin ? 'That page is for the box\'s admin: sign in with an admin account.'
     : d.signup === 'off' ? 'This box takes no sign-ups: its admins sign in here.'
       : next ? 'That page is for the box\'s users: log in, or make an account.' : 'Log in, or make an account.';
   $('acct-signup-form').hidden = !signup;
-  // From a locked tile that offers sign-up (Tom, 2026-10-08): straight to the form.
+  // From a locked tile that offers sign-up: straight to the form.
   if (signup && location.hash === '#signup') { $('acct-signup-form').scrollIntoView?.({ block: 'center' }); ($('acct-signup-form').elements.name || {}).focus?.(); }
   $('acct-signup-title').textContent = d.signup === 'apply' ? 'Ask for an account' : 'Make an account';
   $('acct-signup-button').textContent = d.signup === 'apply' ? 'Ask' : 'Make it';
@@ -99,7 +99,7 @@ form('acct-password-form', (f) => ({ action: 'password', old: f.elements.old.val
 $('acct-logout').addEventListener('click', async () => {
   try { await post({ action: 'logout' }); note('Logged out.', true); load(); } catch (err) { note(err.message, false); }
 });
-// ---- Your settings (menu overhaul M12): held until Save, theirs alone.
+// ---- Your settings: held until Save, theirs alone.
 const HUES = [0, 40, 130, 210, 280];
 let saved = {}, draft = {};
 function showPrefs(p, namesTo) {

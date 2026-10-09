@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor's offline-readiness step (stance review 2026-10-08 §4 item 5): a box that has
+"""The security doctor's offline-readiness step: a box that has
 not been online for a month, no offline kit; then a fresh one. python3 tests/sim_offline_step.py"""
 import json, os, sys, tempfile, time
 from pathlib import Path

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The uptime heatmaps (next-work plan steps 34 and 35): one component for the network links'
+// The uptime heatmaps: one component for the network links'
 // week and month on /admin → Network, and the services' grid. A cell is a bucket the hub summed,
 // {up: 0-1, n: samples, drops, off}, or null for no data; it is coloured by how much of it was up
 // (style.css: .hm-*), and says so on hover, on focus and to a screen reader.

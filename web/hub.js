@@ -158,7 +158,7 @@ if (grid || document.querySelector('[data-service]')) {
       }
     }
 
-    // People wide or large (M8, F5): different devices today and this week (M11), said plainly.
+    // People wide or large: different devices today and this week, said plainly.
     const people = document.getElementById('people-card');
     if (people && (people.dataset.size === 'wide' || people.dataset.size === 'large')) {
       let more = document.getElementById('people-more');
@@ -175,7 +175,7 @@ if (grid || document.querySelector('[data-service]')) {
       more.textContent = (typeof data.signed_in === 'number' ? `Signed in: ${data.signed_in}` : '')
         + (v ? `${typeof data.signed_in === 'number' ? ' \u00b7 ' : ''}Seen today \u2248 ${v.day} \u00b7 this week \u2248 ${v.week}` : '');
       people.querySelector('.field-help').hidden = !v;
-      // The names: only of those who said yes, and only to whom the owner allows (M12).
+      // The names: only of those who said yes, and only to whom the owner allows.
       let names = document.getElementById('people-names');
       if (!names) { names = document.createElement('span'); names.id = 'people-names'; names.className = 'people-names'; more.after(names); }
       const shown = Array.isArray(data.names) ? data.names : null;

@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Unique visitors, counted without keeping who they were (menu overhaul M11; checklist 5g).
+"""Unique visitors, counted without keeping who they were: through hashing, and said plainly.
 
-Tom, 2026-10-08: "unique counts should be through hashing or anonymisation, and be clear about
-it"; "a small helper embedded reading mac addresses and leases - disabled when the count isn't
-used". This is that helper: a small service of its own (irate-box-visitors.service), running only
+A small helper reading MAC addresses and leases, disabled when the count isn't used: a small service of its own (irate-box-visitors.service), running only
 while the owner has counting on, unprivileged (DynamicUser), (the hub records the choice in $STATE/visitors.want and a root
 path unit starts or stops this; scripts/visitors-apply.sh).
 

@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor, stage 3 (next-work plan step 31, security-doctor-plan §5, §6, §7.5–6),
-offline: the cross-reference table (every doctor and Security page id in it still exists); the
+"""The security doctor's joint report and imports, offline: the cross-reference table (every doctor and Security page id in it still exists); the
 Security page's scan as a source; imported OpenVAS and nmap reports, checked field by field, kept,
 and turned into findings (CVSS bands, a port the box wasn't listening on, a report from before the
 ports changed); and the joint report merging what several sources say about one thing, the items
@@ -99,7 +98,7 @@ rep = sd.audit()
 check("the whole audit: the new steps in it, the joint report with freshness", {"security-page", "imports"} <= {s["id"] for s in rep["steps"]}
       and "nmap" in rep["joint"]["freshness"] and rep["joint"]["after"]["problem"] >= 1, rep["joint"]["freshness"])
 check("the server sends the imports' summary and takes an import", "secimports.save(payload.get(\"report\"))" in (REPO / "irate_box/hub/server.py").read_text())
-# Together a problem (stance review 2026-10-08 §2, secdoctor_xref.COMPOUND): each named finding present
+# Together a problem (secdoctor_xref.COMPOUND): each named finding present
 # and not ok; a compound item in the joint report, a problem, with its own detail and fix.
 pg = lambda i, st: sd.F(f"page-{i}", i, st, "", source="security-page")  # noqa: E731
 jc = sd.joint([{"findings": [pg("sudo-nopasswd", "warn"), pg("ssh-password", "warn"), pg("group-disk", "ok")]}])

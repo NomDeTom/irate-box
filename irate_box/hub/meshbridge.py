@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The decoder bridge (next-work plan step 18): a thread in the hub that listens to the box's own
+"""The decoder bridge: a thread in the hub that listens to the box's own
 MQTT broker (install.sh --with-mqtt), decodes Meshtastic's packets with the channel keys the
 owner gave (meshdecode.py), and keeps what the traffic page shows.
 

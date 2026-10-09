@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Local add-ons (plans/no-root-addons-plan), offline: what a local manifest may say, a bad one
+"""Local add-ons, offline: what a local manifest may say, a bad one
 left out without stopping the rest, a real bundle installed and rolled back as the hub user, the
 hub's add / paste / remove (in-process, the fetch stood in), tiles off until switched, and the
 add-on server's generated maps. python3 tests/sim_local_addons.py"""
@@ -12,7 +12,7 @@ for d in ("library", "control", "apps.d", "addons"):
 os.environ["HUB_STATE_DIR"] = str(T)
 os.environ["HUB_ETC_DIR"] = str(T)
 REPO = Path(__file__).resolve().parents[1]
-# A catalogue of its own, which the test changes as a hub update would (step 19).
+# A catalogue of its own, which the test changes as a hub update would.
 CAT = T / "catalogue"
 CAT.mkdir()
 (CAT / "eliza.json").write_text((REPO / "addons" / "eliza.json").read_text())
@@ -134,7 +134,7 @@ check("remove: manifest, files and consent gone", code == 200 and not (T / "apps
 code, body = S.local_addons_action({"action": "remove", "id": "../control"})
 check("remove refuses anything but an added id", code == 400, body)
 
-# --- catalogue updates reach an added add-on (next-work-plan step 19)
+# --- catalogue updates reach an added add-on
 def sync():
     S._local_stamp["at"] = None      # as after a hub update: look again
     S.refresh_manifests()
@@ -187,7 +187,7 @@ check("maps: connect from the manifest, {box} as the hub's host", "connect-src '
 routes = access.addon_caddy_routes(access.clean({"eliza": "public"}), loc, "H")
 check("Caddy routes: off ones left out, the rest 404", "handle /eliza/*" in routes and "handle /demo/*" not in routes and routes.rstrip().endswith("}"))
 
-# The MQTT explorer (step 13): the hub's own page, cut out of a clone of the hub at the pin.
+# The MQTT explorer: the hub's own page, cut out of a clone of the hub at the pin.
 import shutil  # noqa: E402
 from irate_box.library import adapt_mqtt_explorer as AX  # noqa: E402
 REPO = Path(__file__).resolve().parents[1]

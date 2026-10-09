@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""A forged request does no more than the page offers (security review F14; next-work plan step
-9): Security page choices only from root's last scan, root's own records read only if they are
+"""A forged request does no more than the page offers: Security page choices only from root's last scan, root's own records read only if they are
 still root's, the RTC set up only where a search found one, no linked book exported, no leading
 "-" in a name that becomes an argument, the clock's floor from root's files only and no jump
 years ahead. Runs as any user ("root's" is this user here). python3 tests/sim_forged_requests.py"""
@@ -84,21 +83,21 @@ check("unit names: no leading '-'", not hub_control.security.UNIT_RE.match("-x.s
 check("uplink: the reboot history is root's own record, not the status file's",
       'REBOOTS = ETC / "uplink-reboots.json"' in (REPO / "irate_box/hub/uplink.py").read_text())
 
-# F11: an app bundle's source is its manifest's; a request chooses the branch at most.
+# An app bundle's source is its manifest's; a request chooses the branch at most.
 from irate_box.library import librarian, firmware  # noqa: E402
 got = librarian.validate_source({"kind": "app", "name": "draw", "type": "nightly-link", "repo": "evil/excalidraw",
                                  "workflow": "evil.yml", "pattern": "*", "branch": "dev"})
 spec = librarian.APPS["draw"]["source"]
-check("F11: a forged repo, workflow and pattern are replaced by the manifest's",
+check("app source: a forged repo, workflow and pattern are replaced by the manifest's",
       (got["repo"], got["workflow"], got["pattern"]) == (spec["repo"], spec["workflow"], spec["pattern"]), got)
-check("F11: the branch may be chosen", got["branch"] == "dev")
-check("F11: but not one that is an option", refused(librarian.validate_source, {"kind": "app", "name": "draw", "type": "nightly-link", "branch": "-x"},
+check("app source: the branch may be chosen", got["branch"] == "dev")
+check("app source: but not one that is an option", refused(librarian.validate_source, {"kind": "app", "name": "draw", "type": "nightly-link", "branch": "-x"},
                                                     exc=(librarian.LibrarianError,)))
-# F10: a deps-zip member cannot leave its folder.
-check("F10: '//' in a member name is left out", firmware._subset("pio-deps-x//etc/cron.d/x", "whole") is None)
-check("F10: '..' is left out", firmware._subset("pio-deps-x/packages/../../x", "whole") is None)
-check("F10: a normal member is kept", firmware._subset("pio-deps-x/packages/tool/bin/gcc", "whole") == "packages/tool/bin/gcc")
-# Step 33c: "native" keeps the download cache's small archives (the platform is only there), not the
+# A deps-zip member cannot leave its folder.
+check("deps zip: '//' in a member name is left out", firmware._subset("pio-deps-x//etc/cron.d/x", "whole") is None)
+check("deps zip: '..' is left out", firmware._subset("pio-deps-x/packages/../../x", "whole") is None)
+check("deps zip: a normal member is kept", firmware._subset("pio-deps-x/packages/tool/bin/gcc", "whole") == "packages/tool/bin/gcc")
+# "native" keeps the download cache's small archives (the platform is only there), not the
 # UI libraries' big ones, nor usage.db, whose old dates would expire the rest.
 dl = "pio-deps-native-tft/core/.cache/downloads/"
 check("native: a small archive of the download cache kept", firmware._subset(dl + "eb76d078", "native", 20 << 10) == "core/.cache/downloads/eb76d078")
@@ -106,31 +105,31 @@ check("native: a big one (a UI library's) left out", firmware._subset(dl + "d308
 check("native: usage.db and the http cache left out", firmware._subset(dl + "usage.db", "native", 3000) is None
       and firmware._subset("pio-deps-native-tft/core/.cache/http/4e69", "native", 3000) is None)
 
-# F22: books and code over encrypted transports only.
-check("F22: a book url over http is refused", refused(librarian.validate_source, {"name": "b", "type": "url", "url": "http://x/b.zim"},
+# Books and code over encrypted transports only.
+check("a book url over http is refused", refused(librarian.validate_source, {"name": "b", "type": "url", "url": "http://x/b.zim"},
                                                      exc=(librarian.LibrarianError,)))
-check("F22: over https it is taken", librarian.validate_source({"name": "b", "type": "url", "url": "https://x/b.zim"})["url"] == "https://x/b.zim")
+check("  over https it is taken", librarian.validate_source({"name": "b", "type": "url", "url": "https://x/b.zim"})["url"] == "https://x/b.zim")
 (T / "etc" / "install-options").write_text("--repo\nhttp://example.invalid/irate-box\n--branch\nmain\n")
-check("F22: updates from an http:// repository are refused before any fetch",
+check("updates from an http:// repository are refused before any fetch",
       refused(hub_control._check_for_update, hub_control.Progress("check", 2, path=T / "p.json")))
-# F21: "verified" is matched on the whole hash.
+# "Verified" is matched on the whole hash.
 src = (REPO / "irate_box/root/hub_control.py").read_text()
-check("F21: install compares the whole hash that passed", 'state.get("verified_sha") != full' in src
+check("install compares the whole hash that passed", 'state.get("verified_sha") != full' in src
       and 'old.get("verified_sha") == full' in src)
 
-# F28: the GitHub token is not carried across a redirect.
+# The GitHub token is not carried across a redirect.
 req = librarian._request("https://api.github.com/repos/x/y/actions/artifacts/1/zip", auth="tok")
 redirected = urllib.request.HTTPRedirectHandler().redirect_request(req, None, 302, "Found", {}, "https://blob.example/x")
-check("F28: the token goes to api.github.com", req.get_header("Authorization") == "Bearer tok")
-check("F28: and not to the host a redirect leads to", redirected.get_header("Authorization") is None, redirected.header_items())
-# F23: builds only from git/private; a run's file is never a link.
+check("GitHub token: goes to api.github.com", req.get_header("Authorization") == "Bearer tok")
+check("GitHub token: not to the host a redirect leads to", redirected.get_header("Authorization") is None, redirected.header_items())
+# Builds only from git/private; a run's file is never a link.
 from irate_box.hub import ci  # noqa: E402
-check("F23: a public repository is not built", ci.PRIVATE.name == "private" and "repo.resolve().parent != PRIVATE.resolve()" in (REPO / "irate_box/hub/ci.py").read_text())
-# F26: a hue too large for an int does not crash the handler.
+check("a public repository is not built", ci.PRIVATE.name == "private" and "repo.resolve().parent != PRIVATE.resolve()" in (REPO / "irate_box/hub/ci.py").read_text())
+# A hue too large for an int does not crash the handler.
 from irate_box.hub import board  # noqa: E402
-check("F26: hue 1e999 is ignored, not a crash", board._clean_hue(1e999) is None)
+check("hue 1e999 is ignored, not a crash", board._clean_hue(1e999) is None)
 
-# F30: artifacts only from pushes to the repository itself.
+# Artifacts only from pushes to the repository itself.
 calls = []
 def fake_api(path, auth=None):
     calls.append(path)
@@ -141,8 +140,8 @@ def fake_api(path, auth=None):
     return {"artifacts": [{"name": "irate-box-draw-x", "expired": False, "id": int(path.split("/")[-2])}]}
 with mock.patch.object(librarian, "_api", side_effect=fake_api):
     run_, art = librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
-check("F30: a fork's run and a pull request's are passed over; one started by hand is taken (mermaid-docs, 2026-10-07)", run_["id"] == 2, run_)
-check("F30: the trusted events: push, by hand, on schedule", librarian.TRUSTED_EVENTS == ("push", "workflow_dispatch", "schedule"))
+check("artifacts: a fork's run and a pull request's are passed over; one started by hand is taken", run_["id"] == 2, run_)
+check("artifacts: the trusted events: push, by hand, on schedule", librarian.TRUSTED_EVENTS == ("push", "workflow_dispatch", "schedule"))
 def only_untrusted(path, auth=None):
     if "/runs?" in path:
         return {"workflow_runs": [{"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
@@ -150,21 +149,21 @@ def only_untrusted(path, auth=None):
 with mock.patch.object(librarian, "_api", side_effect=only_untrusted):
     try:
         librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
-        check("F30: only a pull request's run: refused, and said", False)
+        check("artifacts: only a pull request's run: refused, and said", False)
     except librarian.LibrarianError as exc:
-        check("F30: only a pull request's run: refused, and said", "1 run from a pull request or a fork passed over" in str(exc), str(exc))
+        check("artifacts: only a pull request's run: refused, and said", "1 run from a pull request or a fork passed over" in str(exc), str(exc))
 inst = (REPO / "install.sh").read_text(); un = (REPO / "uninstall.sh").read_text(); ngx = (REPO / "config/irate-box.nginx").read_text()
 ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
-check("F30: install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)
-check("F30: uninstall --keep-state keeps the users", 'Keeping the $HUB_USER and hubci users' in un and '[ "$KEEP_STATE" != 1 ] && id -u hubci' in un)
-check("F30: the git push gate does not use the undecoded $arg_service (the hub decides, decoded)", "$arg_service" not in ngx
+check("install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)
+check("uninstall --keep-state keeps the users", 'Keeping the $HUB_USER and hubci users' in un and '[ "$KEEP_STATE" != 1 ] && id -u hubci' in un)
+check("the git push gate does not use the undecoded $arg_service (the hub decides, decoded)", "$arg_service" not in ngx
       and "auth_request /_irate_git_access;" in ngx)
-check("F30: links in a cloned app tree are removed", "if path.is_symlink():" in (REPO / "irate_box/library/librarian.py").read_text())
-check("F30: deps extraction checks free space first", "DEPS_RESERVE" in (REPO / "irate_box/library/firmware.py").read_text())
-check("F24: nginx passes the guest's own address only", "$proxy_add_x_forwarded_for" not in ngx)
+check("links in a cloned app tree are removed", "if path.is_symlink():" in (REPO / "irate_box/library/librarian.py").read_text())
+check("deps extraction checks free space first", "DEPS_RESERVE" in (REPO / "irate_box/library/firmware.py").read_text())
+check("nginx passes the guest's own address only", "$proxy_add_x_forwarded_for" not in ngx)
 
-# After installing an update the helper stops, so what is still queued runs with the new code (the
-# Lyra, 2026-10-07: a kit fetched just after an update ran with the old kits.py).
+# After installing an update the helper stops, so what is still queued runs with the new code (a kit
+# fetched just after an update otherwise runs with the old kits.py).
 hub_control.REQUESTS.mkdir(parents=True, exist_ok=True)
 for f in hub_control.REQUESTS.glob("*.json"):
     f.unlink()

@@ -22,7 +22,7 @@ const accessData = { apps: [
   { id: 'notes', title: 'Notes', mode: 'off', login: false, kind: 'addon', unit: true },
   { id: 'term', title: 'Terminal', mode: 'public', login: true, kind: 'addon', unit: true },
 ], results: [], seen: { about: 'auto', 'tools-rf': 'hidden' } };
-// The librarian's snapshot, with Excalidraw kept current (F6: its own updates on its page).
+// The librarian's snapshot, with Excalidraw kept current (its own updates on its page).
 const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1 }, token_set: false, running: false, types: [],
   progress: null, free_mb: 51000, job: {}, status: { draw: { last_check: '2026-10-08 03:00', outcome: 'up to date' } },
   sources: [{ kind: 'app', name: 'draw', type: 'bundle', repo: 'NomDeTom/excalidraw', workflow: 'irate-box-bundle.yml', branch: 'main' }],
@@ -57,7 +57,7 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 17909500
     status: { outcome: '5 fetched, 0 dropped', size: 5e8, checked: 1790950000,
       releases: { list: [['v2.8.1', true, false], ['v2.8.0.47db0e3', true, true]], fetched: 1790940000 },
       releases_cached: { since: 1790940000, why: 'GitHub API rate limit reached (60/hour without a token)' } } }], running: false };
-// Firmware (step 23): the source not mirrored yet; the build cache kept, its control on the Git page.
+// Firmware: the source not mirrored yet; the build cache kept, its control on the Git page.
 const fwFix = { settings: { enabled: false, boards: [], keep_alpha: 2, keep_beta: 1, cache: 'native', configs: true },
   status: { last_check: '2026-10-06T15:00:00Z', outcome: 'build cache 215 MB', cache: { version: '2.8.1.8e6a88d', mode: 'native', bytes: 215 * 2 ** 20 } },
   targets: [], free_mb: 9000, source: null };
@@ -91,7 +91,7 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
     progress: null, pending: 0, books: { count: 2, bytes: 3000000000 }, results: [] }), { status: 200 });
   if (u === '/admin/addons') return new Response(JSON.stringify(addons), { status: 200 });
-  // Item 34's offers with their sizes (hub/backup.py plan), and one stick plugged in.
+  // The backup offers with their sizes (hub/backup.py plan), and one stick plugged in.
   if (u === '/admin/backup/plan') return new Response(JSON.stringify({ levels: { settings: 120000, data: 4200000 }, syncthing: 9000,
     left_out: { books: 3000000000, firmware: 700000000 }, image: { card: 32e9, used: 6.5e9 }, hub: 95000000,
     books: [{ name: 'wikipedia_en', size: 2800000000 }, { name: 'gutenberg', size: 200000000 }], kits: [{ id: 'build', title: 'Building', size: 25000000 }],
@@ -112,8 +112,8 @@ const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'
 setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
-  // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, System
-  // (accounts under System, not Box: item 6), the Doctors last; nothing left over.
+  // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
+  // (accounts under System, not Box), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
   check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Folders|Moderation|System|Doctors', groups.join('|'));
   check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
@@ -124,8 +124,8 @@ setTimeout(() => {
   const sections = [...d.querySelectorAll('.admin-pane')];
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
   const pageOf = (id) => d.getElementById(id).closest('.admin-page');
-  // M6: each app's page starts with who opens it and who sees it, then its own sections (4f).
-  // The access block as the mock has it (Tom, 2026-10-08): four chips for who opens it, four for who
+  // Each app's page starts with who opens it and who sees it, then its own sections.
+  // The access block: four chips for who opens it, four for who
   // sees the tile, ↑ Earlier / ↓ Later, held until Save.
   const rowOf = (root, label) => [...root.querySelectorAll('.access-field')].find((f) => f.querySelector('.aw-label').textContent === label);
   const chipsOf = (root, label) => { const r = root && rowOf(root, label); return r ? [...r.querySelectorAll('.chip')] : []; };
@@ -137,7 +137,7 @@ setTimeout(() => {
     && chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
     && chipsOf(kiwix, 'Who sees the tile').map((c) => c.textContent).join('|') === 'guests|users|admin|hidden'
     && picked(kiwix, 'Who can open it') === 'admin' && picked(kiwix, 'Who sees the tile') === 'admin', kiwix && t('#app-access-wiki')[0]);
-  // The third row (Tom, 2026-10-08): what the tile does for one who sees it but may not open it.
+  // The third row: what the tile does for one who sees it but may not open it.
   const lockChips = chipsOf(kiwix, 'When seen but not opened');
   check('  when seen but not opened: sign in, sign up, padlock, greyed; sign in by default; no sign-up for an app for the admin',
     lockChips.map((c) => c.textContent).join('|') === 'sign in|sign up|padlock|greyed' && picked(kiwix, 'When seen but not opened') === 'sign in' && lockChips[1].disabled,
@@ -146,13 +146,13 @@ setTimeout(() => {
   lockChips[2].click();
   [...d.getElementById('app-access-wiki').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
-  // F3: a tile with no switch (About, the folders) has who sees it, and nothing else of access.
+  // A tile with no switch (About, the folders) has who sees it, and nothing else of access.
   check('About\'s page holds only who sees its tile', !!d.querySelector('#page-app-about #app-access-about')
     && /Who sees it/.test(t('#app-access-about h2')[0]) && !rowOf(d.getElementById('app-access-about'), 'Who can open it'));
   check('a folder\'s page starts with who sees it, then what\'s in it', [...d.querySelectorAll('#page-app-tools-rf > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-tools-rf folder-tools-rf');
   check('apps with a switch and no tile have a page: Serial, the calculators\' site, Syncthing', ['serial', 'tools', 'sync'].every((i) => d.querySelector(`#page-app-${i} .access-block`)));
   {
-    // F3: the seen-only chips, and the tiles' order held until Save.
+    // The seen-only chips, and the tiles' order held until Save.
     const about = d.getElementById('app-access-about');
     check('About: who sees the tile, guests (the default) of four chips', picked(about, 'Who sees the tile') === 'guests');
     check('  and its place on the hub, earlier or later', !!rowOf(about, 'Order on the hub') && /2 of 2/.test(rowOf(about, 'Order on the hub').textContent));
@@ -165,7 +165,7 @@ setTimeout(() => {
     check('the tiles in order, each saying who opens it and who sees it', rows.length === 2 && /opens: everyone · seen: as its access/.test(rows[0].textContent)
       && /opens: everyone · seen: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
     rows[0].querySelector('.aw-row-head').click();
-    [...d.querySelectorAll('#tile-order-list button')].find((b) => b.textContent === 'large').click();  // F5: sizes for all tiles
+    [...d.querySelectorAll('#tile-order-list button')].find((b) => b.textContent === 'large').click();  // sizes for all tiles
     check('a size chosen: the drop large, said in its line', /· large/.test(d.querySelector('#tile-order-list .aw-row').textContent));
     [...d.querySelectorAll('#tile-order-list button')].find((b) => /Later/.test(b.textContent)).click();
     const save = [...d.querySelectorAll('#tile-order-box button')].find((b) => b.textContent === 'Save');
@@ -184,7 +184,7 @@ setTimeout(() => {
   }
   check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
     && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
-  // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
+  // Each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
   check('  its own updates: the librarian\'s row, with Check and Update, without a second access switch', /Installed: abc1234/.test(t('#app-updates-draw')[0])
@@ -195,7 +195,7 @@ setTimeout(() => {
     && /buy cheap things/.test(t('#app-flagged-shoutbox')[0]) && /Nothing reported here/.test(t('#app-flagged-board')[0]), t('#app-flagged-shoutbox')[0]);
   check('Moderation: everything people made, linking to all five', ['#saved', '#drop-mod', '#shoutbox-mod', '#board-mod', '#git'].every((h) => d.querySelector(`#made-list a[href="${h}"]`))
     && d.getElementById('made').closest('.admin-page').querySelector('.admin-page-title, h2').textContent.includes('Everything people made'));
-  // F7: the Factory's building is inside the app, on its own page; /admin keeps its settings.
+  // The Factory's building is inside the app, on its own page; /admin keeps its settings.
   check('the Factory in /admin: its tile setting and a link to its own page, no build form', !!d.querySelector('#factory #factory_tile')
     && d.querySelector('#factory-open').getAttribute('href') === '/admin/factory.html' && !d.getElementById('factory-form') && !d.getElementById('factory-runs'));
   check('All apps starts with the tiles in order', [...d.querySelectorAll('#page-tile-order > .admin-pane')].map((x) => x.id).join(' ') === 'tile-order apps addons');
@@ -225,7 +225,7 @@ setTimeout(() => {
   w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
     && /\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp[^}]*width: min\(46vw, 34rem\)/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
-  check('the desk lit by its WebM loop (krab-loop.js, M3), over the still', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-loop\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && !/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && ['controller', 'factory'].every((n) => fs.existsSync(`${WEB}/art/krab-${n}-loop.webm`)) && /controller: 'art\/krab-controller-loop\.webm'/.test(fs.readFileSync(`${WEB}/krab-loop.js`, 'utf8')));
+  check('the desk lit by its WebM loop (krab-loop.js), over the still', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-loop\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && !/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && ['controller', 'factory'].every((n) => fs.existsSync(`${WEB}/art/krab-${n}-loop.webm`)) && /controller: 'art\/krab-controller-loop\.webm'/.test(fs.readFileSync(`${WEB}/krab-loop.js`, 'utf8')));
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const af = d.getElementById('auto-form');
   check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
@@ -233,7 +233,7 @@ setTimeout(() => {
   check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
-  // Item 34 (Tom, 2026-10-09: "an offer on the level of backup to make - settings only, settings and data, full image. An estimated size").
+  // Backup: settings only, settings and data, or a full image, each with an estimated size.
   const lv = [...d.querySelectorAll('#backup-level .choice-tile')];
   check('backup: three levels, each with its size; settings and data chosen', lv.map((x) => x.querySelector('input').value).join(' ') === 'settings data image'
     && /About 117\.2 KB|About 0\.1 MB/.test(lv[0].textContent) && /About 6\.1 GB|6\.5/.test(lv[2].textContent) && lv[1].classList.contains('chosen'), lv.map((x) => x.textContent.slice(-40)));
@@ -290,12 +290,12 @@ setTimeout(() => {
   w.confirm = () => true;
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Fetch').click();
-  // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
-  // A section headed with its page's title doesn't repeat it; a page of one section keeps it (F1).
+  // The repository cards are dom-git.cjs's; the mirrors' list is now Library → Mirrors.
+  // A section headed with its page's title doesn't repeat it; a page of one section keeps it.
   check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
     d.querySelector('#page-app-git #git > h2').classList.contains('same-as-page')
     && !d.querySelector('#page-clock #clock > h2').classList.contains('same-as-page'));
-  // The sidebar's groups fold (F2; Tom, 2026-10-08: "Default open, option to toggle").
+  // The sidebar's groups fold: open by default, each can be toggled.
   {
     const heads = [...d.querySelectorAll('button.admin-side-group')];
     const head = (n) => heads.find((h) => h.dataset.group === n);
@@ -322,7 +322,7 @@ setTimeout(() => {
     w.AL.badge('secdoctor', '');
     w.location.hash = ''; w.AL.show();
   }
-  // F4: Overview's Needs attention, from the words beside the sidebar's entries.
+  // Overview's Needs attention, from the words beside the sidebar's entries.
   {
     const links = [...d.querySelectorAll('#attention .attention-list a')].map((a) => a.getAttribute('href'));
     check('needs attention: the box doctor\'s problems and the failed update check, each a link', links.includes('#health') && links.includes('#updoctor'), links.join(' '));
@@ -333,7 +333,7 @@ setTimeout(() => {
     check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
     w.AL.badge('apps', '');
   }
-  // The books' sources as tabs (Tom, 2026-10-08): Kiwix library, Other source, USB stick.
+  // The books' sources as tabs: Kiwix library, Other source, USB stick.
   {
     const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
     const panel = (id) => d.getElementById(id);
@@ -347,7 +347,7 @@ setTimeout(() => {
     check('  an address inside a panel opens its tab', !panel('books-other').hidden && tabs[1].getAttribute('aria-selected') === 'true');
     w.location.hash = '';
   }
-  // What an update must carry (Tom, 2026-10-08: "give options in the update manager").
+  // What an update must carry: the signing level as a choice.
   {
     const f = d.getElementById('update-signing-form');
     check('updates: the signing level as three choices, merged on GitHub chosen', f && f.querySelectorAll('input[type=radio][name=level]').length === 3
@@ -356,14 +356,14 @@ setTimeout(() => {
     check('  signed releases: the box for the keys shows', !d.getElementById('update-signers-label').hidden);
     f.dispatchEvent(new w.Event('submit', { cancelable: true }));
     check('  with no key: not sent, said why', /at least one key/.test(t('#update-signing-note')[0]) && !posted.some((p) => p[1] && p[1].action === 'signing'));
-    f.elements.signers.value = 'tom@box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB tom';
+    f.elements.signers.value = 'owner@box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB laptop';
     f.dispatchEvent(new w.Event('submit', { cancelable: true }));
   }
-  // The words of the old menu are gone (F1): no Library pane, no Health group.
+  // The words of the old menu are gone: no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')
     && d.querySelector('#page-app-git #git'));
-  // Firmware (step 23): no cache control on the Firmware page; it is under Git → Builds, with what is kept.
+  // Firmware: no cache control on the Firmware page; it is under Git → Builds, with what is kept.
   check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
   const cacheForm = d.getElementById('ci-cache-form');
   check('git: the build cache is under Builds, showing the setting and what is kept', d.querySelector('#git #ci-cache-form')
@@ -371,7 +371,7 @@ setTimeout(() => {
   check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
     && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
   [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
-  check('git: the build cache\'s three choices as radio buttons, not a dropdown (Tom)', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
+  check('git: the build cache\'s three choices as radio buttons, not a dropdown', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
   cacheForm.elements.cache.value = 'whole';
   cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const mf = d.getElementById('git-mirror-add').elements;
@@ -380,7 +380,7 @@ setTimeout(() => {
   force.click();
   const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
   {
-    // The tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits.
+    // The tile's own icon: emoji, or up to four letters and digits.
     const field = rowOf(d.getElementById('app-access-about'), 'Tile icon');
     const inp = field && field.querySelector('input');
     check('a tile icon field, the app\'s own as its placeholder', inp && inp.placeholder === 'ℹ️', inp && inp.placeholder);
@@ -390,7 +390,7 @@ setTimeout(() => {
     const inp2 = rowOf(d.getElementById('app-access-about'), 'Tile icon').querySelector('input');
     inp2.value = 'INFO'; inp2.dispatchEvent(new w.Event('change'));
     check('  four letters taken, Save offered', !save().disabled);
-    // The tile's size in the same block (Tom, 2026-10-08: "tile icons can't choose their width and height now").
+    // The tile's size in the same block.
     const sizes = chipsOf(d.getElementById('app-access-about'), 'Tile size');
     check('  its size, single (the default) of single, wide, large', sizes.map((c) => c.textContent).join('|') === 'single|wide|large' && sizes[0].getAttribute('aria-pressed') === 'true');
     sizes[1].click();
@@ -434,8 +434,7 @@ setTimeout(() => {
     check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
       && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));
     check('no page errors', !errors.length, errors);
-    // A null handed to replaceChildren or append shows as the word itself (the access slots did,
-    // 2026-10-06): no text node on the page may be just that.
+    // A null handed to replaceChildren or append shows as the word itself: no text node on the page may be just that.
     const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
     const stray = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.id || n.parentNode.tagName);

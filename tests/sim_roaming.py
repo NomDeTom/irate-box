@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Roaming's two choices that change the owner's WiFi (item 35; hub/roaming.py): a lock to one access
+"""Roaming's two choices that change the owner's WiFi (hub/roaming.py): a lock to one access
 point, recorded, applied at once and taken off again if that access point does not answer; background
 scans off while the hotspot shares the radio, kept off by the watchdog and put back; both undone by
 choosing again and by undo-all. nmcli and wpa_cli stood in. python3 tests/sim_roaming.py"""
@@ -83,7 +83,7 @@ check("undo-all puts back what is in force", any("background scans back" in x fo
 check("uninstall.sh runs undo-all when roaming changed anything", "uplink-roaming.json" in (REPO / "uninstall.sh").read_text())
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("saving settings applies roaming first, and keeps the old if it fails", "roaming.apply(s, old, iface)" in hc and "not saved:" in hc)
-# The box doctor (stage 7): roaming often with the hotspot on the same radio, said with the choices.
+# The box doctor: roaming often with the hotspot on the same radio, said with the choices.
 from irate_box.root import health  # noqa: E402
 inv = {"radios": [{"iface": "wlan0", "roaming": {"ssid": "HomeNet", "aps": [{}, {}, {}], "channels": [6, 11], "hotspot_shares": True}}]}
 st = {"iface": "wlan0", "roams_hour": 9, "chosen": {"roaming": "roam"}}

@@ -154,7 +154,7 @@ def _copy(src, dest, report=None, out=None):
     """src to dest, or to `out` (a file already open for it)."""
     size = os.path.getsize(src)
     done = 0
-    # O_NOFOLLOW: neither the hub's zim/ nor a stick may hand root a link to read through (F14).
+    # O_NOFOLLOW: neither the hub's zim/ nor a stick may hand root a link to read through.
     with os.fdopen(os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC), "rb") as fi, (out or open(dest, "wb")) as fo:
         while chunk := fi.read(CHUNK):
             fo.write(chunk)
@@ -191,11 +191,11 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
                              f"and {min_free >> 20} MB must stay free (Schedule and token)")
         tmp = Path(zim_dir) / f".{name}.zim.usb"
         try:
-            # In the hub's folder: a new file, never through a link, the hub's through its fd (F3).
+            # In the hub's folder: a new file, never through a link, the hub's through its fd.
             tmp.unlink(missing_ok=True)
             hub = pwd.getpwnam(hub_user)
             _copy(src, tmp, report, out=safeio.create(tmp, 0o644, hub.pw_uid, hub.pw_gid))
-            why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root (F12)
+            why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root
             if why:
                 raise ValueError(f"{rel.name} was not added: the copy is {why}. It looked whole on the stick, "
                                  "so the stick may be failing, or was pulled out; nothing on the hub changed.")
@@ -248,7 +248,7 @@ def export_zim(device, book, zim_dir, report=None):
     if not NAME_RE.match(book):
         raise ValueError("not a book name")
     src = Path(zim_dir) / f"{book}.zim"
-    # A plain file, not a link (F14): zim/ is the hub's, and a link there would have root copy
+    # A plain file, not a link: zim/ is the hub's, and a link there would have root copy
     # any file it can read onto the stick.
     if src.is_symlink() or not src.is_file():
         raise ValueError(f"the hub has no book called {book}")
@@ -271,7 +271,7 @@ def export_zim(device, book, zim_dir, report=None):
     return f"irate-box/{book}.zim"
 
 
-# --- a full image of the box's card (item 34: "settings only, settings and data, full image") -------------
+# --- a full image of the box's card ---------------------------------------------------------------
 IMAGE_PART = 3900 << 20       # a FAT stick holds no file over 4 GB
 FAT = {"vfat"}
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Folders of apps on /admin (menu overhaul M7; checklist 5e), in jsdom: a Folders group, a page per
+// Folders of apps on /admin, in jsdom: a Folders group, a page per
 // folder with what's in it; an entry hidden, moved, and put in another folder, all held until Save,
 // which sends the whole arrangement; Discard puts it back. Usage: [JSDOM=…/jsdom] node dom-folders.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Firmware Factory page (next-work plan step 36) in jsdom, static: no hub needed. The sources,
+// The Firmware Factory page in jsdom, static: no hub needed. The sources,
 // the refs (releases, then branches), the targets by family with readiness and estimates, the
 // flasher's boards ticked to start with, the search, the queue request; the queue with its
 // estimates, Up and Cancel, Pause; what was built, with what it used and its files.
@@ -9,7 +9,7 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
-// The Factory's own page (menu overhaul F7): /admin/factory.html, its code in factory.js.
+// The Factory's own page: /admin/factory.html, its code in factory.js.
 const html = fs.readFileSync(`${WEB}/admin-factory.html`, 'utf8');
 const js = ['factory.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);

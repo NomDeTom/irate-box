@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor, stage 1 (next-work plan step 29, security-doctor-plan §4, §7.1–2),
-offline: every finding in one shape; debsecan's output (recorded, --format summary) turned into
-findings, a released fix a problem only when remotely exploitable or high urgency (Tom), unfixed
+"""The security doctor's debsecan findings, offline: every finding in one shape; debsecan's output (recorded, --format summary) turned into
+findings, a released fix a problem only when remotely exploitable or high urgency, unfixed
 ones listed and not counted, a kit's cache flagged; the run with no data, and with a stand-in
 debsecan on the installed packages and the kits' cache; the joint report merging what two sources
-say about one package. The real debsecan was run on the Lyra (next-work-plan, step 29).
+say about one package.
 python3 tests/sim_secdoctor_debsecan.py"""
 import json, os, sys, tempfile, time
 from pathlib import Path
@@ -23,7 +22,7 @@ f = sd.F("x", "t", "warn", "d")
 check("every finding has the shared shape: source, about, accepted", f["source"] == "doctor" and f["about"] is None and f["accepted"] is None
       and set(f) == {"id", "title", "status", "detail", "fix", "ref", "source", "about", "accepted"})
 
-# debsecan's --format summary, as it prints it (recorded on the Lyra, 2026-10-06, and two made up).
+# debsecan's --format summary, as it prints it (recorded on a real board, and two made up).
 INSTALLED = """CVE-2026-12725 dnsmasq-base (fixed, remotely exploitable)
 CVE-2026-12969 dnsmasq-base (fixed)
 CVE-2026-41991 gzip (fixed, low urgency)

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""/admin's app pages (menu overhaul M4): /admin/apps behind the admin gate, each app with the
+"""/admin's app pages: /admin/apps behind the admin gate, each app with the
 /admin sections its manifest owns, in the hub's order; a manifest's admin part checked; every
 section a manifest names is one admin.html has. python3 tests/sim_admin_apps.py"""
 import http.client, json, os, re, subprocess, sys, tempfile, time
@@ -21,7 +21,7 @@ check("Git owns its repositories and mirrors", by.get("git", {}).get("sections")
 check("the Factory is named by its admin part", by.get("box-factory", {}).get("name") == "Firmware Factory", by.get("box-factory"))
 check("the folders are marked", all(by[i]["folder"] for i in ("meshtastic", "tools-rf", "tools-general", "tools-electronics") if i in by))
 check("box widgets without an admin part are left out", "box-people" not in by and "box-qr" not in by)
-check("the shoutbox and the board: apps drawn on the hub page, each with its width (M9)",
+check("the shoutbox and the board: apps drawn on the hub page, each with its width",
       by.get("shoutbox", {}).get("page") is True and by.get("board", {}).get("width") == "board_width" and by["shoutbox"]["sections"] == ["shoutbox-settings", "shoutbox-mod"])
 check("the drop's files on the drop's own page", by.get("drop", {}).get("sections") == ["drop-mod"])
 check("in the hub's order", [a["id"] for a in apps] == [m["id"] for m in sorted(ms, key=lambda m: m["order"]) if m["id"] in by])
@@ -57,18 +57,18 @@ try:
     got = json.loads(body)["apps"] if st == 200 else []
     check("/admin/apps answers the admin page", [{k: v for k, v in x.items() if k not in ("switch", "seen")} for x in got] == apps, body[:200])
     seen = {x["id"]: x.get("seen") for x in got}
-    # F7: the Firmware Factory's own page, under /admin's gate.
+    # The Firmware Factory's own page, under /admin's gate.
     st, page = get("/admin/factory.html", {"X-Irate-Front": SECRET})
     check("the Factory's own page served at /admin/factory.html", st == 200 and b"/factory.js" in page and b"factory-form" in page, st)
     st, _ = get("/admin/factory.html", {})
     check("  refused without the front's header, as /admin is", st == 403, st)
     st, page = get("/admin/mesh.html", {"X-Irate-Front": SECRET})
-    check("Mesh's Heard served at /admin/mesh.html (item 9)", st == 200 and b"/mesh-heard.js" in page, st)
+    check("Mesh's Heard served at /admin/mesh.html", st == 200 and b"/mesh-heard.js" in page, st)
     st, _ = get("/admin/mesh.html", {})
     check("  refused without the front's header, as /admin is", st == 403, st)
-    check("/admin/apps: who sees it alone for About and the folders, not a switched app (F3)", seen.get("about") is True and seen.get("tools-rf") is True and seen.get("draw") is False, seen)
+    check("/admin/apps: who sees it alone for About and the folders, not a switched app", seen.get("about") is True and seen.get("tools-rf") is True and seen.get("draw") is False, seen)
     sw = {x["id"]: x["switch"] for x in got}
-    check("  with whether each app's access can be set (M6)", sw.get("git") is True and sw.get("wiki") is True and sw.get("meshtastic") is False and sw.get("box-factory") is False, sw)
+    check("  with whether each app's access can be set", sw.get("git") is True and sw.get("wiki") is True and sw.get("meshtastic") is False and sw.get("box-factory") is False, sw)
 finally:
     hub.terminate()
 print(f"failures: {fails}")

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Adapting to GitHub's rate limit (Tom, 2026-10-09), offline: Adapt asks GitHub what it allows and sets an
+"""Adapting to GitHub's rate limit, offline: Adapt asks GitHub what it allows and sets an
 hourly budget just under it; requests are counted over a rolling hour and the budget runs out; three
 rate-limit refusals in a row halve it (never below the floor); a clean scheduled run gives some back.
 The network is stood in for. python3 tests/sim_ghpace.py"""

@@ -8,7 +8,7 @@ const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1'
 // no Save button to forget to press.
 
 // --- the menu --------------------------------------------------------------------------
-// Built by admin-layout.js (AL) from its table and the apps' manifests (menu overhaul M4): pages
+// Built by admin-layout.js (AL) from its table and the apps' manifests : pages
 // holding the sections below, the address naming a section. Everything keeps loading in the
 // background, so the sidebar's badges stay current whichever page is open.
 const showPane = AL.show;
@@ -287,7 +287,7 @@ function renderApps(snap, busy) {
       noteFor(`app:${name}`)));
   };
   document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => row(name, a, true)));
-  // Each app's own page has its row too (F6), its access being at the top of that page already.
+  // Each app's own page has its row too, its access being at the top of that page already.
   document.querySelectorAll('.updates-block[data-app]').forEach((b) => {
     const a = apps[b.dataset.app];
     b.replaceChildren(a ? row(b.dataset.app, a, false) : el('p', { className: 'setting-desc', textContent: 'The librarian has nothing on it yet.' }));
@@ -412,7 +412,7 @@ lib.policy.addEventListener('submit', async (e) => {
   const at = noteEl('library-policy-note');
   try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
-// Item 36: the mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
+// The mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
 const surfaceForms = [...document.querySelectorAll('form.surface-policy')];
 function fillSurfaces(policy) {
   for (const f of surfaceForms) {
@@ -446,7 +446,7 @@ document.getElementById('library-token-clear').addEventListener('click', async (
 });
 document.querySelectorAll('[data-all]').forEach((b) => b.addEventListener('click', () => libAct('all', { action: b.dataset.all })));
 
-// --- the books, a page at a time (step 14: /admin/books) ----------------------------------------
+// --- the books, a page at a time (/admin/books) -------------------------------------------------
 let libWasBusy = false;
 let libBusy = false;
 const bk = {
@@ -553,7 +553,7 @@ document.querySelectorAll('[data-bulk]').forEach((b) => b.addEventListener('clic
   libAct('all', { action: b.dataset.bulk, names });
 }));
 
-// --- Kiwix's catalogue (step 14: /admin/catalogue), online only ---------------------------------
+// --- Kiwix's catalogue (/admin/catalogue), online only ------------------------------------------
 const cat = { form: document.getElementById('catalogue-form'), results: document.getElementById('catalogue-results'),
   note: noteEl('catalogue-note'), pager: document.getElementById('catalogue-pager'), more: document.getElementById('catalogue-more') };
 let catStart = 0;
@@ -590,8 +590,7 @@ showTypeFields();
 loadLibrary();
 
 // --- packages from their makers (root/pkgwatch.py: meshtasticd on its channel) ------------------------
-// Tom, 2026-10-08: "automatically update against beta, alpha or nightly, or alpha/nightly after a certain
-// period of time"; on mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
+// On mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
 let pkgWaiting = null;
 async function loadPackages() {
   const box = document.getElementById('pkg-list');
@@ -707,7 +706,7 @@ const actionButton = (label, onclick, extra = {}) =>
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };
 const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Enable', disable: 'Disable' };
-const OP_TITLE = { enable: 'Start at boot', disable: "Don't start at boot" };  // Tom, 2026-10-09: the buttons say Enable / Disable
+const OP_TITLE = { enable: 'Start at boot', disable: "Don't start at boot" };
 let boxPoll = null;
 let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
 const controlNote = noteEl('control-note');
@@ -718,10 +717,10 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
-// The services' uptime (step 35): in each service's own row, a thin strip of the last 72 hours by
+// The services' uptime: in each service's own row, a thin strip of the last 72 hours by
 // hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
 // (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
-// and each service's week in words (Tom, 2026-10-09: put the heatmap with the service).
+// and each service's week in words.
 function serviceStrips(s, u) {
   const rec = u && s.unit && (u.units || {})[s.unit];
   if (!rec) return el('span', { className: 'setting-desc', textContent: '—' });
@@ -820,7 +819,7 @@ function renderModeration(data) {
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
   renderReports(data, del);
-  // What was reported, marked where the content is listed too, so it is all in one place (Tom, 2026-10-09).
+  // What was reported, marked where the content is listed too, so it is all in one place.
   const reportedN = new Map((data.queue || []).map((r) => [r.key, r.count]));
   const flag = (key) => (reportedN.has(key)
     ? AW.pill(`reported ×${reportedN.get(key)}`, 'bad') : null);
@@ -855,7 +854,7 @@ function renderModeration(data) {
     : [el('p', { className: 'setting-desc', textContent: 'No threads.' })]));
 }
 
-// The queue across the apps (M10): what was reported enough to count, worst first; Keep or Delete.
+// The queue across the apps: what was reported enough to count, worst first; Keep or Delete.
 let lastReports = null;
 AL.onBuild(() => { if (lastReports) renderReports(...lastReports); });
 function renderReports(data, del) {
@@ -874,7 +873,7 @@ function renderReports(data, del) {
         ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
         : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
     ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
-  // Each app's slice of it, on its own page (F6): the same lines, its posts only.
+  // Each app's slice of it, on its own page: the same lines, its posts only.
   lastReports = [data, del];
   document.querySelectorAll('.flagged-block[data-app]').forEach((b) => {
     const mine = queue.filter((r) => r.key.startsWith(b.dataset.app + ':'));
@@ -1230,10 +1229,10 @@ let secPoll = null;
 let secAsked = false;
 let secData = null; // the last /admin/security, for redraws (accepting, filtering)
 
-// Which page a line of the box's scan belongs on (S1, done in the page: the root helper and its
-// allow-list are untouched). A cure has one right answer (5d): the kernel's protections, root's own
+// Which page a line of the box's scan belongs on (decided in the page: the root helper and its
+// allow-list are untouched). A cure has one right answer: the kernel's protections, root's own
 // login and password, its first-login script, SSH's root login, LLMNR. Debian's security updates
-// are system updates (4d). The rest are the owner's real choices.
+// are system updates. The rest are the owner's real choices.
 const CURE_ID = /^(kernel-|root-password|root-firstrun|ssh-root|llmnr)/;
 const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
 function secKind(f) {
@@ -1243,7 +1242,7 @@ function secKind(f) {
   if (/^port-/.test(f.id) && (f.status === 'ok' || !(f.actions || []).length)) return 'port';
   return 'choice';
 }
-// Passwordless sudo as a toggle (Tom, 2026-10-08: "I like the idea of a toggle"): On while a
+// Passwordless sudo as a toggle: On while a
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
 function sudoToggle(f, busy) {
   return f.actions.map((a) => {
@@ -1261,8 +1260,7 @@ function scanButtons(f, busy) {
     onclick: () => secFix(f.id, a) }));
 }
 
-// --- one finding, the same shape on every page (item 11; Tom, 2026-10-09: "lists of emoji checks or
-// warnings with vague information is totally unactionable") -------------------------------------------
+// --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
 const STATE_WORD = { problem: 'To fix', warn: 'To look at', ok: 'Fine', suggest: 'Suggestion', 'not-here': 'Not for this box',
@@ -1349,12 +1347,12 @@ function renderSecurity(data) {
   sec.hub.replaceChildren(...data.hub.map((f) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
     how: (f.do && f.do.hub) || f.fix || '', controls: f.do && f.do.go ? [el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })] : [] })));
   // Debian's security updates, on Updates.
-  // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's (Tom, 2026-10-09).
+  // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's.
   // Its badge (up to date / update available) is as fresh as the package lists it was read from.
   // Lists of unknown age say nothing either way, unless updates are waiting.
   const updBadge = (f) => (f.id !== 'security-updates' || (f.lists_age_days == null && f.status === 'ok') ? null
     : AW.updatePill(Date.now() / 1000 - (f.lists_age_days || 0) * 86400, f.status !== 'ok'));
-  // The choice and the three buttons are the update pattern's (item 36), under the two lines.
+  // The choice and the three buttons are the update pattern's, under the two lines.
   noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix,
     controls: f.id === 'security-updates' ? [] : scanButtons(f, busy), badge: updBadge(f) }))
     : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
@@ -1406,7 +1404,7 @@ function renderSecurity(data) {
     el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
   badge('security', problems ? String(problems) : '');
   const updProblems = by('update').filter((f) => f.status === 'problem').length;
-  badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention (F4) words it
+  badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention words it
   if (scan) setupStep('security', problems ? `${problems} thing${problems === 1 ? '' : 's'} to fix or leave.` : 'Nothing to fix.', problems ? 'problem' : 'ok');
 
   const stale = !scan || Date.now() / 1000 - scan.at > 15 * 60;
@@ -1502,11 +1500,11 @@ function renderJoint(j, data) {
   fold('joint-suggest', all.filter((i) => i.tier === 'suggest' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
   fold('joint-nothere', all.filter((i) => i.tier === 'not-here' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
   fold('joint-accepted', all.filter((i) => !ok(i)), (i) => jointRow(i, data, busy, accepted[i.key]));
-  // What the box's own scan has put right with a cure (one right answer, 5d), each with its Undo.
+  // What the box's own scan has put right with a cure (one right answer), each with its Undo.
   const cured = ((data.scan || {}).findings || []).filter((f) => secKind(f) === 'cure' && f.status === 'ok' && (f.actions || []).length);
   fold('joint-cured', cured, (f) => findingRow({ id: `sec-cure-${f.id}`, state: 'ok', title: f.title, detail: f.detail,
     how: 'Done from here; put it back as it was if you need to.', controls: scanButtons(f, busy), note: noteUnder(f.id) }));
-  // One strip at the top (item 11 step 6): each source, its age, and a warning once it is older than it
+  // One strip at the top: each source, its age, and a warning once it is older than it
   // should be; what it covers and what it said in the pill's title.
   const fresh = (j && j.freshness) || {};
   const now = Date.now() / 1000;
@@ -1642,7 +1640,7 @@ async function secRequest(body, fid) {
   } catch (err) { secNote = { fid, text: err.message, ok: false }; loadSecurity(); }
 }
 
-// Debian's security updates as the update pattern (item 36): how often apt looks, what it does with what
+// Debian's security updates as the update pattern: how often apt looks, what it does with what
 // it finds (apt's periodic work, unattended-upgrades to install), and Check now / Fetch / Install by hand.
 const deb = { form: document.getElementById('debian-pattern'), note: noteEl('debian-pattern-note'), box: document.getElementById('debian-buttons') };
 deb.buttons = AW.updateButtons({
@@ -1765,7 +1763,7 @@ let hlPoll = null;
 let hlAsked = false;
 
 function installText(st) {
-  if (!st) return 'No record yet: installs from before 2026-10-02 kept none. The next run of the installer keeps one.';
+  if (!st) return 'No record yet: older installs kept none. The next run of the installer keeps one.';
   const when = new Date(st.started * 1000).toLocaleString();
   const n = (st.problems || []).length;
   if (st.running) return `Started ${when}${st.step ? `, at "${st.step}"` : ''}. If nothing is installing now, it was cut off there (the doctor says so too).`;
@@ -1830,7 +1828,7 @@ function renderHealth(data) {
     hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? ' is' : 's are'} waiting, the oldest for ${minutes(h.oldest)}.`;
     hl.bannerCmds.textContent = h.commands.join('\n');
   }
-  // The busy spells of the last week (Tom: "log busy false alarms so that patterns can be established").
+  // The busy spells of the last week, so that patterns in false alarms show.
   const bl = h.busy_log;
   hl.busyLog.hidden = !bl;
   if (bl) {
@@ -1861,8 +1859,7 @@ function renderHealth(data) {
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
   // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
   const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
-  // One shape for every finding, as the security doctor's (#164; Tom, 2026-10-09: "the box doctor
-  // needs similar treatment to the security doctor to remove the info-soup look"): a status word,
+  // One shape for every finding, as the security doctor's: a status word,
   // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
   const item = (f) => {
     const d = healthDo(f, busy || h.stuck);
@@ -2000,9 +1997,8 @@ let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
 let upDirty = false;
-// What is chosen on the page (each as radio cards), before Save: two dials, pace and reach (Tom,
-// 2026-10-09: "two dials always"), guests, a wedged driver, and the sensitivity, a number of missed
-// checks within the pace's window (Tom: forgiveness "rebranded as sensitivity, with a numeric value").
+// What is chosen on the page (each as radio cards), before Save: two dials, pace and reach, guests,
+// a wedged driver, and the sensitivity, a number of missed checks within the pace's window.
 const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
 const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['roaming', 'roaming']];
 let netAsked = false;
@@ -2078,7 +2074,7 @@ const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while 
 const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, with a button to reset the radio by hand; the steps come as the pace and reach set them.'],
   radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a wedged driver: go straight to the radio reset, if the reach allows it and no guests are held for.'] };
 
-// Roaming (item 35; uplink-roaming-options-plan §2): from the least change to the owner's system to the most,
+// Roaming: from the least change to the owner's system to the most,
 // each with its cost. The last two change the WiFi profile, by consent, and are undone the same way.
 const ROAM_WORDS = {
   roam: ['Roam naturally', 'The WiFi moves between your access points as it finds a stronger one (NetworkManager\'s own background scans). Nothing on the box changes.',
@@ -2111,7 +2107,7 @@ function willText(eff) {
     + 'and a reconnect after the first is locked to the strongest access point.';
 }
 
-// Every choice the same way (Tom, 2026-10-06): radio cards, each one's description and what it does.
+// Every choice the same way: radio cards, each one's description and what it does.
 function rungs(box, group, items) {
   AW.choices(box, `up-${group}`, items, { onChange: (name) => upChoose({ [group]: name }, netData.levels) });
 }
@@ -2132,7 +2128,7 @@ function buildUpChoices(levels) {
   });
 }
 
-// The roaming tiles: the ones the hardware scan says can't work here greyed, with why (stage 1).
+// The roaming tiles: the ones the hardware scan says can't work here greyed, with why.
 function drawRoamTiles(levels) {
   const r = uplinkRadio(), facts = r && r.roaming, why = (facts && facts.why) || {};
   const key = JSON.stringify(why);
@@ -2275,11 +2271,9 @@ function signalWords(dbm) {
   return dbm >= -50 ? 'excellent' : dbm >= -60 ? 'good' : dbm >= -70 ? 'fair' : dbm >= -80 ? 'weak' : 'poor';
 }
 
-// A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
-// by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
-// (linkhistory.py), drawn by heatmap.js.
-// Always shown, not folded (Tom, 2026-10-09: the folded heatmap closed itself on the pane's redraws, and
-// "I don't even think it needs an expander button").
+// A link's uptime on its card: the last 72 hours by hour and 72 days by day (githubstatus.com's
+// format), from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
+// Always shown, not folded: a folded one closed itself on the pane's redraws.
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
   const fold = el('div', { className: 'net-uptime' });
@@ -2354,7 +2348,7 @@ function deviceCard(inv, d, wifi, hazards) {
   return el('div', { className: 'net-device setting' }, ...kids);
 }
 
-// --- the tabs' own parts (item 37): a card per connection on Status and on The box's access ----------------
+// --- the tabs' own parts: a card per connection on Status and on The box's access ----------------
 const netTabs = { overview: document.getElementById('net-overview'), statusCards: document.getElementById('net-status-cards'),
   ladder: document.getElementById('net-ladder'), wifiNow: document.getElementById('net-wifi-now'), saved: document.getElementById('net-saved'),
   wiredNow: document.getElementById('net-wired-now'), wiredCard: document.getElementById('net-wired-card'), apHealth: document.getElementById('ap-health') };
@@ -2366,7 +2360,7 @@ function linkNow(inv, d) {
   if ('carrier' in d) return d.carrier ? 'Cable in.' : 'No cable.';
   return 'Not connected to a network.';
 }
-// Roaming (item 35, stage 2): on the WiFi card, the access points sharing the network and how often the box
+// Roaming: on the WiFi card, the access points sharing the network and how often the box
 // moved between them; a lock whose access point has gone, with Unlock. On Hardware, which controls work here.
 const ROAM_SHORT = { roam: 'roams naturally', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
 function drawRoaming(inv, u, wifi) {
@@ -2484,7 +2478,7 @@ function renderNetwork(data) {
   buildUpFields(levels);
   if (!upDirty) fillUpForm((u && u.chosen) || levels.default, levels);
   net.status.textContent = upStatusText(u);
-  // Stalled (uplink-ladder-plan, stage 2): the step that could help, one press away; the watchdog's
+  // Stalled: the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
   // Or a wedged driver, with a radio reset possible: offered by hand whatever the ladder is doing.
   const wedgedRadio = u && !u.stale && u.wedged && (u.repairs || []).includes('radio') && !((u.outage || {}).done || []).includes('radio');
@@ -2522,7 +2516,7 @@ function renderNetwork(data) {
     net.profile.replaceChildren();
   }
   const evs = (u && u.events) || [];
-  // One line per event: when, then what (Tom, 2026-10-06).
+  // One line per event: when, then what.
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
     el('time', { className: 'ev-time', dateTime: new Date(e.at * 1000).toISOString(),
       textContent: new Date(e.at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }),
@@ -2554,7 +2548,7 @@ async function netRequest(body, where) {
 }
 
 net.scan.addEventListener('click', () => netRequest({ action: 'scan' }, 'scan'));
-// A network for the box to join (item 37): added with consent, at once only when asked (and then said what it means).
+// A network for the box to join: added with consent, at once only when asked (and then said what it means).
 const joinForm = document.getElementById('net-join-form');
 const joinPsk = document.getElementById('net-join-psk');
 const joinOpen = () => { joinPsk.hidden = joinForm.elements.security.value === 'open'; joinForm.elements.psk.required = !joinPsk.hidden; };
@@ -2591,7 +2585,7 @@ net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 6
 net.unhold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 0 }, 'up'));
 window.addEventListener('hashchange', () => { if (paneShown('network')) loadNetwork(); });
 
-// --- the hotspot itself (item 2: root/ap.py, the plan from hub/apmode.py) -----------------------------
+// --- the hotspot itself (root/ap.py, the plan from hub/apmode.py) -------------------------------------
 const apEl = { state: document.getElementById('ap-state'), form: document.getElementById('ap-form'), radio: document.getElementById('ap-radio'),
   channel: document.getElementById('ap-channel'), take: document.getElementById('ap-take'), takeLabel: document.getElementById('ap-take-label'),
   sw: document.getElementById('ap-switch'), tryB: document.getElementById('ap-try'), confirmB: document.getElementById('ap-confirm'), note: noteEl('ap-note') };
@@ -2717,10 +2711,8 @@ function renderHotspot(data) {
   drawGuestNet(data.share || 'off', data.results);
 }
 
-// Guests' onward internet (root/share.py; Tom, 2026-10-08: "give options, and a sliding scale"):
-// five stops from nobody to everyone, the safest the default; held until Save. "The sheet" is the
-// page a phone is shown when it joins the hotspot (Tom, 2026-10-09: "what does after the sheet mean?"),
-// so the labels now say "welcome page" and the lines say what that is.
+// Guests' onward internet (root/share.py): five stops from nobody to everyone, the safest the
+// default; held until Save. The "welcome page" is the page a phone is shown when it joins the hotspot.
 const GUEST_NET = [
   ['off', 'Off', 'Guests reach the box and nothing else.'],
   ['users-web', 'Users, web only', 'A device signed in to an account on the hub reaches the web (ports 80 and 443).'],
@@ -2799,10 +2791,9 @@ hs.save.addEventListener('click', async () => {
 });
 loadHotspot();
 
-// --- Backup and a new box (item 34): offers with sizes ----------------------------------------
-// Tom, 2026-10-09: a backup "should be an offer on the level of backup to make - settings only, settings and data,
-// full image. An estimated size of export is needed"; a new box "a similar offer list … books, toolkits, git repos
-// … a size budget is critical"; and "an export of the library or the toolkits for updating an offline box".
+// --- Backup and a new box: offers with sizes -------------------------------------------------
+// A backup at a chosen level (settings, settings and data, full image) and a new box or an offline box's
+// update (books, toolkits, git repositories), each with its estimated size against a budget.
 // The sizes are the hub's (/admin/backup/plan); the kit, the image and the stick are the root helper's.
 const bku = { level: document.getElementById('backup-level'), keys: document.getElementById('backup-syncthing'),
   keysLabel: document.getElementById('backup-keys-label'), leftOut: document.getElementById('backup-left-out'),
@@ -3099,7 +3090,7 @@ function renderAccess(data) {
   if (accessWaiting) accessPoll = setTimeout(loadAccess, 1000);
 }
 
-// Each app's own page starts with its access (M6): the same controls, drawn again there.
+// Each app's own page starts with its access: the same controls, drawn again there.
 let lastAccess = null;
 const TAB_SEEN = { guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
 function fillSeenBlocks() {
@@ -3130,12 +3121,12 @@ function fillAccessBlocks() {
 }
 AL.onBuild(fillAccessBlocks);
 
-// A tile with no switch of its own (a folder, About; F3): anyone may open it, so only who sees
+// A tile with no switch of its own (a folder, About): anyone may open it, so only who sees
 // its tile is to choose. Hidden, its address still works.
 const SEEN_ONLY = { auto: 'everyone', guests: 'everyone', users: 'those logged in', admin: 'the admin', hidden: 'nobody' };
 function seenControls(app, cur) { return [accessBlock(app, null, cur)]; }
 
-// The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
+// The box-wide sign-in offer (the setup decision "sign-in-offer"): an app for users, left at
 // "as its access", shows its tile to guests too, locked, leading to sign-in.
 let lockAll = '';   // the box-wide way a seen-but-unopenable tile behaves ('' = each app's own)
 async function loadSignInOffer() {
@@ -3154,7 +3145,7 @@ async function loadSignInOffer() {
 }
 loadSignInOffer();
 
-// The apps row's order (F3), on "All apps": each tile with who opens it and who sees it; moved
+// The apps row's order, on "All apps": each tile with who opens it and who sees it; moved
 // with ↑/↓, held until Save, kept by the hub (/admin/tiles).
 let tilesData = null;
 let tilesDraft = null;
@@ -3204,13 +3195,12 @@ function drawTileOrder(openId) {
 }
 loadTileOrder();
 
-// Who opens it, who sees it, and its place on the hub, as the mock has it (Tom, 2026-10-08: "a
-// consistent set of 4 chips, and then two buttons for moving it earlier and later"): guests,
-// users, admin, off; guests, users, admin, hidden; ↑ Earlier, ↓ Later. Held until Save, as every
+// Who opens it, who sees it, and its place on the hub: a set of four chips each, and two buttons
+// for moving it: guests, users, admin, off; guests, users, admin, hidden; ↑ Earlier, ↓ Later. Held until Save, as every
 // setting is; drafts kept per app, so a poll redrawing the page doesn't lose one.
 const OPEN_CHIPS = [['public', 'guests'], ['users', 'users'], ['private', 'admin'], ['off', 'off']];
 const SEEN_CHIPS = [['guests', 'guests'], ['users', 'users'], ['admin', 'admin'], ['hidden', 'hidden']];
-// What the tile does for one who sees it but may not open it (Tom, 2026-10-08).
+// What the tile does for one who sees it but may not open it.
 const LOCK_CHIPS = [['signin', 'sign in'], ['signup', 'sign up'], ['padlock', 'padlock'], ['grey', 'greyed']];
 const LOCK_WORDS = { signin: 'it leads to the sign-in page', signup: 'it leads to sign-up, while accounts are open or by application (otherwise to sign-in)',
   padlock: 'it shows a padlock and does nothing', grey: 'it is greyed out and does nothing' };
@@ -3283,7 +3273,7 @@ function accessBlock(id, a, seenOnly) {
       (v) => waiting || !!lockAll || (v === 'signup' && d.mode !== 'users')) : null,
     a ? el('p', { className: 'setting-desc', textContent: lockAll
       ? `All apps are set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one: change that on All apps, under "Who can open each one".`
-      : `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
+      : `Seen but not opened: ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
@@ -3295,7 +3285,7 @@ function seenWords(seen, mode) {
   return `${SEEN_WORDS[seen]}${seen !== 'hidden' && (mode === 'users' && seen === 'guests' || mode === 'private' && seen !== 'admin') ? ', with a lock for those who can\'t open it' : ''}.`;
 }
 function accessControls(a) { return [accessBlock(a.id, a, null)]; }
-// The tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits drawn as text;
+// The tile's own icon: emoji, or up to four letters and digits drawn as text;
 // blank goes back to the app's own. Checked here as the hub checks it (server.valid_icon).
 const ICON_OK = (s) => /^[A-Za-z0-9]{1,4}$/.test(s) || (s.length > 0 && [...s].length <= 16 && [...s].every((c) => c.codePointAt(0) > 0x7f));
 function iconField(d, tile, iconNow, redraw) {
@@ -3306,7 +3296,7 @@ function iconField(d, tile, iconNow, redraw) {
   const hint = el('span', { className: 'setting-desc' + (bad ? ' bad' : ''), textContent: bad ? 'Emoji, or up to four letters and digits (no spaces).'
     : val ? 'Its own; blank goes back to the app\'s.' : `The app's own: ${tile.icon}` });
   input.addEventListener('change', () => { d.icon = input.value.trim(); redraw(); });
-  // A pick from the emoji picker (Tom, 2026-10-08) arrives as an input event of the page's own.
+  // A pick from the emoji picker arrives as an input event of the page's own.
   input.addEventListener('input', (e) => { if (!e.isTrusted) { d.icon = input.value.trim(); redraw(); } });
   const field = el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
   if (window.EMOJI) window.EMOJI.attach(input);
@@ -3405,7 +3395,7 @@ async function addonSet(a, on) {
 
 loadAddons();
 
-// --- web add-ons (local: plans/no-root-addons-plan) ---------------------------------------
+// --- web add-ons ---------------------------------------------------------------------------
 // Added, kept current and removed by the hub itself, no installer; switched like any app
 // (accessSlot). Adding one asks its consent text first; a pasted one needs the warning read.
 const loc = {
@@ -3658,9 +3648,8 @@ const git = {
   mirrors: noteEl('git-mirrors'), mirrorForm: document.getElementById('git-mirror-add'), mirrorNote: noteEl('git-mirror-note'),
 };
 const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
-// The Git page as cards (git-ci-plan §1, Kiwix's library as the model): a filter bar, a card per
-// repository with its badges in words, and Manage, opening under its card (checklist 3a: the
-// side panel beside the grid went, F7).
+// The Git page as cards (Kiwix's library as the model): a filter bar, a card per
+// repository with its badges in words, and Manage, opening under its card.
 let gitData = null;
 const gitView = { kind: 'all', area: 'all', q: '', open: null };
 const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'the admin pushes', nobody: 'read-only' };
@@ -3671,7 +3660,7 @@ const GIT_KINDS = [['all', 'All', () => true], ['mine', 'Mine', (r) => !r.mirror
 const GIT_AREAS = [['all', 'Public and private', () => true], ['public', 'Public', (r) => r.area === 'public'],
   ['private', 'Private', (r) => r.area === 'private']];
 
-// One sentence for the card: who sees it, who pushes, whether pushes are built (git-ci-plan §2).
+// One sentence for the card: who sees it, who pushes, whether pushes are built.
 function accessSentence(r) {
   const see = r.area === 'public' ? 'Anyone on the network can see and clone it' : 'Only the admin can see and clone it';
   const push = r.mirror_of ? 'nobody pushes (the librarian keeps it)' : { everyone: 'anyone can push', admin: 'only the admin can push', nobody: 'nobody can push' }[r.write];
@@ -3709,7 +3698,7 @@ function renderGit(data) {
     if (gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
   }
   if (!list.length) cards.push(el('p', { className: 'setting-desc', textContent: shown.length ? 'Nothing matches.' : 'No repositories yet.' }));
-  // The New card last, after the repositories (Tom, 2026-10-09: "move the new tile to the end"), its drawer after it.
+  // The New card last, after the repositories, its drawer after it.
   cards.push(newCard());
   if (gitView.open === 'new') cards.push(newPanel('git-drawer'));
   git.grid.replaceChildren(...cards);
@@ -4041,7 +4030,7 @@ const fw = {
   boards: noteEl('fw-boards'), filter: noteEl('fw-filter'), kept: noteEl('fw-kept'), source: noteEl('fw-source'),
   cacheForm: document.getElementById('ci-cache-form'), cacheStatus: noteEl('ci-cache-status'), cacheNote: noteEl('ci-cache-note'),
 };
-// The firmware's source, as a mirror (git-ci-plan 4a): what the Mirror the source button adds.
+// The firmware's source, as a mirror: what the Mirror the source button adds.
 const FW_SOURCE_MIRROR = { upstream: 'https://github.com/meshtastic/firmware', name: 'meshtastic-firmware', area: 'public',
   branches: ['master'], groups: [{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }], history: 'shallow',
   budget_mb: 2048, submodules: true };
@@ -4187,7 +4176,7 @@ function renderKits(data) {
   if (!kitsEl.budget.contains(document.activeElement)) kitsEl.budget.elements.budget.value = cfg.budget_mb;
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
     'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
-  // Item 8 (and checklist 3): a card per kit, its details in a drawer inside the card; not redrawn
+  // A card per kit, its details in a drawer inside the card; not redrawn
   // under an open drawer with changes not saved.
   const open = kitsEl.grid.querySelector('.aw-card.open');
   if (!(open && open._dirty && open._dirty())) {
@@ -4204,7 +4193,7 @@ function renderKits(data) {
   if (kitsWaiting.size) kitsPoll = setTimeout(loadKits, 3000);
 }
 
-// A kit's card: its name, what it is for and its state in words (item 8, step 1).
+// A kit's card: its name, what it is for and its state in words.
 function kitItem(k, st, cfg) {
   const s = (st.kits || {})[k.id] || {}, c = s.cached, inst = (st.installed || {})[k.id];
   const left = inst && inst.remove_at ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600)) : null;
@@ -4289,7 +4278,7 @@ async function kitSave(it) {
   if (Object.keys(ch).length) await kitAct({ action: 'settings', kits: { [k.id]: ch } });
   if (!k.owner && extra.join(' ') !== (k.extra || []).join(' ')) await kitAct({ action: 'extra', kit: k.id, packages: extra });
 }
-// The "+ Custom toolkit" card (step 4): the form, moved into its drawer while it is open.
+// The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
 function customBody() {
   const box = el('div', { className: 'kit-custom' }, ...kitsFormNodes);
   return [box];
@@ -4388,7 +4377,7 @@ document.getElementById('kits-refresh-all').addEventListener('click', async () =
 window.addEventListener('hashchange', () => { if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); } });
 if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); }
 
-// --- HTTPS (step 15: root/tls.py, /admin/tls) -------------------------------------------------------
+// --- HTTPS (root/tls.py, /admin/tls) ----------------------------------------------------------------
 const tlsEl = { state: document.getElementById('tls-state'), make: document.getElementById('tls-make'), sw: document.getElementById('tls-switch'),
   again: document.getElementById('tls-again'), note: noteEl('tls-note'), box: document.getElementById('tls-box'),
   own: document.getElementById('tls-own-form'), plain: document.getElementById('tls-own-plain'),
@@ -4458,7 +4447,7 @@ tlsEl.again.addEventListener('click', () => {
 window.addEventListener('hashchange', () => { if (paneShown('security')) loadTls(); });
 if (paneShown('security')) loadTls();
 
-// --- accounts (step 16: accounts.py, /admin/accounts) ------------------------------------------------
+// --- accounts (accounts.py, /admin/accounts) ---------------------------------------------------------
 const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
   make: document.getElementById('accounts-make'), code: document.getElementById('accounts-code'), list: document.getElementById('accounts-list'),
   login: document.getElementById('accounts-admin-login'), loginSwitch: document.getElementById('accounts-admin-login-switch') };
@@ -4506,7 +4495,7 @@ function renderAccounts(d) {
         act('delete', a.state === 'asked' ? 'Refuse' : 'Delete')));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
 }
-// A one-time code shows beside the account it is for (Tom, 2026-10-08), in a box to copy, until the
+// A one-time code shows beside the account it is for, in a box to copy, until the
 // page is reloaded: the hub keeps only its hash.
 const acctCodes = {};
 function showCode(name, code) {
@@ -4545,7 +4534,7 @@ acctEl.make.addEventListener('submit', (e) => {
   f.name.value = '';
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
-// each app's own page (menu overhaul M9).
+// each app's own page.
 const postingForms = [...document.querySelectorAll('.posting-form')];
 const fillPosting = (st) => postingForms.forEach((form) => [...form.elements].forEach((f) => {
   if (!(f.name in st)) return;
@@ -4567,7 +4556,7 @@ if (postingShown()) loadPosting();
 window.addEventListener('hashchange', () => { if (paneShown('accounts')) loadAccounts(); });
 if (paneShown('accounts')) loadAccounts();
 
-// --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
+// --- the mesh (meshbridge.py, /admin/mesh) ----------------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
   form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note') };
 let meshPoll = null;
@@ -4599,7 +4588,7 @@ meshEl.longfast.addEventListener('click', () => meshAct({ action: 'add-channel',
 window.addEventListener('hashchange', () => { if (paneShown('mesh')) loadMesh(); });
 if (paneShown('mesh')) loadMesh();
 
-// ---- Appearance (menu overhaul M2): the page widths, for everyone, read by every page from
+// ---- Appearance: the page widths, for everyone, read by every page from
 // /layout.css. A choice shows on this page at once; Save keeps it.
 const WIDTHS = [45, 60, 80, 90, 100];
 let appearanceSettings = null;
@@ -4620,7 +4609,7 @@ async function loadAppearance() {
     document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
     return now;
   } }),
-  // The emoji pickers' set (Tom, 2026-10-08): newer sets have more, but a phone older than a set's
+  // The emoji pickers' set: newer sets have more, but a phone older than a set's
   // release draws its newest emoji as empty boxes. Chosen by the iPhones each reaches.
   el('h3', { textContent: 'Emoji' }),
   el('p', { className: 'setting-desc', textContent: 'Which emoji the pickers offer, for everyone. A newer set has more, '
@@ -4632,7 +4621,7 @@ async function loadAppearance() {
 }
 loadAppearance();
 
-// ---- Folders (menu overhaul M7; checklist 5e): each folder's page arranges its entries. The
+// ---- Folders: each folder's page arranges its entries. The
 // owner may hide an entry from a folder, order a folder's entries, and put an entry in other
 // folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
 let folders = null, folderDraft = null;
@@ -4714,8 +4703,8 @@ function drawFolder(block, f) {
 }
 loadFolders();
 
-// An app drawn on the hub page has its width on its own page too (M9; Tom, 2026-10-08: "in both
-// the apps page and the appearance page"): one row of the same setting.
+// An app drawn on the hub page has its width on its own page too, as on Appearance: one row of
+// the same setting.
 const WIDTH_LABEL = { shout_width: 'Its width on the hub page', board_width: 'Its width on the hub page' };
 function fillWidthBlocks() {
   if (!appearanceSettings) return;
@@ -4728,9 +4717,9 @@ function fillWidthBlocks() {
 }
 AL.onBuild(fillWidthBlocks);
 
-// ---- Status tiles (M8): the box row arranged, held until Save.
+// ---- Status tiles: the box row arranged, held until Save.
 let stTiles = null, stDraft = null;
-// A tile's size (F5; Tom: "All tiles"): one cell, wide (two across) or large (two by two).
+// A tile's size, for all tiles: one cell, wide (two across) or large (two by two).
 const TILE_SIZES = [['single', 'one cell'], ['wide', 'wide: two across'], ['large', 'large: two by two']];
 function sizeChips(cur, set) {
   return AW.h('div', { class: 'chip-group', role: 'group', 'aria-label': 'Size' }, TILE_SIZES.map(([v, label]) => AW.h('button', { type: 'button',
@@ -4777,7 +4766,7 @@ function drawStatusTiles(openId) {
 }
 loadStatusTiles();
 
-// Who sees the names of those signed in (M12, a setup decision, M14): users or the admin only.
+// Who sees the names of those signed in (a setup decision): users or the admin only.
 async function loadNamesTo() {
   const box = document.getElementById('names-to-box');
   if (!box) return;
@@ -4790,7 +4779,7 @@ async function loadNamesTo() {
 }
 loadNamesTo();
 
-// Saves tied to accounts (accounts-plan stage 6, item 6): off by default, so a device lock is
+// Saves tied to accounts: off by default, so a device lock is
 // the only thing that guards a save unless the admin turns this on.
 async function loadSavesCrossDevice() {
   const box = document.getElementById('saves-cross-device-box');
@@ -4804,7 +4793,7 @@ async function loadSavesCrossDevice() {
 }
 loadSavesCrossDevice();
 
-// --- Needs attention (menu overhaul F4; the mock's ov-attention) --------------------------------
+// --- Needs attention --------------------------------------------------------------------------
 // One list at the top of Overview of what is waiting on the admin, each a link to where it is dealt
 // with: the words the sections already put beside their sidebar entries, and the setup decisions
 // not yet made. Work in progress ("working") isn't waiting on anyone, so it is left out.
@@ -4839,13 +4828,13 @@ AL.onBadge(drawAttention);
 AL.onBuild(drawAttention);
 drawAttention();
 
-// --- older lists, bounded (menu overhaul F8; checklist 3e, 3f) -------------------------------------
+// --- older lists, bounded --------------------------------------------------------------------------
 // What people made and the box's records grow without end: each gets a limited height and, once it
 // is long, a filter. The catalogue's results have a search of their own, so the height only.
 ['store-saves', 'mod-messages', 'mod-threads', 'mod-drops', 'accounts-list', 'ci-runs'].forEach((id) => AW.bound(document.getElementById(id)));
 AW.bound(document.getElementById('catalogue-results'), { filter: false });
 
-// --- tabs (Tom, 2026-10-08: the books' sources as tabs) ------------------------------------------
+// --- tabs ---------------------------------------------------------------------------------------
 // [data-tabs]: a tablist of .view-switch-btn, each naming its panel (aria-controls). One showing;
 // arrow keys move along; the choice kept in this browser; an address inside a panel opens its tab.
 function initTabs(box) {
@@ -4883,8 +4872,7 @@ function initTabs(box) {
 }
 document.querySelectorAll('[data-tabs]').forEach(initTabs);
 
-// --- what an update must carry (root/signing.py; Tom, 2026-10-08: "give options in the update
-// manager for what level to choose") ------------------------------------------------------------
+// --- what an update must carry (root/signing.py) ----------------------------------------------
 // off, merged on GitHub, or signed releases with the owner's keys. The keys are root's: the page
 // gets back only their names and types, and each Save replaces the list with what is in the box.
 const sigEl = { form: document.getElementById('update-signing-form'), note: noteEl('update-signing-note'),

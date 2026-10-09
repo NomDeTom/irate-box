@@ -16,7 +16,7 @@ What the radios allow comes from the network inventory (netinv.py, control/netin
 support, how many access-point interfaces exist across the radios. OWE support is not reported
 by drivers, so it is offered with a warning to test it first.
 
-There is no hotspot yet (plan §3): the choice is kept in the hub's state and the hotspot
+There is no hotspot yet: the choice is kept in the hub's state and the hotspot
 add-on applies it when it exists, checking it again then. Stdlib only.
 """
 
@@ -186,7 +186,7 @@ def snapshot():
 
 
 # --- what the hotspot add-on applies -------------------------------------------------------
-# The choice above as settings for the two AP backends (plan §3): NetworkManager (`nmcli con
+# The choice above as settings for the two AP backends: NetworkManager (`nmcli con
 # add/modify` properties) and hostapd (config lines). Built here so the add-on only has to apply
 # them; it checks the choice again against the radios first (validate). Not yet tried on a radio:
 # OWE on the AIC8800 is the first test once AP mode exists.

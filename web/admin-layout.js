@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// /admin's menu, built from one table (menu overhaul M4; Tom, 2026-10-08: the app-first layout
-// "as it is now"). admin.html keeps every section as it was, each a <section class="admin-pane">
+// /admin's menu, built from one table. admin.html keeps every section as it was, each a <section class="admin-pane">
 // with its own id, so admin.js binds to them unchanged; this file gathers them into pages:
 //   Overview · Apps (a page per app, from /admin/apps: what each app's manifest says it owns)
 //   · Folders · Moderation · System · Doctors, the doctors last.
@@ -13,8 +12,7 @@ const AL = (() => {
   // The box-wide groups. A page: its title, the sections it holds, its art if not the group's.
   // The Apps and Folders groups also get a page per app from the manifests (apps: true).
   const LAYOUT = [
-    // flat: no group head to fold (Tom, 2026-10-09: Overview and the setup steps "just leave them visible all
-    // the time. It's fewer clicks all around"): the links stand at the top of the sidebar.
+    // flat: no group head to fold; the links stand at the top of the sidebar.
     { name: 'Overview', art: 'controller', flat: true, pages: [
       { title: 'Overview', sections: ['overview'] },
       { title: 'Setup steps', sections: ['welcome'], art: 'welcome-controller' }] },
@@ -51,7 +49,7 @@ const AL = (() => {
   const pages = [];
   const badges = {};
   const hiddenLinks = new Set();
-  const onBadge = [];  // told when any section's word changes (Overview's Needs attention, F4)
+  const onBadge = [];  // told when any section's word changes (Overview's Needs attention)
   const onBuild = [];  // called after each build: admin.js fills the generated sections  // sections whose page's sidebar entry is hidden (the setup steps, once done)
   let built = false;
 
@@ -85,8 +83,7 @@ const AL = (() => {
     if (window.Intl && Intl.Segmenter) { const g = new Intl.Segmenter().segment(s)[Symbol.iterator]().next().value; return g ? g.segment : null; }
     return [...s][0];
   }
-  // The sidebar's groups fold (Tom, 2026-10-08: "Default open, option to toggle"; "Toggle button
-  // for 'auto-collapse' of the groups"). Each head is a button over its links; the current page's
+  // The sidebar's groups fold, open by default. Each head is a button over its links; the current page's
   // group is always open; a folded group shows its links' badges on its head. Auto-collapse keeps
   // only the current group open. Both are this viewer's own, kept in the browser (a convenience,
   // not a setting: without storage every group simply starts open).
@@ -159,22 +156,22 @@ const AL = (() => {
       entries.push(...fixed);
       if (g.apps && apps) {
         for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page))) {
-          // Who opens it, who sees it: first on its page (M6; admin.js fills it from /admin/access).
-          // An app with no switch of its own (a folder, About) has only who sees its tile (F3).
+          // Who opens it, who sees it: first on its page (admin.js fills it from /admin/access).
+          // An app with no switch of its own (a folder, About) has only who sees its tile.
           if (a.switch || a.seen) {
             const id = 'app-access-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-access', id },
               el('h2', { text: a.switch ? 'Who opens it, who sees it' : 'Who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
             a = { ...a, sections: [id, ...a.sections] };
           }
-          // An app drawn on the hub page: its width, after its first section (M9).
+          // An app drawn on the hub page: its width, after its first section.
           if (a.width) {
             const id = 'app-width-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-width', id },
               el('h2', { text: 'Width' }), el('div', { class: 'width-block', 'data-key': a.width })));
             a = { ...a, sections: [a.sections[0], id, ...a.sections.slice(1)].filter(Boolean) };
           }
-          // A folder's entries (M7): after its access, before its other sections.
+          // A folder's entries: after its access, before its other sections.
           if (a.folder) {
             const id = 'folder-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane folder-section', id },
@@ -182,7 +179,7 @@ const AL = (() => {
             const at = a.switch || a.seen ? 1 : 0;
             a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
           }
-          // The app's own updates (F6; the mock's "Its own updates"): after its access, width and
+          // The app's own updates: after its access, width and
           // folder, before what it owns. Drawn by admin.js from the librarian's snapshot.
           if (a.updates) {
             const id = 'app-updates-' + a.id;
@@ -192,7 +189,7 @@ const AL = (() => {
             const at = a.sections.findIndex((s) => own.has(s));
             a = { ...a, sections: at < 0 ? [...a.sections, id] : [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
           }
-          // What was reported there (F6; 4f: flagged items last), for an app drawn on the hub page.
+          // What was reported there (flagged items last), for an app drawn on the hub page.
           if (a.page) {
             const id = 'app-flagged-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-flagged', id },

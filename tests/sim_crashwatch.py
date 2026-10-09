@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Crash watch (root/crashwatch.py; Tom, 2026-10-08) and the box doctor's findings on it, offline: the
+"""Crash watch (root/crashwatch.py) and the box doctor's findings on it, offline: the
 kernel's flood counted not copied, a snapshot from a stand-in /proc and /sys, a crash filed at the next
 boot (and not after a clean shutdown), a failing radio told from a link going down, pre-emption at
 each level with its guards, the hang settings, and the doctor's switches. Every command that would
@@ -23,7 +23,7 @@ def check(name, cond, info=""):
 def put(p, text):
     p.parent.mkdir(parents=True, exist_ok=True); p.write_text(text)
 
-# A stand-in /proc and /sys: a Lyra-ish board.
+# A stand-in /proc and /sys: a small ARM board.
 put(PROC / "sys/kernel/random/boot_id", "163672e1-5e3e-44f8-94a4-994042b8f0fc\n")
 put(PROC / "uptime", "5209.53 10000.00\n")
 put(PROC / "loadavg", "0.10 0.17 0.31 1/161 4242\n")
@@ -154,7 +154,7 @@ for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;
 said = health.fix("crashwatch-preempt:radio")
 check("  a switch pressed: the setting changed, and said", cw.load_settings()["preempt"] == "radio" and said == "a failing radio is reset at once")
 
-# --- the AIC8800's own words as its firmware wedged (the Lyra, 2026-10-09 04:00; uplink-ladder-plan stage 4) ---
+# --- the AIC8800's own words as its firmware wedged (a recorded kernel log) ---
 FX = REPO / "tests/fixtures/aic8800-wedge-2026-10-09"
 wedge = FX.joinpath("kern.log").read_text().splitlines()
 aic = {"wlan0": {"driver": "aic8800_fdrv", "port": "1-1.1", "product": "AIC8800DC"}}
@@ -208,7 +208,7 @@ check("reset: NetworkManager stopped around it, the USB device unbound and bound
       and (SYS / "bus/usb/drivers/usb/bind").read_text() == "1-1.1" and "unbound and bound again; wlan0 is back; the hotspot started again" in said, (ran, said))
 ran.clear(); fake_sys(); shutil.rmtree(SYS / "class/net/wlan0")
 said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
-check("  not back: then authorized 0/1 (what worked on the Lyra), then the driver, which may refuse to unload",
+check("  not back: then authorized 0/1 (what brings a wedged AIC8800 back), then the driver, which may refuse to unload",
       (SYS / "bus/usb/devices/1-1.1/authorized").read_text() == "1" and "de-authorised and authorised again" in said
       and "would not unload" in said and said.endswith("wlan0 did not come back; the hotspot started again"), said)
 ran.clear(); fake_sys(); shutil.rmtree(SYS / "bus/usb/devices/1-1.1")

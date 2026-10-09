@@ -20,7 +20,7 @@ A build is a fresh clone of the pushed commit and `bash .irate-ci.sh` in it, wit
   and download cache (core/.cache/downloads) for the newest kept Meshtastic release, and
   CI_PIO_DEPS_TAG, that release's tag, for a build with no internet
   PIP_NO_INDEX, PIP_FIND_LINKS  (when the Building kit's wheelhouse is cached: root/kits.py) so
-  `pip install platformio` needs no internet either (toolkits-plan §5)
+  `pip install platformio` needs no internet either
 and a time limit. Its log, status and artifacts go to runs/<repo>/<number>/; the newest
 KEEP_RUNS per repository are kept. /admin's Git page lists them (snapshot()).
 
@@ -41,7 +41,7 @@ from pathlib import Path
 from irate_box import confine
 
 ROOT = Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
-# Builds come only from here (F23): the queue is writable by the hub, and guests may push to public repos.
+# Builds come only from here: the queue is writable by the hub, and guests may push to public repos.
 PRIVATE = Path(os.environ.get("HUB_GIT_PRIVATE", ROOT.parent / "git" / "private"))
 # The librarian's mirrors (mirrors.py): upstream URL -> the local repository. Builds fetch from
 # these instead, so a submodule (Meshtastic's protobufs, say) needs no internet.
@@ -51,8 +51,8 @@ RUNS = ROOT / "runs"
 WORK = ROOT / "work"
 SCRIPT = ".irate-ci.sh"
 KEEP_RUNS = 5
-# Per build. A first meshtasticd build on the Lyra (one job, ~900 files) took longer than 2 h
-# and was heading past 6; later builds are incremental, since HOME keeps the objects.
+# Per build. A first meshtasticd build on a small board (one job, ~900 files) can take over 6 h;
+# later builds are incremental, since HOME keeps the objects.
 TIME_LIMIT = int(os.environ.get("HUB_CI_TIME_LIMIT", 12 * 3600))
 ZERO = "0" * 40
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -107,8 +107,8 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
     libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
     for d in "$libs"/*/; do
       # Not the touchscreen build's libraries (the cache is native-tft's): PlatformIO's finder
-      # compiles any library it sees, and meshtastic-device-ui needs headers native lacks (the
-      # Lyra's offline build failed on them after 3 h 25 min, 2026-10-07). firmware.py UI_LIBS.
+      # compiles any library it sees, and meshtastic-device-ui needs headers native lacks (an
+      # offline build fails on them). firmware.py UI_LIBS.
       case "$(basename "$d")" in lvgl|meshtastic-device-ui|SdFat|PNGdec|libdeflate) continue ;; esac
       [ -e "$LIBDEPS/$(basename "$d")" ] || cp -r "$d" "$LIBDEPS/"
     done
@@ -121,7 +121,7 @@ case $PIO_FROM in
   debian) PIO_BIN=$PIO_DEBIAN ;;
   # Debian's first; but once the wheelhouse's has been installed (a fallback before) and is the
   # newer, that one. Debian's 6.1.10 removes a platform that needs a newer PlatformIO before it
-  # refuses it (Meshtastic's espressif32 needs 6.1.19: found on the Lyra 2026-10-07), so going
+  # refuses it (Meshtastic's espressif32 needs 6.1.19), so going
   # to it first would download the platform again every build.
   *) if [ -x "$PIO_DEBIAN" ] && [ -x "$HOME/pio/bin/pio" ] \\
         && [ "$(printf '%s\\n%s\\n' "$(pio_ver "$PIO_DEBIAN")" "$(pio_ver "$HOME/pio/bin/pio")" | sort -V | tail -1)" != "$(pio_ver "$PIO_DEBIAN")" ]; then
@@ -162,7 +162,7 @@ TEMPLATES = {
 # Debian's (/usr/bin/pio), with Debian's protobuf and protoc for nanopb, all signed like any
 # package. PIO=debian or PIO=pip chooses; by default Debian's, and if that fails before compiling
 # anything, one from the kit's wheelhouse in a venv of its own (PIP_NO_INDEX, PIP_FIND_LINKS).
-# A first build on a small board takes hours (the Lyra: 2.8 h); later ones are incremental, as
+# A first build on a small board takes hours; later ones are incremental, as
 # $HOME is kept.
 set -euo pipefail
 # What to build: the release the library's build cache is for, which needs no internet, or develop
@@ -462,8 +462,8 @@ def prepare_git():
     # The mirrors are file:// URLs (use_mirrors), and git refuses those for submodules unless told
     # (protocol.file.allow, CVE-2022-39253: a cloned repository reading the local files it links
     # to). A build runs whatever its script says as this user anyway, so that guard protects
-    # nothing here, and without it a submodule never comes from the mirror (the Lyra, 2026-10-06:
-    # "fatal: transport 'file' not allowed").
+    # nothing here, and without it a submodule never comes from the mirror
+    # ("fatal: transport 'file' not allowed").
     if _git("config", "--global", "--get", "protocol.file.allow").stdout.strip() != "always":
         _git("config", "--global", "protocol.file.allow", "always")
     return use_mirrors()
@@ -505,7 +505,7 @@ def run_queue():
 FACTORY = "firmware-factory"     # runs/firmware-factory/<n>
 # PlatformIO's build cache (PLATFORMIO_BUILD_CACHE_DIR, SCons' CacheDir): an object whose source and
 # whole command line were compiled before, by any target, is copied rather than compiled again, so
-# a run of builds goes faster than each alone (Tom, 2026-10-07). Meshtastic's flags are stable for a
+# a run of builds goes faster than each alone. Meshtastic's flags are stable for a
 # day (BUILD_EPOCH is midnight's) but name the target (APP_ENV), so most sharing is the same target
 # again, and whatever of the framework and libraries compiles alike for boards of one family.
 # Nothing prunes it, so the builder does, oldest first, past the limit. Never for an offline proof.
@@ -567,9 +567,9 @@ class Usage(threading.Thread):
     """What one build used: wall and CPU time, peak memory (its unit's cgroup, sampled every few
     seconds), disk read and written, the card's free space before and after, the hottest the board
     got, and what the box received over the network meanwhile (its interfaces' counters, so
-    everything the box received, not only the build: an upper bound). Not IPAccounting: on the Lyra's
-    vendor kernel systemd cannot attach its cgroup programs (bpf-firewall, error 524), so it reads 0
-    whatever a build downloads, and IPAddressDeny blocks nothing (found 2026-10-07). Whether a build
+    everything the box received, not only the build: an upper bound). Not IPAccounting: on some boards'
+    vendor kernels systemd cannot attach its cgroup programs (bpf-firewall, error 524), so it reads 0
+    whatever a build downloads, and IPAddressDeny blocks nothing. Whether a build
     ran offline is not inferred from this: an offline build runs with no network at all (OFFLINE)."""
 
     def __init__(self, every=5):
@@ -723,7 +723,7 @@ def build_firmware(job):
             if wheelhouse:
                 # Fetching tools is going online on purpose: the wheelhouse first, and PyPI for what
                 # it lacks (Meshtastic's espressif32 makes its own Python environment with uv, which
-                # the wheelhouse hasn't: refused with PIP_NO_INDEX on the Lyra, 2026-10-07).
+                # the wheelhouse hasn't: refused with PIP_NO_INDEX).
                 if not keep["tools_only"]:
                     env["PIP_NO_INDEX"] = "1"
                 env["PIP_FIND_LINKS"] = str(wheelhouse)
@@ -823,7 +823,7 @@ def run_file(run, name):
         path = base / "artifacts" / name
     else:
         return None
-    # Never through a link the build left (F23): /admin would serve its target, read as the hub.
+    # Never through a link the build left: /admin would serve its target, read as the hub.
     if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(RUNS.resolve()):
         return None
     return path

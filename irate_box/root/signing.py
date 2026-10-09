@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""How far an update must be vouched for before root installs it (Tom, 2026-10-08: "give options
-in the update manager for what level to choose"). Three levels:
+"""How far an update must be vouched for before root installs it, at the level the owner
+chooses. Three levels:
 
   off     as before: the fetched branch, a fast-forward of what is installed, its checks passed.
   github  every new commit signed by GitHub's own key: what merging a pull request on GitHub
@@ -42,7 +42,7 @@ def parse_signers(text):
         m = SIGNER.match(line)
         if not m:
             raise ValueError(f"line {n} is not \"name key-type key\" (as ssh-keygen -Y uses: e.g. "
-                             "tom@box ssh-ed25519 AAAA…)")
+                             "owner@laptop ssh-ed25519 AAAA…)")
         out.append(line)
     if len(out) > MAX_SIGNERS:
         raise ValueError(f"at most {MAX_SIGNERS} keys")

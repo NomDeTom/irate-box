@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Irate-Box: the hook every public repository uses (core.hooksPath, set by gitrepos.py and
 # install.sh). When guests may push (/admin, Git), a guest is anyone (REMOTE_USER empty: the web
-# server sets it only when the admin login was given). Security review F18:
+# server sets it only when the admin login was given). So:
 #   - a guest may not delete a branch or tag, nor rewrite one (a force push); the owner may;
 #   - nobody may take the public repositories past their share of the card: 1024 MB, or the
 #     number of MB in git/public-quota-mb. The pushed objects are already counted here (git

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Small, valid ZIM files for tests and measurements (next-work plan step 14: books at hundreds).
+"""Small, valid ZIM files for tests and measurements.
 A ZIM (openzim.org/wiki/ZIM_file_format, major version 5, the 'A' and 'M' namespaces) with one
 page and the metadata Kiwix reads (Title, Language, Name, Description, Creator, Publisher, Date),
 uncompressed, with its MD5 checksum. A few KB each, each with its own UUID.

@@ -286,7 +286,7 @@ def _login_users():
 def _authorized_keys_files(name, home):
     """Where sshd would look for this account's keys (sshd -T -C user=…: AuthorizedKeysFile, a
     Match block's included), %h, %u and %% expanded, a relative path under the home; OpenSSH's
-    default when sshd will not say (stance review 2026-10-08, the gates' item 4)."""
+    default when sshd will not say."""
     files = [".ssh/authorized_keys", ".ssh/authorized_keys2"]
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     if os.path.exists(sshd):
@@ -346,7 +346,7 @@ def ssh_findings(settings, keys, rec):
     else:
         out.append(_finding("ssh-password", "SSH password login", "ok", "Keys only.", "",
                             [{"choice": "ssh-password-undo", "label": "Undo"}] if "password" in ours else []))
-    # Forwarding (stance review 2026-10-08, I6): Debian's and Armbian's defaults leave TCP, agent
+    # Forwarding: Debian's and Armbian's defaults leave TCP, agent
     # and X11 forwarding on. TCP forwarding hands anyone with a login a proxy from the hotspot
     # into the box's other network, which is the separation the hotspot design rests on.
     fwd = [n for n, k in (("TCP", "allowtcpforwarding"), ("agent", "allowagentforwarding"), ("X11", "x11forwarding"))
@@ -368,27 +368,24 @@ def ssh_findings(settings, keys, rec):
 
 INST_RE = re.compile(r"^Inst (\S+) .*\(([^)]*)\)")
 # Debian's own fixes to a stable release carry +debNuM (or ~debNuM) in the version: the security
-# team's, and the point releases', which fold the security fixes in (2026-10-09 on the Lyra: seven
-# packages debsecan called fixed came as "Debian:13.7/stable", none from trixie-security, so a scan
-# counting only "security" origins said none were waiting and offered nothing to install).
+# team's, and the point releases', which fold the security fixes in (those come as
+# "Debian:13.N/stable", not from trixie-security, so counting only "security" origins misses them).
 DEB_FIX_RE = re.compile(r"[+~]deb\d+u\d+")
 APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
-# Automatic security updates: the system's own choice, made here (Tom, 2026-10-09: "the toolkit is
-# independent of the system update itself"). One file of apt's, after the image's own (Armbian's
+# Automatic security updates: the system's own choice, made here, independent of the toolkits.
+# One file of apt's, after the image's own (Armbian's
 # 02-armbian-periodic switches apt's periodic work off).
 AUTOUPDATE_CONF = Path(os.environ.get("HUB_AUTOUPDATE_CONF", "/etc/apt/apt.conf.d/52irate-box-autoupdate"))
 KIT_POOL = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits")) / "pool"
 APT_TIMERS = ("apt-daily.timer", "apt-daily-upgrade.timer")
-# The one pattern for every update (item 36; Tom, 2026-10-09: "the updates frequency to be off/6 hours/24
-# hours/weekly, and then a choice of flag/fetch/auto-update"; "perhaps the off becomes manual?"): how often
-# to look (hours; 0 Manual, only when Check now is pressed) and what to do with what is found (0 Flag, 1
+# The one pattern for every update: how often to look (hours; 0 Manual, only when Check now is pressed) and what to do with what is found (0 Flag, 1
 # Fetch, 2 Install). The same numbers as the librarian's policy, the same chips on every surface.
 OFTEN = (0, 6, 24, 168)
 ACTS = (0, 1, 2)
 OFTEN_WORDS = {0: "by hand only", 6: "every 6 hours", 24: "every day", 168: "every week"}
 ACT_WORDS = {0: "flagged", 1: "downloaded, for you to install", 2: "installed"}
-DEFAULT_PATTERN = (24, 0)   # principle 5: the safe one
-# The three choices #176 offered, read as the pattern's.
+DEFAULT_PATTERN = (24, 0)   # the safe one
+# The three earlier choices, read as the pattern's.
 LEVELS_WAS = {"off": (0, 0), "download": (24, 1), "install": (24, 2)}
 # apt's periodic intervals are in days; "always" leaves the timing to the timers (apt.systemd.daily).
 INTERVAL = {6: "always", 24: "1", 168: "7"}
@@ -413,7 +410,7 @@ def pattern_words(often, act):
 
 
 def chosen_pattern(rec):
-    """(often, act) as chosen on the Updates page, or None; #176's levels read as theirs."""
+    """(often, act) as chosen on the Updates page, or None; the earlier levels read as theirs."""
     cur = rec.get("autoupdate") or {}
     if cur.get("often") in OFTEN and cur.get("act") in ACTS:
         return cur["often"], cur["act"]
@@ -467,8 +464,8 @@ def _apt_periodic():
 
 def unattended_finding(installed, periodic, log_age_days, chosen=None):
     """Automatic security updates: the owner's choice on the Updates page (how often to look, what to do
-    with what is found: item 36's pattern) and, once installing, whether it really runs (stance review
-    2026-10-08, I3: Armbian images ship APT::Periodic::Enable "0", which switches the whole of apt's
+    with what is found: the update pattern) and, once installing, whether it really runs (Armbian
+    images ship APT::Periodic::Enable "0", which switches the whole of apt's
     periodic work off whatever Unattended-Upgrade says, so the binary being there meant nothing).
     chosen: (often, act) or None. The choice itself is made with the chips on Updates, not buttons here."""
     title = "Automatic security updates"
@@ -526,7 +523,7 @@ def _timers_six(rec_timers, on):
 
 
 def _autoupdate(rec, how):
-    """The owner's choice of automatic security updates (how: "undo", or "OFTEN-ACT"; #176's "off",
+    """The owner's choice of automatic security updates (how: "undo", or "OFTEN-ACT"; the earlier "off",
     "download" and "install" read as theirs): one apt.conf.d file of ours, apt's timers on (every 6
     hours by a drop-in when chosen), and unattended-upgrades installed for installing (from Debian, or
     the System toolkit's cache when offline). Undo puts back the image's own: the file as it was, the
@@ -629,7 +626,7 @@ def update_findings():
 
 # --- scan ---------------------------------------------------------------------------------
 
-# --- the kernel's settings, and accounts in root's groups (plan §9 step 4) ----------------------
+# --- the kernel's settings, and accounts in root's groups ---------------------------------------
 
 # Each set is one button. The values are the ones Debian ships in its own kernels; the image's
 # vendor kernel leaves them off.
@@ -649,8 +646,8 @@ KERNEL = {
 
 # Debian's own kernel defaults: the link protections and the rest a stock Debian box has (FIFOs and
 # regular files in shared folders, source routes refused, the SysRq mask). Armbian builds leave
-# recommended packages out, so mPWRD-OS images lack it (the Lyra, 2026-10-07; Armbian fixed it
-# upstream on 2026-08-26). Offered before the hub's own file wherever apt can get it.
+# recommended packages out, so mPWRD-OS images lack it (Armbian has since fixed it upstream).
+# Offered before the hub's own file wherever apt can get it.
 DEBIAN_SYSCTL = "linux-sysctl-defaults"
 
 
@@ -833,8 +830,7 @@ def _group(rec, arg, on):
     return f"{user} is back in the {group} group"
 
 
-# --- root's own login (Tom, 2026-10-08: "is root being available as an unlocked user, or with no
-# first-run, a security checkpoint?") ------------------------------------------------------------
+# --- root's own login ---------------------------------------------------------------------------
 
 def _root_password():
     """P (a password), NP (none), L (locked), or None: from `passwd -S`, never the hash itself."""
@@ -928,8 +924,8 @@ def _root(rec, what, on):
     return msg
 
 
-# --- sudo rules, apt's trust, logs in RAM (stance review 2026-10-08: I1, I4, I7) -----------------
-# What the image left that the first review's offers did not reach: a passwordless sudo rule for
+# --- sudo rules, apt's trust, logs in RAM ---------------------------------------------------------
+# What the image left that the other offers do not reach: a passwordless sudo rule for
 # an account sshd lets in by password (one guess is root), repository keys in trusted.gpg.d
 # (trusted for every repository), and /var/log on a RAM disk (the evidence goes with the power).
 SUDOERS = Path(os.environ.get("HUB_SUDOERS", "/etc/sudoers"))
@@ -1137,7 +1133,7 @@ def _logs(rec, on):
     return "logs back in RAM from the next boot, as the image had them"
 
 
-# --- the network floor (stance review §4 item 3): what a guest on the hotspot can reach -----------
+# --- the network floor: what a guest on the hotspot can reach -------------------------------------
 
 FLOOR_WORDS = {"hub": "the hub's pages, DNS and DHCP", "apps": "the hub, its apps, DNS and DHCP"}
 # What a new floor opens to guests besides the hub, where each is installed (firewall.services_here):
@@ -1257,7 +1253,7 @@ def _firewall(rec, what):
 
 def share_findings():
     """Guests' internet (share.py), while the owner shares it: what is shared, and each part of the
-    containment the owner has turned off, a finding of its own with the way back (Tom, 2026-10-08)."""
+    containment the owner has turned off, a finding of its own with the way back."""
     from irate_box.root import firewall, share
     st = share.load()
     t = "Guests' internet through the box"
@@ -1409,7 +1405,7 @@ def _hub_on_80():
     return '"nginx"' in out.stdout or '"caddy"' in out.stdout
 
 
-UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*\.(service|socket)$")  # no leading "-" (F14)
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*\.(service|socket)$")  # no leading "-"
 
 
 def _unit(rec, unit, on, reason="from this page"):
@@ -1474,7 +1470,7 @@ def install_security_updates(log_path):
     pkgs = _waiting()
     if not pkgs:
         return "no security updates waiting"
-    with safeio.open_new(log_path) as log:  # in control/, which the hub can change (F3)
+    with safeio.open_new(log_path) as log:  # in control/, which the hub can change
         return _take(log, pkgs, True)
 
 
@@ -1489,7 +1485,7 @@ def fetch_security_updates(log_path):
 
 def check_security_updates(rec, log_path):
     """Check now: the package lists fetched afresh, then what is found taken as far as the owner chose
-    (item 36: with Manual, the second choice applies to a check by hand; on a schedule it is apt's own
+    (with Manual, the second choice applies to a check by hand; on a schedule it is apt's own
     periodic work that does it)."""
     act = (chosen_pattern(rec) or DEFAULT_PATTERN)[1]
     with safeio.open_new(log_path) as log:

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Accounts (next-work plan step 16, accounts-plan stage 1): the store offline (names, scrypt,
+"""Accounts: the store offline (names, scrypt,
 sessions, one-time codes, the limits, the admin's levels), then a hub on a spare port: the cookie's
 flags, the HTTP stance, a page elsewhere refused. python3 tests/sim_accounts.py"""
 import json, os, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
@@ -100,7 +100,7 @@ check("  a wrong password, the box's own 'admin', garbage, a cookie-less nothing
       and A.check_basic(basic("admin", "whatever"), "") is None and A.check_basic("Basic !!!", "") is None and A.check_basic("", "") is None)
 check("  a right one remembered for a minute (git asks several times a push)", quick < 0.01, quick)
 A.use_code(A.reset("carol"), "password7")
-check("  N14: not after a reset, that minute included", A.check_basic(basic("carol", "password6"), "10.9.9.9") is None
+check("  not after a reset, that minute included", A.check_basic(basic("carol", "password6"), "10.9.9.9") is None
       and A.check_basic(basic("carol", "password7"), "10.9.9.9") == {"name": "carol", "role": "admin"})
 A.use_code(A.reset("carol"), "password6")  # as the rest of the test knows it
 A._fails.clear()
@@ -118,7 +118,7 @@ check("  a gate for each app for users, and the admin's", sorted(gates) == ["gat
 check("  Caddy: forward_auth to the hub's check, which redirects", "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
       and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"])
 
-# A local add-on in users mode (item 6, current-and-next-actions): no per-id location exists
+# A local add-on in users mode: no per-id location exists
 # ahead of time in the template, so it gets its own, matched before the shared one.
 my_addon = {"id": "my-addon", "capabilities": {}}
 gates = access.addon_gates(st_, [my_addon])
@@ -404,7 +404,7 @@ try:
           d["thread"]["author"] == "erin" and d["thread"]["posts"][0]["account"] == "erin" and code2 == 403 and code3 == 201
           and "account" not in d3["post"] and req("/board/threads")[1]["threads"][0]["account"] == "erin" and th["posting"]["who"] == "guests", (d, d2, d3))
 
-    # Saves tied to accounts (stage 6, item 6): off by default, an admin's choice.
+    # Saves tied to accounts: off by default, an admin's choice.
     code, d, _ = req("/api/saves", {"id": "erins-locked", "kind": "t", "name": "mine", "state": {"v": 1}}, {"Cookie": utok, "X-Lock-New": "aa" * 32 + ":4"})
     check("a locked save, made while signed in: carries the account", code == 201 and d["locked"], d)
     code, d, _ = req("/api/saves/erins-locked", {"name": "renamed"}, {"Cookie": utok}, method="PATCH")

@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The network floor (security stance review 2026-10-08 §4 item 3; plan row 27): what a guest on
+"""The network floor: what a guest on
 the hotspot can reach, said once as an nftables ruleset and nothing else.
 
-One table, `inet irate_box`, for everything the hotspot's guests can reach (Tom, 2026-10-08: the
-floor and guests' internet one policy, applied as a whole). The floor, at the level the owner
-chooses (Tom: "Give me options!"):
+One table, `inet irate_box`, for everything the hotspot's guests can reach (the floor and guests'
+internet one policy, applied as a whole). The floor, at the level the owner chooses:
 
   hub    traffic arriving on the hotspot's interface may reach the hub's front (80, 443), DNS and
          DHCP (the box's own dnsmasq) and nothing else of the box;
@@ -21,7 +20,7 @@ The ruleset is written to /etc/hub/firewall.nft, checked with nft -c, and loaded
 transaction: no moment with half of it), and by irate-box-firewall.service at boot; with neither the
 floor nor sharing on there is no table. The Security page sets the floor and the containment; the
 hotspot's card the sharing level; uninstall.sh takes it all away. Pure functions here (the text, the ports), tested offline; the
-root helper writes and loads it. Needs the nftables package (install.sh's list since #119).
+root helper writes and loads it. Needs the nftables package (in install.sh's list).
 """
 
 import json

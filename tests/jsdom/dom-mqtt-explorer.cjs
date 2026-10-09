@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The MQTT explorer (next-work plan step 13, extras/mqtt-explorer) in jsdom, with a stand-in
+// The MQTT explorer (extras/mqtt-explorer) in jsdom, with a stand-in
 // WebSocket playing the broker: it connects to ws://<the hub's host>/mqtt and subscribes once the
 // broker accepts; packets split across messages and run together are read; topics are counted
 // and listed, a topic's messages shown as JSON, text or hex; the filter, Pause and Clear; a

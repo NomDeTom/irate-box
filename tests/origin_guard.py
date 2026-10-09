@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Apps on origins of their own (next-work plan step 11): notes are served only from their own
+"""Apps on origins of their own: notes are served only from their own
 port, with the same login switch and refusals as before, and /notes/ on the hub's port only
 redirects there; the doctor can tell which origin each app is on. python3 tests/origin_guard.py"""
 import re, sys
@@ -27,7 +27,7 @@ check("cgit's pages on the hub's port redirect to its origin (its TLS twin over 
 check("cgit's origin: its clone URLs name the hub's port", cgit.count("fastcgi_param HTTP_HOST $host:80;") == 2)
 check("cgit's origin: the hub's app bar may frame it", cgit.count("frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host\"") == 2)
 check("cgit's origin: a clone or push sent here goes to the hub's port", re.search(r"git-receive-pack\)\$ \{\s*return 302 \$scheme://\$host:\$irate_box_hub_port\$request_uri;", cgit) is not None)
-# HTTPS (step 15, certificates-plan stage 2): every origin has its TLS twin in the same server
+# HTTPS: every origin has its TLS twin in the same server
 # block (so the same routes), redirects keep to the scheme they came in on, and never HSTS.
 for (port,), name in ((("80",), "main"), (("8090",), "addons"), (("8091",), "notes"), (("8092",), "wiki"), (("8093",), "git")):
     check(f"TLS twin: the {name} server block includes its own", f"include @TLS@/nginx-{name}.conf*;" in by_port.get((port,), ""))
@@ -36,7 +36,7 @@ check("  each origin's port by scheme: http to its own, https to its twin", maps
       "irate_box_notes_port": ("8491", "8091"), "irate_box_wiki_port": ("8492", "8092"), "irate_box_git_port": ("8493", "8093")}, maps)
 check("  no redirect between origins with a fixed port", not re.search(r"\$scheme://\$host:\d", text), re.findall(r"\$scheme://\$host:\d+", text))
 caddy = (REPO / "config" / "Caddyfile").read_text()
-# N11 (stance review 2026-10-08): a baseline CSP on the hub's origin, server-wide and wherever a location sets its own headers.
+# A baseline CSP on the hub's origin, server-wide and wherever a location sets its own headers.
 csp_line = "add_header Content-Security-Policy $irate_box_csp always;"
 check("a baseline CSP on the hub's origin: server-wide, and beside every Cache-Control the hub block sets",
       "set $irate_box_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\";" in hub
@@ -70,7 +70,7 @@ hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the updater's nginx -t fills it in too, the TLS includes and ports among them", '"@NOTES_PORT@": "8091"' in hc and '"@TLS@": f"{tmp}/tls"' in hc and '"@GIT_TLS_PORT@": "8493"' in hc)
 place = {k: next((tuple(p) for p, b in servers if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
 check("the doctor sees notes, books and cgit on their own origins", place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",)}, place)
-# N5 (stance review 2026-10-08): the hub's session cookie never reaches an app on a sibling port.
+# The hub's session cookie never reaches an app on a sibling port.
 books, sync = by_port.get(("8092",), ""), hub
 check("the hub's session cookie is stripped for notes, books, cgit and Syncthing", "map $http_cookie $irate_box_app_cookie" in text
       and notes.count("proxy_set_header Cookie $irate_box_app_cookie;") == 1 and books.count("proxy_set_header Cookie $irate_box_app_cookie;") == 2

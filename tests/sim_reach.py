@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Reached from the internet (Tom, 2026-10-08): the hub's note of public visitors (hub/reach.py) and
+"""Reached from the internet: the hub's note of public visitors (hub/reach.py) and
 the security doctor's step that reads it, sshd's log and the box's IPv6 addresses (secdoctor
 step_internet), against a throwaway state folder and stand-in commands. python3 tests/sim_reach.py"""
 import json, os, subprocess, sys, tempfile, time

@@ -94,7 +94,7 @@ for bad in (("ds3231", 1, "0x10"), ("ds3231", 2, "0x68"), ("pcf8563", 1, "0x51")
     except rtc.RtcError:
         refused = True
     check(f"setup: refused before a search found it, or at an address no clock uses: {bad}", refused)
-rtc.find()  # setup takes only what the last search found (F14)
+rtc.find()  # setup takes only what the last search found
 try:
     rtc.setup("ds3231", 2, "0x68"); refused = False
 except rtc.RtcError:
@@ -119,7 +119,7 @@ check("save with network time: module now matches", abs(e - time.time()) < 3, e 
 (T / "ntp").write_text("no\n")
 # a module behind the floor (a time the box certainly reached) is not used
 os.utime(T / "state/control/rtc-status.json")
-# The floor is root's own files only (F14): health.json in control/, not the hub's clock.json.
+# The floor is root's own files only: health.json in control/, not the hub's clock.json.
 cl = T / "state/control/health.json"; cl.write_text("{}"); os.utime(cl, (time.time() + 86400 * 30, time.time() + 86400 * 30))
 (T / "date.log").unlink(missing_ok=True)
 r = rtc.boot(); print("   boot behind floor:", r)

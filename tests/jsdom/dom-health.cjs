@@ -31,7 +31,7 @@ setTimeout(() => {
   console.log('LOG lines:', d.getElementById('health-log').textContent.split('\n').length);
   console.log('BADGE:', (d.querySelector('a[href="#health"] .badge, a[href="#health"]') || {}).textContent);
   console.log('ERRORS:', errors.length ? errors : 'none');
-  // One shape for every finding, as the security doctor's (Tom, 2026-10-09: "remove the info-soup look").
+  // One shape for every finding, as the security doctor's.
   let fails = 0;
   const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
   const rows = [...d.querySelectorAll('#health-findings .finding')];

@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# Irate-Box front for Caddy — one origin, path-routed. Phase 1 of plans/irate-box-plan.md §8.
+# Irate-Box front for Caddy — one origin, path-routed.
 #
 # Caddy is the fallback (install.sh --web caddy); nginx, with the same routes in
 # irate-box.nginx, is the default. A route changed here is changed there too.
 #
-# Rules from §5 "Two listeners":
+# Two listeners:
 #   - :80 always plain. Captive-portal probes are HTTP; an HTTPS listener appears only
-#     when the box has a certificate (next-work plan step 15: root/tls.py writes its
+#     when the box has a certificate (root/tls.py writes its
 #     sites, imported at the end), and never as a redirect target.
 #   - The routes are snippets, (irate_box_hub) and (irate_box_addons), so the plain
 #     sites and their HTTPS twins serve the same: Caddy can't put TLS on one port of a
@@ -30,7 +30,7 @@
 (irate_box_hub) {
 	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
 	request_header -X-Irate-Front
-	# A baseline Content-Security-Policy on every answer of this origin (stance review N11).
+	# A baseline Content-Security-Policy on every answer of this origin.
 	header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
 
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
@@ -125,7 +125,7 @@
 	redir /draw /draw/ permanent
 
 	# --- /mermaid → mermaid-live-editor, static ------------------------------------
-	# The §4 end state, live today: SvelteKit adapter-static build in
+	# SvelteKit adapter-static build in
 	# ~/mermaid-live-editor/docs, asset links relative so no MERMAID_BASE_PATH rebuild
 	# is needed. Packaged as hub-app-mermaid it moves to /usr/share/hub/apps/mermaid.
 	handle_path /mermaid/* {
@@ -156,7 +156,7 @@
 	# --- /serial → Meshtastic serial terminal / log analyser, static -----------------
 	# `npm run build` of nomdetom/serial-terminal (base './', so no path rebuild).
 	# Log files open fine over plain HTTP; the live serial connection needs a secure
-	# context, which this origin is not (plan §4) -- the single-file download fixes that.
+	# context, which this origin is not -- the single-file download fixes that.
 	handle_path /serial/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/serial.caddy*
 		root * {$HUB_SERIAL_ROOT:/home/user/serial-terminal/dist}
@@ -182,8 +182,8 @@
 	# Markdown notes in a plain folder. Not in any profile: 502 and a greyed card until
 	# installed. Official builds are ARMv7/ARM64 only, so never on the Zero W.
 	# Path passes through (SB_URL_PREFIX=/notes), to its socket (silverbullet.service). Its
-	# capability endpoints are refused whatever the unit says: the shell (F1), the HTTP proxy,
-	# which can reach the hub's loopback API past the /admin login (F31), and the runtime API.
+	# capability endpoints are refused whatever the unit says: the shell, the HTTP proxy,
+	# which can reach the hub's loopback API past the /admin login, and the runtime API.
 	handle /notes/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
 		@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
@@ -368,7 +368,7 @@
 	}
 	handle_path /git-private/* {
 		# Each check in a route of its own: route is ordered after handle and forward_auth after
-		# basic_auth, so written order needs one (found in a container, 2026-10-08). Git's own paths
+		# basic_auth, so written order needs one. Git's own paths
 		# ask the hub about the request's credentials and otherwise answer 401, as git needs to send
 		# them at all (it asks anonymously first); cgit's pages take an admin's session as well.
 		@smart path_regexp smart ^/([^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$
@@ -437,7 +437,7 @@
 	# when the password is set; from then on the login applies. Root-owned, so the hub
 	# cannot bring it back.
 	handle /admin/* {
-		# The owner's "admin over HTTPS only" (step 15, root/tls.py): plain requests sent to
+		# "Admin over HTTPS only" (root/tls.py): plain requests sent to
 		# the HTTPS twin, before any login. Present only while that switch is on.
 		import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-admin*.caddy
 		@unclaimed file {
@@ -474,7 +474,7 @@
 
 	# --- /term → ttyd (the escape hatch) -------------------------------------------
 	# Shipped disabled: unit off ⇒ this returns 502 and the card is not rendered.
-	# Gated here only: ttyd has no credential (F9), and listens on a socket only Caddy's
+	# Gated here only: ttyd has no credential, and listens on a socket only Caddy's
 	# group can open, so a stray unit start is not an open root shell. Replace the hash:
 	# caddy hash-password. Path passes through: ttyd runs with --base-path /term.
 	handle /term/* {
@@ -494,7 +494,7 @@
 	}
 	redir /term /term/ permanent
 
-	# Nothing here sets Strict-Transport-Security. Keep it that way (§5).
+	# Nothing here sets Strict-Transport-Security. Keep it that way.
 	# stderr: journald under systemd, the terminal in dev. No files to rotate.
 	log {
 		output stderr
@@ -506,7 +506,7 @@
 	import irate_box_hub
 }
 
-# --- the add-on origin: the local add-ons (plans/no-root-addons-plan) ------------------
+# --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's
 # login, read the hub's storage, or script its pages. Their files are the hub user's
 # ($HUB_STATE_DIR/addons/<id>/, from the librarian, no root); nothing here runs anything or
@@ -528,7 +528,7 @@
 	import irate_box_addons
 }
 
-# HTTPS (next-work plan step 15): https://:443 and the add-ons' twin, each importing the same
+# HTTPS: https://:443 and the add-ons' twin, each importing the same
 # snippet as its plain site, with the box's certificate. Written by root/tls.py only while HTTPS
 # is on; with none, this matches nothing and the box serves plain HTTP only.
 import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-site-*.caddy

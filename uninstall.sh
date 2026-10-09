@@ -161,7 +161,7 @@ else
 	rm -rf "$STATE"
 fi
 # With --keep-state the users stay: their files stay, and a user made later with the same uid
-# would own them (F30).
+# would own them.
 if [ "$KEEP_STATE" = 1 ]; then
 	say "Keeping the $HUB_USER and hubci users, who own $STATE"
 elif id -u "$HUB_USER" >/dev/null 2>&1; then

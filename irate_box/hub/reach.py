@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Visits from the internet, for the security doctor (Tom, 2026-10-08: if someone forwards a router
-port to the box, its pages and login forms are open to anyone).
+"""Visits from the internet, for the security doctor (if someone forwards a router port to the box, its pages and login forms are open to anyone).
 
 The box is for its own networks: its hotspot, the LAN it joins, and Tailscale's (100.64.0.0/10,
 which is not a public address). A request from a public address means the box can be reached from

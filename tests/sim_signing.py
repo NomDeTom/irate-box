@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""How far an update must be vouched for (root/signing.py; Tom, 2026-10-08: "give options in the
-update manager for what level to choose"), against throwaway repositories: the owner's keys
+"""How far an update must be vouched for (root/signing.py; the level chosen in the
+update manager), against throwaway repositories: the owner's keys
 checked line by line; signed releases accepted only with a trusted SSH key, the newest tag
 followed; GitHub's level accepting commits signed by its key and refusing an unsigned push (a
 key of our own standing in for GitHub's; skipped where gpg is missing); the root helper's check
@@ -32,11 +32,11 @@ def sshkey(name):
     return k, (T / f"{name}.pub").read_text().strip()
 
 # --- the owner's keys, line by line ---
-k_tom, pub_tom = sshkey("tom")
+k_tom, pub_tom = sshkey("laptop")
 k_eve, pub_eve = sshkey("eve")
-line_tom = f"tom@box {pub_tom}"
+line_tom = f"owner@box {pub_tom}"
 check("a key line as ssh-keygen -Y reads it", signing.parse_signers(f"# mine\n{line_tom}\n\n") == [line_tom])
-for bad in ("ssh-ed25519 AAAA", "tom@box ssh-dss AAAA", "tom@box ssh-ed25519 not*base64"):
+for bad in ("ssh-ed25519 AAAA", "owner@box ssh-dss AAAA", "owner@box ssh-ed25519 not*base64"):
     try:
         signing.parse_signers(bad); ok = False
     except ValueError as exc:
@@ -62,7 +62,7 @@ git(src, "tag", "-a", "v1.11-unsigned", "-m", "x")
 git(src, "-c", "gpg.format=ssh", "-c", f"user.signingkey={k_eve}", "tag", "-s", "v1.12-eve", "-m", "x")
 check("the newest release by version: v1.12-eve over v1.10 over v1.9", signing.newest_tag(src) == "v1.12-eve", signing.newest_tag(src))
 ok, d = signing.check_tag(src, "v1.10", [line_tom])
-check("a tag signed with a trusted key: taken, and by whom", ok and "tom@box" in d, d)
+check("a tag signed with a trusted key: taken, and by whom", ok and "owner@box" in d, d)
 ok, d = signing.check_tag(src, "v1.12-eve", [line_tom])
 check("a tag signed with another key: refused", not ok, d)
 ok, d = signing.check_tag(src, "v1.11-unsigned", [line_tom])
@@ -74,12 +74,12 @@ kept = json.loads((ETC / "update-signing.json").read_text())
 public = json.loads((STATE / "control" / "update-signing.json").read_text())
 check("the level and the keys kept root's (0600)", kept == {"level": "tags", "signers": [line_tom]}
       and ((ETC / "update-signing.json").stat().st_mode & 0o077) == 0, oct((ETC / "update-signing.json").stat().st_mode))
-check("/admin sees the key's name, type and comment, never the key", public == {"level": "tags", "keys": [{"name": "tom@box", "type": "ssh-ed25519", "comment": "tom"}]}
+check("/admin sees the key's name, type and comment, never the key", public == {"level": "tags", "keys": [{"name": "owner@box", "type": "ssh-ed25519", "comment": "laptop"}]}
       and pub_tom.split()[1] not in json.dumps(public), public)
 check("  and says so", "release tags signed by one of 1 key" in msg, msg)
 git(src, "checkout", "-q", "--detach", "v1.10")
 c = hub_control._signature_check(src, None, "v1.10")
-check("the check before an install: v1.10, signed by tom, passes", c and c[0]["ok"] and c[0]["name"] == hub_control.SIGNED_CHECK, c)
+check("the check before an install: v1.10, signed by the owner's key, passes", c and c[0]["ok"] and c[0]["name"] == hub_control.SIGNED_CHECK, c)
 git(src, "checkout", "-q", "--detach", "v1.12-eve")
 c = hub_control._signature_check(src, None, "v1.12-eve")
 check("v1.12-eve, eve's key: fails", c and not c[0]["ok"], c)

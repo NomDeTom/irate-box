@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// /certificate (next-work plan step 15, certificates-plan stage 3): the box's CA to download, its
+// /certificate: the box's CA to download, its
 // fingerprint and what installing it allows, the steps for each platform, and a check of whether
 // this device already trusts the box. A platform's steps are shown only once they have been tried
 // on a real device (checked: true); until then, the general step. Never a "click through the
 // warning" path: it teaches people to ignore certificate warnings.
 const PLATFORMS = [
-  // Tried on real phones (Tom, 2026-10-08: "painful on android because its an untrusted source, but
-  // it's doable. It needs a help tutorial"): every screen in the order a phone shows it.
+  // Tried on real phones: every screen in the order a phone shows it.
   { id: 'ios', title: 'iPhone and iPad', checked: true, steps: [
     'Open this page in Safari (not another browser: only Safari hands the file to Settings), and tap Download the certificate. Allow the download when asked: "This website is trying to download a configuration profile".',
     'Open Settings: "Profile Downloaded" is near the top. Tap it, then Install (top right), enter your passcode, and Install again through the warning.',

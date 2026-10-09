@@ -14,7 +14,7 @@ const decayNote = document.getElementById('board-decay-note');
 const threadForm = document.getElementById('thread-form');
 const replyForm = document.getElementById('reply-form');
 
-// Who may post, as the box's admin set it (accounts step 16): the forms say so, and a logged-in
+// Who may post, as the box's admin set it: the forms say so, and a logged-in
 // user posts under their account's name, marked ✓ where the admin shows marks.
 let marks = false;
 const notes = [threadForm, replyForm].map((f) => {
@@ -91,7 +91,7 @@ function renderThread(data) {
       <span class="time">${formatAge(data.now - p.created)} ago</span>
       <div class="text">${mdInline(p.text)}</div>
     </div>`).join('');
-  // A ⚑ to report each post (M10), not on one already hidden for a report.
+  // A ⚑ to report each post, not on one already hidden for a report.
   if (typeof reportButton === 'function') postsEl.querySelectorAll('.post').forEach((el, i) => {
     if (!t.posts[i].hidden) el.appendChild(reportButton('board', { thread: t.id, created: t.posts[i].created }, data.report_reasons));
   });

@@ -416,7 +416,7 @@ def find():
                                      "ambiguous": len(chips) > 1, "kernel": drv and f"{drv['module']} ({drv['kind']})",
                                      "supported": bool(drv) or CHIPS[chip][2]})
     STATUS.parent.mkdir(parents=True, exist_ok=True)
-    safeio.write(FOUND, json.dumps(out, indent=2))  # control/: never through a link (F13)
+    safeio.write(FOUND, json.dumps(out, indent=2))  # control/: never through a link
     os.chmod(FOUND, 0o644)
     return out
 
@@ -503,7 +503,7 @@ def ntp_synced():
 def root_mtime(path):
     """When root last wrote `path`, or None: a plain file owned by this user (root), not a link.
     The hub can touch its own files, or plant links and its own copies, to push the floor
-    forward (F14); only root's own marks count."""
+    forward; only root's own marks count."""
     try:
         st = os.lstat(path)
     except OSError:
@@ -629,7 +629,7 @@ def setup(chip, bus, addr):
     if chip not in CHIPS:
         raise RtcError(f"{chip} is not a clock this knows ({', '.join(CHIPS)})")
     a = int(addr, 16) if isinstance(addr, str) else addr
-    # Only what the last search found (F14): a request may not bind a driver at any bus and
+    # Only what the last search found: a request may not bind a driver at any bus and
     # address. The search's result is root's own file, read only if it still is.
     if a not in ADDRESSES:
         raise RtcError(f"{a:#04x} is not an address a clock module uses")

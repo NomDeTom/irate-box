@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The hotspot card on /admin → Network (item 2) in jsdom: what it would do before it's on, the
+// The hotspot card on /admin → Network in jsdom: what it would do before it's on, the
 // radio and channel choices, the try, switching on and off, a radio that can't do both (asked,
 // with the 5-minute warning), and Keep it. Usage: [JSDOM=…/jsdom] node dom-ap.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');

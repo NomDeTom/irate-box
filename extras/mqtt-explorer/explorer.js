@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The MQTT explorer (next-work plan step 13): the box's broker at ws://<box>/mqtt, listened to
+// The MQTT explorer: the box's broker at ws://<box>/mqtt, listened to
 // with a few lines of MQTT 3.1.1 rather than a library (CONNECT, SUBSCRIBE at QoS 0, PUBLISH
 // read, PINGREQ). It lists the topics as messages arrive: how many, how big, how recent, and a
 // topic's last few messages, as text when they are text and as hex when not. It never publishes.

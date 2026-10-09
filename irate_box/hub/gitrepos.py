@@ -8,12 +8,12 @@ by the hub user, who also runs git http-backend and cgit for them (irate-box-git
   public/   /git/          browse (cgit) and clone for everyone
   private/  /git-private/  everything behind the admin login
 
-Who may push is each repository's own: its preset (next-work plan step 10), kept in its config
+Who may push is each repository's own: its preset, kept in its config
 as irate-box.write = everyone | users | admin | nobody. Reading follows the area (cgit lists a
 whole area), so the presets are:
 
-  public-everything    public   anyone pushes (security review F17, F18: the doctor warns)
-  public-users-write   public   any account pushes, with its name and password (accounts step 16)
+  public-everything    public   anyone pushes (the doctor warns)
+  public-users-write   public   any account pushes, with its name and password
   public-admin-writes  public   the admin pushes (the default)
   public-read-only     public   nobody pushes: content arrives by publishing or mirroring
   private-to-admin     private  the admin pushes (the default)
@@ -62,7 +62,7 @@ MAX_PUSH = 64 * 2**20
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_DESC = 200
 HOOKS = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks"
-# Public repositories' own: guests may not rewrite or delete, and a size cap (F18).
+# Public repositories' own: guests may not rewrite or delete, and a size cap.
 HOOKS_PUBLIC = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks-public"
 
 
@@ -97,7 +97,7 @@ def _repo_info(path, area):
     return {"name": path.name[:-4], "area": area, "url": AREAS[area] + path.name + "/",
             "write": level, "preset": preset_of(area, level), "preset_text": PRESET_TEXT[preset_of(area, level)],
             "mirror_of": mirror,
-            # Build on push (ci.py): offered only where only the admin pushes (git-ci-plan §2).
+            # Build on push (ci.py): offered only where only the admin pushes.
             "can_build": area == "private" and level == "admin" and not mirror, "build": build_on(path),
             "has_script": bool(dates) and _git("cat-file", "-e", "HEAD:.irate-ci.sh", cwd=path).returncode == 0,
             "description": desc, "size": _size(path), "branches": len(dates),
@@ -115,7 +115,7 @@ def write_level(path):
 
 def build_on(path):
     """The repository's build-on-push switch (irate-box.ci): on unless set off, so repositories
-    that built before the switch existed still do (Tom, 2026-10-06). ci.py also needs it private,
+    that built before the switch existed still do. ci.py also needs it private,
     only the admin pushing, and a .irate-ci.sh in the pushed commit."""
     out = _git("config", "--get", "irate-box.ci", cwd=path)
     return not (out.returncode == 0 and out.stdout.strip() == "off")

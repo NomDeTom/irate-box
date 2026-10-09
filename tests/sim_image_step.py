@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor's "image underneath" step (stance review 2026-10-08 §2): what an Armbian or
-mPWRD-OS image ships that the hub inherits, against a copy of the Lyra's files as they were on
-2026-10-08: repository keys trusted for everything, sources with no Signed-By, a daily channel, a
+"""The security doctor's "image underneath" step: what an Armbian or mPWRD-OS image ships that
+the hub inherits, against a copy of such an image's files: repository keys trusted for everything, sources with no Signed-By, a daily channel, a
 vendor kernel, an access-point profile the image left in NetworkManager. Then a clean box, where
 every line must be ok. python3 tests/sim_image_step.py"""
 import os, sys, tempfile
@@ -20,7 +19,7 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
-# As the Lyra had them.
+# As an mPWRD-OS image ships them.
 (APT / "sources.list.d" / "home:mPWRD:OS.list").write_text("deb http://download.opensuse.org/repositories/home:/mPWRD:/OS/Debian_13/ /\n")
 (APT / "sources.list.d" / "network:Meshtastic:daily.list").write_text("deb http://download.opensuse.org/repositories/network:/Meshtastic:/daily/Debian_13/ /\n")
 (APT / "sources.list.d" / "tailscale.list").write_text("deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian trixie main\n")

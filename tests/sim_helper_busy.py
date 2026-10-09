@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The root helper busy, not stuck (2026-10-08: the debug kit's 4-minute refresh was shown as "not
-answering"): a request waiting behind a job the helper is still running is said as such; one waiting
+"""The root helper busy, not stuck (a kit's minutes-long refresh is not "not answering"): a request waiting behind a job the helper is still running is said as such; one waiting
 with the helper not running, or behind a job running for hours, is still the alarm. systemctl is stood
 in. python3 tests/sim_helper_busy.py"""
 import os, subprocess, sys, tempfile, time

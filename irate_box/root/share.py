@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Guests' onward internet as a scale the owner chooses (Tom, 2026-10-08: "give options, and a
-sliding scale"; principle 3: sharing the connection onward is an option the owner turns on after a
-warning; principle 5: options, not automatic decisions).
+"""Guests' onward internet as a scale the owner chooses: sharing the connection onward is an option
+the owner turns on after a warning, never an automatic decision.
 
   off          guests reach the box and nothing else (the default; ap.py's design).
   users-web    a device signed in to an account on the hub reaches the web (80 and 443).
@@ -10,9 +9,7 @@ warning; principle 5: options, not automatic decisions).
   sheet-all    any device, once through the sheet, reaches everything.
   open         every device on the hotspot reaches everything; no sheet.
 
-Contained (Tom, 2026-10-08: "Fix the network sharing issue with a containment plan … Give the admin
-the option to disable various parts (with security doctor findings against them when they're too
-much)"). Each part is on unless the owner turns it off, and the Security doctor says so while it is:
+Contained: each part is on unless the owner turns it off, and the Security doctor says so while it is:
 
   lan       nothing forwarded to private, CGNAT (the tailnet's 100.64/10), link-local or multicast
             addresses: guests reach the internet, not the owner's network behind the box.

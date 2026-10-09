@@ -41,7 +41,7 @@ document.addEventListener('hub-theme', () => {
 });
 
 // Same-origin paths only: "/wiki/…" yes, "//elsewhere" or "https://…" no.
-// A web add-on (/addons/<id>/…, plans/no-root-addons-plan) is on its own origin, so it cannot
+// A web add-on (/addons/<id>/…) is on its own origin, so it cannot
 // read the hub's storage: it is told the theme's base in its address instead, hub-theme=light,
 // dark or auto, beside whatever query it has. Every other app reads its own setting (above).
 function frameSrc(path) {
@@ -55,7 +55,7 @@ function frameSrc(path) {
 }
 
 function target() {
-  // Only a path on this origin (F25): a backslash or a tab after the slash makes the browser
+  // Only a path on this origin: a backslash or a tab after the slash makes the browser
   // read "/\\evil.example" as another site, which a startsWith('//') check lets through.
   let p;
   try { p = decodeURIComponent(location.hash.slice(1)); } catch (_) { return '/'; }

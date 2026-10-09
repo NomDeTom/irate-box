@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""One pattern for every update (item 36), the librarian's half: each surface its own pair, how often
-(hours, 0 by hand) and what to do; a policy saved before item 36 carried over as apps and books had it;
+"""One pattern for every update, the librarian's half: each surface its own pair, how often
+(hours, 0 by hand) and what to do; a policy saved in the old form carried over as apps and books had it;
 fetching-only surfaces capped at Fetch; Manual keeps the toolkits' cache as it is.
 python3 tests/sim_update_pattern.py"""
 import json, os, sys, tempfile, time
@@ -21,7 +21,7 @@ check("a new box: 24 hours everywhere; the mirrors and firmware fetch", (p["mirr
       p["firmware_auto"], p["kits_every_hours"]) == (24, 1, 24, 1, 24), p)
 L.SOURCES_FILE.write_text(json.dumps({"policy": {"check_every_hours": 168, "auto_install": 2}, "sources": []}))
 p = L.load_config()["policy"]
-check("saved before item 36 (weekly, auto-install): each surface as apps and books were, Install read as Fetch where fetching is the update",
+check("saved in the old form (weekly, auto-install): each surface as apps and books were, Install read as Fetch where fetching is the update",
       (p["mirrors_every_hours"], p["mirrors_auto"], p["firmware_every_hours"], p["firmware_auto"], p["kits_every_hours"]) == (168, 1, 168, 1, 168), p)
 L.SOURCES_FILE.write_text(json.dumps({"policy": {"check_every_hours": 0, "auto_install": 0}, "sources": []}))
 p = L.load_config()["policy"]

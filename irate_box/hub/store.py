@@ -43,7 +43,7 @@ BLOB_NAMESPACES = ("scenes", "rooms", "files")
 
 # The upstream default, and the frontend can genuinely produce large pastes.
 MAX_BODY = int(os.environ.get("HUB_STORE_MAX_BODY", 50 * 1024 * 1024))
-DEV_CORS = os.environ.get("HUB_STORE_CORS", "")  # one origin, for development only (F20)
+DEV_CORS = os.environ.get("HUB_STORE_CORS", "")  # one origin, for development only
 # Total on-disk budget for everything here. The card also holds ZIMs and firmware, so
 # this is a real ceiling rather than a formality; oldest content is evicted to stay under.
 MAX_TOTAL = int(os.environ.get("HUB_STORE_MAX_TOTAL", 64 * 1024 * 1024))
@@ -235,7 +235,7 @@ class Store:
             lock = _lock_after((old or {}).get("lock"), proof, lock_new, lock_next)
             if lock:
                 meta["lock"] = lock
-            # Whose it is and who sees it (M13): its first author's, kept when it is saved over.
+            # Whose it is and who sees it: its first author's, kept when it is saved over.
             if old and old.get("account"):
                 meta.update({k: old[k] for k in ("account", "seen_by") if k in old})
             elif marks:
@@ -634,7 +634,7 @@ def _send(handler, code, body=b"", ctype="application/octet-stream", extra=None)
     handler.send_response(code)
     handler.send_header("Content-Type", ctype)
     handler.send_header("Content-Length", str(len(body)))
-    # No CORS on the box (F20): everything that uses the store is on the hub's own origin, and
+    # No CORS on the box: everything that uses the store is on the hub's own origin, and
     # a wildcard let any website a guest visited read the drop and saves and change saves.
     # For development with Excalidraw served elsewhere, HUB_STORE_CORS names that one origin.
     if DEV_CORS:
@@ -691,14 +691,13 @@ def _blob_get(handler, store, namespace, key):
     _send(handler, 200, data, "application/octet-stream", {"ETag": tag})
 
 
-# Who sees what (M13): the hub sets these. VIEWER(handler) is the signed-in account asking, or None;
+# Who sees what: the hub sets these. VIEWER(handler) is the signed-in account asking, or None;
 # SEEN_BY(account, app) is that account's choice for what it posts ("everyone", "users" or "me").
 # A save or a dropped file made by someone signed in carries their account and, if narrower than
 # everyone, their choice; the listings and the reads leave out what the asker may not see.
 VIEWER = None
 SEEN_BY = None
-# Saves tied to accounts (accounts-plan stage 6, item 6, current-and-next-actions): the admin's
-# setting, off by default (server.py). On, a save's own account may change or remove it from any
+# Saves tied to accounts: the admin's setting, off by default (server.py). On, a save's own account may change or remove it from any
 # device, past the device lock that otherwise guards it; a guest's saves are untouched either way.
 CROSS_DEVICE = None
 

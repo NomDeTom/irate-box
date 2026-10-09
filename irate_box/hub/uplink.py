@@ -9,8 +9,7 @@ link the box reaches its network by (the default route's interface, or the one c
 entry: some routers drop pings but none ignore ARP). The internet is never checked: the box
 is meant to work offline, and a LAN with no internet is not a fault.
 
-Its settings, on /admin's Network page (and `install.sh --uplink`), each meaning one thing
-(Tom, 2026-10-09: two dials, not one "eagerness" that moved both):
+Its settings, on /admin's Network page (and `install.sh --uplink`), each meaning one thing:
 
   Pace        how soon it first acts once the link is down, how often it reconnects again, and
               when each heavier step comes: gentle, steady, prompt, urgent
@@ -82,7 +81,7 @@ from irate_box.hub import linkhistory, netinv
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
-# The reboot history the daily cap counts, kept where only root writes (F14): not in the status
+# The reboot history the daily cap counts, kept where only root writes: not in the status
 # file under $STATE, whose folder the hub could swap for one with an empty history.
 REBOOTS = ETC / "uplink-reboots.json"
 SETTINGS = ETC / "uplink.json"
@@ -93,8 +92,7 @@ NOW = ETC / "uplink-now.json"
 STATUS = STATE / "control" / "uplink.json"
 HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
 LADDER = STATE / "control" / "uplink-ladder.json"     # what the watchdog did, for the box doctor's chart
-# The events that make the escalation chart (Tom, 2026-10-09: "a line chart showing the escalation
-# steps over the last x period would show if more patience or more aggression is required").
+# The events that make the escalation chart: whether more patience or more aggression is needed.
 LADDER_KINDS = ("down", "up", "repair", "held", "skip", "stalled", "wedged", "flap")
 LADDER_KEEP = 72 * 86400
 SYS_NET = Path("/sys/class/net")
@@ -105,12 +103,11 @@ STEPS = ("reconnect", "restart", "radio", "reboot")
 STEP_LABEL = {"reconnect": "reconnect", "restart": "restart the network service", "radio": "reset the radio",
               "reboot": "reboot", "pin": "lock to the strongest access point"}
 
-# Two dials (Tom, 2026-10-09: "two dials always"), each meaning one thing (uplink-ladder-plan, stage 5):
+# Two dials, each meaning one thing:
 # PACE: how soon after an outage is declared it first acts, how often it reconnects again, and when
 # each heavier step comes (seconds after it went on the ladder, counted across an episode); and REACH:
 # the heaviest step it may take at all. Gentle and far-reaching at once is a real choice now.
-# A pace's window is the time it counts missed checks over (Tom, 2026-10-09: "pace can handle the
-# 'over what time' setting"): the sensitivity's number of misses within it puts the link on the ladder.
+# A pace's window is the time it counts missed checks over: the sensitivity's number of misses within it puts the link on the ladder.
 PACE = {
     "gentle": {"check": 120, "window": 1800, "repeat": 900, "steps": {"reconnect": 300, "restart": 1800, "radio": 3600, "reboot": 7200}},
     "steady": {"check": 60, "window": 600, "repeat": 300, "steps": {"reconnect": 60, "restart": 600, "radio": 1200, "reboot": 3600}},
@@ -119,8 +116,7 @@ PACE = {
 }
 REACH = ("watch", "reconnect", "restart", "radio", "reboot")   # watch: look and log, never act
 GUESTS = ("protect", "ignore")
-# Sensitivity (Tom, 2026-10-09: forgiveness "rebranded as sensitivity, with a numeric value"; "missed
-# checks, directly"): how many missed checks (a failed check, or the link dropping between two) within
+# Sensitivity: how many missed checks (a failed check, or the link dropping between two) within
 # the pace's window put the link on the repair ladder, whether they came together (an outage) or
 # spread out (a flapping link: "if the link trips the level of misses within the pace window, then
 # it is on the repair ladder"). Fewer is more sensitive.
@@ -129,27 +125,24 @@ SENSITIVITY = (1, 20)
 FORGIVENESS_WAS = {"tolerant": 5, "normal": 3, "strict": 2}
 COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
           "relapse": 900, "blip": 20}
-# Roaming between access points that share a name (item 35; uplink-roaming-options-plan; Tom, 2026-10-09,
-# R3: "in my house there are 3 APs and it should roam naturally"): from the least change to the owner's
+# Roaming between access points that share a name: from the least change to the owner's
 # system to the most. roam: as the WiFi stack does (the default); no-scan: wpa_supplicant's background
 # scans off while the hotspot shares the radio (roaming.py, by consent); lock: the WiFi profile held to one
 # access point (its BSSID), by consent and undone the same way.
-# Apart from that, whether a roam counts as a missed check (R1: "add a checkbox to ignore them as an
-# option"): ignore_roams, off by default (each is a miss, as since #175); on, a drop of the link that is
-# back within `blip` seconds (R2: 20 s) on the same network is a roam, not a miss.
+# Apart from that, whether a roam counts as a missed check: ignore_roams, off by default (each is a
+# miss); on, a drop of the link that is back within `blip` seconds (20 s) on the same network is a roam, not a miss.
 ROAMING = ("roam", "no-scan", "lock")
 ROAMING_WAS = {"count": ("roam", False), "ignore": ("roam", True)}   # the branch's first four, read as these
 BSSID_RE = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
-# The default reach is the highest (Tom, 2026-10-09: "the default for reach should be the highest
-# level"); guests stay protected, and a reboot keeps its guards (the daily cap, the gap, not while
+# The default reach is the highest; guests stay protected, and a reboot keeps its guards (the daily cap, the gap, not while
 # a build or an update runs, not soon after boot).
 DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "sensitivity": 3, "iface": "auto",
            "overrides": {}, "hold_until": 0, "on_wedge": "ladder", "roaming": "roam", "lock_bssid": None,
            "ignore_roams": False}
 # When the evidence says the radio's driver has wedged (wedge_evidence): keep to the ladder as set,
-# or go straight to a radio reset if the reach allows it (Tom, 2026-10-09: a setting per box, off).
+# or go straight to a radio reset if the reach allows it (a setting per box, off).
 ON_WEDGE = ("ladder", "radio")
-# The old single dial (to 2026-10-09), as pace, reach and guests: settings saved with it still load.
+# The old single dial, as pace, reach and guests: settings saved with it still load.
 EAGERNESS_WAS = {"off": ("gentle", "watch", "protect"), "patient": ("gentle", "reboot", "protect"),
                  "standard": ("steady", "reboot", "protect"), "persistent": ("prompt", "reboot", "protect"),
                  "stubborn": ("urgent", "reboot", "ignore")}
@@ -173,7 +166,7 @@ FIELDS = {
 }
 # Custom fields there were before sensitivity: dropped when settings load, not refused.
 FIELDS_WAS = ("misses", "grace", "flap_count", "flap_window", "flap_action", "guests")
-IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leading "-" (F14)
+IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leading "-"
 
 
 def effective(chosen):
@@ -349,7 +342,7 @@ class Watch:
         self.owner_off = False
         self.can = set()  # the repairs possible at the last look, for next_step() and stall()
         self.ladder = []  # the ladder's events since serve() last took them (Ladder.add)
-        # Outages close together are one episode (uplink-ladder-plan, stage 3): {since, outages,
+        # Outages close together are one episode: {since, outages,
         # failed: steps that "worked" and were followed by a relapse, tried, last_end, last_done}.
         self.episode = None
 
@@ -372,7 +365,7 @@ class Watch:
         owner took the link down on purpose: `nmcli dev disconnect`).
 
         Each failed check, and each drop of the link between two, is a miss, kept for the pace's
-        window; `sensitivity` misses within it put the link on the ladder (Tom, 2026-10-09): down,
+        window; `sensitivity` misses within it put the link on the ladder: down,
         an outage; up but dropping, "flapping", on the ladder until the misses fall below the line."""
         eff = self.eff
         self.can = set(obs.get("can", ()))
@@ -485,7 +478,7 @@ class Watch:
             return []
         can = obs.get("can", set())
         # The owner's choice (on_wedge "radio"): reconnecting and restarting can't mend a wedged
-        # driver, and on the Lyra they made it worse, so straight to the radio reset if the level
+        # driver, and on some drivers they make it worse, so straight to the radio reset if the level
         # reaches it. Beyond the level, or held, it waits or stalls, saying why.
         if o.get("wedged") and eff["on_wedge"] == "radio" and "radio" not in o["done"]:
             for s in ("reconnect", "restart"):
@@ -558,7 +551,7 @@ class Watch:
     def _held(self, now, obs, step):
         eff = self.eff
         # A restart of the network service takes the hotspot down too when it shares the uplink's
-        # radio (the Lyra, 2026-10-09): held then like a radio reset (Tom: "only on a shared radio").
+        # radio: held then like a radio reset, only on a shared radio.
         heavy = step in ("radio", "reboot") or (step == "restart" and obs.get("shared_radio"))
         if heavy and eff["guests"] == "protect" and obs.get("guests", 0) > 0:
             n = obs["guests"]
@@ -766,14 +759,14 @@ NO_SUPPLICANT = re.compile(r"Couldn't initialize supplicant interface|supplicant
 
 
 def wedge_evidence(iface, backend, was_backend, journal, cw_events, now, exists=True, wifi=True):
-    """Why the radio's driver looks wedged, in words, or None (uplink-ladder-plan, stage 4). From
+    """Why the radio's driver looks wedged, in words, or None. From
     the last two minutes of NetworkManager's and wpa_supplicant's journal, crash watch's radio
     events, and the backend: any one of
       - the backend gone (it was there before) while the interface still exists
       - NetworkManager unable to initialise the supplicant for it
       - scans failing as busy (ret=-16) more than 5 times
       - crash watch's radio failure for it in the last 30 minutes, not since recovered
-    as the Lyra's AIC8800 showed when its firmware wedged (2026-10-09)."""
+    as an AIC8800 shows when its firmware wedges."""
     if not wifi:
         return None
     why = []
@@ -856,7 +849,7 @@ class Actor:
         i = self.iface
         if self.backend == "networkmanager":
             out = run("systemctl", "restart", "NetworkManager", timeout=90)[1] or "NetworkManager restarted"
-            # Its restart takes the box's hotspot down too (the Lyra, 2026-10-09): start it again.
+            # Its restart takes the box's hotspot down too: start it again.
             from irate_box.root import radio
             hs = radio.restore_hotspot()
             return out + (f"; {hs}" if hs else "")
@@ -1041,8 +1034,7 @@ class Ladder:
             self.rows = []
 
     def misses(self, now, n, line, iface):
-        """The symptoms beside the steps (Tom, 2026-10-09: "missed connections within the time
-        period, with a line showing the intervention level"): the most misses within the pace's
+        """The symptoms beside the steps: the most misses within the pace's
         window seen in each five-minute slot, and the sensitivity then, as {at, k: "m", n, th}.
         Kept only for slots with a miss, or when the line moved; written as each slot closes."""
         slot = int(now // 300) * 300
@@ -1076,14 +1068,14 @@ class Ladder:
 
 def sort_drops(pairs, eff, same_network):
     """The drops a take() gave, as (misses, roams): a drop back within `blip` seconds on the same network is a
-    roam; with ignore_roams it is not a miss (item 35, option A; Tom's checkbox); otherwise every drop is one (#175)."""
+    roam; with ignore_roams it is not a miss; otherwise every drop is one."""
     roams = [d for d in pairs if d[1] is not None and d[1] - d[0] <= eff.get("blip", 20) and same_network]
     misses = [d[0] for d in pairs if not (eff.get("ignore_roams") and d in roams)]
     return misses, roams
 
 
 class Roams:
-    """Roaming made visible (item 35, stage 2): each roam (a short drop and back, or a new access point
+    """Roaming made visible: each roam (a short drop and back, or a new access point
     between two checks) noted, the last hour's counted for the page, and each one a row of the ladder's
     record ({at, k: "roam", i, b: bssid, c: channel}) for the chart's marks."""
 
@@ -1118,7 +1110,7 @@ def history_state(state, link):
 
 
 def write_status(data):
-    # As root, in control/, which the hub can change: never through a link it planted (F13).
+    # As root, in control/, which the hub can change: never through a link it planted.
     from irate_box.root import safeio
     STATUS.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(STATUS, json.dumps(data, indent=2))
@@ -1211,7 +1203,7 @@ def serve(dry=False):
     history = History()
     ladder = Ladder()
     roams = Roams()
-    tls_at = 0  # HTTPS (step 15): the certificate renewed when due, looked at every six hours
+    tls_at = 0  # HTTPS: the certificate renewed when due, looked at every six hours
 
     def stop(*_):
         history.flush()  # the slot under way, rather than lose up to five minutes of it

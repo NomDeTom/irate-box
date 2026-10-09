@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The security doctor's steps: unique ids, and no step function defined twice (the second
-silently replaces the first, and its findings vanish from the report: it happened, 2026-10-06).
+silently replaces the first, and its findings vanish from the report).
 python3 tests/doctor_guard.py"""
 import ast
 import re, sys
@@ -20,11 +20,11 @@ ids = Counter(e.elts[0].value for e in steps.value.elts)
 check("no step id used twice", all(c == 1 for c in ids.values()), [i for i, c in ids.items() if c > 1])
 fns = [e.elts[3].id for e in steps.value.elts]
 check("every step names a function of its own", len(fns) == len(set(fns)), [f for f, c in Counter(fns).items() if c > 1])
-# F2's check reads a marker in the hub's code: the hub must still carry it.
+# The doctor's drain check reads a marker in the hub's code: the hub must still carry it.
 server = (Path(__file__).resolve().parents[1] / "irate_box" / "hub" / "server.py").read_text()
-check("server.py declares DRAINS_REQUEST_BODIES = True (the doctor's F2 check reads it)",
+check("server.py declares DRAINS_REQUEST_BODIES = True (the doctor's drain check reads it)",
       re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server) is not None)
-# The doctor runs daily from a timer (stance review 2026-10-08 §2), and says what is new since the last run.
+# The doctor runs daily from a timer, and says what is new since the last run.
 inst = (Path(__file__).resolve().parents[1] / "install.sh").read_text()
 uninst = (Path(__file__).resolve().parents[1] / "uninstall.sh").read_text()
 check("install.sh writes and enables irate-box-secdoctor.timer, running `secdoctor run` as a hardened oneshot",

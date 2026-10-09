@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The hotspot's plan: which radio, how it shares it, which channel (item 2 of the current and next
-actions; Tom, 2026-10-07: "this is going on all kinds of hardware - it needs to adapt").
+"""The hotspot's plan: which radio, how it shares it, which channel, adapted to whatever hardware
+the box runs on.
 
 Nothing is assumed from any one board. The network inventory (netinv.py, written by the root
 helper) says what each radio can do (whether it can be an access point, its interface combinations
