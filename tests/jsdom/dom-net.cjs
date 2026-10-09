@@ -29,7 +29,7 @@ w.fetch = async (u, opts = {}) => {
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
     data.uplink = data.uplink || { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager',
-      repairs: ['reconnect'], chosen: { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} },
+      repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', forgiveness: 'normal', iface: 'auto', overrides: {} },
       events: [{ at: now - 600, text: 'wlan0 down: the gateway missed 3 checks' }, { at: now - 540, text: 'Reconnected wlan0 (nmcli device connect)' },
         { at: now - 530, text: 'wlan0 up again after 70 s' }] };
     data.results = [...(data.results || []), { id: 'x', ok: true, message: 'Done.' }];
@@ -81,24 +81,32 @@ setTimeout(() => {
   console.log('FIELDS:', [...d.querySelectorAll('#up-fields [data-key]')].map((i) => `${i.dataset.key}=${i.value || '(' + (i.placeholder || i.options?.[0]?.textContent) + ')'}`).join('  '));
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
-  // Staying on the network: eagerness and forgiveness both as radio cards (2026-10-06).
-  const rungs = [...d.querySelectorAll('#up-eager .choice-tile')];
-  check('eagerness: five cards, off to stubborn', rungs.map((r) => r.querySelector('input').value).join(' ') === 'off patient standard persistent stubborn',
-    rungs.map((r) => r.querySelector('input').value).join(' '));
-  check('every card shows its description and what it does', rungs.every((r) => r.querySelectorAll('.setting-desc').length === 2 && r.querySelector('.choice-does').textContent.length > 10));
-  check('the chosen level is marked', rungs.filter((r) => r.classList.contains('chosen')).length === 1);
-  check('stubborn\'s line says it reboots', /reboots after 30 min/.test(rungs[4].querySelector('.choice-does').textContent), rungs[4].querySelector('.choice-does').textContent);
-  check('off\'s line says it never acts', /never acts/.test(rungs[0].querySelector('.choice-does').textContent));
-  const frungs = [...d.querySelectorAll('#up-forgive .choice-tile')];
-  check('forgiveness: radio cards too, tolerant to strict', frungs.map((r) => r.querySelector('input').value).join(' ') === 'tolerant normal strict'
-    && frungs.every((r) => r.querySelectorAll('.setting-desc').length === 2) && frungs.filter((r) => r.classList.contains('chosen')).length === 1);
+  // Staying on the network: two dials, pace and reach (Tom, 2026-10-09), guests, a wedged driver and
+  // forgiveness, each as radio cards (2026-10-06).
+  const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
+  const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
+  const pace = tiles('up-pace'), reach = tiles('up-reach');
+  check('pace: four cards, gentle to urgent', vals('up-pace') === 'gentle steady prompt urgent', vals('up-pace'));
+  check('reach: five cards, watch to reboot', vals('up-reach') === 'watch reconnect restart radio reboot', vals('up-reach'));
+  check('guests and a wedged driver: two cards each', vals('up-guests') === 'protect ignore' && vals('up-wedge') === 'ladder radio');
+  check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2
+    && r.querySelector('.choice-does').textContent.length > 10));
+  check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge', 'up-forgive'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
+  check('the gentle pace\'s line says when each step comes', /reboots after 2 h — each only if the reach goes that far/.test(pace[0].querySelector('.choice-does').textContent),
+    pace[0].querySelector('.choice-does').textContent);
+  check('watch\'s line says it never acts', /never acts/.test(reach[0].querySelector('.choice-does').textContent));
+  const frungs = tiles('up-forgive');
+  check('forgiveness: radio cards too, tolerant to strict', vals('up-forgive') === 'tolerant normal strict'
+    && frungs.every((r) => r.querySelectorAll('.setting-desc').length === 2));
   check('no toggle left on the page', !d.querySelector('#up-forgive button'));
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
   check('Save is off until something changes', save.disabled && save.textContent === 'Save');
-  rungs[4].querySelector('input').click();
-  check('choosing stubborn marks it, and Save comes on', rungs[4].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
-  check('the sentence follows: it reboots', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
+  pace[3].querySelector('input').click();
+  check('choosing urgent marks it, and Save comes on', pace[3].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
+  check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
+  reach[3].querySelector('input').click();
+  check('reach radio: the sentence says it never reboots', /resets the radio after 8 min/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
   frungs[2].querySelector('input').click();
   check('strict chosen, its card says what it does', frungs[2].classList.contains('chosen') && /Down after 2 failed checks and 15 s more/.test(frungs[2].querySelector('.choice-does').textContent),
     frungs[2].querySelector('.choice-does').textContent);
@@ -114,7 +122,8 @@ setTimeout(() => {
   }, 1500);
   setTimeout(() => {
     const sent = posted.find((p) => p.action === 'settings');
-    check('Save posts the levels and custom values', sent && sent.settings.eagerness === 'stubborn' && sent.settings.forgiveness === 'strict'
+    check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
+      && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.forgiveness === 'strict'
       && sent.settings.overrides.check === 45 && sent.settings.overrides.steps.reboot === null, JSON.stringify(posted));
     check('a bad custom value is refused on the page', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-note')[0] || ''), t('#up-note')[0]);
     check('no page errors', errors.length === 0, errors.join(' | '));

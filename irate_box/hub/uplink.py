@@ -9,14 +9,15 @@ link the box reaches its network by (the default route's interface, or the one c
 entry: some routers drop pings but none ignore ARP). The internet is never checked: the box
 is meant to work offline, and a LAN with no internet is not a fault.
 
-Two settings, both on /admin's Network page (and `install.sh --uplink`):
+Its settings, on /admin's Network page (and `install.sh --uplink`), each meaning one thing
+(Tom, 2026-10-09: two dials, not one "eagerness" that moved both):
 
-  Eagerness   how soon and how far it goes once the link is down:
-    off         watch and log only
-    patient     reconnect now and then; NetworkManager does the rest
-    standard    reconnect, repeat with back-off, then restart the network service
-    persistent  ... then reset the radio (not while guests are on the hotspot)
-    stubborn    ... sooner, guests or not, and finally reboot (capped per day)
+  Pace        how soon it first acts once the link is down, how often it reconnects again, and
+              when each heavier step comes: gentle, steady, prompt, urgent
+  Reach       the heaviest step it may take: watch (log only), reconnect, restart, radio, reboot
+              (the default: the highest; a reboot at most 3 a day, never during a build or update)
+  Guests      protect (the default): no radio reset or reboot, nor a restart when the hotspot
+              shares the radio, while guests are on the hotspot; or ignore
   Forgiveness how much flakiness it puts up with before it acts:
     tolerant    a link must fail 5 checks and stay down 5 minutes; repeated drops are noted
     normal      3 checks and 1 minute; repeated drops lock the link to the strongest AP
@@ -55,7 +56,7 @@ back by `profile off` and by uninstall.sh (`undo-all`).
     uplink.py run [--dry-run]       the watchdog (--dry-run: decide, log, do nothing)
     uplink.py check                 one look at the link, printed
     uplink.py presets               the levels, as numbers
-    uplink.py set EAGERNESS [FORGIVENESS]
+    uplink.py set KEY=VALUE...      pace, reach, forgiveness, guests, on_wedge
     uplink.py hold MINUTES          no repairs for that long (0 ends a hold)
     uplink.py profile on|off        the consent change to the owner's profile, and its undo
     uplink.py undo-all              for uninstall.sh
@@ -99,15 +100,18 @@ STEPS = ("reconnect", "restart", "radio", "reboot")
 STEP_LABEL = {"reconnect": "reconnect", "restart": "restart the network service", "radio": "reset the radio",
               "reboot": "reboot", "pin": "lock to the strongest access point"}
 
-EAGERNESS = {
-    "off": {"check": 120, "steps": {}, "repeat": 0, "guests": "protect"},
-    "patient": {"check": 120, "steps": {"reconnect": 0}, "repeat": 600, "guests": "protect"},
-    "standard": {"check": 60, "steps": {"reconnect": 0, "restart": 600}, "repeat": 300, "guests": "protect"},
-    "persistent": {"check": 30, "steps": {"reconnect": 0, "restart": 300, "radio": 900}, "repeat": 180,
-                   "guests": "protect"},
-    "stubborn": {"check": 30, "steps": {"reconnect": 0, "restart": 180, "radio": 480, "reboot": 1800}, "repeat": 120,
-                 "guests": "ignore"},
+# Two dials (Tom, 2026-10-09: "two dials always"), each meaning one thing (uplink-ladder-plan, stage 5):
+# PACE: how soon after an outage is declared it first acts, how often it reconnects again, and when
+# each heavier step comes (seconds after the grace, counted across an episode's outages); and REACH:
+# the heaviest step it may take at all. Gentle and far-reaching at once is a real choice now.
+PACE = {
+    "gentle": {"check": 120, "repeat": 900, "steps": {"reconnect": 300, "restart": 1800, "radio": 3600, "reboot": 7200}},
+    "steady": {"check": 60, "repeat": 300, "steps": {"reconnect": 60, "restart": 600, "radio": 1200, "reboot": 3600}},
+    "prompt": {"check": 30, "repeat": 180, "steps": {"reconnect": 0, "restart": 300, "radio": 900, "reboot": 1800}},
+    "urgent": {"check": 30, "repeat": 120, "steps": {"reconnect": 0, "restart": 180, "radio": 480, "reboot": 1800}},
 }
+REACH = ("watch", "reconnect", "restart", "radio", "reboot")   # watch: look and log, never act
+GUESTS = ("protect", "ignore")
 FORGIVENESS = {
     "tolerant": {"misses": 5, "grace": 300, "flap_count": 8, "flap_window": 1800, "flap_action": "note"},
     "normal": {"misses": 3, "grace": 60, "flap_count": 4, "flap_window": 600, "flap_action": "pin"},
@@ -115,17 +119,28 @@ FORGIVENESS = {
 }
 COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
           "relapse": 900}
-DEFAULT = {"eagerness": "patient", "forgiveness": "normal", "iface": "auto", "overrides": {}, "hold_until": 0,
-           "on_wedge": "ladder"}
+# The default reach is the highest (Tom, 2026-10-09: "the default for reach should be the highest
+# level"); guests stay protected, and a reboot keeps its guards (the daily cap, the gap, not while
+# a build or an update runs, not soon after boot).
+DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "forgiveness": "normal", "iface": "auto",
+           "overrides": {}, "hold_until": 0, "on_wedge": "ladder"}
 # When the evidence says the radio's driver has wedged (wedge_evidence): keep to the ladder as set,
-# or go straight to a radio reset if the level reaches it (Tom, 2026-10-09: a setting per box, off).
+# or go straight to a radio reset if the reach allows it (Tom, 2026-10-09: a setting per box, off).
 ON_WEDGE = ("ladder", "radio")
+# The old single dial (to 2026-10-09), as pace, reach and guests: settings saved with it still load.
+EAGERNESS_WAS = {"off": ("gentle", "watch", "protect"), "patient": ("gentle", "reboot", "protect"),
+                 "standard": ("steady", "reboot", "protect"), "persistent": ("prompt", "reboot", "protect"),
+                 "stubborn": ("urgent", "reboot", "ignore")}
 DESCRIBE = {
-    "off": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
-    "patient": "Reconnect after an outage, and again every 10 minutes or so. Nothing heavier.",
-    "standard": "Reconnect, repeat with back-off, and restart the network service after 10 minutes down.",
-    "persistent": "As standard but sooner, and reset the radio after 15 minutes, unless guests are on the hotspot.",
-    "stubborn": "Everything, soonest, guests or not, and reboot after 30 minutes down (at most 3 a day).",
+    "gentle": "Waits 5 minutes before the first reconnect and 15 between them; heavier steps after half an hour, an hour, two.",
+    "steady": "A reconnect after a minute, again every 5; heavier steps after 10, 20 and 60 minutes down.",
+    "prompt": "A reconnect at once, again every 3 minutes; heavier steps after 5, 15 and 30 minutes down.",
+    "urgent": "Everything soonest: heavier steps after 3, 8 and 30 minutes down.",
+    "watch": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
+    "reconnect": "Reconnect, and nothing heavier.",
+    "restart": "Up to restarting the network service.",
+    "radio": "Up to resetting the radio (its USB device or driver).",
+    "reboot": "Up to rebooting the box: at most 3 times a day, never during a build or an update, nor soon after it started.",
     "tolerant": "Puts up with a lot: 5 failed checks and 5 minutes down before acting; repeated drops are only noted.",
     "normal": "3 failed checks and a minute down; a link that keeps dropping is locked to the strongest access point.",
     "strict": "2 failed checks and 15 s; a link that keeps dropping counts as a fault and is repaired.",
@@ -133,7 +148,7 @@ DESCRIBE = {
 # Every value a Custom field may set: (low, high), or the allowed words.
 FIELDS = {
     "check": (10, 600), "misses": (1, 20), "grace": (0, 3600), "repeat": (0, 86400), "backoff": (1.0, 4.0),
-    "max_repeat": (60, 86400), "relapse": (60, 86400), "guests": ("protect", "ignore"), "flap_count": (2, 50), "flap_window": (60, 86400),
+    "max_repeat": (60, 86400), "relapse": (60, 86400), "flap_count": (2, 50), "flap_window": (60, 86400),
     "flap_action": ("note", "pin", "repair"), "reboots_per_day": (0, 10), "reboot_gap": (600, 86400),
     "steps": {s: (0, 86400) for s in STEPS},
 }
@@ -141,37 +156,67 @@ IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leadin
 
 
 def effective(chosen):
-    """The numbers the watchdog runs on: forgiveness, then eagerness, then the overrides."""
-    eff = dict(COMMON, **FORGIVENESS[chosen["forgiveness"]], **EAGERNESS[chosen["eagerness"]])
-    eff["steps"] = dict(eff["steps"])
+    """The numbers the watchdog runs on: forgiveness, then the pace's steps up to the reach, then
+    the overrides (a step overridden beyond the reach is beyond it still)."""
+    pace, reach = PACE[chosen["pace"]], chosen["reach"]
+    allowed = STEPS[:REACH.index(reach)]
+    eff = dict(COMMON, **FORGIVENESS[chosen["forgiveness"]], check=pace["check"], repeat=pace["repeat"])
+    eff["steps"] = {s: v for s, v in pace["steps"].items() if s in allowed}
+    eff["guests"] = chosen.get("guests", "protect")
     eff["on_wedge"] = chosen.get("on_wedge", "ladder")
     for k, v in chosen.get("overrides", {}).items():
         if k == "steps":
             for s, t in v.items():
                 if t is None:
                     eff["steps"].pop(s, None)
-                else:
+                elif s in allowed:
                     eff["steps"][s] = t
         else:
             eff[k] = v
+    if "reconnect" not in eff["steps"]:
+        eff["repeat"] = 0
     return eff
+
+
+def migrate(raw):
+    """Settings saved before the two dials: their eagerness as pace, reach and guests, and an
+    overridden guests as the setting it is now."""
+    raw = dict(raw)
+    if "eagerness" in raw and "pace" not in raw:
+        old = raw.pop("eagerness")
+        if old not in EAGERNESS_WAS:
+            raise ValueError("unknown eagerness")
+        pace, reach, guests = EAGERNESS_WAS[old]
+        raw.update(pace=pace, reach=reach)
+        raw.setdefault("guests", guests)
+    raw.pop("eagerness", None)
+    over = raw.get("overrides")
+    if isinstance(over, dict) and "guests" in over:
+        over = dict(over)
+        raw["guests"] = over.pop("guests")
+        raw["overrides"] = over
+    return raw
 
 
 def validate(raw):
     """A settings dict as /admin sent it → a clean one, or ValueError."""
     if not isinstance(raw, dict):
         raise ValueError("settings must be an object")
+    raw = migrate(raw)
     out = dict(DEFAULT)
-    e, f = raw.get("eagerness", out["eagerness"]), raw.get("forgiveness", out["forgiveness"])
-    if e not in EAGERNESS or f not in FORGIVENESS:
-        raise ValueError("unknown eagerness or forgiveness")
+    pace, reach, f = raw.get("pace", out["pace"]), raw.get("reach", out["reach"]), raw.get("forgiveness", out["forgiveness"])
+    if pace not in PACE or reach not in REACH or f not in FORGIVENESS:
+        raise ValueError("unknown pace, reach or forgiveness")
+    guests = raw.get("guests", "protect")
+    if guests not in GUESTS:
+        raise ValueError(f"guests must be one of {', '.join(GUESTS)}")
     iface = str(raw.get("iface", "auto"))
     if not IFACE_RE.match(iface):
         raise ValueError("not an interface name")
     w = raw.get("on_wedge", "ladder")
     if w not in ON_WEDGE:
         raise ValueError(f"on_wedge must be one of {', '.join(ON_WEDGE)}")
-    out.update(eagerness=e, forgiveness=f, iface=iface, overrides={}, on_wedge=w)
+    out.update(pace=pace, reach=reach, guests=guests, forgiveness=f, iface=iface, overrides={}, on_wedge=w)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
         raise ValueError("overrides must be an object")
@@ -445,9 +490,13 @@ class Watch:
 
     def _held(self, now, obs, step):
         eff = self.eff
-        if step in ("radio", "reboot") and eff["guests"] == "protect" and obs.get("guests", 0) > 0:
+        # A restart of the network service takes the hotspot down too when it shares the uplink's
+        # radio (the Lyra, 2026-10-09): held then like a radio reset (Tom: "only on a shared radio").
+        heavy = step in ("radio", "reboot") or (step == "restart" and obs.get("shared_radio"))
+        if heavy and eff["guests"] == "protect" and obs.get("guests", 0) > 0:
             n = obs["guests"]
-            return f"{n} guest{'s are' if n != 1 else ' is'} on the hotspot"
+            return (f"{n} guest{'s are' if n != 1 else ' is'} on the hotspot"
+                    + (", which shares the radio" if step == "restart" else ""))
         if step == "reboot":
             day = [t for t in self.reboots if t > now - 86400]
             if len(day) >= eff["reboots_per_day"]:
@@ -486,7 +535,7 @@ class Watch:
             return None
         needs = next((s for s in STEPS if s in self.can and s not in eff["steps"] and s not in o["done"]), None)
         top = max(eff["steps"], key=STEPS.index)
-        text = (f"Stalled: what could help now is to {STEP_LABEL[needs]}, and this level goes no further than to "
+        text = (f"Stalled: what could help now is to {STEP_LABEL[needs]}, and the reach set goes no further than to "
                 f"{STEP_LABEL[top]}." if needs else "Stalled: nothing the box can do from here could help "
                 f"(possible now: {', '.join(sorted(self.can)) or 'nothing'}).")
         if o.get("wedged"):
@@ -572,6 +621,20 @@ def guests():
         if info.get("type") == "AP":
             n += netinv.ap_stations(iface)
     return n
+
+
+def shared_radio(iface):
+    """The box's hotspot runs on the same radio (phy) as the watched link."""
+    devs = netinv.parse_iw_dev(netinv.run("iw", "dev")[1])
+    phy = (devs.get(iface) or {}).get("phy")
+    return bool(phy) and any(i != iface and d.get("type") == "AP" and d.get("phy") == phy for i, d in devs.items())
+
+
+def words(chosen):
+    """The settings in a few words, for the log and the page's messages."""
+    return f"{chosen['pace']} pace, reach {chosen['reach']}, {chosen['forgiveness']}" + (
+        ", guests or not" if chosen.get("guests") == "ignore" else "") + (
+        ", a wedged radio reset at once" if chosen.get("on_wedge") == "radio" else "")
 
 
 def busy():
@@ -972,7 +1035,7 @@ def serve(dry=False):
     now = time.time()
     if old.get("events") and old["events"][-1]["text"].startswith("Reboot"):
         w.log(now, "info", "Started again after the reboot.")
-    w.log(now, "info", f"Watching ({chosen['eagerness']}, {chosen['forgiveness']})" + (" — dry run" if dry else "") + ".")
+    w.log(now, "info", f"Watching ({words(chosen)})" + (" — dry run" if dry else "") + ".")
     wake = threading.Event()
     watcher = DropWatcher(wake)
     watcher.start()
@@ -995,7 +1058,7 @@ def serve(dry=False):
             if {k: v for k, v in before.items() if k != "hold_until"} != {k: v for k, v in chosen.items() if k != "hold_until"}:
                 w.eff = effective(chosen)
                 w.pause_until = now + w.eff["pause_after_change"]
-                w.log(now, "info", f"Settings changed: {chosen['eagerness']}, {chosen['forgiveness']}"
+                w.log(now, "info", f"Settings changed: {words(chosen)}"
                       + (", with custom values" if chosen["overrides"] else "") + ".")
             if before.get("hold_until") != chosen.get("hold_until"):
                 hold = chosen.get("hold_until") or 0
@@ -1023,7 +1086,8 @@ def serve(dry=False):
         answers = gateway_answers(iface, gw) if gw else (False if up else None)
         obs = {"link": up, "gateway": answers, "drops": watcher.take(), "guests": guests(), "busy": busy(),
                "uptime": uptime(), "can": can, "hold_until": chosen.get("hold_until", 0),
-               "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface)}
+               "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface),
+               "shared_radio": shared_radio(iface)}
         if w.outage or w.misses:
             # In trouble: look closer, each check, for a wedged driver (and the backend afresh).
             was, backend = backend, backend_of(iface)
@@ -1147,20 +1211,21 @@ def check():
              f"link {'up' if up else 'down'}" + (f", {link.get('ssid')} via {link.get('bssid')} ch {link.get('channel')} "
                                                 f"{link.get('signal')} dBm" if link else ""),
              f"gateway {gw or 'none'}: {'answers' if ans else 'no answer' if gw else '-'}",
-             f"settings: {chosen['eagerness']}, {chosen['forgiveness']}"
+             f"settings: {words(chosen)}"
              + (f", overrides {json.dumps(chosen['overrides'])}" if chosen["overrides"] else "")]
     return "\n".join(lines)
 
 
 def presets():
     out = []
-    for e in EAGERNESS:
+    for pace in PACE:
         for f in FORGIVENESS:
-            eff = effective({"eagerness": e, "forgiveness": f, "overrides": {}})
+            eff = effective({"pace": pace, "reach": "reboot", "forgiveness": f, "overrides": {}})
             detect = f"{eff['misses']} × {human(eff['check'])}"
             steps = ", ".join(f"{s} +{human(eff['grace'] + t)}" for s, t in sorted(eff["steps"].items(), key=lambda x: x[1]))
-            out.append(f"{e:10} {f:8}  check {human(eff['check']):6} detect {detect:12} steps: {steps or 'none'}"
+            out.append(f"{pace:7} {f:8}  check {human(eff['check']):6} detect {detect:12} steps: {steps}"
                        f"; flaps {eff['flap_count']}/{human(eff['flap_window'])} → {eff['flap_action']}")
+    out.append(f"reach: {', '.join(REACH)} (the steps above, up to and including the one chosen; watch: none)")
     return "\n".join(out)
 
 
@@ -1179,16 +1244,22 @@ def main(argv):
         serve(dry="--dry-run" in rest)
     elif cmd == "check":
         print(check())
-    elif cmd == "set" and 1 <= len(rest) <= 2:
+    elif cmd == "set" and rest and (all("=" in a for a in rest) or (len(rest) <= 2 and rest[0] in EAGERNESS_WAS)):
         s = load_settings()
-        s["eagerness"] = rest[0]
-        if len(rest) == 2:
-            s["forgiveness"] = rest[1]
+        if "=" not in rest[0]:  # the old single level (install.sh --uplink standard,strict)
+            pace, reach, guests = EAGERNESS_WAS[rest[0]]
+            rest = [f"pace={pace}", f"reach={reach}", f"guests={guests}"] + [f"forgiveness={f}" for f in rest[1:]]
+        for a in rest:
+            k, _, v = a.partition("=")
+            if k not in ("pace", "reach", "forgiveness", "guests", "on_wedge"):
+                sys.exit(f"uplink.py set: {k} is not one of pace, reach, forgiveness, guests, on_wedge")
+            s[k] = v
         try:
             s = save_settings(s)
         except ValueError as exc:
-            sys.exit(f"uplink.py set: {exc} (eagerness: {', '.join(EAGERNESS)}; forgiveness: {', '.join(FORGIVENESS)})")
-        print(f"uplink: {s['eagerness']}, {s['forgiveness']}")
+            sys.exit(f"uplink.py set: {exc} (pace: {', '.join(PACE)}; reach: {', '.join(REACH)}; "
+                     f"forgiveness: {', '.join(FORGIVENESS)})")
+        print(f"uplink: {words(s)}")
     elif cmd == "hold" and len(rest) == 1 and rest[0].isdigit():
         s = load_settings()
         s["hold_until"] = time.time() + int(rest[0]) * 60 if int(rest[0]) else 0
@@ -1205,7 +1276,7 @@ def main(argv):
         except ValueError as exc:
             print(f"profile: {exc}")
     else:
-        sys.exit("usage: uplink.py run [--dry-run] | check | presets | set EAGERNESS [FORGIVENESS] | hold MINUTES "
+        sys.exit("usage: uplink.py run [--dry-run] | check | presets | set KEY=VALUE... | hold MINUTES "
                  "| profile on|off | undo-all")
     return 0
 

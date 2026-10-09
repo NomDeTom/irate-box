@@ -1821,7 +1821,10 @@ const net = {
   devices: document.getElementById('net-devices'),
   hazards: document.getElementById('net-hazards'),
   status: document.getElementById('up-status'),
-  eager: document.getElementById('up-eager'),
+  pace: document.getElementById('up-pace'),
+  reach: document.getElementById('up-reach'),
+  guests: document.getElementById('up-guests'),
+  wedge: document.getElementById('up-wedge'),
   forgive: document.getElementById('up-forgive'),
   will: document.getElementById('up-will'),
   iface: document.getElementById('up-iface'),
@@ -1840,27 +1843,31 @@ const UP_FIELDS = [
   ['grace', 'Then wait (s) before acting'], ['steps.reconnect', 'Reconnect after (s)'],
   ['steps.restart', 'Restart the network service after (s)'], ['steps.radio', 'Reset the radio after (s)'],
   ['steps.reboot', 'Reboot after (s)'], ['repeat', 'Reconnect again every (s)'], ['backoff', '… that gap growing ×'],
-  ['max_repeat', '… up to (s)'], ['flap_count', 'Drops that count as flapping'], ['flap_window', '… within (s)'],
-  ['flap_action', 'A flapping link is'], ['guests', 'Radio reset and reboot with guests on'],
+  ['max_repeat', '… up to (s)'], ['relapse', 'Down again within (s): the same episode'], ['flap_count', 'Drops that count as flapping'],
+  ['flap_window', '… within (s)'], ['flap_action', 'A flapping link is'],
   ['reboots_per_day', 'Reboots a day, at most'], ['reboot_gap', 'Never reboot within (s) of the last'],
 ];
 const UP_WORDS = {
   flap_action: { note: 'only noted', pin: 'locked to the strongest AP', repair: 'repaired' },
-  guests: { protect: 'held back', ignore: 'go ahead' },
 };
 let netData = null;
 let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
 let upDirty = false;
-// The levels chosen on the page (both as radio cards), before Save.
-const upPick = { eagerness: 'patient', forgiveness: 'normal' };
+// What is chosen on the page (each as radio cards), before Save: two dials, pace and reach (Tom,
+// 2026-10-09: "two dials always"), and guests, a wedged driver, forgiveness.
+const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', forgiveness: 'normal' };
+const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['forgive', 'forgiveness']];
 let netAsked = false;
 
-function upPreset(e, f, levels) {
-  const p = levels.presets;
-  const eff = { ...p.common, ...p.forgiveness[f], ...p.eagerness[e] };
-  eff.steps = { ...p.eagerness[e].steps };
+// The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
+function upPreset(pick, levels) {
+  const p = levels.presets, pace = p.pace[pick.pace];
+  const allowed = levels.steps.slice(0, levels.reach.indexOf(pick.reach));
+  const eff = { ...p.common, ...p.forgiveness[pick.forgiveness], check: pace.check, repeat: pace.repeat, guests: pick.guests };
+  eff.steps = Object.fromEntries(Object.entries(pace.steps).filter(([s]) => allowed.includes(s)));
+  if (!('reconnect' in eff.steps)) eff.repeat = 0;
   return eff;
 }
 const upGet = (obj, key) => key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -1881,13 +1888,13 @@ function buildUpFields(levels) {
   }
 }
 
-// --- the levels in words ---------------------------------------------------------------
+// --- the choices in words ---------------------------------------------------------------
 const cap1 = (t) => t[0].toUpperCase() + t.slice(1);
 const dur = (sec) => (sec < 60 ? `${sec} s` : sec % 3600 === 0 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`);
 const FLAP_DOES = { note: 'is only noted', pin: 'is locked to the strongest access point', repair: 'is repaired, climbing past what did not hold' };
+const STEP_DOES = { reconnect: 'reconnects', restart: 'restarts the network service', radio: 'resets the radio', reboot: 'reboots' };
 
-// What a set of numbers does once the link counts as down: an eagerness level's own preset (its
-// line on the ladder), or the effective numbers with any custom values ("What this will do").
+// What a set of numbers does once the link counts as down ("What this will do").
 function stepsInWords(p) {
   const st = p.steps || {};
   if (!Object.keys(st).length) return 'does nothing but note it';
@@ -1900,13 +1907,17 @@ function stepsInWords(p) {
   if ('restart' in st) parts.push(`restarts the network service after ${dur(st.restart)}`);
   if ('radio' in st) parts.push(`resets the radio after ${dur(st.radio)}`);
   parts.push('reboot' in st ? `reboots after ${dur(st.reboot)}${p.reboots_per_day ? ` (at most ${p.reboots_per_day} a day)` : ''}` : 'never reboots');
-  const heavy = 'radio' in st || 'reboot' in st;
-  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', with guests on or not' : ', but not while guests are on the hotspot') : '');
+  const heavy = 'radio' in st || 'reboot' in st || 'restart' in st;
+  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', with guests on or not'
+    : ', but not, while guests are on the hotspot, what would take it down') : '');
 }
 
-function rungLine(name, levels) {
-  const p = { ...levels.presets.common, ...levels.presets.eagerness[name] };
-  return name === 'off' ? 'Checks, and never acts.' : `When it's down: ${stepsInWords(p)}.`;
+// A pace's own line: when each step comes, as far as any reach goes.
+function paceLine(name, levels) {
+  const p = levels.presets.pace[name];
+  return `First a reconnect ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : 'at once'}, again every ${dur(p.repeat)}; `
+    + `then ${['restart', 'radio', 'reboot'].map((s) => `${STEP_DOES[s].replace('the network service', 'the service')} after ${dur(p.steps[s])}`).join(', ')}`
+    + ` — each only if the reach goes that far. It checks every ${dur(p.check)}.`;
 }
 
 function forgiveLine(f) {
@@ -1914,25 +1925,32 @@ function forgiveLine(f) {
     + `${f.flap_count} drops within ${dur(f.flap_window)} count as flapping, which ${FLAP_DOES[f.flap_action] || f.flap_action}.`;
 }
 
+const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while guests are on the hotspot, nor a restart of the network service when the hotspot shares the radio. Said, and done once they have gone.'],
+  ignore: ['Go ahead', 'Every step the reach allows, guests on or not: they lose the hotspot for a while.'] };
+const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, with a button to reset the radio by hand; the steps come as the pace and reach set them.'],
+  radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a wedged driver: go straight to the radio reset, if the reach allows it and no guests are held for.'] };
+
 function willText(eff) {
   return `What this will do: it checks the link every ${dur(eff.check)}. It counts it as down after ${eff.misses} failed `
     + `check${eff.misses === 1 ? '' : 's'} and ${dur(eff.grace)} more, and then ${stepsInWords(eff)}. `
+    + `Outages within ${dur(eff.relapse)} of each other are one episode: what did not hold is not repeated while a heavier step is left. `
     + `A link that drops ${eff.flap_count} times within ${dur(eff.flap_window)} ${FLAP_DOES[eff.flap_action] || eff.flap_action}.`;
 }
 
-// Both levels the same way (Tom, 2026-10-06): radio cards, each level's description and what it
-// does shown at once.
-function rungs(box, group, names, line, levels) {
-  AW.choices(box, `up-${group}`, names.map((name) => ({
-    value: name, title: cap1(name), desc: levels.describe[name] || '', does: line(name),
-  })), { onChange: (name) => upChoose({ [group]: name }, levels) });
+// Every choice the same way (Tom, 2026-10-06): radio cards, each one's description and what it does.
+function rungs(box, group, items) {
+  AW.choices(box, `up-${group}`, items, { onChange: (name) => upChoose({ [group]: name }, netData.levels) });
 }
 
 function buildUpChoices(levels) {
-  if (net.eager.childElementCount) return;
-  rungs(net.eager, 'eagerness', levels.eagerness, (name) => rungLine(name, levels), levels);
-  rungs(net.forgive, 'forgiveness', levels.forgiveness,
-    (name) => forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[name] }), levels);
+  if (net.pace.childElementCount) return;
+  rungs(net.pace, 'pace', levels.pace.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '', does: paceLine(n, levels) })));
+  rungs(net.reach, 'reach', levels.reach.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '',
+    does: n === 'watch' ? 'Checks, and never acts.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
+  rungs(net.guests, 'guests', levels.guests.map((n) => ({ value: n, title: GUEST_WORDS[n][0], desc: GUEST_WORDS[n][1] })));
+  rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
+  rungs(net.forgive, 'forgiveness', levels.forgiveness.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '',
+    does: forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[n] }) })));
 }
 
 function upChoose(change, levels) {
@@ -1950,8 +1968,7 @@ function showUpSave() {
 
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
-  upPick.eagerness = chosen.eagerness;
-  upPick.forgiveness = chosen.forgiveness;
+  for (const k of Object.keys(upPick)) upPick[k] = chosen[k] || levels.default[k];
   net.iface.value = [...net.iface.options].some((o) => o.value === chosen.iface) ? chosen.iface : 'auto';
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll('[data-key]')) {
@@ -1963,18 +1980,17 @@ function fillUpForm(chosen, levels) {
 }
 
 function showUpPreset(levels) {
-  const e = upPick.eagerness, f = upPick.forgiveness;
-  for (const [box, chosen] of [[net.eager, e], [net.forgive, f]]) {
-    for (const input of box.querySelectorAll('input')) {
-      input.checked = input.value === chosen;
+  for (const [boxKey, key] of UP_GROUPS) {
+    for (const input of net[boxKey].querySelectorAll('input')) {
+      input.checked = input.value === upPick[key];
       input.closest('.choice-tile').classList.toggle('chosen', input.checked);
     }
   }
-  const eff = upPreset(e, f, levels);
+  const eff = upPreset(upPick, levels);
   try {
     const over = readUpForm().overrides;
     const shown = { ...eff, ...over, steps: { ...eff.steps } };
-    for (const [k, v] of Object.entries(over.steps || {})) { if (v === null) delete shown.steps[k]; else shown.steps[k] = v; }
+    for (const [k, v] of Object.entries(over.steps || {})) { if (v === null) delete shown.steps[k]; else if (k in eff.steps) shown.steps[k] = v; }
     net.will.textContent = willText(shown);
   } catch (_) {
     net.will.textContent = willText(eff);
@@ -2003,7 +2019,7 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  return { eagerness: upPick.eagerness, forgiveness: upPick.forgiveness, iface: net.iface.value, overrides };
+  return { ...upPick, iface: net.iface.value, overrides };
 }
 
 const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2177,7 +2193,7 @@ function renderNetwork(data) {
 
   // Staying on the network
   buildUpFields(levels);
-  if (!upDirty) fillUpForm((u && u.chosen) || { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} }, levels);
+  if (!upDirty) fillUpForm((u && u.chosen) || levels.default, levels);
   net.status.textContent = upStatusText(u);
   // Stalled (uplink-ladder-plan, stage 2): the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
@@ -2255,7 +2271,8 @@ for (const box of [net.iface]) {
 net.save.addEventListener('click', () => {
   let settings;
   try { settings = readUpForm(); } catch (err) { netNotes.up = { text: err.message, ok: false }; renderNetwork(netData); return; }
-  if (settings.eagerness === 'stubborn' && !confirm('Stubborn may reset the radio and reboot the box while guests are on it. Use it?')) return;
+  if (settings.guests === 'ignore' && ['restart', 'radio', 'reboot'].includes(settings.reach)
+    && !confirm(`With guests ignored, it may ${settings.reach === 'restart' ? 'restart the network service' : settings.reach === 'radio' ? 'reset the radio' : 'reset the radio and reboot the box'} while guests are on the hotspot. Use it?`)) return;
   netRequest({ action: 'settings', settings }, 'up');
 });
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
