@@ -659,7 +659,7 @@ function pkgCard(id, p) {
       mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
         + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
   } });
-  return el('div', { className: 'setting library-source' }, el('span', {},
+  return el('div', { className: 'setting library-source update-card' }, el('span', { className: 'update-card-body' },
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
     keptList, settings,

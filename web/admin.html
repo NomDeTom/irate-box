@@ -1167,82 +1167,99 @@
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
-        <p class="setting-desc">Installed: <span id="hub-version">…</span></p>
-        <p class="setting-desc">
-          Checking asks the repository this box was installed from what is new. Fetching then
-          verifies that version and downloads what its installer will need, so nothing is fetched
-          half-way through an install. Installing reruns the installer with the same options. Apps,
-          books, data and the password are kept. The hub restarts part-way through, and this page
-          reconnects by itself.
-        </p>
-        <p class="setting-desc" id="update-summary">Not checked yet.</p>
-        <p class="setting-desc">When an update fails, the <a href="#updoctor">Updates doctor</a> can say why.</p>
-        <h3>What an update must carry</h3>
-        <p class="setting-desc">
-          How far a new version must be vouched for before the box installs it (as root). A version
-          that is not signed as chosen here is refused, by Install anyway too.
-        </p>
-        <form id="update-signing-form" class="library-form">
-          <fieldset class="choice-tiles">
-            <legend>Updates must be</legend>
-            <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
-            <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused.</span></span></label>
-            <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
-          </fieldset>
-          <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
-            <textarea name="signers" rows="3" spellcheck="false" placeholder="tom@box ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
-          <p class="setting-desc" id="update-signers-kept"></p>
-          <button class="action-btn primary" type="submit">Save</button>
-        </form>
-        <p class="setting-desc action-note" id="update-signing-note" role="status" hidden></p>
-        <h3 id="updates-debian">Debian's security updates</h3>
-        <p class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</p>
-        <div class="findings" id="updates-security"></div>
-        <form id="debian-pattern" class="library-form">
-          <div data-update-pattern data-often="often" data-act="act"
-            data-says-0="Said here and on the badge; only apt's lists of what is new are downloaded. You fetch or install them."
-            data-says-1="Also downloaded (apt's cache), ready for you to install."
-            data-says-2="Also installed (unattended-upgrades, from Debian's security archive)."
-            data-often-says-0="Only when you press Check now; what it finds is taken as far as chosen below."></div>
-          <button class="action-btn primary" type="submit">Save</button>
-        </form>
-        <p class="setting-desc action-note" id="debian-pattern-note" role="status" hidden></p>
-        <div id="debian-buttons"></div>
-        <h3>Automatic updates</h3>
-        <p class="setting-desc">
-          The librarian can look for updates by itself, on its hourly round, and take them as far
-          as you choose. An install is only ever of a version that passed verification, inside
-          the hours you set, with nobody on the hub and nothing else running; the hub restarts
-          part-way through. A version that fails verification waits for you here.
-        </p>
-        <form id="auto-form" class="library-form">
-          <div data-update-pattern data-often="hub_check_every_hours" data-act="hub_auto"
-            data-says-0="Said here and on the badge; only the new version's source is fetched, to read what changed."
-            data-says-2="Also installed, inside the hours below, with nobody on the hub (it restarts)."></div>
-          <label class="inline" id="auto-window">Install between
-            <select name="hub_window_start"></select> and <select name="hub_window_end"></select>
-            <span class="setting-desc">(the box's own clock)</span>
-          </label>
-          <button class="action-btn primary" type="submit">Save</button>
-        </form>
-        <p class="setting-desc action-note" id="auto-note" role="status" hidden></p>
-        <p class="setting-desc" id="auto-state"></p>
-        <div class="library-buttons">
-          <button class="action-btn" type="button" id="update-check" data-update="check">Check now</button>
-          <button class="action-btn" type="button" id="update-fetch" data-update="fetch" disabled>Fetch</button>
-          <button class="action-btn primary" type="button" id="update-install" data-update="install" disabled>Install</button>
+        <p class="setting-desc">One card for each thing the box updates: what it is and where it stands, how often it looks and
+          what it does with what it finds, and Check now, Fetch and Install. When an update fails, the
+          <a href="#updoctor">Updates doctor</a> can say why.</p>
+        <div class="update-cards">
+        <div class="setting library-source update-card" id="update-hub-card">
+          <div class="update-card-body">
+            <span class="setting-name">This hub (irate-box)</span>
+            <span class="setting-desc">Installed: <span id="hub-version">…</span></span>
+            <p class="setting-desc" id="update-summary">Not checked yet.</p>
+            <details class="field-help">
+              <summary>How an update goes</summary>
+              <p class="setting-desc">
+                Checking asks the repository this box was installed from what is new. Fetching then
+                verifies that version and downloads what its installer will need, so nothing is fetched
+                half-way through an install. Installing reruns the installer with the same options. Apps,
+                books, data and the password are kept. The hub restarts part-way through, and this page
+                reconnects by itself.
+              </p>
+              <p class="setting-desc">
+                The librarian can look for updates by itself, on its hourly round, and take them as far
+                as you choose. An install is only ever of a version that passed verification, inside
+                the hours you set, with nobody on the hub and nothing else running; the hub restarts
+                part-way through. A version that fails verification waits for you here.
+              </p>
+            </details>
+            <form id="auto-form" class="library-form">
+              <div data-update-pattern data-often="hub_check_every_hours" data-act="hub_auto"
+                data-says-0="Said here and on the badge; only the new version's source is fetched, to read what changed."
+                data-says-2="Also installed, inside the hours below, with nobody on the hub (it restarts)."></div>
+              <label class="inline" id="auto-window">Install between
+                <select name="hub_window_start"></select> and <select name="hub_window_end"></select>
+                <span class="setting-desc">(the box's own clock)</span>
+              </label>
+              <button class="action-btn primary" type="submit">Save</button>
+            </form>
+            <p class="setting-desc action-note" id="auto-note" role="status" hidden></p>
+            <p class="setting-desc" id="auto-state"></p>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="update-check" data-update="check">Check now</button>
+              <button class="action-btn" type="button" id="update-fetch" data-update="fetch" disabled>Fetch</button>
+              <button class="action-btn primary" type="button" id="update-install" data-update="install" disabled>Install</button>
+            </div>
+            <div class="admin-progress" id="update-progress" hidden>
+              <progress class="admin-bar" id="update-bar" max="1" value="0"></progress>
+              <p class="setting-desc" id="update-step"></p>
+            </div>
+            <p class="setting-desc action-note" id="update-note" role="status" hidden></p>
+            <ul class="admin-changes" id="update-changes"></ul>
+            <ul class="admin-checks" id="update-checks" hidden></ul>
+            <details class="admin-output" id="update-output" hidden>
+              <summary>Installer output</summary>
+              <pre class="admin-log" id="update-log"></pre>
+            </details>
+            <details class="field-help" id="update-signing">
+              <summary>What an update must carry</summary>
+              <p class="setting-desc">
+                How far a new version must be vouched for before the box installs it (as root). A version
+                that is not signed as chosen here is refused, by Install anyway too.
+              </p>
+              <form id="update-signing-form" class="library-form">
+                <fieldset class="choice-tiles">
+                  <legend>Updates must be</legend>
+                  <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
+                  <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused.</span></span></label>
+                  <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
+                </fieldset>
+                <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
+                  <textarea name="signers" rows="3" spellcheck="false" placeholder="tom@box ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
+                <p class="setting-desc" id="update-signers-kept"></p>
+                <button class="action-btn primary" type="submit">Save</button>
+              </form>
+              <p class="setting-desc action-note" id="update-signing-note" role="status" hidden></p>
+            </details>
+          </div>
         </div>
-        <div class="admin-progress" id="update-progress" hidden>
-          <progress class="admin-bar" id="update-bar" max="1" value="0"></progress>
-          <p class="setting-desc" id="update-step"></p>
+        <div class="setting library-source update-card" id="updates-debian">
+          <div class="update-card-body">
+            <span class="setting-name">Debian's security updates</span>
+            <span class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</span>
+            <div class="findings" id="updates-security"></div>
+            <form id="debian-pattern" class="library-form">
+              <div data-update-pattern data-often="often" data-act="act"
+                data-says-0="Said here and on the badge; only apt's lists of what is new are downloaded. You fetch or install them."
+                data-says-1="Also downloaded (apt's cache), ready for you to install."
+                data-says-2="Also installed (unattended-upgrades, from Debian's security archive)."
+                data-often-says-0="Only when you press Check now; what it finds is taken as far as chosen below."></div>
+              <button class="action-btn primary" type="submit">Save</button>
+            </form>
+            <p class="setting-desc action-note" id="debian-pattern-note" role="status" hidden></p>
+            <div id="debian-buttons"></div>
+          </div>
         </div>
-        <p class="setting-desc action-note" id="update-note" role="status" hidden></p>
-        <ul class="admin-changes" id="update-changes"></ul>
-        <ul class="admin-checks" id="update-checks" hidden></ul>
-        <details class="admin-output" id="update-output" hidden>
-          <summary>Installer output</summary>
-          <pre class="admin-log" id="update-log"></pre>
-        </details>
+        </div>
         <h3 id="pkg-makers">Packages from their makers</h3>
         <p class="setting-desc">
           Debian packages the box watches on their makers' own channels: meshtasticd from Meshtastic's
