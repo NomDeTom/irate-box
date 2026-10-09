@@ -14,7 +14,7 @@ const TOUR = (() => {
   'use strict';
   // The decisions: words, the section they live in, and the part of it to highlight (a selector,
   // or a finder for a part drawn later, such as one of the security findings).
-  const finding = (re) => () => [...document.querySelectorAll('#security-findings li')].find((li) => re.test(li.textContent));
+  const finding = (re) => () => [...document.querySelectorAll('#security-findings .finding')].find((li) => re.test(li.textContent));
   const DECISIONS = [
     { id: 'visitors', label: 'Count unique visitors', section: 'security', target: '#visitor_counts',
       said: 'On by default: different devices today and this week, by salted hashes thrown away daily and weekly; only the counts are kept.' },

@@ -339,16 +339,34 @@ def ssh_findings(settings, keys, rec):
 # --- security updates ---------------------------------------------------------------------
 
 INST_RE = re.compile(r"^Inst (\S+) .*\(([^)]*)\)")
+# Debian's own fixes to a stable release carry +debNuM (or ~debNuM) in the version: the security
+# team's, and the point releases', which fold the security fixes in (2026-10-09 on the Lyra: seven
+# packages debsecan called fixed came as "Debian:13.7/stable", none from trixie-security, so a scan
+# counting only "security" origins said none were waiting and offered nothing to install).
+DEB_FIX_RE = re.compile(r"[+~]deb\d+u\d+")
+APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
 
 
 def pending_security(simulated):
-    """Package names from `apt-get -s upgrade` output whose new version comes from a security archive."""
+    """Package names from `apt-get -s upgrade` output whose new version comes from a security archive,
+    or is one of Debian's stable fixes (from a Debian origin, versioned +debNuM)."""
     pkgs = []
     for line in simulated.splitlines():
         m = INST_RE.match(line)
-        if m and "security" in m.group(2).lower():
+        if not m:
+            continue
+        version, _, origin = m.group(2).partition(" ")
+        if "security" in origin.lower() or (origin.startswith("Debian") and DEB_FIX_RE.search(version)):
             pkgs.append(m.group(1))
     return pkgs
+
+
+def lists_age_days():
+    """How old apt's package lists are (their folder's newest change), or None."""
+    try:
+        return (time.time() - max(p.stat().st_mtime for p in APT_LISTS.glob("*_InRelease"))) / 86400
+    except (OSError, ValueError):
+        return None
 
 
 UNATTENDED_LOG = Path(os.environ.get("HUB_UNATTENDED_LOG", "/var/log/unattended-upgrades/unattended-upgrades.log"))
@@ -371,7 +389,8 @@ def unattended_finding(installed, periodic, log_age_days):
     if not installed:
         return _finding("unattended", "Automatic security updates", "warn",
                         "Not set up: security updates wait until someone installs them.",
-                        "Planned: unattended-upgrades for Debian-Security updates only. Until then, install them here.")
+                        "Install the System toolkit (Toolkits → System): it sets up unattended-upgrades for Debian's "
+                        "security updates, daily while the box is online. Until then, install them by hand (Updates).")
     if not enabled:
         return _finding("unattended", "Automatic security updates", "warn",
                         "unattended-upgrades is installed but never runs: apt's periodic work is off "
@@ -396,17 +415,20 @@ def update_findings():
         log_age = (time.time() - UNATTENDED_LOG.stat().st_mtime) / 86400
     except OSError:
         log_age = None
+    age = lists_age_days()
+    fresh = ("The package lists are from today." if age is not None and age < 1 else
+             f"The package lists are {round(age)} day{'s' if round(age) != 1 else ''} old: newer fixes may be out." if age is not None else "The package lists' age is unknown.")
+    look = {"choice": "apt-lists", "label": "Look for new ones (needs the internet)"}
     findings = []
     if pkgs:
         findings.append(_finding("security-updates", "Security updates", "problem",
-                                 f"{len(pkgs)} waiting: {', '.join(pkgs[:8])}{'…' if len(pkgs) > 8 else ''}. "
-                                 "The package lists are as fresh as the last apt-get update.",
+                                 f"{len(pkgs)} waiting, from Debian's security archive or its stable fixes: "
+                                 f"{', '.join(pkgs[:8])}{'…' if len(pkgs) > 8 else ''}. {fresh}",
                                  "Installing them changes only those packages; the hub's own updates are separate (Updates).",
                                  [{"choice": "security-updates", "label": f"Install {len(pkgs)} security update{'s' if len(pkgs) != 1 else ''}",
-                                   "confirm": "Install the waiting security updates now? It can take several minutes on this board."}]))
+                                   "confirm": "Install the waiting security updates now? It can take several minutes on this board."}, look]))
     else:
-        findings.append(_finding("security-updates", "Security updates", "ok",
-                                 "None waiting (as of the last apt-get update)."))
+        findings.append(_finding("security-updates", "Security updates", "ok", f"None waiting. {fresh}", "", [look]))
     findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age))
     return findings, pkgs
 
@@ -1192,6 +1214,18 @@ def install_security_updates(log_path):
     return f"installed {len(pkgs)} security update{'s' if len(pkgs) != 1 else ''}"
 
 
+def refresh_lists(log_path):
+    """apt-get update, its output to log_path; what it found is in the scan that follows."""
+    with safeio.open_new(log_path) as log:
+        log.write("$ apt-get update\n\n")
+        log.flush()
+        code = subprocess.run(["apt-get", "update"], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                              timeout=900).returncode
+    if code != 0:
+        raise ValueError(f"apt-get update exited with {code} (no internet?); see the log on Updates")
+    return "the package lists are fresh"
+
+
 def fix(choice, updates_log):
     """Carry out one of the page's offers. Returns a message; raises ValueError."""
     rec = load_record()
@@ -1229,6 +1263,8 @@ def fix(choice, updates_log):
         return _share_contain(choice[len("share-contain-"):])
     elif choice == "security-updates":
         return install_security_updates(updates_log)
+    elif choice == "apt-lists":
+        return refresh_lists(updates_log)
     else:
         raise ValueError(f"{choice} is not something the Security page does")
     save_record(rec)

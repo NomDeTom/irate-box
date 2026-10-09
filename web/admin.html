@@ -964,17 +964,25 @@
           changes until you press its button. Every change can be undone here, and uninstalling
           irate-box puts back what it found.
         </p>
-        <p class="setting-desc" id="security-when">Not scanned yet.</p>
-        <div class="library-buttons">
+        <div class="sec-head">
+          <p class="setting-desc" id="security-when">Not scanned yet.</p>
           <button class="action-btn" type="button" id="security-scan">Scan again</button>
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
-        <ul class="admin-checks" id="security-findings"></ul>
+        <p class="sec-counts" id="security-counts"></p>
+        <!-- Each line: what it is, what it means, and one thing to do (item 11; Tom, 2026-10-09). -->
+        <h3>Waiting for your choice</h3>
+        <div class="findings" id="security-findings"></div>
+        <h3>What the hub itself can and can't protect</h3>
+        <div class="findings" id="security-hub"></div>
+        <details class="sec-fold" id="security-set-fold">
+          <summary>Already set <span id="security-set-count"></span>: each with its Undo</summary>
+          <div class="findings compact" id="security-set"></div>
+        </details>
         <p class="setting-desc" id="security-elsewhere">
-          Elsewhere (checklist 5d, 4d): the fixes with one right answer are offered beside their findings
-          by the <a href="#secdoctor">Security doctor</a>; Debian's security updates are on
-          <a href="#updates">Updates</a>; the hotspot's WiFi security is with the hotspot, on
-          <a href="#network">Network</a>.
+          Elsewhere: fixes with one right answer are offered by the <a href="#secdoctor">Security doctor</a>,
+          beside what it found; Debian's security updates are on <a href="#updates-debian">Updates</a>; the
+          hotspot's WiFi password is with the hotspot, on <a href="#network">Network</a>.
         </p>
         <h3>What the box keeps about visitors</h3>
         <p class="setting-desc">
@@ -997,7 +1005,7 @@
           </label>
         </div>
         <p class="setting-desc action-note" id="visitors-note" role="status" hidden></p>
-        <h3>HTTPS</h3>
+        <h3 id="security-https">HTTPS</h3>
         <p class="setting-desc">
           The box can serve every page over HTTPS too, with a certificate of its own: phones and
           computers that install the box's certificate (from <a href="/certificate">/certificate</a>)
@@ -1032,10 +1040,10 @@
           </form>
         </details>
 
-        <h3>Listening on the network</h3>
-        <p class="setting-desc">Everything that answers from outside the box. Services on loopback only are left out.</p>
+        <h3 id="security-ports">Listening on the network</h3>
+        <p class="setting-desc">Everything that answers from outside the box, and whether it should. Services on loopback only are left out.</p>
         <table class="admin-table" id="security-listeners">
-          <thead><tr><th>Port</th><th>Service</th><th>On</th></tr></thead>
+          <thead><tr><th>Port</th><th>Service</th><th>On</th><th>Should it?</th></tr></thead>
           <tbody></tbody>
         </table>
         <details class="admin-output" id="security-output" hidden>
@@ -1075,9 +1083,9 @@
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="update-signing-note" role="status" hidden></p>
-        <h3>Debian's security updates</h3>
+        <h3 id="updates-debian">Debian's security updates</h3>
         <p class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</p>
-        <ul class="admin-checks" id="updates-security"></ul>
+        <div class="findings" id="updates-security"></div>
         <h3>Automatic updates</h3>
         <p class="setting-desc">
           The librarian can look for updates by itself, on its hourly round, and take them as far
@@ -1124,7 +1132,7 @@
           <summary>Installer output</summary>
           <pre class="admin-log" id="update-log"></pre>
         </details>
-        <h3>Packages from their makers</h3>
+        <h3 id="pkg-makers">Packages from their makers</h3>
         <p class="setting-desc">
           Debian packages the box watches on their makers' own channels: meshtasticd from Meshtastic's
           repositories (beta, alpha or nightly). Each new build is kept when it is first seen, so one can be
@@ -1151,7 +1159,7 @@
           <code>config.xml</code>), so a restored box keeps its device ID. Whoever holds that file
           can pose as this box to its Syncthing peers: keep it like a password.
         </p>
-        <h3>Set up another box</h3>
+        <h3 id="backup-kit">Set up another box</h3>
         <p class="setting-desc">
           An offline kit: everything another box needs to be set up as this one is, with no
           internet — this box's code, its apps, the release files it keeps (the terminal, notes), and
@@ -1185,17 +1193,15 @@
       <section class="admin-pane" id="secdoctor" aria-labelledby="secdoctor-title">
         <h2 id="secdoctor-title">Security doctor</h2>
         <p class="setting-desc">
-          A read-only audit of how the system underneath is set up, including what the hub found
-          when it was installed: the notes add-on, the web server's settings, links and root-written
-          files in the hub's folders, unit sandboxing, secrets on command lines and at rest, git
-          pushes, sudo rules, accounts and the kernel's protections. Where a finding has one right
-          answer the doctor offers the cure beside it (below), each with Undo; everything else says what
-          to do by hand. The real choices (SSH passwords, Cockpit, who is in root's groups) are on
-          <a href="#security">Security</a>. Also from a shell:
+          Everything the box's checks found that is not fine, said once, worst first: the doctor's own audit of
+          how the hub and the system underneath are set up, the Security page's scan, Debian's security tracker
+          (debsecan), and the weekly deep audit (the CIS benchmark and Lynis). Each ends in one thing to do: a
+          button that does it here, a link to where it is chosen, or a command to type. What you have looked at
+          and are happy to leave, accept: it moves to its own list and stops counting. Also from a shell:
           <code>sudo /opt/irate-box/irate-box secdoctor</code>.
         </p>
-        <p class="setting-desc" id="audit-when">Not run yet.</p>
-        <div class="library-buttons">
+        <div class="sec-head">
+          <p class="setting-desc" id="audit-when">Not run yet.</p>
           <button class="action-btn" type="button" id="audit-run">Run the doctor</button>
           <button class="action-btn" type="button" id="audit-deep">Deep audit</button>
         </div>
@@ -1203,18 +1209,25 @@
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
         <!-- Each source and how fresh it is (item 11 step 6, the plan's §5.5–5.6): what it covers in its title. -->
         <p class="fresh-strip" id="joint-fresh" aria-label="Each source, and how fresh it is"></p>
-        <h3>Cures</h3>
-        <p class="setting-desc">
-          From the box's own scan: what has one right answer, offered here with your consent and an Undo
-          (checklist 5d). It acts at once, through the box's root helper.
-        </p>
-        <ul class="admin-checks" id="secdoctor-cures"></ul>
-        <h3>What is what</h3>
-        <p class="setting-desc" id="joint-summary"></p>
-        <div id="joint-items"></div>
-        <details class="admin-output" id="joint-alone" hidden>
-          <summary>Seen by one source only: worth a look, or a false positive</summary>
-          <ul class="admin-checks" id="joint-alone-list"></ul>
+        <div class="sec-counts" id="joint-summary" role="group" aria-label="Show"></div>
+        <input type="search" class="sec-search" id="joint-search" placeholder="Search the findings…" aria-label="Search the findings">
+        <div class="findings" id="joint-items"></div>
+        <p class="setting-desc" id="joint-empty" hidden></p>
+        <details class="sec-fold" id="joint-suggest-fold">
+          <summary>Hardening suggestions <span id="joint-suggest-count"></span>: the CIS benchmark's, written for a general server</summary>
+          <div class="findings" id="joint-suggest"></div>
+        </details>
+        <details class="sec-fold" id="joint-nothere-fold">
+          <summary>Not for this box <span id="joint-nothere-count"></span>, and why</summary>
+          <div class="findings compact" id="joint-nothere"></div>
+        </details>
+        <details class="sec-fold" id="joint-cured-fold">
+          <summary>Put right here <span id="joint-cured-count"></span>: each with its Undo</summary>
+          <div class="findings compact" id="joint-cured"></div>
+        </details>
+        <details class="sec-fold" id="joint-accepted-fold">
+          <summary>Accepted by you <span id="joint-accepted-count"></span></summary>
+          <div class="findings compact" id="joint-accepted"></div>
         </details>
         <h3>Import a scan</h3>
         <p class="setting-desc">
@@ -1229,9 +1242,12 @@
         </form>
         <p class="setting-desc action-note" id="import-note" role="status" hidden></p>
         <ul class="admin-list" id="import-list"></ul>
-        <h3>Each source in detail</h3>
-        <div id="audit-steps"></div>
-        <details class="admin-output" id="audit-scope" hidden>
+        <details class="sec-fold" id="audit-raw">
+          <summary>The raw report, step by step</summary>
+          <p class="setting-desc">Every check each step made, the fine ones too, as the doctor wrote them.</p>
+          <div id="audit-steps"></div>
+        </details>
+        <details class="sec-fold" id="audit-scope" hidden>
           <summary>What the doctor cannot see</summary>
           <ul class="admin-list" id="audit-not-covered"></ul>
         </details>
