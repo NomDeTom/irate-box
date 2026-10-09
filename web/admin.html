@@ -464,15 +464,17 @@
           </label>
           <label>Check for updates
             <select name="check_every_hours">
-              <option value="0">only when asked</option><option value="6">every 6 hours</option>
-              <option value="24">daily</option><option value="168">weekly</option>
+              <option value="0" data-says="The librarian only looks when you ask.">Manual only</option>
+              <option value="6" data-says="The librarian looks every 6 hours.">6 hours</option>
+              <option value="24" data-says="The librarian looks once a day.">24 hours</option>
+              <option value="168" data-says="The librarian looks once a week.">7 days</option>
             </select>
           </label>
           <label>When a check finds something newer
             <select name="auto_install">
-              <option value="0">only note it (update from Apps or Books)</option>
-              <option value="1">download and check it, ready to update</option>
-              <option value="2">put it in use</option>
+              <option value="0" data-says="Only noted: update from Apps or Books.">Flag</option>
+              <option value="1" data-says="Downloaded and checked, ready for you to update.">Fetch</option>
+              <option value="2" data-says="Downloaded, checked and put in use.">Auto-install</option>
             </select>
           </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
