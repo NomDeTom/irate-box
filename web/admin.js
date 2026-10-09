@@ -667,7 +667,8 @@ const actionButton = (label, onclick, extra = {}) =>
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };
-const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Start at boot', disable: "Don't start at boot" };
+const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Enable', disable: 'Disable' };
+const OP_TITLE = { enable: 'Start at boot', disable: "Don't start at boot" };  // Tom, 2026-10-09: the buttons say Enable / Disable
 let boxPoll = null;
 let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
 const controlNote = noteEl('control-note');
@@ -733,7 +734,7 @@ function renderBox(data) {
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
       el('td', {}, serviceStrips(s, data.service_uptime)),
       el('td', {}, el('span', { className: 'library-buttons' },
-        ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op)))))),
+        ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op), OP_TITLE[op] ? { title: OP_TITLE[op] } : {}))))),
     );
   });
   document.querySelector('#service-table tbody').replaceChildren(...rows);
