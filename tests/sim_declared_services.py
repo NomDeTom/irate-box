@@ -77,7 +77,8 @@ calls = []
 def fake(*cmd, timeout=60, **kw):
     calls.append(cmd)
     if cmd[:2] == ("systemctl", "--failed"):
-        return subprocess.CompletedProcess(cmd, 0, "homeassistant.service loaded failed failed Home Assistant\nirate-box.service loaded failed failed hub\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "homeassistant.service loaded failed failed Home Assistant\nirate-box.service loaded failed failed hub\n"
+                                           "meshtasticd.service loaded failed failed Meshtastic Daemon\n", "")
     if cmd[:2] == ("systemctl", "show"):
         return subprocess.CompletedProcess(cmd, 0, "LoadState=loaded\nActiveState=active\nSubState=running\nResult=success\nUnitFileState=enabled\n", "")
     return subprocess.CompletedProcess(cmd, 0, "", "")
@@ -89,6 +90,10 @@ check("  a failed service of the owner's: its own finding, why, and Start it aga
       [f["id"] for f in other] == ["other-failed:homeassistant.service"] and "journalctl -u homeassistant.service" in other[0]["fix"]
       and other[0]["actions"][0]["choice"] == "other-restart:homeassistant.service" and other[0]["actions"][0].get("confirm"), other)
 check("  the hub's own failed unit is not among them", not any("irate-box.service" in f["id"] for f in other))
+watched = [f for f in out if f["id"].startswith("watched-failed:")]
+check("a watched package's failed service (meshtasticd): said as itself, with where its builds are chosen, and Start it again",
+      [f["id"] for f in watched] == ["watched-failed:meshtasticd.service"] and "Packages from their makers" in watched[0]["fix"]
+      and watched[0]["actions"][0]["choice"] == "other-restart:meshtasticd.service" and not any("meshtasticd" in f["id"] for f in other), watched)
 calls.clear()
 said = health.fix("other-restart:homeassistant.service")
 check("  Start it again: its failed mark cleared, then started", ("systemctl", "reset-failed", "homeassistant.service") in calls
