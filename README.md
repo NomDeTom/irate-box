@@ -127,6 +127,7 @@ The Python is one package, `irate_box/`, in three parts by who runs it. `hub/` i
 | `zimcheck.py` | Is a file a whole book Kiwix can read? The ZIM header (signature, format version, length against the header: a truncated download shows here) and then `kiwix-manage` on a scratch library. The librarian (downloads, rollbacks), the USB import (on the stick, then the copy) and the doctor all ask it before a book is put in place. Stdlib only. |
 | `selfupdate.py` | The hub's own automatic updates, one step per run of the librarian's timer: check, then (as the owner chose) fetch and verify, then install inside the owner's hours with nobody on the hub, each asked of the root helper as the Updates buttons ask. Stdlib only. |
 | `adapt_tools.py` | The adapt step for the calculators tracked from git: the hub's palette (`web/tools-hub.css`) after each page's own styles, and a manifest entry for each new page. Run by the librarian, and by `install.sh` on bundled tools. Stdlib only. |
+| `sbdocs.py` | SilverBullet's own manual in the notes space, under `SilverBullet/`, so the links its starting page offers open offline: the repository's `docs/` at the release's commit (fetched by git, packed reproducibly, pinned in `install.sh`), its links pointed at the copy, its `space-lua` and `space-style` blocks shown rather than run, the site's configuration left out, Syncthing told to leave it out. Replaced whole when SilverBullet's version changes. Run by `install.sh` as the hub user. Stdlib only. |
 
 ### `irate_box/root/` (root only)
 
