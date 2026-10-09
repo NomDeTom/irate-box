@@ -620,47 +620,52 @@ function pkgCard(id, p) {
   const s = p.settings, label = (ch) => (p.labels || {})[ch] || ch;
   const builds = p.builds || [];
   const onChannel = builds.filter((b) => b.channel === s.channel);
-  const newest = onChannel.length ? onChannel[onChannel.length - 1] : null;
+  const kept = onChannel.length ? onChannel[onChannel.length - 1] : null;
+  // A flagged build (mode Flag) is known but not downloaded; it is the newest when there is one.
+  const flag = p.flagged && p.flagged.version !== (kept || {}).version ? { ...p.flagged, channel: s.channel, flagged: true } : null;
+  const newest = flag || kept;
   const ageOf = (b) => ago(Date.now() / 1000 - b.first_seen);
+  const looking = s.mode === 'flag' || s.mode === 'watch';
   const lines = [
     p.installed ? `Installed: ${p.installed}.` : 'Not installed.',
     p.image ? (p.image.channels.length === 1 ? `${p.image.name} lists ${label(p.image.channels[0])}.`
       : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
         : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
-    newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}.` : 'Not checked yet.',
-    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (Flag only: press Install to install it).' : ', at the next check.')
+    newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}`
+      + (newest.flagged ? ' (not downloaded: Fetch keeps it here, Install fetches it first).' : '.') : 'Not checked yet.',
+    p.due ? `Due: ${p.due}` + (looking ? ' (nothing installs by itself: press Install to install it).' : ', at the next check.')
       : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
-        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Install installs it anyway.' : null,
+        + (looking ? '' : 'nothing installs by itself until that channel passes it; ') + 'Install installs it anyway.' : null,
     s.mode === 'aged' ? `apt upgrade leaves it alone while it waits (${p.held ? 'held' : 'not held yet'}).` : null,
     p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
   ];
-  const kept = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
+  const keptList = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
     el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
-  // Item 36's pattern: how often to look, and Flag or Install (each build is kept when first seen, so
-  // fetching is part of every look), Install with a wait (Tom, 2026-10-08: "alpha/nightly after a certain
-  // period of time"): at once is the old Automatic, a wait the old After a while.
-  const act = s.mode === 'watch' ? 0 : 2, wait = s.mode === 'aged' ? s.days : 0;
-  const pat = (list) => list.filter(([v]) => v !== '1').map(([v, t]) => [Number(v), t]);
+  // The update pattern's three steps: Flag (mode flag), Fetch (mode watch: each build kept when first seen),
+  // Install at once (auto) or after a wait (aged).
+  const act = { flag: 0, watch: 1 }[s.mode] ?? 2, wait = s.mode === 'aged' ? s.days : 0;
+  const pat = (list) => list.map(([v, t]) => [Number(v), t]);
   const settings = AW.settings([
     { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
     { key: 'every', label: 'How often to look', kind: 'choice', value: s.every ?? 24, options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]) },
     { key: 'act', label: 'When something newer is found', kind: 'choice', value: act, options: pat(AW.UPDATE_ACT),
-      note: 'Each new build is downloaded and kept when first seen (so Roll back works offline): Flag says so, Install also installs it' },
+      note: 'Flag says so and downloads nothing; Fetch also downloads and keeps each new build, so Roll back works offline; Install also installs it' },
     { key: 'wait', label: 'Install', kind: 'choice', value: wait, options: [[0, 'at once']].concat((p.days || [1, 3, 7, 14, 30]).map((n) => [n, `after ${n} day${n === 1 ? '' : 's'}`])),
       note: 'With Install: a build waits until it has been out this long (alpha and nightly builds are untested)' },
   ], { save: (v) => {
     const all = { channel: s.channel, every: s.every ?? 24, act, wait, ...v };
-    const mode = all.act === 0 ? 'watch' : all.wait ? 'aged' : 'auto', days = all.wait || s.days;
+    const mode = all.act === 0 ? 'flag' : all.act === 1 ? 'watch' : all.wait ? 'aged' : 'auto', days = all.wait || s.days;
     return pkgAct({ action: 'settings', package: id, channel: all.channel, mode, days, every: all.every },
-      mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
+      mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
         + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
   } });
   return el('div', { className: 'setting library-source' }, el('span', {},
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
-    kept, settings,
+    keptList, settings,
     el('span', { className: 'library-buttons' },
       actionButton('Check now', () => pkgAct({ action: 'check', package: id })),
+      flag ? actionButton(`Fetch ${flag.version}`, () => pkgAct({ action: 'fetch', package: id })) : null,
       newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
       p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));

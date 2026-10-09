@@ -38,7 +38,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       Guests' onward internet (share.py): the one ruleset with the floor (firewall.apply_all), IPv4
       forwarding and the guests' resolver made to agree; off takes it all back. The level and the
       containment in control/share.json.
-  {"id": ..., "action": "pkg-check", "package": "meshtasticd"?} | "pkg-install" (+ "version") | "pkg-rollback"
+  {"id": ..., "action": "pkg-check", "package": "meshtasticd"?} | "pkg-fetch" | "pkg-install" (+ "version") | "pkg-rollback"
       | "pkg-settings" (+ "channel", "mode": watch|auto|aged, "days", "every": 0|6|24|168 hours)
       Packages from their makers' channels (pkgwatch.py): checked, cached, installed, rolled back; the
       owner's channel and mode (on an image with its own tool, mpwrd-menu, its channel written its way).
@@ -2495,6 +2495,12 @@ def pkg_check(req):
     return "; ".join(pkgwatch.check(i, log=lambda *a: None) for i in ids) or "no watched package is on this box"
 
 
+def pkg_fetch(req):
+    """The channel's newest build downloaded into the cache, whatever the mode; nothing installed."""
+    from irate_box.root import pkgwatch
+    return pkgwatch.check(str(req.get("package", "")), log=lambda *a: None, fetch=True)
+
+
 def pkg_install(req):
     from irate_box.root import pkgwatch
     return pkgwatch.install(str(req.get("package", "")), str(req.get("version", "")), log=lambda *a: None)
@@ -2687,7 +2693,7 @@ ACTIONS = {"service": service, "password": password,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
+           "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

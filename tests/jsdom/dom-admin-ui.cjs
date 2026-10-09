@@ -96,6 +96,11 @@ w.fetch = async (u, opts = {}) => {
     left_out: { books: 3000000000, firmware: 700000000 }, image: { card: 32e9, used: 6.5e9 }, hub: 95000000,
     books: [{ name: 'wikipedia_en', size: 2800000000 }, { name: 'gutenberg', size: 200000000 }], kits: [{ id: 'build', title: 'Building', size: 25000000 }],
     repos: [{ name: 'firmware', area: 'public', mirror: true, size: 27000000 }, { name: 'notes', area: 'private', mirror: false, size: 30000 }] }), { status: 200 });
+  // A watched package on Flag: the newest build known, not downloaded.
+  if (u === '/admin/packages') return new Response(JSON.stringify({ results: [], packages: { meshtasticd: { title: 'meshtasticd', package: 'meshtasticd',
+    channels: ['beta', 'daily'], labels: { daily: 'Nightly' }, settings: { channel: 'daily', mode: 'flag', days: 7, every: 24 }, installed: '2.8.0.1',
+    previous: null, newer: '2.8.1.9', flagged: { version: '2.8.1.9', first_seen: 1790940000, size: 4e6 },
+    builds: [{ version: '2.8.0.1', channel: 'daily', first_seen: 1790000000, size: 4e6 }], due: null, checked: 1790949000, history: [], held: false } } }), { status: 200 });
   if (u === '/admin/usb') return new Response(JSON.stringify({ scan: { devices: [{ name: 'sda1', label: 'STICK', fstype: 'vfat', size: '16000000000', zims: [] }] },
     progress: null, pending: 0, results: [], books: [] }), { status: 200 });
   return new Response('{}', { status: 404 });
@@ -239,6 +244,13 @@ setTimeout(() => {
   lv[2].querySelector('input').click();
   check('  the full image: no download, a stick to choose instead', d.getElementById('backup-go-box').hidden && !d.getElementById('backup-image-box').hidden);
   check('  the full image: the download keeps the last real level, never a size of nothing', /about 0\.1 MB|about 117/.test(t('#backup-go')[0]) && !/0 MB\)|unknown/.test(t('#backup-go')[0].replace(/0\.1 MB/, '')), t('#backup-go')[0]);
+  const pk = d.querySelector('#pkg-list .library-source');
+  const pkChips = pk ? [...pk.querySelectorAll('.chip')].map((c) => c.textContent + (c.classList.contains('selected') || c.getAttribute('aria-pressed') === 'true' ? '*' : '')) : [];
+  check('packages: Flag, Fetch and Install offered, Flag chosen', ['Flag*', 'Fetch', 'Install'].every((x) => pkChips.includes(x)), pkChips);
+  check('  the flagged build said as not downloaded; Fetch and Install offered for it', pk && /2\.8\.1\.9, first seen .*not downloaded/.test(pk.textContent)
+    && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Fetch 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
+  [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Fetch 2.8.1.9')?.click();
+  check('  Fetch asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
   check('new box: books, toolkits and repositories offered with their sizes, mirrors marked', kb.querySelectorAll('input').length === 2 && /wikipedia_en \(2\.6 GB\)/.test(kb.textContent)
     && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);

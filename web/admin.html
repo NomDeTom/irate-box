@@ -1200,7 +1200,7 @@
         <div class="findings" id="updates-security"></div>
         <form id="debian-pattern" class="library-form">
           <div data-update-pattern data-often="often" data-act="act"
-            data-says-0="Said here and on the badge; you fetch or install them."
+            data-says-0="Said here and on the badge; only apt's lists of what is new are downloaded. You fetch or install them."
             data-says-1="Also downloaded (apt's cache), ready for you to install."
             data-says-2="Also installed (unattended-upgrades, from Debian's security archive)."
             data-often-says-0="Only when you press Check now; what it finds is taken as far as chosen below."></div>
@@ -1217,6 +1217,7 @@
         </p>
         <form id="auto-form" class="library-form">
           <div data-update-pattern data-often="hub_check_every_hours" data-act="hub_auto"
+            data-says-0="Said here and on the badge; only the new version's source is fetched, to read what changed."
             data-says-2="Also installed, inside the hours below, with nobody on the hub (it restarts)."></div>
           <label class="inline" id="auto-window">Install between
             <select name="hub_window_start"></select> and <select name="hub_window_end"></select>

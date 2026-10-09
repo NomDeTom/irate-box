@@ -17,8 +17,10 @@ only its newest build, so this cache is what lets "after N days" install a build
 that long once a newer one has replaced it, and what makes Roll back work offline.
 
 The owner's mode (the box doctor's sense of consent: nothing changes the box until chosen):
-  watch    checks and says what's newer on the channel; the box's own apt carries on as before
-           (the default)
+  flag     checks and says what's newer on the channel; nothing is downloaded (flagged.json notes
+           the build and when it was first seen). Fetch or Install downloads it.
+  watch    shown as Fetch: as flag, and each new build is also downloaded into the cache, so Roll back
+           works offline (the default); the box's own apt carries on as before
   auto     installs each new build on the channel as it's seen
   aged     installs the newest build that has been out at least the chosen number of days
 With aged, apt's preferences keep the box's own `apt upgrade` from taking the package from the
@@ -55,7 +57,7 @@ PUBLIC = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "control" / "pk
 PREFS = Path(os.environ.get("HUB_APT_PREFS_DIR", "/etc/apt/preferences.d"))
 OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
 IMAGE_ROOT = Path(os.environ.get("HUB_IMAGE_ROOT", "/"))   # where an image's own files are (tests move it)
-MODES = ("watch", "auto", "aged")
+MODES = ("flag", "watch", "auto", "aged")
 DAYS = (1, 3, 7, 14, 30)
 # How often the librarian asks for a check (item 36's pattern: hours, 0 only when Check now is pressed).
 EVERY = (0, 6, 24, 168)
@@ -197,8 +199,13 @@ def seen(pid):
     return _json(_dir(pid) / "seen.json", {})
 
 
-def check(pid, now=None, log=print):
-    """The channel read, a new build cached, and installed if the owner's mode says so."""
+def flagged(pid):
+    return _json(_dir(pid) / "flagged.json", {})
+
+
+def check(pid, now=None, log=print, fetch=False):
+    """The channel read, a new build cached (unless the mode is flag), and installed if the owner's mode
+    says so. fetch: download the newest build whatever the mode, and install nothing."""
     now = now or time.time()
     d, s = _def(pid), settings(pid)
     root = _dir(pid)
@@ -213,9 +220,14 @@ def check(pid, now=None, log=print):
     if r.returncode:
         raise ValueError("apt-get update: " + ((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:200])
     top = _index(pid, d["package"])
-    got = seen(pid)
+    got, flags = seen(pid), flagged(pid)
     said = []
-    if top and top["version"] not in got:
+    if top and top["version"] not in got and s["mode"] == "flag" and not fetch:
+        if top["version"] not in flags:
+            flags[top["version"]] = {"first_seen": now, "channel": s["channel"], "size": top["size"]}
+            said.append(f"{top['version']} new on {s['channel']} (flagged, not downloaded)")
+            log(f"{pid}: {said[-1]}")
+    elif top and top["version"] not in got:
         r = run(["apt-get", *_apt(pid), "download", "-q", f"{d['package']}={top['version']}"], cwd=str(root / "debs"))
         # Named as the index names it (apt may date the file by the server's clock, so not the newest by time).
         name = top["filename"].rsplit("/", 1)[-1]
@@ -223,13 +235,15 @@ def check(pid, now=None, log=print):
         f = f if f and f.is_file() else None
         if r.returncode or not f or (top["sha256"] and sha256(f) != top["sha256"]):
             raise ValueError(f"{top['version']} did not download whole: " + ((r.stderr or "").strip().splitlines() or ["?"])[-1][:200])
-        got[top["version"]] = {"first_seen": now, "file": f.name, "sha256": sha256(f), "channel": s["channel"], "size": f.stat().st_size}
+        first = flags.pop(top["version"], {}).get("first_seen", now)
+        got[top["version"]] = {"first_seen": first, "file": f.name, "sha256": sha256(f), "channel": s["channel"], "size": f.stat().st_size}
         said.append(f"{top['version']} new on {s['channel']}")
         log(f"{pid}: {said[-1]}")
     _prune(pid, got, installed(d["package"]))
     _write(root / "seen.json", got)
+    _write(root / "flagged.json", {v: e for v, e in flags.items() if top and v == top["version"] and v not in got})
     target = due(pid, now)
-    if target and s["mode"] in ("auto", "aged"):
+    if target and s["mode"] in ("auto", "aged") and not fetch:
         said.append(install(pid, target, log=log))
     publish(pid, now)
     return "; ".join(said) or f"{d['package']}: nothing new on {s['channel']}"
@@ -268,6 +282,9 @@ def install(pid, version, log=print):
     if not VERSION_RE.match(str(version)):
         raise ValueError("not a version")
     e = seen(pid).get(version)
+    if not e and version in flagged(pid):
+        check(pid, log=log, fetch=True)   # a flagged build: fetched first
+        e = seen(pid).get(version)
     f = _dir(pid) / "debs" / (e or {}).get("file", "-")
     if not e or not f.is_file() or sha256(f) != e["sha256"]:
         raise ValueError(f"{version} is not in the cache (Check first)")
@@ -322,7 +339,8 @@ def set_settings(pid, channel, mode, days, every=None):
                              f"# ({d['title']}, /admin), on the channel the owner chose, not by apt upgrade.\n"
                              f"Package: {d['package']}\nPin: origin \"{host}\"\nPin-Priority: -1\n")
     publish(pid)
-    words = {"watch": "watched: newer builds said, nothing installed by itself",
+    words = {"flag": "flagged: newer builds said, nothing downloaded or installed by itself",
+             "watch": "fetched: each newer build downloaded and kept, nothing installed by itself",
              "auto": "each new build installed as it's seen",
              "aged": f"the newest build installed once it has been out {days} day{'s' if days != 1 else ''}"}[mode]
     return f"{d['package']} on {channel}: {words}" + (f"; {switched}" if switched else "")
@@ -371,11 +389,15 @@ def publish(pid, now=None):
     for v, e in got.items():
         if e.get("channel") == s["channel"] and newer(v, top):
             top = v
+    flag = next(((v, e) for v, e in flagged(pid).items() if e.get("channel") == s["channel"]), None)
+    if flag and newer(flag[0], top):
+        top = flag[0]
     pub[pid] = {"title": d["title"], "package": d["package"], "channels": list(d["channels"]), "settings": s,
                 "installed": have, "previous": rec.get("previous"),
                 "newer": top if top and newer(top, have) else None,
                 "builds": [{"version": v, "channel": e["channel"], "first_seen": e["first_seen"], "size": e.get("size")}
                            for v, e in sorted(got.items(), key=lambda x: x[1]["first_seen"])],
+                "flagged": {"version": flag[0], "first_seen": flag[1]["first_seen"], "size": flag[1].get("size")} if flag else None,
                 "due": due(pid, now), "checked": now or pub.get(pid, {}).get("checked"), "history": rec.get("history", [])[-5:],
                 "held": pref_path(d).exists(), "modes": list(MODES), "days": list(DAYS), "every": list(EVERY),
                 "labels": d.get("labels", {}), "image": {"name": d["image"]["name"], "channels": image_channels(d)} if has_image_tool(d) else None}
