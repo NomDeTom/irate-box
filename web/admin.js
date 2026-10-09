@@ -209,7 +209,7 @@ function sourceRow(src, st, busy) {
   const fetched = st.fetched && st.fetched.version === latest.version ? st.fetched : null;
   return el('div', { className: 'setting library-source' },
     el('span', {},
-      el('span', { className: 'setting-name', textContent: `${src.name}.zim` }),
+      el('span', { className: 'setting-name' }, `${src.name}.zim `, AW.updatePill(st.last_check, newer, !!st.error)),
       el('span', { className: 'setting-desc', textContent: `${src.type}: ${where(src)}` }),
       el('span', { className: 'setting-desc',
         textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : 'Not installed by the librarian yet' }),
@@ -265,7 +265,8 @@ function renderApps(snap, busy) {
       st.error || null,
     ];
     return el('div', { className: 'setting library-source' }, el('span', {},
-      el('span', { className: 'setting-name', textContent: a.title }),
+      // Only an app with a source is checked for updates; one with none is said so below.
+      el('span', { className: 'setting-name' }, a.title, src ? ' ' : null, src ? AW.updatePill(st.last_check, newer, !!st.error) : null),
       withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
@@ -623,7 +624,7 @@ function pkgCard(id, p) {
     v.mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(v.channel)} by itself${v.mode === 'aged' ? ` once they have been out ${v.days} day${v.days === 1 ? '' : 's'}` : ''}? `
       + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null) });
   return el('div', { className: 'setting library-source' }, el('span', {},
-    el('span', { className: 'setting-name', textContent: p.title }),
+    el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
     kept, settings,
     el('span', { className: 'library-buttons' },
@@ -1035,16 +1036,16 @@ function renderUpdate(data) {
   const fetched = found && !!(s.checks && s.checks.length);
   const ready = found && s.verified === s.available;
   if (!s) {
-    upd.summary.textContent = 'Not checked yet.';
+    upd.summary.replaceChildren(AW.updatePill(null, false), ' Not checked yet.');
   } else {
     const when = new Date(s.fetched * 1000).toLocaleString();
-    upd.summary.textContent = s.up_to_date
+    upd.summary.replaceChildren(AW.updatePill(s.fetched, found), ' ', s.up_to_date
       ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
       : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
         (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
         `. Checked ${when}. ` + (ready ? 'Fetched and verified, and its downloads are cached: ready to install.'
           : fetched ? 'It did not pass verification (below), so it cannot be installed.'
-          : 'Fetch it to verify it and download what it needs.');
+          : 'Fetch it to verify it and download what it needs.'));
   }
   const checks = (fetched && s.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
@@ -1246,6 +1247,7 @@ function findingRow(r) {
     el('div', { className: 'fhead' },
       el('span', { className: `fstate fstate-${state}`, textContent: STATE_WORD[state] || state }),
       el('h4', { className: 'ftitle', textContent: r.title }),
+      r.badge || null,
       r.meta ? el('span', { className: 'fmeta', textContent: r.meta }) : null),
     r.detail ? el('p', { className: 'fdetail', textContent: r.detail }) : null,
     (r.how || (r.controls || []).length) ? el('div', { className: 'fdo' },
@@ -1307,8 +1309,12 @@ function renderSecurity(data) {
   // Debian's security updates, on Updates.
   // Automatic security updates come with the System toolkit (#154): its link beside the words.
   const toKit = (f) => (f.id === 'unattended' && f.status !== 'ok' ? [el('a', { className: 'action-btn go-btn', href: '#toolkits', textContent: 'Go to Toolkits → System →' })] : []);
+  // Its badge (up to date / update available) is as fresh as the package lists it was read from.
+  // Lists of unknown age say nothing either way, unless updates are waiting.
+  const updBadge = (f) => (f.id !== 'security-updates' || (f.lists_age_days == null && f.status === 'ok') ? null
+    : AW.updatePill(Date.now() / 1000 - (f.lists_age_days || 0) * 86400, f.status !== 'ok'));
   noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix,
-    controls: [...scanButtons(f, busy), ...toKit(f)] }))
+    controls: [...scanButtons(f, busy), ...toKit(f)], badge: updBadge(f) }))
     : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;

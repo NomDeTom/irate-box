@@ -40,6 +40,21 @@ const AW = (() => {
     const t = tone || (BAD.test(text) ? 'bad' : WARN.test(text) ? 'warn' : OK.test(text) ? 'ok' : 'info');
     return h('span', { class: t + '-pill', text });
   }
+  // What a check for updates found, as one badge wherever updates are checked (Tom, 2026-10-09):
+  // "update available" when one is; "up to date" only when that was found within RECENT_DAYS; an
+  // older look says how old it is, as nothing newer it found then still holds.
+  // checked: when it last looked, epoch seconds or an ISO string; available: whether it found one;
+  // failed: its last look failed, so it found nothing either way.
+  const RECENT_DAYS = 7;
+  function updatePill(checked, available, failed) {
+    if (available) return h('span', { class: 'warn-pill update-pill', text: 'update available' });
+    if (failed) return h('span', { class: 'bad-pill update-pill', text: 'check failed' });
+    const at = typeof checked === 'string' ? Date.parse(checked) / 1000 : checked;
+    if (!at) return h('span', { class: 'info-pill update-pill', text: 'not checked yet' });
+    const days = Math.floor((Date.now() / 1000 - at) / 86400);
+    return days < RECENT_DAYS ? h('span', { class: 'ok-pill update-pill', text: 'up to date', title: 'Checked within the last week; nothing newer found' })
+      : h('span', { class: 'info-pill update-pill', text: `checked ${days} days ago`, title: 'Nothing newer then; check again to be sure' });
+  }
   const scopeOf = (node) => node.closest('.admin-pane, [data-aw-scope]') || document.body;
 
   // ---- A filter bar (3f) over any list whose rows carry data-text and data-tags ----
@@ -377,7 +392,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, updatePill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
