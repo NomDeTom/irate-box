@@ -155,7 +155,8 @@ HUB_SETUP = ("The hub's own setup is not as its installer leaves it. Running the
 DO = [
     ("*", r"^(page-)?firewall$", {"go": "sec-firewall", "where": "Security → What a guest on the hotspot can reach"}),
     ("*", r"^tls|^accounts-http$", {"go": "security-https", "where": "Security → HTTPS"}),
-    ("*", r"^(page-)?(security-updates|unattended)$|^debsecan-(?!kit-|data$|tool$|unfixed$)", {"go": "updates-debian", "where": "Updates → Debian's security updates"}),
+    ("*", r"^(page-)?unattended$", {"go": "toolkits", "where": "Toolkits → System (it sets them up)"}),
+    ("*", r"^(page-)?security-updates$|^debsecan-(?!kit-|data$|tool$|unfixed$)", {"go": "updates-debian", "where": "Updates → Debian's security updates"}),
     ("debian-cis", r"^cis-1\.9", {"go": "updates-debian", "where": "Updates → Debian's security updates"}),
     ("*", r"^debsecan-(kit-|data$|tool$)|^offline-(kits|lists)$", {"go": "toolkits", "where": "Toolkits"}),
     ("*", r"^offline-bundle$", {"go": "backup-kit", "where": "Updates and backup → Set up another box"}),

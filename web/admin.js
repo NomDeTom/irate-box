@@ -1305,7 +1305,10 @@ function renderSecurity(data) {
   sec.hub.replaceChildren(...data.hub.map((f) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
     how: (f.do && f.do.hub) || f.fix || '', controls: f.do && f.do.go ? [el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })] : [] })));
   // Debian's security updates, on Updates.
-  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix }))
+  // Automatic security updates come with the System toolkit (#154): its link beside the words.
+  const toKit = (f) => (f.id === 'unattended' && f.status !== 'ok' ? [el('a', { className: 'action-btn go-btn', href: '#toolkits', textContent: 'Go to Toolkits → System →' })] : []);
+  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix,
+    controls: [...scanButtons(f, busy), ...toKit(f)] }))
     : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
