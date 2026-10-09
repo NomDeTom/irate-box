@@ -1,0 +1,1922 @@
+{
+ "saved": "the Lyra, /admin/security at 2026-10-09 01:57 (main @ f9333c8); doctor run 00:45, deep audit 2026-10-06, scan 01:41. Scrubbed: the sudo account, the LAN address, the link-local address.",
+ "at": 1791510013.6262753,
+ "steps": [
+  {
+   "id": "notes",
+   "title": "Notes add-on",
+   "ref": "F1",
+   "findings": [
+    {
+     "id": "notes-shell",
+     "title": "Notes: server-side shell",
+     "status": "ok",
+     "detail": "Off (SB_SHELL_BACKEND=off); the front refuses /notes/.shell as well; the add-on is running.",
+     "fix": "",
+     "ref": "F1",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "notes-proxy",
+     "title": "Notes: HTTP proxy to the hub's loopback API",
+     "status": "ok",
+     "detail": "SilverBullet has no IP networking, and the web server refuses /notes/.proxy.",
+     "fix": "",
+     "ref": "F31",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "notes-login",
+     "title": "Notes: no login",
+     "status": "warn",
+     "detail": "Anyone who can open the hub can read and change the notes, and notes can carry scripts (Space Lua, widgets) that run in each reader's browser (on the notes' own address, apart from /admin).",
+     "fix": "Choose who may open Notes (Apps): users with an account, or you alone; or leave it open if the notes are meant for everyone.",
+     "ref": "F1/S4",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "firewall",
+   "title": "The network floor",
+   "ref": "",
+   "findings": [
+    {
+     "id": "firewall",
+     "title": "The network floor",
+     "status": "problem",
+     "detail": "The hotspot is up and no floor is loaded: a guest on the hotspot reaches every listener on the box (SSH, Syncthing, MQTT, Tailscale, the rest).",
+     "fix": "Security → What a guest on the hotspot can reach: switch the floor on.",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "firewall"
+     },
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "front",
+   "title": "The web server in front",
+   "ref": "F2 F15 F24 F27",
+   "findings": [
+    {
+     "id": "front-keepalive",
+     "title": "Kept-alive connections to the hub",
+     "status": "ok",
+     "detail": "nginx keeps connections open (keepalive 8) and the hub drains request bodies.",
+     "fix": "",
+     "ref": "F2",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "front-body",
+     "title": "Request size limit",
+     "status": "ok",
+     "detail": "1m server-wide.",
+     "fix": "",
+     "ref": "F15",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "front-xff",
+     "title": "X-Forwarded-For",
+     "status": "ok",
+     "detail": "Set to the connecting address only.",
+     "fix": "",
+     "ref": "F24",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "front-admin",
+     "title": "/admin login",
+     "status": "ok",
+     "detail": "The front asks for the login on /admin. (Whether the hub refuses /admin that did not come through it: the next step, '/admin from inside the box'.)",
+     "fix": "",
+     "ref": "F27",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "front-csp",
+     "title": "A Content-Security-Policy on the hub's origin",
+     "status": "ok",
+     "detail": "Set server-wide (no plugins, no <base> hijack, framed by this origin alone).",
+     "fix": "",
+     "ref": "S4",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "admin-gate",
+   "title": "/admin from inside the box",
+   "ref": "F27 F31 S3",
+   "findings": [
+    {
+     "id": "admin-loopback",
+     "title": "/admin only through the front",
+     "status": "ok",
+     "detail": "Straight to the hub's port with no word from the front: 403.",
+     "fix": "",
+     "ref": "F27",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "admin-csrf",
+     "title": "/admin changes need the /admin page's header",
+     "status": "ok",
+     "detail": "A POST with the front's secret but no X-Irate-Admin: 403.",
+     "fix": "",
+     "ref": "S3",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "web-addons",
+   "title": "Web add-ons",
+   "ref": "",
+   "findings": [
+    {
+     "id": "addons-files",
+     "title": "Web add-ons' files",
+     "status": "ok",
+     "detail": "Plain files and folders only, in /var/lib/hub/addons.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "addons-origin",
+     "title": "The add-on origin",
+     "status": "ok",
+     "detail": "Serves none of the hub's pages (/admin/settings: 404).",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "origins",
+   "title": "Which origin each app is on",
+   "ref": "S4",
+   "findings": [
+    {
+     "id": "origin-notes",
+     "title": "Notes (SilverBullet): an origin of its own",
+     "status": "ok",
+     "detail": "Port 8091; the hub is on 80.",
+     "fix": "",
+     "ref": "S4",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "origin-wiki",
+     "title": "Kiwix's books: an origin of its own",
+     "status": "ok",
+     "detail": "Port 8092; the hub is on 80.",
+     "fix": "",
+     "ref": "S4",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "origin-git",
+     "title": "cgit and pushed content: an origin of its own",
+     "status": "ok",
+     "detail": "Port 8093; the hub is on 80.",
+     "fix": "",
+     "ref": "S4",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "folders",
+   "title": "Links and root-written files in hub-owned folders",
+   "ref": "F3 F4 F5 F13",
+   "findings": [
+    {
+     "id": "folders-control",
+     "title": "Root's output folders",
+     "status": "ok",
+     "detail": "control/ and control/results/ are root-owned.",
+     "fix": "",
+     "ref": "F3/F13",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "folders-links",
+     "title": "Links inside the hub's folders",
+     "status": "ok",
+     "detail": "None in control/, zim/, library/, firmware/, git/, ci/ or notes/ (top levels) that leads out of its folder (1 that stays inside it, as a git checkout's do).",
+     "fix": "",
+     "ref": "F3/F4/F5",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "code",
+   "title": "Installed code and allow-lists",
+   "ref": "F3 F6 F20",
+   "findings": [
+    {
+     "id": "code-owner",
+     "title": "Installed code",
+     "status": "ok",
+     "detail": "Everything under /opt/irate-box is root-owned and not group/world-writable.",
+     "fix": "",
+     "ref": "F3",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "code-root-dir",
+     "title": "Root-only modules",
+     "status": "ok",
+     "detail": "/opt/irate-box/irate_box/root is readable by root alone.",
+     "fix": "",
+     "ref": "F3",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "code-syncthing",
+     "title": "Restart allow-list",
+     "status": "ok",
+     "detail": "Syncthing instances are not open-ended in OUR_UNIT.",
+     "fix": "",
+     "ref": "F6",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "code-cors",
+     "title": "CORS on the store",
+     "status": "ok",
+     "detail": "No wildcard Access-Control-Allow-Origin in store.py.",
+     "fix": "",
+     "ref": "F20",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "units",
+   "title": "Unit sandboxing and the build unit",
+   "ref": "F8 F19",
+   "findings": [
+    {
+     "id": "units-root",
+     "title": "Root units with a sandbox line missing",
+     "status": "warn",
+     "detail": "irate-box-ap-dns (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-ap (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-control (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-crashwatch (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-firewall (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-secdoctor (missing ProtectProc=invisible), irate-box-tailscale-boot (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-tailscale (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-uplink (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), irate-box-visitors-switch (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), mosquitto (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible), ttyd (missing ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible): a flaw in a root unit is root with nothing in between, and each line missing is one more thing the flaw can reach.",
+     "fix": "ProtectSystem=strict with real ReadWritePaths, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible; narrow CapabilityBoundingSet and SystemCallFilter where possible.",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "units-hub",
+     "title": "Guest-reachable units with a bare sandbox",
+     "status": "warn",
+     "detail": "irate-box-ci (keeps capabilities: cap_chown cap_dac_override cap_dac_read_search cap_fowner ca): guest-reachable services (the hub, fcgiwrap with cgit and git-http-backend, add-ons) with few of ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc. The git servers run as the same user as the hub, with write access to the root helper's request queue.",
+     "fix": "Harden the units and give the git servers a user of their own.",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "units-ci-loopback",
+     "title": "Builds can reach the hub on loopback (not /admin)",
+     "status": "warn",
+     "detail": "irate-box-ci.service can connect to 127.0.0.1, so builds reach the hub's guest API, as any guest can; /admin refuses them (it needs the front's secret, which builds cannot read).",
+     "fix": "IPAddressDeny=localhost on the unit, to keep builds off loopback altogether.",
+     "ref": "F8",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "addons",
+   "title": "Add-ons and app services",
+   "ref": "S1 S9 S12 F6",
+   "findings": [
+    {
+     "id": "addon-wiki",
+     "title": "Kiwix",
+     "status": "ok",
+     "detail": "running, as hub; no problem found by the generic checks or its own probe.",
+     "fix": "",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "addon-notes",
+     "title": "Notes (SilverBullet)",
+     "status": "ok",
+     "detail": "running, as hub; no problem found by the generic checks.",
+     "fix": "",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "addon-term",
+     "title": "Terminal (ttyd)",
+     "status": "warn",
+     "detail": "running, as root. Runs as root: a flaw in it is root.",
+     "fix": "run it as an unprivileged or dynamic user",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "addon-sync",
+     "title": "Syncthing",
+     "status": "ok",
+     "detail": "running, as hub; no problem found by the generic checks or its own probe.",
+     "fix": "",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "addon-mqtt",
+     "title": "MQTT broker for Meshtastic",
+     "status": "warn",
+     "detail": "running, as mosquitto. Port 1883 answers on *, 0.0.0.0, not only on loopback: anyone on the network reaches it directly, not through the front's login. Its install consent says: \"The broker answers anyone on the box's network on port 1883, with no login (limited to msh/#). Add it?\". Anonymous clients are allowed, limited by the ACL to msh/#.",
+     "fix": "bind to 127.0.0.1 and route it through the front, unless the network-facing port is the point; an access point's address only, and a password file, once the box is an AP",
+     "ref": "S1 S9",
+     "source": "doctor",
+     "about": {
+      "kind": "service",
+      "key": "tcp/1883"
+     },
+     "accepted": null
+    },
+    {
+     "id": "addon-room",
+     "title": "Live collaboration (whiteboard)",
+     "status": "ok",
+     "detail": "running, as a dynamic user; no problem found by the generic checks.",
+     "fix": "",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "addon-tailscale",
+     "title": "Tailscale",
+     "status": "warn",
+     "detail": "running, as root. Little sandboxing (4 of 4 missing). Logged out: installed but not joined to a tailnet.",
+     "fix": "ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "cmdlines",
+   "title": "Secrets on command lines, /proc",
+   "ref": "F9",
+   "findings": [
+    {
+     "id": "cmdlines-secrets",
+     "title": "Secrets on command lines",
+     "status": "ok",
+     "detail": "None among 37 processes right now. (A password change, install or ttyd start shows one for a moment.)",
+     "fix": "",
+     "ref": "F9",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "cmdlines-proc",
+     "title": "/proc visible to every user",
+     "status": "warn",
+     "detail": "Any local process (a build, a compromised add-on, www-data) can read every command line.",
+     "fix": "Mount /proc with hidepid=2, or ProtectProc=invisible on the untrusted units.",
+     "ref": "F9",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "secrets",
+   "title": "Secrets at rest",
+   "ref": "S13 F30",
+   "findings": [
+    {
+     "id": "secrets-files",
+     "title": "Secret-looking files readable by other users",
+     "status": "warn",
+     "detail": "silverbullet.env in /etc/hub can be read by group or others.",
+     "fix": "Make each readable by root alone (or 640 root:hub where the hub must read it).",
+     "ref": "S13",
+     "source": "doctor",
+     "about": null,
+     "accepted": null,
+     "cmd": "sudo chmod 600 /etc/hub/silverbullet.env"
+    }
+   ]
+  },
+  {
+   "id": "git",
+   "title": "Git servers and pushed content",
+   "ref": "F17 F18",
+   "findings": [
+    {
+     "id": "git-mimetype",
+     "title": "cgit's /plain/ view",
+     "status": "ok",
+     "detail": "Pushed files are served as text, with cgit's own CSP.",
+     "fix": "",
+     "ref": "F17",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "git-public",
+     "title": "Who may push",
+     "status": "ok",
+     "detail": "Every repository's preset is held, and the public ones have their hook.",
+     "fix": "",
+     "ref": "F18",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "accounts",
+   "title": "Sudo rules and accounts",
+   "ref": "",
+   "findings": [
+    {
+     "id": "acct-sudo",
+     "title": "Passwordless sudo rules",
+     "status": "warn",
+     "detail": "claude-temp: owner ALL=(ALL) NOPASSWD: ALL. A '-temp' file is a rule meant to be removed after the work it was added for.",
+     "fix": "Keep each only as long as it is needed: rm /etc/sudoers.d/<file>, then check `sudo -n true` fails.",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "sudo-all"
+     },
+     "accepted": null
+    },
+    {
+     "id": "acct-nopw",
+     "title": "Accounts with an empty password",
+     "status": "ok",
+     "detail": "None with a login shell.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "acct-shells",
+     "title": "Service accounts",
+     "status": "ok",
+     "detail": "The hub and build users have no login shell.",
+     "fix": "",
+     "ref": "F19",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "accounts-hub",
+   "title": "The hub's own accounts and sign-in",
+   "ref": "",
+   "findings": [
+    {
+     "id": "accounts-hash",
+     "title": "Password hashes",
+     "status": "ok",
+     "detail": "Every account's hash is scrypt, at today's strength.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "accounts"
+     },
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "image",
+   "title": "The image underneath (Armbian, mPWRD-OS)",
+   "ref": "",
+   "findings": [
+    {
+     "id": "image-apt-trust",
+     "title": "Repository keys trusted for every repository",
+     "status": "warn",
+     "detail": "Keys in trusted.gpg.d (home_mPWRD_OS.gpg, network_Meshtastic_beta.gpg, network_Meshtastic_daily.gpg) can sign packages for any repository, Debian's included. Sources with no Signed-By of their own: home:mPWRD:OS.list: http://download.opensuse.org/repositories/home:/mPWRD:/OS/Debian_13/, network:Meshtastic:beta.list: http://download.opensuse.org/repositories/network:/Meshtastic:/beta/Debian_13/, network:Meshtastic:daily.list: http://download.opensuse.org/repositories/network:/Meshtastic:/daily/Debian_13/.",
+     "fix": "Move each key to /usr/share/keyrings and name it in its source's Signed-By (or [signed-by=…]); then the key vouches for that repository alone.",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "apt-trust"
+     },
+     "accepted": null
+    },
+    {
+     "id": "image-apt-daily",
+     "title": "A daily or nightly package channel",
+     "status": "warn",
+     "detail": "network:Meshtastic:daily.list: http://download.opensuse.org/repositories/network:/Meshtastic:/daily/Debian_13/ /: whatever its project built last lands on this box at the next upgrade, untested.",
+     "fix": "A release channel (stable or beta), unless the daily one is the point.",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "image-kernel",
+     "title": "A vendor kernel",
+     "status": "warn",
+     "detail": "6.1.115-vendor-rockchip, built 2026-Jul-15: Debian's security tracker does not cover it, so debsecan's view of the box is blind to the kernel, and its fixes arrive only with a new image or kernel package from its maker.",
+     "fix": "Keep the kernel package current from its maker's repository when online (apt list --upgradable | grep linux-image).",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "image-bluetooth",
+     "title": "Bluetooth is on",
+     "status": "warn",
+     "detail": "bluetoothd runs, with a radio the hub does not use: a listener and a stack of its own, reachable by anyone in range.",
+     "fix": "systemctl disable --now bluetooth.service (and rtk-bluetooth.service where there is one); enable --now puts it back.",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "image-ap-profiles",
+     "title": "Access-point profiles not the hub's",
+     "status": "warn",
+     "detail": "Hotspot (encrypted) in NetworkManager's connections: an access point the image set up, which could come up beside or instead of the hub's.",
+     "fix": "Delete each that is not yours (the hub's hotspot is not among them).",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null,
+     "cmd": "sudo nmcli connection delete Hotspot"
+    }
+   ]
+  },
+  {
+   "id": "kernel",
+   "title": "Kernel protections",
+   "ref": "F3 F9",
+   "findings": [
+    {
+     "id": "kernel-links",
+     "title": "Link protections",
+     "status": "ok",
+     "detail": "protected_symlinks and protected_hardlinks are on.",
+     "fix": "They only cover sticky world-writable folders: root's writes in hub-owned folders (F3) are not helped.",
+     "ref": "F3",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "kernel-links"
+     },
+     "accepted": null
+    },
+    {
+     "id": "kernel-info",
+     "title": "Kernel addresses and log readable by everyone",
+     "status": "warn",
+     "detail": "kptr_restrict=0, dmesg_restrict=0.",
+     "fix": "sysctl -w kernel.kptr_restrict=1 kernel.dmesg_restrict=1",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "kernel-info"
+     },
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "debsecan",
+   "title": "Debian's packages against Debian's security tracker (debsecan)",
+   "ref": "",
+   "findings": [
+    {
+     "id": "debsecan-unfixed",
+     "title": "Known vulnerabilities with no fix released yet",
+     "status": "ok",
+     "detail": "163 installed packages have CVEs Debian hasn't fixed yet (listed, not counted): aria2, bison, bluetooth, bluez, bsdextrautils, bsdutils, bzip2, caddy, cockpit, cockpit-bridge, cockpit-networkmanager, cockpit-system, cockpit-ws, cpio, cpp-14, cpp-14-arm-linux-gnueabihf, curl, dnsmasq-base, dracut-install, fdisk…. Tracker data of 2026-10-08.",
+     "fix": "",
+     "ref": "",
+     "source": "debsecan",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "debian-cis",
+   "title": "The CIS benchmark (debian-cis, in the deep audit)",
+   "ref": "",
+   "findings": [
+    {
+     "id": "cis-1.3",
+     "title": "sudo's own log (CIS 1.3)",
+     "status": "warn",
+     "detail": "sudo can keep a log of every command run through it, apart from the journal. Not met here: logfile sudo. (deep audit of 2026-10-06 21:05)",
+     "fix": "Optional: the journal already records each use of sudo (with logs on the card, they survive a power cut).",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-1.3"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-1.4",
+     "title": "File integrity checking (Tripwire, AIDE) (CIS 1.4)",
+     "status": "warn",
+     "detail": "A tool that fingerprints the system's files and reports any change. Not met here: install tripwire, tripwire cron. (deep audit of 2026-10-06 21:05)",
+     "fix": "Heavy for a small board; the doctor's \"Installed code\" step already checks the hub's own files and their owners.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-1.4"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-1.5",
+     "title": "Bootloader password (CIS 1.5)",
+     "status": "warn",
+     "detail": "The benchmark protects GRUB's menu with a password. Not met here: bootloader ownership, bootloader password. (deep audit of 2026-10-06 21:05)",
+     "fix": "This board boots with U-Boot, not GRUB; anyone holding the SD card owns the box regardless.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-1.5"
+     },
+     "accepted": null,
+     "tier": "not-here"
+    },
+    {
+     "id": "cis-1.6",
+     "title": "Process hardening (NX, address randomisation, core dumps) (CIS 1.6)",
+     "status": "warn",
+     "detail": "Memory protections that make an exploit harder to aim, and no core dumps from privileged programs. Not met here: enable nx support, enable randomized vm placement, restrict core dumps. (deep audit of 2026-10-06 21:05)",
+     "fix": "Address randomisation and core dumps are kernel settings (sysctl); NX is the CPU's, reported oddly by the 32-bit ARM kernel.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-1.6"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-1.7",
+     "title": "AppArmor (CIS 1.7)",
+     "status": "warn",
+     "detail": "Mandatory access control: profiles that confine what each program may touch. Not met here: install apparmor, enable apparmor, enforce or complain apparmor, enforcing apparmor. (deep audit of 2026-10-06 21:05)",
+     "fix": "The board's vendor kernel is built without AppArmor; the hub's units use systemd's sandboxing instead.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-1.7"
+     },
+     "accepted": null,
+     "tier": "not-here"
+    },
+    {
+     "id": "cis-1.8",
+     "title": "Login banners (CIS 1.8)",
+     "status": "warn",
+     "detail": "A warning text shown before login (/etc/motd, /etc/issue). Not met here: motd perms. (deep audit of 2026-10-06 21:05)",
+     "fix": "Cosmetic; optional.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-1.8"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-1.9",
+     "title": "Package updates (CIS 1.9)",
+     "status": "warn",
+     "detail": "Updates waiting to be installed. Not met here: install updates. (deep audit of 2026-10-06 21:05)",
+     "fix": "See Debian's security updates (Updates).",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "security-updates"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-2.2",
+     "title": "Time synchronisation (CIS 2.2)",
+     "status": "warn",
+     "detail": "A time service (systemd-timesyncd or chrony) keeping the clock right. Not met here: configure systemd-timesyncd, configure ntp. (deep audit of 2026-10-06 21:05)",
+     "fix": "The box keeps its own time (the Clock pane): with no internet there is nothing to synchronise with.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-2.2"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-3.1",
+     "title": "IPv6 (CIS 3.1)",
+     "status": "warn",
+     "detail": "The benchmark turns IPv6 off where it is not used. Not met here: disable ipv6. (deep audit of 2026-10-06 21:05)",
+     "fix": "Your network may use it; the doctor's \"Reached from the internet\" step checks what IPv6 exposes.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-3.1"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-3.2",
+     "title": "Sending ICMP redirects (CIS 3.2)",
+     "status": "warn",
+     "detail": "A host that is not a router should not tell others how to route. Not met here: disable send packet redirects. (deep audit of 2026-10-06 21:05)",
+     "fix": "sysctl net.ipv4.conf.all.send_redirects=0 (and .default): safe on the box, guests' internet included.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-3.2"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-3.3",
+     "title": "Network parameters (source routing, redirects, martians, router adverts) (CIS 3.3)",
+     "status": "warn",
+     "detail": "Kernel network settings that refuse forged routes and log impossible addresses. Not met here: disable source routed packets, disable icmp redirect, disable secure icmp redirect, log martian packets, enable source route validation, disable ipv6 router advertisement. (deep audit of 2026-10-06 21:05)",
+     "fix": "Mostly safe to set by sysctl; leave accept_ra on if your network gives IPv6 addresses by router adverts.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-3.3"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-4.1",
+     "title": "Auditing (auditd) (CIS 4.1)",
+     "status": "warn",
+     "detail": "The kernel's audit system, recording security events in detail. Not met here: install auditd, enable auditd, audit bootloader, audit backlog limit, audit log storage, halt when audit log full, keep all audit logs, record date time edit, record user group edit, record network edit…. (deep audit of 2026-10-06 21:05)",
+     "fix": "The vendor kernel is built without CONFIG_AUDIT, so auditd cannot run on this board.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-4.1"
+     },
+     "accepted": null,
+     "tier": "not-here"
+    },
+    {
+     "id": "cis-4.2",
+     "title": "Logging (syslog-ng, a persistent journal) (CIS 4.2)",
+     "status": "warn",
+     "detail": "Logs kept on disk, with tight permissions, and sent to another machine. Not met here: install syslog-ng, enable syslog-ng, syslog ng logfiles perm, syslog-ng remote host, remote syslog-ng acl, journald write persistent, logs permissions. (deep audit of 2026-10-06 21:05)",
+     "fix": "Keep logs on the card (Security) covers what matters here; a remote log server needs a second machine.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-4.2"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-4.4",
+     "title": "logrotate's permissions (CIS 4.4)",
+     "status": "warn",
+     "detail": "Rotated logs created readable by root only. Not met here: logrotate permissions. (deep audit of 2026-10-06 21:05)",
+     "fix": "By hand: create 0640 in /etc/logrotate.conf.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-4.4"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-5.1",
+     "title": "cron's files' permissions (CIS 5.1)",
+     "status": "warn",
+     "detail": "/etc/crontab and /etc/cron.* readable by root only. Not met here: crontab perm ownership, cron hourly perm ownership, cron daily perm ownership, cron weekly perm ownership, cron monthly perm ownership, cron d perm ownership, cron users. (deep audit of 2026-10-06 21:05)",
+     "fix": "By hand: sudo chmod og-rwx /etc/crontab /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly /etc/cron.d",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-5.1"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-5.2",
+     "title": "SSH server settings (CIS 5.2)",
+     "status": "warn",
+     "detail": "sshd's settings: who may log in, how, for how long, with which ciphers. Not met here: sshd conf perm ownership, sshd protocol, sshd loglevel, disable x11 forwarding, sshd maxauthtries, enable sshd ignorerhosts, disable sshd hostbasedauthentication, disable root login, disable sshd permitemptypasswords, disable sshd setenv…. (deep audit of 2026-10-06 21:05)",
+     "fix": "The ones that matter (root login, passwords, forwarding) are choices on Security; the rest are fine-tuning in /etc/ssh/sshd_config.d.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-5.2"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-5.3",
+     "title": "Password quality and lockout (PAM) (CIS 5.3)",
+     "status": "warn",
+     "detail": "Rules for strong passwords and locking an account after failed tries. Not met here: enable pwquality, enable lockout failed password, limit password reuse. (deep audit of 2026-10-06 21:05)",
+     "fix": "They matter only where a password logs in: with SSH on keys only, that is the console.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-5.3"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-5.4",
+     "title": "Password ageing, umask, shell timeout (CIS 5.4)",
+     "status": "warn",
+     "detail": "Passwords that expire, new files private by default, idle shells logged out. Not met here: set password exp days, set password min days change, default umask, default timeout. (deep audit of 2026-10-06 21:05)",
+     "fix": "Optional on a single-owner box; expiring passwords mostly make people write them down.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-5.4"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-5.6",
+     "title": "Who may use su (CIS 5.6)",
+     "status": "warn",
+     "detail": "su limited to the members of one group. Not met here: restrict su. (deep audit of 2026-10-06 21:05)",
+     "fix": "Optional: root's password is locked, so su leads nowhere anyway.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-5.6"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-6.1",
+     "title": "World-writable, unowned and setuid files (CIS 6.1)",
+     "status": "warn",
+     "detail": "Files anyone may change, files with no owner, and programs that run as root. Not met here: find world writable file, find unowned files, find ungrouped files, find suid files. (deep audit of 2026-10-06 21:05)",
+     "fix": "Look at the list from a shell: sudo find / -xdev \\( -perm -0002 -type f -o -nouser -o -nogroup \\) -ls",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-6.1"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-6.2",
+     "title": "Users' own files' permissions (CIS 6.2)",
+     "status": "warn",
+     "detail": "Dot files in home folders writable by others. Not met here: check user dot file perm. (deep audit of 2026-10-06 21:05)",
+     "fix": "By hand: chmod go-w on each file named.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-6.2"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-99.1",
+     "title": "USB devices (CIS 99.1)",
+     "status": "warn",
+     "detail": "The benchmark blocks USB storage. Not met here: disable usb devices, acc sudoers no all. (deep audit of 2026-10-06 21:05)",
+     "fix": "The box reads books and updates from USB sticks on purpose.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-99.1"
+     },
+     "accepted": null,
+     "tier": "not-here"
+    },
+    {
+     "id": "cis-99.3",
+     "title": "TCP wrappers (hosts.deny) (CIS 99.3)",
+     "status": "warn",
+     "detail": "An old access list for network services. Not met here: install tcp wrapper, hosts deny. (deep audit of 2026-10-06 21:05)",
+     "fix": "Debian 13's sshd no longer reads it; the floor (Security) is what filters the hotspot.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-99.3"
+     },
+     "accepted": null,
+     "tier": "not-here"
+    },
+    {
+     "id": "cis-99.4",
+     "title": "Kernel audit support (CIS 99.4)",
+     "status": "warn",
+     "detail": "CONFIG_AUDIT in the kernel, for auditd. Not met here: enable auditd kernel. (deep audit of 2026-10-06 21:05)",
+     "fix": "The vendor kernel is built without it.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-99.4"
+     },
+     "accepted": null,
+     "tier": "not-here"
+    },
+    {
+     "id": "cis-99.5",
+     "title": "More SSH settings (CIS 99.5)",
+     "status": "warn",
+     "detail": "Further sshd hardening: keys only, rekeying, strict modes, where keys may come from. Not met here: ssh auth pubk only, ssh cry rekey, ssh disable features, ssh keys from, ssh strict modes. (deep audit of 2026-10-06 21:05)",
+     "fix": "Keys only is a choice on Security; the rest are fine-tuning in /etc/ssh/sshd_config.d.",
+     "ref": "",
+     "source": "debian-cis",
+     "about": {
+      "kind": "setting",
+      "key": "cis-99.5"
+     },
+     "accepted": null,
+     "tier": "suggest"
+    },
+    {
+     "id": "cis-accepted-25",
+     "title": "CIS: 17 checks the box's design does not meet",
+     "status": "ok",
+     "detail": "tmp_nodev, tmp_noexec, var_nodev, var_nosuid, var_partition, var_tmp_partition, var_tmp_nodev, var_tmp_nosuid, var_tmp_noexec, var_log_audit_noexec…. Accepted: one partition: the box runs from an SD card, with no separate /var, /tmp or /home. (deep audit of 2026-10-06 21:05)",
+     "fix": "",
+     "ref": "",
+     "source": "debian-cis",
+     "about": null,
+     "accepted": "one partition: the box runs from an SD card, with no separate /var, /tmp or /home"
+    },
+    {
+     "id": "cis-accepted-26",
+     "title": "CIS: 1 check the box's design does not meet",
+     "status": "ok",
+     "detail": "disable_http_server. Accepted: the box is a web server: nginx (or Caddy) is the hub's front. (deep audit of 2026-10-06 21:05)",
+     "fix": "",
+     "ref": "",
+     "source": "debian-cis",
+     "about": null,
+     "accepted": "the box is a web server: nginx (or Caddy) is the hub's front"
+    },
+    {
+     "id": "cis-accepted-27",
+     "title": "CIS: 1 check the box's design does not meet",
+     "status": "ok",
+     "detail": "net_fw_default_policy_drop. Accepted: no firewall rules yet, until the network floor is built. (deep audit of 2026-10-06 21:05)",
+     "fix": "",
+     "ref": "",
+     "source": "debian-cis",
+     "about": null,
+     "accepted": "no firewall rules yet, until the network floor is built"
+    },
+    {
+     "id": "cis-summary",
+     "title": "The CIS benchmark (debian-cis --audit-all)",
+     "status": "ok",
+     "detail": "119 of 241 checks pass (49.37 %); 2.9 min. (deep audit of 2026-10-06 21:05)",
+     "fix": "",
+     "ref": "",
+     "source": "debian-cis",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "lynis",
+   "title": "Lynis (in the deep audit)",
+   "ref": "",
+   "findings": [
+    {
+     "id": "lynis-FIRE-4512",
+     "title": "Lynis FIRE-4512: iptables module(s) loaded, but no rules active",
+     "status": "ok",
+     "detail": "iptables module(s) loaded, but no rules active. Accepted: no firewall rules yet, until the network floor is built. (deep audit of 2026-10-06 21:10)",
+     "fix": "See Lynis's notes for the test, from a shell: lynis show details FIRE-4512",
+     "ref": "",
+     "source": "lynis",
+     "about": {
+      "kind": "setting",
+      "key": "lynis-FIRE-4512"
+     },
+     "accepted": "no firewall rules yet, until the network floor is built"
+    },
+    {
+     "id": "lynis-summary",
+     "title": "Lynis",
+     "status": "ok",
+     "detail": "Hardening index 64; 1 warning, 51 suggestions (listed, not counted); 4.5 min. LYNIS: This release is more than 4 months old. Check the website or GitHub to see if there is an update available.; DEB-0280: Install libpam-tmpdir to set $TMP and $TMPDIR for PAM sessions; DEB-0810: Install apt-listbugs to display a list of critical bugs prior to each APT installation.; DEB-0811: Install apt-listchanges to display any significant changes prior to any upgrade via APT.; DEB-0831: Install needrestart, alternatively to debian-goodies, so that you can run needrestart after upgrades to determine which daemons are using old versions of libraries and need restarting.; DEB-0880: Install fail2ban to automatically ban hosts that commit multiple authentication errors.… (deep audit of 2026-10-06 21:10)",
+     "fix": "",
+     "ref": "",
+     "source": "lynis",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "security-page",
+   "title": "The Security page's scan",
+   "ref": "",
+   "findings": [
+    {
+     "id": "page-port-tcp-53",
+     "title": "DNS",
+     "status": "ok",
+     "detail": "TCP 53 on 192.168.4.1 (irate-box-ap-dns.service). Part of the hub's irate-box-ap-dns. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/53"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-53",
+     "title": "DNS",
+     "status": "ok",
+     "detail": "UDP 53 on 192.168.4.1 (irate-box-ap-dns.service). Part of the hub's irate-box-ap-dns. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/53"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-67",
+     "title": "DHCP",
+     "status": "ok",
+     "detail": "UDP 67 on 0.0.0.0 (irate-box-ap-dns.service). Part of the hub's irate-box-ap-dns. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/67"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-80",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 80 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/80"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-443",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 443 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/443"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-546",
+     "title": "DHCPv6 client",
+     "status": "ok",
+     "detail": "UDP 546 on [fe80::1] (NetworkManager.service). The box asking the network for its address; it only answers the network's DHCP server. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/546"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-1883",
+     "title": "MQTT broker (mosquitto)",
+     "status": "warn",
+     "detail": "TCP 1883 on 0.0.0.0, * (mosquitto.service). Meshtastic nodes publish here; anyone on the network can too (anonymous, limited to msh/#). (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/1883"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-5355",
+     "title": "LLMNR (systemd-resolved)",
+     "status": "warn",
+     "detail": "TCP 5355 on 0.0.0.0, * (systemd-resolved.service). Answers name lookups from anyone on the local network; the hub does not use it. (scan of 2026-10-09 02:39)",
+     "fix": "Turning LLMNR off in systemd-resolved closes it; normal DNS is unaffected.",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/5355"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8090",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8090 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8090"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8091",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8091 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8091"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8092",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8092 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8092"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8093",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8093 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8093"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8490",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8490 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8490"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8491",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8491 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8491"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8492",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8492 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8492"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-8493",
+     "title": "the hub (nginx)",
+     "status": "ok",
+     "detail": "TCP 8493 on 0.0.0.0, * (nginx.service). The hub's own front door; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/8493"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-21027",
+     "title": "Syncthing discovery",
+     "status": "ok",
+     "detail": "UDP 21027 on 0.0.0.0, * (syncthing@hub.service). The hub's own; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/21027"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-tcp-22000",
+     "title": "Syncthing",
+     "status": "ok",
+     "detail": "TCP 22000 on * (syncthing@hub.service). The hub's own; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "tcp/22000"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-22000",
+     "title": "Syncthing",
+     "status": "ok",
+     "detail": "UDP 22000 on * (syncthing@hub.service). The hub's own; it is meant to be reachable. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/22000"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-41641",
+     "title": "Tailscale",
+     "status": "ok",
+     "detail": "UDP 41641 on 0.0.0.0, * (tailscaled.service). Encrypted (WireGuard); switched on and off under Access. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/41641"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-56588",
+     "title": "syncthing",
+     "status": "ok",
+     "detail": "UDP 56588 on 0.0.0.0 (syncthing@hub.service). Part of the hub's syncthing. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/56588"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-port-udp-57174",
+     "title": "syncthing",
+     "status": "ok",
+     "detail": "UDP 57174 on * (syncthing@hub.service). Part of the hub's syncthing. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "service",
+      "key": "udp/57174"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-cockpit-change",
+     "title": "Cockpit",
+     "status": "ok",
+     "detail": "Switched off from this page. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "page-ssh-root",
+     "title": "SSH root login",
+     "status": "ok",
+     "detail": "PermitRootLogin no. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "ssh-root-login"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-ssh-password",
+     "title": "SSH password login",
+     "status": "ok",
+     "detail": "Keys only. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "ssh-password"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-ssh-forwarding",
+     "title": "SSH forwarding",
+     "status": "ok",
+     "detail": "TCP, agent and X11 forwarding off. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "ssh-forwarding"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-sudo-nopasswd",
+     "title": "Passwordless sudo",
+     "status": "warn",
+     "detail": "claude-temp: owner: root with no password for whoever is that account. (scan of 2026-10-09 02:39)",
+     "fix": "Remove the rule once the work it was added for is done.",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "sudo-all"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-kernel-links",
+     "title": "Kernel link protections",
+     "status": "ok",
+     "detail": "protected_symlinks=1, protected_hardlinks=1. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "kernel-links"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-kernel-info",
+     "title": "Kernel addresses and log",
+     "status": "warn",
+     "detail": "kptr_restrict=0, dmesg_restrict=0. Any account can read the kernel's log and the addresses of its code, which help an attacker aim an exploit. (scan of 2026-10-09 02:39)",
+     "fix": "Set them, now and at every boot (a file in /etc/sysctl.d).",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "kernel-info"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-group-docker",
+     "title": "The docker group",
+     "status": "ok",
+     "detail": "No login account is in it. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "page-group-disk",
+     "title": "The disk group",
+     "status": "ok",
+     "detail": "No login account is in it. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "page-root-password",
+     "title": "Root's password",
+     "status": "ok",
+     "detail": "Locked: root is reached through sudo. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "page-root-firstrun",
+     "title": "First-login setup",
+     "status": "ok",
+     "detail": "Its marker is put aside. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "page-apt-trust",
+     "title": "Repository keys trusted for every repository",
+     "status": "warn",
+     "detail": "Keys in trusted.gpg.d (home_mPWRD_OS.gpg, network_Meshtastic_beta.gpg, network_Meshtastic_daily.gpg) can sign packages for any repository, Debian's included. Sources with no key of their own: home:mPWRD:OS.list, network:Meshtastic:beta.list, network:Meshtastic:daily.list. (scan of 2026-10-09 02:39)",
+     "fix": "Each key named in its own source's signed-by. A key no source matches is removed by hand: rm /etc/apt/trusted.gpg.d/<key>.",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "apt-trust"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-logs-ram",
+     "title": "Logs live in RAM",
+     "status": "warn",
+     "detail": "/var/log is a RAM disk (Armbian's ramlog): sshd's log and the journal are trimmed every 15 minutes and gone at a power cut, so the evidence of an intrusion goes with them; the doctor's \"reached from the internet\" sees only since the last boot. (scan of 2026-10-09 02:39)",
+     "fix": "Logs on the card, a few MB a week: Armbian's ramlog off and the journal kept, capped at 32 MB. It applies from the next boot.",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "logs"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-firewall",
+     "title": "What a guest on the hotspot can reach",
+     "status": "warn",
+     "detail": "Everything that listens on the box, SSH and the rest: there is no floor. The floor would allow, on ap0 alone: TCP 53, 80, 443, 1883, 8090, 8091, 8092, 8093, 8490, 8491, 8492, 8493, 22000; UDP 53, 67, 21027, 22000; and drop the rest. The box's other networks are not touched. (scan of 2026-10-09 02:39)",
+     "fix": "A default-drop ruleset on the hotspot's interface, loaded at boot, at one of two levels: the hub and its apps, or the hub alone (its apps' ports closed to guests). MQTT and Syncthing open to guests where installed, SSH only if you say so. Undo here.",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "firewall"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-security-updates",
+     "title": "Security updates",
+     "status": "ok",
+     "detail": "None waiting. The package lists are from today. (scan of 2026-10-09 02:39)",
+     "fix": "",
+     "ref": "",
+     "source": "security-page",
+     "about": {
+      "kind": "setting",
+      "key": "security-updates"
+     },
+     "accepted": null
+    },
+    {
+     "id": "page-unattended",
+     "title": "Automatic security updates",
+     "status": "warn",
+     "detail": "Not set up: security updates wait until someone installs them. (scan of 2026-10-09 02:39)",
+     "fix": "Install the System toolkit (Toolkits → System): it sets up unattended-upgrades for Debian's security updates, daily while the box is online. Until then, install them by hand (Updates).",
+     "ref": "",
+     "source": "security-page",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "imports",
+   "title": "Imported scans (OpenVAS, nmap)",
+   "ref": "",
+   "findings": [
+    {
+     "id": "imports-none",
+     "title": "Imported scans",
+     "status": "ok",
+     "detail": "None yet. Run OpenVAS (Greenbone) or nmap from a PC on the hotspot against the box, and import its report here: the outside view, including software debsecan can't see.",
+     "fix": "",
+     "ref": "",
+     "source": "openvas",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "tls",
+   "title": "HTTPS: the certificate and the front",
+   "ref": "S2",
+   "findings": [
+    {
+     "id": "tls-expiry",
+     "title": "The HTTPS certificate's expiry",
+     "status": "ok",
+     "detail": "395 days left; the box renews its own at two-thirds of its life.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "tls"
+     },
+     "accepted": null
+    },
+    {
+     "id": "tls-covers",
+     "title": "What the certificate covers",
+     "status": "ok",
+     "detail": "irate.home.arpa, luckfox-lyra-zero-w.local, 192.168.4.1, 192.0.2.10.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "tls"
+     },
+     "accepted": null
+    },
+    {
+     "id": "tls-constraints",
+     "title": "The CA can vouch only for the box",
+     "status": "ok",
+     "detail": "Its name constraints are in place: installed, it is trusted for nothing else.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "tls"
+     },
+     "accepted": null
+    },
+    {
+     "id": "tls-keys",
+     "title": "The certificate keys",
+     "status": "ok",
+     "detail": "The CA's key root's only, the server key not readable by everyone.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "tls"
+     },
+     "accepted": null
+    },
+    {
+     "id": "tls-hsts",
+     "title": "No HSTS",
+     "status": "ok",
+     "detail": "The front sends no Strict-Transport-Security, so plain HTTP keeps working.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "tls"
+     },
+     "accepted": null
+    },
+    {
+     "id": "tls-plain",
+     "title": "Plain HTTP still answers",
+     "status": "ok",
+     "detail": "Port 80 answers, as the captive portal's sign-in sheet needs.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "setting",
+      "key": "tls"
+     },
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "mqtt",
+   "title": "The MQTT broker and the mesh decoder",
+   "ref": "S9",
+   "findings": [
+    {
+     "id": "mqtt-bridge",
+     "title": "The broker is not bridged anywhere",
+     "status": "ok",
+     "detail": "No connection to another broker: the mesh's traffic stays on the box.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "service",
+      "key": "mosquitto"
+     },
+     "accepted": null
+    },
+    {
+     "id": "mqtt-acl",
+     "title": "Anonymous clients limited to msh/#",
+     "status": "ok",
+     "detail": "Anyone may publish and read only under msh/#.",
+     "fix": "",
+     "ref": "S9",
+     "source": "doctor",
+     "about": {
+      "kind": "service",
+      "key": "mosquitto"
+     },
+     "accepted": null
+    },
+    {
+     "id": "mqtt-keys",
+     "title": "The decoder's channel keys",
+     "status": "ok",
+     "detail": "Private to the hub.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": {
+      "kind": "service",
+      "key": "mosquitto"
+     },
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "internet",
+   "title": "Reached from the internet",
+   "ref": "",
+   "findings": [
+    {
+     "id": "reach-web",
+     "title": "Web pages reached from the internet",
+     "status": "ok",
+     "detail": "No request from a public address in the last 7 days (as the hub sees them: the pages it serves, not static files alone).",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "reach-ssh",
+     "title": "SSH reached from the internet",
+     "status": "ok",
+     "detail": "sshd heard from no public address in the last 7 days. sshd's log here goes back to 2026-10-08 23:53.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "reach-ipv6",
+     "title": "A public IPv6 address",
+     "status": "ok",
+     "detail": "This box has no public IPv6 address.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  },
+  {
+   "id": "offline",
+   "title": "Offline readiness",
+   "ref": "",
+   "findings": [
+    {
+     "id": "offline-lists",
+     "title": "How old what the box knows is",
+     "status": "ok",
+     "detail": "the package lists: 0 days; Debian's security tracker data (debsecan): 0 days.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "offline-kits",
+     "title": "The toolkits' cache",
+     "status": "ok",
+     "detail": "Every cached kit is whole: it can be installed with no internet.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "offline-bundle",
+     "title": "The offline kit (to set up another box with no internet)",
+     "status": "warn",
+     "detail": "None made yet.",
+     "fix": "/admin → Backup: make the offline kit, and keep a copy off the box.",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    },
+    {
+     "id": "offline-update",
+     "title": "The hub's last look for an update",
+     "status": "ok",
+     "detail": "0 days ago; up to date then.",
+     "fix": "",
+     "ref": "",
+     "source": "doctor",
+     "about": null,
+     "accepted": null
+    }
+   ]
+  }
+ ]
+}

@@ -13,28 +13,66 @@ import re
 
 # key: {title, ref (the security review's finding), and each source's ids}. debian-cis's by the check's
 # name without its number (the benchmark renumbers: 1.9_install_updates was 1.9.1_install_updates on the
-# Lyra, so numbered ids never matched).
+# Lyra, so numbered ids never matched). Lynis's by its test, or for the two tests that report each setting
+# apart (KRNL-6000: a sysctl key; SSH-7408: an sshd option) by "test:setting", from its report's details[].
 XREF = {
     "kernel-links": {"title": "Kernel link protections (protected_symlinks, protected_hardlinks)", "ref": "F3",
-                     "doctor": ["kernel-links"], "security-page": ["kernel-links"]},
+                     "doctor": ["kernel-links"], "security-page": ["kernel-links"],
+                     "lynis": ["KRNL-6000:fs.protected_symlinks", "KRNL-6000:fs.protected_hardlinks"]},
+    "kernel-regular": {"title": "Kernel protections for files and FIFOs in shared folders (protected_regular, protected_fifos)",
+                       "doctor": ["kernel-regular"], "lynis": ["KRNL-6000:fs.protected_regular", "KRNL-6000:fs.protected_fifos"]},
     "kernel-info": {"title": "Kernel addresses and log hidden from ordinary accounts", "ref": "F9",
-                    "doctor": ["kernel-info"], "security-page": ["kernel-info"]},
-    "kernel-ptrace": {"title": "ptrace between processes (Yama)", "ref": "F9", "doctor": ["kernel-ptrace"]},
-    "core-dumps": {"title": "Core dumps restricted", "debian-cis": ["restrict_core_dumps"], "lynis": ["KRNL-5820"]},
-    "aslr": {"title": "Address space randomisation", "debian-cis": ["enable_randomized_vm_placement"]},
-    "ssh-root-login": {"title": "SSH: logging in as root", "security-page": ["ssh-root"], "debian-cis": ["disable_root_login"]},
+                    "doctor": ["kernel-info"], "security-page": ["kernel-info"],
+                    "lynis": ["KRNL-6000:kernel.kptr_restrict", "KRNL-6000:kernel.dmesg_restrict"]},
+    "kernel-ptrace": {"title": "ptrace between processes (Yama)", "ref": "F9", "doctor": ["kernel-ptrace"],
+                      "lynis": ["KRNL-6000:kernel.yama.ptrace_scope"]},
+    "core-dumps": {"title": "Core dumps restricted", "debian-cis": ["restrict_core_dumps"],
+                   "lynis": ["KRNL-5820", "KRNL-6000:fs.suid_dumpable", "KRNL-6000:kernel.suid_dumpable"]},
+    "aslr": {"title": "Address space randomisation", "debian-cis": ["enable_randomized_vm_placement"],
+             "lynis": ["KRNL-6000:kernel.randomize_va_space"]},
+    "ssh-root-login": {"title": "SSH: logging in as root", "security-page": ["ssh-root"], "debian-cis": ["disable_root_login"],
+                       "lynis": ["SSH-7408:PermitRootLogin"]},
     "ssh-password": {"title": "SSH: passwords rather than keys", "security-page": ["ssh-password"],
                      "debian-cis": ["ssh_auth_pubk_only"]},
-    "ssh-forwarding": {"title": "SSH: forwarding", "security-page": ["ssh-forwarding"], "debian-cis": ["disable_x11_forwarding"]},
+    "ssh-forwarding": {"title": "SSH: forwarding", "security-page": ["ssh-forwarding"],
+                       "debian-cis": ["disable_x11_forwarding", "disable_ssh_allow_tcp_forwarding"],
+                       "lynis": ["SSH-7408:AllowTcpForwarding", "SSH-7408:X11Forwarding", "SSH-7408:AllowAgentForwarding"]},
     "firewall": {"title": "What a guest on the hotspot can reach (the floor)", "doctor": ["firewall"], "security-page": ["firewall"],
-                 "debian-cis": ["net_fw_default_policy_drop"], "lynis": ["FIRE-4512"]},
+                 "debian-cis": ["net_fw_default_policy_drop"], "lynis": ["FIRE-4512", "FIRE-4590"]},
     "security-updates": {"title": "Debian's security updates", "security-page": ["security-updates"], "debian-cis": ["install_updates"],
-                         "debsecan": []},
-    "sudo-all": {"title": "Passwordless sudo rules", "doctor": ["acct-sudo"], "security-page": ["sudo-nopasswd"], "debian-cis": ["acc_sudoers_no_all"]},
+                         "debsecan": [], "lynis": ["PKGS-7392"]},
+    "unattended": {"title": "Automatic security updates", "security-page": ["unattended"], "lynis": ["PKGS-7420"]},
+    "sudo-all": {"title": "Passwordless sudo rules", "doctor": ["acct-sudo"], "security-page": ["sudo-nopasswd"],
+                 "debian-cis": ["acc_sudoers_no_all", "sudo_no_nopasswd"]},
+    "empty-passwords": {"title": "Accounts with an empty password", "doctor": ["acct-nopw"],
+                        "debian-cis": ["remove_empty_password_field", "etc_shadow_fields_not_empty"], "lynis": ["AUTH-9283"]},
     "apt-trust": {"title": "Repository keys trusted for every repository", "doctor": ["image-apt-trust"], "security-page": ["apt-trust"]},
     "logs": {"title": "Logs kept only in RAM", "security-page": ["logs-ram"], "debian-cis": ["journald_write_persistent"]},
 }
 _BY = {(src, i): key for key, e in XREF.items() for src, ids in e.items() if isinstance(ids, list) for i in ids}
+
+# Lynis's tests that ask what a CIS section asks (its key is that section's, "cis-5.3"), so the two
+# merge into one item; and, for the settings Lynis reports one by one, the section the rest fall in.
+LYNIS_CIS = {
+    "BOOT-5122": "1.5", "FINT-4350": "1.4", "BANN-7126": "1.8", "BANN-7130": "1.8",
+    "TIME-3104": "2.2", "TIME-3185": "2.2",
+    "ACCT-9628": "4.1", "ACCT-9630": "4.1", "LOGG-2154": "4.2", "LOGG-2146": "4.4",
+    "SCHD-7704": "5.1", "AUTH-9262": "5.3", "AUTH-9286": "5.4", "AUTH-9282": "5.4", "AUTH-9328": "5.4",
+    "HOME-9304": "6.2", "FILE-7524": "6.1", "USB-1000": "99.1",
+}
+SYSCTL_REDIRECTS = re.compile(r"^net\.ipv[46]\.conf\.(all|default)\.send_redirects$")
+
+
+def _lynis_section(check):
+    """The CIS section a Lynis test (or "test:setting") falls in, or None."""
+    test, _, setting = check.partition(":")
+    if test in LYNIS_CIS:
+        return LYNIS_CIS[test]
+    if test == "SSH-7408":
+        return "5.2"
+    if test == "KRNL-6000" and setting.startswith(("net.ipv4.", "net.ipv6.")):
+        return "3.2" if SYSCTL_REDIRECTS.match(setting) else "3.3"
+    return None
 # A doctor finding about a port the Security page lists: the same thing.
 SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883"}
 
@@ -59,6 +97,8 @@ def about(source, check):
     key = _BY.get((source, check.split("_", 1)[1] if source == "debian-cis" and "_" in (check or "") else check))
     if key:
         return {"kind": "setting", "key": key}
+    if source == "lynis" and _lynis_section(check or ""):
+        return {"kind": "setting", "key": f"cis-{_lynis_section(check)}"}
     if (source, check) in SERVICE_OF:
         return {"kind": "service", "key": SERVICE_OF[(source, check)]}
     m = PORT_RE.match(check or "")

@@ -1409,6 +1409,9 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .fsaid summary { cursor: pointer; color: var(--muted); }
 .fsaid ul { margin: 0.3rem 0 0; padding-left: 1rem; }
 .fsaid li { margin: 0.2rem 0; }
+.fchecks li { margin: 0.35rem 0; }
+.fchecks .fdo-cmd { margin-top: 0.2rem; }
+.fchecks .fdo-cmd code { font-size: 0.75rem; }
 .faccept { display: flex; justify-content: flex-end; margin-top: 0.2rem; font-size: 0.8rem; }
 .findings.compact .finding { padding: 0.35rem 0.7rem; }
 .findings.compact .fdetail { color: var(--muted); }
