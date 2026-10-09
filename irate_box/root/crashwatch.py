@@ -73,6 +73,9 @@ KMSG = os.environ.get("HUB_KMSG", "/dev/kmsg")
 SYSCTL = Path(os.environ.get("HUB_SYSCTL_DIR", "/etc/sysctl.d")) / "90-irate-box-hang.conf"
 MODULES = Path(os.environ.get("HUB_MODULES_LOAD", "/etc/modules-load.d")) / "irate-box-softdog.conf"
 SYSTEMD_CONF = Path(os.environ.get("HUB_SYSTEMD_CONF_DIR", "/etc/systemd/system.conf.d")) / "90-irate-box-watchdog.conf"
+DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
+BOOT = Path(os.environ.get("HUB_BOOT_DIR", "/boot"))
+OVERLAY_NAME = "irate-box-watchdog"
 
 TICK = 30
 SNAP_MAX = 4_000_000
@@ -495,11 +498,75 @@ def reboot_now():
 
 def watchdog_device():
     """'hardware' when the board has a watchdog of its own, 'softdog' when the kernel can give one,
-    else None."""
+    'switched-off' when the board has one its device tree leaves disabled and Armbian's user overlays can
+    switch on, else None."""
     if any((SYS / "class/watchdog").glob("watchdog*")) and not _softdog_loaded():
         return "hardware"
     r = subprocess.run(["modinfo", "softdog"], capture_output=True, text=True)
-    return "softdog" if r.returncode == 0 or _softdog_loaded() else None
+    if r.returncode == 0 or _softdog_loaded():
+        return "softdog"
+    if _dt_watchdog() and (BOOT / "armbianEnv.txt").is_file() and shutil.which("dtc"):
+        return "switched-off"
+    return None
+
+
+def _dt_watchdog():
+    """The device tree's first watchdog node left disabled, as its path from the root ("/watchdog@ff260000"), or None."""
+    for node in sorted(DT.glob("watchdog@*")) if DT.is_dir() else []:
+        try:
+            if (node / "status").read_bytes().rstrip(b"\0") == b"disabled":
+                return "/" + node.name
+        except OSError:
+            continue
+    return None
+
+
+def _boot_env_overlays(add=None, remove=None):
+    """Armbian's armbianEnv.txt: the user_overlays line with `add` put in or `remove` taken out. Returns the list."""
+    env = BOOT / "armbianEnv.txt"
+    lines = env.read_text().splitlines()
+    have, at = [], None
+    for i, line in enumerate(lines):
+        if line.startswith("user_overlays="):
+            have, at = line.split("=", 1)[1].split(), i
+    names = [n for n in have if n != remove] + ([add] if add and add not in have else [])
+    if names != have:
+        from irate_box.root import safeio
+        new = "user_overlays=" + " ".join(names)
+        if at is None:
+            lines.append(new)
+        elif names:
+            lines[at] = new
+        else:
+            del lines[at]
+        safeio.write(env, "\n".join(lines) + "\n")
+    return names
+
+
+def _board_watchdog(on):
+    """The board's own watchdog switched on or off in the device tree, from the next boot: an Armbian user overlay."""
+    dtbo = BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo"
+    if not on:
+        dtbo.unlink(missing_ok=True)
+        if (BOOT / "armbianEnv.txt").is_file():
+            _boot_env_overlays(remove=OVERLAY_NAME)
+        return
+    node = _dt_watchdog()
+    if not node:
+        raise ValueError("the device tree has no switched-off watchdog to switch on")
+    src = ("/dts-v1/;\n/plugin/;\n/ {\n\tfragment@0 {\n\t\ttarget-path = \"%s\";\n"
+           "\t\t__overlay__ { status = \"okay\"; };\n\t};\n};\n" % node)
+    dtbo.parent.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-"], input=src, capture_output=True, text=True)
+    if r.returncode:
+        dtbo.unlink(missing_ok=True)
+        raise ValueError(f"dtc: {r.stderr.strip()[:160]}")
+    _boot_env_overlays(add=OVERLAY_NAME)
+
+
+def board_watchdog_pending():
+    """True when the overlay is in place but the watchdog hasn't appeared yet: it waits for a restart."""
+    return (BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo").exists() and not any((SYS / "class/watchdog").glob("watchdog*"))
 
 
 def _softdog_loaded():
@@ -527,6 +594,8 @@ def set_watchdog(on):
         kind = watchdog_device()
         if not kind:
             raise ValueError("this kernel has no watchdog: neither the board's own nor softdog")
+        if kind == "switched-off":
+            _board_watchdog(True)
         if kind == "softdog":
             MODULES.parent.mkdir(parents=True, exist_ok=True)
             safeio.write(MODULES, "# Written by irate-box (root/crashwatch.py): a watchdog where the board has none.\nsoftdog\n")
@@ -538,9 +607,12 @@ def set_watchdog(on):
         safeio.write(SYSTEMD_CONF, "# Written by irate-box (root/crashwatch.py): systemd feeds the watchdog; a frozen\n"
                      "# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec=60\nRebootWatchdogSec=5min\n")
         subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
+        if kind == "switched-off":
+            return "the board's own watchdog is switched on from the next restart; from then it restarts the box if it freezes for a minute"
         which = "the board's own" if kind == "hardware" else "the kernel's softdog"
         return f"a watchdog ({which}) restarts the box if it freezes for a minute"
     SYSTEMD_CONF.unlink(missing_ok=True)
+    _board_watchdog(False)
     subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
     if MODULES.exists():
         MODULES.unlink()
@@ -575,7 +647,7 @@ def undo_all():
     s = load_settings()
     if s["panic"] or SYSCTL.exists():
         done.append(set_panic(False))
-    if s["watchdog"] or SYSTEMD_CONF.exists():
+    if s["watchdog"] or SYSTEMD_CONF.exists() or (BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo").exists():
         done.append(set_watchdog(False))
     return done
 
@@ -586,7 +658,8 @@ def status():
     s = load_settings()
     st = _json(STATUS, {})
     return {"settings": s, "running": st, "crashes": _json(INDEX, []), "incidents": _json(INCIDENTS, []), "events": _json(EVENTS, [])[-20:],
-            "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device()}
+            "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device(),
+            "watchdog_pending": board_watchdog_pending()}
 
 
 def run(once=False):

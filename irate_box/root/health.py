@@ -99,6 +99,11 @@ def _act(choice, label, confirm=None):
     return {"choice": choice, "label": label, **({"confirm": confirm} if confirm else {})}
 
 
+def _chip(group, choice, label, on, confirm=None):
+    """One choice of a setting, drawn as a chip in its group's row; `on` marks the current one, which does nothing."""
+    return dict(_act(choice, label, None if on else confirm), group=group, on=bool(on))
+
+
 RERUN = _act("rerun-install", "Run the installer again",
              "Run install.sh again with this box's recorded options? Services restart once; nothing else changes.")
 
@@ -907,12 +912,12 @@ def check_crashwatch(now=None):
     radios = ", ".join(f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()) or "none found"
     day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "reset", "reboot", "held")]
     level = s["preempt"]
-    acts = [_act(f"crashwatch-preempt:{lv}", f"Pre-emption: {PREEMPT_WORDS[lv]}",
-                 "Restart the box by itself when the radio fails and a reset doesn't bring it back? Within the uplink "
-                 "watchdog's guards: never with guests on the hotspot (unless it says otherwise), during a build or an "
-                 "update, within 15 minutes of starting, or past its daily cap." if lv == "reboot" else None)
-            for lv in cw.PREEMPT if lv != level]
-    detail = (f"Watching: {radios}. Pre-emption: {PREEMPT_WORDS[level]}" + {
+    acts = [_chip("When the radio fails", f"crashwatch-preempt:{lv}", PREEMPT_WORDS[lv], lv == level,
+                  "Restart the box by itself when the radio fails and a reset doesn't bring it back? Within the uplink "
+                  "watchdog's guards: never with guests on the hotspot (unless it says otherwise), during a build or an "
+                  "update, within 15 minutes of starting, or past its daily cap." if lv == "reboot" else None)
+            for lv in cw.PREEMPT]
+    detail = (f"Watching: {radios}. When the radio fails: {PREEMPT_WORDS[level]}" + {
         "off": " (a failing radio isn't looked for).", "warn": " (a failing radio is noted and said here, nothing more).",
         "radio": " (a failing radio is reset at once: its USB device, then its driver, and the hotspot started again).",
         "reboot": " (a failing radio is reset, and the box restarted if it isn't back within 3 minutes)."}[level])
@@ -923,25 +928,33 @@ def check_crashwatch(now=None):
         detail += f" Kept as it happened: {len(kept)} this week, the last in {cw.CRASHES}/{kept[-1]['dir']}/ (snapshots.log, kernel.log)."
     out.append(_f("crash-radio", "The WiFi radio", "warn" if day else "ok", detail,
                   "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver.", acts))
-    wd = st.get("watchdog_device")
-    hang = []
-    hang.append(_act("crashwatch-panic:" + ("off" if s["panic"] else "on"),
-                     "Kernel panic: don't restart" if s["panic"] else "Restart on a kernel panic or lockup",
-                     None if s["panic"] else "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen?"))
-    if wd:
-        hang.append(_act("crashwatch-watchdog:" + ("off" if s["watchdog"] else "on"),
-                         "Watchdog: off" if s["watchdog"] else f"A watchdog ({'the board' if wd == 'hardware' else 'softdog'}) restarts a frozen box",
-                         None if s["watchdog"] else "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy work "
-                                                    "that starves systemd for that long would restart too."))
+    wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
+    hang = [_chip("Kernel panic or lockup", "crashwatch-panic:off", "Stay stopped", not s["panic"]),
+            _chip("Kernel panic or lockup", "crashwatch-panic:on", "Restart after 10 s", s["panic"],
+                  "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen?")]
+    wd_words = {"hardware": "the board's", "softdog": "softdog", "switched-off": "the board's, after a restart"}
+    if wd or s["watchdog"]:
+        hang += [_chip("Watchdog", "crashwatch-watchdog:off", "Off", not s["watchdog"]),
+                 _chip("Watchdog", "crashwatch-watchdog:on", f"On ({wd_words.get(wd, 'the board' + chr(39) + 's')})", s["watchdog"],
+                       "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy work that starves "
+                       "systemd for that long would restart too."
+                       + (" The board's watchdog is switched off in its device tree: this switches it on with a boot overlay "
+                          "(Armbian's user_overlays), so it starts working after the next restart." if wd == "switched-off" else ""))]
     on = [w for w, v in (("restarts after a kernel panic or lockup", s["panic"]), ("a watchdog restarts it if it freezes", s["watchdog"])) if v]
-    out.append(_f("crash-hang", "A frozen box", "ok",
-                  ("; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug.")
-                  + ("" if wd else " This kernel has no watchdog (neither the board's nor softdog)."),
+    said = "; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug."
+    if s["watchdog"] and pending:
+        said += " The board's watchdog starts working after the next restart."
+    elif wd == "switched-off" and not s["watchdog"]:
+        said += " The board has a watchdog of its own, switched off in its device tree; turning the watchdog on switches it on."
+    elif not wd:
+        said += " This kernel has no watchdog (neither the board's nor softdog)."
+    out.append(_f("crash-hang", "A frozen box", "warn" if week and not on else "ok", said,
                   "Each restart is filed as a crash, with what the box was doing, so nothing is lost by allowing it.", hang))
     out.append(_f("crash-snapshots", "Crash watch's snapshots", "ok" if s["snapshots"] else "warn",
                   f"Every 30 s to {cw.SNAP}, synced: what a crash is explained by." if s["snapshots"] else
                   "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).", "",
-                  [_act("crashwatch-snapshots:" + ("off" if s["snapshots"] else "on"), "Snapshots: off" if s["snapshots"] else "Snapshots: on")]))
+                  [_chip("Snapshots", "crashwatch-snapshots:off", "Off", not s["snapshots"]),
+                   _chip("Snapshots", "crashwatch-snapshots:on", "On", s["snapshots"])]))
     return out
 
 

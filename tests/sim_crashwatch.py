@@ -143,16 +143,65 @@ check("the doctor: the last crash said, with its last snapshot, and what would h
 check("  the kernel flood, with its rate", f["crash-flood"]["status"] == "warn" and "about 1.1 a second" in f["crash-flood"]["detail"], f["crash-flood"])
 check("  the radio watched, its failure in the last day, pre-emption's other levels to choose, a confirm before restarting",
       f["crash-radio"]["status"] == "warn" and "wlan0 (AIC8800DC)" in f["crash-radio"]["detail"] and "wlan0 failed" in f["crash-radio"]["detail"]
-      and [a["choice"] for a in f["crash-radio"]["actions"]] == ["crashwatch-preempt:off", "crashwatch-preempt:radio", "crashwatch-preempt:reboot"]
-      and f["crash-radio"]["actions"][-1].get("confirm"), f["crash-radio"])
-check("  a frozen box: nothing restarts it, the two switches offered", "pull the plug" in f["crash-hang"]["detail"]
-      and [a["choice"] for a in f["crash-hang"]["actions"]] == ["crashwatch-panic:on", "crashwatch-watchdog:on"], f["crash-hang"])
+      and [(a["choice"], a["on"]) for a in f["crash-radio"]["actions"]] == [("crashwatch-preempt:off", False), ("crashwatch-preempt:warn", True),
+                                                                          ("crashwatch-preempt:radio", False), ("crashwatch-preempt:reboot", False)]
+      and {a["group"] for a in f["crash-radio"]["actions"]} == {"When the radio fails"} and f["crash-radio"]["actions"][-1].get("confirm"), f["crash-radio"])
+check("  a frozen box after a crash, nothing to restart it: a warning, every choice offered as chips, the current marked",
+      f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"]
+      and [(a["group"], a["choice"], a["on"]) for a in f["crash-hang"]["actions"]] == [
+          ("Kernel panic or lockup", "crashwatch-panic:off", True), ("Kernel panic or lockup", "crashwatch-panic:on", False),
+          ("Watchdog", "crashwatch-watchdog:off", True), ("Watchdog", "crashwatch-watchdog:on", False)]
+      and not f["crash-hang"]["actions"][0].get("confirm") and f["crash-hang"]["actions"][1].get("confirm"), f["crash-hang"])
+check("  snapshots: both chips, On marked", [(a["choice"], a["on"]) for a in f["crash-snapshots"]["actions"]]
+      == [("crashwatch-snapshots:off", False), ("crashwatch-snapshots:on", True)], f["crash-snapshots"])
 for good in ("crashwatch-preempt:reboot", "crashwatch-panic:on", "crashwatch-snapshots:off"):
     check(f"  the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
 for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 said = health.fix("crashwatch-preempt:radio")
 check("  a switch pressed: the setting changed, and said", cw.load_settings()["preempt"] == "radio" and said == "a failing radio is reset at once")
+
+# --- a board whose watchdog its device tree leaves switched off (the Lyra's RK3506) ---
+DTD, BOOTD = T / "dt", T / "boot"
+for n, st in (("watchdog@ff260000", b"disabled\0"), ("watchdog@ff268000", b"disabled\0")):
+    (DTD / n).mkdir(parents=True); (DTD / n / "status").write_bytes(st)
+BOOTD.mkdir(); (BOOTD / "armbianEnv.txt").write_text("verbosity=1\noverlays=luckfox-lyra-zero-w-spi0-1cs-spidev\n")
+cw.DT, cw.BOOT = DTD, BOOTD
+dtc_in = []
+def fake_run(cmd, **kw):
+    ran.append(cmd)
+    if cmd[0] == "modinfo":
+        return subprocess.CompletedProcess(cmd, 1, "", "modinfo: ERROR: Module softdog not found.")
+    if cmd[0] == "dtc":
+        dtc_in.append(kw.get("input", "")); Path(cmd[cmd.index("-o") + 1]).write_bytes(b"\xd0\x0d\xfe\xed")
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+cw.subprocess = type("S", (), {"run": staticmethod(fake_run), "Popen": staticmethod(lambda cmd: ran.append(cmd)), "SubprocessError": subprocess.SubprocessError})
+cw.shutil = type("W", (), {"which": staticmethod(lambda name: "/usr/bin/dtc" if name == "dtc" else None)})
+check("a switched-off watchdog in the device tree, on Armbian with dtc: offered as one to switch on", cw.watchdog_device() == "switched-off")
+f = {x["id"]: x for x in health.check_crashwatch(now=now)}
+check("  the doctor says so, and offers it with a confirm that says a restart is needed",
+      "switched off in its device tree" in f["crash-hang"]["detail"]
+      and any(a["choice"] == "crashwatch-watchdog:on" and "after a restart" in a["label"] and "next restart" in a["confirm"] for a in f["crash-hang"]["actions"]),
+      f["crash-hang"])
+said = cw.set_option("watchdog", "on")
+env = (BOOTD / "armbianEnv.txt").read_text()
+check("  on: the overlay compiled for the first switched-off node, added to user_overlays, systemd set to feed it",
+      'target-path = "/watchdog@ff260000"' in dtc_in[-1] and 'status = "okay"' in dtc_in[-1]
+      and (BOOTD / "overlay-user/irate-box-watchdog.dtbo").exists() and "user_overlays=irate-box-watchdog\n" in env
+      and "overlays=luckfox-lyra-zero-w-spi0-1cs-spidev\n" in env and "RuntimeWatchdogSec=60" in cw.SYSTEMD_CONF.read_text()
+      and "next restart" in said, (said, env))
+check("  until the restart, it waits, and the doctor says so", cw.board_watchdog_pending()
+      and "after the next restart" in {x["id"]: x for x in health.check_crashwatch(now=now)}["crash-hang"]["detail"])
+(BOOTD / "armbianEnv.txt").write_text(env.replace("user_overlays=irate-box-watchdog", "user_overlays=mine irate-box-watchdog"))
+cw.set_option("watchdog", "off")
+env = (BOOTD / "armbianEnv.txt").read_text()
+check("  off: the overlay and its name gone, the owner's own user overlay kept", not (BOOTD / "overlay-user/irate-box-watchdog.dtbo").exists()
+      and "user_overlays=mine\n" in env and "irate-box-watchdog" not in env and not cw.SYSTEMD_CONF.exists(), env)
+cw.set_option("watchdog", "on"); cw.undo_all()
+check("  undo-all takes it away too", "irate-box-watchdog" not in (BOOTD / "armbianEnv.txt").read_text()
+      and not (BOOTD / "overlay-user/irate-box-watchdog.dtbo").exists())
+(DTD / "watchdog@ff260000" / "status").write_bytes(b"okay\0"); (DTD / "watchdog@ff268000" / "status").write_bytes(b"okay\0")
+check("  no switched-off node: no watchdog to offer", cw.watchdog_device() is None)
 
 # --- the AIC8800's own words as its firmware wedged (a recorded kernel log) ---
 FX = REPO / "tests/fixtures/aic8800-wedge-2026-10-09"
