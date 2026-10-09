@@ -199,7 +199,7 @@ DO = [
     ("*", r"^(page-)?security-updates$|^debsecan-(?!kit-|data$|tool$|unfixed$)", {"go": "updates-debian", "where": "Updates → Debian's security updates"}),
     ("debian-cis", r"^cis-1\.9", {"go": "updates-debian", "where": "Updates → Debian's security updates"}),
     ("*", r"^debsecan-(kit-|data$|tool$)|^offline-(kits|lists)$", {"go": "toolkits", "where": "Toolkits"}),
-    ("*", r"^offline-bundle$", {"go": "backup-kit", "where": "Updates and backup → Set up another box"}),
+    ("*", r"^offline-bundle$", {"go": "backup-kit", "where": "Updates and backup → Content export"}),
     ("*", r"^offline-update$", {"go": "updates", "where": "Updates"}),
     ("*", r"^git-(everyone|readonly)$", {"go": "git", "where": "Git"}),
     ("*", r"^accounts-hash$", {"go": "accounts", "where": "Accounts & users"}),

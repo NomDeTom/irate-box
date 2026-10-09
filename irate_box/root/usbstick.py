@@ -222,6 +222,18 @@ def export_kit(device, kit, budget_report=None):
         return kits.export_usb(kit, folder, budget_report)
 
 
+def export_with(device, write):
+    """write(folder) called with the stick's irate-box/ folder, mounted read-write (a real folder, never a link)."""
+    from irate_box.root import safeio
+    dev = _find(None, device)
+    if dev["fstype"] == "iso9660":
+        raise ValueError("that is a read-only disc")
+    with Mounted(dev, writable=True) as root:
+        folder = root / "irate-box"
+        safeio.mkdir(folder, mode=0o755)
+        return write(folder)
+
+
 def import_kit(device, kit, budget_mb, report=None):
     """A toolkit from the stick into the local repository, every .deb checked against Debian's
     signed indexes (kits.import_usb); the stick read-only."""

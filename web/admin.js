@@ -2847,7 +2847,7 @@ function drawBackupGo() {
     s.replaceChildren(...bku.stick.cloneNode(true).children);
     if ([...s.options].some((o) => o.value === keep)) s.value = keep;
   }
-  drawOfflineTotal();
+  drawKitTotal();
 }
 bku.keys.addEventListener('change', (e) => {
   if (bku.keys.checked && !confirm("Include Syncthing's private keys? Anyone with the file can pose as this box to its Syncthing peers.")) { bku.keys.checked = false; return; }
@@ -2867,8 +2867,32 @@ const kitEl = { form: document.getElementById('kit-form'), make: document.getEle
   bar: document.getElementById('kit-bar'), step: document.getElementById('kit-step'), note: noteEl('kit-note'),
   state: document.getElementById('kit-state'), details: document.getElementById('kit-details'),
   contents: document.getElementById('kit-contents') };
-const offEl = { form: document.getElementById('offline-form'), books: document.getElementById('offline-books'), kits: document.getElementById('offline-kits'),
-  total: document.getElementById('offline-total'), stick: document.getElementById('offline-stick'), go: document.getElementById('offline-go'), note: noteEl('offline-note') };
+const stickEl = { box: document.getElementById('offline-stick-box'), stick: document.getElementById('offline-stick'), hubSize: document.getElementById('kit-hub-size'),
+  presets: document.getElementById('export-presets'), presetSays: document.getElementById('export-preset-says') };
+// Presets set the hub program, the state and the repositories; the books and toolkits stay as picked.
+const EXPORT_PRESETS = {
+  update: ['Books and toolkits for a box that has irate-box: the hub program, the repositories and the state left out.', { hub: false, state: 'none', repos: false }],
+  level: ['For a box that has irate-box but is behind: every repository and this box\'s settings too.', { hub: false, state: 'settings', repos: true }],
+  new: ['For a box without irate-box: the hub program in, with what is chosen below; unpack it there and run setup.sh.', { hub: true }],
+};
+let exportPreset = 'update', kitBusy = false;
+function applyPreset(key) {
+  const f = kitEl.form.elements, [, set] = EXPORT_PRESETS[key];
+  exportPreset = key;
+  if ('hub' in set) f.hub.checked = set.hub;
+  if ('state' in set) f.state.value = set.state;
+  if ('repos' in set) kitEl.repos.querySelectorAll('input').forEach((i) => { i.checked = set.repos; });
+  drawPresets();
+  drawKitTotal();
+}
+function drawPresets() {
+  stickEl.presets.querySelectorAll('[data-export]').forEach((b) => {
+    b.classList.toggle('selected', b.dataset.export === exportPreset);
+    b.setAttribute('aria-pressed', String(b.dataset.export === exportPreset));
+  });
+  stickEl.presetSays.textContent = EXPORT_PRESETS[exportPreset][0];
+}
+stickEl.presets.addEventListener('click', (e) => { const b = e.target.closest('[data-export]'); if (b) applyPreset(b.dataset.export); });
 function drawPicks() {
   const p = bkPlan;
   const book = (b) => `${b.name} (${size(b.size)})`, kit = (k) => `${k.title} (${size(k.size)})`;
@@ -2876,38 +2900,37 @@ function drawPicks() {
   pickList(kitEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
   pickList(kitEl.repos, p.repos.map((r) => ({ ...r, value: `${r.area}/${r.name}` })), 'repo',
     (r) => `${r.name}${r.area === 'private' ? ' (private)' : ''}${r.mirror ? ', a mirror' : ''} (${size(r.size)})`);
-  pickList(offEl.books, p.books.map((b) => ({ ...b, value: b.name })), 'book', book);
-  pickList(offEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
+  stickEl.hubSize.textContent = `about ${size(p.hub)} (its code, apps and release files)`;
+  drawPresets();
   drawKitTotal();
-  drawOfflineTotal();
 }
 function kitBytes() {
   const p = bkPlan, f = kitEl.form.elements;
   const sum = (box, list, key) => picked(box).reduce((n, v) => n + ((list.find((x) => x[key] === v) || {}).size || 0), 0);
-  return p.hub + sum(kitEl.books, p.books, 'name') + sum(kitEl.kits, p.kits, 'id')
+  return (f.hub.checked ? p.hub : 0) + sum(kitEl.books, p.books, 'name') + sum(kitEl.kits, p.kits, 'id')
     + picked(kitEl.repos).reduce((n, v) => n + ((p.repos.find((r) => `${r.area}/${r.name}` === v) || {}).size || 0), 0)
     + (f.state.value === 'none' ? 0 : p.levels[f.state.value]);
 }
 function drawKitTotal() {
   if (!bkPlan) return;
-  const total = kitBytes(), budget = Number(kitEl.form.elements.budget.value) || 0;
+  const f = kitEl.form.elements;
+  // The hub program goes only as a download (one file that setup.sh runs from).
+  let moved = false;
+  if (f.hub.checked && f.dest.value === 'stick') { f.dest.value = 'download'; moved = true; }
+  const stick = f.dest.value === 'stick';
+  stickEl.box.hidden = !stick;
+  const total = kitBytes(), budget = Number(f.budget.value) || 0;
   const over = budget && total > budget * 2 ** 20;
-  kitEl.total.textContent = `About ${size(total)}` + (budget ? ` of a ${size(budget * 2 ** 20)} budget${over ? ': over it, so leave something out.' : '.'}` : ' (no budget set).')
-    + ' The code, the apps and their release files are always in it.';
+  kitEl.total.textContent = (total ? `About ${size(total)}` : 'Nothing chosen yet')
+    + (budget ? ` of a ${size(budget * 2 ** 20)} budget${over ? ': over it, so leave something out.' : '.'}` : ' (no budget set).')
+    + (f.hub.checked ? ' The hub program is in it.' : '') + (moved ? ' With the hub program it goes as a download.' : '');
   kitEl.total.classList.toggle('bad', !!over);
   kitEl.make.dataset.over = over ? '1' : '';
-}
-function drawOfflineTotal() {
-  if (!bkPlan) return;
-  const p = bkPlan;
-  const total = picked(offEl.books).reduce((n, v) => n + ((p.books.find((b) => b.name === v) || {}).size || 0), 0)
-    + picked(offEl.kits).reduce((n, v) => n + ((p.kits.find((k) => k.id === v) || {}).size || 0), 0);
-  offEl.total.textContent = total ? `About ${size(total)} onto the stick.` : 'Choose books or toolkits.';
-  offEl.go.disabled = !total || !usbSticks.length || !!bkWaiting;
+  kitEl.make.textContent = stick ? 'Copy to the stick' : 'Make the export';
+  kitEl.make.disabled = kitBusy || !total || (stick && (!usbSticks.length || !!bkWaiting));
 }
 kitEl.form.addEventListener('change', drawKitTotal);
 kitEl.form.addEventListener('input', drawKitTotal);
-offEl.form.addEventListener('change', drawOfflineTotal);
 async function loadBackupPlan() {
   try { bkPlan = await getJSON('/admin/backup/plan'); drawBackup(); drawPicks(); } catch (err) { console.error('backup plan:', err); }
 }
@@ -2944,16 +2967,7 @@ bku.imageGo.addEventListener('click', async () => {
     bkSticks(false);
   } catch (err) { say(err.message, false, bku.note); }
 });
-offEl.form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const books = picked(offEl.books), kits = picked(offEl.kits), d = usbSticks.find((x) => x.name === offEl.stick.value);
-  if (!d || !confirm(`Copy ${books.length} book${books.length === 1 ? '' : 's'} and ${kits.length} toolkit${kits.length === 1 ? '' : 's'} onto ${d.label || d.name}?`)) return;
-  try {
-    bkWaiting = { id: (await postJSON('/admin/usb', { action: 'export-many', device: d.name, books, kits })).id, note: offEl.note };
-    say('Copying: its progress shows above, under Back up this box.', true, offEl.note);
-    bkSticks(false);
-  } catch (err) { say(err.message, false, offEl.note); }
-});
+
 
 // The kit: the root helper makes it (hub_control.py offline_kit); the hub streams the download.
 let kitWaiting = null;
@@ -2964,7 +2978,8 @@ function renderKit(d) {
     if (done) { say(done.message, done.ok, kitEl.note); kitWaiting = null; }
   }
   const busy = !!kitWaiting || d.pending > 0 || !!d.progress;
-  kitEl.make.disabled = busy;
+  kitBusy = busy;
+  drawKitTotal();
   kitEl.progress.hidden = !d.progress;
   if (d.progress) {
     const p = d.progress;
@@ -2976,8 +2991,8 @@ function renderKit(d) {
     (k.repos || []).length && `${k.repos.length} repositor${k.repos.length === 1 ? 'y' : 'ies'}`, k.state && k.state !== 'none' && (k.state === 'data' ? 'settings and data' : 'settings')].filter(Boolean) : [];
   kitEl.state.replaceChildren(...(k ? [
     el('a', { href: '/admin/kit/download', download: k.name, textContent: `Download ${k.name}` }),
-    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}, with ${held.length ? held.join(', ') : 'the hub alone'}.`),
-  ] : [document.createTextNode(busy ? 'Making the kit…' : 'No kit made yet.')]));
+    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}, with ${held.length ? held.join(', ') : 'the hub alone'}${k.kind === 'content' ? ', without the hub program' : ''}.`),
+  ] : [document.createTextNode(busy ? 'Making the export…' : 'No export made yet.')]));
   kitEl.details.hidden = !(k && k.contents && k.contents.length);
   if (k) kitEl.contents.replaceChildren(...(k.contents || []).map((t) => el('li', { textContent: t })));
   clearTimeout(kitPoll);
@@ -2990,10 +3005,18 @@ kitEl.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (kitEl.make.dataset.over) { say('Over the budget: leave something out, or raise the budget.', false, kitEl.note); return; }
   const f = kitEl.form.elements, budget = Number(f.budget.value) || null;
+  const books = picked(kitEl.books), kits = picked(kitEl.kits), repos = picked(kitEl.repos), state = f.state.value;
   try {
-    kitWaiting = (await postJSON('/admin/kit', { action: 'make', books: picked(kitEl.books), kits: picked(kitEl.kits),
-      repos: picked(kitEl.repos), state: f.state.value, budget_mb: budget })).id;
-    say('Making the kit: a minute or two, longer with books.', true, kitEl.note);
+    if (f.dest.value === 'stick') {
+      const d = usbSticks.find((x) => x.name === stickEl.stick.value);
+      if (!d || !confirm(`Copy the export onto ${d.label || d.name}?`)) return;
+      bkWaiting = { id: (await postJSON('/admin/usb', { action: 'export-many', device: d.name, books, kits, repos, state })).id, note: kitEl.note };
+      say('Copying: its progress shows above, under Back up this box.', true, kitEl.note);
+      bkSticks(false);
+      return;
+    }
+    kitWaiting = (await postJSON('/admin/kit', { action: 'make', hub: f.hub.checked, books, kits, repos, state, budget_mb: budget })).id;
+    say('Making the export: a minute or two, longer with books.', true, kitEl.note);
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
