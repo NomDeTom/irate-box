@@ -20,9 +20,9 @@ echo "== watchdog"
 [ "$(systemctl is-enabled irate-box-uplink)" = enabled ] && ok "enabled" || bad "not enabled"
 for _ in $(seq 20); do [ -s /var/lib/hub/control/uplink.json ] && break; sleep 1; done
 s="$(get)"
-echo "$s" | j '(d["uplink"]["state"], d["uplink"]["iface"], d["uplink"]["backend"], d["uplink"]["chosen"]["pace"], d["uplink"]["chosen"]["reach"], d["uplink"]["chosen"]["forgiveness"], d["uplink"]["stale"])' | sed 's/^/    /'
-# The old single level still read: standard is the steady pace, reach reboot (two dials, 2026-10-09).
-[ "$(echo "$s" | j 'd["uplink"]["chosen"]["pace"]+","+d["uplink"]["chosen"]["reach"]+","+d["uplink"]["chosen"]["forgiveness"]')" = "steady,reboot,strict" ] && ok "--uplink standard,strict taken as steady, reboot, strict" || bad "settings not taken"
+echo "$s" | j '(d["uplink"]["state"], d["uplink"]["iface"], d["uplink"]["backend"], d["uplink"]["chosen"]["pace"], d["uplink"]["chosen"]["reach"], d["uplink"]["chosen"]["sensitivity"], d["uplink"]["stale"])' | sed 's/^/    /'
+# The old single level still read: standard is the steady pace, reach reboot; strict, 2 missed checks (2026-10-09).
+[ "$(echo "$s" | j 'd["uplink"]["chosen"]["pace"]+","+d["uplink"]["chosen"]["reach"]+","+str(d["uplink"]["chosen"]["sensitivity"])')" = "steady,reboot,2" ] && ok "--uplink standard,strict taken as steady, reboot, sensitivity 2" || bad "settings not taken"
 [ "$(echo "$s" | j 'd["inventory"]["uplink"]["iface"]')" = eth0 ] && ok "inventory written at install" || bad "no inventory"
 [ "$(echo "$s" | j 'd["levels"]["pace"]==["gentle","steady","prompt","urgent"] and d["levels"]["reach"]==["watch","reconnect","restart","radio","reboot"]')" = True ] && ok "both dials offered" || bad "levels"
 
@@ -33,7 +33,7 @@ id="$(post '{"action":"scan"}' | idof)"; r="$(result "$id")"; [[ "$r" == OK* ]] 
 c="$(post '{"action":"scan","iface":"eth0;rm"}' | tail -1)"; [ "$c" = 400 ] && ok "bad iface refused" || bad "bad iface -> $c"
 
 echo "== settings"
-id="$(post '{"action":"settings","settings":{"pace":"prompt","reach":"radio","forgiveness":"tolerant","iface":"auto","overrides":{"check":20,"steps":{"radio":null}}}}' | idof)"
+id="$(post '{"action":"settings","settings":{"pace":"prompt","reach":"radio","sensitivity":5,"iface":"auto","overrides":{"check":20,"steps":{"radio":null}}}}' | idof)"
 r="$(result "$id")"; echo "    $r"; [[ "$r" == OK* ]] && ok "saved" || bad "save"
 python3 -c "import json; d=json.load(open('/etc/hub/uplink.json')); assert (d['pace'], d['reach'])==('prompt','radio') and d['overrides']=={'check':20,'steps':{'radio':None}}, d" && ok "/etc/hub/uplink.json written" || bad "file"
 for _ in $(seq 30); do e="$(get | j 'd["uplink"]["events"][-1]["text"]')"; [[ "$e" == "Settings changed: prompt pace"* ]] && break; sleep 1; done

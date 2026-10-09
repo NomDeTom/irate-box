@@ -91,8 +91,8 @@ Usage: sudo ./install.sh [options]
                         Security page can undo it and uninstall.sh starts it again.
   --uplink K=V[,K=V]    how the box works to stay on its network (uplink.py): pace gentle
                         (default), steady, prompt or urgent; reach watch, reconnect, restart,
-                        radio or reboot (default); forgiveness tolerant, normal (default) or
-                        strict; guests protect (default) or ignore; on_wedge ladder (default) or
+                        radio or reboot (default); sensitivity 1-20 missed checks within the
+                        pace's window (default 3); guests protect (default) or ignore; on_wedge ladder (default) or
                         radio. E.g. --uplink pace=steady,reach=radio. (The old single level, e.g.
                         standard,strict, is still read.) Kept in /etc/hub/uplink.json, not in the
                         install options, so an update never undoes a choice made on /admin's
@@ -164,11 +164,11 @@ while [ $# -gt 0 ]; do
 		shift 2 ;;
 	--uplink)
 		# KEY=VALUE pairs (uplink.py checks each again), or the old single level E[,F].
-		if [[ "$2" =~ ^(pace|reach|forgiveness|guests|on_wedge)=[a-z]+(,(pace|reach|forgiveness|guests|on_wedge)=[a-z]+)*$ ]] ||
+		if [[ "$2" =~ ^(pace|reach|sensitivity|forgiveness|guests|on_wedge)=[a-z0-9]+(,(pace|reach|sensitivity|forgiveness|guests|on_wedge)=[a-z0-9]+)*$ ]] ||
 			[[ "$2" =~ ^(off|patient|standard|persistent|stubborn)(,(tolerant|normal|strict))?$ ]]; then
 			UPLINK="$2"
 		else
-			echo "--uplink takes KEY=VALUE pairs (pace, reach, forgiveness, guests, on_wedge), e.g. pace=steady,reach=radio" >&2; exit 2
+			echo "--uplink takes KEY=VALUE pairs (pace, reach, sensitivity, guests, on_wedge), e.g. pace=steady,reach=radio,sensitivity=4" >&2; exit 2
 		fi
 		shift 2 ;;
 	--remove)
@@ -1874,7 +1874,7 @@ fi
 say "Looking at the network"
 "$CODE/irate-box" netinv --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
 if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
-	IFS=, read -r -a up <<<"${UPLINK:-pace=gentle,reach=reboot,forgiveness=normal}"
+	IFS=, read -r -a up <<<"${UPLINK:-pace=gentle,reach=reboot,sensitivity=3}"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink set "${up[@]}" >/dev/null || problem "--uplink $UPLINK: not taken (uplink.py set)"
 fi
 # A clock module on I2C: found and set up if there is exactly one (rtc.py auto), kept if set up

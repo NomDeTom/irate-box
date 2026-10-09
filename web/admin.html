@@ -955,12 +955,13 @@
           <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
           <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
           <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
-          <span class="setting-name" id="up-forgive-label">Forgiveness: how much it puts up with first</span>
-          <div class="choice-tiles" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
+          <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
+          <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
+            <span class="setting-desc" id="up-sens-says"></span></span>
           <label class="setting-name" for="up-iface">Watch</label>
           <select id="up-iface"><option value="auto">The box's route to its network</option></select>
           <details id="up-custom">
-            <summary>Custom values (blank: the pace's and forgiveness's own)</summary>
+            <summary>Custom values (blank: the pace's own)</summary>
             <div class="net-fields" id="up-fields"></div>
           </details>
         </div>

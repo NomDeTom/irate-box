@@ -22,7 +22,7 @@ inv.wired = [{ iface: 'eth0', bus: 'platform', driver: 'rk_gmac', carrier: true 
 const now = Math.floor(Date.now() / 1000);
 const data = { inventory: inv, uptime: fixture.uptime, pending: 0, results: [],
   uplink: { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager', repairs: [], events: [],
-    chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', forgiveness: 'normal', iface: 'auto', overrides: {} } },
+    chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} } },
   levels: fixture.levels };  // the watchdog's levels as network_snapshot sends them
 const errors = [];
 const vc = new VirtualConsole();

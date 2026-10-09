@@ -14,7 +14,10 @@ const LadderChart = (() => {
   const BY = { auto: 'by the watchdog', hand: 'asked on /admin', flap: 'a flapping link' };
   const PERIODS = [['24 h', 86400], ['7 days', 7 * 86400], ['30 days', 30 * 86400], ['72 days', 72 * 86400]];
   const SVG = 'http://www.w3.org/2000/svg';
-  const W = 640, H = 200, L = 84, R = 12, T = 10, B = 26;   // the drawing's own units (viewBox)
+  const W = 640, H = 310, L = 84, R = 12, T = 10, B = 26;   // the drawing's own units (viewBox)
+  // Two panels on one time axis (Tom, 2026-10-09: "plot the symptoms on the chart as well"): above,
+  // the missed checks within the pace's window and the sensitivity's line; below, the ladder.
+  const SYM_H = 84, LAD_T = T + SYM_H + 28;
 
   const make = (tag, attrs = {}, text) => {
     const e = tag === 'svg' || /^(g|path|line|rect|circle|text|polygon)$/.test(tag) ? document.createElementNS(SVG, tag) : document.createElement(tag);
@@ -33,6 +36,7 @@ const LadderChart = (() => {
     at(from, 0);
     for (const r of rows) {
       if (r.at > to) break;
+      if (r.k === 'm') continue;
       if (r.k === 'down') { lv = Math.max(lv, 1); open = r.at; at(r.at, lv); }
       else if (r.k === 'up') { if (open != null) bands.push([open, r.at]); open = null; lv = 0; at(r.at, 0); }
       else if (r.k === 'repair' && r.s) { if (open != null) { lv = Math.max(lv, level(r.s)); at(r.at, lv); } }
@@ -44,7 +48,7 @@ const LadderChart = (() => {
   }
 
   function summary(rows, from) {
-    const seen = rows.filter((r) => r.at >= from);
+    const seen = rows.filter((r) => r.at >= from && r.k !== 'm');
     const outages = seen.filter((r) => r.k === 'down').length;
     const steps = {};
     for (const r of seen) if (r.k === 'repair' && r.s) steps[r.s] = (steps[r.s] || 0) + 1;
@@ -57,13 +61,50 @@ const LadderChart = (() => {
   const when = (t, span) => new Date(t * 1000).toLocaleString([], span > 2 * 86400
     ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
 
+  // The symptoms: a column for each five-minute slot with misses (its most within the window), muted
+  // below the sensitivity's line and in the accent at or above it (the box stepped in); the line
+  // itself, as it was set over time, labelled.
+  function symptoms(svg, rows, from, now, x) {
+    const all = rows.filter((r) => r.k === 'm');
+    const sym = all.filter((r) => r.at + 300 >= from && r.at <= now);
+    const before = all.filter((r) => r.at < from).pop();
+    let th = before ? before.th : (sym[0] || all[all.length - 1] || {}).th;
+    const top = Math.max(2, th || 0, ...sym.map((r) => Math.max(r.n, r.th || 0))) + 1;
+    const ys = (v) => T + SYM_H - (v / top) * SYM_H;
+    svg.append(make('text', { x: L - 8, y: T + 10, class: 'ladder-axis', 'text-anchor': 'end' }, 'missed'));
+    svg.append(make('text', { x: L - 8, y: T + 22, class: 'ladder-axis', 'text-anchor': 'end' }, 'checks'));
+    svg.append(make('line', { x1: L, x2: W - R, y1: ys(0), y2: ys(0), class: 'ladder-grid' }));
+    svg.append(make('text', { x: L - 8, y: ys(0) + 4, class: 'ladder-axis', 'text-anchor': 'end' }, '0'));
+    let dUnder = '', dOver = '';
+    for (const r of sym) {
+      const x0 = Math.max(x(r.at), L), x1 = Math.min(x(r.at + 300), W - R), wdt = Math.max(x1 - x0 - 0.5, 1.2);
+      if (!r.n) continue;
+      const seg = `M${x0},${ys(0)}V${ys(r.n)}h${wdt}V${ys(0)}Z`;
+      if (r.th && r.n >= r.th) dOver += seg; else dUnder += seg;
+    }
+    if (dUnder) svg.append(make('path', { d: dUnder, class: 'ladder-sym' }));
+    if (dOver) svg.append(make('path', { d: dOver, class: 'ladder-sym over' }));
+    if (th) {
+      let d = `M${L},${ys(th)}`;
+      for (const r of sym) if (r.th && r.th !== th) { th = r.th; d += `H${Math.max(x(r.at), L)}V${ys(th)}`; }
+      d += `H${W - R}`;
+      svg.append(make('path', { d, class: 'ladder-th' }));
+      svg.append(make('text', { x: W - R, y: ys(th) - 4, class: 'ladder-axis', 'text-anchor': 'end' }, `sensitivity ${th}`));
+    }
+    return { most: Math.max(0, ...sym.map((r) => r.n)), over: sym.filter((r) => r.th && r.n >= r.th).length };
+  }
+
   function draw(box, rows, span, now) {
     const from = now - span, x = (t) => L + ((t - from) / span) * (W - L - R);
-    const y = (v) => H - B - (v / (LEVELS.length - 1)) * (H - B - T);
+    const y = (v) => H - B - (v / (LEVELS.length - 1)) * (H - B - LAD_T);
     const { pts, bands, marks } = model(rows, from, now);
     const svg = make('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ladder-svg', role: 'img', tabindex: '0',
       'aria-label': `The watchdog's escalation over the last ${PERIODS.find((p) => p[1] === span)[0]}: ${summary(rows, from)}` });
     for (const [a, b] of bands) svg.append(make('rect', { x: x(a), y: T, width: Math.max(x(b) - x(a), 1.5), height: H - B - T, class: 'ladder-band' }));
+    const sy = symptoms(svg, rows, from, now, x);
+    const symSaid = rows.some((r) => r.k === 'm') ? ` At most ${sy.most} missed check${sy.most === 1 ? '' : 's'} within the pace's window;`
+      + ` at or over the line in ${sy.over} five-minute spell${sy.over === 1 ? '' : 's'}.` : '';
+    svg.setAttribute('aria-label', svg.getAttribute('aria-label') + symSaid);
     LEVELS.forEach((name, i) => {
       svg.append(make('line', { x1: L, x2: W - R, y1: y(i), y2: y(i), class: 'ladder-grid' }));
       svg.append(make('text', { x: L - 8, y: y(i) + 4, class: 'ladder-axis', 'text-anchor': 'end' }, NAMES[name]));
@@ -85,7 +126,7 @@ const LadderChart = (() => {
       else svg.append(make('circle', { cx, cy, r: 4.5, class: cls }));
     }
     // Hover and keys: a crosshair that snaps to the nearest event, its words in the tooltip.
-    const seen = rows.filter((r) => r.at >= from && r.at <= now);
+    const seen = rows.filter((r) => r.at >= from && r.at <= now && r.k !== 'm');
     const cross = make('line', { y1: T, y2: H - B, class: 'ladder-cross', visibility: 'hidden' });
     svg.append(cross);
     // The readout: a line of its own above the plot (its room kept), so it never covers a mark.
@@ -126,8 +167,9 @@ const LadderChart = (() => {
     }
     const frame = make('div', { class: 'ladder-frame' });
     frame.append(tip, svg);
-    box.replaceChildren(frame, make('p', { class: 'setting-desc ladder-sum' }, `Over this time: ${summary(rows, from)}`),
-      make('p', { class: 'setting-desc ladder-key' }, 'The line is the furthest each outage went, the shaded bands the outages. '
+    box.replaceChildren(frame, make('p', { class: 'setting-desc ladder-sum' }, `Over this time: ${summary(rows, from)}${symSaid}`),
+      make('p', { class: 'setting-desc ladder-key' }, 'Above: missed checks within the pace\'s window, each five minutes; at or over the sensitivity\'s line'
+        + ' (in colour) the link goes on the ladder. Below: the furthest each outage went; shaded, the outages. '
         + '● a step the watchdog took, ◆ one asked for on /admin, ▲ a flapping link\'s repair; hollow, one held (guests on the hotspot, say) or a stall.'),
       table);
   }
