@@ -16,6 +16,8 @@ fixture.report.findings.push({ id: 'crash-hang', check: 'A frozen box', status: 
   chip('Kernel panic or lockup', 'crashwatch-panic:on', 'Restart after 10 s', false, 'Restart the box?'),
   chip('Watchdog', 'crashwatch-watchdog:off', 'Off', true),
   chip('Watchdog', 'crashwatch-watchdog:on', "On (the board's, after a restart)", false, 'Let a watchdog restart the box?')] });
+fixture.report.findings.push({ id: 'builds-families', check: 'Firmware builds that always fail', status: 'warn',
+  detail: 'Every build here has failed for this family: esp32c6 (2).', fix: "Open a failed one's log (Firmware Factory, Built).", actions: [] });
 let fails = 0;
 const check = (name, ok, extra) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ` ${JSON.stringify(extra)}`}`); if (!ok) fails++; };
 const errors = [];
@@ -36,6 +38,9 @@ setTimeout(() => {
   const d = w.document;
   const row = d.getElementById('hl-crash-hang');
   check('the finding is there', !!row);
+  const fam = d.getElementById('hl-builds-families');
+  const go = fam && [...fam.querySelectorAll('a.go-btn')].map((a) => `${a.textContent} ${a.getAttribute('href')}`);
+  check('the Firmware Factory, named in a finding, gets its link', !!go && go.join() === 'Go to Firmware Factory → #factory', go);
   const groups = row ? [...row.querySelectorAll('.chip-group')] : [];
   check('an ok finding still shows its settings: two rows of chips', groups.length === 2, groups.length);
   const labels = row ? [...row.querySelectorAll('.aw-label')].map((n) => n.textContent) : [];
