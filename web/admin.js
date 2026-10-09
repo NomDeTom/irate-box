@@ -1648,7 +1648,6 @@ loadHealth();
 // that asked. The form is filled from the watchdog's report only while nobody is editing it.
 const net = {
   when: document.getElementById('net-when'),
-  device: document.getElementById('net-device'),
   scan: document.getElementById('net-scan'),
   scanNote: document.getElementById('net-scan-note'),
   devices: document.getElementById('net-devices'),
@@ -1986,7 +1985,7 @@ function renderNetwork(data) {
     + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not looked yet.';
   net.scan.disabled = busy;
   const devices = inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : [];
-  for (const box of [net.device, net.iface]) {
+  for (const box of [net.iface]) {
     const keep = box.value;
     const first = box.options[0];
     box.replaceChildren(first, ...devices.map((d) => el('option', { value: d, textContent: d })));
@@ -2062,7 +2061,7 @@ async function netRequest(body, where) {
   loadNetwork();
 }
 
-net.scan.addEventListener('click', () => netRequest({ action: 'scan', iface: net.device.value || null }, 'scan'));
+net.scan.addEventListener('click', () => netRequest({ action: 'scan' }, 'scan'));
 for (const box of [net.iface]) {
   box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); showUpSave(); });
 }

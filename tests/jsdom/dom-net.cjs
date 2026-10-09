@@ -44,7 +44,7 @@ setTimeout(() => {
   const d = w.document;
   const t = (sel) => [...d.querySelectorAll(sel)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('WHEN:', t('#net-when')[0]);
-  console.log('DEVICES:', [...d.querySelectorAll('#net-device option')].map((o) => o.value || 'All').join(', '));
+  console.log('DEVICES:', [...d.querySelectorAll('#up-iface option')].map((o) => o.value).join(', '));
   // A card per device (2026-10-06): plain lines, the hotspot's conditions one per line, its warnings on it.
   const cards = [...d.querySelectorAll('#net-devices .net-device')];
   check('a card per device', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('wlan0'), cards.length);
