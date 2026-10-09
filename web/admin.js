@@ -760,9 +760,13 @@ function renderModeration(data) {
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
   renderReports(data, del);
+  // What was reported, marked where the content is listed too, so it is all in one place (Tom, 2026-10-09).
+  const reportedN = new Map((data.queue || []).map((r) => [r.key, r.count]));
+  const flag = (key) => (reportedN.has(key)
+    ? AW.pill(`reported ×${reportedN.get(key)}`, 'bad') : null);
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
-      el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)}`),
+      el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)} `, flag(`shoutbox:${m.created}:${String(m.name).slice(0, 40)}`)),
       el('span', { className: 'admin-text', textContent: m.text }),
       actionButton('Delete', del({ action: 'delete_message', created: m.created, name: m.name }), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No messages.' })]));
@@ -779,9 +783,10 @@ function renderModeration(data) {
   document.getElementById('mod-threads').replaceChildren(...(threads.length ? threads.map((t) =>
     el('details', { className: 'admin-item' },
       el('summary', {}, el('strong', { textContent: t.title }),
-        ` · ${t.posts.length} post${t.posts.length === 1 ? '' : 's'} · active ${ago(now - t.active)}`),
+        ` · ${t.posts.length} post${t.posts.length === 1 ? '' : 's'} · active ${ago(now - t.active)} `,
+        t.posts.some((p) => reportedN.has(`board:${t.id}:${p.created}`)) ? AW.pill('has reported posts', 'bad') : null),
       ...t.posts.map((p, i) => el('div', { className: 'admin-subitem' },
-        el('span', {}, el('strong', { textContent: p.author }), ` · ${ago(now - p.created)}${i === 0 ? ' · opening post' : ''}`),
+        el('span', {}, el('strong', { textContent: p.author }), ` · ${ago(now - p.created)}${i === 0 ? ' · opening post' : ''} `, flag(`board:${t.id}:${p.created}`)),
         el('span', { className: 'admin-text', textContent: p.text }),
         actionButton(i === 0 ? 'Delete thread' : 'Delete post',
           del(i === 0 ? { action: 'delete_thread', id: t.id } : { action: 'delete_post', id: t.id, index: i },

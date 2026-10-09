@@ -84,7 +84,7 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/tiles') return new Response(JSON.stringify(tilesData), { status: 200 });
-  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [], threads: [],
+  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [{ created: 1790949000, name: 'Moth', text: 'buy cheap things' }, { created: 1790949500, name: 'Ant', text: 'hello' }], board: { threads: [] }, drops: [], threads: [],
     queue: [{ key: 'shoutbox:1790949000:Moth', by: 'Moth', text: 'buy cheap things', where: 'Shoutbox', count: 3, reasons: { spam: 3 } }] }), { status: 200 });
   if (u.startsWith('/admin/library')) return new Response(JSON.stringify(library), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
@@ -160,6 +160,8 @@ setTimeout(() => {
     check('moved: Save offered, nothing sent yet', save && !save.disabled && !posted.some((p) => p[0] === '/admin/tiles'));
     save.click();
   }
+  check('moderation: a reported message is marked where all the messages are listed; an unreported one is not',
+    /reported ×3/.test(t('#mod-messages .admin-item')[0]) && !/reported/.test(t('#mod-messages .admin-item')[1]), t('#mod-messages .admin-item').join(' | '));
   // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
