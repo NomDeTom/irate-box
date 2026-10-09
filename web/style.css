@@ -673,7 +673,7 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .app-bar .theme-picker button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }
 
 /* Library (admin): sources, the add form and the policy. */
-#library-sources, #apps-list, #addons-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
+#library-sources, #apps-list, #builtin-list, #addons-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .library-source { cursor: default; }
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
 .action-btn.big { padding: 0.55rem 1.2rem; font-size: 1rem; }
