@@ -1715,8 +1715,16 @@ _busy_lock = threading.Lock()
 
 
 def _helper_doing():
-    """What the root helper is running now, from its child's command line (/proc is readable): e.g.
-    "apt-get install --download-only … stage-debug". None when it can't be told."""
+    """What the root helper is running now: the request it says it is on (control/helper-doing.json, e.g.
+    "kit-fetch build"), else its child's command line where /proc shows root's processes (e.g.
+    "apt-get install --download-only … stage-debug"). None when it can't be told."""
+    try:
+        d = json.loads((CONTROL_DIR / "helper-doing.json").read_text())
+        said = " ".join(str(d.get(k) or "") for k in ("action", "detail")).strip()[:160]
+        if said:
+            return said
+    except (OSError, ValueError, AttributeError):
+        pass
     try:
         r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "MainPID"], capture_output=True, text=True, timeout=10)
         pid = r.stdout.strip().partition("=")[2]

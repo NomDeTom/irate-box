@@ -140,6 +140,7 @@ HUB_USER = os.environ.get("HUB_USER", "hub")
 CONTROL = STATE / "control"
 REQUESTS = CONTROL / "requests"
 RESULTS = CONTROL / "results"
+HELPER_DOING = CONTROL / "helper-doing.json"  # the request being run, for the hub (it cannot see root's processes)
 
 
 def _web_server():
@@ -2752,6 +2753,8 @@ def main():
                 action = ACTIONS.get(what)
                 if not action:
                     raise ValueError("unknown action")
+                detail = next((str(req[k])[:60] for k in ("kit", "app", "choice", "name") if isinstance(req.get(k), str)), "")
+                safeio.write(HELPER_DOING, json.dumps({"action": str(what)[:40], "detail": detail, "started": time.time()}))
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 path.unlink(missing_ok=True)
@@ -2759,6 +2762,8 @@ def main():
             except Exception as exc:  # a handler's own bug: answered, and the queue goes on
                 path.unlink(missing_ok=True)
                 answer(rid, False, f"{type(exc).__name__}: {exc}")
+            finally:
+                HELPER_DOING.unlink(missing_ok=True)
             if what in UPDATES:
                 # The code on disk is new now; this process still has the old in memory. Stop, and
                 # the path unit starts a fresh helper for what is still queued (else a kit fetched

@@ -1777,7 +1777,8 @@ function installText(st) {
 const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Staying|Hold|The box's access)/, 'network/access', 'Network → The box\'s access'],
   [/\bNetwork → (the )?[Hh]otspot/, 'network/hotspot', 'Network → Hotspot'], [/\bNetwork → (Look|Hardware)/, 'network/hardware', 'Network → Hardware'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
   [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
-  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts & users']];
+  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts & users'],
+  [/\bFirmware Factory\b/, 'factory', 'Firmware Factory']];
 // A command in a finding's words: where it starts, up to the end of its sentence (or before "  (").
 // Not prose that begins like one ("journalctl -u NAME says why"), nor one with a NAME to fill in.
 const CMD_RE = /(?:^|[.:;,]\s+|\(|\bor\s+)((?:sudo |journalctl |systemctl |dmesg|df |du |ls |nmcli |ip |iw |apt |cat |tail |\.\/irate-box |\/opt\/irate-box\/)[^]*)/i;

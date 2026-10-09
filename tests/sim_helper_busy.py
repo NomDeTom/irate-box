@@ -27,6 +27,8 @@ def fake_run(cmd, **kw):
     out = f"ActiveState={unit['state']}\nInactiveExitTimestampMonotonic={int(unit['since'] * 1e6)}\n"
     return subprocess.CompletedProcess(cmd, 0, out, "")
 server.subprocess.run = fake_run
+# The helper says what it runs: the hub cannot see root's processes (ProtectProc=invisible).
+(server.CONTROL_DIR / "helper-doing.json").write_text('{"action": "kit-fetch", "detail": "build", "started": 0}')
 
 h = server.helper_state()
 check("a request 3 min old behind a job running 4 min: busy, not stuck", h["stuck"] is False and 230 <= h["busy"] <= 250, h)
@@ -39,6 +41,7 @@ h = server.helper_state()
 log = json.loads(server.HELPER_BUSY_LOG.read_text())
 check("  the same job looked at again: one entry, its longest wait grown", len(log) == 1 and log[0]["longest_wait"] >= 295, log)
 check("  the week's summary for the page", h["busy_log"]["count"] == 1 and h["busy_log"]["longest_wait"] >= 295, h["busy_log"])
+check("  what the helper was doing, as it said: not \"?\"", log[0]["doing"] == "kit-fetch build" and h["busy_log"]["commonest"] == "kit-fetch build", (log[0], h["busy_log"]))
 unit["state"] = "inactive"
 h = server.helper_state()
 check("the helper not running: stuck, the alarm", h["stuck"] is True and h["busy"] is None, h)

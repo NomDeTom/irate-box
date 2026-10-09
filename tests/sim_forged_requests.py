@@ -179,5 +179,14 @@ with mock.patch.dict(hub_control.ACTIONS, {"update-install": lambda req: ran.app
           and len(list(hub_control.REQUESTS.glob("*.json"))) == 1, (ran, answered))
     hub_control.main()
     check("  which then runs it", ran == ["update", "scan"])
+# While a request runs the helper says which, for the hub (which cannot see root's processes); after, it is gone.
+seen = []
+f = hub_control.REQUESTS / f"{'b' * 16}.json"
+f.write_text(json.dumps({"action": "kit-fetch", "kit": "build"}))
+with mock.patch.dict(hub_control.ACTIONS, {"kit-fetch": lambda req: seen.append(json.loads(hub_control.HELPER_DOING.read_text())) or "fetched"}), \
+     mock.patch.object(hub_control, "answer", lambda rid, ok, msg: None):
+    hub_control.main()
+check("the helper says what it runs while it runs it, and clears it after", seen and seen[0]["action"] == "kit-fetch"
+      and seen[0]["detail"] == "build" and not hub_control.HELPER_DOING.exists(), seen)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -439,7 +439,9 @@ for i, state in enumerate(("failed", "timed out")):
     (d / "status.json").write_text(json.dumps({"family": "esp32c6", "state": state}))
 f = {x["id"]: x for x in health.check_builds()}
 check("doctor: a build waiting over a day", f.get("builds-waiting", {}).get("status") == "warn" and "1 build has waited over a day" in f["builds-waiting"]["detail"], f.get("builds-waiting"))
-check("  a family that has failed every time, not one that has passed", "builds-family:esp32c6" in f and "builds-family:esp32s3" not in f, sorted(f))
+bf = f.get("builds-families") or {}
+check("  the families that have failed every time, as one finding, not one that has passed",
+      "esp32c6 (" in bf.get("detail", "") and "esp32s3" not in bf.get("detail", "") and not any(k.startswith("builds-family:") for k in f), sorted(f))
 check("  what builds take, said", f.get("builds-disk", {}).get("status") in ("ok", "warn") and "MB" in f["builds-disk"]["detail"])
 check("  in the scan", "check_builds" in (REPO / "irate_box/root/health.py").read_text().split("def scan")[1][:400])
 print("ok" if not fails else f"{fails} failure(s)")

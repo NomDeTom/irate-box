@@ -606,12 +606,13 @@ def check_builds(now=None):
             continue
         if r.get("family") and r.get("state") in ("passed", "failed", "timed out"):
             families.setdefault(r["family"], []).append(r["state"])
-    for fam, states in sorted(families.items()):
-        if len(states) >= 2 and "passed" not in states:
-            out.append(_f(f"builds-family:{fam}", f"Firmware builds: {fam}", "warn",
-                          f"Every {fam} build here has failed ({len(states)} of them).",
-                          "Open a failed one's log (Firmware Factory, Built): a toolchain PlatformIO has no build of for this board's "
-                          "processor, or one it could not download, fails every target of the family."))
+    failing = {fam: len(states) for fam, states in sorted(families.items()) if len(states) >= 2 and "passed" not in states}
+    if failing:
+        said = ", ".join(f"{fam} ({n})" for fam, n in failing.items())
+        out.append(_f("builds-families", "Firmware builds that always fail", "warn",
+                      f"Every build here has failed for {'this family' if len(failing) == 1 else 'these families'}: {said}.",
+                      "Open a failed one's log (Firmware Factory, Built): a toolchain PlatformIO has no build of for this board's "
+                      "processor, or one it could not download, fails every target of the family."))
     used = 0
     for f in ci_root.rglob("*") if ci_root.is_dir() else []:
         try:

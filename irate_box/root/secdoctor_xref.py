@@ -47,6 +47,7 @@ XREF = {
                         "debian-cis": ["remove_empty_password_field", "etc_shadow_fields_not_empty"], "lynis": ["AUTH-9283"]},
     "apt-trust": {"title": "Repository keys trusted for every repository", "doctor": ["image-apt-trust"], "security-page": ["apt-trust"]},
     "logs": {"title": "Logs kept only in RAM", "security-page": ["logs-ram"], "debian-cis": ["journald_write_persistent"]},
+    "tls": {"title": "HTTPS: the certificate and the front", "doctor": ["tls"], "lynis": ["HTTP-6710"]},
 }
 _BY = {(src, i): key for key, e in XREF.items() for src, ids in e.items() if isinstance(ids, list) for i in ids}
 
@@ -57,7 +58,7 @@ LYNIS_CIS = {
     "TIME-3104": "2.2", "TIME-3185": "2.2",
     "ACCT-9628": "4.1", "ACCT-9630": "4.1", "LOGG-2154": "4.2", "LOGG-2146": "4.4",
     "SCHD-7704": "5.1", "AUTH-9262": "5.3", "AUTH-9286": "5.4", "AUTH-9282": "5.4", "AUTH-9328": "5.4",
-    "HOME-9304": "6.2", "FILE-7524": "6.1", "USB-1000": "99.1",
+    "HOME-9304": "6.2", "FILE-7524": "6.1", "USB-1000": "99.1", "STRG-1846": "99.2", "NETW-3200": "3.4",
 }
 SYSCTL_REDIRECTS = re.compile(r"^net\.ipv[46]\.conf\.(all|default)\.send_redirects$")
 
@@ -154,6 +155,9 @@ CIS = {
     "3.3": ("Network parameters (source routing, redirects, martians, router adverts)", "suggest",
             "Kernel network settings that refuse forged routes and log impossible addresses.",
             "Mostly safe to set by sysctl; leave accept_ra on if your network gives IPv6 addresses by router adverts."),
+    "3.4": ("Uncommon network protocols (DCCP, SCTP, RDS, TIPC)", "suggest",
+            "Kernel modules for transport protocols nothing on the box uses; each is code a crafted packet could reach.",
+            "Optional: a modprobe.d file with \"install dccp /bin/true\" (and sctp, rds, tipc) keeps them from loading."),
     "4.1": ("Auditing (auditd)", "not-here", "The kernel's audit system, recording security events in detail.",
             "The vendor kernel is built without CONFIG_AUDIT, so auditd cannot run on this board."),
     "4.2": ("Logging (syslog-ng, a persistent journal)", "suggest", "Logs kept on disk, with tight permissions, and sent to another machine.",
@@ -172,6 +176,8 @@ CIS = {
             "Look at the list from a shell: sudo find / -xdev \\( -perm -0002 -type f -o -nouser -o -nogroup \\) -ls"),
     "6.2": ("Users' own files' permissions", "suggest", "Dot files in home folders writable by others.", "By hand: chmod go-w on each file named."),
     "99.1": ("USB devices", "not-here", "The benchmark blocks USB storage.", "The box reads books and updates from USB sticks on purpose."),
+    "99.2": ("FireWire storage", "not-here", "The benchmark blocks FireWire storage (firewire-ohci, firewire-sbp2).",
+             "The boards irate-box runs on have no FireWire port."),
     "99.3": ("TCP wrappers (hosts.deny)", "not-here", "An old access list for network services.",
             "Debian 13's sshd no longer reads it; the floor (Security) is what filters the hotspot."),
     "99.4": ("Kernel audit support", "not-here", "CONFIG_AUDIT in the kernel, for auditd.", "The vendor kernel is built without it."),

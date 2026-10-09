@@ -202,6 +202,7 @@ check("  undo-all takes it away too", "irate-box-watchdog" not in (BOOTD / "armb
       and not (BOOTD / "overlay-user/irate-box-watchdog.dtbo").exists())
 (DTD / "watchdog@ff260000" / "status").write_bytes(b"okay\0"); (DTD / "watchdog@ff268000" / "status").write_bytes(b"okay\0")
 check("  no switched-off node: no watchdog to offer", cw.watchdog_device() is None)
+cw.shutil = shutil  # the stub above stood in for which() only
 
 # --- the AIC8800's own words as its firmware wedged (a recorded kernel log) ---
 FX = REPO / "tests/fixtures/aic8800-wedge-2026-10-09"
@@ -233,6 +234,19 @@ check("  with the ten minutes before it and the kernel's lines", snaps.startswit
 check("  a crash filed later reaches back to that boot's first radio failure (not only the last 200 KB)",
       cw.snapshots_tail(10, since=at - 600).startswith("=== 2026-10-09 03:50:00"))
 check("  and the doctor says where it is kept", "Kept as it happened: 1 this week" in next(f["detail"] for f in health.check_crashwatch(now=at + 60) if f["id"] == "crash-radio"))
+# One radio, two interfaces (the uplink and the hotspot on one AIC8800): one incident, both named.
+n0 = len(json.loads(cw.INCIDENTS.read_text()))
+a = cw.file_radio(at + 200, "wlan0", "wlan0 is gone", ["k1"], "1-1.1")
+b = cw.file_radio(at + 200, "ap0", "ap0 is gone", ["k2"], "1-1.1")
+idx = json.loads(cw.INCIDENTS.read_text())
+check("a second interface of the same radio failing with it: the same incident, both interfaces named",
+      len(idx) == n0 + 1 and b["dir"] == a["dir"] and idx[-1]["ifaces"] == ["wlan0", "ap0"] and "ap0: ap0 is gone" in idx[-1]["text"]
+      and "k2" in (cw.CRASHES / a["dir"] / "kernel.log").read_text(), idx[-1])
+c = cw.file_radio(at + 200 + cw.RADIO_JOIN + 1, "ap0", "ap0 is gone", [], "1-1.1")
+o = cw.file_radio(at + 200 + cw.RADIO_JOIN + 2, "wlan1", "wlan1 is gone", [], "2-1")
+dirs = [i["dir"] for i in json.loads(cw.INCIDENTS.read_text())]
+check("  later, or another radio: an incident of its own", len({a["dir"], c["dir"], o["dir"]}) == 3
+      and dirs[-2:] == [c["dir"], o["dir"]], dirs[-3:])
 
 # --- the one radio reset (root/radio.py), shared with the uplink watchdog ---
 from irate_box.root import radio  # noqa: E402

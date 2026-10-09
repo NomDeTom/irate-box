@@ -309,18 +309,35 @@ def snapshots_tail(nbytes=200_000, since=None):
     return text[-nbytes:] if nbytes else ""
 
 
-def file_radio(now, iface, text, kernel):
+RADIO_JOIN = 120  # seconds within which a second interface of the same radio failing is the same incident
+
+
+def file_radio(now, iface, text, kernel, radio=None):
     """A radio's failure, filed when it happens with what led to it (the last ten minutes'
     snapshots and this look's kernel lines), for the box doctor: a radio can wedge while the box
-    runs on, so no crash is ever filed for it."""
+    runs on, so no crash is ever filed for it. `radio` is its USB port (radios()): another interface
+    of the same radio failing soon after (a hotspot beside the uplink) joins that incident."""
+    index = _json(INCIDENTS, [])
+    last = index[-1] if index else None
+    if (radio and last and last.get("radio") == radio and last.get("boot") == boot_id()
+            and now - last.get("at", 0) < RADIO_JOIN and iface not in last.get("ifaces", [last.get("iface")])):
+        last["ifaces"] = last.get("ifaces", [last.get("iface")]) + [iface]
+        last["text"] = f"{last['text']}; {iface}: {text}"
+        d = CRASHES / last["dir"]
+        if d.is_dir():
+            (d / "info.json").write_text(json.dumps(last, indent=1))
+            with open(d / "kernel.log", "a") as fh:
+                fh.write("\n".join(kernel[-300:]) + "\n")
+        _write(INCIDENTS, index)
+        return last
     stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(now))
     d = CRASHES / f"{stamp}-radio-{re.sub(r'[^A-Za-z0-9_.-]', '_', iface)}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "snapshots.log").write_text(snapshots_tail(0, since=now - 600))
     (d / "kernel.log").write_text("\n".join(kernel[-300:]) + "\n")
-    rec = {"dir": d.name, "kind": "radio", "iface": iface, "at": now, "boot": boot_id(), "text": text}
+    rec = {"dir": d.name, "kind": "radio", "iface": iface, "ifaces": [iface], "radio": radio, "at": now, "boot": boot_id(), "text": text}
     (d / "info.json").write_text(json.dumps(rec, indent=1))
-    index = _json(INCIDENTS, []) + [rec]
+    index = index + [rec]
     for old in index[:-KEEP_CRASHES]:
         shutil.rmtree(CRASHES / old.get("dir", "-"), ignore_errors=True)
     _write(INCIDENTS, index[-KEEP_CRASHES:])
@@ -675,7 +692,7 @@ def run(once=False):
         e = {"at": now, "boot": boot_id(), "iface": iface, "kind": kind, "text": text}
         if kind == "failed":
             try:
-                e["filed"] = file_radio(now, iface, text, pending["lines"])["dir"]
+                e["filed"] = file_radio(now, iface, text, pending["lines"], (known.get(iface) or {}).get("port"))["dir"]
             except OSError as exc:
                 print(f"crashwatch: radio failure not filed: {exc}", file=sys.stderr)
         events.append(e)

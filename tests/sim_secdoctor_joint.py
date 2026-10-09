@@ -111,5 +111,10 @@ check("  one of them fine: no compound item", not [i for i in jc["items"] if i["
 check("every compound rule names findings that exist", all(f'finding("{i.removeprefix("page-")}"' in page_src or (i.startswith("page-group-") and '_finding(f"group-{group}"' in page_src) for c in xref.COMPOUND for s, i in c["needs"] if s == "security-page"),
       [i for c in xref.COMPOUND for s, i in c["needs"]])
 
+# Lynis's tests met on the Lyra, each placed: HTTPS with the doctor's own step; the rest in a CIS section that says why.
+check("Lynis HTTP-6710 (nginx's TLS) merges with the doctor's HTTPS step", xref._BY.get(("lynis", "HTTP-6710")) == "tls")
+check("  NETW-3200 (unused protocols) and STRG-1846 (FireWire storage) each in a CIS section with its words",
+      xref._lynis_section("NETW-3200") == "3.4" and xref._lynis_section("STRG-1846") == "99.2"
+      and xref.cis("3.4") and xref.cis("99.2")[1] == "not-here", (xref.cis("3.4"), xref.cis("99.2")))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
