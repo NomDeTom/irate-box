@@ -27,6 +27,11 @@ mildest first: reconnect (rescan and bring the profile up again), restart (Netwo
 or wpa_supplicant / ifupdown / networkd), radio (unbind and rebind the USB radio, or reload
 its driver), reboot. Each step waits its time after the outage is declared and the grace
 has run out; a step that did not help is not repeated, but reconnect is, with back-off.
+Outages close together are one episode: one that starts within `relapse` (15 min) of the
+last one's end continues it, the steps' times count from its start, and a step that "worked"
+but was followed by a relapse did not hold, so it is passed over while a heavier one is left
+(a flapping link's repair climbs the same way). It ends after `relapse` steady.
+
 When nothing the level allows can be done here (NetworkManager gone, say, and the level
 stops before a radio reset) it has stalled: it says so, and what could help, and /admin
 offers that step by hand (hub_control's uplink-do, through /etc/hub/uplink-now.json).
@@ -103,7 +108,8 @@ FORGIVENESS = {
     "normal": {"misses": 3, "grace": 60, "flap_count": 4, "flap_window": 600, "flap_action": "pin"},
     "strict": {"misses": 2, "grace": 15, "flap_count": 3, "flap_window": 600, "flap_action": "repair"},
 }
-COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120}
+COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
+          "relapse": 900}
 DEFAULT = {"eagerness": "patient", "forgiveness": "normal", "iface": "auto", "overrides": {}, "hold_until": 0}
 DESCRIBE = {
     "off": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
@@ -118,7 +124,7 @@ DESCRIBE = {
 # Every value a Custom field may set: (low, high), or the allowed words.
 FIELDS = {
     "check": (10, 600), "misses": (1, 20), "grace": (0, 3600), "repeat": (0, 86400), "backoff": (1.0, 4.0),
-    "max_repeat": (60, 86400), "guests": ("protect", "ignore"), "flap_count": (2, 50), "flap_window": (60, 86400),
+    "max_repeat": (60, 86400), "relapse": (60, 86400), "guests": ("protect", "ignore"), "flap_count": (2, 50), "flap_window": (60, 86400),
     "flap_action": ("note", "pin", "repair"), "reboots_per_day": (0, 10), "reboot_gap": (600, 86400),
     "steps": {s: (0, 86400) for s in STEPS},
 }
@@ -232,6 +238,9 @@ class Watch:
         self.pause_until = 0.0
         self.owner_off = False
         self.can = set()  # the repairs possible at the last look, for next_step() and stall()
+        # Outages close together are one episode (uplink-ladder-plan, stage 3): {since, outages,
+        # failed: steps that "worked" and were followed by a relapse, tried, last_end, last_done}.
+        self.episode = None
 
     def log(self, now, kind, text):
         self.events.append({"at": now, "kind": kind, "text": text})
@@ -246,7 +255,7 @@ class Watch:
             if not self.owner_off:
                 self.owner_off = True
                 self.log(now, "info", "Disconnected by hand (nmcli device disconnect): left alone until it is connected again.")
-            self.misses, self.first_fail, self.outage = 0, None, None
+            self.misses, self.first_fail, self.outage, self.episode = 0, None, None, None
             self.drops.clear()
             return []
         self.owner_off = False
@@ -268,18 +277,55 @@ class Watch:
                            "next_reconnect": None, "gap": eff["repeat"]}
             self.log(now, "down", "Link lost." if not obs["link"] else
                      f"The gateway stopped answering ({self.misses} checks).")
+            self._episode(now, self.first_fail)
         return self._repair(now, obs)
+
+    def _episode(self, now, start):
+        """An outage (or a flapping link's repair) begins: within `relapse` of the last one's end it
+        continues the episode, and what was done last time did not hold; else a new episode."""
+        ep, eff = self.episode, self.eff
+        if ep and ep["last_end"] is not None and start - ep["last_end"] <= eff["relapse"]:
+            ep["outages"] += 1
+            gone = [s for s in ep["last_done"] if s not in ep["failed"]]
+            ep["failed"] += gone
+            ep["last_end"], ep["last_done"] = None, []
+            if gone:
+                self.log(now, "info", f"Down again {human(start - (ep['end_was'] or start))} after it came back: "
+                         f"{', '.join(STEP_LABEL[s] for s in gone)} did not hold, so it is not repeated while a heavier step is left "
+                         f"(outage {ep['outages']} of this episode).")
+            return ep
+        self.episode = {"since": start, "outages": 1, "failed": [], "tried": [], "last_end": None, "last_done": [], "end_was": None}
+        return self.episode
+
+    def _passed(self, step):
+        """A step that did not hold in this episode is passed over while a heavier one the level
+        allows is possible: the episode climbs, and stays at the top of the level's ladder once
+        everything below has failed. The top (or the only) step may be tried again."""
+        ep, eff = self.episode, self.eff
+        if not ep or step not in ep["failed"]:
+            return False
+        return any(STEPS.index(h) > STEPS.index(step) and h in eff["steps"] and h in self.can for h in STEPS)
 
     def _healthy(self, now, obs):
         actions = []
+        eff, ep = self.eff, self.episode
         if self.outage:
             o = self.outage
-            tried = ", ".join(STEP_LABEL[s] for s in o["done"] if s not in o.get("skipped", ())) or "nothing"
+            done = [s for s in o["done"] if s not in o.get("skipped", ())]
+            tried = ", ".join(STEP_LABEL[s] for s in done) or "nothing"
             self.log(now, "up", f"Back after {human(now - o['since'])} (tried: {tried}).")
+            if ep:
+                ep["last_end"] = ep["end_was"] = now
+                ep["last_done"] = done
+                ep["tried"] += [s for s in done if s not in ep["tried"]]
         elif self.misses:
             pass  # a check or two missed, then fine: forgiven, not logged
         self.misses, self.first_fail, self.outage, self.last_ok = 0, None, None, now
-        eff = self.eff
+        if ep and ep["last_end"] is not None and now - ep["last_end"] >= eff["relapse"]:
+            if ep["outages"] > 1:
+                tried = ", ".join(STEP_LABEL[s] for s in ep["tried"]) or "nothing"
+                self.log(now, "info", f"Steady again after an episode of {ep['outages']} outages (tried: {tried}).")
+            self.episode = None
         if len(self.drops) >= eff["flap_count"] and now - self.last_flap >= eff["flap_window"]:
             self.last_flap = now
             n, w = len(self.drops), human(eff["flap_window"])
@@ -297,9 +343,22 @@ class Watch:
                 self.log(now, "flap", f"Dropped {n} times in {w}: locking to the strongest access point.")
                 actions.append("pin")
             else:
-                step = "restart" if "restart" in obs.get("can", ()) else "reconnect"
-                self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, {STEP_LABEL[step]}.")
-                actions.append(step)
+                # A fault, repaired as an episode's outage is: it climbs past what did not hold. A
+                # flapping link is reconnecting by itself already, so it starts past reconnect.
+                ep = self._episode(now, now)
+                ep["last_end"] = None
+                can = obs.get("can", ())
+                ladder = [s for s in STEPS if s in eff["steps"] and s in can and not self._passed(s)]
+                step = next((s for s in ladder if s != "reconnect"), ladder[0] if ladder else None)
+                why = self._held(now, obs, step) if step else "no step the level allows is possible here"
+                if why:
+                    self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, but {why}.")
+                else:
+                    self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, {STEP_LABEL[step]}.")
+                    actions.append(step)
+                    ep["last_end"] = ep["end_was"] = now
+                    ep["last_done"] = [step]
+                    ep["tried"] += [step] if step not in ep["tried"] else []
             self.drops.clear()
         return actions
 
@@ -308,11 +367,13 @@ class Watch:
 
     def _repair(self, now, obs):
         eff, o = self.eff, self.outage
-        t = now - o["since"] - eff["grace"]
-        if t < 0 or self._paused(now, obs):
+        if now - o["since"] < eff["grace"] or self._paused(now, obs):
             return []
+        # Each step's time counts from the episode's start, so relapses climb as one long outage
+        # would; a step that did not hold earlier in it is passed over (_passed).
+        t = now - (self.episode or o)["since"] - eff["grace"]
         can = obs.get("can", set())
-        due = [s for s in STEPS if s in eff["steps"] and eff["steps"][s] <= t and s not in o["done"]]
+        due = [s for s in STEPS if s in eff["steps"] and eff["steps"][s] <= t and s not in o["done"] and not self._passed(s)]
         for step in reversed(due):  # the heaviest step that is due, once
             if step not in can:
                 o["done"].append(step)
@@ -370,8 +431,9 @@ class Watch:
         if not self.outage:
             return None
         o, eff = self.outage, self.eff
-        start = o["since"] + eff["grace"]
-        rest = [(start + eff["steps"][s], s) for s in STEPS if s in eff["steps"] and s not in o["done"] and s in self.can]
+        start, floor = (self.episode or o)["since"] + eff["grace"], o["since"] + eff["grace"]
+        rest = [(max(start + eff["steps"][s], floor), s) for s in STEPS
+                if s in eff["steps"] and s not in o["done"] and s in self.can and not self._passed(s)]
         if o["next_reconnect"] and eff["repeat"] and "reconnect" in self.can:
             rest.append((o["next_reconnect"], "reconnect"))
         if not rest:
@@ -930,6 +992,7 @@ def _status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, d
             "link": link, "gateway": gw, "gateway_answers": answers, "since": w.outage["since"] if w.outage else w.last_ok,
             "misses": w.misses, "drops_in_window": len(w.drops), "guests": obs["guests"],
             "outage": ({k: w.outage[k] for k in ("since", "declared", "done", "held", "skipped")} if w.outage else None),
+            "episode": ({k: w.episode[k] for k in ("since", "outages", "failed", "tried")} if w.episode else None),
             "next": w.next_step(now), "stall": stall, "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
             "pinned": pinned, "events": list(w.events), "reboots": w.reboots[-10:], "chosen": chosen,
             "settings": w.eff, "profile_change": profile_record(), "dry_run": dry}

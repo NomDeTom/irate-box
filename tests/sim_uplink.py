@@ -111,9 +111,13 @@ def night(e="standard", f="normal", over=None, step=30, hours=5):
             acts.append((t, a))
     return acts, w
 a, w = night()
-# As it was, kept so each later stage changes it on purpose:
-check("night, as it was: a reconnect at 1.0, 4.5 and 12.0 min, one per outage, the ladder starting afresh",
-      [t for t, x in a if x == "reconnect"][:3] == [60, 270, 720], a[:5])
+# Stage 3, memory across outages: was a reconnect at 1.0, 4.5 and 12.0 min (the ladder starting afresh
+# each outage; the third wedged the firmware). Now the three outages are one episode: one reconnect,
+# nothing on the quick relapse (restart is not due yet), and the restart at 12 min, as one long outage would.
+check("night: one reconnect in the episode, then the restart when due, not reconnect again", a[:2] == [(60, "reconnect"), (720, "restart")]
+      and [x for _, x in a].count("reconnect") == 1, a[:5])
+check("  the relapse said, and the episode kept", any("did not hold" in e["text"] for e in w.events) and w.episode["outages"] == 3
+      and w.episode["failed"] == ["reconnect"], (w.episode, [e["text"] for e in w.events][:8]))
 # Stage 2, honest stalls: nothing it may do after NM's restart, and it says so, rather than "next: reconnect".
 end = 1320 + 5 * 3600
 check("  after NM's restart, no next step: none it may take is possible", not [x for t, x in a if t >= 1320] and w.next_step(end) is None,
@@ -154,6 +158,37 @@ try:
     U.request_step("nuke"); check("request_step refuses a made-up step", False)
 except ValueError:
     check("request_step refuses a made-up step", True)
+
+# 7c. Episodes (stage 3): relapses climb within reach, a single outage is as before, an episode ends.
+def relapses(e, downs, can=ALL, total=None, step=10):
+    w = U.Watch(U.effective({"eagerness": e, "forgiveness": "normal", "overrides": {}}))
+    acts = []
+    for t in range(0, total or downs[-1][1] + 1200, step):
+        lost = any(a <= t < b for a, b in downs)
+        for x in w.tick(t, {"link": not lost, "gateway": True if not lost else None, "drops": [], "can": can}):
+            acts.append((t, x))
+    return acts, w
+a, w = relapses("persistent", [(0, 120), (360, 480), (960, 1080)])
+check("episode: three relapses climb reconnect → restart → radio (persistent: restart +5 min, radio +15 min)",
+      a == [(60, "reconnect"), (420, "restart"), (1020, "radio")], a)
+check("  each relapse names what did not hold", [e["text"].split(":")[1].split(",")[0].strip() for e in w.events if "did not hold" in e["text"]]
+      == ["reconnect did not hold", "restart the network service did not hold"], [e["text"] for e in w.events if "did not hold" in e["text"]])
+check("  steady again: the episode ends after `relapse` (15 min) up, said with what was tried",
+      w.episode is None and "Steady again after an episode of 3 outages (tried: reconnect, restart the network service, reset the radio)." in [e["text"] for e in w.events],
+      [e["text"] for e in w.events][-3:])
+a, w = relapses("persistent", [(0, 120), (2000, 2120)])
+check("episode: an outage more than 15 min after the last is a new episode, from the bottom", [x for _, x in a] == ["reconnect", "reconnect"], a)
+a, w = relapses("patient", [(0, 120), (300, 420), (600, 720)])
+check("episode: with nothing heavier to climb to (reconnect only), reconnect is tried again", [x for _, x in a] == ["reconnect"] * 3, a)
+a1, _ = outage("standard", "normal", 3600)
+check("episode: a single outage is as it was (reconnect, back-off, restart at +10 min)", (660, "restart") in a1 and a1[0] == (60, "reconnect"))
+w = U.Watch(U.effective({"eagerness": "persistent", "forgiveness": "strict", "overrides": {}}))
+acts = []
+for k in range(3):  # three rounds of flapping, each repaired, within the relapse window
+    for i in range(4):
+        tt = 1000 + k * 700 + i * 60
+        acts += w.tick(tt, {"link": True, "gateway": True, "drops": [tt - 1], "can": ALL})
+check("flapping, strict: repaired as an episode, climbing (restart, then radio) and staying at the top", acts == ["restart", "radio", "radio"], acts)
 
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"overrides": {"check": 5}}, {"overrides": {"rm": 1}}, {"iface": "a;b"},
