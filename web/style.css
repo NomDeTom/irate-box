@@ -1510,3 +1510,6 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
    as the rules they answer. */
 .action-btn.action-btn[hidden], .books-bulk[hidden], #library-sources[hidden], .git-manage[hidden], .aw-filter[hidden],
 .admin-checks[hidden], .net-settings[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden] { display: none; }
+.helper-queue { margin: 0.75rem 0; }
+.helper-queue ol.admin-checks { list-style: decimal; padding-left: 1.4rem; }
+.helper-queue li.bad { color: var(--bad); }
