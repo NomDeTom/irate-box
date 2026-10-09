@@ -69,8 +69,13 @@ check 401 code -u "admin:$PW1" "http://$H/admin/"
 set_pw "$PW2" "$PW1" >/dev/null; until_pw "$PW1" || bad "could not set the password back"
 
 echo "== routes"
-for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki 301" "/draw 301" "/mermaid 301" "/tools 301" "/serial 301" \
-	"/notes 301" "/sync 301" "/admin 301" "/term 301" "/sync/ 401" "/term/ 401" "/status 200"; do
+# Under nginx, /wiki and /notes live on their own origin (a port of their own, for origin
+# isolation), so the main origin sends a cross-origin 302 to that port; under Caddy they stay on
+# the main origin and 301 to their trailing slash, like /draw, /mermaid, /tools, /serial, /sync,
+# /admin and /term do on both fronts.
+wn=302; [ "$WEB" = caddy ] && wn=301
+for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki $wn" "/draw 301" "/mermaid 301" "/tools 301" "/serial 301" \
+	"/notes $wn" "/sync 301" "/admin 301" "/term 301" "/sync/ 401" "/term/ 401" "/status 200"; do
 	set -- $pr; check "$2" code "http://$H$1"
 done
 check "/draw/" sh -c "curl -s -o /dev/null -w '%{redirect_url}' http://$H/draw | sed 's|^http://[^/]*||'"
@@ -78,8 +83,16 @@ check "no-cache" sh -c "curl -s -D - -o /dev/null http://$H/style.css | tr -d '\
 check "True" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"proxied\"])'"
 want_name=nginx; [ "$WEB" = caddy ] && want_name=Caddy
 check "running" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; print([s[\"state\"] for s in json.load(sys.stdin)[\"services\"] if s[\"name\"]==\"Web server ($want_name)\"][0])'"
-want413=413; [ "$WEB" = caddy ] && want413=502   # Caddy streams to the hub, then fails mid-body (as before)
-check "$want413" code -X POST -H 'Content-Type: application/octet-stream' --data-binary @<(head -c 27000000 /dev/zero) "http://$H/api/drop?name=big.bin"
+# An over-cap upload is rejected. The hub answers 413 and closes without draining the body
+# (Connection: close). Under nginx the client always sees that 413. Under Caddy the body is
+# streamed to the hub, so whether the client gets the forwarded 413 or a 502 from the upload
+# connection breaking mid-stream is a timing race — accept either as "rejected".
+if [ "$WEB" = caddy ]; then
+	got=$(code -X POST -H 'Content-Type: application/octet-stream' --data-binary @<(head -c 27000000 /dev/zero) "http://$H/api/drop?name=big.bin")
+	case "$got" in 413 | 502) ok "over-cap upload refused ($got)" ;; *) bad "over-cap upload -> $got (want 413 or 502)" ;; esac
+else
+	check 413 code -X POST -H 'Content-Type: application/octet-stream' --data-binary @<(head -c 27000000 /dev/zero) "http://$H/api/drop?name=big.bin"
+fi
 
 echo "== captive probes"
 for hp in "captive.apple.com /hotspot-detect.html" "connectivitycheck.gstatic.com /generate_204"; do

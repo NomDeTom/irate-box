@@ -39,12 +39,12 @@ open_ -u "admin:$PW" "http://$H/draw/"
 want 401 "http://$H/drop.html"
 want 401 "http://$H/api/drop"
 want 401 "http://$H/api/drop/whatever"
-want 401 "http://$H/git/"
+want 401 -L "http://$H/git/"  # its own origin: /git/ on the hub's port redirects there
 want 401 "http://$H/git/irate-box-source.git/info/refs?service=git-upload-pack"
 want 200 -u "admin:$PW" "http://$H/git/irate-box-source.git/info/refs?service=git-upload-pack"
 want 401 "http://$H/flasher/flasher.html"
 want 200 "http://$H/flasher/api/resource/deviceHardware"
-want 401 "http://$H/wiki/"
+want 401 -L "http://$H/wiki/"  # likewise Kiwix's own origin
 t="$(tiles)"
 [[ "$t" != *"Excalidraw|"* && "$t" != *"File drop|"* && "$t" != *"Git|"* && "$t" != *"Kiwix|"* ]] && ok "their tiles gone: $t" || bad "tiles: $t"
 
@@ -67,7 +67,7 @@ echo "== back to the defaults"
 for a in draw drop git flasher wiki term; do set_access $a public; done
 open_ "http://$H/draw/"
 want 200 "http://$H/drop.html"
-want 200 "http://$H/git/"
+want 200 -L "http://$H/git/"
 want 200 "http://$H/flasher/flasher.html"
 want 401 "http://$H/term/"
 [[ "$(tiles)" == *"Excalidraw|"*"Terminal|"* ]] && ok "tiles back: $(tiles)" || bad "tiles: $(tiles)"

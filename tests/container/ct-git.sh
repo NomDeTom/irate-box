@@ -5,6 +5,13 @@
 # admin password correct-horse-1.
 WEB=$1 H=127.0.0.1 PW=correct-horse-1
 export GIT_TERMINAL_PROMPT=0 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@x GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@x
+# Where cgit's web pages (and the private browse, behind the login) live depends on the front:
+# under nginx they are on the git origin (a port of its own, for origin isolation — the main
+# origin 302-redirects browse there); under Caddy they are on the main origin. Either way the
+# smart-HTTP clone/push stays on the main origin ($H). Find the browse origin from where /git/
+# goes: a 302 means its own origin, no redirect means the main one.
+GB=$(curl -s -o /dev/null -w '%{redirect_url}' "http://$H/git/")
+if [ -n "$GB" ]; then GB=$(printf '%s' "$GB" | sed -E 's#(https?://[^/]+)/.*#\1#'); else GB="http://$H"; fi
 fails=0
 ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
@@ -37,28 +44,28 @@ git clone -q "http://$H/git/demo.git" pub2 2>/dev/null && [ "$(cat pub2/README)"
 check 401 code "http://$H/git/demo.git/info/refs?service=git-receive-pack"
 check 200 code "http://$H/git/demo.git/info/refs?service=git-upload-pack"
 
-echo "== cgit"
-check 200 code "http://$H/git/"
-check 1 sh -c "curl -s http://$H/git/ | grep -c 'demo.git'"
-check 200 code "http://$H/git/demo.git/"
-check 1 sh -c "curl -s http://$H/git/demo.git/ | grep -c 'a demo' | sed 's/^[1-9][0-9]*$/1/'"
-check 200 code "http://$H/git/demo.git/tree/README"
-check 1 sh -c "curl -s http://$H/git/demo.git/tree/README | grep -c hello | sed 's/^[1-9][0-9]*$/1/'"
-check 1 sh -c "curl -s -H 'Host: box.example' http://$H/git/demo.git/ | grep -c 'http://box.example/git/demo.git' | sed 's/^[1-9][0-9]*$/1/'"
-check 200 code "http://$H/git/demo.git/snapshot/demo-main.tar.gz"
-check 200 code "http://$H/git-static/cgit.css"
+echo "== cgit (on the git origin)"
+check 200 code "$GB/git/"
+check 1 sh -c "curl -s $GB/git/ | grep -c 'demo.git'"
+check 200 code "$GB/git/demo.git/"
+check 1 sh -c "curl -s $GB/git/demo.git/ | grep -c 'a demo' | sed 's/^[1-9][0-9]*$/1/'"
+check 200 code "$GB/git/demo.git/tree/README"
+check 1 sh -c "curl -s $GB/git/demo.git/tree/README | grep -c hello | sed 's/^[1-9][0-9]*$/1/'"
+check 1 sh -c "curl -s -H 'Host: box.example' $GB/git/demo.git/ | grep -c 'http://box.example/git/demo.git' | sed 's/^[1-9][0-9]*$/1/'"
+check 200 code "$GB/git/demo.git/snapshot/demo-main.tar.gz"
+check 200 code "$GB/git-static/cgit.css"
 check 301 code "http://$H/git"
-check 0 sh -c "curl -s http://$H/git/ | grep -c secret"
+check 0 sh -c "curl -s $GB/git/ | grep -c secret"
 
-echo "== private: all behind the login"
-check 401 code "http://$H/git-private/"
-check 200 code -u "admin:$PW" "http://$H/git-private/"
+echo "== private: all behind the login (browse on the git origin, clone on the main origin)"
+check 401 code "$GB/git-private/"
+check 200 code -u "admin:$PW" "$GB/git-private/"
 check 401 code "http://$H/git-private/secret.git/info/refs?service=git-upload-pack"
 git clone -q "http://$H/git-private/secret.git" priv 2>/dev/null && bad "anonymous private clone" || ok "anonymous private clone refused"
 git clone -q "http://admin:$PW@$H/git-private/secret.git" priv 2>/dev/null && ok "private clone with the login" || bad "private clone with the login"
 cd priv && echo s >S && git add S && git commit -qm s && git push -q origin HEAD:main 2>/dev/null && ok "private push" || bad "private push"
 cd "$W"
-check 1 sh -c "curl -s -u admin:$PW http://$H/git-private/ | grep -c 'secret.git' | sed 's/^[1-9][0-9]*$/1/'"
+check 1 sh -c "curl -s -u admin:$PW $GB/git-private/ | grep -c 'secret.git' | sed 's/^[1-9][0-9]*$/1/'"
 
 echo "== push presets"
 preset() { admin "{\"action\":\"preset\",\"area\":\"public\",\"name\":\"demo\",\"preset\":\"$1\"}" >/dev/null; }
