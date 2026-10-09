@@ -1884,7 +1884,7 @@ function buildUpFields(levels) {
 // --- the levels in words ---------------------------------------------------------------
 const cap1 = (t) => t[0].toUpperCase() + t.slice(1);
 const dur = (sec) => (sec < 60 ? `${sec} s` : sec % 3600 === 0 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`);
-const FLAP_DOES = { note: 'is only noted', pin: 'is locked to the strongest access point', repair: 'is repaired like any outage' };
+const FLAP_DOES = { note: 'is only noted', pin: 'is locked to the strongest access point', repair: 'is repaired, climbing past what did not hold' };
 
 // What a set of numbers does once the link counts as down: an eagerness level's own preset (its
 // line on the ladder), or the effective numbers with any custom values ("What this will do").
@@ -2028,6 +2028,8 @@ function upStatusText(u) {
     if (o && (o.skipped || []).length) parts.push(`Not possible here: ${o.skipped.join(', ')}.`);
     if (u.next) parts.push(`Next: ${u.next.label} at ${when(u.next.at)}.`);
     if (u.state === 'stalled' && u.stall) parts.push(u.stall.text);
+    const ep = u.episode;
+    if (ep && ep.outages > 1) parts.push(`Outage ${ep.outages} since ${when(ep.since)}` + (ep.failed.length ? `; did not hold: ${ep.failed.join(', ')}.` : '.'));
   }
   if (u.pinned) parts.push(`Locked to ${u.pinned.bssid} since ${when(u.pinned.at)}, until the next drop.`);
   if (u.paused_until && u.paused_until > Date.now() / 1000) parts.push(`No repairs until ${when(u.paused_until)}.`);
