@@ -70,9 +70,9 @@ check("  its pages' links re-pointed", (c / "Manual.md").read_text() == "Start a
       and (c / "API/space.md").read_text() == "See [[SilverBullet/Manual]].")
 check("  a page that says what the folder is", "replaced whole" in (space / "SilverBullet.md").read_text())
 idx = (space / "index.md").read_text()
-check("  the starting page's two links point at the copy; the forums link left as it is",
-      "[[SilverBullet/Manual|Manual]]" in idx and "[[SilverBullet/Getting Started|Getting Started]]" in idx
-      and "https://community.silverbullet.md/" in idx and "silverbullet.md/Manual" not in idx, idx)
+check("  the starting page's two links point at the copy; the rest of it, the forums link with it, as it was",
+      idx == start.replace("[Manual](https://silverbullet.md/Manual)", "[[SilverBullet/Manual|Manual]]")
+      .replace("[Getting Started](https://silverbullet.md/Getting%20Started)", "[[SilverBullet/Getting Started|Getting Started]]"), idx)
 check("  Syncthing leaves it out", "/SilverBullet\n" in (space / ".stignore").read_text())
 check("  the owner's pages untouched", (space / "My page.md").read_text() == "mine")
 (c / "Manual.md").write_text("edited")
