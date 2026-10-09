@@ -2312,13 +2312,23 @@ def _uplink_running():
 
 
 def uplink_set(req):
+    from irate_box.hub import roaming
     s = uplink.load_settings()
     new = dict(req.get("settings") or {})
     new.setdefault("hold_until", s.get("hold_until", 0))
-    s = uplink.save_settings(new)
+    old, s = s, uplink.validate(new)
+    # Roaming's lock and its no-scan change the owner's WiFi (item 35): done first, and the setting kept as
+    # it was if they fail, so the page never says one is in force that is not.
+    iface = uplink.pick_iface(s["iface"], None)
+    try:
+        moved = roaming.apply(s, old, iface)
+    except ValueError as exc:
+        raise ValueError(f"not saved: {exc}") from None
+    s = uplink.save_settings(s)
     _uplink_running()
     return (f"Uplink: {uplink.words(s)}" + (", custom values" if s["overrides"] else "")
-            + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest.")
+            + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest."
+            + (f" {moved[:1].upper()}{moved[1:]}." if moved else ""))
 
 
 def uplink_do(req):

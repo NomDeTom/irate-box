@@ -1449,6 +1449,7 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .ladder-sym { fill: var(--muted); opacity: 0.55; }
 .ladder-sym.over { fill: var(--accent); opacity: 1; }
 .ladder-th { fill: none; stroke: var(--text); stroke-width: 1.5; opacity: 0.6; }
+.ladder-roam { fill: none; stroke: var(--muted); stroke-width: 1.5; }
 .ladder-tip { min-height: 2.6em; font-size: 0.8rem; color: var(--muted); }
 .ladder-tip.on { color: var(--text); }
 .ladder-tip .ladder-tip-text { color: var(--muted); }

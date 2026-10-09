@@ -1967,6 +1967,9 @@ const net = {
   guests: document.getElementById('up-guests'),
   wedge: document.getElementById('up-wedge'),
   sens: document.getElementById('up-sens'),
+  roaming: document.getElementById('up-roaming'),
+  lockAps: document.getElementById('up-lock-aps'),
+  ignoreRoams: document.getElementById('up-ignore-roams'),
   sensSays: document.getElementById('up-sens-says'),
   will: document.getElementById('up-will'),
   iface: document.getElementById('up-iface'),
@@ -1997,8 +2000,8 @@ let upDirty = false;
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach (Tom,
 // 2026-10-09: "two dials always"), guests, a wedged driver, and the sensitivity, a number of missed
 // checks within the pace's window (Tom: forgiveness "rebranded as sensitivity, with a numeric value").
-const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3 };
-const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge']];
+const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
+const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['roaming', 'roaming']];
 let netAsked = false;
 
 // The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
@@ -2072,6 +2075,32 @@ const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while 
 const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, with a button to reset the radio by hand; the steps come as the pace and reach set them.'],
   radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a wedged driver: go straight to the radio reset, if the reach allows it and no guests are held for.'] };
 
+// Roaming (item 35; uplink-roaming-options-plan §2): from the least change to the owner's system to the most,
+// each with its cost. The last two change the WiFi profile, by consent, and are undone the same way.
+const ROAM_WORDS = {
+  roam: ['Roam naturally', 'The WiFi moves between your access points as it finds a stronger one (NetworkManager\'s own background scans). Nothing on the box changes.',
+    'Cost: each move is a moment off the network, and the hotspot moves with it when it shares the radio.'],
+  'no-scan': ['No background scans while the hotspot shares the radio', 'wpa_supplicant\'s background scan is switched off for the network in use, so the box stays where it is; it still reconnects (perhaps to another access point) if the link is really lost. Only while the hotspot runs on this radio.',
+    'Cost: a box carried around the house stays on a weak access point until it drops. Changes your WiFi\'s running settings; undone here.'],
+  lock: ['Lock to one access point', 'Your WiFi profile held to the access point chosen below (NetworkManager\'s BSSID): no roaming and no background scans.',
+    'Cost: if that access point goes away, the box does not move to another one: the link stays down until it is back or you unlock. Changes your WiFi profile; undone here.'],
+};
+const uplinkRadio = () => { const inv = netData && netData.inventory; const up = inv && inv.uplink;
+  return inv && up ? inv.radios.find((r) => r.iface === up.iface) : null; };
+function drawLockAps() {
+  const box = net.lockAps, r = uplinkRadio(), aps = (r && r.roaming && r.roaming.aps) || [];
+  box.hidden = upPick.roaming !== 'lock';
+  if (box.hidden) return;
+  if (!upPick.lock_bssid && aps.length) upPick.lock_bssid = aps[0].bssid;   // the strongest, preselected
+  box.replaceChildren(...(aps.length ? aps.map((a) => {
+    const input = el('input', { type: 'radio', name: 'up-lock', value: a.bssid });
+    input.checked = a.bssid === upPick.lock_bssid;
+    input.addEventListener('change', () => upChoose({ lock_bssid: a.bssid }, netData.levels));
+    return el('label', { className: 'inline' }, input, ` ${a.bssid}: channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}, signal ${a.signal}%`
+      + `${r.link && r.link.bssid === a.bssid ? ' (in use now)' : ''}`);
+  }) : [el('p', { className: 'setting-desc', textContent: 'No access points seen for this network in the last look: Refresh on Hardware, then choose.' })]));
+}
+
 function willText(eff) {
   return `What this will do: it checks the link every ${dur(eff.check)}. When ${eff.sensitivity} checks have failed, or the link has dropped, `
     + `within ${dur(eff.window)}, it goes on the ladder (a link that keeps dropping too, until it settles), and then ${stepsInWords(eff)}. `
@@ -2091,6 +2120,8 @@ function buildUpChoices(levels) {
     does: n === 'watch' ? 'Checks, and never acts.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
   rungs(net.guests, 'guests', levels.guests.map((n) => ({ value: n, title: GUEST_WORDS[n][0], desc: GUEST_WORDS[n][1] })));
   rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
+  drawRoamTiles(levels);
+  net.ignoreRoams.addEventListener('change', () => upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels));
   net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
   net.sens.addEventListener('input', () => {
     const n = Math.round(Number(net.sens.value));
@@ -2098,8 +2129,19 @@ function buildUpChoices(levels) {
   });
 }
 
+// The roaming tiles: the ones the hardware scan says can't work here greyed, with why (stage 1).
+function drawRoamTiles(levels) {
+  const r = uplinkRadio(), facts = r && r.roaming, why = (facts && facts.why) || {};
+  const key = JSON.stringify(why);
+  if (net.roaming.dataset.why === key && net.roaming.childElementCount) return;
+  net.roaming.dataset.why = key;
+  rungs(net.roaming, 'roaming', (levels.roaming || Object.keys(ROAM_WORDS)).map((n) => ({ value: n, title: ROAM_WORDS[n][0], desc: ROAM_WORDS[n][1],
+    does: ROAM_WORDS[n][2], why: why[n] || (n === 'lock' && facts && !facts.aps.length ? 'no access point seen for this network yet' : '') })));
+}
+
 function upChoose(change, levels) {
   Object.assign(upPick, change);
+  if (change.roaming && change.roaming !== 'lock') upPick.lock_bssid = null;
   upDirty = true;
   showUpPreset(levels);
   showUpSave();
@@ -2113,7 +2155,10 @@ function showUpSave() {
 
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
-  for (const k of Object.keys(upPick)) upPick[k] = chosen[k] || levels.default[k];
+  for (const k of Object.keys(upPick)) upPick[k] = chosen[k] || levels.default[k] || null;
+  upPick.roaming = chosen.roaming || 'roam';
+  upPick.ignore_roams = !!chosen.ignore_roams;
+  net.ignoreRoams.checked = upPick.ignore_roams;
   net.iface.value = [...net.iface.options].some((o) => o.value === chosen.iface) ? chosen.iface : 'auto';
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll('[data-key]')) {
@@ -2131,6 +2176,12 @@ function showUpPreset(levels) {
       input.closest('.choice-tile').classList.toggle('chosen', input.checked);
     }
   }
+  drawRoamTiles(levels);
+  for (const input of net.roaming.querySelectorAll('input')) {
+    input.checked = input.value === upPick.roaming;
+    input.closest('.choice-tile').classList.toggle('chosen', input.checked);
+  }
+  drawLockAps();
   const eff = upPreset(upPick, levels);
   if (document.activeElement !== net.sens) net.sens.value = String(upPick.sensitivity);
   net.sensSays.textContent = sensLine(upPick.sensitivity, { ...eff, ...(() => { try { return readUpForm().overrides; } catch (_) { return {}; } })() });
@@ -2163,7 +2214,7 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  return { ...upPick, iface: net.iface.value, overrides };
+  return { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides };
 }
 
 const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2312,6 +2363,35 @@ function linkNow(inv, d) {
   if ('carrier' in d) return d.carrier ? 'Cable in.' : 'No cable.';
   return 'Not connected to a network.';
 }
+// Roaming (item 35, stage 2): on the WiFi card, the access points sharing the network and how often the box
+// moved between them; a lock whose access point has gone, with Unlock. On Hardware, which controls work here.
+const ROAM_SHORT = { roam: 'roams naturally', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
+function drawRoaming(inv, u, wifi) {
+  const box = document.getElementById('net-roaming'), caps = document.getElementById('net-roam-caps');
+  const r = wifi.find((x) => x.roaming), f = r && r.roaming;
+  if (!f) { box.replaceChildren(); caps.replaceChildren(); return; }
+  const chosen = (u && u.chosen) || {};
+  const n = f.aps.length, hour = u && !u.stale ? u.roams_hour || 0 : null;
+  const lines = [netLine('Roaming', n > 1
+    ? `${n} access points share ${f.ssid} (${f.channels.map((c) => `channel ${c}`).join(', ')}); `
+      + (hour == null ? '' : `${hour} roam${hour === 1 ? '' : 's'} in the last hour; `) + `set to: ${ROAM_SHORT[chosen.roaming || 'roam']}`
+      + (chosen.ignore_roams ? ', short roams not counted' : '') + '.'
+      + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves with each roam.' : '')
+    : `One access point for ${f.ssid}: nothing to roam between.`)];
+  if (f.bgscan != null) lines.push(netLine('Background scan', f.bgscan ? f.bgscan : 'off'));
+  const lockGone = chosen.roaming === 'lock' && u && u.state !== 'up' && !f.aps.some((a) => a.bssid === chosen.lock_bssid);
+  if (lockGone) {
+    lines.push(el('p', { className: 'setting-desc bad' }, `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,
+      actionButton('Unlock', () => { if (confirm('Unlock, so the box may join any of your access points again?'))
+        netRequest({ action: 'settings', settings: { ...chosen, roaming: 'roam', lock_bssid: null } }, 'up'); }, { className: 'primary' })));
+  }
+  box.replaceChildren(...lines);
+  caps.replaceChildren(el('div', { className: 'net-device setting' }, el('h4', {}, el('span', { textContent: `${r.iface}: roaming` })),
+    netLine('Access points', f.aps.length ? f.aps.map((a) => `${a.bssid} ch ${a.channel} (${a.signal}%)`).join('; ') : 'none in the last scan'),
+    netLine('Choices here', ['roam', 'no-scan', 'lock'].map((c) => `${ROAM_WORDS[c][0]}: ${f.choices.includes(c) ? 'yes' : `no, ${f.why[c]}`}`).join('; ') + '.'),
+    f.nm_version ? netLine('NetworkManager', f.nm_version) : null));
+}
+
 function drawNetTabs(data, inv, u) {
   const up = inv && inv.uplink;
   // Status: one line for the whole, then a card per link the box could reach a network by.
@@ -2345,6 +2425,7 @@ function drawNetTabs(data, inv, u) {
     mine.has(p.uuid) ? actionButton('Forget', () => { if (confirm(`Forget ${p.ssid || p.name}? The box will not join it again.`)) netRequest({ action: 'forget', uuid: p.uuid }, 'join'); },
       { className: 'small', disabled: busy || current.has(p.uuid), title: current.has(p.uuid) ? 'In use: the box is on it now' : '' }) : null)))]
     : [el('p', { className: 'setting-desc', textContent: nm && nm.running ? 'None saved in NetworkManager.' : 'NetworkManager does not run this box\'s WiFi, so its saved networks are not listed here.' })]));
+  drawRoaming(inv, u, wifi);
   const wired = inv ? inv.wired : [];
   netTabs.wiredCard.hidden = !!inv && !wired.length;
   netTabs.wiredNow.replaceChildren(...wired.map((w) => netLine(w.iface, linkNow(inv, w) + (up && up.iface === w.iface ? ' The box\'s link to your network.' : ''))));
@@ -2494,6 +2575,11 @@ for (const box of [net.iface]) {
 net.save.addEventListener('click', () => {
   let settings;
   try { settings = readUpForm(); } catch (err) { netNotes.up = { text: err.message, ok: false }; renderNetwork(netData); return; }
+  const was = (netData && netData.uplink && netData.uplink.chosen) || {};
+  if (settings.roaming === 'lock' && (was.roaming !== 'lock' || was.lock_bssid !== settings.lock_bssid)
+    && !confirm(`Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now (a moment off the network), and stays with it, not moving to another access point, until you unlock. If it does not answer, the lock is taken off again.`)) return;
+  if (settings.roaming === 'no-scan' && was.roaming !== 'no-scan'
+    && !confirm('Switch wpa_supplicant\'s background scans off while the hotspot shares the radio? It changes your WiFi\'s running settings, not its profile; choosing another option puts them back.')) return;
   if (settings.guests === 'ignore' && ['restart', 'radio', 'reboot'].includes(settings.reach)
     && !confirm(`With guests ignored, it may ${settings.reach === 'restart' ? 'restart the network service' : settings.reach === 'radio' ? 'reset the radio' : 'reset the radio and reboot the box'} while guests are on the hotspot. Use it?`)) return;
   netRequest({ action: 'settings', settings }, 'up');

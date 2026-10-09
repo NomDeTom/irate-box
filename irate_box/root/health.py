@@ -422,7 +422,34 @@ def check_uplink():
                       (f"Network → Staying on the network: {stall['label'][:1].upper() + stall['label'][1:]} now, "
                        "or choose a level that goes that far." if stall.get("needs")
                        else "Look at the box by its console or a cable: nothing it can do by itself would help.")))
+    out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
     return out
+
+
+ROAMS_AN_HOUR = 6   # more than this, with the hotspot on the same radio, is worth a look (item 35, stage 7)
+
+
+def _json_or(path, default=None):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def roaming_findings(st, inv):
+    """Roaming often while the hotspot shares the radio (item 35, stage 7): each roam moves the guests'
+    channel too, and is a re-association on the radio. Said with the choices, never done for the owner."""
+    radio = next((r for r in (inv or {}).get("radios", []) if r.get("iface") == st.get("iface") and r.get("roaming")), None)
+    f = (radio or {}).get("roaming") or {}
+    n, chosen = st.get("roams_hour") or 0, (st.get("chosen") or {}).get("roaming", "roam")
+    if not f.get("hotspot_shares") or len(f.get("aps", [])) < 2 or chosen != "roam" or n <= ROAMS_AN_HOUR:
+        return []
+    return [_f("uplink-roaming", "Roaming often, with the hotspot on the same radio", "warn",
+               f"{st.get('iface')} moved between access points {n} times in the last hour ({len(f['aps'])} share {f.get('ssid')}, "
+               f"channels {', '.join(map(str, f.get('channels', [])))}); each move takes the hotspot's guests along, and is a moment off "
+               "the network on a radio that copes worst with that.",
+               "Network → Staying on the network: choose no background scans while the hotspot shares the radio, a lock to one access "
+               "point, or don't count short roams as missed checks. Or, on your router, put the access points on one channel.")]
 
 
 def check_inventory():

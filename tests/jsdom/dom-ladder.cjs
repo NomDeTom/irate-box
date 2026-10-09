@@ -75,6 +75,13 @@ check('  the sensitivity\'s line, labelled', !!ssvg.querySelector('path.ladder-t
 check('  said in words: the most misses, the spells at or over the line', /At most 5 missed checks within the pace's window; at or over the line in 2 five-minute spells/.test(sb.querySelector('.ladder-sum').textContent),
   sb.querySelector('.ladder-sum').textContent);
 check('  not events: the readout and the table leave them out', /The 11 events as a table/.test(sb.querySelector('.ladder-table summary').textContent));
+// Roams between access points (item 35): a tick each on the symptoms' baseline, said in words, not events.
+const withRoams = rows.concat([{ at: now - 3 * h, k: 'roam', d: 4, b: 'aa:bb:cc:00:00:01', c: 11, i: 'wlan0' }, { at: now - 2 * h, k: 'roam', d: 0, i: 'wlan0' }]);
+const rb = d.createElement('div'); d.body.append(rb);
+LC.render(rb, withRoams, now);
+check('roams: one muted path of ticks, two of them', (rb.querySelector('path.ladder-roam').getAttribute('d').match(/M/g) || []).length === 2);
+check('  said in words, and not counted as events', /2 roams between access points/.test(rb.querySelector('.ladder-sum').textContent)
+  && /The 11 events as a table/.test(rb.querySelector('.ladder-table summary').textContent), rb.querySelector('.ladder-sum').textContent);
 const e = d.getElementById('e');
 LC.render(e, [], now);
 check('nothing recorded: said, and no chart', !e.querySelector('svg') && /Nothing recorded yet/.test(e.textContent));

@@ -26,6 +26,11 @@ w.fetch = async (u, opts = {}) => {
     const data = await (await fetch(new URL(u, BASE), opts)).json();
     // A real inventory (the Lyra's, 2026-10-06, its network's names taken out).
     data.inventory = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
+    // Roaming as the hardware scan reports it (item 35, stage 1): three access points, two channels, the hotspot on the radio.
+    const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
+    wl.roaming = { ssid: wl.link.ssid, aps: [{ bssid: 'aa:00:00:00:00:01', channel: 6, freq: 2437, signal: 100 }, { bssid: 'aa:00:00:00:00:02', channel: 6, freq: 2437, signal: 87 },
+      { bssid: 'aa:00:00:00:00:03', channel: 11, freq: 2462, signal: 80 }], channels: [6, 11], bgscan: 'simple:30:-65:300', nm_version: '1.52.1',
+      choices: ['roam', 'no-scan', 'lock'], why: {}, hotspot_shares: true };
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
     data.uplink = data.uplink || { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager',
@@ -136,6 +141,18 @@ setTimeout(() => {
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
   check('Save is off until something changes', save.disabled && save.textContent === 'Save');
+  // Roaming (item 35; Tom, 2026-10-09: R1 a checkbox to ignore, R3 "it should roam naturally"): three tiles, roam chosen; a checkbox apart.
+  check('roaming: three tiles, Roam naturally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
+    && tiles('up-roaming')[0].classList.contains('chosen') && !d.getElementById('up-ignore-roams').checked, vals('up-roaming'));
+  check('  the WiFi card says how many access points share the network, and that the hotspot moves with it', /3 access points share .*channel 6, channel 11/.test(t('#net-roaming')[0])
+    && /hotspot shares this radio/.test(t('#net-roaming')[0]), t('#net-roaming')[0]);
+  check('  Hardware lists the access points and the choices that work here', /aa:00:00:00:00:03 ch 11/.test(t('#net-roam-caps')[0]) && /Lock to one access point: yes/.test(t('#net-roam-caps')[0]));
+  tiles('up-roaming')[2].querySelector('input').click();
+  const lockAps = d.getElementById('up-lock-aps');
+  check('  choosing the lock shows the access points, the strongest preselected', !lockAps.hidden && lockAps.querySelectorAll('input').length === 3
+    && lockAps.querySelector('input:checked').value === 'aa:00:00:00:00:01');
+  tiles('up-roaming')[0].querySelector('input').click();
+  check('  back to roaming: the picker goes', lockAps.hidden);
   pace[3].querySelector('input').click();
   check('choosing urgent marks it, and Save comes on', pace[3].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
   check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);

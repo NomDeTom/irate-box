@@ -164,11 +164,11 @@ while [ $# -gt 0 ]; do
 		shift 2 ;;
 	--uplink)
 		# KEY=VALUE pairs (uplink.py checks each again), or the old single level E[,F].
-		if [[ "$2" =~ ^(pace|reach|sensitivity|forgiveness|guests|on_wedge)=[a-z0-9]+(,(pace|reach|sensitivity|forgiveness|guests|on_wedge)=[a-z0-9]+)*$ ]] ||
+		if [[ "$2" =~ ^(pace|reach|sensitivity|forgiveness|guests|on_wedge|ignore_roams)=[a-z0-9]+(,(pace|reach|sensitivity|forgiveness|guests|on_wedge|ignore_roams)=[a-z0-9]+)*$ ]] ||
 			[[ "$2" =~ ^(off|patient|standard|persistent|stubborn)(,(tolerant|normal|strict))?$ ]]; then
 			UPLINK="$2"
 		else
-			echo "--uplink takes KEY=VALUE pairs (pace, reach, sensitivity, guests, on_wedge), e.g. pace=steady,reach=radio,sensitivity=4" >&2; exit 2
+			echo "--uplink takes KEY=VALUE pairs (pace, reach, sensitivity, guests, on_wedge, ignore_roams=yes|no), e.g. pace=steady,reach=radio,sensitivity=4" >&2; exit 2
 		fi
 		shift 2 ;;
 	--remove)
