@@ -19,5 +19,5 @@ host=${box#*@}
 pw=$(ssh "$box" 'sudo -n cat /etc/hub/admin-password') || { echo "could not read the box's script login" >&2; exit 2; }
 mkdir -p "$out"
 docker run --rm -v "$node_dir":/opt/node:ro -v "$PWD":/look:ro -v "$out":/out \
-	-e HUB_LOGIN="admin:$pw" -e LOOK_PAGES="${LOOK_PAGES:-}" -e LOOK_SETTLE_MS="${LOOK_SETTLE_MS:-3000}" \
+	-e HUB_LOGIN="admin:$pw" -e LOOK_PAGES="${LOOK_PAGES:-}" -e LOOK_SETTLE_MS="${LOOK_SETTLE_MS:-6000}" \
 	"$image" /opt/node/bin/node /look/look.mjs "http://$host" /out

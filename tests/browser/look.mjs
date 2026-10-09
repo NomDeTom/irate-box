@@ -26,7 +26,7 @@ const PAGES = (process.env.LOOK_PAGES || [
 ].join(" ")).split(/\s+/).filter(Boolean);
 const WIDTHS = [390, 1280];
 const SCHEMES = ["light", "dark"];
-const SETTLE = Number(process.env.LOOK_SETTLE_MS || 3000);
+const SETTLE = Number(process.env.LOOK_SETTLE_MS || 6000);  // the admin page draws some parts after its data arrives
 mkdirSync(OUT, { recursive: true });
 
 // --- Chromium over the DevTools protocol --------------------------------------------------------
