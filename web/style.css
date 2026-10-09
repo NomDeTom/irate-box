@@ -1478,3 +1478,9 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .net-known { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
 .net-known li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
 #ap-health-card { margin: 0.75rem 0; }
+
+/* Backup and a new box (item 34): offers with their sizes; a list of checkboxes per kind, bounded. */
+.kit-offer { max-width: 44rem; }
+.kit-pick { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.7rem; margin: 0; }
+.kit-pick > div { display: flex; flex-direction: column; gap: 0.2rem; max-height: 12rem; overflow-y: auto; }
+.kit-total.bad { color: var(--bad); }

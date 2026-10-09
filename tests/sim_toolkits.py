@@ -447,6 +447,8 @@ check("a kit marking a package it doesn't have is left out", "odd" not in kits.d
 # The System kit (os-image-plan §2): each package only where it fits, the alternatives cached, never installed.
 sysk = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "system.json").read_text())
 check("the System kit loads, kept installed", kitdefs._ok(sysk, "system") and sysk["remove_after_hours"] is None)
+check("  with the archive tools (Tom, 2026-10-09: \"the lack of zip and unzip has caught some packages out\")",
+      {"zip", "unzip", "xz-utils", "zstd", "bzip2"} <= set(sysk["packages"]))
 board = T / "board"
 real_paths = kitdefs.SYSFS, kitdefs.ROOTFS
 kitdefs.SYSFS, kitdefs.ROOTFS = board / "sys", board / "root"

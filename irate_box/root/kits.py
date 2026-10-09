@@ -863,3 +863,39 @@ def status():
                      "previous": prev and {"fetched": prev["fetched"], "bytes": prev["bytes"]}}
     return {"at": time.time(), "kits": kits, "installed": installed_state(), "pool_bytes": pool_bytes(), "wheelhouse_bytes": wheelhouse_bytes(),
             "problems": verify()}
+
+
+def import_dir(root, budget_mb=None):
+    """Every kit in a folder of the stick layout (an offline kit's kits/, item 34), into the pool. Lines."""
+    if budget_mb is None:
+        try:
+            budget_mb = int(json.loads((Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "library" / "toolkits.json")
+                                       .read_text()).get("budget_mb", 500))
+        except (OSError, ValueError, TypeError, AttributeError):
+            budget_mb = 500
+    out = []
+    for folder in sorted((Path(root) / arch()).glob("*")):
+        if not (folder / "manifest.json").is_file():
+            continue
+        try:
+            out.append(import_usb(root, folder.name, budget_mb))
+        except (ValueError, OSError) as exc:
+            out.append(f"{folder.name}: {exc}")
+    return out or [f"no toolkits for this box's architecture ({arch()}) in {root}"]
+
+
+if __name__ == "__main__":
+    import sys
+    if os.geteuid() != 0:
+        sys.exit("run as root")
+    if len(sys.argv) == 3 and sys.argv[1] == "import-dir":
+        for line in import_dir(sys.argv[2]):
+            print(line)
+        from irate_box.root import safeio
+        state = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
+        try:
+            safeio.write(state / "control" / "kits.json", json.dumps(status()))
+        except OSError:
+            pass
+    else:
+        sys.exit("usage: kits.py import-dir DIR")

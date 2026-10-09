@@ -30,6 +30,7 @@ import html
 from irate_box import confine
 from irate_box.hub import access
 from irate_box.hub import accounts
+from irate_box.hub import backup
 from irate_box.hub import board
 from irate_box.hub import ci
 from irate_box.library import firmware
@@ -1388,15 +1389,30 @@ def setup_status(rid):
     if rid:
         out["result"] = next((r for r in control_results(20) if r.get("id") == rid), None)
     return out
-# Never in a backup: the big or regenerable (ZIMs, archived versions), the transient, and
-# the one secret the page can set (the GitHub token).
-BACKUP_SKIP = ("zim", "control", "library/archive", "library/tmp", "library/github-token",
-               "library/lock", "library/apps")
-# Syncthing's identity: its private keys (key.pem, https-key.pem) and config.xml (device list,
-# GUI password hash, API key). Restoring them keeps the box's device ID, so peers need no
-# re-pairing -- but whoever holds the file can pose as the box to those peers. Left out
-# unless the backup is asked for with ?syncthing=1, which the page labels as such.
-SYNCTHING_DIRS = (".local/state/syncthing", ".config/syncthing")
+# What a backup holds is hub/backup.py's (item 34): settings only, or settings and data; never what is
+# fetched again (books, mirrors, builds, caches), nor the GitHub token. Syncthing's identity (its private
+# keys and config.xml: restored, the box keeps its device ID, but whoever holds the file can pose as the box
+# to its peers) only when asked for with ?syncthing=1, which the page labels as such.
+
+
+def _str_list(v, limit=500):
+    return isinstance(v, list) and len(v) <= limit and all(isinstance(x, str) and 0 < len(x) <= 80 for x in v)
+
+
+def backup_plan():
+    """Everything the Backup page offers, with its size (hub/backup.py plan)."""
+    from irate_box.hub import kitdefs
+    try:
+        kits_status = json.loads((CONTROL_DIR / "kits.json").read_text())
+    except (OSError, ValueError):
+        kits_status = {}
+    try:
+        titles = {k: d.get("title", k) for k, d in kitdefs.definitions().items()}
+    except (OSError, ValueError, AttributeError):
+        titles = {}
+    out = backup.plan(STATE_DIR, STATE_DIR / "zim", kits_status, apps_dir=Path("/usr/share/hub/apps"), kit_titles=titles)
+    out["image_pending"] = _pending_actions("backup-image")
+    return out
 
 
 # This box's own source, as installed (install.sh writes it; the AGPL's offer to everyone who
@@ -2498,12 +2514,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_backup(self, with_syncthing=False):
-        """The hub's state as a .tar.gz, streamed: notes, saves, board, shoutbox, settings,
-        the library's sources and the clock -- everything but BACKUP_SKIP, and Syncthing's
-        identity only when asked for. BACKUP-CONTENTS.txt at the top says which this is."""
+    def _send_backup(self, with_syncthing=False, level="data"):
+        """The hub's state as a .tar.gz, streamed, at the level asked for (hub/backup.py): settings only,
+        or settings and data; Syncthing's identity only when asked for. BACKUP-CONTENTS.txt at the top
+        says which this is."""
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-        kind = "with-syncthing-keys" if with_syncthing else "state"
+        kind = ("settings" if level == "settings" else "settings-and-data") + ("-with-syncthing-keys" if with_syncthing else "")
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
         self.send_header("Content-Disposition", f'attachment; filename="irate-box-{kind}-{stamp}.tar.gz"')
@@ -2511,13 +2527,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
 
-        skip = BACKUP_SKIP if with_syncthing else BACKUP_SKIP + SYNCTHING_DIRS
-
-        def keep(info):
-            rel = info.name.split("/", 1)[1] if "/" in info.name else ""
-            if any(rel == s or rel.startswith(s + "/") for s in skip) or rel.endswith(".tmp"):
-                return None
-            return info
+        keep = backup.keep_for(level, with_syncthing, backup.git_mirrors(STATE_DIR))
 
         if with_syncthing:
             about = ("This backup CONTAINS SYNCTHING'S PRIVATE KEYS AND CONFIG\n"
@@ -2528,9 +2538,14 @@ class Handler(BaseHTTPRequestHandler):
             about = ("Syncthing's identity (private keys, config.xml) is NOT in this backup.\n"
                      "Restored on a box, Syncthing starts with a new device ID, and its peers\n"
                      "need to be paired again.\n")
-        about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{about}\n"
-                 "Left out: ZIM books and archived versions (they come from their sources),\n"
-                 "the GitHub token, and transient files.\n")
+        held = ("SETTINGS ONLY: what was chosen (the hub's settings, accounts, the apps' and add-ons'\n"
+                "settings, the library's and mirrors' sources), none of what was made on the box.\n"
+                if level == "settings" else
+                "SETTINGS AND DATA: what was chosen, and what was made on the box (notes, saved work,\n"
+                "the board, the shoutbox, dropped files, the box's own git repositories).\n")
+        about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
+                 "Left out: books, the firmware and git mirrors, builds and their caches, crash\n"
+                 "evidence, the library's archive (all fetched again), the GitHub token, transient files.\n")
         try:
             with tarfile.open(fileobj=self.wfile, mode="w|gz") as tar:
                 data = about.encode()
@@ -2994,7 +3009,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/backup":
-            self._send_backup(with_syncthing="syncthing=1" in self.path.partition("?")[2].split("&"))
+            q = self.path.partition("?")[2].split("&")
+            self._send_backup(with_syncthing="syncthing=1" in q, level="settings" if "level=settings" in q else "data")
+            return
+
+        if path == "/admin/backup/plan":
+            self.send_json(200, backup_plan())
             return
 
         if path == "/admin/update":
@@ -3692,15 +3712,29 @@ class Handler(BaseHTTPRequestHandler):
                                                             "book": payload["book"][:64]})})
             elif action in ("kit-import", "kit-export") and USB_DEVICE_RE.match(device) and isinstance(payload.get("kit"), str):
                 self.send_json(202, {"id": control_request({"action": f"usb-{action}", "device": device, "kit": payload["kit"][:32]})})
+            elif action == "export-many" and USB_DEVICE_RE.match(device) and _str_list(payload.get("books")) and _str_list(payload.get("kits")):
+                # Updating an offline box (item 34): books and toolkits in the layout its USB imports read.
+                self.send_json(202, {"id": control_request({"action": "usb-export-many", "device": device,
+                                                            "books": payload["books"][:200], "kits": payload["kits"][:50]})})
+            elif action == "image" and USB_DEVICE_RE.match(device):
+                self.send_json(202, {"id": control_request({"action": "backup-image", "device": device})})
             else:
-                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export (device, kit)"})
+                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export "
+                                              "(device, kit), export-many (device, books, kits) or image (device)"})
             return
 
         if path == "/admin/kit":
-            if payload.get("action") == "make" and type(payload.get("books", False)) is bool:
-                self.send_json(202, {"id": control_request({"action": "offline-kit", "books": payload.get("books", False)})})
+            books, budget = payload.get("books", False), payload.get("budget_mb")
+            if payload.get("action") == "make" and (type(books) is bool or _str_list(books)) and _str_list(payload.get("kits", []))  \
+                    and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data") \
+                    and (budget is None or (type(budget) is int and budget > 0)):
+                # A new box's kit with what the owner chose (item 34); root checks each again (kit_choices).
+                self.send_json(202, {"id": control_request({"action": "offline-kit", "books": books, "kits": payload.get("kits", []),
+                                                            "repos": payload.get("repos", []), "state": payload.get("state", "none"),
+                                                            "budget_mb": budget})})
             else:
-                self.send_json(400, {"error": "action must be make (books: true or false)"})
+                self.send_json(400, {"error": "action must be make (books: true, false or names; kits; repos; state: none, settings "
+                                              "or data; budget_mb)"})
             return
 
         if path == "/admin/tiles":

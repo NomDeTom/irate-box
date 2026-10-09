@@ -1254,32 +1254,56 @@
       </section>
 
       <section class="admin-pane" id="backup" aria-labelledby="backup-title">
-        <h2 id="backup-title">Backup and sync</h2>
-        <p class="setting-desc">
-          <a href="/admin/backup" download>Download a backup</a> of the hub's state: notes, saved
-          work, board, shoutbox, settings, the library's sources and the uptime clock. ZIM books
-          and archived versions are left out (they come from their sources), as is the GitHub token,
-          and so is Syncthing's identity: restored, Syncthing gets a new device ID and its peers
-          pair again.
-        </p>
-        <p class="setting-desc backup-keys">
-          <strong>⚠ Includes Syncthing's private keys:</strong>
-          <a href="/admin/backup?syncthing=1" download id="backup-with-keys">download a backup with
-          Syncthing's identity</a> (<code>key.pem</code>, <code>https-key.pem</code>,
-          <code>config.xml</code>), so a restored box keeps its device ID. Whoever holds that file
-          can pose as this box to its Syncthing peers: keep it like a password.
-        </p>
+        <h2 id="backup-title">Backup and a new box</h2>
+        <!-- Offers with sizes (item 34; Tom, 2026-10-09: "backup is just a hyperlink. It should be an offer on the level
+             of backup to make - settings only, settings and data, full image. An estimated size of export is needed"). -->
+        <h3 id="backup-levels">Back up this box</h3>
+        <p class="setting-desc">Three levels, from the smallest. Books, the firmware and git mirrors, builds and caches are
+          never in a backup: they are fetched again from their sources.</p>
+        <div class="choice-tiles" id="backup-level" role="radiogroup" aria-label="What the backup holds"></div>
+        <label class="inline backup-keys" id="backup-keys-label"><input type="checkbox" id="backup-syncthing">
+          <span><strong>⚠ With Syncthing's private keys</strong> (<code>key.pem</code>, <code>https-key.pem</code>,
+          <code>config.xml</code>), so a restored box keeps its device ID. Whoever holds that file can pose as this box to
+          its Syncthing peers: keep it like a password.</span></label>
+        <p class="setting-desc" id="backup-left-out"></p>
+        <div class="library-buttons" id="backup-go-box">
+          <a class="action-btn primary" id="backup-go" href="/admin/backup?level=data" download>Download the backup</a>
+        </div>
+        <div id="backup-image-box" hidden>
+          <p class="setting-desc">The image is written straight to a USB stick plugged into the box (it is too big to download
+            through the browser), in 3.9 GB parts on a FAT stick.</p>
+          <div class="library-buttons">
+            <select id="backup-image-stick" aria-label="The USB stick"></select>
+            <button class="action-btn" type="button" id="backup-image-scan">Look for USB sticks</button>
+            <button class="action-btn primary" type="button" id="backup-image-go" disabled>Write the image</button>
+          </div>
+        </div>
+        <p class="setting-desc action-note" id="backup-note" role="status" hidden></p>
+        <div class="admin-progress" id="backup-progress" hidden>
+          <progress class="admin-bar" id="backup-bar" max="1" value="0"></progress>
+          <p class="setting-desc" id="backup-step"></p>
+        </div>
+
         <h3 id="backup-kit">Set up another box</h3>
         <p class="setting-desc">
-          An offline kit: everything another box needs to be set up as this one is, with no
-          internet — this box's code, its apps, the release files it keeps (the terminal, notes), and
-          its books if you like. One file to download; unpack it on the new box (a USB stick will
-          do) and run <code>sudo ./setup.sh</code> in it. Made for boards like this one; Debian's own
-          packages still come from the new box's system. Anything this box does not keep is fetched
-          if it has internet, and otherwise left for the new box to fetch.
+          An offline kit: everything another box needs to be set up with no internet, as one file. This box's code, its
+          apps and the release files it keeps are always in it; choose what else goes with them, against a budget (Tom:
+          "a size budget is critical"). Unpack it on the new box (a USB stick will do) and run <code>sudo ./setup.sh</code>
+          in it: it installs, then restores the state and repositories chosen, and imports the toolkits (each package checked
+          against Debian's signatures). Debian's own packages still come from the new box's system.
         </p>
-        <form id="kit-form" class="library-form">
-          <label class="inline"><input type="checkbox" name="books"> <span id="kit-books">Include the books</span></label>
+        <form id="kit-form" class="library-form kit-offer">
+          <fieldset class="kit-pick"><legend>Books</legend><div id="kit-books"></div></fieldset>
+          <fieldset class="kit-pick"><legend>Toolkits</legend><div id="kit-kits"></div></fieldset>
+          <fieldset class="kit-pick"><legend>Git repositories</legend><div id="kit-repos"></div></fieldset>
+          <label>This box's state
+            <select name="state">
+              <option value="none" data-says="A fresh box: set up as new.">None</option>
+              <option value="settings" data-says="This box's choices: settings, accounts, sources.">Settings</option>
+              <option value="data" data-says="Its choices and what was made on it: notes, saved work, the board, its own repositories.">Settings and data</option>
+            </select></label>
+          <label>Budget (MB, blank for none) <input name="budget" type="number" min="1" step="64" inputmode="numeric"></label>
+          <p class="setting-desc kit-total" id="kit-total" role="status"></p>
           <button class="action-btn primary" type="submit" id="kit-make">Make the kit</button>
         </form>
         <div class="admin-progress" id="kit-progress" hidden>
@@ -1292,6 +1316,24 @@
           <summary>What is in it</summary>
           <ul class="admin-list" id="kit-contents"></ul>
         </details>
+
+
+        <h3 id="backup-offline">Update an offline box</h3>
+        <p class="setting-desc">
+          Books and toolkits onto a USB stick, without the hub (Tom: "simply an export of the library or the toolkits for
+          updating an offline box"), in the layout the other box reads with its own Books → USB stick and Toolkits → USB stick.
+        </p>
+        <form id="offline-form" class="library-form kit-offer">
+          <fieldset class="kit-pick"><legend>Books</legend><div id="offline-books"></div></fieldset>
+          <fieldset class="kit-pick"><legend>Toolkits</legend><div id="offline-kits"></div></fieldset>
+          <p class="setting-desc kit-total" id="offline-total" role="status"></p>
+          <div class="library-buttons">
+            <select id="offline-stick" aria-label="The USB stick"></select>
+            <button class="action-btn" type="button" id="offline-scan">Look for USB sticks</button>
+            <button class="action-btn primary" type="submit" id="offline-go" disabled>Copy to the stick</button>
+          </div>
+        </form>
+        <p class="setting-desc action-note" id="offline-note" role="status" hidden></p>
 
         <p class="setting-desc">
           <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and

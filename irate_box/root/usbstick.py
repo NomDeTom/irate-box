@@ -257,3 +257,84 @@ def export_zim(device, book, zim_dir, report=None):
         finally:
             tmp.unlink(missing_ok=True)
     return f"irate-box/{book}.zim"
+
+
+# --- a full image of the box's card (item 34: "settings only, settings and data, full image") -------------
+IMAGE_PART = 3900 << 20       # a FAT stick holds no file over 4 GB
+FAT = {"vfat"}
+
+
+def root_disk(run_=None):
+    """The whole disk holding / (/dev/mmcblk1, /dev/sda …), or ValueError."""
+    run_ = run_ or run
+    src = run_("findmnt", "-no", "SOURCE", "/").stdout.strip()
+    if not src.startswith("/dev/"):
+        raise ValueError(f"the root filesystem is on {src or 'nothing known'}, not a disk to image")
+    parent = run_("lsblk", "-no", "PKNAME", src).stdout.strip()
+    disk = f"/dev/{parent}" if parent else src
+    if not re.fullmatch(r"/dev/[A-Za-z0-9]+", disk):
+        raise ValueError("unexpected disk name")
+    return disk
+
+
+def export_image(device, report=None, disk=None, stamp=None):
+    """The card, gzipped, onto the stick's irate-box/images/ (parts of 3.9 GB on FAT). Returns where."""
+    import zlib
+    dev = _find(None, device)
+    if dev["fstype"] == "iso9660":
+        raise ValueError("that is a read-only disc")
+    disk = disk or root_disk()
+    if dev["path"].startswith(disk):
+        raise ValueError("that stick is the box's own disk")
+    total = int(run("blockdev", "--getsize64", disk).stdout.strip() or 0) if not Path(disk).is_file() else Path(disk).stat().st_size
+    used = shutil.disk_usage("/").used
+    stamp = stamp or time.strftime("%Y%m%d-%H%M")
+    base = f"irate-box-image-{stamp}.img.gz"
+    run("sync")
+    with Mounted(dev, writable=True) as root:
+        folder = root / "irate-box" / "images"
+        folder.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(folder).free < used:
+            raise ValueError(f"not enough room on the stick: the image needs at least about {used >> 20} MB "
+                             f"(what the card holds), and {shutil.disk_usage(folder).free >> 20} MB is free")
+        split = dev["fstype"] in FAT
+        parts, out, written, n = [], None, 0, 0
+        gz = zlib.compressobj(1, zlib.DEFLATED, 31)
+
+        def emit(data):
+            nonlocal out, written, n
+            while data:
+                if out is None or (split and written >= IMAGE_PART):
+                    if out:
+                        out.close()
+                    n += 1
+                    name = f"{base}.part{n:02d}" if split else base
+                    parts.append(name)
+                    out, written = safeio.create(folder / name, 0o644), 0
+                room = IMAGE_PART - written if split else len(data)
+                out.write(data[:room])
+                written += min(room, len(data))
+                data = data[room:]
+        try:
+            done = 0
+            with open(disk, "rb") as src:
+                for chunk in iter(lambda: src.read(CHUNK * 4), b""):
+                    emit(gz.compress(chunk))
+                    done += len(chunk)
+                    if report:
+                        report(done, total)
+            emit(gz.flush())
+            if out:
+                out.close()
+        except OSError as exc:
+            if out:
+                out.close()
+            for p in parts:
+                (folder / p).unlink(missing_ok=True)
+            raise ValueError(f"the image was not finished ({exc.strerror or exc}): the parts written are removed") from None
+        (folder / f"{base}.README.txt").write_text(
+            f"A full image of {disk} ({total >> 20} MB), taken {stamp} while the box ran: as after a power cut.\n"
+            + (f"In {len(parts)} parts: join them first: cat {base}.part* > {base}\n" if split else "")
+            + f"Write it back to a card of at least {total >> 20} MB: gunzip -c {base} | sudo dd of=/dev/YOURCARD bs=4M\n"
+              "(or give the .img.gz to an image writer such as Etcher).\n")
+    return f"irate-box/images/{base}" + (f" in {len(parts)} parts" if split else "") + f", from {disk} ({total >> 20} MB)"
