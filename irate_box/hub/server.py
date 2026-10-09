@@ -1836,13 +1836,15 @@ def network_snapshot():
     # Each link's uptime (step 34): hours for a week, days for 35, summed here from the watchdog's
     # five-minute slots, so the page gets a few KB rather than the slots.
     return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
+            "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab (item 37)
+            "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
                        "describe": uplink.DESCRIBE, "default": uplink.DEFAULT,
                        "presets": {"pace": uplink.PACE, "common": uplink.COMMON},
                        "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}
                                   for k, v in uplink.FIELDS.items()}},
-            "pending": _pending_actions("net-") + _pending_actions("uplink-"), "results": control_results(5)}
+            "pending": _pending_actions("net-") + _pending_actions("uplink-") + _pending_actions("wifi-"), "results": control_results(5)}
 
 
 # install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
@@ -3825,8 +3827,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
+            elif act == "join" and isinstance(payload.get("ssid"), str) and payload.get("security") in ("wpa-psk", "sae", "open") \
+                    and isinstance(payload.get("psk", ""), str) and type(payload.get("hidden", False)) is bool and type(payload.get("now", False)) is bool:
+                # A network for the box to join (item 37): checked again by root (wifijoin.validate); the password
+                # goes only into the request file (0600, the hub's) and NetworkManager's keyfile (root's).
+                self.send_json(202, {"id": control_request({"action": "wifi-join", "ssid": payload["ssid"], "security": payload["security"],
+                                                            "psk": payload.get("psk", ""), "hidden": payload.get("hidden", False),
+                                                            "now": payload.get("now", False)})})
+            elif act == "forget" and isinstance(payload.get("uuid"), str):
+                self.send_json(202, {"id": control_request({"action": "wifi-forget", "uuid": payload["uuid"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, settings, do (with a step), hold or profile"})
+                self.send_json(400, {"error": "action must be scan, settings, do (with a step), hold, profile, join or forget"})
             return
 
         if path == "/admin/packages":

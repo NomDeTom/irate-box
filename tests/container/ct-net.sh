@@ -62,6 +62,15 @@ id="$(post '{"action":"profile","on":true}' | idof)"; r="$(result "$id")"; echo 
 [[ "$r" == ERR*NetworkManager* ]] && ok "refused cleanly" || bad "profile: $r"
 [ ! -f /etc/hub/uplink-changes.json ] && ok "nothing recorded" || bad "record written"
 
+echo "== a network to join (item 37; no NetworkManager here)"
+c="$(post '{"action":"join","ssid":"Cafe","security":"wep","psk":"x"}' | tail -1)"; [ "$c" = 400 ] && ok "an unknown security refused by the hub" || bad "join wep -> $c"
+id="$(post '{"action":"join","ssid":"Cafe","security":"wpa-psk","psk":"not-a-real-one","hidden":false,"now":false}' | idof)"; r="$(result "$id")"; echo "    $r"
+[[ "$r" == ERR*NetworkManager* ]] && ok "refused cleanly" || bad "join: $r"
+! grep -rqs "not-a-real-one" /var/lib/hub/control /etc/hub && ok "the password left nowhere" || bad "the password was kept"
+id="$(post '{"action":"forget","uuid":"1111aaaa-0000-4000-8000-000000000001"}' | idof)"; r="$(result "$id")"
+[[ "$r" == ERR*"added on this page"* ]] && ok "forget: only what was added here" || bad "forget: $r"
+[ "$(get | j 'd["joined"]')" = "[]" ] && ok "none listed" || bad "joined listed"
+
 echo "== unprivileged"
 c="$(curl -s -o /dev/null -w '%{http_code}' "http://$H/admin/network")"; [ "$c" = 401 ] && ok "needs the login" || bad "no login -> $c"
 echo "failures: $fails"

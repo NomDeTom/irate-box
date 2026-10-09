@@ -851,7 +851,7 @@
         <h3>Staying on the network: how far the watchdog went</h3>
         <p class="setting-desc">Each outage of the box's link and the steps the uplink watchdog took, over time. Many outages
           ending at the first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace
-          could go further (Network → Staying on the network).</p>
+          could go further (<a href="#network/access">Network → The box's access</a>).</p>
         <div id="health-ladder"></div>
         <h3>The last install</h3>
         <p class="setting-desc" id="health-install">No record yet.</p>
@@ -864,131 +864,204 @@
       <section class="admin-pane" id="network" aria-labelledby="network-title">
         <h2 id="network-title">Network</h2>
         <p class="setting-desc">
-          What the box has for networking, and how hard it works to stay on its network when the
-          link is flaky. Nothing about the owner's own connection changes unless you press its button.
+          What the box has for networking, how it reaches your network, and its own hotspot for guests.
+          Nothing about your own connection changes unless you press its button.
         </p>
-        <h3>What the box has</h3>
-        <p class="setting-desc" id="net-when">Not looked yet.</p>
-        <div class="library-buttons">
-          <button class="action-btn" type="button" id="net-scan" aria-label="Refresh the network inventory">↻ Refresh</button>
-        </div>
-        <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
-        <details class="net-glossary" id="net-glossary">
-          <summary>What these words mean</summary>
-          <dl>
-            <dt>Client</dt><dd>The box joined to your WiFi, as a laptop would: its way to your network and the internet.</dd>
-            <dt>Hotspot</dt><dd>The box's own WiFi network, which guests join (an "access point").</dd>
-            <dt>Beside the client</dt><dd>Some radios can be both at once: on your WiFi, and running the hotspot as a second network.</dd>
-            <dt>Takes the radio</dt><dd>A radio that can only do one: running the hotspot means leaving your WiFi.</dd>
-            <dt>Channel</dt><dd>The slice of the WiFi band a network uses. A radio that can only use one channel at a time makes its hotspot follow your WiFi's.</dd>
-            <dt>Managed by</dt><dd>The program on the box that looks after a device's connection (NetworkManager, wpa_supplicant, …). irate-box asks it, and doesn't take over.</dd>
-            <dt>Signal</dt><dd>How strongly your WiFi is heard, in dBm: closer to 0 is stronger. About −50 is excellent, −70 weak, −80 barely there.</dd>
-          </dl>
-        </details>
-        <div class="net-devices" id="net-devices"></div>
-        <ul class="admin-checks" id="net-hazards"></ul>
-
-        <h3>The hotspot</h3>
-        <p class="setting-desc">
-          The box's own WiFi, for guests: address 192.168.4.1, every name answered with the hub. It
-          fits itself to the radios here: a radio of its own if there is one, beside your WiFi on a
-          channel of its own where the radio can, following your WiFi's channel where it can't. How
-          guests join (open or encrypted) is chosen on <a href="#security">Security</a>.
-        </p>
-        <p class="setting-desc" id="ap-state">Looking…</p>
-        <form class="net-settings" id="ap-form">
-          <label class="setting-name" for="ap-radio">Radio</label>
-          <select id="ap-radio"><option value="">Automatic</option></select>
-          <label class="setting-name" for="ap-channel">Channel</label>
-          <select id="ap-channel"><option value="">Automatic</option></select>
-          <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot: the box leaves your WiFi while it runs</label>
-          <span class="library-buttons">
-            <button class="action-btn primary" type="submit" id="ap-switch">Switch on</button>
-            <button class="action-btn" type="button" id="ap-try" hidden>Try a channel of its own</button>
-            <button class="action-btn" type="button" id="ap-confirm" hidden>Keep it</button>
-          </span>
-        </form>
-        <p class="setting-desc action-note" id="ap-note" role="status" hidden></p>
-
-        <h3>The hotspot's own WiFi</h3>
-        <p class="setting-desc">
-          How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
-          cannot read what guests do. Encryption shuts out older devices, so this is a trade between
-          who can join and what is protected. The choice applies the next time the hotspot is switched on,
-          above, which also says what the radios here allow. A setup decision; the tour comes here.
-        </p>
-        <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
-        <div class="net-settings" id="hs-fields">
-          <div id="hs-second-box" class="net-settings">
-            <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
-            <select id="hs-second">
-              <option value="owe">Enhanced Open (OWE): no password</option>
-              <option value="sae">WPA3 with a published password</option>
-            </select>
+        <!-- Tabs by role, the same on every box, cards per device or connection inside (item 37; Tom, 2026-10-09:
+             "tabs by role is the way to do it, with cards per device/connection type within there"). Each tab has
+             an address of its own (#network/access …), so a doctor's or the chart's link lands on the setting. -->
+        <div class="tab-set" data-tabs="network">
+          <div class="view-switch" role="tablist" aria-label="Network">
+            <button type="button" class="view-switch-btn" role="tab" id="tab-net-status" aria-controls="network/status">Status</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-net-hardware" aria-controls="network/hardware">Hardware</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-net-access" aria-controls="network/access">The box's access</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-net-hotspot" aria-controls="network/hotspot">Hotspot</button>
           </div>
-          <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
-          <span class="library-buttons">
-            <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
-            <button class="action-btn" type="button" id="hs-generate">Make one</button>
-          </span>
-          <label class="setting" id="hs-wpa2-label">
-            <input type="checkbox" id="hs-wpa2">
-            <span class="setting-desc" id="hs-wpa2-desc"></span>
-          </label>
-        </div>
-        <ul class="admin-checks" id="hs-warnings"></ul>
-        <div class="library-buttons">
-          <button class="action-btn" type="button" id="hs-save">Save</button>
-        </div>
-        <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
-        <h4>Guests reach the internet</h4>
-        <p class="setting-desc">
-          Whether guests on the hotspot can go on through this box's own connection, from nobody to
-          everyone. Their traffic then leaves as the box's: whatever they do online comes from your
-          connection. The safest is the default; each step out says what it opens. However far it goes,
-          guests are kept out of your own network and the box's Tailscale, let out by their device's
-          hardware address, and can't look names up before tapping through: each of those can be turned
-          off on <a href="#security">Security</a>, where the doctor warns while one is.
-        </p>
-        <div id="guest-net-box">
-          <div class="chip-group" role="radiogroup" aria-label="Guests reach the internet" id="guest-net-chips"></div>
-          <p class="setting-desc" id="guest-net-said"></p>
-          <p class="library-buttons"><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
-        </div>
-        <p class="setting-desc action-note" id="guest-net-note" role="status" hidden></p>
 
-        <h3>Staying on the network</h3>
-        <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
-        <div class="library-buttons" id="up-stall" hidden></div>
-        <div class="net-settings">
-          <span class="setting-name" id="up-pace-label">Pace: how soon it acts, and how often</span>
-          <div class="choice-tiles" id="up-pace" role="radiogroup" aria-labelledby="up-pace-label"></div>
-          <span class="setting-name" id="up-reach-label">Reach: the furthest it may go</span>
-          <div class="choice-tiles" id="up-reach" role="radiogroup" aria-labelledby="up-reach-label"></div>
-          <span class="setting-name" id="up-guests-label">Guests on the hotspot</span>
-          <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
-          <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
-          <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
-          <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
-          <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
-            <span class="setting-desc" id="up-sens-says"></span></span>
-          <label class="setting-name" for="up-iface">Watch</label>
-          <select id="up-iface"><option value="auto">The box's route to its network</option></select>
-          <details id="up-custom">
-            <summary>Custom values (blank: the pace's own)</summary>
-            <div class="net-fields" id="up-fields"></div>
-          </details>
+          <div role="tabpanel" id="network/status" aria-labelledby="tab-net-status">
+            <p class="setting-desc net-overview" id="net-overview">Not looked yet.</p>
+            <div class="net-cards" id="net-status-cards"></div>
+            <h3>How far the watchdog went</h3>
+            <p class="setting-desc">Each outage of the box's link and the steps the watchdog took. Many outages ending at the
+              first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace could go
+              further (<a href="#network/access">The box's access</a>).</p>
+            <div id="net-ladder"></div>
+            <h3>Recent</h3>
+            <ul class="admin-list net-events" id="up-events"></ul>
+          </div>
+
+          <div role="tabpanel" id="network/hardware" aria-labelledby="tab-net-hardware" hidden>
+            <p class="setting-desc">The radios and ports the box has, what each can do, and what looks after it.</p>
+            <p class="setting-desc" id="net-when">Not looked yet.</p>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="net-scan" aria-label="Refresh the network inventory">↻ Refresh</button>
+            </div>
+            <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
+            <details class="net-glossary" id="net-glossary">
+              <summary>What these words mean</summary>
+              <dl>
+                <dt>Client</dt><dd>The box joined to your WiFi, as a laptop would: its way to your network and the internet.</dd>
+                <dt>Hotspot</dt><dd>The box's own WiFi network, which guests join (an "access point").</dd>
+                <dt>Beside the client</dt><dd>Some radios can be both at once: on your WiFi, and running the hotspot as a second network.</dd>
+                <dt>Takes the radio</dt><dd>A radio that can only do one: running the hotspot means leaving your WiFi.</dd>
+                <dt>Channel</dt><dd>The slice of the WiFi band a network uses. A radio that can only use one channel at a time makes its hotspot follow your WiFi's.</dd>
+                <dt>Managed by</dt><dd>The program on the box that looks after a device's connection (NetworkManager, wpa_supplicant, …). irate-box asks it, and doesn't take over.</dd>
+                <dt>Signal</dt><dd>How strongly your WiFi is heard, in dBm: closer to 0 is stronger. About −50 is excellent, −70 weak, −80 barely there.</dd>
+              </dl>
+            </details>
+            <div class="net-devices" id="net-devices"></div>
+            <ul class="admin-checks" id="net-hazards"></ul>
+
+            <div id="net-roam-caps"></div>
+          </div>
+
+          <div role="tabpanel" id="network/access" aria-labelledby="tab-net-access" hidden>
+            <p class="setting-desc">How the box itself reaches your network and the internet: a card per connection, and the
+              watchdog that keeps it up. Guests' side is on <a href="#network/hotspot">Hotspot</a>.</p>
+            <div class="net-cards">
+              <div class="net-card setting" id="net-wifi-card">
+                <h4>WiFi</h4>
+                <div id="net-wifi-now"></div>
+                <div id="up-profile"></div>
+                <div id="net-roaming"></div>
+                <h5>Networks it knows</h5>
+                <div id="net-saved"></div>
+                <details id="net-join" class="net-join">
+                  <summary>Add a network for the box to join</summary>
+                  <p class="setting-desc">One it has not seen yet, or will meet somewhere else. Kept by NetworkManager with your
+                    other networks; the box joins it by itself when the ones it knows are out of reach. The password is kept on the
+                    box, readable only by root, and never shown again.</p>
+                  <form id="net-join-form" class="library-form" autocomplete="off">
+                    <label>Network name (SSID) <input name="ssid" required maxlength="32" spellcheck="false" autocapitalize="off"></label>
+                    <label>Security
+                      <select name="security">
+                        <option value="wpa-psk" data-says="WPA2 or WPA3 with a password: what most home networks are.">WPA2/WPA3</option>
+                        <option value="sae" data-says="WPA3 only, with a password.">WPA3 only</option>
+                        <option value="open" data-says="No password: anyone nearby can read what the box sends that is not encrypted itself.">Open</option>
+                      </select></label>
+                    <label id="net-join-psk">Password <input name="psk" type="password" minlength="8" maxlength="64" autocomplete="new-password" spellcheck="false"></label>
+                    <label class="inline"><input type="checkbox" name="hidden"> The network is hidden (does not announce its name)</label>
+                    <span class="library-buttons">
+                      <button class="action-btn primary" type="submit">Add</button>
+                      <button class="action-btn" type="button" id="net-join-now">Add and join it now</button>
+                    </span>
+                  </form>
+                </details>
+                <p class="setting-desc action-note" id="net-join-note" role="status" hidden></p>
+              </div>
+              <div class="net-card setting" id="net-wired-card">
+                <h4>Wired</h4>
+                <div id="net-wired-now"></div>
+              </div>
+              <div class="net-card setting net-card-wide" id="net-watchdog-card">
+                <h4>Staying on the network</h4>
+                <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
+                <div class="library-buttons" id="up-stall" hidden></div>
+                <div class="net-settings">
+                  <span class="setting-name" id="up-pace-label">Pace: how soon it acts, and how often</span>
+                  <div class="choice-tiles" id="up-pace" role="radiogroup" aria-labelledby="up-pace-label"></div>
+                  <span class="setting-name" id="up-reach-label">Reach: the furthest it may go</span>
+                  <div class="choice-tiles" id="up-reach" role="radiogroup" aria-labelledby="up-reach-label"></div>
+                  <span class="setting-name" id="up-guests-label">Guests on the hotspot</span>
+                  <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
+                  <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
+                  <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
+                  <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
+                  <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
+                    <span class="setting-desc" id="up-sens-says"></span></span>
+                  <label class="setting-name" for="up-iface">Watch</label>
+                  <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+                  <details id="up-custom">
+                    <summary>Custom values (blank: the pace's own)</summary>
+                    <div class="net-fields" id="up-fields"></div>
+                  </details>
+                </div>
+                <p class="setting-desc up-will" id="up-will" role="status"></p>
+                <div class="library-buttons">
+                  <button class="action-btn" type="button" id="up-save">Save</button>
+                  <button class="action-btn" type="button" id="up-hold">Hold repairs for an hour</button>
+                  <button class="action-btn" type="button" id="up-unhold" hidden>End the hold</button>
+                </div>
+                <p class="setting-desc action-note" id="up-note" role="status" hidden></p>
+              </div>
+            </div>
+          </div>
+
+          <div role="tabpanel" id="network/hotspot" aria-labelledby="tab-net-hotspot" hidden>
+            <div class="net-card setting" id="ap-health-card">
+              <h4>How the hotspot is doing</h4>
+              <div id="ap-health"></div>
+            </div>
+            <h3>The hotspot</h3>
+            <p class="setting-desc">
+              The box's own WiFi, for guests: address 192.168.4.1, every name answered with the hub. It
+              fits itself to the radios here: a radio of its own if there is one, beside your WiFi on a
+              channel of its own where the radio can, following your WiFi's channel where it can't. How
+              guests join (open or encrypted) is chosen below.
+            </p>
+            <p class="setting-desc" id="ap-state">Looking…</p>
+            <form class="net-settings" id="ap-form">
+              <label class="setting-name" for="ap-radio">Radio</label>
+              <select id="ap-radio"><option value="">Automatic</option></select>
+              <label class="setting-name" for="ap-channel">Channel</label>
+              <select id="ap-channel"><option value="">Automatic</option></select>
+              <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot: the box leaves your WiFi while it runs</label>
+              <span class="library-buttons">
+                <button class="action-btn primary" type="submit" id="ap-switch">Switch on</button>
+                <button class="action-btn" type="button" id="ap-try" hidden>Try a channel of its own</button>
+                <button class="action-btn" type="button" id="ap-confirm" hidden>Keep it</button>
+              </span>
+            </form>
+            <p class="setting-desc action-note" id="ap-note" role="status" hidden></p>
+
+            <h3>The hotspot's own WiFi</h3>
+            <p class="setting-desc">
+              How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
+              cannot read what guests do. Encryption shuts out older devices, so this is a trade between
+              who can join and what is protected. The choice applies the next time the hotspot is switched on,
+              above, which also says what the radios here allow. A setup decision; the tour comes here.
+            </p>
+            <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
+            <div class="net-settings" id="hs-fields">
+              <div id="hs-second-box" class="net-settings">
+                <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
+                <select id="hs-second">
+                  <option value="owe">Enhanced Open (OWE): no password</option>
+                  <option value="sae">WPA3 with a published password</option>
+                </select>
+              </div>
+              <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
+              <span class="library-buttons">
+                <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
+                <button class="action-btn" type="button" id="hs-generate">Make one</button>
+              </span>
+              <label class="setting" id="hs-wpa2-label">
+                <input type="checkbox" id="hs-wpa2">
+                <span class="setting-desc" id="hs-wpa2-desc"></span>
+              </label>
+            </div>
+            <ul class="admin-checks" id="hs-warnings"></ul>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="hs-save">Save</button>
+            </div>
+            <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
+            <h4>Guests reach the internet</h4>
+            <p class="setting-desc">
+              Whether guests on the hotspot can go on through this box's own connection, from nobody to
+              everyone. Their traffic then leaves as the box's: whatever they do online comes from your
+              connection. The safest is the default; each step out says what it opens. However far it goes,
+              guests are kept out of your own network and the box's Tailscale, let out by their device's
+              hardware address, and can't look names up before tapping through: each of those can be turned
+              off on <a href="#security">Security</a>, where the doctor warns while one is.
+            </p>
+            <div id="guest-net-box">
+              <div class="chip-group" role="radiogroup" aria-label="Guests reach the internet" id="guest-net-chips"></div>
+              <p class="setting-desc" id="guest-net-said"></p>
+              <p class="library-buttons"><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
+            </div>
+            <p class="setting-desc action-note" id="guest-net-note" role="status" hidden></p>
+          </div>
         </div>
-        <p class="setting-desc up-will" id="up-will" role="status"></p>
-        <div class="library-buttons">
-          <button class="action-btn" type="button" id="up-save">Save</button>
-          <button class="action-btn" type="button" id="up-hold">Hold repairs for an hour</button>
-          <button class="action-btn" type="button" id="up-unhold" hidden>End the hold</button>
-        </div>
-        <p class="setting-desc action-note" id="up-note" role="status" hidden></p>
-        <div id="up-profile"></div>
-        <h3>Recent</h3>
-        <ul class="admin-list net-events" id="up-events"></ul>
       </section>
 
       <section class="admin-pane" id="security" aria-labelledby="security-title">
@@ -1016,7 +1089,7 @@
         <p class="setting-desc" id="security-elsewhere">
           Elsewhere: fixes with one right answer are offered by the <a href="#secdoctor">Security doctor</a>,
           beside what it found; Debian's security updates are on <a href="#updates-debian">Updates</a>; the
-          hotspot's WiFi password is with the hotspot, on <a href="#network">Network</a>.
+          hotspot's WiFi password is with the hotspot, on <a href="#network/hotspot">Network → Hotspot</a>.
         </p>
         <h3>What the box keeps about visitors</h3>
         <p class="setting-desc">
