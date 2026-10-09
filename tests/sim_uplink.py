@@ -111,11 +111,49 @@ def night(e="standard", f="normal", over=None, step=30, hours=5):
             acts.append((t, a))
     return acts, w
 a, w = night()
-# Today's behaviour, kept as found so each later stage changes it on purpose:
+# As it was, kept so each later stage changes it on purpose:
 check("night, as it was: a reconnect at 1.0, 4.5 and 12.0 min, one per outage, the ladder starting afresh",
       [t for t, x in a if x == "reconnect"][:3] == [60, 270, 720], a[:5])
-check("  and after NM's restart nothing more for 5 hours, while the page said 'next: reconnect'",
-      not [x for t, x in a if t >= 1320] and (w.next_step(1320 + 5 * 3600) or {}).get("step") == "reconnect", (a[-3:], w.next_step(1320 + 5 * 3600)))
+# Stage 2, honest stalls: nothing it may do after NM's restart, and it says so, rather than "next: reconnect".
+end = 1320 + 5 * 3600
+check("  after NM's restart, no next step: none it may take is possible", not [x for t, x in a if t >= 1320] and w.next_step(end) is None,
+      (a[-3:], w.next_step(end)))
+st = w.stall(end)
+check("  stalled, needing a radio reset, which standard does not go to", st and st["needs"] == "radio"
+      and st["text"] == "Stalled: what could help now is to reset the radio, and this level goes no further than to restart the network service.", st)
+check("  said once in the log", sum(e["kind"] == "stalled" for e in w.events) == 1, [e["text"] for e in w.events if e["kind"] == "stalled"])
+
+# Stalls: not while a step is only held, not for watch-only, nothing possible at all said so.
+a, w = outage("persistent", "normal", 3600, guests=2, can={"radio", "reboot"})
+check("stall: a radio reset held for guests is held, not a stall", w.stall(1000 + 3600) is None and w.next_step(1000 + 3600)["step"] == "radio")
+a, w = outage("off", "normal", 3600)
+check("stall: watch-only is the owner's choice, never a stall", w.stall(1000 + 3600) is None and not any(e["kind"] == "stalled" for e in w.events))
+a, w = outage("standard", "normal", 3600, can=set())
+check("stall: nothing possible at all", w.stall(1000 + 3600)["needs"] is None and "nothing the box can do" in w.stall(1000 + 3600)["text"])
+
+# A step asked for on /admin: done now whatever the level and a hold, but only if possible and not held.
+w = U.Watch(U.effective({"eagerness": "standard", "forgiveness": "normal", "overrides": {}}))
+obs = {"link": False, "drops": [], "can": {"radio", "reboot"}, "guests": 0, "hold_until": 1e12}
+for t in range(0, 1200, 30):
+    w.tick(t, obs)
+check("by hand: the radio reset goes, held repairs or not, and is logged", w.by_hand(1200, obs, "radio") == (["radio"], None)
+      and w.events[-1]["text"] == "Reset the radio, asked on /admin." and "radio" in w.outage["done"])
+check("  not with guests on the hotspot (the guard holds), said why", w.by_hand(1210, dict(obs, guests=1), "radio") == ([], "1 guest is on the hotspot"))
+check("  not what cannot be done here", w.by_hand(1220, obs, "reconnect")[0] == [] and "cannot" in w.events[-1]["text"])
+check("  not a made-up step", w.by_hand(1230, obs, "nuke") == ([], "nuke is not a step"))
+import tempfile as _tf  # noqa: E402
+U.ETC = Path(_tf.mkdtemp()); U.NOW = U.ETC / "uplink-now.json"
+msg = U.request_step("radio")
+check("the request: written for the watchdog, root's only", U.NOW.exists() and oct(U.NOW.stat().st_mode & 0o777) == "0o600" and "reset the radio" in msg)
+check("  taken once", U.take_request(__import__("time").time()) == "radio" and not U.NOW.exists() and U.take_request(0) is None)
+U.request_step("reboot")
+check("  one from ten minutes ago is not wanted late", U.take_request(__import__("time").time() + 700) is None and not U.NOW.exists())
+U.NOW.write_text('{"step": "rm -rf", "at": 1}')
+check("  a made-up one is dropped", U.take_request(2) is None and not U.NOW.exists())
+try:
+    U.request_step("nuke"); check("request_step refuses a made-up step", False)
+except ValueError:
+    check("request_step refuses a made-up step", True)
 
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"overrides": {"check": 5}}, {"overrides": {"rm": 1}}, {"iface": "a;b"},

@@ -27,6 +27,9 @@ mildest first: reconnect (rescan and bring the profile up again), restart (Netwo
 or wpa_supplicant / ifupdown / networkd), radio (unbind and rebind the USB radio, or reload
 its driver), reboot. Each step waits its time after the outage is declared and the grace
 has run out; a step that did not help is not repeated, but reconnect is, with back-off.
+When nothing the level allows can be done here (NetworkManager gone, say, and the level
+stops before a radio reset) it has stalled: it says so, and what could help, and /admin
+offers that step by hand (hub_control's uplink-do, through /etc/hub/uplink-now.json).
 
 Guards: no action within 2 minutes of a settings change, nor while the owner holds repairs
 (the page's "Hold"); no radio reset or reboot while guests are on the box's hotspot unless
@@ -73,6 +76,9 @@ STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 REBOOTS = ETC / "uplink-reboots.json"
 SETTINGS = ETC / "uplink.json"
 RECORD = ETC / "uplink-changes.json"
+# A step asked for on /admin (hub_control's uplink-do), taken by the running watchdog within seconds,
+# so its guards apply and its log says what happened. Root's folder: the hub cannot plant one.
+NOW = ETC / "uplink-now.json"
 STATUS = STATE / "control" / "uplink.json"
 HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
 SYS_NET = Path("/sys/class/net")
@@ -225,6 +231,7 @@ class Watch:
         self.last_ok = None
         self.pause_until = 0.0
         self.owner_off = False
+        self.can = set()  # the repairs possible at the last look, for next_step() and stall()
 
     def log(self, now, kind, text):
         self.events.append({"at": now, "kind": kind, "text": text})
@@ -234,6 +241,7 @@ class Watch:
         busy (str or None), uptime (s), can (set of repairs), hold_until (epoch), owner_off (the
         owner took the link down on purpose: `nmcli dev disconnect`)."""
         eff = self.eff
+        self.can = set(obs.get("can", ()))
         if obs.get("owner_off") and not obs["link"]:
             if not self.owner_off:
                 self.owner_off = True
@@ -256,7 +264,7 @@ class Watch:
         if obs["link"] and self.misses < eff["misses"]:
             return []
         if self.outage is None:
-            self.outage = {"since": self.first_fail, "declared": now, "done": [], "held": [],
+            self.outage = {"since": self.first_fail, "declared": now, "done": [], "held": [], "skipped": [],
                            "next_reconnect": None, "gap": eff["repeat"]}
             self.log(now, "down", "Link lost." if not obs["link"] else
                      f"The gateway stopped answering ({self.misses} checks).")
@@ -266,7 +274,7 @@ class Watch:
         actions = []
         if self.outage:
             o = self.outage
-            tried = ", ".join(STEP_LABEL[s] for s in o["done"]) or "nothing"
+            tried = ", ".join(STEP_LABEL[s] for s in o["done"] if s not in o.get("skipped", ())) or "nothing"
             self.log(now, "up", f"Back after {human(now - o['since'])} (tried: {tried}).")
         elif self.misses:
             pass  # a check or two missed, then fine: forgiven, not logged
@@ -308,6 +316,7 @@ class Watch:
         for step in reversed(due):  # the heaviest step that is due, once
             if step not in can:
                 o["done"].append(step)
+                o["skipped"].append(step)  # done with, but never tried: the page and the log say so
                 self.log(now, "skip", f"Cannot {STEP_LABEL[step]} here; skipped.")
                 continue
             why = self._held(now, obs, step)
@@ -332,6 +341,10 @@ class Watch:
             o["next_reconnect"] = now + o["gap"]
             self.log(now, "repair", f"Reconnect again ({human(now - o['since'])} down; next in {human(o['gap'])}).")
             return ["reconnect"]
+        st = self.stall(now)
+        if st and not o.get("stalled"):
+            o["stalled"] = True
+            self.log(now, "stalled", st["text"])
         return []
 
     def _held(self, now, obs, step):
@@ -352,18 +365,53 @@ class Watch:
         return None
 
     def next_step(self, now):
-        """What comes next in this outage, and when, for the page."""
+        """What comes next in this outage, and when, for the page: only a step that is possible
+        here (a ladder whose rungs are all impossible has no next step; it has stalled)."""
         if not self.outage:
             return None
         o, eff = self.outage, self.eff
         start = o["since"] + eff["grace"]
-        rest = [(start + eff["steps"][s], s) for s in STEPS if s in eff["steps"] and s not in o["done"]]
-        if o["next_reconnect"]:
+        rest = [(start + eff["steps"][s], s) for s in STEPS if s in eff["steps"] and s not in o["done"] and s in self.can]
+        if o["next_reconnect"] and eff["repeat"] and "reconnect" in self.can:
             rest.append((o["next_reconnect"], "reconnect"))
         if not rest:
             return None
         at, step = min(rest)
         return {"step": step, "label": STEP_LABEL[step], "at": max(at, now)}
+
+    def stall(self, now):
+        """In an outage, past the grace, with nothing left that the level allows and the box can
+        do: {needs: the lightest possible step beyond the level, or None; text}. Not when the level
+        is watch-only (that is the owner's choice, not a stall), nor while a step is only held."""
+        o, eff = self.outage, self.eff
+        if not o or not eff["steps"] or now - o["since"] < eff["grace"] or self.next_step(now):
+            return None
+        needs = next((s for s in STEPS if s in self.can and s not in eff["steps"]), None)
+        top = max(eff["steps"], key=STEPS.index)
+        text = (f"Stalled: what could help now is to {STEP_LABEL[needs]}, and this level goes no further than to "
+                f"{STEP_LABEL[top]}." if needs else "Stalled: nothing the box can do from here could help "
+                f"(possible now: {', '.join(sorted(self.can)) or 'nothing'}).")
+        return {"needs": needs, "label": STEP_LABEL[needs] if needs else None, "text": text}
+
+    def by_hand(self, now, obs, step):
+        """A step the owner asked for on /admin: done now, whatever the level and the hold, but
+        only when possible here and not held by a guard (guests, the reboot caps). The steps to
+        take, and the reason when held."""
+        if step not in STEPS:
+            return [], f"{step} is not a step"
+        if step not in obs.get("can", ()):
+            self.log(now, "skip", f"Asked on /admin to {STEP_LABEL[step]}, but it cannot be done here.")
+            return [], f"cannot {STEP_LABEL[step]} here"
+        why = self._held(now, obs, step)
+        if why:
+            self.log(now, "held", f"Asked on /admin to {STEP_LABEL[step]}, but {why}.")
+            return [], why
+        if step == "reboot":
+            self.reboots.append(now)
+        if self.outage and step not in self.outage["done"]:
+            self.outage["done"].append(step)
+        self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}, asked on /admin.")
+        return [step], None
 
 
 # --- looking -------------------------------------------------------------------------------
@@ -743,13 +791,40 @@ def _settings_mtime():
 
 
 def nap(wake, secs, mtime):
-    """Sleep up to secs, waking early for a link drop or a settings change (looked at every 5 s,
-    so a choice made on /admin shows within seconds, whatever the check interval)."""
+    """Sleep up to secs, waking early for a link drop, a settings change or a step asked for on
+    /admin (looked at every 5 s, so a choice made there shows within seconds, whatever the check
+    interval)."""
     end = time.time() + secs
     while (left := end - time.time()) > 0:
-        if wake.wait(min(left, 5)) or _settings_mtime() != mtime:
+        if wake.wait(min(left, 5)) or _settings_mtime() != mtime or NOW.exists():
             break
     wake.clear()
+
+
+def request_step(step):
+    """For hub_control's uplink-do: ask the running watchdog to take one step now."""
+    if step not in STEPS:
+        raise ValueError(f"step must be one of {', '.join(STEPS)}")
+    ETC.mkdir(parents=True, exist_ok=True)
+    tmp = NOW.with_name(NOW.name + ".tmp")
+    tmp.write_text(json.dumps({"step": step, "at": time.time()}))
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, NOW)
+    return f"Asked the watchdog to {STEP_LABEL[step]} now; what it did shows in its log within seconds."
+
+
+def take_request(now):
+    """The step asked for on /admin, once (the file is removed), or None. One older than ten
+    minutes is dropped: the watchdog was not running to take it, and it is not wanted late."""
+    try:
+        req = json.loads(NOW.read_text())
+    except (OSError, ValueError):
+        return None
+    finally:
+        NOW.unlink(missing_ok=True)
+    if not isinstance(req, dict) or req.get("step") not in STEPS or not isinstance(req.get("at"), (int, float)):
+        return None
+    return req["step"] if now - req["at"] < 600 else None
 
 
 def serve(dry=False):
@@ -812,6 +887,10 @@ def serve(dry=False):
                "uptime": uptime(), "can": can, "hold_until": chosen.get("hold_until", 0),
                "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface)}
         actions = w.tick(now, obs)
+        asked = take_request(now) if NOW.exists() else None
+        if asked:
+            more, _ = w.by_hand(now, obs, asked)
+            actions += [s for s in more if s not in actions]
         if up and answers:
             actor.remember()
         for step in actions:
@@ -844,13 +923,14 @@ def serve(dry=False):
 
 def _status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, dry):
     link = netinv.parse_link(netinv.run("iw", "dev", iface, "link")[1]) if up and (SYS_NET / iface / "phy80211").exists() else {}
-    state = ("off" if w.owner_off else "down" if w.outage else "checking" if w.misses
+    stall = w.stall(now)
+    state = ("off" if w.owner_off else "stalled" if stall else "down" if w.outage else "checking" if w.misses
              else "up" if up and answers else "down")
     return {"at": now, "state": state, "iface": iface, "backend": backend, "repairs": sorted(can),
             "link": link, "gateway": gw, "gateway_answers": answers, "since": w.outage["since"] if w.outage else w.last_ok,
             "misses": w.misses, "drops_in_window": len(w.drops), "guests": obs["guests"],
-            "outage": ({k: w.outage[k] for k in ("since", "declared", "done", "held")} if w.outage else None),
-            "next": w.next_step(now), "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
+            "outage": ({k: w.outage[k] for k in ("since", "declared", "done", "held", "skipped")} if w.outage else None),
+            "next": w.next_step(now), "stall": stall, "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
             "pinned": pinned, "events": list(w.events), "reboots": w.reboots[-10:], "chosen": chosen,
             "settings": w.eff, "profile_change": profile_record(), "dry_run": dry}
 

@@ -407,8 +407,18 @@ def check_uplink():
         return [_f("uplink-report", "Uplink watchdog report", "problem", f"Last report {int(age // 60)} min ago: it has stopped looking.",
                    "journalctl -u irate-box-uplink -n 30; systemctl restart irate-box-uplink",
                    [_act("unit-restart:irate-box-uplink.service", "Start it again")])]
-    return [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, "
-               f"{st.get('chosen', {}).get('eagerness')}, {st.get('chosen', {}).get('forgiveness')}.")]
+    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, "
+              f"{st.get('chosen', {}).get('eagerness')}, {st.get('chosen', {}).get('forgiveness')}.")]
+    # Stalled: down, with nothing left the level allows that could help (uplink-ladder-plan, stage 2).
+    stall = st.get("stall") if st.get("state") == "stalled" else None
+    if stall:
+        down = int((st.get("at", 0) - ((st.get("outage") or {}).get("since") or st.get("at", 0))) // 60)
+        out.append(_f("uplink-stalled", "The link is down and the watchdog has stalled", "problem",
+                      f"{st.get('iface')} down for {down} min. {stall.get('text', '')}",
+                      (f"Network → Staying on the network: {stall['label'][:1].upper() + stall['label'][1:]} now, "
+                       "or choose a level that goes that far." if stall.get("needs")
+                       else "Look at the box by its console or a cable: nothing it can do by itself would help.")))
+    return out
 
 
 def check_inventory():

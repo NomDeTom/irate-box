@@ -74,6 +74,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "uplink-set", "settings": {eagerness, forgiveness, iface, overrides}}
       How hard the watchdog (uplink.py) works to keep the box on its network: checked by
       uplink.validate, written to /etc/hub/uplink.json, which irate-box-uplink picks up.
+  {"id": ..., "action": "uplink-do", "step": "reconnect"|"restart"|"radio"|"reboot"}
+      One step now, asked on /admin (a stalled watchdog's "Reset the radio now"): handed to the
+      running watchdog (uplink.request_step), whose guards still apply and whose log says what it did.
   {"id": ..., "action": "uplink-hold", "minutes": 0-1440}
       No repairs for that long (0 ends a hold), for an owner working on the network.
   {"id": ..., "action": "uplink-profile", "on": true|false}
@@ -2313,6 +2316,13 @@ def uplink_set(req):
             + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest.")
 
 
+def uplink_do(req):
+    if req.get("step") not in uplink.STEPS:
+        raise ValueError(f"step must be one of {', '.join(uplink.STEPS)}")
+    _uplink_running()
+    return uplink.request_step(req["step"])
+
+
 def uplink_hold(req):
     minutes = req.get("minutes")
     if type(minutes) is not int or not 0 <= minutes <= 1440:
@@ -2385,7 +2395,7 @@ ACTIONS = {"service": service, "password": password,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
