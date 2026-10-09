@@ -168,8 +168,8 @@ def _check(m, where):
         need("restart" not in inst or UNIT_RE.match(str(inst["restart"])), "install.restart: a .service name")
     addon = m.get("addon")
     if addon is not None:
-        need(re.match(r"^--with-(notes|sync|mqtt|term|collab)$", str(addon.get("option", ""))),
-             "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-term, --with-collab")
+        need(re.match(r"^--with-(notes|sync|mqtt|irc|term|collab)$", str(addon.get("option", ""))),
+             "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-irc, --with-term, --with-collab")
         for k in ("title", "summary"):
             need(isinstance(addon.get(k), str), f"addon.{k}: a string")
         need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")

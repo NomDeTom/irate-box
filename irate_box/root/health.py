@@ -61,10 +61,10 @@ CONTROL = STATE / "control"
 UNIT_DIR = Path("/etc/systemd/system")
 # Units this page may restart or enable: irate-box's own and the add-ons'.
 OUR_UNIT = re.compile(r"^(irate-box(-[a-z]+)*\.(service|socket|path|timer)|nginx\.service|caddy\.service|kiwix\.service|"
-                      r"silverbullet\.service|syncthing@" + re.escape(HUB_USER) + r"\.service|mosquitto\.service|"
+                      r"silverbullet\.service|syncthing@" + re.escape(HUB_USER) + r"\.service|mosquitto\.service|ngircd\.service|"
                       r"excalidraw-room\.service|ttyd\.service)$")
 ADDON_UNITS = {"--with-notes": "silverbullet.service", "--with-sync": f"syncthing@{HUB_USER}.service",
-               "--with-mqtt": "mosquitto.service", "--with-collab": "excalidraw-room.service",
+               "--with-mqtt": "mosquitto.service", "--with-irc": "ngircd.service", "--with-collab": "excalidraw-room.service",
                "--with-term": "ttyd.service"}
 
 

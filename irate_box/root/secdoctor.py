@@ -57,7 +57,7 @@ SHADOW = Path(os.environ.get("HUB_SHADOW", "/etc/shadow"))
 REPORT = CONTROL / "security-audit.json"
 
 OUR_UNIT_PATTERNS = ("irate-box*", "silverbullet.service", "kiwix.service", "ttyd.service",
-                     "mosquitto.service", "excalidraw-room.service", "nginx.service")
+                     "mosquitto.service", "ngircd.service", "excalidraw-room.service", "nginx.service")
 MAX_LISTED = 8          # names shown in a line before "…"
 MAX_ENTRIES = 4000      # directory entries looked at per folder, so a hub-made flood cannot stall the audit
 
@@ -1017,6 +1017,7 @@ def step_units(ctx):
 # --- add-ons: one generic check for everything apps.d declares, plus a probe table ----------
 
 MOSQUITTO_DIR = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
+NGIRCD_DIR = Path(os.environ.get("HUB_NGIRCD_DIR", "/etc/ngircd"))
 LOOPBACK_WORDS = ("127.0.0.1", "localhost", "::1", "lo")
 WIDE_WORDS = ("0.0.0.0", "::", "*", "[::]")
 
@@ -1134,6 +1135,27 @@ def probe_mosquitto(ctx, a, show):
     return out
 
 
+def probe_ngircd(ctx, a, show):
+    """The IRC server's own config (the one irate-box points the unit at). Returns [(severity, text, fix)]."""
+    conf = _read(NGIRCD_DIR / "irate-box.conf")
+    if conf is None:
+        return [("warn", f"could not read its config {NGIRCD_DIR / 'irate-box.conf'}", "")]
+    live = "\n".join(l for l in conf.splitlines() if not l.lstrip().startswith((";", "#")))
+    out = []
+    if re.search(r"(?mi)^\s*\[Operator\]", live):
+        out.append(("warn", "an [Operator] is defined: whoever has its password can kill users and change any channel, and the password sits in this config", "keep the config readable by root and the irc user only"))
+    for key, why, fix in (("MaxConnections", "one client can open sockets until the box runs out", "MaxConnections = 64"),
+                          ("MaxConnectionsIP", "one address can take every connection", "MaxConnectionsIP = 5")):
+        m = re.search(rf"(?mi)^\s*{key}\s*=\s*(\d+)", live)
+        if not m or int(m.group(1)) == 0:
+            out.append(("warn", f"no {key} limit: {why}", fix))
+    if not re.search(r"(?mi)^\s*CloakHost\s*=\s*\S", live):
+        out.append(("warn", "clients' addresses are shown to every other user", "CloakHost = %x.irate-box"))
+    if not re.search(r"(?mi)^\s*DNS\s*=\s*(no|false|0)\b", live):
+        out.append(("warn", "DNS lookups are on: with no uplink, every client waits out a timeout to register", "DNS = no and Ident = no"))
+    return out
+
+
 def probe_syncthing(ctx, a, show):
     """The GUI is driven through the hub: look at its config, not only its unit."""
     cfg = next((t for t in (_read(STATE / ".local/state/syncthing/config.xml"), _read(STATE / ".config/syncthing/config.xml")) if t), None)
@@ -1196,7 +1218,7 @@ def probe_tailscale(ctx, a, show):
     return out
 
 
-ADDON_PROBES = (("mosquitto", probe_mosquitto), ("syncthing@", probe_syncthing), ("kiwix", probe_kiwix),
+ADDON_PROBES = (("mosquitto", probe_mosquitto), ("ngircd", probe_ngircd), ("syncthing@", probe_syncthing), ("kiwix", probe_kiwix),
                 ("ttyd", probe_ttyd), ("tailscaled", probe_tailscale))
 RANK_STATUS = {"problem": 0, "warn": 1}
 

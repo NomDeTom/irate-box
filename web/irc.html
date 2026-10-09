@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IRC chat · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+</head>
+<body class="help">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <h1>💬 IRC chat</h1>
+    <p class="subtitle">Real-time chat for everyone on this box's network, in any IRC app.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <section class="help-lead">
+    <p>
+      The box runs a small IRC server. This page is not the chat: it tells your IRC app where
+      to connect. The app has to be on your device already, because there is no internet here
+      to fetch one from.
+    </p>
+  </section>
+
+  <h2>Connect</h2>
+  <div class="help-list">
+    <div class="help-item" data-service="/irc.html">
+      <span class="icon">🖧</span>
+      <div>
+        <strong>Server: <code id="irc-host">this box</code></strong>
+        <p>Port <code id="irc-port">6667</code>. No password, and no TLS/SSL: turn those off if
+          your app asks.</p>
+      </div>
+    </div>
+    <div class="help-item" data-service="/irc.html">
+      <span class="icon">#️⃣</span>
+      <div>
+        <strong>Channel: <code>#lobby</code></strong>
+        <p>Pick any nickname you like and join <code>#lobby</code>. Your app may open it straight
+          from this link: <a id="irc-link" href="irc://this-box:6667/lobby">irc://<span id="irc-link-host">this box</span>:6667/lobby</a>.
+          If nothing happens, type the server and channel into the app.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>Apps people use</h2>
+  <ul class="help-points">
+    <li>Android: Goguma, Revolution IRC</li>
+    <li>iPhone and iPad: Textual</li>
+    <li>Windows, Mac and Linux: HexChat, Halloy</li>
+    <li>In a terminal: WeeChat, irssi</li>
+  </ul>
+
+  <h2>Good to know</h2>
+  <ul class="help-points">
+    <li>There are no accounts. A nickname is yours only while you are connected, and anyone can
+      take it afterwards.</li>
+    <li>Nothing is encrypted, and only people on this network can see it. Say what you would
+      say aloud in the room.</li>
+    <li>The box keeps no history: you see what is said while you are connected.</li>
+    <li>Other people on the chat see a made-up name for your device, not its address. The same
+      device keeps the same name until the box restarts.</li>
+    <li><code>#lobby</code> is always there. Any channel you make yourself disappears when the
+      last person leaves it.</li>
+    <li>There are no moderators. The owner can switch the chat off from
+      <a href="/admin/">Admin</a>.</li>
+  </ul>
+
+  <script src="/hub.js"></script>
+  <script src="/irc.js"></script>
+</body>
+</html>

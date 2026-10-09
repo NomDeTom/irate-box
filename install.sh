@@ -19,6 +19,7 @@
 #   kiwix.service             --zim: kiwix-serve on 127.0.0.1:8081 under /wiki/
 #   ttyd.service              ttyd on /run/ttyd/ttyd.sock under /term/; enabled by --with-term only
 #   mosquitto.service         --with-mqtt: MQTT on :1883, and WebSockets on 127.0.0.1:9001 at /mqtt
+#   ngircd.service            --with-irc: an IRC server on :6667 (ngIRCd), for chat in any IRC app
 #   excalidraw-room.service   --with-collab: live Excalidraw sessions on 127.0.0.1:3002 (/socket.io/)
 #   irate-box-tailscale.path  if Tailscale is installed: its on/off switch on /admin
 #   irate-box-git.socket      git http-backend and cgit as the hub user, for /git/ (public:
@@ -65,6 +66,9 @@ Usage: sudo ./install.sh [options]
                         downloaded on the box). Installs kiwix-serve.
   --with-mqtt           install the mosquitto MQTT broker: :1883 for nodes and the phone
                         app, and WebSockets at /mqtt for pages. Anonymous, limited to msh/#.
+  --with-irc            install ngIRCd, a small IRC server: :6667 for any IRC app, with a
+                        #lobby channel ready. Open to everyone on the box's network, with no
+                        accounts and no encryption; hosts are hidden from other users.
   --with-collab         live collaboration in /draw/: Debian's nodejs plus the room relay
                         from --apps DIR/room, built on a desktop (ARMv7 and up)
   --with-term           turn on the ttyd terminal at /term/. It is always installed, but
@@ -82,7 +86,7 @@ Usage: sudo ./install.sh [options]
   --port N              the port the hub is served on (default: 80). If something else
                         already serves :80, the hub is put on a free port (8080 first) and
                         says so; the other service is left as it is.
-  --remove NAME         take an add-on off again: notes, sync, mqtt, term or collab
+  --remove NAME         take an add-on off again: notes, sync, mqtt, irc, term or collab
                         (repeatable). Its service stops and its unit and config go; its
                         data (the notes folder, Syncthing's state) and packages stay. This
                         is what /admin's Add-ons page runs.
@@ -125,7 +129,7 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
-APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
@@ -151,6 +155,7 @@ while [ $# -gt 0 ]; do
 	# accepted, so an older install record replays.
 	--with-eliza) shift ;;
 	--with-mqtt) WITH_MQTT=1; shift ;;
+	--with-irc) WITH_IRC=1; shift ;;
 	--with-collab) WITH_COLLAB=1; shift ;;
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
 	--hub-url) HUB_URL="$2"; shift 2 ;;
@@ -172,7 +177,7 @@ while [ $# -gt 0 ]; do
 		fi
 		shift 2 ;;
 	--remove)
-		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
+   	case "$2" in notes | sync | mqtt | irc | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term or collab" ;; esac
 		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
@@ -190,7 +195,7 @@ done
 # An add-on being removed is not installed by this run, whatever else asks for it.
 for r in "${REMOVE[@]}"; do
 	case "$r" in
-	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;;
+	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;;
 	esac
 done
 
@@ -245,6 +250,7 @@ keep_addon() { # $1 add-on, $2 its WITH_ variable, $3 marker, $4 unit
 keep_addon notes WITH_NOTES /etc/systemd/system/silverbullet.service silverbullet
 keep_addon sync WITH_SYNC "/etc/systemd/system/syncthing@$HUB_USER.service.d/irate-box.conf" "syncthing@$HUB_USER"
 keep_addon mqtt WITH_MQTT /etc/mosquitto/conf.d/irate-box.conf mosquitto
+keep_addon irc WITH_IRC /etc/ngircd/irate-box.conf ngircd
 keep_addon term WITH_TERM /etc/systemd/system/ttyd.service ttyd
 keep_addon collab WITH_COLLAB /etc/systemd/system/excalidraw-room.service excalidraw-room
 
@@ -719,6 +725,9 @@ pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libj
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
+# ngircd: ~0.2 MB package; Debian starts it on install with its own example config, which the
+# IRC section below replaces and restarts into.
+[ "$WITH_IRC" = 1 ] && pkgs+=(ngircd)
 # Kiwix is in use when --zim adds a book, and also when books are already on disk: a reinstall
 # over kept state (uninstall.sh --keep-state, then install.sh) brings /wiki/ back with them.
 KIWIX=0
@@ -927,6 +936,7 @@ esac
 	[ "$WITH_NOTES" = 1 ] && echo --with-notes
 	[ "$WITH_SYNC" = 1 ] && echo --with-sync
 	[ "$WITH_MQTT" = 1 ] && echo --with-mqtt
+	[ "$WITH_IRC" = 1 ] && echo --with-irc
 	[ "$WITH_TERM" = 1 ] && echo --with-term
 	[ "$WITH_COLLAB" = 1 ] && echo --with-collab
 	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
@@ -1725,6 +1735,78 @@ EOF
 	chmod 640 /etc/mosquitto/irate-box.acl
 fi
 
+# --- IRC server ----------------------------------------------------------------------
+# ngIRCd, for chat in any IRC app (the pages cannot speak raw IRC, so, like MQTT, :6667 is a
+# second listener on the network). Debian's unit already runs it as the unprivileged `irc`
+# user with a hardened sandbox; what is added here is irate-box's own config, which the unit
+# is pointed at by a drop-in, so Debian's /etc/ngircd/ngircd.conf (a package conffile) is
+# never touched. There is nobody to authenticate on an open network, so as with MQTT the
+# limits are the abuse control: 64 connections, 5 per address, 10 channels each.
+#  - DNS and Ident off: a box with no internet would otherwise wait out a timeout for every
+#    client that connects (or never finish registering it).
+#  - Hosts are cloaked and the user name is the nickname: guests on one network can see each
+#    other's addresses otherwise. MorePrivacy hides idle and sign-on times and quit messages.
+#  - No [Operator] block: nobody can oper up, so nobody is above the channel rules. #lobby
+#    is made at start-up, stays when empty, and nobody holds ops there, which locks its topic.
+if [ "$WITH_IRC" = 1 ]; then
+	install -d -m 755 /etc/ngircd
+	cat >/etc/ngircd/irate-box.conf <<'EOF'
+# Generated by irate-box install.sh. Edits are overwritten on reinstall.
+[Global]
+	Name = irc.irate-box
+	Info = Irate-Box chat
+	Network = Irate-Box
+	AdminInfo1 = An Irate-Box
+	AdminInfo2 = Chat for whoever is on this network
+	MotdFile = /etc/ngircd/irate-box.motd
+	PidFile = /run/ngircd/ngircd.pid
+	# Every interface until the installer sets up the access point; then this should
+	# become the AP address only (Listen = ...).
+	Ports = 6667
+	ServerUID = irc
+	ServerGID = irc
+
+[Limits]
+	MaxConnections = 64
+	MaxConnectionsIP = 5
+	MaxJoins = 10
+	MaxNickLength = 20
+	PingTimeout = 120
+	PongTimeout = 20
+
+[Options]
+	DNS = no
+	Ident = no
+	PAM = no
+	MorePrivacy = yes
+	CloakUserToNick = yes
+	# %x is a hash of the real host: one device keeps one name, which a channel op can ban.
+	CloakHost = %x.irate-box
+
+[Channel]
+	Name = #lobby
+	Topic = Welcome to the Irate-Box lobby
+	Modes = tn
+EOF
+	cat >/etc/ngircd/irate-box.motd <<'EOF'
+Welcome to the Irate-Box chat.
+Everyone here is on this box's own network; nothing leaves it.
+There are no accounts, and nothing is encrypted: say what you would say aloud.
+Join #lobby to say hello.
+EOF
+	chmod 644 /etc/ngircd/irate-box.conf /etc/ngircd/irate-box.motd
+	install -d -m 755 /etc/systemd/system/ngircd.service.d
+	cat >/etc/systemd/system/ngircd.service.d/irate-box.conf <<'EOF'
+# Generated by irate-box install.sh: run ngIRCd with irate-box's config, not Debian's example.
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/ngircd -f /etc/ngircd/irate-box.conf
+EOF
+	# A config it cannot read would leave the unit failing; say so now, in words.
+	ngircd --configtest -f /etc/ngircd/irate-box.conf >/dev/null 2>&1 ||
+		problem "ngircd does not accept /etc/ngircd/irate-box.conf: ngircd --configtest -f /etc/ngircd/irate-box.conf"
+fi
+
 # --- Excalidraw live collaboration ---------------------------------------------------
 # excalidraw-room is a socket.io relay: no database, rooms in memory, and scenes and
 # pasted files persisted through store.py like everything else. Built on a desktop
@@ -2139,6 +2221,7 @@ elif [ "$KIWIX" = 1 ]; then
 fi
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
 [ "$WITH_MQTT" = 1 ] && units+=(mosquitto)
+[ "$WITH_IRC" = 1 ] && units+=(ngircd)
 [ "$WITH_COLLAB" = 1 ] && units+=(excalidraw-room)
 # Apps switched off on /admin (Apps, Add-ons) keep their services stopped.
 mapfile -t off_units < <(HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_WEB_SERVER="$WEB" \
@@ -2210,6 +2293,11 @@ for r in "${REMOVE[@]}"; do
 		say "Removing the MQTT add-on (mosquitto's irate-box config)"
 		systemctl disable --now mosquitto >/dev/null 2>&1 || true
 		rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl ;;
+	irc)
+		say "Removing the IRC add-on (ngircd's irate-box config; the package stays, stopped)"
+		systemctl disable --now ngircd >/dev/null 2>&1 || true
+		rm -f /etc/ngircd/irate-box.conf /etc/ngircd/irate-box.motd /etc/systemd/system/ngircd.service.d/irate-box.conf
+		rmdir /etc/systemd/system/ngircd.service.d 2>/dev/null || true ;;
 	term)
 		say "Turning the terminal off (ttyd stays installed, off)"
 		systemctl disable --now ttyd >/dev/null 2>&1 || true ;;
@@ -2244,6 +2332,7 @@ fi
 [ "$WITH_NOTES" = 1 ] && echo "    notes: /notes/  (folder $STATE/notes, lock it down in $ETC/silverbullet.env)"
 [ -f "$STATE/zim/library.xml" ] && echo "    wiki:  /wiki/   ($(grep -c '<book ' "$STATE/zim/library.xml") books in $STATE/zim/library.xml)"
 [ -f /etc/mosquitto/conf.d/irate-box.conf ] && echo "    mqtt:  :1883 for nodes, /mqtt for pages (anonymous, msh/# only)"
+[ -f /etc/ngircd/irate-box.conf ] && echo "    irc:   :6667 for any IRC app, channel #lobby (open to the network, unencrypted; how to join: /irc.html)"
 term_state="$(systemctl is-enabled ttyd 2>/dev/null)" || true
 echo "    term:  /term/   (${term_state:-disabled}; admin login, then an account on the box)"
 [ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the admin login; folder \"hub-notes\" shared if notes are installed)"
