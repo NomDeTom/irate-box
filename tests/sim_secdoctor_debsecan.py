@@ -46,7 +46,8 @@ check("a released fix that is remotely exploitable: a problem", fs["debsecan-dns
       and "CVE-2026-12725 (remotely exploitable)" in fs["debsecan-dnsmasq-base"]["detail"])
 check("  one of high urgency: a problem", fs["debsecan-libc6"]["status"] == "problem" and "(high urgency)" in fs["debsecan-libc6"]["detail"])
 check("  otherwise a warning", fs["debsecan-gzip"]["status"] == "warn")
-check("  about the package, from debsecan, with the fix", fs["debsecan-gzip"]["about"] == {"kind": "package", "key": "gzip"}
+check("  about Debian's security updates (one item on the page with the Security page's), from debsecan, with the fix",
+      fs["debsecan-gzip"]["about"] == {"kind": "setting", "key": "security-updates"}
       and fs["debsecan-gzip"]["source"] == "debsecan" and "security updates" in fs["debsecan-gzip"]["fix"])
 check("unfixed ones: listed in one line that isn't counted against the box", "debsecan-perl" not in fs and fs["debsecan-unfixed"]["status"] == "ok"
       and "1 installed packages have CVEs Debian hasn't fixed yet (listed, not counted): perl." in fs["debsecan-unfixed"]["detail"],
@@ -61,7 +62,7 @@ two = {"perl": [("CVE-1", {"fixed": True, "remote": False, "urgency": ""})], "pe
 g = [x for x in sd.debsecan_findings(two, {}, {}, None, {"perl-base": "perl", "libperl5.40": "perl"}) if x["id"].startswith("debsecan-perl")]
 check("binaries of one source package: one finding, naming them, its CVEs together, the worst status", len(g) == 1
       and g[0]["detail"].startswith("In libperl5.40, perl, perl-base. 2 fixed: CVE-1, CVE-2 (remotely exploitable).")
-      and g[0]["status"] == "problem" and g[0]["about"] == {"kind": "package", "key": "perl"}, g)
+      and g[0]["status"] == "problem" and g[0]["about"] == {"kind": "setting", "key": "security-updates"}, g)
 sd._sources = lambda: {}
 # The step itself: no data yet; no debsecan anywhere; a stand-in in place of the real one.
 out = sd.step_debsecan({})

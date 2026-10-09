@@ -40,6 +40,90 @@ const AW = (() => {
     const t = tone || (BAD.test(text) ? 'bad' : WARN.test(text) ? 'warn' : OK.test(text) ? 'ok' : 'info');
     return h('span', { class: t + '-pill', text });
   }
+  // What a check for updates found, as one badge wherever updates are checked (Tom, 2026-10-09):
+  // "update available" when one is; "up to date" only when that was found within RECENT_DAYS; an
+  // older look says how old it is, as nothing newer it found then still holds.
+  // checked: when it last looked, epoch seconds or an ISO string; available: whether it found one;
+  // failed: its last look failed, so it found nothing either way.
+  const RECENT_DAYS = 7;
+  function updatePill(checked, available, failed) {
+    if (available) return h('span', { class: 'warn-pill update-pill', text: 'update available' });
+    if (failed) return h('span', { class: 'bad-pill update-pill', text: 'check failed' });
+    const at = typeof checked === 'string' ? Date.parse(checked) / 1000 : checked;
+    if (!at) return h('span', { class: 'info-pill update-pill', text: 'not checked yet' });
+    const days = Math.floor((Date.now() / 1000 - at) / 86400);
+    return days < RECENT_DAYS ? h('span', { class: 'ok-pill update-pill', text: 'up to date', title: 'Checked within the last week; nothing newer found' })
+      : h('span', { class: 'info-pill update-pill', text: `checked ${days} days ago`, title: 'Nothing newer then; check again to be sure' });
+  }
+  // ---- One pattern for every update (item 36; Tom, 2026-10-09: "I'd like the updates frequency to be
+  // off/6 hours/24 hours/weekly, and then a choice of flag/fetch/auto-update"; "perhaps the off becomes
+  // manual?"; "and then we would need buttons for check/fetch/install as well"). The same two choices, the
+  // same words and the same three buttons wherever something is updated: Debian's security updates, the
+  // hub's own, apps and books, packages, the toolkits' cache, the mirrors. Values are the librarian's:
+  // hours (0 Manual) and 0 Flag / 1 Fetch / 2 Install. Selects underneath, so forms read them and
+  // chipSelect draws them as chips.
+  const OFTEN = [['0', 'Manual', 'Only when you press Check now; what it finds is taken as far as chosen below.'],
+    ['6', '6 hours', 'Looks every 6 hours.'], ['24', '24 hours', 'Looks once a day.'], ['168', 'Weekly', 'Looks once a week.']];
+  const ACT = [['0', 'Flag', 'Said here and on the badge; nothing else done.'], ['1', 'Fetch', 'Also downloaded and checked, ready for you to install.'],
+    ['2', 'Install', 'Also installed.']];
+  const PATTERN_LABELS = { often: 'How often to look', act: 'When something newer is found' };
+  //   opts: {often: name, act: name, acts: ['0','1'] (a subset where fetching is the update), says: {'2': …},
+  //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}
+  function updatePattern(opts) {
+    const sel = (name, rows, says, value, label) => h('label', { class: 'update-choice' }, label,
+      h('select', { name, 'data-pattern': name === opts.often ? 'often' : 'act' }, rows.map(([v, t, d]) => {
+        const o = h('option', { value: v, 'data-says': (says && says[v]) || d }, t);
+        if (String(value) === v) o.selected = true;
+        return o;
+      })));
+    const acts = ACT.filter(([v]) => !opts.acts || opts.acts.map(String).includes(v));
+    return h('div', { class: 'update-pattern' },
+      sel(opts.often, OFTEN, opts.oftenSays, opts.value && opts.value.often, PATTERN_LABELS.often),
+      sel(opts.act, acts, opts.says, opts.value && opts.value.act, PATTERN_LABELS.act),
+      opts.why ? h('p', { class: 'setting-desc', text: opts.why }) : null);
+  }
+  // A placeholder in the page, <div data-update-pattern data-often="name" data-act="name" data-acts="0,1"
+  // data-says-2="…" data-why="…">, filled with the pattern (before its form's code reads the selects).
+  function updatePatterns(root) {
+    (root || document).querySelectorAll('[data-update-pattern]:not([data-filled])').forEach((box) => {
+      const says = {}, oftenSays = {};
+      for (const [k, v] of Object.entries(box.dataset)) {
+        if (/^says-?\d$/.test(k)) says[k.replace(/^says-?/, '')] = v;
+        if (/^oftenSays-?\d+$/.test(k)) oftenSays[k.replace(/^oftenSays-?/, '')] = v;
+      }
+      box.dataset.filled = '1';
+      box.replaceWith(updatePattern({ often: box.dataset.often, act: box.dataset.act, acts: box.dataset.acts ? box.dataset.acts.split(',') : null,
+        says, oftenSays, why: box.dataset.why || null }));
+    });
+  }
+  // The three buttons beside them: Check now, Fetch (greyed with why when nothing newer is known or it is
+  // fetched already), Install (fetching first if needed). Each: {onclick, disabled, why, label}; null leaves
+  // one out (Install where fetching is the update). The badge (updatePill) goes first.
+  function updateButtons(b) {
+    const row = h('div', { class: 'library-buttons update-buttons' });
+    const why = h('p', { class: 'setting-desc update-why', hidden: true });
+    row.update = (state) => {
+      const whys = [];
+      for (const [k, label] of [['check', 'Check now'], ['fetch', 'Fetch'], ['install', 'Install']]) {
+        const s = { ...(b[k] || {}), ...((state || {})[k] || {}) }, node = row.querySelector(`[data-update="${k}"]`);
+        if (!node) continue;
+        node.disabled = !!s.disabled;
+        node.title = s.disabled && s.why ? s.why : '';
+        if (s.disabled && s.why) whys.push(`${label}: ${s.why}`);
+      }
+      why.textContent = whys.join(' ');
+      why.hidden = !whys.length;
+    };
+    for (const [k, label] of [['check', 'Check now'], ['fetch', 'Fetch'], ['install', 'Install']]) {
+      if (!b[k]) continue;
+      row.append(btn(b[k].label || label, { 'data-update': k, class: 'action-btn' + (k === 'install' ? ' primary' : ''), onclick: b[k].onclick }));
+    }
+    if (b.badge) row.prepend(b.badge);
+    row.update();
+    const box = h('div', { class: 'update-actions' }, row, why);
+    box.update = row.update;
+    return box;
+  }
   const scopeOf = (node) => node.closest('.admin-pane, [data-aw-scope]') || document.body;
 
   // ---- A filter bar (3f) over any list whose rows carry data-text and data-tags ----
@@ -367,17 +451,19 @@ const AW = (() => {
   }
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
     const start = () => {
+      updatePatterns(document);
       chipSelects(document);
       quietSaves(document);
       new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
         if (n.nodeType !== 1) return;
+        updatePatterns(n.parentNode || n);
         if (n.tagName === 'SELECT') chipSelect(n); else chipSelects(n);
         quietSaves(n.tagName === 'FORM' ? n.parentNode : n);
       }))).observe(document.body, { childList: true, subtree: true });
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

@@ -340,16 +340,90 @@ def ssh_findings(settings, keys, rec):
 # --- security updates ---------------------------------------------------------------------
 
 INST_RE = re.compile(r"^Inst (\S+) .*\(([^)]*)\)")
+# Debian's own fixes to a stable release carry +debNuM (or ~debNuM) in the version: the security
+# team's, and the point releases', which fold the security fixes in (2026-10-09 on the Lyra: seven
+# packages debsecan called fixed came as "Debian:13.7/stable", none from trixie-security, so a scan
+# counting only "security" origins said none were waiting and offered nothing to install).
+DEB_FIX_RE = re.compile(r"[+~]deb\d+u\d+")
+APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
+# Automatic security updates: the system's own choice, made here (Tom, 2026-10-09: "the toolkit is
+# independent of the system update itself"). One file of apt's, after the image's own (Armbian's
+# 02-armbian-periodic switches apt's periodic work off).
+AUTOUPDATE_CONF = Path(os.environ.get("HUB_AUTOUPDATE_CONF", "/etc/apt/apt.conf.d/52irate-box-autoupdate"))
+KIT_POOL = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits")) / "pool"
+APT_TIMERS = ("apt-daily.timer", "apt-daily-upgrade.timer")
+# The one pattern for every update (item 36; Tom, 2026-10-09: "the updates frequency to be off/6 hours/24
+# hours/weekly, and then a choice of flag/fetch/auto-update"; "perhaps the off becomes manual?"): how often
+# to look (hours; 0 Manual, only when Check now is pressed) and what to do with what is found (0 Flag, 1
+# Fetch, 2 Install). The same numbers as the librarian's policy, the same chips on every surface.
+OFTEN = (0, 6, 24, 168)
+ACTS = (0, 1, 2)
+OFTEN_WORDS = {0: "by hand only", 6: "every 6 hours", 24: "every day", 168: "every week"}
+ACT_WORDS = {0: "flagged", 1: "downloaded, for you to install", 2: "installed"}
+DEFAULT_PATTERN = (24, 0)   # principle 5: the safe one
+# The three choices #176 offered, read as the pattern's.
+LEVELS_WAS = {"off": (0, 0), "download": (24, 1), "install": (24, 2)}
+# apt's periodic intervals are in days; "always" leaves the timing to the timers (apt.systemd.daily).
+INTERVAL = {6: "always", 24: "1", 168: "7"}
+# Every 6 hours needs apt's timers to run that often (they run twice a day as Debian ships them).
+TIMER_DROPIN = Path(os.environ.get("HUB_SYSTEMD_DIR", "/etc/systemd/system"))
+TIMER_SIX = {"apt-daily.timer": "*-*-* 00/6:00", "apt-daily-upgrade.timer": "*-*-* 01/6:30"}
+APT_ARCHIVES = Path(os.environ.get("HUB_APT_ARCHIVES", "/var/cache/apt/archives"))
+
+
+def periodic_conf(often, act):
+    """apt.conf lines for a choice of the pattern."""
+    if not often:
+        return 'APT::Periodic::Enable "0";\n'
+    iv = INTERVAL[often]
+    return (f'APT::Periodic::Enable "1";\nAPT::Periodic::Update-Package-Lists "{iv}";\n'
+            f'APT::Periodic::Download-Upgradeable-Packages "{iv if act >= 1 else "0"}";\n'
+            f'APT::Periodic::Unattended-Upgrade "{iv if act >= 2 else "0"}";\n')
+
+
+def pattern_words(often, act):
+    return f"looked for {OFTEN_WORDS[often]}; what is found is {ACT_WORDS[act]}"
+
+
+def chosen_pattern(rec):
+    """(often, act) as chosen on the Updates page, or None; #176's levels read as theirs."""
+    cur = rec.get("autoupdate") or {}
+    if cur.get("often") in OFTEN and cur.get("act") in ACTS:
+        return cur["often"], cur["act"]
+    return LEVELS_WAS.get(cur.get("level"))
+
+
+def parse_pattern(arg):
+    """'24-1' (from the page's choice autoupdate-set:24-1) as (24, 1); a closed set, else ValueError."""
+    try:
+        often, act = (int(x) for x in arg.split("-"))
+    except ValueError:
+        raise ValueError("how often and what to do, as hours-act") from None
+    if often not in OFTEN or act not in ACTS:
+        raise ValueError(f"how often one of {OFTEN}, what to do one of {ACTS}")
+    return often, act
 
 
 def pending_security(simulated):
-    """Package names from `apt-get -s upgrade` output whose new version comes from a security archive."""
+    """Package names from `apt-get -s upgrade` output whose new version comes from a security archive,
+    or is one of Debian's stable fixes (from a Debian origin, versioned +debNuM)."""
     pkgs = []
     for line in simulated.splitlines():
         m = INST_RE.match(line)
-        if m and "security" in m.group(2).lower():
+        if not m:
+            continue
+        version, _, origin = m.group(2).partition(" ")
+        if "security" in origin.lower() or (origin.startswith("Debian") and DEB_FIX_RE.search(version)):
             pkgs.append(m.group(1))
     return pkgs
+
+
+def lists_age_days():
+    """How old apt's package lists are (their folder's newest change), or None."""
+    try:
+        return (time.time() - max(p.stat().st_mtime for p in APT_LISTS.glob("*_InRelease"))) / 86400
+    except (OSError, ValueError):
+        return None
 
 
 UNATTENDED_LOG = Path(os.environ.get("HUB_UNATTENDED_LOG", "/var/log/unattended-upgrades/unattended-upgrades.log"))
@@ -364,28 +438,134 @@ def _apt_periodic():
     return dict(l.split("=", 1) for l in out.stdout.splitlines() if "=" in l)
 
 
-def unattended_finding(installed, periodic, log_age_days):
-    """Automatic security updates, by what would actually run (stance review 2026-10-08, I3):
-    Armbian images ship APT::Periodic::Enable "0", which switches the whole of apt's periodic
-    work off whatever Unattended-Upgrade says, so the binary being there meant nothing."""
-    enabled = installed and periodic.get("APT::Periodic::Enable", "1") != "0" and periodic.get("APT::Periodic::Unattended-Upgrade", "0") not in ("0", "")
-    if not installed:
-        return _finding("unattended", "Automatic security updates", "warn",
-                        "Not set up: security updates wait until someone installs them.",
-                        "Planned: unattended-upgrades for Debian-Security updates only. Until then, install them here.")
+def unattended_finding(installed, periodic, log_age_days, chosen=None):
+    """Automatic security updates: the owner's choice on the Updates page (how often to look, what to do
+    with what is found: item 36's pattern) and, once installing, whether it really runs (stance review
+    2026-10-08, I3: Armbian images ship APT::Periodic::Enable "0", which switches the whole of apt's
+    periodic work off whatever Unattended-Upgrade says, so the binary being there meant nothing).
+    chosen: (often, act) or None. The choice itself is made with the chips on Updates, not buttons here."""
+    title = "Automatic security updates"
+    acts = [{"choice": "autoupdate-undo", "label": "Put back as the image had it"}] if chosen else []
+    running = installed and periodic.get("APT::Periodic::Enable", "1") != "0" and periodic.get("APT::Periodic::Unattended-Upgrade", "0") not in ("0", "")
+    if not chosen and running:
+        # Debian's own package can switch it on when installed (20auto-upgrades): it runs, but was not chosen here.
+        return _finding("unattended", title, "ok", "On, but not chosen here (Debian's own package or the image switched it on): "
+                        "security updates are installed every day while the box has internet. Choose below to keep it so or change it.",
+                        "", acts)
+    if not chosen:
+        return _finding("unattended", title, "warn",
+                        "Not chosen yet: security updates wait until someone looks for them and installs them. "
+                        "The box can look every 6 hours, every day or every week, and flag, download or install what it finds.",
+                        "Choose how often and what to do, below; it can be put back.", acts)
+    often, act = chosen
+    said = pattern_words(often, act)
+    if not often:
+        return _finding("unattended", title, "ok", f"By hand, as you chose: press Check now; what it finds is {ACT_WORDS[act]}.", "", acts)
+    enabled = periodic.get("APT::Periodic::Enable", "1") != "0"
     if not enabled:
-        return _finding("unattended", "Automatic security updates", "warn",
-                        "unattended-upgrades is installed but never runs: apt's periodic work is off "
-                        f"(APT::Periodic::Enable {periodic.get('APT::Periodic::Enable', 'unset')}, "
-                        f"Unattended-Upgrade {periodic.get('APT::Periodic::Unattended-Upgrade', 'unset')}; the image's own setting).",
-                        'Set APT::Periodic::Enable "1"; and APT::Periodic::Unattended-Upgrade "1"; in a file of your own in /etc/apt/apt.conf.d.')
+        return _finding("unattended", title, "warn", f"Set to be {said}, but apt's periodic work is off again (another file "
+                        "in /etc/apt/apt.conf.d wins).", "Save the choice again below.", acts)
+    if act < 2:
+        return _finding("unattended", title, "ok", f"Security updates are {said}, while the box has internet.", "", acts)
+    if not installed or periodic.get("APT::Periodic::Unattended-Upgrade", "0") in ("0", ""):
+        return _finding("unattended", title, "warn", f"Set to be {said}, but unattended-upgrades "
+                        + ("is not installed." if not installed else "would not run "
+                           f"(APT::Periodic::Unattended-Upgrade {periodic.get('APT::Periodic::Unattended-Upgrade', 'unset')})."),
+                        "Save the choice again below.", acts)
     if log_age_days is None:
-        return _finding("unattended", "Automatic security updates", "warn", "Set up, but has not run yet (no log).",
-                        "It runs daily when the box is online; an offline box must have them installed here.")
-    if log_age_days > 14:
-        return _finding("unattended", "Automatic security updates", "warn", f"Set up, but last ran {log_age_days:.0f} days ago.",
-                        "It runs daily when the box is online; an offline box must have them installed here.")
-    return _finding("unattended", "Automatic security updates", "ok", f"Set up and ran {log_age_days:.0f} day(s) ago.")
+        return _finding("unattended", title, "ok", f"Security updates are {said}; it has not run yet (it runs while online).", "", acts)
+    if log_age_days > max(14, often / 24 * 2):
+        return _finding("unattended", title, "warn", f"Security updates are {said}, but it last ran {log_age_days:.0f} days ago.",
+                        "It runs when the box is online; an offline box must have them installed here.", acts)
+    return _finding("unattended", title, "ok", f"Security updates are {said}; it last ran {log_age_days:.0f} day(s) ago.", "", acts)
+
+
+def _timers_six(rec_timers, on):
+    """apt's two timers every 6 hours (a drop-in of ours each), or as Debian ships them."""
+    changed = False
+    for timer, when in TIMER_SIX.items():
+        drop = TIMER_DROPIN / f"{timer}.d" / "52irate-box.conf"
+        if on:
+            drop.parent.mkdir(parents=True, exist_ok=True)
+            drop.write_text("# Written by irate-box's Updates page: look for security updates every 6 hours.\n"
+                            f"[Timer]\nOnCalendar=\nOnCalendar={when}\nRandomizedDelaySec=30min\n")
+            changed = True
+        elif drop.exists():
+            drop.unlink()
+            changed = True
+    if changed:
+        run("systemctl", "daemon-reload")
+    return changed
+
+
+def _autoupdate(rec, how):
+    """The owner's choice of automatic security updates (how: "undo", or "OFTEN-ACT"; #176's "off",
+    "download" and "install" read as theirs): one apt.conf.d file of ours, apt's timers on (every 6
+    hours by a drop-in when chosen), and unattended-upgrades installed for installing (from Debian, or
+    the System toolkit's cache when offline). Undo puts back the image's own: the file as it was, the
+    timers as they were, the package removed if it was installed here."""
+    cur = rec.get("autoupdate")
+    if how == "undo":
+        if not cur:
+            raise ValueError("automatic updates were not set from this page")
+        if cur.get("conf") is not None:
+            AUTOUPDATE_CONF.write_text(cur["conf"])
+        else:
+            AUTOUPDATE_CONF.unlink(missing_ok=True)
+        _timers_six(None, False)
+        for timer, was in (cur.get("timers") or {}).items():
+            if not was:
+                _systemctl("disable", "--now", timer)
+        if cur.get("installed"):
+            run("apt-get", "remove", "-y", "unattended-upgrades", timeout=600)
+        rec.pop("autoupdate")
+        return "automatic security updates put back as the image had them"
+    often, act = LEVELS_WAS[how] if how in LEVELS_WAS else parse_pattern(how)
+    if not cur:
+        cur = {"date": time.strftime("%Y-%m-%d"), "conf": AUTOUPDATE_CONF.read_text() if AUTOUPDATE_CONF.is_file() else None,
+               "timers": {}, "installed": False}
+    said = []
+    if act == 2 and often and not _have("unattended-upgrade"):
+        env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+        code = subprocess.run(["apt-get", "install", "-y", "unattended-upgrades"], capture_output=True, env=env,
+                              stdin=subprocess.DEVNULL, timeout=1200).returncode
+        if code != 0:
+            debs = sorted(KIT_POOL.glob("unattended-upgrades_*.deb")) if KIT_POOL.is_dir() else []
+            if not debs or subprocess.run(["apt-get", "install", "-y", str(debs[-1])], capture_output=True, env=env,
+                                          stdin=subprocess.DEVNULL, timeout=1200).returncode != 0:
+                raise ValueError("unattended-upgrades could not be installed: it needs the internet once "
+                                 "(or the System toolkit's cache, which holds it)")
+            said.append("unattended-upgrades installed from the toolkits' cache")
+        else:
+            said.append("unattended-upgrades installed")
+        cur["installed"] = True
+    AUTOUPDATE_CONF.parent.mkdir(parents=True, exist_ok=True)
+    AUTOUPDATE_CONF.write_text("// Written by irate-box's Updates page (/admin): security updates "
+                               f"{pattern_words(often, act)}. Change it there.\n" + periodic_conf(often, act))
+    _timers_six(cur["timers"], often == 6)
+    if often:
+        for timer in APT_TIMERS:
+            if timer not in cur["timers"]:
+                cur["timers"][timer] = run("systemctl", "is-enabled", timer).stdout.strip() == "enabled"
+            _systemctl("enable", "--now", timer)
+        if often == 6:
+            for timer in APT_TIMERS:
+                run("systemctl", "restart", timer)
+    cur.pop("level", None)
+    cur["often"], cur["act"] = often, act
+    rec["autoupdate"] = cur
+    return "; ".join(said + [f"security updates {pattern_words(often, act)}"])
+
+
+def fetched_debs(simulated):
+    """How many of the waiting security updates are downloaded already (apt's archives hold their .deb)."""
+    n = 0
+    for line in simulated.splitlines():
+        m = INST_RE.match(line)
+        if m and m.group(1) in pending_security(line):
+            ver = m.group(2).partition(" ")[0].replace(":", "%3a")
+            n += any(APT_ARCHIVES.glob(f"{m.group(1)}_{ver}_*.deb"))
+    return n
 
 
 def update_findings():
@@ -393,22 +573,30 @@ def update_findings():
         return [], []
     out = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180)
     pkgs = pending_security(out.stdout)
+    fetched = fetched_debs(out.stdout) if pkgs else 0
     try:
         log_age = (time.time() - UNATTENDED_LOG.stat().st_mtime) / 86400
     except OSError:
         log_age = None
+    age = lists_age_days()
+    fresh = ("The package lists are from today." if age is not None and age < 1 else
+             f"The package lists are {round(age)} day{'s' if round(age) != 1 else ''} old: newer fixes may be out." if age is not None else "The package lists' age is unknown.")
+    look = {"choice": "apt-lists", "label": "Look for new ones (needs the internet)"}
     findings = []
     if pkgs:
         findings.append(_finding("security-updates", "Security updates", "problem",
-                                 f"{len(pkgs)} waiting: {', '.join(pkgs[:8])}{'…' if len(pkgs) > 8 else ''}. "
-                                 "The package lists are as fresh as the last apt-get update.",
+                                 f"{len(pkgs)} waiting, from Debian's security archive or its stable fixes: "
+                                 f"{', '.join(pkgs[:8])}{'…' if len(pkgs) > 8 else ''}. {fresh}",
                                  "Installing them changes only those packages; the hub's own updates are separate (Updates).",
                                  [{"choice": "security-updates", "label": f"Install {len(pkgs)} security update{'s' if len(pkgs) != 1 else ''}",
-                                   "confirm": "Install the waiting security updates now? It can take several minutes on this board."}]))
+                                   "confirm": "Install the waiting security updates now? It can take several minutes on this board."}, look]))
     else:
-        findings.append(_finding("security-updates", "Security updates", "ok",
-                                 "None waiting (as of the last apt-get update)."))
-    findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age))
+        findings.append(_finding("security-updates", "Security updates", "ok", f"None waiting. {fresh}", "", [look]))
+    findings[-1]["lists_age_days"] = age  # the page's badge: how recently "none waiting" was looked for
+    findings[-1]["waiting"], findings[-1]["fetched"] = len(pkgs), fetched  # the pattern's Fetch and Install
+    chosen = chosen_pattern(load_record())
+    findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age, chosen))
+    findings[-1]["pattern"] = {"often": (chosen or DEFAULT_PATTERN)[0], "act": (chosen or DEFAULT_PATTERN)[1], "chosen": bool(chosen)}
     return findings, pkgs
 
 
@@ -1175,22 +1363,78 @@ def _unit(rec, unit, on, reason="from this page"):
     return f"{unit}: back as it was"
 
 
-def install_security_updates(log_path):
-    """Upgrade only the packages whose new version is from a security archive; output to log_path."""
-    out = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180)
-    pkgs = pending_security(out.stdout)
+APT_ENV = {"DEBIAN_FRONTEND": "noninteractive"}
+
+
+def _apt_logged(log, argv, timeout):
+    """One apt-get run, its command and output appended to the open log; its exit code."""
+    log.write("$ " + " ".join(argv) + "\n\n")
+    log.flush()
+    env = dict(os.environ, **APT_ENV, HOME=os.environ.get("HOME", "/root"))
+    code = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout).returncode
+    log.write("\n")
+    return code
+
+
+def _waiting():
+    return pending_security(run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout)
+
+
+def _lists(log):
+    if _apt_logged(log, ["apt-get", "update"], 900) != 0:
+        raise ValueError("apt-get update failed (no internet?); see the log on Updates")
+    return "the package lists are fresh"
+
+
+def _take(log, pkgs, install):
+    """The waiting security updates downloaded (the pattern's Fetch) or installed."""
     if not pkgs:
         return "no security updates waiting"
-    env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", HOME=os.environ.get("HOME", "/root"))
-    with safeio.open_new(log_path) as log:  # in control/, which the hub can change (F3)
-        log.write("$ apt-get install --only-upgrade " + " ".join(pkgs) + "\n\n")
-        log.flush()
-        code = subprocess.run(["apt-get", "install", "-y", "--only-upgrade", "-o", "Dpkg::Options::=--force-confold",
-                               *pkgs], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                              env=env, timeout=3600).returncode
+    n = f"{len(pkgs)} security update{'s' if len(pkgs) != 1 else ''}"
+    argv = ["apt-get", "install", "-y", "--only-upgrade"] + (["-o", "Dpkg::Options::=--force-confold"] if install else ["--download-only"])
+    code = _apt_logged(log, argv + pkgs, 3600)
     if code != 0:
-        raise ValueError(f"apt-get exited with {code}; see the log on the Security page")
-    return f"installed {len(pkgs)} security update{'s' if len(pkgs) != 1 else ''}"
+        raise ValueError(f"apt-get exited with {code}; see the log on Updates")
+    return f"installed {n}" if install else f"downloaded {n}, ready to install"
+
+
+def install_security_updates(log_path):
+    """Upgrade only the packages whose new version is from a security archive; output to log_path."""
+    pkgs = _waiting()
+    if not pkgs:
+        return "no security updates waiting"
+    with safeio.open_new(log_path) as log:  # in control/, which the hub can change (F3)
+        return _take(log, pkgs, True)
+
+
+def fetch_security_updates(log_path):
+    """Download the waiting security updates without installing them (the pattern's Fetch)."""
+    pkgs = _waiting()
+    if not pkgs:
+        return "no security updates waiting"
+    with safeio.open_new(log_path) as log:
+        return _take(log, pkgs, False)
+
+
+def check_security_updates(rec, log_path):
+    """Check now: the package lists fetched afresh, then what is found taken as far as the owner chose
+    (item 36: with Manual, the second choice applies to a check by hand; on a schedule it is apt's own
+    periodic work that does it)."""
+    act = (chosen_pattern(rec) or DEFAULT_PATTERN)[1]
+    with safeio.open_new(log_path) as log:
+        said = [_lists(log)]
+        pkgs = _waiting()
+        if act and pkgs:
+            said.append(_take(log, pkgs, act == 2))
+        else:
+            said.append(f"{len(pkgs)} security update{'s' if len(pkgs) != 1 else ''} waiting" if pkgs else "no security updates waiting")
+    return "; ".join(said)
+
+
+def refresh_lists(log_path):
+    """apt-get update, its output to log_path; what it found is in the scan that follows."""
+    with safeio.open_new(log_path) as log:
+        return _lists(log)
 
 
 def fix(choice, updates_log):
@@ -1228,8 +1472,18 @@ def fix(choice, updates_log):
         msg = _firewall(rec, choice[len("firewall-"):])
     elif choice.startswith("share-contain-"):
         return _share_contain(choice[len("share-contain-"):])
+    elif choice.startswith("autoupdate-set:"):
+        msg = _autoupdate(rec, choice.split(":", 1)[1])
+    elif choice.startswith("autoupdate-"):
+        msg = _autoupdate(rec, choice[len("autoupdate-"):])
     elif choice == "security-updates":
         return install_security_updates(updates_log)
+    elif choice == "security-fetch":
+        return fetch_security_updates(updates_log)
+    elif choice == "security-check":
+        return check_security_updates(rec, updates_log)
+    elif choice == "apt-lists":
+        return refresh_lists(updates_log)
     else:
         raise ValueError(f"{choice} is not something the Security page does")
     save_record(rec)
@@ -1249,7 +1503,8 @@ def undo_all():
                   [f"unit-undo:{u}" for u in rec.get("units", {})] + \
                   [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})] + \
                   [f"sudo-undo:{f}" for f in rec.get("sudo", {})] + [f"apt-undo:{k}" for k in rec.get("apt", {})] + \
-                  (["logs-undo"] if "logs" in rec else []) + (["firewall-off"] if "firewall" in rec else []):
+                  (["logs-undo"] if "logs" in rec else []) + (["firewall-off"] if "firewall" in rec else []) + \
+                  (["autoupdate-undo"] if "autoupdate" in rec else []):
         try:
             done.append(fix(choice, None))
         except (ValueError, OSError, subprocess.SubprocessError) as exc:

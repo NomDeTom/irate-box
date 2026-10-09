@@ -301,7 +301,7 @@ def check_kiwix():
         (bad if why else good).append((b, why))
     for b, why in bad:
         out.append(_f(f"zim:{b.name}", f"Book {b.name}", "problem", f"{b.stat().st_size >> 20} MB, {why}.",
-                      f"Download or copy it again (Library → Books keeps sources current), or set it aside: "
+                      f"Download or copy it again (Books keeps its sources current), or set it aside: "
                       f"mv {b} {QUARANTINE}/ — then rebuild the library.",
                       [_act(f"kiwix-quarantine:{b.name}", "Set it aside",
                             f"Move {b.name} to {QUARANTINE}/ and rebuild the library without it?")]))
@@ -331,13 +331,13 @@ def check_kiwix():
             if p.get("UnitFileState") != "enabled" and p.get("ActiveState") in ("inactive", "failed"):
                 out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "warn",
                               "Stopped until there is a readable book (the installer or this page stopped it, so it does not loop).",
-                              "Add a book (Library → Books, a USB stick, or install.sh --zim), then rebuild the library: "
+                              "Add a book (Books, a USB stick, or install.sh --zim), then rebuild the library: "
                               "that starts it again.", [_act("kiwix-rebuild", "Rebuild the library")]))
             else:
                 out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "problem",
                               "There is no readable book, so kiwix-serve cannot start: systemd keeps trying and then gives up "
                               f"({p.get('Result') or p.get('ActiveState')}).",
-                              "Add a book (Library → Books, a USB stick, or install.sh --zim), then rebuild the library. "
+                              "Add a book (Books, a USB stick, or install.sh --zim), then rebuild the library. "
                               "Until then, stop Kiwix so it does not loop: systemctl disable --now kiwix.",
                               [_act("kiwix-off", "Stop Kiwix until there are books")]))
         elif p.get("ActiveState") != "active" and p.get("Result") in ("success", "", None):
@@ -407,8 +407,49 @@ def check_uplink():
         return [_f("uplink-report", "Uplink watchdog report", "problem", f"Last report {int(age // 60)} min ago: it has stopped looking.",
                    "journalctl -u irate-box-uplink -n 30; systemctl restart irate-box-uplink",
                    [_act("unit-restart:irate-box-uplink.service", "Start it again")])]
-    return [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, "
-               f"{st.get('chosen', {}).get('eagerness')}, {st.get('chosen', {}).get('forgiveness')}.")]
+    from irate_box.hub import uplink
+    try:
+        said = uplink.words(uplink.validate(st.get("chosen") or {}))
+    except (ValueError, TypeError, KeyError):
+        said = "settings not readable"
+    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, {said}.")]
+    # Stalled: down, with nothing left the level allows that could help (uplink-ladder-plan, stage 2).
+    stall = st.get("stall") if st.get("state") == "stalled" else None
+    if stall:
+        down = int((st.get("at", 0) - ((st.get("outage") or {}).get("since") or st.get("at", 0))) // 60)
+        out.append(_f("uplink-stalled", "The link is down and the watchdog has stalled", "problem",
+                      f"{st.get('iface')} down for {down} min. {stall.get('text', '')}",
+                      (f"Network → Staying on the network: {stall['label'][:1].upper() + stall['label'][1:]} now, "
+                       "or choose a level that goes that far." if stall.get("needs")
+                       else "Look at the box by its console or a cable: nothing it can do by itself would help.")))
+    out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
+    return out
+
+
+ROAMS_AN_HOUR = 6   # more than this, with the hotspot on the same radio, is worth a look (item 35, stage 7)
+
+
+def _json_or(path, default=None):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def roaming_findings(st, inv):
+    """Roaming often while the hotspot shares the radio (item 35, stage 7): each roam moves the guests'
+    channel too, and is a re-association on the radio. Said with the choices, never done for the owner."""
+    radio = next((r for r in (inv or {}).get("radios", []) if r.get("iface") == st.get("iface") and r.get("roaming")), None)
+    f = (radio or {}).get("roaming") or {}
+    n, chosen = st.get("roams_hour") or 0, (st.get("chosen") or {}).get("roaming", "roam")
+    if not f.get("hotspot_shares") or len(f.get("aps", [])) < 2 or chosen != "roam" or n <= ROAMS_AN_HOUR:
+        return []
+    return [_f("uplink-roaming", "Roaming often, with the hotspot on the same radio", "warn",
+               f"{st.get('iface')} moved between access points {n} times in the last hour ({len(f['aps'])} share {f.get('ssid')}, "
+               f"channels {', '.join(map(str, f.get('channels', [])))}); each move takes the hotspot's guests along, and is a moment off "
+               "the network on a radio that copes worst with that.",
+               "Network → Staying on the network: choose no background scans while the hotspot shares the radio, a lock to one access "
+               "point, or don't count short roams as missed checks. Or, on your router, put the access points on one channel.")]
 
 
 def check_inventory():
@@ -494,7 +535,7 @@ def check_space():
         free = shutil.disk_usage(path).free >> 20
         if free < need:
             out.append(_f(f"space:{path}", label, "problem", f"{free} MB free in {path}.",
-                          "Free some: old books (Library → Books), saved work, build runs (Git → Builds), "
+                          "Free some: old books (Books), saved work, build runs (Git → Builds), "
                           "journalctl --vacuum-size=16M."))
     return out
 
@@ -842,10 +883,13 @@ def check_crashwatch(now=None):
             for lv in cw.PREEMPT if lv != level]
     detail = (f"Watching: {radios}. Pre-emption: {PREEMPT_WORDS[level]}" + {
         "off": " (a failing radio isn't looked for).", "warn": " (a failing radio is noted and said here, nothing more).",
-        "radio": " (a failing radio is reset at once: its USB device unbound and bound again).",
+        "radio": " (a failing radio is reset at once: its USB device, then its driver, and the hotspot started again).",
         "reboot": " (a failing radio is reset, and the box restarted if it isn't back within 3 minutes)."}[level])
     if day:
         detail += " In the last day: " + "; ".join(f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}" for e in day[-4:])
+    kept = [i for i in st.get("incidents", []) if i.get("at", 0) > now - 7 * 86400]
+    if kept:
+        detail += f" Kept as it happened: {len(kept)} this week, the last in {cw.CRASHES}/{kept[-1]['dir']}/ (snapshots.log, kernel.log)."
     out.append(_f("crash-radio", "The WiFi radio", "warn" if day else "ok", detail,
                   "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver.", acts))
     wd = st.get("watchdog_device")

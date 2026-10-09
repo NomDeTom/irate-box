@@ -9,24 +9,38 @@ link the box reaches its network by (the default route's interface, or the one c
 entry: some routers drop pings but none ignore ARP). The internet is never checked: the box
 is meant to work offline, and a LAN with no internet is not a fault.
 
-Two settings, both on /admin's Network page (and `install.sh --uplink`):
+Its settings, on /admin's Network page (and `install.sh --uplink`), each meaning one thing
+(Tom, 2026-10-09: two dials, not one "eagerness" that moved both):
 
-  Eagerness   how soon and how far it goes once the link is down:
-    off         watch and log only
-    patient     reconnect now and then; NetworkManager does the rest
-    standard    reconnect, repeat with back-off, then restart the network service
-    persistent  ... then reset the radio (not while guests are on the hotspot)
-    stubborn    ... sooner, guests or not, and finally reboot (capped per day)
-  Forgiveness how much flakiness it puts up with before it acts:
-    tolerant    a link must fail 5 checks and stay down 5 minutes; repeated drops are noted
-    normal      3 checks and 1 minute; repeated drops lock the link to the strongest AP
-    strict      2 checks and 15 s; repeated drops count as a fault and get repaired
+  Pace        how soon it first acts once the link is down, how often it reconnects again, and
+              when each heavier step comes: gentle, steady, prompt, urgent
+  Reach       the heaviest step it may take: watch (log only), reconnect, restart, radio, reboot
+              (the default: the highest; a reboot at most 3 a day, never during a build or update)
+  Guests      protect (the default): no radio reset or reboot, nor a restart when the hotspot
+              shares the radio, while guests are on the hotspot; or ignore
+  Sensitivity the number of missed checks (a failed check, or the link dropping between two) within
+              the pace's window that put the link on the ladder: together (an outage) or spread
+              out (a flapping link); 1 to 20, 3 by default (fewer is more sensitive)
 
 Any single value can be overridden (the page's "Custom" fields): see FIELDS. The ladder,
 mildest first: reconnect (rescan and bring the profile up again), restart (NetworkManager,
 or wpa_supplicant / ifupdown / networkd), radio (unbind and rebind the USB radio, or reload
-its driver), reboot. Each step waits its time after the outage is declared and the grace
-has run out; a step that did not help is not repeated, but reconnect is, with back-off.
+its driver), reboot. Each step waits its time after the link went on the ladder; a step that
+did not help is not repeated, but reconnect is, with back-off (locked to the strongest access
+point after the first, or at once when the link is flapping).
+Outages close together are one episode: one that starts within `relapse` (15 min) of the
+last one's end continues it, the steps' times count from its start, and a step that "worked"
+but was followed by a relapse did not hold, so it is passed over while a heavier one is left
+(a flapping link's repair climbs the same way). It ends after `relapse` steady.
+
+A wedged radio driver (wedge_evidence: the backend gone though the interface is there, no
+supplicant for it, scans failing as busy, crash watch's radio failure) is said, with the
+evidence; with `on_wedge: radio` (the owner's, off by default) it goes straight to a radio
+reset if the level reaches it, as reconnecting and restarting can't mend it.
+
+When nothing the level allows can be done here (NetworkManager gone, say, and the level
+stops before a radio reset) it has stalled: it says so, and what could help, and /admin
+offers that step by hand (hub_control's uplink-do, through /etc/hub/uplink-now.json).
 
 Guards: no action within 2 minutes of a settings change, nor while the owner holds repairs
 (the page's "Hold"); no radio reset or reboot while guests are on the box's hotspot unless
@@ -42,7 +56,7 @@ back by `profile off` and by uninstall.sh (`undo-all`).
     uplink.py run [--dry-run]       the watchdog (--dry-run: decide, log, do nothing)
     uplink.py check                 one look at the link, printed
     uplink.py presets               the levels, as numbers
-    uplink.py set EAGERNESS [FORGIVENESS]
+    uplink.py set KEY=VALUE...      pace, reach, sensitivity, guests, on_wedge
     uplink.py hold MINUTES          no repairs for that long (0 ends a hold)
     uplink.py profile on|off        the consent change to the owner's profile, and its undo
     uplink.py undo-all              for uninstall.sh
@@ -73,8 +87,16 @@ STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 REBOOTS = ETC / "uplink-reboots.json"
 SETTINGS = ETC / "uplink.json"
 RECORD = ETC / "uplink-changes.json"
+# A step asked for on /admin (hub_control's uplink-do), taken by the running watchdog within seconds,
+# so its guards apply and its log says what happened. Root's folder: the hub cannot plant one.
+NOW = ETC / "uplink-now.json"
 STATUS = STATE / "control" / "uplink.json"
 HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
+LADDER = STATE / "control" / "uplink-ladder.json"     # what the watchdog did, for the box doctor's chart
+# The events that make the escalation chart (Tom, 2026-10-09: "a line chart showing the escalation
+# steps over the last x period would show if more patience or more aggression is required").
+LADDER_KINDS = ("down", "up", "repair", "held", "skip", "stalled", "wedged", "flap")
+LADDER_KEEP = 72 * 86400
 SYS_NET = Path("/sys/class/net")
 # Running any of these, the box is busy with something a reboot would spoil.
 BUSY_UNITS = {"irate-box-ci.service": "a build", "irate-box-librarian.service": "a library update",
@@ -83,70 +105,171 @@ STEPS = ("reconnect", "restart", "radio", "reboot")
 STEP_LABEL = {"reconnect": "reconnect", "restart": "restart the network service", "radio": "reset the radio",
               "reboot": "reboot", "pin": "lock to the strongest access point"}
 
-EAGERNESS = {
-    "off": {"check": 120, "steps": {}, "repeat": 0, "guests": "protect"},
-    "patient": {"check": 120, "steps": {"reconnect": 0}, "repeat": 600, "guests": "protect"},
-    "standard": {"check": 60, "steps": {"reconnect": 0, "restart": 600}, "repeat": 300, "guests": "protect"},
-    "persistent": {"check": 30, "steps": {"reconnect": 0, "restart": 300, "radio": 900}, "repeat": 180,
-                   "guests": "protect"},
-    "stubborn": {"check": 30, "steps": {"reconnect": 0, "restart": 180, "radio": 480, "reboot": 1800}, "repeat": 120,
-                 "guests": "ignore"},
+# Two dials (Tom, 2026-10-09: "two dials always"), each meaning one thing (uplink-ladder-plan, stage 5):
+# PACE: how soon after an outage is declared it first acts, how often it reconnects again, and when
+# each heavier step comes (seconds after it went on the ladder, counted across an episode); and REACH:
+# the heaviest step it may take at all. Gentle and far-reaching at once is a real choice now.
+# A pace's window is the time it counts missed checks over (Tom, 2026-10-09: "pace can handle the
+# 'over what time' setting"): the sensitivity's number of misses within it puts the link on the ladder.
+PACE = {
+    "gentle": {"check": 120, "window": 1800, "repeat": 900, "steps": {"reconnect": 300, "restart": 1800, "radio": 3600, "reboot": 7200}},
+    "steady": {"check": 60, "window": 600, "repeat": 300, "steps": {"reconnect": 60, "restart": 600, "radio": 1200, "reboot": 3600}},
+    "prompt": {"check": 30, "window": 300, "repeat": 180, "steps": {"reconnect": 0, "restart": 300, "radio": 900, "reboot": 1800}},
+    "urgent": {"check": 30, "window": 120, "repeat": 120, "steps": {"reconnect": 0, "restart": 180, "radio": 480, "reboot": 1800}},
 }
-FORGIVENESS = {
-    "tolerant": {"misses": 5, "grace": 300, "flap_count": 8, "flap_window": 1800, "flap_action": "note"},
-    "normal": {"misses": 3, "grace": 60, "flap_count": 4, "flap_window": 600, "flap_action": "pin"},
-    "strict": {"misses": 2, "grace": 15, "flap_count": 3, "flap_window": 600, "flap_action": "repair"},
-}
-COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120}
-DEFAULT = {"eagerness": "patient", "forgiveness": "normal", "iface": "auto", "overrides": {}, "hold_until": 0}
+REACH = ("watch", "reconnect", "restart", "radio", "reboot")   # watch: look and log, never act
+GUESTS = ("protect", "ignore")
+# Sensitivity (Tom, 2026-10-09: forgiveness "rebranded as sensitivity, with a numeric value"; "missed
+# checks, directly"): how many missed checks (a failed check, or the link dropping between two) within
+# the pace's window put the link on the repair ladder, whether they came together (an outage) or
+# spread out (a flapping link: "if the link trips the level of misses within the pace window, then
+# it is on the repair ladder"). Fewer is more sensitive.
+SENSITIVITY = (1, 20)
+# The old forgiveness, as a sensitivity: settings saved with it still load.
+FORGIVENESS_WAS = {"tolerant": 5, "normal": 3, "strict": 2}
+COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
+          "relapse": 900, "blip": 20}
+# Roaming between access points that share a name (item 35; uplink-roaming-options-plan; Tom, 2026-10-09,
+# R3: "in my house there are 3 APs and it should roam naturally"): from the least change to the owner's
+# system to the most. roam: as the WiFi stack does (the default); no-scan: wpa_supplicant's background
+# scans off while the hotspot shares the radio (roaming.py, by consent); lock: the WiFi profile held to one
+# access point (its BSSID), by consent and undone the same way.
+# Apart from that, whether a roam counts as a missed check (R1: "add a checkbox to ignore them as an
+# option"): ignore_roams, off by default (each is a miss, as since #175); on, a drop of the link that is
+# back within `blip` seconds (R2: 20 s) on the same network is a roam, not a miss.
+ROAMING = ("roam", "no-scan", "lock")
+ROAMING_WAS = {"count": ("roam", False), "ignore": ("roam", True)}   # the branch's first four, read as these
+BSSID_RE = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
+# The default reach is the highest (Tom, 2026-10-09: "the default for reach should be the highest
+# level"); guests stay protected, and a reboot keeps its guards (the daily cap, the gap, not while
+# a build or an update runs, not soon after boot).
+DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "sensitivity": 3, "iface": "auto",
+           "overrides": {}, "hold_until": 0, "on_wedge": "ladder", "roaming": "roam", "lock_bssid": None,
+           "ignore_roams": False}
+# When the evidence says the radio's driver has wedged (wedge_evidence): keep to the ladder as set,
+# or go straight to a radio reset if the reach allows it (Tom, 2026-10-09: a setting per box, off).
+ON_WEDGE = ("ladder", "radio")
+# The old single dial (to 2026-10-09), as pace, reach and guests: settings saved with it still load.
+EAGERNESS_WAS = {"off": ("gentle", "watch", "protect"), "patient": ("gentle", "reboot", "protect"),
+                 "standard": ("steady", "reboot", "protect"), "persistent": ("prompt", "reboot", "protect"),
+                 "stubborn": ("urgent", "reboot", "ignore")}
 DESCRIBE = {
-    "off": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
-    "patient": "Reconnect after an outage, and again every 10 minutes or so. Nothing heavier.",
-    "standard": "Reconnect, repeat with back-off, and restart the network service after 10 minutes down.",
-    "persistent": "As standard but sooner, and reset the radio after 15 minutes, unless guests are on the hotspot.",
-    "stubborn": "Everything, soonest, guests or not, and reboot after 30 minutes down (at most 3 a day).",
-    "tolerant": "Puts up with a lot: 5 failed checks and 5 minutes down before acting; repeated drops are only noted.",
-    "normal": "3 failed checks and a minute down; a link that keeps dropping is locked to the strongest access point.",
-    "strict": "2 failed checks and 15 s; a link that keeps dropping counts as a fault and is repaired.",
+    "gentle": "Waits 5 minutes before the first reconnect and 15 between them; heavier steps after half an hour, an hour, two.",
+    "steady": "A reconnect after a minute, again every 5; heavier steps after 10, 20 and 60 minutes down.",
+    "prompt": "A reconnect at once, again every 3 minutes; heavier steps after 5, 15 and 30 minutes down.",
+    "urgent": "Everything soonest: heavier steps after 3, 8 and 30 minutes down.",
+    "watch": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
+    "reconnect": "Reconnect, and nothing heavier.",
+    "restart": "Up to restarting the network service.",
+    "radio": "Up to resetting the radio (its USB device or driver).",
+    "reboot": "Up to rebooting the box: at most 3 times a day, never during a build or an update, nor soon after it started.",
 }
 # Every value a Custom field may set: (low, high), or the allowed words.
 FIELDS = {
-    "check": (10, 600), "misses": (1, 20), "grace": (0, 3600), "repeat": (0, 86400), "backoff": (1.0, 4.0),
-    "max_repeat": (60, 86400), "guests": ("protect", "ignore"), "flap_count": (2, 50), "flap_window": (60, 86400),
-    "flap_action": ("note", "pin", "repair"), "reboots_per_day": (0, 10), "reboot_gap": (600, 86400),
+    "check": (10, 600), "window": (60, 86400), "repeat": (0, 86400), "backoff": (1.0, 4.0),
+    "max_repeat": (60, 86400), "relapse": (60, 86400), "reboots_per_day": (0, 10), "reboot_gap": (600, 86400),
+    "blip": (5, 120),
     "steps": {s: (0, 86400) for s in STEPS},
 }
+# Custom fields there were before sensitivity: dropped when settings load, not refused.
+FIELDS_WAS = ("misses", "grace", "flap_count", "flap_window", "flap_action", "guests")
 IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leading "-" (F14)
 
 
 def effective(chosen):
-    """The numbers the watchdog runs on: forgiveness, then eagerness, then the overrides."""
-    eff = dict(COMMON, **FORGIVENESS[chosen["forgiveness"]], **EAGERNESS[chosen["eagerness"]])
-    eff["steps"] = dict(eff["steps"])
+    """The numbers the watchdog runs on: the pace's, its steps up to the reach, the sensitivity, then
+    the overrides (a step overridden beyond the reach is beyond it still)."""
+    pace, reach = PACE[chosen["pace"]], chosen["reach"]
+    allowed = STEPS[:REACH.index(reach)]
+    eff = dict(COMMON, check=pace["check"], window=pace["window"], repeat=pace["repeat"],
+               sensitivity=int(chosen.get("sensitivity", DEFAULT["sensitivity"])))
+    eff["steps"] = {s: v for s, v in pace["steps"].items() if s in allowed}
+    eff["guests"] = chosen.get("guests", "protect")
+    eff["on_wedge"] = chosen.get("on_wedge", "ladder")
+    eff["roaming"] = chosen.get("roaming", "roam")
+    eff["ignore_roams"] = bool(chosen.get("ignore_roams"))
     for k, v in chosen.get("overrides", {}).items():
         if k == "steps":
             for s, t in v.items():
                 if t is None:
                     eff["steps"].pop(s, None)
-                else:
+                elif s in allowed:
                     eff["steps"][s] = t
         else:
             eff[k] = v
+    if "reconnect" not in eff["steps"]:
+        eff["repeat"] = 0
     return eff
+
+
+def migrate(raw):
+    """Settings saved before the two dials: their eagerness as pace, reach and guests, and an
+    overridden guests as the setting it is now."""
+    raw = dict(raw)
+    if "eagerness" in raw and "pace" not in raw:
+        old = raw.pop("eagerness")
+        if old not in EAGERNESS_WAS:
+            raise ValueError("unknown eagerness")
+        pace, reach, guests = EAGERNESS_WAS[old]
+        raw.update(pace=pace, reach=reach)
+        raw.setdefault("guests", guests)
+    raw.pop("eagerness", None)
+    if "forgiveness" in raw and "sensitivity" not in raw:
+        old = raw.pop("forgiveness")
+        if old not in FORGIVENESS_WAS:
+            raise ValueError("unknown forgiveness")
+        raw["sensitivity"] = FORGIVENESS_WAS[old]
+    raw.pop("forgiveness", None)
+    over = raw.get("overrides")
+    if isinstance(over, dict) and any(k in over for k in FIELDS_WAS):
+        over = dict(over)
+        if "guests" in over:
+            raw["guests"] = over.pop("guests")
+        if "misses" in over and "sensitivity" not in raw:
+            raw["sensitivity"] = over["misses"]
+        for k in FIELDS_WAS:
+            over.pop(k, None)
+        raw["overrides"] = over
+    return raw
 
 
 def validate(raw):
     """A settings dict as /admin sent it → a clean one, or ValueError."""
     if not isinstance(raw, dict):
         raise ValueError("settings must be an object")
+    raw = migrate(raw)
     out = dict(DEFAULT)
-    e, f = raw.get("eagerness", out["eagerness"]), raw.get("forgiveness", out["forgiveness"])
-    if e not in EAGERNESS or f not in FORGIVENESS:
-        raise ValueError("unknown eagerness or forgiveness")
+    pace, reach = raw.get("pace", out["pace"]), raw.get("reach", out["reach"])
+    if pace not in PACE or reach not in REACH:
+        raise ValueError("unknown pace or reach")
+    try:
+        sens = int(raw.get("sensitivity", out["sensitivity"]))
+    except (TypeError, ValueError):
+        raise ValueError("sensitivity must be a number of missed checks") from None
+    if not SENSITIVITY[0] <= sens <= SENSITIVITY[1]:
+        raise ValueError(f"sensitivity must be between {SENSITIVITY[0]} and {SENSITIVITY[1]} missed checks")
+    guests = raw.get("guests", "protect")
+    if guests not in GUESTS:
+        raise ValueError(f"guests must be one of {', '.join(GUESTS)}")
     iface = str(raw.get("iface", "auto"))
     if not IFACE_RE.match(iface):
         raise ValueError("not an interface name")
-    out.update(eagerness=e, forgiveness=f, iface=iface, overrides={})
+    w = raw.get("on_wedge", "ladder")
+    if w not in ON_WEDGE:
+        raise ValueError(f"on_wedge must be one of {', '.join(ON_WEDGE)}")
+    roaming, ignore = raw.get("roaming", "roam"), raw.get("ignore_roams", False)
+    if roaming in ROAMING_WAS:
+        roaming, ignore = ROAMING_WAS[roaming][0], ignore or ROAMING_WAS[roaming][1]
+    if not isinstance(ignore, bool):
+        raise ValueError("ignore_roams is true or false")
+    if roaming not in ROAMING:
+        raise ValueError(f"roaming must be one of {', '.join(ROAMING)}")
+    lock = raw.get("lock_bssid")
+    lock = lock.lower() if isinstance(lock, str) else None
+    if roaming == "lock" and not (lock and BSSID_RE.match(lock)):
+        raise ValueError("a lock needs the access point's BSSID (aa:bb:cc:dd:ee:ff)")
+    out.update(pace=pace, reach=reach, guests=guests, sensitivity=sens, iface=iface, overrides={}, on_wedge=w,
+               roaming=roaming, lock_bssid=lock if roaming == "lock" else None, ignore_roams=ignore)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
         raise ValueError("overrides must be an object")
@@ -220,101 +343,181 @@ class Watch:
         self.misses = 0
         self.first_fail = None
         self.outage = None  # {since, declared, done: [...], held: [...], next_reconnect, gap}
-        self.drops = deque()
-        self.last_flap = float("-inf")
+        self.miss_at = deque()  # the missed checks and link drops within the pace's window
         self.last_ok = None
         self.pause_until = 0.0
         self.owner_off = False
+        self.can = set()  # the repairs possible at the last look, for next_step() and stall()
+        self.ladder = []  # the ladder's events since serve() last took them (Ladder.add)
+        # Outages close together are one episode (uplink-ladder-plan, stage 3): {since, outages,
+        # failed: steps that "worked" and were followed by a relapse, tried, last_end, last_done}.
+        self.episode = None
 
-    def log(self, now, kind, text):
-        self.events.append({"at": now, "kind": kind, "text": text})
+    def log(self, now, kind, text, step=None, by=None):
+        """An event for the page's log; those on the ladder (an outage, a step taken, held,
+        skipped or a stall) carry their step and who took it (auto, hand, flap), and are kept
+        for the box doctor's escalation chart too (Ladder)."""
+        e = {"at": now, "kind": kind, "text": text}
+        if step:
+            e["step"] = step
+        if by:
+            e["by"] = by
+        self.events.append(e)
+        if kind in LADDER_KINDS:
+            self.ladder.append(e)
 
     def tick(self, now, obs):
         """obs: link (bool), gateway (True/False/None: not known), drops ([times]), guests (int),
         busy (str or None), uptime (s), can (set of repairs), hold_until (epoch), owner_off (the
-        owner took the link down on purpose: `nmcli dev disconnect`)."""
+        owner took the link down on purpose: `nmcli dev disconnect`).
+
+        Each failed check, and each drop of the link between two, is a miss, kept for the pace's
+        window; `sensitivity` misses within it put the link on the ladder (Tom, 2026-10-09): down,
+        an outage; up but dropping, "flapping", on the ladder until the misses fall below the line."""
         eff = self.eff
+        self.can = set(obs.get("can", ()))
         if obs.get("owner_off") and not obs["link"]:
             if not self.owner_off:
                 self.owner_off = True
                 self.log(now, "info", "Disconnected by hand (nmcli device disconnect): left alone until it is connected again.")
-            self.misses, self.first_fail, self.outage = 0, None, None
-            self.drops.clear()
+            self.misses, self.first_fail, self.outage, self.episode = 0, None, None, None
+            self.miss_at.clear()
             return []
         self.owner_off = False
-        for t in obs.get("drops", ()):
-            self.drops.append(t)
-        while self.drops and self.drops[0] < now - eff["flap_window"]:
-            self.drops.popleft()
+        drops = list(obs.get("drops", ()))
+        self.miss_at.extend(sorted(drops))
         healthy = obs["link"] and obs.get("gateway") is not False
+        if not healthy:
+            self.miss_at.append(now)
+            if self.first_fail is None:
+                self.first_fail = min([now, *drops])
+        while self.miss_at and self.miss_at[0] < now - eff["window"]:
+            self.miss_at.popleft()
+        self.misses = len(self.miss_at)
+        tripped = self.misses >= eff["sensitivity"]
         if healthy:
-            return self._healthy(now, obs)
-        if self.first_fail is None:
-            self.first_fail = min([now, *obs.get("drops", ())]) if not obs["link"] else now
-        self.misses += 1
-        # A lost link is certain; an unanswered gateway may be a dropped packet or two.
-        if obs["link"] and self.misses < eff["misses"]:
+            if self.outage and self.outage.get("flapping") and tripped:
+                return self._repair(now, obs)
+            self._healthy(now, obs)
+            if tripped and drops:
+                self._declare(now, obs, flapping=True)
+                return self._repair(now, obs)
             return []
         if self.outage is None:
-            self.outage = {"since": self.first_fail, "declared": now, "done": [], "held": [],
-                           "next_reconnect": None, "gap": eff["repeat"]}
-            self.log(now, "down", "Link lost." if not obs["link"] else
-                     f"The gateway stopped answering ({self.misses} checks).")
+            if not tripped:
+                return []
+            self._declare(now, obs, flapping=False)
+        else:
+            self.outage["flapping"] = False   # down now: an outage proper
         return self._repair(now, obs)
 
+    def _declare(self, now, obs, flapping):
+        eff, n, w = self.eff, self.misses, human(self.eff["window"])
+        since = min(self.miss_at) if self.miss_at else now
+        self.outage = {"since": since, "declared": now, "done": [], "held": [], "skipped": [],
+                       "next_reconnect": None, "gap": eff["repeat"], "flapping": flapping}
+        self.log(now, "down", f"Dropped or missed {n} times within {w}: on the ladder while it flaps." if flapping
+                 else f"Link lost ({n} missed checks within {w})." if not obs["link"]
+                 else f"The gateway stopped answering ({n} missed checks within {w}).")
+        self._episode(now, since)
+
+    def _episode(self, now, start):
+        """An outage (or a flapping link's repair) begins: within `relapse` of the last one's end it
+        continues the episode, and what was done last time did not hold; else a new episode."""
+        ep, eff = self.episode, self.eff
+        if ep and ep["last_end"] is not None and start - ep["last_end"] <= eff["relapse"]:
+            ep["outages"] += 1
+            gone = [s for s in ep["last_done"] if s not in ep["failed"]]
+            ep["failed"] += gone
+            ep["last_end"], ep["last_done"] = None, []
+            if gone:
+                self.log(now, "info", f"Down again {human(start - (ep['end_was'] or start))} after it came back: "
+                         f"{', '.join(STEP_LABEL[s] for s in gone)} did not hold, so it is not repeated while a heavier step is left "
+                         f"(outage {ep['outages']} of this episode).")
+            return ep
+        # The steps' times count from when it went on the ladder (not from the window's first miss).
+        self.episode = {"since": now, "outages": 1, "failed": [], "tried": [], "last_end": None, "last_done": [], "end_was": None}
+        return self.episode
+
+    def _passed(self, step):
+        """A step that did not hold in this episode is passed over while a heavier one the level
+        allows is possible: the episode climbs, and stays at the top of the level's ladder once
+        everything below has failed. The top (or the only) step may be tried again."""
+        ep, eff = self.episode, self.eff
+        if not ep or step not in ep["failed"]:
+            return False
+        return any(STEPS.index(h) > STEPS.index(step) and h in eff["steps"] and h in self.can for h in STEPS)
+
     def _healthy(self, now, obs):
-        actions = []
+        """Up, and off the ladder: an outage ends (its misses with it, so a link that has come
+        back is not repaired for them); an episode ends after `relapse` steady."""
+        eff, ep = self.eff, self.episode
         if self.outage:
             o = self.outage
-            tried = ", ".join(STEP_LABEL[s] for s in o["done"]) or "nothing"
-            self.log(now, "up", f"Back after {human(now - o['since'])} (tried: {tried}).")
-        elif self.misses:
-            pass  # a check or two missed, then fine: forgiven, not logged
-        self.misses, self.first_fail, self.outage, self.last_ok = 0, None, None, now
-        eff = self.eff
-        if len(self.drops) >= eff["flap_count"] and now - self.last_flap >= eff["flap_window"]:
-            self.last_flap = now
-            n, w = len(self.drops), human(eff["flap_window"])
-            act = eff["flap_action"]
-            if act == "pin" and "pin" not in obs.get("can", ()):
-                act = "note"
-                extra = " (locking to one access point needs NetworkManager)"
-            else:
-                extra = ""
-            if self._paused(now, obs) and act != "note":
-                act, extra = "note", " (repairs on hold)"
-            if act == "note":
-                self.log(now, "flap", f"Dropped {n} times in {w}; noted{extra}.")
-            elif act == "pin":
-                self.log(now, "flap", f"Dropped {n} times in {w}: locking to the strongest access point.")
-                actions.append("pin")
-            else:
-                step = "restart" if "restart" in obs.get("can", ()) else "reconnect"
-                self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, {STEP_LABEL[step]}.")
-                actions.append(step)
-            self.drops.clear()
-        return actions
+            done = [s for s in o["done"] if s not in o.get("skipped", ())]
+            tried = ", ".join(STEP_LABEL[s] for s in done) or "nothing"
+            self.log(now, "up", (f"Steady again: fewer than {eff['sensitivity']} misses within {human(eff['window'])} (tried: {tried})."
+                                 if o.get("flapping") else f"Back after {human(now - o['since'])} (tried: {tried})."))
+            if not o.get("flapping"):
+                self.miss_at.clear()
+                self.misses = 0
+            if ep:
+                ep["last_end"] = ep["end_was"] = now
+                ep["last_done"] = done
+                ep["tried"] += [s for s in done if s not in ep["tried"]]
+        self.first_fail, self.outage, self.last_ok = None, None, now
+        if ep and ep["last_end"] is not None and now - ep["last_end"] >= eff["relapse"]:
+            if ep["outages"] > 1:
+                tried = ", ".join(STEP_LABEL[s] for s in ep["tried"]) or "nothing"
+                self.log(now, "info", f"Steady again after an episode of {ep['outages']} outages (tried: {tried}).")
+            self.episode = None
 
     def _paused(self, now, obs):
         return now < max(self.pause_until, obs.get("hold_until") or 0)
 
     def _repair(self, now, obs):
         eff, o = self.eff, self.outage
-        t = now - o["since"] - eff["grace"]
-        if t < 0 or self._paused(now, obs):
+        wedged = obs.get("wedged")
+        if wedged and not o.get("wedged"):
+            o["wedged"] = wedged
+            self.log(now, "wedged", f"The radio's driver looks wedged: {wedged}.")
+        if self._paused(now, obs):
             return []
         can = obs.get("can", set())
-        due = [s for s in STEPS if s in eff["steps"] and eff["steps"][s] <= t and s not in o["done"]]
+        # The owner's choice (on_wedge "radio"): reconnecting and restarting can't mend a wedged
+        # driver, and on the Lyra they made it worse, so straight to the radio reset if the level
+        # reaches it. Beyond the level, or held, it waits or stalls, saying why.
+        if o.get("wedged") and eff["on_wedge"] == "radio" and "radio" not in o["done"]:
+            for s in ("reconnect", "restart"):
+                if s not in o["done"]:
+                    o["done"].append(s)
+                    o["skipped"].append(s)
+            if "radio" in eff["steps"] and "radio" in can:
+                why = self._held(now, obs, "radio")
+                if not why:
+                    o["done"].append("radio")
+                    o["next_reconnect"] = None
+                    self.log(now, "repair", f"Reset the radio ({human(now - o['since'])} down): reconnecting or restarting can't mend a wedged driver.",
+                             "radio", "auto")
+                    return ["radio"]
+                if "radio" not in o["held"]:
+                    o["held"].append("radio")
+                    self.log(now, "held", f"Would reset the radio, but {why}.", "radio")
+        # Each step's time counts from the episode's start, so relapses climb as one long outage
+        # would; a step that did not hold earlier in it is passed over (_passed).
+        t = now - (self.episode["since"] if self.episode else o["declared"])
+        due = [s for s in STEPS if s in eff["steps"] and eff["steps"][s] <= t and s not in o["done"] and not self._passed(s)]
         for step in reversed(due):  # the heaviest step that is due, once
             if step not in can:
                 o["done"].append(step)
-                self.log(now, "skip", f"Cannot {STEP_LABEL[step]} here; skipped.")
+                o["skipped"].append(step)  # done with, but never tried: the page and the log say so
+                self.log(now, "skip", f"Cannot {STEP_LABEL[step]} here; skipped.", step)
                 continue
             why = self._held(now, obs, step)
             if why:
                 if step not in o["held"]:
                     o["held"].append(step)
-                    self.log(now, "held", f"Would {STEP_LABEL[step]}, but {why}.")
+                    self.log(now, "held", f"Would {STEP_LABEL[step]}, but {why}.", step)
                 continue
             o["done"].append(step)
             # Lighter steps that came due at the same time are passed over: this one covers them.
@@ -324,21 +527,43 @@ class Watch:
             if step == "reboot":
                 self.reboots.append(now)
             o["next_reconnect"] = now + max(o["gap"], 30) if eff["repeat"] else None
-            self.log(now, "repair", f"{STEP_LABEL[step].capitalize()} ({human(now - o['since'])} down).")
-            return [step]
+            act = self._reconnect_as(o, can) if step == "reconnect" else step
+            self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}{', locked to the strongest access point' if act == 'pin' else ''}"
+                     f" ({human(now - o['since'])} {'flapping' if o.get('flapping') else 'down'}).", step, "auto")
+            return [act]
         if ("reconnect" in o["done"] and eff["repeat"] and "reconnect" in can and o["next_reconnect"]
-                and now >= o["next_reconnect"]):
+                and now >= o["next_reconnect"] and not (o.get("wedged") and eff["on_wedge"] == "radio")):
             o["gap"] = min(o["gap"] * eff["backoff"], eff["max_repeat"])
             o["next_reconnect"] = now + o["gap"]
-            self.log(now, "repair", f"Reconnect again ({human(now - o['since'])} down; next in {human(o['gap'])}).")
-            return ["reconnect"]
+            act = self._reconnect_as(o, can)
+            self.log(now, "repair", f"Reconnect again{', locked to the strongest access point' if act == 'pin' else ''}"
+                     f" ({human(now - o['since'])} {'flapping' if o.get('flapping') else 'down'}; next in {human(o['gap'])}).", "reconnect", "auto")
+            return [act]
+        st = self.stall(now)
+        if st and not o.get("stalled"):
+            o["stalled"] = True
+            self.log(now, "stalled", st["text"], st["needs"])
         return []
+
+    def _reconnect_as(self, o, can):
+        """A reconnect locked to the strongest access point (NetworkManager only) when the link is
+        flapping, or once a plain reconnect has not held in this episode or this outage: what the
+        old flap detector's "pin" did, now a way of taking the ladder's first step."""
+        tried = (self.episode and "reconnect" in self.episode["failed"]) or o.get("repeats", 0) > 0
+        if "pin" in can and (o.get("flapping") or tried):
+            return "pin"
+        o["repeats"] = o.get("repeats", 0) + 1
+        return "reconnect"
 
     def _held(self, now, obs, step):
         eff = self.eff
-        if step in ("radio", "reboot") and eff["guests"] == "protect" and obs.get("guests", 0) > 0:
+        # A restart of the network service takes the hotspot down too when it shares the uplink's
+        # radio (the Lyra, 2026-10-09): held then like a radio reset (Tom: "only on a shared radio").
+        heavy = step in ("radio", "reboot") or (step == "restart" and obs.get("shared_radio"))
+        if heavy and eff["guests"] == "protect" and obs.get("guests", 0) > 0:
             n = obs["guests"]
-            return f"{n} guest{'s are' if n != 1 else ' is'} on the hotspot"
+            return (f"{n} guest{'s are' if n != 1 else ' is'} on the hotspot"
+                    + (", which shares the radio" if step == "restart" else ""))
         if step == "reboot":
             day = [t for t in self.reboots if t > now - 86400]
             if len(day) >= eff["reboots_per_day"]:
@@ -352,18 +577,57 @@ class Watch:
         return None
 
     def next_step(self, now):
-        """What comes next in this outage, and when, for the page."""
+        """What comes next in this outage, and when, for the page: only a step that is possible
+        here (a ladder whose rungs are all impossible has no next step; it has stalled)."""
         if not self.outage:
             return None
         o, eff = self.outage, self.eff
-        start = o["since"] + eff["grace"]
-        rest = [(start + eff["steps"][s], s) for s in STEPS if s in eff["steps"] and s not in o["done"]]
-        if o["next_reconnect"]:
+        start, floor = (self.episode["since"] if self.episode else o["declared"]), o["declared"]
+        skip = ("reconnect", "restart") if o.get("wedged") and eff["on_wedge"] == "radio" else ()
+        rest = [(max(start + eff["steps"][s], floor), s) for s in STEPS
+                if s in eff["steps"] and s not in o["done"] and s in self.can and not self._passed(s) and s not in skip]
+        if o["next_reconnect"] and eff["repeat"] and "reconnect" in self.can and not skip:
             rest.append((o["next_reconnect"], "reconnect"))
         if not rest:
             return None
         at, step = min(rest)
         return {"step": step, "label": STEP_LABEL[step], "at": max(at, now)}
+
+    def stall(self, now):
+        """On the ladder, with nothing left that the level allows and the box can
+        do: {needs: the lightest possible step beyond the level, or None; text}. Not when the level
+        is watch-only (that is the owner's choice, not a stall), nor while a step is only held."""
+        o, eff = self.outage, self.eff
+        if not o or not eff["steps"] or self.next_step(now):
+            return None
+        needs = next((s for s in STEPS if s in self.can and s not in eff["steps"] and s not in o["done"]), None)
+        top = max(eff["steps"], key=STEPS.index)
+        text = (f"Stalled: what could help now is to {STEP_LABEL[needs]}, and the reach set goes no further than to "
+                f"{STEP_LABEL[top]}." if needs else "Stalled: nothing the box can do from here could help "
+                f"(possible now: {', '.join(sorted(self.can)) or 'nothing'}).")
+        if o.get("wedged"):
+            text += f" The radio's driver looks wedged: {o['wedged']}."
+        return {"needs": needs, "label": STEP_LABEL[needs] if needs else None, "text": text}
+
+    def by_hand(self, now, obs, step):
+        """A step the owner asked for on /admin: done now, whatever the level and the hold, but
+        only when possible here and not held by a guard (guests, the reboot caps). The steps to
+        take, and the reason when held."""
+        if step not in STEPS:
+            return [], f"{step} is not a step"
+        if step not in obs.get("can", ()):
+            self.log(now, "skip", f"Asked on /admin to {STEP_LABEL[step]}, but it cannot be done here.", step, "hand")
+            return [], f"cannot {STEP_LABEL[step]} here"
+        why = self._held(now, obs, step)
+        if why:
+            self.log(now, "held", f"Asked on /admin to {STEP_LABEL[step]}, but {why}.", step, "hand")
+            return [], why
+        if step == "reboot":
+            self.reboots.append(now)
+        if self.outage and step not in self.outage["done"]:
+            self.outage["done"].append(step)
+        self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}, asked on /admin.", step, "hand")
+        return [step], None
 
 
 # --- looking -------------------------------------------------------------------------------
@@ -426,6 +690,24 @@ def guests():
     return n
 
 
+def shared_radio(iface):
+    """The box's hotspot runs on the same radio (phy) as the watched link."""
+    devs = netinv.parse_iw_dev(netinv.run("iw", "dev")[1])
+    phy = (devs.get(iface) or {}).get("phy")
+    return bool(phy) and any(i != iface and d.get("type") == "AP" and d.get("phy") == phy for i, d in devs.items())
+
+
+def words(chosen):
+    """The settings in a few words, for the log and the page's messages."""
+    n = chosen.get("sensitivity", DEFAULT["sensitivity"])
+    return f"{chosen['pace']} pace, reach {chosen['reach']}, sensitivity {n} missed check{'s' if n != 1 else ''}" + (
+        ", guests or not" if chosen.get("guests") == "ignore" else "") + (
+        ", a wedged radio reset at once" if chosen.get("on_wedge") == "radio" else "") + {
+        "no-scan": ", no background scans while the hotspot shares the radio",
+        "lock": f", locked to {chosen.get('lock_bssid')}"}.get(chosen.get("roaming"), "") + (
+        ", roams not counted" if chosen.get("ignore_roams") else "")
+
+
 def busy():
     for unit, what in BUSY_UNITS.items():
         if netinv.active(unit):
@@ -479,6 +761,49 @@ def repairs_for(backend, iface):
     return can
 
 
+SCAN_BUSY = re.compile(r"CTRL-EVENT-SCAN-FAILED ret=-16\b")
+NO_SUPPLICANT = re.compile(r"Couldn't initialize supplicant interface|supplicant interface keeps failing|Failed to initialize driver interface")
+
+
+def wedge_evidence(iface, backend, was_backend, journal, cw_events, now, exists=True, wifi=True):
+    """Why the radio's driver looks wedged, in words, or None (uplink-ladder-plan, stage 4). From
+    the last two minutes of NetworkManager's and wpa_supplicant's journal, crash watch's radio
+    events, and the backend: any one of
+      - the backend gone (it was there before) while the interface still exists
+      - NetworkManager unable to initialise the supplicant for it
+      - scans failing as busy (ret=-16) more than 5 times
+      - crash watch's radio failure for it in the last 30 minutes, not since recovered
+    as the Lyra's AIC8800 showed when its firmware wedged (2026-10-09)."""
+    if not wifi:
+        return None
+    why = []
+    if exists and backend == "none" and was_backend not in (None, "none"):
+        why.append(f"{was_backend} no longer runs {iface}, though it is still there")
+    mine = [l for l in journal if f"{iface}:" in l or f"({iface})" in l or f"'{iface}'" in l]
+    if any(NO_SUPPLICANT.search(l) for l in mine):
+        why.append(f"the supplicant cannot be started for {iface}")
+    busy = sum(1 for l in mine if SCAN_BUSY.search(l))
+    if busy > 5:
+        why.append(f"scans keep failing as busy ({busy} in 2 minutes)")
+    last = next((e for e in reversed(cw_events or []) if e.get("iface") == iface), None)
+    if last and last.get("kind") == "failed" and now - last.get("at", 0) < 1800:
+        why.append(f"crash watch saw the radio fail ({last.get('text', '')[:120]})")
+    return "; ".join(why) or None
+
+
+def recent_journal(secs=120):
+    code, out = run("journalctl", f"--since=@{int(time.time() - secs)}", "--no-pager", "-o", "cat",
+                    "-t", "NetworkManager", "-t", "wpa_supplicant", timeout=20)
+    return out.splitlines() if code == 0 else []
+
+
+def crashwatch_events():
+    try:
+        return json.loads((STATE / "crashwatch" / "events.json").read_text())
+    except (OSError, ValueError):
+        return []
+
+
 def nm_owner_off(iface):
     """NetworkManager's device autoconnect is off: `nmcli device disconnect` does that, and it
     stays off until someone connects the device again."""
@@ -530,7 +855,11 @@ class Actor:
     def _restart(self):
         i = self.iface
         if self.backend == "networkmanager":
-            return run("systemctl", "restart", "NetworkManager", timeout=90)[1] or "NetworkManager restarted"
+            out = run("systemctl", "restart", "NetworkManager", timeout=90)[1] or "NetworkManager restarted"
+            # Its restart takes the box's hotspot down too (the Lyra, 2026-10-09): start it again.
+            from irate_box.root import radio
+            hs = radio.restore_hotspot()
+            return out + (f"; {hs}" if hs else "")
         if self.backend == "wpa_supplicant":
             if netinv.active(f"wpa_supplicant@{i}"):
                 return run("systemctl", "restart", f"wpa_supplicant@{i}", timeout=90)[1] or f"wpa_supplicant@{i} restarted"
@@ -550,22 +879,12 @@ class Actor:
         return "no network service to restart here"
 
     def _radio(self):
+        # The one reset crash watch uses too (root/radio.py): NetworkManager stopped around it,
+        # unbind/bind, then `authorized` 0/1, then the driver; the hotspot started again after.
+        from irate_box.root import radio
         facts = netinv.device_facts(self.iface)
-        usb = facts.get("usb")
-        if usb and re.fullmatch(r"[0-9]+-[0-9.]+", usb.get("port") or ""):
-            drv = Path("/sys/bus/usb/drivers/usb")
-            (drv / "unbind").write_text(usb["port"])
-            time.sleep(3)
-            (drv / "bind").write_text(usb["port"])
-            return f"USB device {usb['port']} ({usb.get('product') or usb['id']}) unbound and bound again"
-        mod = facts.get("driver")
-        if not mod or not re.fullmatch(r"[A-Za-z0-9_-]+", mod):
-            return "radio driver not known"
-        code, out = run("modprobe", "-r", mod, timeout=60)
-        if code:
-            return f"modprobe -r {mod}: {out}"
-        time.sleep(2)
-        return run("modprobe", mod, timeout=60)[1] or f"{mod} reloaded"
+        usb = facts.get("usb") or {}
+        return radio.reset(self.iface, usb.get("port"), facts.get("driver"), usb.get("product") or usb.get("id"))
 
     def _reboot(self):
         run("sync")
@@ -600,13 +919,17 @@ class DropWatcher(threading.Thread):
         self.iface = None
         self.wake = wake
         self.lock = threading.Lock()
-        self.drops = []
+        self.drops = []   # [lost, back or None]
         self.up = {}
 
-    def take(self):
+    def take(self, now=None, blip=0):
+        """The drops since the last take, as (lost, back): back None while the link is still down. One
+        still down and younger than `blip` waits for the next take, to be told whether it was a roam."""
+        now = now or time.time()
         with self.lock:
-            d, self.drops = self.drops, []
-        return d
+            ready = [d for d in self.drops if d[1] is not None or now - d[0] > blip]
+            self.drops = [d for d in self.drops if d not in ready]
+        return [tuple(d) for d in ready]
 
     def run(self):
         while True:
@@ -624,8 +947,14 @@ class DropWatcher(threading.Thread):
                 self.up[name] = lower
                 if name == self.iface and was and not lower:
                     with self.lock:
-                        self.drops.append(time.time())
+                        self.drops.append([time.time(), None])
                     self.wake.set()
+                elif name == self.iface and was is False and lower:
+                    with self.lock:
+                        for d in reversed(self.drops):
+                            if d[1] is None:
+                                d[1] = time.time()
+                                break
             proc.wait()
             time.sleep(5)
 
@@ -698,6 +1027,91 @@ class History:
         return out
 
 
+class Ladder:
+    """The ladder's events kept for 72 days (at most 20 000): {at, k: kind, s: step, b: by, t: text},
+    for the box doctor's escalation chart. Written when something happened, which is rare."""
+
+    def __init__(self, path=None):
+        self.path = path or LADDER
+        try:
+            self.rows = json.loads(self.path.read_text())
+            if not isinstance(self.rows, list):
+                raise ValueError
+        except (OSError, ValueError):
+            self.rows = []
+
+    def misses(self, now, n, line, iface):
+        """The symptoms beside the steps (Tom, 2026-10-09: "missed connections within the time
+        period, with a line showing the intervention level"): the most misses within the pace's
+        window seen in each five-minute slot, and the sensitivity then, as {at, k: "m", n, th}.
+        Kept only for slots with a miss, or when the line moved; written as each slot closes."""
+        slot = int(now // 300) * 300
+        cur = getattr(self, "_cur", None)
+        if cur and cur["at"] != slot:
+            last_th = next((r.get("th") for r in reversed(self.rows) if r.get("k") == "m"), None)
+            if cur["n"] or cur["th"] != last_th:
+                self.add([], iface, now, [cur])
+            cur = None
+        if not cur:
+            cur = self._cur = {"at": slot, "k": "m", "n": 0, "th": line, "i": iface}
+        cur["n"], cur["th"] = max(cur["n"], int(n)), line
+
+    def add(self, events, iface, now, raw=()):
+        if not events and not raw:
+            return
+        self.rows += list(raw)
+        for e in events:
+            row = {"at": round(e["at"], 1), "k": e["kind"], "i": iface}
+            if e.get("step"):
+                row["s"] = e["step"]
+            if e.get("by"):
+                row["b"] = e["by"]
+            row["t"] = e["text"][:200]
+            self.rows.append(row)
+        self.rows = [r for r in self.rows if r.get("at", 0) > now - LADDER_KEEP][-20000:]
+        from irate_box.root import safeio
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        safeio.write(self.path, json.dumps(self.rows, separators=(",", ":")))
+
+
+def sort_drops(pairs, eff, same_network):
+    """The drops a take() gave, as (misses, roams): a drop back within `blip` seconds on the same network is a
+    roam; with ignore_roams it is not a miss (item 35, option A; Tom's checkbox); otherwise every drop is one (#175)."""
+    roams = [d for d in pairs if d[1] is not None and d[1] - d[0] <= eff.get("blip", 20) and same_network]
+    misses = [d[0] for d in pairs if not (eff.get("ignore_roams") and d in roams)]
+    return misses, roams
+
+
+class Roams:
+    """Roaming made visible (item 35, stage 2): each roam (a short drop and back, or a new access point
+    between two checks) noted, the last hour's counted for the page, and each one a row of the ladder's
+    record ({at, k: "roam", i, b: bssid, c: channel}) for the chart's marks."""
+
+    def __init__(self):
+        self.times = deque()
+        self.last = None   # {bssid, channel, at}
+
+    def see(self, now, link, blips):
+        """link: iw's for the check (bssid, channel); blips: the roams the drops held. Returns the rows to keep."""
+        rows = []
+        moved = link.get("bssid") and self.last and link["bssid"] != self.last["bssid"]
+        for lost, back in blips:
+            rows.append({"at": round(back, 1), "k": "roam", "d": round(back - lost, 1)})
+        if moved and not blips:
+            rows.append({"at": round(now, 1), "k": "roam", "d": 0})
+        if rows and link.get("bssid"):
+            rows[-1].update(b=link["bssid"], c=link.get("channel"))
+        if link.get("bssid"):
+            self.last = {"bssid": link["bssid"], "channel": link.get("channel"), "at": now}
+        self.times.extend(r["at"] for r in rows)
+        while self.times and self.times[0] < now - 3600:
+            self.times.popleft()
+        return rows
+
+    def hour(self):
+        return len(self.times)
+
+
 def history_state(state, link):
     """The watched link's letter for linkhistory, from the status's state."""
     return {"off": "o", "up": "u", "checking": "g"}.get(state, "g" if link else "d")
@@ -743,13 +1157,40 @@ def _settings_mtime():
 
 
 def nap(wake, secs, mtime):
-    """Sleep up to secs, waking early for a link drop or a settings change (looked at every 5 s,
-    so a choice made on /admin shows within seconds, whatever the check interval)."""
+    """Sleep up to secs, waking early for a link drop, a settings change or a step asked for on
+    /admin (looked at every 5 s, so a choice made there shows within seconds, whatever the check
+    interval)."""
     end = time.time() + secs
     while (left := end - time.time()) > 0:
-        if wake.wait(min(left, 5)) or _settings_mtime() != mtime:
+        if wake.wait(min(left, 5)) or _settings_mtime() != mtime or NOW.exists():
             break
     wake.clear()
+
+
+def request_step(step):
+    """For hub_control's uplink-do: ask the running watchdog to take one step now."""
+    if step not in STEPS:
+        raise ValueError(f"step must be one of {', '.join(STEPS)}")
+    ETC.mkdir(parents=True, exist_ok=True)
+    tmp = NOW.with_name(NOW.name + ".tmp")
+    tmp.write_text(json.dumps({"step": step, "at": time.time()}))
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, NOW)
+    return f"Asked the watchdog to {STEP_LABEL[step]} now; what it did shows in its log within seconds."
+
+
+def take_request(now):
+    """The step asked for on /admin, once (the file is removed), or None. One older than ten
+    minutes is dropped: the watchdog was not running to take it, and it is not wanted late."""
+    try:
+        req = json.loads(NOW.read_text())
+    except (OSError, ValueError):
+        return None
+    finally:
+        NOW.unlink(missing_ok=True)
+    if not isinstance(req, dict) or req.get("step") not in STEPS or not isinstance(req.get("at"), (int, float)):
+        return None
+    return req["step"] if now - req["at"] < 600 else None
 
 
 def serve(dry=False):
@@ -760,13 +1201,16 @@ def serve(dry=False):
     now = time.time()
     if old.get("events") and old["events"][-1]["text"].startswith("Reboot"):
         w.log(now, "info", "Started again after the reboot.")
-    w.log(now, "info", f"Watching ({chosen['eagerness']}, {chosen['forgiveness']})" + (" — dry run" if dry else "") + ".")
+    w.log(now, "info", f"Watching ({words(chosen)})" + (" — dry run" if dry else "") + ".")
     wake = threading.Event()
     watcher = DropWatcher(wake)
     watcher.start()
     iface, backend, actor, can, looked = None, None, None, set(), 0
+    known_backend = None  # the last real backend seen, so its going away can be told
     pinned = None
     history = History()
+    ladder = Ladder()
+    roams = Roams()
     tls_at = 0  # HTTPS (step 15): the certificate renewed when due, looked at every six hours
 
     def stop(*_):
@@ -782,7 +1226,7 @@ def serve(dry=False):
             if {k: v for k, v in before.items() if k != "hold_until"} != {k: v for k, v in chosen.items() if k != "hold_until"}:
                 w.eff = effective(chosen)
                 w.pause_until = now + w.eff["pause_after_change"]
-                w.log(now, "info", f"Settings changed: {chosen['eagerness']}, {chosen['forgiveness']}"
+                w.log(now, "info", f"Settings changed: {words(chosen)}"
                       + (", with custom values" if chosen["overrides"] else "") + ".")
             if before.get("hold_until") != chosen.get("hold_until"):
                 hold = chosen.get("hold_until") or 0
@@ -808,10 +1252,38 @@ def serve(dry=False):
         up = link_up(iface)
         gw = gateway_of(iface) if up else None
         answers = gateway_answers(iface, gw) if gw else (False if up else None)
-        obs = {"link": up, "gateway": answers, "drops": watcher.take(), "guests": guests(), "busy": busy(),
+        link = netinv.parse_link(netinv.run("iw", "dev", iface, "link")[1]) if up and (SYS_NET / iface / "phy80211").exists() else {}
+        same = bool(link.get("ssid")) and link.get("ssid") == (roams.last or {}).get("ssid", link.get("ssid"))
+        drops, blips = sort_drops(watcher.take(now, w.eff.get("blip", 20)), w.eff, same)
+        roam_rows = roams.see(now, link, blips)
+        if roams.last:
+            roams.last["ssid"] = link.get("ssid") or roams.last.get("ssid")
+        obs = {"link": up, "gateway": answers, "drops": drops, "guests": guests(), "busy": busy(),
                "uptime": uptime(), "can": can, "hold_until": chosen.get("hold_until", 0),
-               "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface)}
+               "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface),
+               "shared_radio": shared_radio(iface)}
+        if w.outage or w.misses:
+            # In trouble: look closer, each check, for a wedged driver (and the backend afresh).
+            was, backend = backend, backend_of(iface)
+            if backend != was:
+                can = obs["can"] = repairs_for(backend, iface)
+                actor.backend = backend
+                w.log(now, "info", f"{iface} is now run by {backend} (was {was}).")
+            known = was if was != "none" else known_backend
+            obs["wedged"] = wedge_evidence(iface, backend, known, recent_journal(), crashwatch_events(), now,
+                                           (SYS_NET / iface).exists(), (SYS_NET / iface / "phy80211").exists())
+        elif backend and backend != "none":
+            known_backend = backend
+        if chosen.get("roaming") == "no-scan" and up and not dry:
+            from irate_box.hub import roaming
+            said = roaming.clear_scan(iface)
+            if said:
+                w.log(now, "info", f"Roaming: {said} (NetworkManager had set them again).")
         actions = w.tick(now, obs)
+        asked = take_request(now) if NOW.exists() else None
+        if asked:
+            more, _ = w.by_hand(now, obs, asked)
+            actions += [s for s in more if s not in actions]
         if up and answers:
             actor.remember()
         for step in actions:
@@ -834,7 +1306,16 @@ def serve(dry=False):
                     tls.renew()
             except Exception as exc:  # noqa: BLE001 - the watchdog goes on whatever happens here
                 w.log(now, "info", f"HTTPS certificate renewal failed: {exc}")
+        if not dry:
+            try:
+                ladder.add(w.ladder, iface, now, [dict(r, i=iface) for r in roam_rows])
+                ladder.misses(now, w.misses, w.eff["sensitivity"], iface)
+            except OSError as exc:
+                w.log(now, "info", f"The escalation record was not written: {exc}")
+        w.ladder = []
         report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
+        report["roams_hour"] = roams.hour()
+        report["roam_last"] = roams.last
         history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]))
         write_status(report)
         # While a check or an outage is under way, look again sooner than the steady pace.
@@ -844,15 +1325,23 @@ def serve(dry=False):
 
 def _status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, dry):
     link = netinv.parse_link(netinv.run("iw", "dev", iface, "link")[1]) if up and (SYS_NET / iface / "phy80211").exists() else {}
-    state = ("off" if w.owner_off else "down" if w.outage else "checking" if w.misses
+    stall = w.stall(now)
+    state = ("off" if w.owner_off else "stalled" if stall else "down" if w.outage else "checking" if w.misses
              else "up" if up and answers else "down")
     return {"at": now, "state": state, "iface": iface, "backend": backend, "repairs": sorted(can),
             "link": link, "gateway": gw, "gateway_answers": answers, "since": w.outage["since"] if w.outage else w.last_ok,
-            "misses": w.misses, "drops_in_window": len(w.drops), "guests": obs["guests"],
-            "outage": ({k: w.outage[k] for k in ("since", "declared", "done", "held")} if w.outage else None),
-            "next": w.next_step(now), "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
+            "misses": w.misses, "guests": obs["guests"],
+            "outage": ({k: w.outage[k] for k in ("since", "declared", "done", "held", "skipped")} if w.outage else None),
+            "wedged": (w.outage or {}).get("wedged"),
+            "episode": ({k: w.episode[k] for k in ("since", "outages", "failed", "tried")} if w.episode else None),
+            "next": w.next_step(now), "stall": stall, "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
             "pinned": pinned, "events": list(w.events), "reboots": w.reboots[-10:], "chosen": chosen,
-            "settings": w.eff, "profile_change": profile_record(), "dry_run": dry}
+            "settings": w.eff, "profile_change": profile_record(), "roaming_change": _roaming_record(), "dry_run": dry}
+
+
+def _roaming_record():
+    from irate_box.hub import roaming
+    return roaming.record() or None
 
 
 # --- the owner's profile, by consent ---------------------------------------------------------
@@ -915,20 +1404,19 @@ def check():
              f"link {'up' if up else 'down'}" + (f", {link.get('ssid')} via {link.get('bssid')} ch {link.get('channel')} "
                                                 f"{link.get('signal')} dBm" if link else ""),
              f"gateway {gw or 'none'}: {'answers' if ans else 'no answer' if gw else '-'}",
-             f"settings: {chosen['eagerness']}, {chosen['forgiveness']}"
+             f"settings: {words(chosen)}"
              + (f", overrides {json.dumps(chosen['overrides'])}" if chosen["overrides"] else "")]
     return "\n".join(lines)
 
 
 def presets():
     out = []
-    for e in EAGERNESS:
-        for f in FORGIVENESS:
-            eff = effective({"eagerness": e, "forgiveness": f, "overrides": {}})
-            detect = f"{eff['misses']} × {human(eff['check'])}"
-            steps = ", ".join(f"{s} +{human(eff['grace'] + t)}" for s, t in sorted(eff["steps"].items(), key=lambda x: x[1]))
-            out.append(f"{e:10} {f:8}  check {human(eff['check']):6} detect {detect:12} steps: {steps or 'none'}"
-                       f"; flaps {eff['flap_count']}/{human(eff['flap_window'])} → {eff['flap_action']}")
+    for pace in PACE:
+        eff = effective({"pace": pace, "reach": "reboot", "overrides": {}})
+        steps = ", ".join(f"{s} +{human(t)}" for s, t in sorted(eff["steps"].items(), key=lambda x: x[1]))
+        out.append(f"{pace:7} check {human(eff['check']):6} window {human(eff['window']):6} steps: {steps}; reconnect again every {human(eff['repeat'])}")
+    out.append(f"reach: {', '.join(REACH)} (the steps above, up to and including the one chosen; watch: none)")
+    out.append(f"sensitivity: {SENSITIVITY[0]}-{SENSITIVITY[1]} missed checks within the pace's window (default {DEFAULT['sensitivity']})")
     return "\n".join(out)
 
 
@@ -947,16 +1435,29 @@ def main(argv):
         serve(dry="--dry-run" in rest)
     elif cmd == "check":
         print(check())
-    elif cmd == "set" and 1 <= len(rest) <= 2:
+    elif cmd == "set" and rest and (all("=" in a for a in rest) or (len(rest) <= 2 and rest[0] in EAGERNESS_WAS)):
         s = load_settings()
-        s["eagerness"] = rest[0]
-        if len(rest) == 2:
-            s["forgiveness"] = rest[1]
+        if "=" not in rest[0]:  # the old single level (install.sh --uplink standard,strict)
+            pace, reach, guests = EAGERNESS_WAS[rest[0]]
+            rest = [f"pace={pace}", f"reach={reach}", f"guests={guests}"] + [f"sensitivity={FORGIVENESS_WAS.get(f, f)}" for f in rest[1:]]
+        for a in rest:
+            k, _, v = a.partition("=")
+            if k == "forgiveness" and v in FORGIVENESS_WAS:   # the old name, still read
+                k, v = "sensitivity", FORGIVENESS_WAS[v]
+            if k not in ("pace", "reach", "sensitivity", "guests", "on_wedge", "ignore_roams"):
+                # Not roaming's lock or no-scan: they change the owner's WiFi, so they are asked on /admin.
+                sys.exit(f"uplink.py set: {k} is not one of pace, reach, sensitivity, guests, on_wedge, ignore_roams")
+            if k == "ignore_roams":
+                if v.lower() not in ("yes", "no", "true", "false", "on", "off"):
+                    sys.exit("uplink.py set: ignore_roams is yes or no")
+                v = v.lower() in ("yes", "true", "on")
+            s[k] = v
         try:
             s = save_settings(s)
         except ValueError as exc:
-            sys.exit(f"uplink.py set: {exc} (eagerness: {', '.join(EAGERNESS)}; forgiveness: {', '.join(FORGIVENESS)})")
-        print(f"uplink: {s['eagerness']}, {s['forgiveness']}")
+            sys.exit(f"uplink.py set: {exc} (pace: {', '.join(PACE)}; reach: {', '.join(REACH)}; "
+                     f"sensitivity: {SENSITIVITY[0]}-{SENSITIVITY[1]} missed checks)")
+        print(f"uplink: {words(s)}")
     elif cmd == "hold" and len(rest) == 1 and rest[0].isdigit():
         s = load_settings()
         s["hold_until"] = time.time() + int(rest[0]) * 60 if int(rest[0]) else 0
@@ -972,8 +1473,14 @@ def main(argv):
             print(profile(False))
         except ValueError as exc:
             print(f"profile: {exc}")
+        from irate_box.hub import roaming
+        try:
+            for line in roaming.undo_all(pick_iface(load_settings()["iface"], None)):
+                print(line)
+        except ValueError as exc:
+            print(f"roaming: {exc}")
     else:
-        sys.exit("usage: uplink.py run [--dry-run] | check | presets | set EAGERNESS [FORGIVENESS] | hold MINUTES "
+        sys.exit("usage: uplink.py run [--dry-run] | check | presets | set KEY=VALUE... | hold MINUTES "
                  "| profile on|off | undo-all")
     return 0
 

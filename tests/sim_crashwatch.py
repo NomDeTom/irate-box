@@ -154,6 +154,71 @@ for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;
 said = health.fix("crashwatch-preempt:radio")
 check("  a switch pressed: the setting changed, and said", cw.load_settings()["preempt"] == "radio" and said == "a failing radio is reset at once")
 
+# --- the AIC8800's own words as its firmware wedged (the Lyra, 2026-10-09 04:00; uplink-ladder-plan stage 4) ---
+FX = REPO / "tests/fixtures/aic8800-wedge-2026-10-09"
+wedge = FX.joinpath("kern.log").read_text().splitlines()
+aic = {"wlan0": {"driver": "aic8800_fdrv", "port": "1-1.1", "product": "AIC8800DC"}}
+errs = cw.radio_state(aic, wedge)["wlan0"][1]
+check("the wedge's lines now counted: the cmdqueue burst, the timeout, cmd queue crashed (none were before)",
+      len(errs) == 57 and any("cmd queue crashed" in l for l in errs) and any("cmd_mgr_queue cmd timed-out" in l for l in errs), len(errs))
+check("  for an aic radio only: another driver's radio is not blamed for them",
+      cw.radio_state({"wlan1": {"driver": "rtl8xxxu", "port": "1-1.2"}}, wedge)["wlan1"][1] == [])
+did, kinds = [], []
+pre = cw.Preempt("warn", lambda i: "reset", lambda: None, lambda s, n: None,
+                 lambda now, iface, kind, text, snapshot=False: kinds.append(kind) or {"kind": kind})
+pre.act(100, cw.radio_state(aic, wedge))
+check("  so pre-emption sees a failure at once (warn: noted, nothing done)", kinds == ["failed"], kinds)
+# Filed as it happens, the box running on: the ten minutes before, and the look's kernel lines.
+cw.SNAP.with_name("snap.log.1").unlink(missing_ok=True)
+put(cw.SNAP, "".join(f"=== 2026-10-09 03:{m:02d}:00 up 1s load 0\n  x\n" for m in range(40, 60)) + "=== 2026-10-09 04:00:12 up 1s load 0\n  !! wedge\n")
+os.environ["TZ"] = "Europe/London"; __import__("time").tzset()
+at = __import__("time").mktime((2026, 10, 9, 4, 0, 16, 0, 0, -1))
+rec = cw.file_radio(at, "wlan0", "cmd queue crashed", wedge)
+d = cw.CRASHES / rec["dir"]
+snaps = (d / "snapshots.log").read_text()
+check("a radio failure filed when it happens: its own folder, the index apart from the crashes",
+      rec["dir"].endswith("-radio-wlan0") and json.loads(cw.INCIDENTS.read_text())[-1]["dir"] == rec["dir"]
+      and all(i.get("kind") != "radio" for i in json.loads(cw.INDEX.read_text())), rec)
+check("  with the ten minutes before it and the kernel's lines", snaps.startswith("=== 2026-10-09 03:50:00") and "!! wedge" in snaps
+      and "cmd queue crashed" in (d / "kernel.log").read_text(), snaps[:40])
+check("  a crash filed later reaches back to that boot's first radio failure (not only the last 200 KB)",
+      cw.snapshots_tail(10, since=at - 600).startswith("=== 2026-10-09 03:50:00"))
+check("  and the doctor says where it is kept", "Kept as it happened: 1 this week" in next(f["detail"] for f in health.check_crashwatch(now=at + 60) if f["id"] == "crash-radio"))
+
+# --- the one radio reset (root/radio.py), shared with the uplink watchdog ---
+from irate_box.root import radio  # noqa: E402
+def fake_sys(gone_after=None):
+    shutil.rmtree(SYS / "bus/usb", ignore_errors=True)
+    (SYS / "bus/usb/drivers/usb").mkdir(parents=True); (SYS / "bus/usb/devices/1-1.1").mkdir(parents=True)
+    (SYS / "bus/usb/devices/1-1").mkdir(parents=True)
+    (SYS / "class/net/wlan0").mkdir(parents=True, exist_ok=True)
+ran = []
+def frun(*cmd, timeout=60):
+    ran.append(" ".join(cmd))
+    if cmd[:3] == ("systemctl", "is-active", "--quiet"):
+        return 0, ""
+    if cmd[:2] == ("modprobe", "-r"):
+        return 1, "FATAL: Module aic8800_fdrv is in use."
+    return 0, ""
+fake_sys()
+put(radio.AP_RECORD, json.dumps({"up": True}))
+said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
+check("reset: NetworkManager stopped around it, the USB device unbound and bound, the hotspot started again",
+      ran[1:3] == ["systemctl stop NetworkManager", "systemctl start NetworkManager"] and ran[-1] == "systemctl start irate-box-ap.service"
+      and (SYS / "bus/usb/drivers/usb/bind").read_text() == "1-1.1" and "unbound and bound again; wlan0 is back; the hotspot started again" in said, (ran, said))
+ran.clear(); fake_sys(); shutil.rmtree(SYS / "class/net/wlan0")
+said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
+check("  not back: then authorized 0/1 (what worked on the Lyra), then the driver, which may refuse to unload",
+      (SYS / "bus/usb/devices/1-1.1/authorized").read_text() == "1" and "de-authorised and authorised again" in said
+      and "would not unload" in said and said.endswith("wlan0 did not come back; the hotspot started again"), said)
+ran.clear(); fake_sys(); shutil.rmtree(SYS / "bus/usb/devices/1-1.1")
+said = radio.reset("wlan0", "1-1.1", None, None, run=frun, sleep=lambda s: None, wait=1)
+check("  its USB device gone: the hub it hangs off", "USB 1-1, the hub 1-1.1 hangs off unbound" in said, said)
+put(radio.AP_RECORD, json.dumps({"up": False})); ran.clear()
+radio.reset("wlan0", "1-1.1", None, None, run=frun, sleep=lambda s: None, wait=1)
+check("  a hotspot that was not up is not started", "systemctl start irate-box-ap.service" not in ran, ran)
+check("  nothing to reset by: said", radio.reset("wlan0", None, "../x", None, run=frun, sleep=lambda s: None) == "no way to reset this radio here")
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

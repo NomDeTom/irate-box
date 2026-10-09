@@ -81,7 +81,7 @@ check("mpwrd-menu lists beta and daily (mixed): the channel from the installed b
 check("  one list: that channel, beta", pkgwatch.settings("meshtasticd")["channel"] == "beta")
 (lists / "network:Meshtastic:beta.list").unlink()
 state["installed"] = None
-check("  none, nothing installed: the manifest's default, beta; watch by default", pkgwatch.settings("meshtasticd") == {"channel": "beta", "mode": "watch", "days": 7})
+check("  none, nothing installed: the manifest's default, beta; watch by default, looked at daily", pkgwatch.settings("meshtasticd") == {"channel": "beta", "mode": "watch", "days": 7, "every": 24})
 state["installed"] = "2.8.0.696~obs5f198c4~unstable"
 (lists / "network:Meshtastic:beta.list").write_text("deb http://x/ /\n"); (lists / "network:Meshtastic:daily.list").write_text("deb http://x/ /\n")
 
@@ -170,6 +170,33 @@ ran.clear()
 check("pkg-check through the root helper (by \"package\", every one on the box without)", "meshtasticd" in hub_control.ACTIONS["pkg-check"]({"action": "pkg-check"})
       or "new on daily" in hub_control.ACTIONS["pkg-check"]({"action": "pkg-check"}))
 check("pkg-settings through it", "on beta" in hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3}))
+# How often (item 36's pattern): kept per package, published for the librarian, the old settings without it as 24 h.
+check("how often: 24 h when never chosen, kept when a save leaves it out", pkgwatch.settings("meshtasticd")["every"] == 24)
+hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3, "every": 6})
+check("  6 hours chosen, and published", pkgwatch.settings("meshtasticd")["every"] == 6
+      and json.loads(pkgwatch.PUBLIC.read_text())["meshtasticd"]["settings"]["every"] == 6)
+pkgwatch.set_settings("meshtasticd", "beta", "watch", 3)
+check("  a save without it keeps it", pkgwatch.settings("meshtasticd")["every"] == 6)
+for bad in (12, True, "6"):
+    try:
+        hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3, "every": bad}); ok = False
+    except ValueError:
+        ok = True
+    check(f"  every {bad!r}: refused", ok)
+import importlib
+os.environ["HUB_STATE_DIR"] = str(T / "libstate")
+(T / "libstate" / "control").mkdir(parents=True, exist_ok=True)
+from irate_box.library import librarian as L
+L = importlib.reload(L)
+queued = []
+L._queue_root = lambda req: queued.append(req) or f"r{len(queued)}"
+(T / "libstate" / "control" / "pkgwatch.json").write_text(json.dumps({"meshtasticd": {"settings": {"every": 6}}, "other": {"settings": {"every": 0}}}))
+L.PKGWATCH_STATE.parent.mkdir(parents=True, exist_ok=True)
+L.PKGWATCH_STATE.write_text(json.dumps({"queued": T0, "id": "old"}))
+check("the librarian: a package whose 6 hours are up queued alone; Manual never", L.packages_step(now=T0 + 7 * 3600) == "check queued: meshtasticd (r1)"
+      and queued == [{"action": "pkg-check", "package": "meshtasticd"}], queued)
+check("  not again before its time", L.packages_step(now=T0 + 8 * 3600) is None)
+check("  then again", L.packages_step(now=T0 + 13.5 * 3600) is not None and len(queued) == 2)
 (T / "os-release").write_text('ID=ubuntu\nVERSION_ID="24.04"\nPRETTY_NAME="Ubuntu 24.04"\n')
 try:
     pkgwatch.suite(); ok = False

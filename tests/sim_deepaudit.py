@@ -32,13 +32,16 @@ find: '/etc/audit/rules.d': No such file or directory
 AUDIT_SUMMARY PASSED_CHECKS:2 RUN_CHECKS:9 TOTAL_CHECKS_AVAIL:9 CONFORMITY_PERCENTAGE:22.22
 """
 checks, summary = da.parse_cis(CIS)
-check("debian-cis's batch lines read: status, check, messages", len(checks) == 9 and checks[1] == ("KO", "1.1.3_tmp_nodev", ["/tmp is a partition", "/tmp has no option nodev in fstab!"])
+check("debian-cis's batch lines read: status, check, and of a failed one what failed", len(checks) == 9 and checks[1] == ("KO", "1.1.3_tmp_nodev", ["/tmp has no option nodev in fstab!"])
       and summary["PASSED_CHECKS"] == "2" and summary["CONFORMITY_PERCENTAGE"] == "22.22", (checks[:2], summary))
 fs = {f["id"]: f for f in da.cis_findings(checks, summary, 180)}
 check("failed checks grouped by section, a warning each", fs["cis-5.2"]["status"] == "warn" and "1 check not met" in fs["cis-5.2"]["title"]
       and "sshd_maxauthtries" in fs["cis-5.2"]["detail"] and fs["cis-4.1"]["about"] == {"kind": "setting", "key": "cis-4.1"}, fs.get("cis-5.2"))
 check("a check another source asks too (secdoctor_xref): a finding of its own, about the shared key", fs["cis-5.2.10_disable_root_login"]["about"] == {"kind": "setting", "key": "ssh-root-login"}
       and fs["cis-5.2.10_disable_root_login"]["title"] == "CIS 5.2.10: SSH: logging in as root")
+check("  each keeps its checks one by one", [c["check"] for c in fs["cis-5.2"]["checks"]] == ["5.2.7_sshd_maxauthtries"]
+      and fs["cis-5.2"]["checks"][0]["msgs"] == ["MaxAuthTries is 6"] and fs["cis-5.2.10_disable_root_login"]["checks"][0]["check"] == "5.2.10_disable_root_login",
+      fs["cis-5.2"].get("checks"))
 check("  sections in the benchmark's order, then the shared ones", [k for k in fs if k.startswith("cis-") and k[4].isdigit()] == ["cis-4.1", "cis-5.2", "cis-5.2.10_disable_root_login"], list(fs))
 acc = [f for f in fs.values() if f["accepted"]]
 check("the box's design accepted, not counted: one partition, the web server, no firewall yet",
@@ -56,13 +59,88 @@ suggestion[]=SSH-7408|Consider hardening SSH configuration|AllowTcpForwarding (s
 hardening_index=64
 """
 rep = da.parse_lynis(LYNIS)
-check("Lynis's report read", rep["index"] == "64" and rep["warnings"][1] == ("SSH-7408", "Root can log in over SSH") and len(rep["suggestions"]) == 2, rep)
+check("Lynis's report read", rep["index"] == "64" and rep["warnings"][1] == {"test": "SSH-7408", "text": "Root can log in over SSH", "details": "", "solution": ""}
+      and len(rep["suggestions"]) == 2 and rep["suggestions"][1]["details"] == "AllowTcpForwarding (set YES to NO)", rep)
 lf = {f["id"]: f for f in da.lynis_findings(rep, 281)}
-check("a Lynis warning: a finding of its own, about its test", lf["lynis-SSH-7408"]["status"] == "warn" and lf["lynis-SSH-7408"]["source"] == "lynis"
-      and lf["lynis-SSH-7408"]["about"] == {"kind": "setting", "key": "lynis-SSH-7408"})
+check("a Lynis warning: a finding of its own, about what its test asks (SSH-7408: sshd's settings, CIS 5.2)", lf["lynis-SSH-7408"]["status"] == "warn"
+      and lf["lynis-SSH-7408"]["source"] == "lynis" and lf["lynis-SSH-7408"]["about"] == {"kind": "setting", "key": "cis-5.2"} and not lf["lynis-SSH-7408"].get("tier"))
 check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"].startswith("the box filters the hotspot alone"))
-check("suggestions listed, not counted; the hardening index said", lf["lynis-summary"]["status"] == "ok" and "Hardening index 64" in lf["lynis-summary"]["detail"]
-      and "2 suggestions (listed, not counted); 4.7 min" in lf["lynis-summary"]["detail"], lf["lynis-summary"]["detail"])
+check("a suggestion the table knows: about that, as a suggestion; the rest listed, not counted; the hardening index said",
+      lf["lynis-SSH-7408-2"]["about"]["key"] == "cis-5.2" and lf["lynis-SSH-7408-2"]["tier"] == "suggest"
+      and lf["lynis-summary"]["status"] == "ok" and "Hardening index 64" in lf["lynis-summary"]["detail"]
+      and "2 suggestions; 4.7 min. Not matched to an item (listed, not counted): DEB-0280: Install libpam-tmpdir" in lf["lynis-summary"]["detail"], lf["lynis-summary"]["detail"])
+
+# Lynis's settings one by one (details[]) and its tests that ask what another source asks
+# (secdoctor_xref): each about the same thing, so the joint report merges them.
+LYNIS2 = """suggestion[]=KRNL-6000|One or more sysctl values differ from the scan profile and could be tweaked||Change sysctl value or disable test (skip-test=KRNL-6000:<sysctl-key>)|
+details[]=KRNL-6000|sysctl|desc:Restrict access to kernel symbols;field:kernel.kptr_restrict;prefval:2;value:0;|
+details[]=KRNL-6000|sysctl|desc:Disable magic SysRQ;field:kernel.sysrq;prefval:0;value:176;|
+details[]=KRNL-6000|sysctl|desc:-;field:net.ipv4.conf.all.send_redirects;prefval:0;value:1;|
+details[]=SSH-7408|sshd|desc:sshd option PermitRootLogin;field:PermitRootLogin;prefval:NO;value:YES;|
+suggestion[]=AUTH-9262|Install a PAM module for password strength testing like pam_cracklib or pam_passwdqc or libpam-passwdqc|-|-|
+suggestion[]=ACCT-9628|Enable auditd to collect audit information|-|-|
+suggestion[]=FILE-6310|To decrease the impact of a full /home file system, place /home on a separate partition|-|-|
+suggestion[]=PKGS-7392|Update your system with apt-get update, apt-get upgrade, apt-get dist-upgrade and/or unattended-upgrades|-|-|
+hardening_index=61
+"""
+l2 = {f["id"]: f for f in da.lynis_findings(da.parse_lynis(LYNIS2))}
+key = lambda i: (l2[i]["about"] or {}).get("key")  # noqa: E731
+check("Lynis's sysctl keys one by one: each about its setting (kptr_restrict: kernel-info; send_redirects: CIS 3.2)",
+      key("lynis-KRNL-6000-kernel.kptr_restrict") == "kernel-info" and key("lynis-KRNL-6000-net.ipv4.conf.all.send_redirects") == "cis-3.2"
+      and l2["lynis-KRNL-6000-kernel.kptr_restrict"]["detail"] == "kernel.kptr_restrict is 0; Lynis prefers 2.", sorted(l2))
+check("  the one known to nothing listed, and KRNL-6000's one line not repeated", "kernel.sysrq is 176" in l2["lynis-summary"]["detail"]
+      and "lynis-KRNL-6000" not in l2, l2["lynis-summary"]["detail"])
+check("  sshd's options too: PermitRootLogin is about SSH root login", key("lynis-SSH-7408-PermitRootLogin") == "ssh-root-login")
+check("Lynis's tests by name onto CIS sections, tiered as the section is (5.3 a suggestion; 4.1 not for this board)",
+      key("lynis-AUTH-9262") == "cis-5.3" and l2["lynis-AUTH-9262"]["tier"] == "suggest" and l2["lynis-ACCT-9628"]["tier"] == "not-here")
+check("  and onto the Security page's: PKGS-7392 is Debian's security updates", key("lynis-PKGS-7392") == "security-updates")
+check("  one partition accepted for Lynis as for debian-cis: listed, not a finding", "lynis-FILE-6310" not in l2
+      and "FILE-6310: To decrease the impact of a full /home file system, place /home on a separate partition (accepted: the box's design)" in l2["lynis-summary"]["detail"])
+from irate_box.root import secdoctor as sd0  # noqa: E402
+doctor = [{"id": "kernel-info", "title": "Kernel addresses and log readable by everyone", "status": "warn", "detail": "kptr_restrict 0.", "fix": "",
+           "source": "doctor", "about": {"kind": "setting", "key": "kernel-info"}}]
+j0 = {i["key"]: i for i in sd0.joint([{"title": "Kernel", "findings": doctor}, {"title": "Lynis", "findings": list(l2.values())}])["items"]}
+check("the joint report: Lynis's kptr_restrict merged with the doctor's kernel-info, a real item (not a suggestion)",
+      j0["setting:kernel-info"]["sources"] == ["doctor", "lynis"] and j0["setting:kernel-info"]["tier"] is None, j0.get("setting:kernel-info"))
+check("  Lynis alone on a CIS section: a suggestion; on auditd: not for this board", j0["setting:cis-5.3"]["tier"] == "suggest" and j0["setting:cis-4.1"]["tier"] == "not-here")
+
+# Each check's own fix, from its script in debian-cis's source (the pinned commit's, at audit time).
+src0 = T / "cis-info"
+(src0 / "bin" / "hardening").mkdir(parents=True)
+for name, body in {
+    "disable_send_packet_redirects": "DESCRIPTION=\"Disable send packet redirects.\"\nSYSCTL_PARAMS='net.ipv4.conf.all.send_redirects=0 net.ipv4.conf.default.send_redirects=0'\n",
+    "sshd_maxauthtries": "DESCRIPTION=\"Set SSH MaxAuthTries to 4.\"\nOPTIONS=''\nFILE='/etc/ssh/sshd_config'\nOPTIONS='MaxAuthTries=4'\n",
+    "install_auditd": "DESCRIPTION=\"Install auditd.\"\nPACKAGE='auditd'\napply() {\n    apt_install \"$PACKAGE\"\n}\n",
+    "dnsmasq_is_disabled": "DESCRIPTION=\"Ensure dnsmasq is not installed.\"\nPACKAGES='dnsmasq'\napply() {\n    apt-get purge \"$PACKAGES\" -y\n}\n",
+    "disable_telnet_client": "DESCRIPTION=\"Ensure telnet client is not installed.\"\nPACKAGES='telnet'\napply() {\n    apt-get purge \"$PACKAGES\" -y\n}\n",
+    "crontab_perm_ownership": "DESCRIPTION=\"Permissions on /etc/crontab.\"\nFILE='/etc/crontab'\nPERMISSIONS='600'\nUSER='root'\nGROUP='root'\n",
+    "set_password_exp_days": "DESCRIPTION=\"Set password expiration days.\"\nPACKAGE='login'\nOPTIONS='PASS_MAX_DAYS=90'\nFILE='/etc/login.defs'\napply() {\n    apt_install \"$PACKAGE\"\n}\n",
+    "logfile_sudo": "DESCRIPTION=\"Ensure sudo log files exists.\"\nPATTERN=\"$HOME\"\n",
+}.items():
+    (src0 / "bin" / "hardening" / f"{name}.sh").write_text("#!/bin/bash\nHARDENING_LEVEL=2\n" + body)
+info = {n: da.cis_check_info(src0, "9.9_" + n) for n in ("disable_send_packet_redirects", "sshd_maxauthtries", "install_auditd", "dnsmasq_is_disabled",
+                                                          "disable_telnet_client", "crontab_perm_ownership", "set_password_exp_days", "logfile_sudo")}
+check("a check's what, from its DESCRIPTION", info["install_auditd"]["what"] == "Install auditd.")
+check("sysctl keys: one file in sysctl.d, then sysctl --system", info["disable_send_packet_redirects"]["cmd"] ==
+      "printf '%s\\n' 'net.ipv4.conf.all.send_redirects = 0' 'net.ipv4.conf.default.send_redirects = 0' | sudo tee /etc/sysctl.d/60-cis-disable-send-packet-redirects.conf && sudo sysctl --system",
+      info["disable_send_packet_redirects"].get("cmd"))
+check("sshd options: a file in sshd_config.d, checked by sshd -t before the reload (its last OPTIONS, not the empty one)", info["sshd_maxauthtries"]["cmd"] ==
+      "printf '%s\\n' 'MaxAuthTries 4' | sudo tee /etc/ssh/sshd_config.d/60-cis-sshd-maxauthtries.conf && sudo sshd -t && sudo systemctl reload ssh",
+      info["sshd_maxauthtries"].get("cmd"))
+check("a package to install, or to remove", info["install_auditd"]["cmd"] == "sudo apt-get install auditd" and info["disable_telnet_client"]["cmd"] == "sudo apt-get purge telnet")
+check("never the removal of what the hub uses (dnsmasq): said instead", "cmd" not in info["dnsmasq_is_disabled"] and "The hub uses dnsmasq" in info["dnsmasq_is_disabled"]["say"])
+check("a file's owner and mode", info["crontab_perm_ownership"]["cmd"] == "sudo chown root:root /etc/crontab && sudo chmod 600 /etc/crontab")
+# (Not printed on failure: CodeQL takes anything named for a password as a secret logged.)
+check("another file's settings in words, not its prerequisite package", info["set_password_exp_days"] == {"what": "Set password expiration days.", "say": "In /etc/login.defs, set: PASS_MAX_DAYS=90."})
+check("a value built from a variable: no command", info["logfile_sudo"] == {"what": "Ensure sudo log files exists."}, info["logfile_sudo"])
+check("an unknown or odd check name: nothing", da.cis_check_info(src0, "9.9_nothing_here") == {} and da.cis_check_info(src0, "9.9_../../etc/passwd") == {})
+withinfo = {f["id"]: f for f in da.cis_findings([("KO", "3.2.2_disable_send_packet_redirects", ["net.ipv4.conf.all.send_redirects was not set to 0"])], {},
+                                                info=lambda c: da.cis_check_info(src0, c))}
+check("  kept with the check in its section's finding", withinfo["cis-3.2"]["checks"][0]["cmd"].endswith("sudo sysctl --system")
+      and withinfo["cis-3.2"]["checks"][0]["msgs"] == ["net.ipv4.conf.all.send_redirects was not set to 0"], withinfo["cis-3.2"])
+check("the hotspot's dnsmasq and the floor's nftables: the box's design, accepted (whatever the check's number)",
+      da.accepted("debian-cis", "2.2.99_dnsmasq_is_disabled") and da.accepted("debian-cis", "3.5.1.1_nftables_not_installed_with_iptables")
+      and da.accepted("debian-cis", "9.9_disable_http_server"))
 
 # debian-cis exported from its mirror and run with its paths in the environment.
 check("no mirror of debian-cis: said, pointing at the security kit", da.run_cis(T)[0]["id"] == "cis-missing")

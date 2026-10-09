@@ -80,8 +80,9 @@ A.logout(ta)
 check("logout: the session ends", A.session(ta) is None)
 tb, _ = A.login("bob", "password2")
 A.set_settings(signup="off")
-check("off again: no logins, no sessions count, no codes", A.session(tb) is None and refused(A.login, "bob", "password2", says="no accounts")
-      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="no accounts"))
+check("off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
+      A.session(tb) is None and refused(A.login, "bob", "password2", says="no accounts")
+      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="not one this box gave"))
 A.set_settings(signup="apply")
 check("  on again: the sessions count again", A.session(tb) is not None)
 A.change("x0x", "delete")
@@ -194,8 +195,17 @@ check("  while it is off: the last admin account can't be switched off, made a u
       refused(A.change, "carol", "user", True, says="last admin") and refused(A.change, "carol", "delete", True, says="last admin")
       and refused(A.set_settings, "off", None, True, says="switch it on first"))
 H.admin_login({"on": True})
-check("on again: the login as it was, the gates ask for it again", (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n"
-      and not (T / "etc" / "admin-login.off").exists() and "error_page" not in (gd / "gate-admin.conf").read_text())
+check("on again: the login as it was; with an admin account ready a browser still goes to the standard sign-in (one login)",
+      (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n" and not (T / "etc" / "admin-login.off").exists()
+      and "error_page 401 = @irate_box_login" in (gd / "gate-admin.conf").read_text() and "satisfy any" in (gd / "gate-admin.conf").read_text())
+# No admin account that can sign in: the box's own login is asked for, as before (the bridge for an older box).
+ready_was = H._admin_accounts_ready
+H._admin_accounts_ready = lambda: False
+H._access_files(H.access.read(H.ACCESS_FILE))
+check("  with no admin account ready: the box's own login prompt, as before", "error_page" not in (gd / "gate-admin.conf").read_text())
+H._admin_accounts_ready = ready_was
+H._access_files(H.access.read(H.ACCESS_FILE))
+check("  and the root helper reads readiness from the accounts themselves", H._admin_accounts_ready() is True)
 H.admin_login({"on": False})
 H.set_login("a-new-password", keep=False)
 check("  a new password (reset-password at the console): on again", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
@@ -226,12 +236,13 @@ try:
           and any(c[-2:] == ["restart", "caddy"] for c in caddy_calls if isinstance(c, list))
           and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False} and "carol" in out, (out, CF.read_text()))
     H.admin_login({"on": True})
-    check("  on again: the real hash back everywhere, the gate soft", CF.read_text().count(REAL) == 2
-          and not (T / "etc" / "admin-login.off").exists() and "soft=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
+    check("  on again: the real hash back everywhere; an admin account ready, so a browser goes to sign in, a script's login passes on",
+          CF.read_text().count(REAL) == 2 and not (T / "etc" / "admin-login.off").exists()
+          and "redirect=1&basic=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
     H.admin_login({"on": False})
     H.set_login("another-password", keep=False)
     check("  a new password while off: on again, the new hash everywhere", not (T / "etc" / "admin-login.off").exists()
-          and CF.read_text().count("$2a$14$" + "u" * 53) == 2 and "soft=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
+          and CF.read_text().count("$2a$14$" + "u" * 53) == 2 and "redirect=1&basic=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
 finally:
     H.subprocess.Popen, H.WEB_SERVER = popen, "nginx"
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The links' uptime on /admin → Network (next-work plan step 34) in jsdom, static: no hub needed.
+// The links' uptime on /admin → Network → Status (next-work plan step 34; a card per link since item 37) in jsdom, static: no hub needed.
 // uptime-fixture.json is linkhistory.summarize's own output (made by a one-off script, from real
 // record() calls) for a WiFi uplink (nothing for its first two hours, a 15-minute outage in hour
 // 10, an hour switched off, the current hour partial) and a wired link down every night; the 72
@@ -22,7 +22,7 @@ inv.wired = [{ iface: 'eth0', bus: 'platform', driver: 'rk_gmac', carrier: true 
 const now = Math.floor(Date.now() / 1000);
 const data = { inventory: inv, uptime: fixture.uptime, pending: 0, results: [],
   uplink: { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager', repairs: [], events: [],
-    chosen: { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} } },
+    chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} } },
   levels: fixture.levels };  // the watchdog's levels as network_snapshot sends them
 const errors = [];
 const vc = new VirtualConsole();
@@ -46,7 +46,7 @@ const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 setTimeout(() => {
   const d = w.document;
-  const card = (iface) => [...d.querySelectorAll('#net-devices .net-device')].find((c) => c.querySelector('h4').textContent.startsWith(iface));
+  const card = (iface) => [...d.querySelectorAll('#net-status-cards .net-card')].find((c) => c.querySelector('h4').textContent.startsWith(iface));
   const wl = card('wlan0'), up = wl && wl.querySelector('div.net-uptime');
   check('the uplink\'s card: the Uptime part shown, not folded (no expander)', up && !up.closest('details') && !up.querySelector('summary') && up.querySelector('.heatmap'));
   check('  its summary in words: the share up, the drop, the longest outage', /Up 98\.2 % over the last 72 hours \(69\.5 hours recorded\); 1 drop; longest outage 15 min,/.test(t(up && up.querySelector('.net-line'))),

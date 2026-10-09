@@ -26,10 +26,15 @@ w.fetch = async (u, opts = {}) => {
     const data = await (await fetch(new URL(u, BASE), opts)).json();
     // A real inventory (the Lyra's, 2026-10-06, its network's names taken out).
     data.inventory = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
+    // Roaming as the hardware scan reports it (item 35, stage 1): three access points, two channels, the hotspot on the radio.
+    const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
+    wl.roaming = { ssid: wl.link.ssid, aps: [{ bssid: 'aa:00:00:00:00:01', channel: 6, freq: 2437, signal: 100 }, { bssid: 'aa:00:00:00:00:02', channel: 6, freq: 2437, signal: 87 },
+      { bssid: 'aa:00:00:00:00:03', channel: 11, freq: 2462, signal: 80 }], channels: [6, 11], bgscan: 'simple:30:-65:300', nm_version: '1.52.1',
+      choices: ['roam', 'no-scan', 'lock'], why: {}, hotspot_shares: true };
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
     data.uplink = data.uplink || { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager',
-      repairs: ['reconnect'], chosen: { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} },
+      repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} },
       events: [{ at: now - 600, text: 'wlan0 down: the gateway missed 3 checks' }, { at: now - 540, text: 'Reconnected wlan0 (nmcli device connect)' },
         { at: now - 530, text: 'wlan0 up again after 70 s' }] };
     data.results = [...(data.results || []), { id: 'x', ok: true, message: 'Done.' }];
@@ -44,7 +49,7 @@ setTimeout(() => {
   const d = w.document;
   const t = (sel) => [...d.querySelectorAll(sel)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('WHEN:', t('#net-when')[0]);
-  console.log('DEVICES:', [...d.querySelectorAll('#net-device option')].map((o) => o.value || 'All').join(', '));
+  console.log('DEVICES:', [...d.querySelectorAll('#up-iface option')].map((o) => o.value).join(', '));
   // A card per device (2026-10-06): plain lines, the hotspot's conditions one per line, its warnings on it.
   const cards = [...d.querySelectorAll('#net-devices .net-device')];
   check('a card per device', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('wlan0'), cards.length);
@@ -59,9 +64,43 @@ setTimeout(() => {
   check('its own warnings on its card (3)', own === 3, own);
   // Each labelled part a section, a hairline between them (inbox, 2026-10-06: the parts ran together).
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
-  // Since #117 a device's uptime bars are a section of their own, before its warnings.
-  check('the card in sections: what, now, managed by, the hotspot, its uptime, its warnings', secs.length === 6
-    && secs.every((n) => n.querySelector('.net-line, .admin-checks, .net-uptime')) && !!secs[4].querySelector('.net-uptime'), secs.length);
+  // Since item 37 a device's uptime is on the Status tab, with the link it belongs to.
+  check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
+    && secs.every((n) => n.querySelector('.net-line, .admin-checks')) && !cards[0].querySelector('.net-uptime'), secs.length);
+  // The page in tabs by role (item 37; Tom, 2026-10-09: "tabs by role is the way to do it, with cards per device/connection type within there").
+  const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
+  check('four tabs: Status, Hardware, The box\'s access, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|The box\'s access|Hotspot');
+  const panel = (id) => d.getElementById(id);
+  check('  each part in its tab: devices on Hardware, the watchdog on access, guests\' security on Hotspot, the log on Status',
+    panel('network/hardware').contains(d.getElementById('net-devices')) && panel('network/access').contains(d.getElementById('up-pace'))
+    && panel('network/hotspot').contains(d.getElementById('hs-modes')) && panel('network/hotspot').contains(d.getElementById('guest-net-box'))
+    && panel('network/status').contains(d.getElementById('up-events')));
+  const sc = [...d.querySelectorAll('#net-status-cards .net-card')];
+  check('Status: a card per link, with its uptime', sc.length === 1 && /wlan0/.test(sc[0].querySelector('h4').textContent) && !!sc[0].querySelector('.net-uptime')
+    && /the box's link/.test(sc[0].textContent), sc.map((c) => c.textContent.slice(0, 80)));
+  check('  one line for the whole', /reaches your network through wlan0 \(WiFi\)/.test(t('#net-overview')[0]), t('#net-overview')[0]);
+  check('Access: WiFi now, and the networks it knows', /ExampleWiFi/.test(t('#net-wifi-now')[0]) && d.querySelectorAll('#net-saved li').length >= 1
+    && /in use/.test(t('#net-saved')[0]), t('#net-saved')[0]);
+  w.location.hash = '#network/hotspot';
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('an address opens its tab (#network/hotspot)', !panel('network/hotspot').hidden && panel('network/status').hidden
+    && d.getElementById('tab-net-hotspot').getAttribute('aria-selected') === 'true');
+  w.location.hash = '#up-sens';
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('  and so does any setting\'s own (#up-sens on access)', !panel('network/access').hidden);
+  // A network for the box to join (item 37): open hides the password; each add asked first; the form sent and the password cleared.
+  const jf = d.getElementById('net-join-form');
+  jf.elements.ssid.value = 'Cafe'; jf.elements.security.value = 'open'; jf.elements.security.dispatchEvent(new w.Event('change'));
+  check('join: an open network asks no password', d.getElementById('net-join-psk').hidden && !jf.elements.psk.required);
+  jf.elements.security.value = 'wpa-psk'; jf.elements.security.dispatchEvent(new w.Event('change'));
+  jf.elements.psk.value = 'a-long-secret';
+  let asked = '';
+  w.confirm = (q) => { asked = q; return true; };
+  d.getElementById('net-join-now').click();
+  w.confirm = () => true;
+  const sentJoin = posted.find((p) => p.action === 'join');
+  check('  Add and join it now: warned the page may lose the box, sent, the password cleared from the form', /may lose the box/.test(asked)
+    && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
@@ -81,27 +120,49 @@ setTimeout(() => {
   console.log('FIELDS:', [...d.querySelectorAll('#up-fields [data-key]')].map((i) => `${i.dataset.key}=${i.value || '(' + (i.placeholder || i.options?.[0]?.textContent) + ')'}`).join('  '));
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
-  // Staying on the network: eagerness and forgiveness both as radio cards (2026-10-06).
-  const rungs = [...d.querySelectorAll('#up-eager .choice-tile')];
-  check('eagerness: five cards, off to stubborn', rungs.map((r) => r.querySelector('input').value).join(' ') === 'off patient standard persistent stubborn',
-    rungs.map((r) => r.querySelector('input').value).join(' '));
-  check('every card shows its description and what it does', rungs.every((r) => r.querySelectorAll('.setting-desc').length === 2 && r.querySelector('.choice-does').textContent.length > 10));
-  check('the chosen level is marked', rungs.filter((r) => r.classList.contains('chosen')).length === 1);
-  check('stubborn\'s line says it reboots', /reboots after 30 min/.test(rungs[4].querySelector('.choice-does').textContent), rungs[4].querySelector('.choice-does').textContent);
-  check('off\'s line says it never acts', /never acts/.test(rungs[0].querySelector('.choice-does').textContent));
-  const frungs = [...d.querySelectorAll('#up-forgive .choice-tile')];
-  check('forgiveness: radio cards too, tolerant to strict', frungs.map((r) => r.querySelector('input').value).join(' ') === 'tolerant normal strict'
-    && frungs.every((r) => r.querySelectorAll('.setting-desc').length === 2) && frungs.filter((r) => r.classList.contains('chosen')).length === 1);
-  check('no toggle left on the page', !d.querySelector('#up-forgive button'));
+  // Staying on the network: two dials, pace and reach (Tom, 2026-10-09), guests, a wedged driver and
+  // the sensitivity, a number of missed checks (Tom, 2026-10-09), each choice as radio cards (2026-10-06).
+  const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
+  const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
+  const pace = tiles('up-pace'), reach = tiles('up-reach');
+  check('pace: four cards, gentle to urgent', vals('up-pace') === 'gentle steady prompt urgent', vals('up-pace'));
+  check('reach: five cards, watch to reboot', vals('up-reach') === 'watch reconnect restart radio reboot', vals('up-reach'));
+  check('guests and a wedged driver: two cards each', vals('up-guests') === 'protect ignore' && vals('up-wedge') === 'ladder radio');
+  check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2
+    && r.querySelector('.choice-does').textContent.length > 10));
+  check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
+  check('the gentle pace\'s line says when each step comes', /reboots after 2 h — each only if the reach goes that far/.test(pace[0].querySelector('.choice-does').textContent),
+    pace[0].querySelector('.choice-does').textContent);
+  check('watch\'s line says it never acts', /never acts/.test(reach[0].querySelector('.choice-does').textContent));
+  const sens = d.getElementById('up-sens');
+  check('sensitivity: a number, 1 to 20, 3 to start, said for the pace (30 min for gentle)', sens.type === 'number' && sens.min === '1' && sens.max === '20'
+    && sens.value === '3' && /3 missed checks \(or drops of the link\) within 30 min/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
+  check('no forgiveness left on the page', !d.getElementById('up-forgive') && !/[Ff]orgiveness/.test(d.getElementById('network').textContent));
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
   check('Save is off until something changes', save.disabled && save.textContent === 'Save');
-  rungs[4].querySelector('input').click();
-  check('choosing stubborn marks it, and Save comes on', rungs[4].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
-  check('the sentence follows: it reboots', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
-  frungs[2].querySelector('input').click();
-  check('strict chosen, its card says what it does', frungs[2].classList.contains('chosen') && /Down after 2 failed checks and 15 s more/.test(frungs[2].querySelector('.choice-does').textContent),
-    frungs[2].querySelector('.choice-does').textContent);
+  // Roaming (item 35; Tom, 2026-10-09: R1 a checkbox to ignore, R3 "it should roam naturally"): three tiles, roam chosen; a checkbox apart.
+  check('roaming: three tiles, Roam naturally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
+    && tiles('up-roaming')[0].classList.contains('chosen') && !d.getElementById('up-ignore-roams').checked, vals('up-roaming'));
+  check('  the WiFi card says how many access points share the network, and that the hotspot moves with it', /3 access points share .*channel 6, channel 11/.test(t('#net-roaming')[0])
+    && /hotspot shares this radio/.test(t('#net-roaming')[0]), t('#net-roaming')[0]);
+  check('  Hardware lists the access points and the choices that work here', /aa:00:00:00:00:03 ch 11/.test(t('#net-roam-caps')[0]) && /Lock to one access point: yes/.test(t('#net-roam-caps')[0]));
+  tiles('up-roaming')[2].querySelector('input').click();
+  const lockAps = d.getElementById('up-lock-aps');
+  check('  choosing the lock shows the access points, the strongest preselected', !lockAps.hidden && lockAps.querySelectorAll('input').length === 3
+    && lockAps.querySelector('input:checked').value === 'aa:00:00:00:00:01');
+  tiles('up-roaming')[0].querySelector('input').click();
+  check('  back to roaming: the picker goes', lockAps.hidden);
+  pace[3].querySelector('input').click();
+  check('choosing urgent marks it, and Save comes on', pace[3].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
+  check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
+  reach[3].querySelector('input').click();
+  check('reach radio: the sentence says it never reboots', /resets the radio after 8 min/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
+  sens.value = '2'; sens.dispatchEvent(new w.Event('input'));
+  check('sensitivity 2: the sentence follows (2 checks within urgent\'s 2 minutes)', /When 2 checks have failed, or the link has dropped, within 2 min/.test(t('#up-will')[0]), t('#up-will')[0]);
+  sens.value = '9'; sens.dispatchEvent(new w.Event('input'));
+  check('  a number the checks alone can\'t reach in the window is said so', /Only 5 checks fit that window/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
+  sens.value = '2'; sens.dispatchEvent(new w.Event('input'));
   const reboot = d.querySelector('[data-key="steps.reboot"]'); reboot.value = 'off'; reboot.dispatchEvent(new w.Event('input'));
   const chk = d.querySelector('[data-key="check"]'); chk.value = '45'; chk.dispatchEvent(new w.Event('input'));
   check('custom values change the sentence', /every 45 s/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
@@ -114,7 +175,8 @@ setTimeout(() => {
   }, 1500);
   setTimeout(() => {
     const sent = posted.find((p) => p.action === 'settings');
-    check('Save posts the levels and custom values', sent && sent.settings.eagerness === 'stubborn' && sent.settings.forgiveness === 'strict'
+    check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
+      && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.sensitivity === 2
       && sent.settings.overrides.check === 45 && sent.settings.overrides.steps.reboot === null, JSON.stringify(posted));
     check('a bad custom value is refused on the page', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-note')[0] || ''), t('#up-note')[0]);
     check('no page errors', errors.length === 0, errors.join(' | '));

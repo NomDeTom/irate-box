@@ -209,7 +209,7 @@ function sourceRow(src, st, busy) {
   const fetched = st.fetched && st.fetched.version === latest.version ? st.fetched : null;
   return el('div', { className: 'setting library-source' },
     el('span', {},
-      el('span', { className: 'setting-name', textContent: `${src.name}.zim` }),
+      el('span', { className: 'setting-name' }, `${src.name}.zim `, AW.updatePill(st.last_check, newer, !!st.error)),
       el('span', { className: 'setting-desc', textContent: `${src.type}: ${where(src)}` }),
       el('span', { className: 'setting-desc',
         textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : 'Not installed by the librarian yet' }),
@@ -220,10 +220,10 @@ function sourceRow(src, st, busy) {
       st.last_check ? el('span', { className: 'setting-desc', textContent: `Checked ${st.last_check}: ${st.outcome || ''}` }) : null,
       st.error ? el('span', { className: 'setting-desc bad', textContent: st.error }) : null,
       el('span', { className: 'library-buttons' },
-        button('Check', { action: 'check', names: [src.name] }),
+        button('Check now', { action: 'check', names: [src.name] }),
         button('Fetch', { action: 'fetch', names: [src.name] }, null, {
           off: !newer || fetched, title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '' }),
-        button('Update', { action: 'update', names: [src.name] }),
+        button('Install', { action: 'update', names: [src.name] }),
         archive.length ? button('Roll back', { action: 'rollback', name: src.name },
           `Put ${archive[0]} back as ${src.name}.zim? The current version is archived.`) : null,
         button('Remove', { action: 'remove', name: src.name },
@@ -265,15 +265,16 @@ function renderApps(snap, busy) {
       st.error || null,
     ];
     return el('div', { className: 'setting library-source' }, el('span', {},
-      el('span', { className: 'setting-name', textContent: a.title }),
+      // Only an app with a source is checked for updates; one with none is said so below.
+      el('span', { className: 'setting-name' }, a.title, src ? ' ' : null, src ? AW.updatePill(st.last_check, newer, !!st.error) : null),
       withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
         el('button', { type: 'button', className: 'action-btn', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
           title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Install', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
         inst && inst.has_previous ? el('button', { type: 'button', className: 'action-btn', textContent: 'Roll back', disabled: busy,
           onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null,
         a.pin ? el('button', { type: 'button', className: 'action-btn', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
@@ -333,7 +334,7 @@ document.getElementById('library-adapt-off').addEventListener('click', async () 
   const at = noteEl('library-token-note');
   try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
 });
-document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
+document.querySelectorAll('[data-all], [data-mirrors-all]').forEach((b) => { b.disabled = busy; });
   document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
@@ -343,6 +344,8 @@ document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
     const field = lib.policy.elements[k];
     if (field && document.activeElement !== field) field.value = String(v);
   }
+  lastPolicy = snap.policy;
+  fillSurfaces(snap.policy);
   // GitHub's hourly allowance, as the last check saw it (librarian.py: rate): low, the scheduled
   // checks wait for the next hour rather than fail.
   const gh = snap.github || {};
@@ -397,7 +400,7 @@ lib.add.addEventListener('submit', async (e) => {
   }
   try {
     renderLibrary(await libPost({ action: 'add', source }));
-    say(`Added ${source.name}. Use Check or Update to fetch it.`, true, noteEl('library-add-note'));
+    say(`Added ${source.name}. Use Check now, then Fetch or Install.`, true, noteEl('library-add-note'));
     lib.add.reset();
     showTypeFields();
   } catch (err) { say(`Could not add the source: ${err.message}`, false, noteEl('library-add-note')); }
@@ -409,6 +412,26 @@ lib.policy.addEventListener('submit', async (e) => {
   const at = noteEl('library-policy-note');
   try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
+// Item 36: the mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
+const surfaceForms = [...document.querySelectorAll('form.surface-policy')];
+function fillSurfaces(policy) {
+  for (const f of surfaceForms) {
+    if (f.contains(document.activeElement) || f.dataset.dirty) continue;
+    f.querySelectorAll('select[name]').forEach((s) => { if (policy[s.name] != null) s.value = String(policy[s.name]); });
+  }
+}
+for (const f of surfaceForms) {
+  f.addEventListener('change', () => { f.dataset.dirty = '1'; });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { action: 'policy' };
+    f.querySelectorAll('select[name]').forEach((s) => { if (s.name in (lastPolicy || {})) body[s.name] = Number(s.value); });
+    const at = f.nextElementSibling;
+    try { delete f.dataset.dirty; renderLibrary(await libPost(body)); say('Saved. The librarian follows it from its next round (hourly).', true, at); } catch (err) { say(err.message, false, at); }
+  });
+}
+let lastPolicy = null;
+document.querySelectorAll('[data-mirrors-all]').forEach((b) => b.addEventListener('click', () => libAct('all', { action: b.dataset.mirrorsAll, names: ['mirrors'] })));
 lib.token.addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
@@ -569,7 +592,6 @@ loadLibrary();
 // --- packages from their makers (root/pkgwatch.py: meshtasticd on its channel) ------------------------
 // Tom, 2026-10-08: "automatically update against beta, alpha or nightly, or alpha/nightly after a certain
 // period of time"; on mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
-const PKG_MODES = [['watch', 'Watch'], ['auto', 'Automatic'], ['aged', 'After a while']];
 let pkgWaiting = null;
 async function loadPackages() {
   const box = document.getElementById('pkg-list');
@@ -584,7 +606,7 @@ async function loadPackages() {
   const pkgs = Object.entries(d.packages || {});
   box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => pkgCard(id, p))
     : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
-      el('p', { className: 'library-buttons' }, actionButton('Check', () => pkgAct({ action: 'check', package: '' })))]));
+      el('p', { className: 'library-buttons' }, actionButton('Check now', () => pkgAct({ action: 'check', package: '' })))]));
 }
 async function pkgAct(body, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
@@ -606,29 +628,40 @@ function pkgCard(id, p) {
       : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
         : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
     newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}.` : 'Not checked yet.',
-    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (watching only: press Update to install it).' : ', at the next check.')
+    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (Flag only: press Install to install it).' : ', at the next check.')
       : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
-        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Update installs it anyway.' : null,
+        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Install installs it anyway.' : null,
     s.mode === 'aged' ? `apt upgrade leaves it alone while it waits (${p.held ? 'held' : 'not held yet'}).` : null,
     p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
   ];
   const kept = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
     el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
+  // Item 36's pattern: how often to look, and Flag or Install (each build is kept when first seen, so
+  // fetching is part of every look), Install with a wait (Tom, 2026-10-08: "alpha/nightly after a certain
+  // period of time"): at once is the old Automatic, a wait the old After a while.
+  const act = s.mode === 'watch' ? 0 : 2, wait = s.mode === 'aged' ? s.days : 0;
+  const pat = (list) => list.filter(([v]) => v !== '1').map(([v, t]) => [Number(v), t]);
   const settings = AW.settings([
     { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
-    { key: 'mode', label: 'Updates', kind: 'choice', value: s.mode, options: PKG_MODES,
-      note: 'Watch says what is newer; Automatic installs each new build; After a while installs a build once it has been out the days below' },
-    { key: 'days', label: 'After', kind: 'choice', value: s.days, options: (p.days || [1, 3, 7, 14, 30]).map((n) => [n, `${n} day${n === 1 ? '' : 's'}`]) },
-  ], { save: (v) => pkgAct({ action: 'settings', package: id, channel: v.channel, mode: v.mode, days: v.days },
-    v.mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(v.channel)} by itself${v.mode === 'aged' ? ` once they have been out ${v.days} day${v.days === 1 ? '' : 's'}` : ''}? `
-      + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null) });
+    { key: 'every', label: 'How often to look', kind: 'choice', value: s.every ?? 24, options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]) },
+    { key: 'act', label: 'When something newer is found', kind: 'choice', value: act, options: pat(AW.UPDATE_ACT),
+      note: 'Each new build is downloaded and kept when first seen (so Roll back works offline): Flag says so, Install also installs it' },
+    { key: 'wait', label: 'Install', kind: 'choice', value: wait, options: [[0, 'at once']].concat((p.days || [1, 3, 7, 14, 30]).map((n) => [n, `after ${n} day${n === 1 ? '' : 's'}`])),
+      note: 'With Install: a build waits until it has been out this long (alpha and nightly builds are untested)' },
+  ], { save: (v) => {
+    const all = { channel: s.channel, every: s.every ?? 24, act, wait, ...v };
+    const mode = all.act === 0 ? 'watch' : all.wait ? 'aged' : 'auto', days = all.wait || s.days;
+    return pkgAct({ action: 'settings', package: id, channel: all.channel, mode, days, every: all.every },
+      mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
+        + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
+  } });
   return el('div', { className: 'setting library-source' }, el('span', {},
-    el('span', { className: 'setting-name', textContent: p.title }),
+    el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
     kept, settings,
     el('span', { className: 'library-buttons' },
-      actionButton('Check', () => pkgAct({ action: 'check', package: id })),
-      newest && newest.version !== p.installed ? actionButton(`Update to ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
+      actionButton('Check now', () => pkgAct({ action: 'check', package: id })),
+      newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
       p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));
 }
@@ -667,7 +700,8 @@ const actionButton = (label, onclick, extra = {}) =>
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };
-const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Start at boot', disable: "Don't start at boot" };
+const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Enable', disable: 'Disable' };
+const OP_TITLE = { enable: 'Start at boot', disable: "Don't start at boot" };  // Tom, 2026-10-09: the buttons say Enable / Disable
 let boxPoll = null;
 let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
 const controlNote = noteEl('control-note');
@@ -733,7 +767,7 @@ function renderBox(data) {
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
       el('td', {}, serviceStrips(s, data.service_uptime)),
       el('td', {}, el('span', { className: 'library-buttons' },
-        ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op)))))),
+        ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op), OP_TITLE[op] ? { title: OP_TITLE[op] } : {}))))),
     );
   });
   document.querySelector('#service-table tbody').replaceChildren(...rows);
@@ -1034,16 +1068,16 @@ function renderUpdate(data) {
   const fetched = found && !!(s.checks && s.checks.length);
   const ready = found && s.verified === s.available;
   if (!s) {
-    upd.summary.textContent = 'Not checked yet.';
+    upd.summary.replaceChildren(AW.updatePill(null, false), ' Not checked yet.');
   } else {
     const when = new Date(s.fetched * 1000).toLocaleString();
-    upd.summary.textContent = s.up_to_date
+    upd.summary.replaceChildren(AW.updatePill(s.fetched, found), ' ', s.up_to_date
       ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
       : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
         (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
         `. Checked ${when}. ` + (ready ? 'Fetched and verified, and its downloads are cached: ready to install.'
           : fetched ? 'It did not pass verification (below), so it cannot be installed.'
-          : 'Fetch it to verify it and download what it needs.');
+          : 'Fetch it to verify it and download what it needs.'));
   }
   const checks = (fetched && s.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
@@ -1123,9 +1157,6 @@ upd.doctor.addEventListener('click', () => requestUpdate('doctor'));
 upd.clear.addEventListener('click', () => {
   if (confirm('Remove the cached copy and downloads? The next check starts afresh.')) requestUpdate('clear-cache');
 });
-document.getElementById('backup-with-keys').addEventListener('click', (e) => {
-  if (!confirm("This backup includes Syncthing's private keys. Anyone with the file can pose as this box to its Syncthing peers. Download it?")) e.preventDefault();
-});
 upd.install.addEventListener('click', () => requestUpdate('install'));
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
@@ -1169,7 +1200,11 @@ const sec = {
   when: document.getElementById('security-when'),
   scan: document.getElementById('security-scan'),
   note: document.getElementById('security-note'),
+  counts: document.getElementById('security-counts'),
   findings: document.getElementById('security-findings'),
+  hub: document.getElementById('security-hub'),
+  set: document.getElementById('security-set'),
+  setCount: document.getElementById('security-set-count'),
   listeners: document.querySelector('#security-listeners tbody'),
   output: document.getElementById('security-output'),
   log: document.getElementById('security-log'),
@@ -1187,6 +1222,7 @@ let secWaiting = null; // { id, fid }: a request, and the line its answer goes u
 let secNote = null; // { fid, text, ok }
 let secPoll = null;
 let secAsked = false;
+let secData = null; // the last /admin/security, for redraws (accepting, filtering)
 
 // Which page a line of the box's scan belongs on (S1, done in the page: the root helper and its
 // allow-list are untouched). A cure has one right answer (5d): the kernel's protections, root's own
@@ -1197,21 +1233,90 @@ const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
 function secKind(f) {
   if (f.id === 'security-updates' || f.id === 'unattended') return 'update';
   if (CURE_ID.test(f.id) || (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))) return 'cure';
+  // A port is in the listening table; one that offers a choice (Cockpit, a service to stop) is a choice too.
+  if (/^port-/.test(f.id) && (f.status === 'ok' || !(f.actions || []).length)) return 'port';
   return 'choice';
 }
 // Passwordless sudo as a toggle (Tom, 2026-10-08: "I like the idea of a toggle"): On while a
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
 function sudoToggle(f, busy) {
-  return el('span', { className: 'library-buttons' }, ...f.actions.map((a) => {
+  return f.actions.map((a) => {
     const on = /^sudo-drop:/.test(a.choice), file = a.choice.split(':')[1];
     const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : ''), disabled: busy,
       textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secFix(f.id, a) });
     b.setAttribute('aria-pressed', String(on));
     return b;
-  }));
+  });
+}
+// A line of the box's scan: its buttons, each acting through the root helper (only what its last scan offered).
+function scanButtons(f, busy) {
+  if (f.id === 'sudo-nopasswd') return sudoToggle(f, busy);
+  return (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
+    onclick: () => secFix(f.id, a) }));
+}
+
+// --- one finding, the same shape on every page (item 11; Tom, 2026-10-09: "lists of emoji checks or
+// warnings with vague information is totally unactionable") -------------------------------------------
+// A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
+// link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
+const STATE_WORD = { problem: 'To fix', warn: 'To look at', ok: 'Fine', suggest: 'Suggestion', 'not-here': 'Not for this box',
+  accepted: 'Accepted', fixed: 'Put right' };
+function copyBox(cmd) {
+  const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
+  b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(cmd); b.textContent = 'Copied'; } catch (_) { b.textContent = 'Select it and copy'; }
+    setTimeout(() => { b.textContent = 'Copy'; }, 2000);
+  });
+  return el('span', { className: 'fdo-cmd' }, el('code', { textContent: cmd }), b);
+}
+// r: {id, state, title, detail, how, controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
+function findingRow(r) {
+  const state = r.state || 'warn';
+  return el('article', { className: `finding finding-${state}`, id: r.id || '' },
+    el('div', { className: 'fhead' },
+      el('span', { className: `fstate fstate-${state}`, textContent: STATE_WORD[state] || state }),
+      el('h4', { className: 'ftitle', textContent: r.title }),
+      r.badge || null,
+      r.meta ? el('span', { className: 'fmeta', textContent: r.meta }) : null),
+    r.detail ? el('p', { className: 'fdetail', textContent: r.detail }) : null,
+    (r.how || (r.controls || []).length) ? el('div', { className: 'fdo' },
+      r.how ? el('p', { className: 'fhow' }, el('span', { className: 'fdo-label', textContent: state === 'ok' || state === 'fixed' ? 'Undo: ' : 'What to do: ' }), r.how) : null,
+      (r.controls || []).length ? el('div', { className: 'fdo-controls' }, ...r.controls) : null) : null,
+    r.note || null,
+    // The deep audit's checks one by one (deepaudit.cis_findings): what each wants, what it found, its own fix.
+    (r.checks || []).length ? el('details', { className: 'fsaid fchecks' }, el('summary', { textContent: `Each check, with its fix (${r.checks.length})` }),
+      el('ul', {}, ...r.checks.map((c) => el('li', {},
+        el('strong', { textContent: (c.check || '').replace(/^[\d.]+_/, '').replace(/_/g, ' ') }), c.what ? ` — ${c.what}` : '',
+        (c.msgs || []).length ? el('span', { className: 'setting-desc', textContent: ` Found: ${c.msgs.join('; ')}.` }) : null,
+        c.say ? el('span', { className: 'setting-desc', textContent: ` ${c.say}` }) : null,
+        c.cmd ? el('div', {}, copyBox(c.cmd)) : null)))) : null,
+    (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `What each source said (${r.said.length})` }),
+      el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
+        el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
+        l.fix ? el('span', { className: 'setting-desc', textContent: ` To do: ${l.fix}` }) : null)))) : null,
+    r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'link-button',
+      textContent: r.accept.on ? 'Take back: list it again' : 'Accept as it is',
+      title: r.accept.on ? 'Back among what is to fix or look at' : 'You have looked at it and are happy to leave it: it moves to "Accepted by you" and stops counting',
+      onclick: () => secAccept(r.accept.key, r.accept.title, !r.accept.on) })) : null);
+}
+const noteUnder = (fid) => (secNote && secNote.fid === fid
+  ? el('p', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
+async function secAccept(key, title, yes) {
+  try {
+    const r = await postJSON('/admin/security', { action: yes ? 'accept' : 'unaccept', key, title });
+    if (secData) { secData.accepted = r.accepted; renderSecurity(secData); }
+  } catch (err) { say(err.message, false, sec.auditNote); }
+}
+async function healthRepair(choice, label, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try {
+    await postJSON('/admin/health', { action: 'fix', choice });
+    say(`${label}: asked; the Box doctor shows its progress and answer.`, true, sec.auditNote);
+  } catch (err) { say(err.message, false, sec.auditNote); }
 }
 
 function renderSecurity(data) {
+  secData = data;
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
   if (secWaiting) {
@@ -1222,29 +1327,36 @@ function renderSecurity(data) {
       return renderSecurity(data);
     }
   }
-  const all = [...data.hub, ...(scan ? scan.findings : [])].sort((a, b) => RANK[a.status] - RANK[b.status]);
-  const shown = new Set(all.map((f) => f.id));
-  const noteUnder = (fid) => (secNote && secNote.fid === fid
-    ? el('span', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
-  const line = (f) => el('li', { className: `check check-${f.status}` },
-    el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
-    el('span', { textContent: ` — ${f.detail}` }),
-    f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
-    f.id === 'sudo-nopasswd' ? sudoToggle(f, busy) : f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
-    }))) : null,
-    noteUnder(f.id));
-  // Each where it belongs (checklist 4d, 5d; S of the menu overhaul): the real choices here, the
-  // cures beside the doctor's findings, Debian's security updates on Updates. The same scan and the
-  // same fix request everywhere, so root's rule (only what its last scan offered) is unchanged.
-  const by = (k) => all.filter((f) => secKind(f) === k);
-  sec.findings.replaceChildren(...by('choice').map(line));
-  noteEl('secdoctor-cures').replaceChildren(...(by('cure').length ? by('cure').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to cure.' : 'Not scanned yet.' })]));
-  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
+  const lines = scan ? scan.findings : [];
+  const shown = new Set(lines.map((f) => f.id));
+  const by = (k) => lines.filter((f) => secKind(f) === k).sort((a, b) => RANK[a.status] - RANK[b.status]);
+  const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
+    how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Nothing to press: it is said so you know.'),
+    controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
+  // The real choices: what waits for one first, what is set (with its Undo) in a fold.
+  const waiting = by('choice').filter((f) => f.status !== 'ok'), set = by('choice').filter((f) => f.status === 'ok');
+  sec.findings.replaceChildren(...(waiting.length ? waiting.map((f) => row(f))
+    : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing: every choice here is made.' : 'Not scanned yet.' })]));
+  sec.set.replaceChildren(...set.map((f) => row(f, { how: f.actions.length ? 'Each change made here can be put back as it was.' : '' })));
+  sec.setCount.textContent = `(${set.length})`;
+  // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
+  sec.hub.replaceChildren(...data.hub.map((f) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
+    how: (f.do && f.do.hub) || f.fix || '', controls: f.do && f.do.go ? [el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })] : [] })));
+  // Debian's security updates, on Updates.
+  // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's (Tom, 2026-10-09).
+  // Its badge (up to date / update available) is as fresh as the package lists it was read from.
+  // Lists of unknown age say nothing either way, unless updates are waiting.
+  const updBadge = (f) => (f.id !== 'security-updates' || (f.lists_age_days == null && f.status === 'ok') ? null
+    : AW.updatePill(Date.now() / 1000 - (f.lists_age_days || 0) * 86400, f.status !== 'ok'));
+  // The choice and the three buttons are the update pattern's (item 36), under the two lines.
+  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix,
+    controls: f.id === 'security-updates' ? [] : scanButtons(f, busy), badge: updBadge(f) }))
+    : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
+  drawDebianPattern(lines, busy);
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
-  // The security doctor is its own pane (Health), with its answer under its button.
+  // The security doctor is its own pane (Health), with its answer under its buttons.
   const auditSaid = secNote && secNote.fid === 'audit' ? secNote : null;
   say(auditSaid ? auditSaid.text : '', auditSaid ? auditSaid.ok : true, sec.auditNote);
 
@@ -1258,16 +1370,34 @@ function renderSecurity(data) {
     ? `Deep audit running: ${deep.progress.step} (${deep.progress.n} of ${deep.progress.total})…`
     : (deep.at ? `Last deep audit ${new Date(deep.at * 1000).toLocaleString()}, ${Math.round((deep.took || 0) / 60)} min. ` : 'No deep audit yet. ')
       + 'It runs debian-cis\'s CIS benchmark checks and Lynis (about 8 minutes on a small board), weekly while the Security kit is kept current.';
-  renderAudit(data.audit, busy);
+  renderAudit(data.audit, busy, data);
   renderImports(data.imports);
-  sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => el('tr', {},
-    el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
-    el('td', {}, el('span', { className: 'setting-name', textContent: l.name }),
-      el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
-    el('td', { textContent: l.addr }))));
+  // Each port with the scan's word on it and, where there is one, its button: no separate list of ports.
+  const portLine = new Map(lines.filter((f) => /^port-/.test(f.id)).map((f) => [f.id, f]));
+  sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => {
+    // TCP and UDP of one service share a line (LLMNR); SSH's port is said with SSH's own settings.
+    const f = portLine.get(`port-${l.proto}-${l.port}`) || portLine.get(`port-${l.proto === 'tcp' ? 'udp' : 'tcp'}-${l.port}`);
+    const ssh = !f && l.proto === 'tcp' && l.port === 22;
+    return el('tr', { id: f && secKind(f) === 'port' ? `sec-${f.id}` : '' },
+      el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
+      el('td', {}, el('span', { className: 'setting-name', textContent: f ? f.title : l.name }),
+        el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
+      el('td', { textContent: l.addr }),
+      el('td', {}, f ? el('span', { className: `fstate fstate-${f.status}`, textContent: f.status === 'ok' ? 'Yes' : STATE_WORD[f.status] }) : null,
+        f ? el('span', { className: 'setting-desc', textContent: ` ${f.detail.replace(/^(TCP|UDP) \d+ on .*?\.\s+/, '')}` }) : null,
+        ssh ? el('a', { href: '#sec-ssh-password', textContent: 'Who may log in, and how: SSH\'s settings' }) : null,
+        f && f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: ` ${f.fix}` }) : null,
+        f && f.actions.length ? el('span', { className: 'library-buttons' }, ...scanButtons(f, busy)) : null, f ? noteUnder(f.id) : null));
+  }));
   sec.output.hidden = !data.log.length;
   sec.log.textContent = data.log.join('\n');
-  const problems = by('choice').filter((f) => f.status === 'problem').length;
+  const problems = waiting.filter((f) => f.status === 'problem').length;
+  const ports = lines.filter((f) => /^port-/.test(f.id) && f.status !== 'ok').length;
+  sec.counts.replaceChildren(...[
+    [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
+    [ports, `port${ports === 1 ? '' : 's'} worth a look`, ports ? 'warn' : 'ok', 'security-ports'],
+    [set.length, 'set', 'ok', 'security-set-fold']].map(([n, word, st, to]) =>
+    el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
   badge('security', problems ? String(problems) : '');
   const updProblems = by('update').filter((f) => f.status === 'problem').length;
   badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention (F4) words it
@@ -1279,8 +1409,6 @@ function renderSecurity(data) {
   if (busy) secPoll = setTimeout(loadSecurity, 2000);
 }
 
-// The security doctor's report (secdoctor.py): one block per step, the steps with something to
-// look at open. Read-only, so a line has no buttons, only what to do by hand.
 // --- the joint report (secdoctor.joint): what several sources say about one thing, once ------------
 const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page', debsecan: 'debsecan', 'debian-cis': 'debian-cis',
   lynis: 'Lynis', openvas: 'OpenVAS', nmap: 'nmap' };
@@ -1288,42 +1416,101 @@ const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page
 // tracker data is fetched daily, the Security page scans when opened, imported scans are by hand.
 const STALE_DAYS = { doctor: 1, 'security-page': 1, debsecan: 3, 'debian-cis': 8, lynis: 8, openvas: 30, nmap: 30 };
 const srcWords = (list) => list.map((x) => SOURCE_WORDS[x] || x).join(', ');
-function renderJoint(j) {
+let jointShow = 'all'; // the counters double as the list's filter: all, problem, warn
+const jointSearch = document.getElementById('joint-search');
+jointSearch.addEventListener('input', () => secData && renderJoint(secData.audit && secData.audit.joint, secData));
+
+// What to do about one item: the Security page's buttons for its lines (from its scan now), the box
+// doctor's repair, the deep audit, a link to where it is chosen, a command; and the words for it.
+function jointDo(i, data, busy) {
+  const scanBy = new Map(((data.scan || {}).findings || []).map((f) => [f.id, f]));
+  const page = (i.page || []).map((id) => scanBy.get(id)).filter(Boolean);
+  const seen = new Set(), controls = [];
+  for (const f of page) {
+    if (f.id === 'sudo-nopasswd') { controls.push(...sudoToggle(f, busy)); continue; }
+    for (const a of f.actions || []) {
+      if (seen.has(a.choice)) continue;
+      seen.add(a.choice);
+      controls.push(el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a) }));
+    }
+  }
+  const d = i.do || {};
+  if (d.repair === 'rerun-install') {
+    controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the installer again', disabled: busy,
+      onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run install.sh again with this box\'s recorded options? Services restart once; nothing else changes.') }));
+  }
+  if (d.act === 'deep') controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the deep audit', disabled: busy, onclick: () => sec.auditDeep.click() }));
+  if (d.go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${d.go}`, textContent: `Go to ${d.where} →` }));
+  if (d.cmd || i.cmd) controls.push(copyBox(d.cmd || i.cmd));
+  // The words: the hub's own work said as such; else the Security page's (it goes with its buttons); else the item's.
+  const pageFix = page.map((f) => f.fix).find(Boolean);
+  const how = d.hub || d.say || (page.length && page.some((f) => (f.actions || []).length) ? pageFix || '' : '') || i.fix
+    || (controls.length ? '' : 'Nothing to press: it is said so you know.');
+  // Put right since the doctor ran: every Security page line in it is fine now.
+  const fixed = page.length > 0 && page.length === (i.page || []).length && page.every((f) => f.status === 'ok');
+  return { controls, how, fixed, page };
+}
+
+function jointRow(i, data, busy, accepted) {
+  const { controls, how, fixed } = jointDo(i, data, busy);
+  const isNew = ((data.audit || {}).new || []).some((id) => i.lines.some((l) => l.id === id));
+  const meta = [i.area, i.sources.length > 1 ? `${i.sources.length} sources agree` : `from ${srcWords(i.sources)}`,
+    i.alone ? `${srcWords(i.could_see)} could have seen it and did not` : '', isNew ? 'new since the last run' : ''].filter(Boolean).join(' · ');
+  const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].detail !== i.detail) ? i.lines : [];
+  return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
+    title: i.title, detail: i.detail, how: fixed ? 'Put right here since the doctor last ran; it drops off at its next run.' : how,
+    controls, meta, said, checks: i.checks, note: (i.page || []).map(noteUnder).find(Boolean) || null,
+    accept: { key: i.key, title: i.title, on: !!accepted } });
+}
+
+function renderJoint(j, data) {
   const box = (id) => document.getElementById(id);
-  if (!j) { box('joint-summary').textContent = 'Run the doctor to see it.'; box('joint-items').replaceChildren(); return; }
-  const a = j.after || { problem: 0, warn: 0 };
-  box('joint-summary').textContent = `After merging what the sources agree on: ${a.problem} to fix, ${a.warn} to look at` +
-    (j.agreed_ok ? `; ${j.agreed_ok} thing${j.agreed_ok === 1 ? '' : 's'} several sources agree are fine` : '') + '.';
-  const items = (j.items || []);
-  // One list, worst first (item 11 step 4): filters for to fix / to look at, the area and the sources, and a
-  // search; each entry opens to who said it, what they said, and what to do.
-  const WORD = { problem: 'to fix', warn: 'to look at', ok: 'fine' };
-  const RANK = { problem: 0, warn: 1, ok: 2 };
-  box('joint-items').replaceChildren(AW.shortList([...items].sort((x, y) => RANK[x.status] - RANK[y.status]).map((i, n) => ({
-    id: `joint-${n}`, title: `${MARK[i.status]} ${i.title}`,
-    summary: i.sources.length > 1 ? `${i.sources.length} sources agree` : `said by ${srcWords(i.sources)}`,
-    badges: [WORD[i.status] || i.status, i.about.kind, ...i.sources.map((x) => SOURCE_WORDS[x] || x)],
-    detail: () => [
-      el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree: ${srcWords(i.sources)}.` : `Said by ${srcWords(i.sources)}.` }),
-      i.detail ? el('p', { textContent: i.detail }) : null,
-      el('ul', { className: 'joint-titles' }, ...i.titles.map((x) => el('li', { textContent: x }))),
-      i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null],
-  })), { id: 'joint-list', empty: 'Nothing to fix or look at.' }));
-  const alone = items.filter((i) => i.alone);
-  box('joint-alone').hidden = !alone.length;
-  box('joint-alone-list').replaceChildren(...alone.map((i) => el('li', { className: `check check-${i.status}` },
-    el('strong', { textContent: i.title }),
-    el('span', { textContent: ` — only ${srcWords(i.sources)} said so; ${srcWords(i.could_see)} could have seen it and did not.` }))));
+  const busy = data.pending > 0 || !!secWaiting;
+  const accepted = data.accepted || {};
+  const all = j ? (j.items || []) : [];
+  const ok = (i) => !accepted[i.key];
+  const fixedNow = (i) => jointDo(i, data, busy).fixed;
+  const real = all.filter((i) => !i.tier && ok(i));
+  const counts = { problem: real.filter((i) => i.status === 'problem' && !fixedNow(i)).length, warn: real.filter((i) => i.status === 'warn' && !fixedNow(i)).length };
+  const needle = jointSearch.value.trim().toLowerCase();
+  const match = (i) => !needle || [i.title, i.detail, i.fix, i.area, ...i.lines.map((l) => `${l.title} ${l.detail}`)].join(' ').toLowerCase().includes(needle);
+  const pick = (i) => match(i) && (jointShow === 'all' || (i.status === jointShow && !fixedNow(i)));
+  box('joint-summary').replaceChildren(...(!j ? [el('p', { className: 'setting-desc', textContent: 'Run the doctor to see it.' })] : [
+    ['all', `${counts.problem + counts.warn}`, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
+    ['problem', `${counts.problem}`, 'to fix', counts.problem ? 'problem' : 'ok'],
+    ['warn', `${counts.warn}`, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${jointShow === key ? ' active' : ''}`,
+      onclick: () => { jointShow = key; renderJoint(j, data); } }, el('strong', { textContent: n }), ` ${word}`);
+    b.setAttribute('aria-pressed', String(jointShow === key));
+    return b;
+  })));
+  const list = real.filter(pick);
+  box('joint-items').replaceChildren(...list.map((i) => jointRow(i, data, busy, null)));
+  box('joint-empty').hidden = !j || list.length > 0;
+  box('joint-empty').textContent = real.length ? 'Nothing matches.' : 'Nothing to fix or look at.';
+  const fold = (id, items, row) => {
+    box(`${id}-fold`).hidden = !items.length;
+    box(`${id}-count`).textContent = `(${items.length})`;
+    box(id).replaceChildren(...items.map(row));
+  };
+  fold('joint-suggest', all.filter((i) => i.tier === 'suggest' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
+  fold('joint-nothere', all.filter((i) => i.tier === 'not-here' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
+  fold('joint-accepted', all.filter((i) => !ok(i)), (i) => jointRow(i, data, busy, accepted[i.key]));
+  // What the box's own scan has put right with a cure (one right answer, 5d), each with its Undo.
+  const cured = ((data.scan || {}).findings || []).filter((f) => secKind(f) === 'cure' && f.status === 'ok' && (f.actions || []).length);
+  fold('joint-cured', cured, (f) => findingRow({ id: `sec-cure-${f.id}`, state: 'ok', title: f.title, detail: f.detail,
+    how: 'Done from here; put it back as it was if you need to.', controls: scanButtons(f, busy), note: noteUnder(f.id) }));
   // One strip at the top (item 11 step 6): each source, its age, and a warning once it is older than it
   // should be; what it covers and what it said in the pill's title.
-  const fresh = j.freshness || {};
+  const fresh = (j && j.freshness) || {};
   const now = Date.now() / 1000;
-  box('joint-fresh').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
+  box('joint-fresh').replaceChildren(...Object.keys((j && j.sources) || {}).map((src) => {
     const c = j.sources[src], at = fresh[src], old = !at || now - at > (STALE_DAYS[src] || 30) * 86400;
     return el('span', { className: old ? 'warn-pill' : 'info-pill',
       title: `${(j.coverage || {})[src] || ''} To fix: ${c.problem || 0}; to look at: ${c.warn || 0}.`.trim(),
       textContent: `${SOURCE_WORDS[src] || src}: ${at ? ago(now - at) : 'never'}${old ? ', stale' : ''}` });
   }));
+  return counts;
 }
 
 // Scan reports, read here in the browser: only what they found goes to the box (secimports.py).
@@ -1404,34 +1591,31 @@ function parseScanReport(text, name) {
   return { ...report, name: name || '' };
 }
 
-function renderAudit(audit, busy) {
-  // The cures are lines of the box's scan, which the joint report already counts (its "security-page"
-  // source): the badge stays the merged count.
-  badge('secdoctor', audit ? String((audit.joint && audit.joint.after ? audit.joint.after.problem : audit.counts.problem) || '') : '');
-  renderJoint(audit && audit.joint);
+function renderAudit(audit, busy, data) {
+  // The badge counts what is to fix after merging, less what is accepted or put right since.
+  const counts = renderJoint(audit && audit.joint, data);
+  badge('secdoctor', audit ? String((audit.joint ? counts.problem : audit.counts.problem) || '') : '');
   if (!audit) {
     sec.auditWhen.textContent = busy ? 'Running…' : 'Not run yet.';
     sec.auditSteps.replaceChildren();
     sec.auditScope.hidden = true;
     return;
   }
-  const c = audit.counts;
-  sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}: ${c.problem} to fix, ${c.warn} to look at, ${c.ok} fine`
+  sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}`
     + ((audit.new || []).length ? `; ${audit.new.length} new since ${new Date(audit.previous_at * 1000).toLocaleDateString()}` : '')
     + (audit.root ? '.' : ' (not run as root: some checks could not read what they need).') + (busy ? ' Running…' : '');
+  // The raw report: every step's checks as the doctor wrote them, the fine ones too, all folded.
   sec.auditSteps.replaceChildren(...audit.steps.map((st) => {
     const worst = st.findings.some((f) => f.status === 'problem') ? 'problem' : st.findings.some((f) => f.status === 'warn') ? 'warn' : 'ok';
     const lines = [...st.findings].sort((a, b) => RANK[a.status] - RANK[b.status]);
-    const det = el('details', { className: 'admin-output' },
-      el('summary', { textContent: `${MARK[worst]} ${st.title}${st.ref ? ` (${st.ref})` : ''}` }),
-      el('ul', { className: 'admin-checks' }, ...lines.map((f) => el('li', { className: `check check-${f.status}` },
-        el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
+    return el('details', { className: 'admin-output' },
+      el('summary', {}, el('span', { className: `fstate fstate-${worst}`, textContent: STATE_WORD[worst] }), ` ${st.title}${st.ref ? ` (${st.ref})` : ''}`),
+      el('ul', { className: 'raw-lines' }, ...lines.map((f) => el('li', {},
+        el('span', { className: `fstate fstate-${f.status}`, textContent: STATE_WORD[f.status] }), ' ', el('strong', { textContent: f.title }),
         (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
         el('span', { textContent: ` — ${f.detail}` }),
-        f.fix ? el('span', { className: 'setting-desc', textContent: `To do: ${f.fix}` }) : null))));
-    det.open = worst !== 'ok';
-    return det;
+        f.fix ? el('span', { className: 'setting-desc', textContent: ` To do: ${f.fix}` }) : null))));
   }));
   sec.auditScope.hidden = !(audit.not_covered || []).length;
   sec.auditNot.replaceChildren(...(audit.not_covered || []).map((t) => el('li', { textContent: t })));
@@ -1451,6 +1635,39 @@ async function secRequest(body, fid) {
     loadSecurity();
   } catch (err) { secNote = { fid, text: err.message, ok: false }; loadSecurity(); }
 }
+
+// Debian's security updates as the update pattern (item 36): how often apt looks, what it does with what
+// it finds (apt's periodic work, unattended-upgrades to install), and Check now / Fetch / Install by hand.
+const deb = { form: document.getElementById('debian-pattern'), note: noteEl('debian-pattern-note'), box: document.getElementById('debian-buttons') };
+deb.buttons = AW.updateButtons({
+  check: { onclick: () => secFix('security-updates', { choice: 'security-check' }) },
+  fetch: { onclick: () => secFix('security-updates', { choice: 'security-fetch' }) },
+  install: { onclick: () => secFix('security-updates', { choice: 'security-updates',
+    confirm: 'Install the waiting security updates now? It can take several minutes on this board.' }) },
+});
+deb.box.replaceChildren(deb.buttons);
+function drawDebianPattern(lines, busy) {
+  const u = lines.find((f) => f.id === 'unattended'), w = lines.find((f) => f.id === 'security-updates');
+  const pat = u && u.pattern;
+  if (pat && !deb.form.contains(document.activeElement) && !deb.form.dataset.dirty) {
+    deb.form.elements.often.value = String(pat.often);
+    deb.form.elements.act.value = String(pat.act);
+  }
+  const waiting = w ? w.waiting || 0 : 0, fetched = w ? w.fetched || 0 : 0;
+  deb.buttons.update({
+    check: { disabled: busy, why: busy ? 'busy' : '' },
+    fetch: { disabled: busy || !waiting || fetched >= waiting,
+      why: busy ? 'busy' : !waiting ? 'nothing newer is known; check first.' : fetched >= waiting ? 'downloaded already.' : '' },
+    install: { disabled: busy || !waiting, why: busy ? 'busy' : !waiting ? 'nothing waiting.' : '' },
+  });
+}
+deb.form.addEventListener('input', () => { deb.form.dataset.dirty = '1'; });
+deb.form.addEventListener('change', () => { deb.form.dataset.dirty = '1'; });
+deb.form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  delete deb.form.dataset.dirty;
+  secRequest({ action: 'fix', choice: `autoupdate-set:${deb.form.elements.often.value}-${deb.form.elements.act.value}` }, 'unattended');
+});
 
 function secFix(fid, action) {
   if (action.confirm && !confirm(action.confirm)) return;
@@ -1488,6 +1705,21 @@ function renderImports(imports) {
 }
 loadSecurity();
 
+// A "Go to …" link (the doctor's, the Security page's) names the very line or section: open the folds
+// around it, bring it into view and mark it for a moment, so the owner lands on the thing to change.
+function landOn() {
+  const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+  if (!target || target.classList.contains('admin-pane') || target.classList.contains('admin-page')) return;
+  for (let d = target.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+  if (target.tagName === 'DETAILS') target.open = true;
+  setTimeout(() => {
+    if (target.scrollIntoView) target.scrollIntoView({ block: 'center' });
+    target.classList.add('landed');
+    setTimeout(() => target.classList.remove('landed'), 2500);
+  }, 50);
+}
+window.addEventListener('hashchange', landOn);
+
 // --- health ----------------------------------------------------------------------------
 // The box doctor (health.py, through the root helper): findings with what to do and the safe
 // repairs as buttons; the last install's record and output, which the hub reads itself. Polled
@@ -1502,6 +1734,12 @@ const hl = {
   bar: document.getElementById('health-bar'),
   step: document.getElementById('health-step'),
   findings: document.getElementById('health-findings'),
+  summary: document.getElementById('health-summary'),
+  search: document.getElementById('health-search'),
+  empty: document.getElementById('health-empty'),
+  fine: document.getElementById('health-fine'),
+  fineFold: document.getElementById('health-fine-fold'),
+  fineCount: document.getElementById('health-fine-count'),
   install: document.getElementById('health-install'),
   output: document.getElementById('health-output'),
   log: document.getElementById('health-log'),
@@ -1529,8 +1767,58 @@ function installText(st) {
   return `Started ${when} (${st.args || 'no options'}); finished${n ? ` with ${n} problem${n === 1 ? '' : 's'}: ${st.problems.join('; ')}` : ' with no problems'}.`;
 }
 
+// What to do about one of the box doctor's findings: its repair buttons; a link to the page where it
+// is changed, when its words name one ("Network → the hotspot"); a command to copy, when they end
+// in one; and the words. A fine finding says nothing more.
+const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Staying|Hold|The box's access)/, 'network/access', 'Network → The box\'s access'],
+  [/\bNetwork → (the )?[Hh]otspot/, 'network/hotspot', 'Network → Hotspot'], [/\bNetwork → (Look|Hardware)/, 'network/hardware', 'Network → Hardware'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
+  [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
+  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts & users']];
+// A command in a finding's words: where it starts, up to the end of its sentence (or before "  (").
+// Not prose that begins like one ("journalctl -u NAME says why"), nor one with a NAME to fill in.
+const CMD_RE = /(?:^|[.:;,]\s+|\(|\bor\s+)((?:sudo |journalctl |systemctl |dmesg|df |du |ls |nmcli |ip |iw |apt |cat |tail |\.\/irate-box |\/opt\/irate-box\/)[^]*)/i;
+function splitCmd(text) {
+  text = (text || '').trim();
+  const m = text.match(CMD_RE);
+  if (!m) return null;
+  const start = m.index + m[0].length - m[1].length;
+  const end = m[1].search(/\.\s+(?=[A-Z(])|\.$|\s{2,}\(/);
+  const cmd = (end >= 0 ? m[1].slice(0, end) : m[1]).trim();
+  if (/\b(says|clears|once|which|starts|stops|again)\b/.test(cmd) || /\b[A-Z]{3,}\b/.test(cmd.replace(/YYYY-MM-DD|HH:MM/g, ''))) return null;
+  const after = end >= 0 ? m[1].slice(end).replace(/^\.?\s*/, '').trim() : '';
+  const before = text.slice(0, start).trim().replace(/\bor$/, '').trim().replace(/[.:;,]$/, '').trim();
+  return { cmd, before, after };
+}
+function healthDo(f, busy) {
+  if (f.status === 'ok') return { how: '', controls: [] };
+  const controls = (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
+    onclick: () => hlFix(f.id, a) }));
+  let how = f.fix || '';
+  const c = splitCmd(how);
+  if (c) {
+    controls.push(copyBox(c.cmd));
+    how = [c.before ? `${c.before}${/[.!?]$/.test(c.before) ? '' : (controls.length > 1 ? ', or by hand' : ', by hand')}:` : 'By hand, on the box:',
+      c.after].filter(Boolean).join(' ').replace(/::$/, ':');
+  }
+  const go = HEALTH_GO.find(([re]) => re.test(f.fix || ''));
+  if (go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${go[1]}`, textContent: `Go to ${go[2]} →` }));
+  if (!how && !controls.length) how = 'Nothing to press: it is said so you know.';
+  return { how, controls };
+}
+let hlShow = 'all';  // the counters double as the list's filter: all, problem, warn
+document.getElementById('health-search').addEventListener('input', () => hlLast && renderHealth(hlLast));
+
+let hlLast = null;
 function renderHealth(data) {
+  hlLast = data;
   const h = data.helper || {};
+  // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
+  const lad = document.getElementById('health-ladder');
+  const ladKey = JSON.stringify((data.ladder || []).slice(-1)) + (data.ladder || []).length;
+  if (lad && typeof LadderChart !== 'undefined' && lad.dataset.key !== ladKey) {
+    lad.dataset.key = ladKey;
+    LadderChart.render(lad, data.ladder || []);
+  }
   hl.banner.hidden = !h.stuck;
   if (h.stuck) {
     hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? ' is' : 's are'} waiting, the oldest for ${minutes(h.oldest)}.`;
@@ -1567,15 +1855,34 @@ function renderHealth(data) {
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
   // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
   const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
-  const item = (f) => el('li', { className: `check check-${f.status}` },
-    el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
-    el('span', { textContent: ` — ${f.detail}` }),
-    f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
-    f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
-    }))) : null,
-    noteUnder(f.id));
-  hl.findings.replaceChildren(...all.filter((f) => !isClock(f)).map(item));
+  // One shape for every finding, as the security doctor's (#164; Tom, 2026-10-09: "the box doctor
+  // needs similar treatment to the security doctor to remove the info-soup look"): a status word,
+  // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
+  const item = (f) => {
+    const d = healthDo(f, busy || h.stuck);
+    return findingRow({ id: `hl-${f.id}`, state: f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id) });
+  };
+  const needle = hl.search.value.trim().toLowerCase();
+  const match = (f) => !needle || `${f.check} ${f.detail} ${f.fix || ''}`.toLowerCase().includes(needle);
+  const services = all.filter((f) => !isClock(f));
+  const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn').length };
+  hl.summary.replaceChildren(...(!rep ? [] : [
+    ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
+    ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
+    ['warn', counts.warn, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${hlShow === key ? ' active' : ''}`,
+      onclick: () => { hlShow = key; renderHealth(data); } }, el('strong', { textContent: String(n) }), ` ${word}`);
+    b.setAttribute('aria-pressed', String(hlShow === key));
+    return b;
+  })));
+  const open = services.filter((f) => f.status !== 'ok' && match(f) && (hlShow === 'all' || f.status === hlShow));
+  hl.findings.replaceChildren(...open.map(item));
+  hl.empty.hidden = !rep || open.length > 0;
+  hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or look at.';
+  const fine = services.filter((f) => f.status === 'ok' && match(f));
+  hl.fineFold.hidden = !fine.length;
+  hl.fineCount.textContent = `(${fine.length})`;
+  hl.fine.replaceChildren(...fine.map(item));
   hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
   const loose = hlNote && (hlNote.fid === 'scan' || hlNote.fid === 'clock-scan' || !shown.has(hlNote.fid)) ? hlNote : null;
   const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
@@ -1647,51 +1954,60 @@ loadHealth();
 // that asked. The form is filled from the watchdog's report only while nobody is editing it.
 const net = {
   when: document.getElementById('net-when'),
-  device: document.getElementById('net-device'),
   scan: document.getElementById('net-scan'),
   scanNote: document.getElementById('net-scan-note'),
   devices: document.getElementById('net-devices'),
   hazards: document.getElementById('net-hazards'),
   status: document.getElementById('up-status'),
-  eager: document.getElementById('up-eager'),
-  forgive: document.getElementById('up-forgive'),
+  pace: document.getElementById('up-pace'),
+  reach: document.getElementById('up-reach'),
+  guests: document.getElementById('up-guests'),
+  wedge: document.getElementById('up-wedge'),
+  sens: document.getElementById('up-sens'),
+  roaming: document.getElementById('up-roaming'),
+  lockAps: document.getElementById('up-lock-aps'),
+  ignoreRoams: document.getElementById('up-ignore-roams'),
+  sensSays: document.getElementById('up-sens-says'),
   will: document.getElementById('up-will'),
   iface: document.getElementById('up-iface'),
   custom: document.getElementById('up-custom'),
   fields: document.getElementById('up-fields'),
   save: document.getElementById('up-save'),
   hold: document.getElementById('up-hold'),
+  stall: document.getElementById('up-stall'),
   unhold: document.getElementById('up-unhold'),
   note: document.getElementById('up-note'),
   profile: document.getElementById('up-profile'),
   events: document.getElementById('up-events'),
 };
 const UP_FIELDS = [
-  ['check', 'Check every (s)'], ['misses', 'Failed checks before it counts as down'],
-  ['grace', 'Then wait (s) before acting'], ['steps.reconnect', 'Reconnect after (s)'],
+  ['check', 'Check every (s)'], ['window', 'Count misses over (s)'], ['steps.reconnect', 'Reconnect after (s)'],
   ['steps.restart', 'Restart the network service after (s)'], ['steps.radio', 'Reset the radio after (s)'],
   ['steps.reboot', 'Reboot after (s)'], ['repeat', 'Reconnect again every (s)'], ['backoff', '… that gap growing ×'],
-  ['max_repeat', '… up to (s)'], ['flap_count', 'Drops that count as flapping'], ['flap_window', '… within (s)'],
-  ['flap_action', 'A flapping link is'], ['guests', 'Radio reset and reboot with guests on'],
+  ['max_repeat', '… up to (s)'], ['relapse', 'Down again within (s): the same episode'],
   ['reboots_per_day', 'Reboots a day, at most'], ['reboot_gap', 'Never reboot within (s) of the last'],
 ];
 const UP_WORDS = {
-  flap_action: { note: 'only noted', pin: 'locked to the strongest AP', repair: 'repaired' },
-  guests: { protect: 'held back', ignore: 'go ahead' },
 };
 let netData = null;
 let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
 let upDirty = false;
-// The levels chosen on the page (both as radio cards), before Save.
-const upPick = { eagerness: 'patient', forgiveness: 'normal' };
+// What is chosen on the page (each as radio cards), before Save: two dials, pace and reach (Tom,
+// 2026-10-09: "two dials always"), guests, a wedged driver, and the sensitivity, a number of missed
+// checks within the pace's window (Tom: forgiveness "rebranded as sensitivity, with a numeric value").
+const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
+const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['roaming', 'roaming']];
 let netAsked = false;
 
-function upPreset(e, f, levels) {
-  const p = levels.presets;
-  const eff = { ...p.common, ...p.forgiveness[f], ...p.eagerness[e] };
-  eff.steps = { ...p.eagerness[e].steps };
+// The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
+function upPreset(pick, levels) {
+  const p = levels.presets, pace = p.pace[pick.pace];
+  const allowed = levels.steps.slice(0, levels.reach.indexOf(pick.reach));
+  const eff = { ...p.common, check: pace.check, window: pace.window, repeat: pace.repeat, guests: pick.guests, sensitivity: pick.sensitivity };
+  eff.steps = Object.fromEntries(Object.entries(pace.steps).filter(([s]) => allowed.includes(s)));
+  if (!('reconnect' in eff.steps)) eff.repeat = 0;
   return eff;
 }
 const upGet = (obj, key) => key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -1712,13 +2028,12 @@ function buildUpFields(levels) {
   }
 }
 
-// --- the levels in words ---------------------------------------------------------------
+// --- the choices in words ---------------------------------------------------------------
 const cap1 = (t) => t[0].toUpperCase() + t.slice(1);
 const dur = (sec) => (sec < 60 ? `${sec} s` : sec % 3600 === 0 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`);
-const FLAP_DOES = { note: 'is only noted', pin: 'is locked to the strongest access point', repair: 'is repaired like any outage' };
+const STEP_DOES = { reconnect: 'reconnects', restart: 'restarts the network service', radio: 'resets the radio', reboot: 'reboots' };
 
-// What a set of numbers does once the link counts as down: an eagerness level's own preset (its
-// line on the ladder), or the effective numbers with any custom values ("What this will do").
+// What a set of numbers does once the link counts as down ("What this will do").
 function stepsInWords(p) {
   const st = p.steps || {};
   if (!Object.keys(st).length) return 'does nothing but note it';
@@ -1731,43 +2046,99 @@ function stepsInWords(p) {
   if ('restart' in st) parts.push(`restarts the network service after ${dur(st.restart)}`);
   if ('radio' in st) parts.push(`resets the radio after ${dur(st.radio)}`);
   parts.push('reboot' in st ? `reboots after ${dur(st.reboot)}${p.reboots_per_day ? ` (at most ${p.reboots_per_day} a day)` : ''}` : 'never reboots');
-  const heavy = 'radio' in st || 'reboot' in st;
-  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', with guests on or not' : ', but not while guests are on the hotspot') : '');
+  const heavy = 'radio' in st || 'reboot' in st || 'restart' in st;
+  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', with guests on or not'
+    : ', but not, while guests are on the hotspot, what would take it down') : '');
 }
 
-function rungLine(name, levels) {
-  const p = { ...levels.presets.common, ...levels.presets.eagerness[name] };
-  return name === 'off' ? 'Checks, and never acts.' : `When it's down: ${stepsInWords(p)}.`;
+// A pace's own line: when each step comes, as far as any reach goes.
+function paceLine(name, levels) {
+  const p = levels.presets.pace[name];
+  return `First a reconnect ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : 'at once'}, again every ${dur(p.repeat)}; `
+    + `then ${['restart', 'radio', 'reboot'].map((s) => `${STEP_DOES[s].replace('the network service', 'the service')} after ${dur(p.steps[s])}`).join(', ')}`
+    + ` — each only if the reach goes that far. It checks every ${dur(p.check)}, and counts missed checks over ${dur(p.window)}.`;
 }
 
-function forgiveLine(f) {
-  return `Down after ${f.misses} failed check${f.misses === 1 ? '' : 's'} and ${dur(f.grace)} more. `
-    + `${f.flap_count} drops within ${dur(f.flap_window)} count as flapping, which ${FLAP_DOES[f.flap_action] || f.flap_action}.`;
+// The sensitivity said for the pace chosen: how many checks fit its window, so a number that can
+// never be reached by failed checks alone says so.
+function sensLine(n, eff) {
+  const fit = Math.floor(eff.window / eff.check) + 1;
+  return `${n} missed check${n === 1 ? '' : 's'} (or drops of the link) within ${dur(eff.window)}, together or spread out, `
+    + 'put it on the ladder; fewer is more sensitive.' + (n > fit ? ` Only ${fit} checks fit that window, so only drops between them can reach it.` : '');
+}
+
+const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while guests are on the hotspot, nor a restart of the network service when the hotspot shares the radio. Said, and done once they have gone.'],
+  ignore: ['Go ahead', 'Every step the reach allows, guests on or not: they lose the hotspot for a while.'] };
+const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, with a button to reset the radio by hand; the steps come as the pace and reach set them.'],
+  radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a wedged driver: go straight to the radio reset, if the reach allows it and no guests are held for.'] };
+
+// Roaming (item 35; uplink-roaming-options-plan §2): from the least change to the owner's system to the most,
+// each with its cost. The last two change the WiFi profile, by consent, and are undone the same way.
+const ROAM_WORDS = {
+  roam: ['Roam naturally', 'The WiFi moves between your access points as it finds a stronger one (NetworkManager\'s own background scans). Nothing on the box changes.',
+    'Cost: each move is a moment off the network, and the hotspot moves with it when it shares the radio.'],
+  'no-scan': ['No background scans while the hotspot shares the radio', 'wpa_supplicant\'s background scan is switched off for the network in use, so the box stays where it is; it still reconnects (perhaps to another access point) if the link is really lost. Only while the hotspot runs on this radio.',
+    'Cost: a box carried around the house stays on a weak access point until it drops. Changes your WiFi\'s running settings; undone here.'],
+  lock: ['Lock to one access point', 'Your WiFi profile held to the access point chosen below (NetworkManager\'s BSSID): no roaming and no background scans.',
+    'Cost: if that access point goes away, the box does not move to another one: the link stays down until it is back or you unlock. Changes your WiFi profile; undone here.'],
+};
+const uplinkRadio = () => { const inv = netData && netData.inventory; const up = inv && inv.uplink;
+  return inv && up ? inv.radios.find((r) => r.iface === up.iface) : null; };
+function drawLockAps() {
+  const box = net.lockAps, r = uplinkRadio(), aps = (r && r.roaming && r.roaming.aps) || [];
+  box.hidden = upPick.roaming !== 'lock';
+  if (box.hidden) return;
+  if (!upPick.lock_bssid && aps.length) upPick.lock_bssid = aps[0].bssid;   // the strongest, preselected
+  box.replaceChildren(...(aps.length ? aps.map((a) => {
+    const input = el('input', { type: 'radio', name: 'up-lock', value: a.bssid });
+    input.checked = a.bssid === upPick.lock_bssid;
+    input.addEventListener('change', () => upChoose({ lock_bssid: a.bssid }, netData.levels));
+    return el('label', { className: 'inline' }, input, ` ${a.bssid}: channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}, signal ${a.signal}%`
+      + `${r.link && r.link.bssid === a.bssid ? ' (in use now)' : ''}`);
+  }) : [el('p', { className: 'setting-desc', textContent: 'No access points seen for this network in the last look: Refresh on Hardware, then choose.' })]));
 }
 
 function willText(eff) {
-  return `What this will do: it checks the link every ${dur(eff.check)}. It counts it as down after ${eff.misses} failed `
-    + `check${eff.misses === 1 ? '' : 's'} and ${dur(eff.grace)} more, and then ${stepsInWords(eff)}. `
-    + `A link that drops ${eff.flap_count} times within ${dur(eff.flap_window)} ${FLAP_DOES[eff.flap_action] || eff.flap_action}.`;
+  return `What this will do: it checks the link every ${dur(eff.check)}. When ${eff.sensitivity} checks have failed, or the link has dropped, `
+    + `within ${dur(eff.window)}, it goes on the ladder (a link that keeps dropping too, until it settles), and then ${stepsInWords(eff)}. `
+    + `Outages within ${dur(eff.relapse)} of each other are one episode: what did not hold is not repeated while a heavier step is left, `
+    + 'and a reconnect after the first is locked to the strongest access point.';
 }
 
-// Both levels the same way (Tom, 2026-10-06): radio cards, each level's description and what it
-// does shown at once.
-function rungs(box, group, names, line, levels) {
-  AW.choices(box, `up-${group}`, names.map((name) => ({
-    value: name, title: cap1(name), desc: levels.describe[name] || '', does: line(name),
-  })), { onChange: (name) => upChoose({ [group]: name }, levels) });
+// Every choice the same way (Tom, 2026-10-06): radio cards, each one's description and what it does.
+function rungs(box, group, items) {
+  AW.choices(box, `up-${group}`, items, { onChange: (name) => upChoose({ [group]: name }, netData.levels) });
 }
 
 function buildUpChoices(levels) {
-  if (net.eager.childElementCount) return;
-  rungs(net.eager, 'eagerness', levels.eagerness, (name) => rungLine(name, levels), levels);
-  rungs(net.forgive, 'forgiveness', levels.forgiveness,
-    (name) => forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[name] }), levels);
+  if (net.pace.childElementCount) return;
+  rungs(net.pace, 'pace', levels.pace.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '', does: paceLine(n, levels) })));
+  rungs(net.reach, 'reach', levels.reach.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '',
+    does: n === 'watch' ? 'Checks, and never acts.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
+  rungs(net.guests, 'guests', levels.guests.map((n) => ({ value: n, title: GUEST_WORDS[n][0], desc: GUEST_WORDS[n][1] })));
+  rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
+  drawRoamTiles(levels);
+  net.ignoreRoams.addEventListener('change', () => upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels));
+  net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
+  net.sens.addEventListener('input', () => {
+    const n = Math.round(Number(net.sens.value));
+    if (n >= levels.sensitivity[0] && n <= levels.sensitivity[1]) upChoose({ sensitivity: n }, netData.levels);
+  });
+}
+
+// The roaming tiles: the ones the hardware scan says can't work here greyed, with why (stage 1).
+function drawRoamTiles(levels) {
+  const r = uplinkRadio(), facts = r && r.roaming, why = (facts && facts.why) || {};
+  const key = JSON.stringify(why);
+  if (net.roaming.dataset.why === key && net.roaming.childElementCount) return;
+  net.roaming.dataset.why = key;
+  rungs(net.roaming, 'roaming', (levels.roaming || Object.keys(ROAM_WORDS)).map((n) => ({ value: n, title: ROAM_WORDS[n][0], desc: ROAM_WORDS[n][1],
+    does: ROAM_WORDS[n][2], why: why[n] || (n === 'lock' && facts && !facts.aps.length ? 'no access point seen for this network yet' : '') })));
 }
 
 function upChoose(change, levels) {
   Object.assign(upPick, change);
+  if (change.roaming && change.roaming !== 'lock') upPick.lock_bssid = null;
   upDirty = true;
   showUpPreset(levels);
   showUpSave();
@@ -1781,8 +2152,10 @@ function showUpSave() {
 
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
-  upPick.eagerness = chosen.eagerness;
-  upPick.forgiveness = chosen.forgiveness;
+  for (const k of Object.keys(upPick)) upPick[k] = chosen[k] || levels.default[k] || null;
+  upPick.roaming = chosen.roaming || 'roam';
+  upPick.ignore_roams = !!chosen.ignore_roams;
+  net.ignoreRoams.checked = upPick.ignore_roams;
   net.iface.value = [...net.iface.options].some((o) => o.value === chosen.iface) ? chosen.iface : 'auto';
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll('[data-key]')) {
@@ -1794,18 +2167,25 @@ function fillUpForm(chosen, levels) {
 }
 
 function showUpPreset(levels) {
-  const e = upPick.eagerness, f = upPick.forgiveness;
-  for (const [box, chosen] of [[net.eager, e], [net.forgive, f]]) {
-    for (const input of box.querySelectorAll('input')) {
-      input.checked = input.value === chosen;
+  for (const [boxKey, key] of UP_GROUPS) {
+    for (const input of net[boxKey].querySelectorAll('input')) {
+      input.checked = input.value === upPick[key];
       input.closest('.choice-tile').classList.toggle('chosen', input.checked);
     }
   }
-  const eff = upPreset(e, f, levels);
+  drawRoamTiles(levels);
+  for (const input of net.roaming.querySelectorAll('input')) {
+    input.checked = input.value === upPick.roaming;
+    input.closest('.choice-tile').classList.toggle('chosen', input.checked);
+  }
+  drawLockAps();
+  const eff = upPreset(upPick, levels);
+  if (document.activeElement !== net.sens) net.sens.value = String(upPick.sensitivity);
+  net.sensSays.textContent = sensLine(upPick.sensitivity, { ...eff, ...(() => { try { return readUpForm().overrides; } catch (_) { return {}; } })() });
   try {
     const over = readUpForm().overrides;
     const shown = { ...eff, ...over, steps: { ...eff.steps } };
-    for (const [k, v] of Object.entries(over.steps || {})) { if (v === null) delete shown.steps[k]; else shown.steps[k] = v; }
+    for (const [k, v] of Object.entries(over.steps || {})) { if (v === null) delete shown.steps[k]; else if (k in eff.steps) shown.steps[k] = v; }
     net.will.textContent = willText(shown);
   } catch (_) {
     net.will.textContent = willText(eff);
@@ -1813,9 +2193,6 @@ function showUpPreset(levels) {
   for (const input of net.fields.querySelectorAll('input[data-key]')) {
     const v = upGet(eff, input.dataset.key);
     input.placeholder = v === undefined ? 'off' : String(v);
-  }
-  for (const s of net.fields.querySelectorAll('select[data-key]')) {
-    s.options[0].textContent = `(the level's: ${UP_WORDS[s.dataset.key][eff[s.dataset.key]]})`;
   }
 }
 
@@ -1834,7 +2211,7 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  return { eagerness: upPick.eagerness, forgiveness: upPick.forgiveness, iface: net.iface.value, overrides };
+  return { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides };
 }
 
 const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1850,12 +2227,19 @@ function upStatusText(u) {
   if (u.state === 'up') {
     parts.push(`Up on ${on}. The gateway (${u.gateway}) answers.`);
   } else if (u.state === 'checking') {
-    parts.push(`Checking ${u.iface}: the gateway has missed ${u.misses} check${u.misses === 1 ? '' : 's'}.`);
+    parts.push(`Checking ${u.iface}: ${u.misses} missed check${u.misses === 1 ? '' : 's'} within ${dur((u.settings || {}).window || 0)}, `
+      + `of the ${(u.settings || {}).sensitivity} that put it on the ladder.`);
   } else {
     const o = u.outage;
     parts.push(o ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.` : `Down on ${u.iface}.`);
-    if (o && o.done.length) parts.push(`Tried: ${o.done.join(', ')}.`);
+    const tried = o ? o.done.filter((s) => !(o.skipped || []).includes(s)) : [];
+    if (tried.length) parts.push(`Tried: ${tried.join(', ')}.`);
+    if (o && (o.skipped || []).length) parts.push(`Not possible here: ${o.skipped.join(', ')}.`);
     if (u.next) parts.push(`Next: ${u.next.label} at ${when(u.next.at)}.`);
+    if (u.state === 'stalled' && u.stall) parts.push(u.stall.text);
+    else if (u.wedged) parts.push(`The radio's driver looks wedged: ${u.wedged}.`);
+    const ep = u.episode;
+    if (ep && ep.outages > 1) parts.push(`Outage ${ep.outages} since ${when(ep.since)}` + (ep.failed.length ? `; did not hold: ${ep.failed.join(', ')}.` : '.'));
   }
   if (u.pinned) parts.push(`Locked to ${u.pinned.bssid} since ${when(u.pinned.at)}, until the next drop.`);
   if (u.paused_until && u.paused_until > Date.now() / 1000) parts.push(`No repairs until ${when(u.paused_until)}.`);
@@ -1959,10 +2343,97 @@ function deviceCard(inv, d, wifi, hazards) {
           el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` }))))));
     }
   }
-  if (!(wifi && d.type === 'AP')) kids.push(section(uptimeSection(d.iface)));
   const mine = hazards.filter((h) => h.iface === d.iface);
   if (mine.length) kids.push(section(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix)))));
   return el('div', { className: 'net-device setting' }, ...kids);
+}
+
+// --- the tabs' own parts (item 37): a card per connection on Status and on The box's access ----------------
+const netTabs = { overview: document.getElementById('net-overview'), statusCards: document.getElementById('net-status-cards'),
+  ladder: document.getElementById('net-ladder'), wifiNow: document.getElementById('net-wifi-now'), saved: document.getElementById('net-saved'),
+  wiredNow: document.getElementById('net-wired-now'), wiredCard: document.getElementById('net-wired-card'), apHealth: document.getElementById('ap-health') };
+const bandOf = (f) => (f ? (f < 3000 ? '2.4 GHz' : f < 5925 ? '5 GHz' : '6 GHz') : '');
+const netLine = (label, text) => el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: label }), el('span', { textContent: text }));
+function linkNow(inv, d) {
+  if (d.link && d.link.ssid) return `On ${d.link.ssid}, channel ${d.link.channel}${d.link.freq ? ` (${bandOf(d.link.freq)})` : ''}, signal ${d.link.signal} dBm (${signalWords(d.link.signal)}).`;
+  if (d.type === 'AP') return 'Running the hotspot.';
+  if ('carrier' in d) return d.carrier ? 'Cable in.' : 'No cable.';
+  return 'Not connected to a network.';
+}
+// Roaming (item 35, stage 2): on the WiFi card, the access points sharing the network and how often the box
+// moved between them; a lock whose access point has gone, with Unlock. On Hardware, which controls work here.
+const ROAM_SHORT = { roam: 'roams naturally', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
+function drawRoaming(inv, u, wifi) {
+  const box = document.getElementById('net-roaming'), caps = document.getElementById('net-roam-caps');
+  const r = wifi.find((x) => x.roaming), f = r && r.roaming;
+  if (!f) { box.replaceChildren(); caps.replaceChildren(); return; }
+  const chosen = (u && u.chosen) || {};
+  const n = f.aps.length, hour = u && !u.stale ? u.roams_hour || 0 : null;
+  const lines = [netLine('Roaming', n > 1
+    ? `${n} access points share ${f.ssid} (${f.channels.map((c) => `channel ${c}`).join(', ')}); `
+      + (hour == null ? '' : `${hour} roam${hour === 1 ? '' : 's'} in the last hour; `) + `set to: ${ROAM_SHORT[chosen.roaming || 'roam']}`
+      + (chosen.ignore_roams ? ', short roams not counted' : '') + '.'
+      + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves with each roam.' : '')
+    : `One access point for ${f.ssid}: nothing to roam between.`)];
+  if (f.bgscan != null) lines.push(netLine('Background scan', f.bgscan ? f.bgscan : 'off'));
+  const lockGone = chosen.roaming === 'lock' && u && u.state !== 'up' && !f.aps.some((a) => a.bssid === chosen.lock_bssid);
+  if (lockGone) {
+    lines.push(el('p', { className: 'setting-desc bad' }, `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,
+      actionButton('Unlock', () => { if (confirm('Unlock, so the box may join any of your access points again?'))
+        netRequest({ action: 'settings', settings: { ...chosen, roaming: 'roam', lock_bssid: null } }, 'up'); }, { className: 'primary' })));
+  }
+  box.replaceChildren(...lines);
+  caps.replaceChildren(el('div', { className: 'net-device setting' }, el('h4', {}, el('span', { textContent: `${r.iface}: roaming` })),
+    netLine('Access points', f.aps.length ? f.aps.map((a) => `${a.bssid} ch ${a.channel} (${a.signal}%)`).join('; ') : 'none in the last scan'),
+    netLine('Choices here', ['roam', 'no-scan', 'lock'].map((c) => `${ROAM_WORDS[c][0]}: ${f.choices.includes(c) ? 'yes' : `no, ${f.why[c]}`}`).join('; ') + '.'),
+    f.nm_version ? netLine('NetworkManager', f.nm_version) : null));
+}
+
+function drawNetTabs(data, inv, u) {
+  const up = inv && inv.uplink;
+  // Status: one line for the whole, then a card per link the box could reach a network by.
+  netTabs.overview.textContent = !inv ? 'Not looked yet.' : !up || !up.iface ? 'The box has no link to a network right now.'
+    : `The box reaches your network through ${up.iface} (${up.kind === 'wifi' ? 'WiFi' : 'wired'}). ${upStatusText(u)}`;
+  const links = inv ? [...inv.radios.filter((r) => r.type !== 'AP'), ...inv.wired] : [];
+  netTabs.statusCards.replaceChildren(...links.map((d) => el('div', { className: 'net-card setting' },
+    el('h4', {}, el('span', { textContent: d.iface }), el('span', { className: 'state', textContent: 'carrier' in d ? 'Wired' : 'WiFi' }),
+      up && up.iface === d.iface ? el('span', { className: 'info-pill', textContent: 'the box\'s link' }) : null),
+    netLine('Now', linkNow(inv, d)), uptimeSection(d.iface))));
+  if (typeof LadderChart !== 'undefined' && netTabs.ladder.dataset.key !== String((data.ladder || []).length)) {
+    netTabs.ladder.dataset.key = String((data.ladder || []).length);
+    LadderChart.render(netTabs.ladder, data.ladder || []);
+  }
+  // The box's access: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
+  const wifi = inv ? inv.radios.filter((r) => r.type === 'managed') : [];
+  netTabs.wifiNow.replaceChildren(...(wifi.length ? wifi.map((r) => el('div', {}, netLine(r.iface, linkNow(inv, r)),
+    r.link && r.link.bssid ? netLine('Access point', `${r.link.bssid}${r.profile && r.profile.bssid_lock ? ' (locked to it)' : ''}`) : null,
+    r.profile ? netLine('Profile', `${r.profile.name}${r.profile.autoconnect ? '' : ', autoconnect off'}`) : null))
+    : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here: the box reaches its network another way.' : 'Not looked yet.' })]));
+  const nm = inv && inv.stacks && inv.stacks.networkmanager;
+  const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== 'ap');
+  const current = new Set(wifi.map((r) => r.profile && r.profile.uuid).filter(Boolean));
+  const mine = new Map((data.joined || []).map((j) => [j.uuid, j]));
+  const busy = data.pending > 0 || !!netWaiting;
+  netTabs.saved.replaceChildren(...(known.length ? [el('ul', { className: 'net-known' }, ...known.map((p) => el('li', {},
+    el('strong', { textContent: p.ssid || p.name }), current.has(p.uuid) ? el('span', { className: 'ok-pill', textContent: 'in use' }) : null,
+    el('span', { className: 'setting-desc', textContent: ` ${p.name}${p.autoconnect ? `, joins by itself${p.priority ? ` (priority ${p.priority})` : ''}` : ', only by hand'}`
+      + `${p.bssid_lock ? `, locked to ${p.bssid_lock}` : ''}${p.iface ? `, on ${p.iface} only` : ''}.` }),
+    mine.has(p.uuid) ? el('span', { className: 'info-pill', textContent: 'added here' }) : null,
+    mine.has(p.uuid) ? actionButton('Forget', () => { if (confirm(`Forget ${p.ssid || p.name}? The box will not join it again.`)) netRequest({ action: 'forget', uuid: p.uuid }, 'join'); },
+      { className: 'small', disabled: busy || current.has(p.uuid), title: current.has(p.uuid) ? 'In use: the box is on it now' : '' }) : null)))]
+    : [el('p', { className: 'setting-desc', textContent: nm && nm.running ? 'None saved in NetworkManager.' : 'NetworkManager does not run this box\'s WiFi, so its saved networks are not listed here.' })]));
+  drawRoaming(inv, u, wifi);
+  const wired = inv ? inv.wired : [];
+  netTabs.wiredCard.hidden = !!inv && !wired.length;
+  netTabs.wiredNow.replaceChildren(...wired.map((w) => netLine(w.iface, linkNow(inv, w) + (up && up.iface === w.iface ? ' The box\'s link to your network.' : ''))));
+  // Hotspot: how it is doing, from the same inventory (its radio, channel, guests, and whether it follows the WiFi).
+  const aps = inv ? inv.radios.filter((r) => r.type === 'AP') : [];
+  netTabs.apHealth.replaceChildren(...(aps.length ? aps.flatMap((a) => {
+    const shared = wifi.find((r) => r.phy === a.phy);
+    const n = (a.stations || []).length;
+    return [netLine(a.iface, `Up${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}; ${n} guest device${n === 1 ? '' : 's'} joined.`),
+      shared ? netLine('Its radio', `Shared with the box's WiFi (${shared.iface}): it follows that network's channel, so a roam or a reconnect there moves guests too.`) : null];
+  }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not looked yet.' })]));
 }
 
 function renderNetwork(data) {
@@ -1985,7 +2456,7 @@ function renderNetwork(data) {
     + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not looked yet.';
   net.scan.disabled = busy;
   const devices = inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : [];
-  for (const box of [net.device, net.iface]) {
+  for (const box of [net.iface]) {
     const keep = box.value;
     const first = box.options[0];
     box.replaceChildren(first, ...devices.map((d) => el('option', { value: d, textContent: d })));
@@ -1996,14 +2467,29 @@ function renderNetwork(data) {
   const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
   const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
   net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
+  drawNetTabs(data, inv, u);
   net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => checkItem(h.status, h.title, h.detail, h.fix)));
   const sn = netNotes.scan;
   say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
+  const jn = netNotes.join;
+  say(jn ? jn.text : '', jn ? jn.ok : true, noteEl('net-join-note'));
 
   // Staying on the network
   buildUpFields(levels);
-  if (!upDirty) fillUpForm((u && u.chosen) || { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} }, levels);
+  if (!upDirty) fillUpForm((u && u.chosen) || levels.default, levels);
   net.status.textContent = upStatusText(u);
+  // Stalled (uplink-ladder-plan, stage 2): the step that could help, one press away; the watchdog's
+  // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
+  // Or a wedged driver, with a radio reset possible: offered by hand whatever the ladder is doing.
+  const wedgedRadio = u && !u.stale && u.wedged && (u.repairs || []).includes('radio') && !((u.outage || {}).done || []).includes('radio');
+  const need = u && !u.stale && ((u.state === 'stalled' && u.stall && u.stall.needs) || (wedgedRadio && 'radio'));
+  if (need && !(u.stall && u.stall.needs)) u = { ...u, stall: { needs: 'radio', label: 'reset the radio' } };
+  net.stall.hidden = !need;
+  net.stall.replaceChildren(...(need ? [el('button', { type: 'button', className: 'action-btn primary', disabled: busy,
+    textContent: `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now`,
+    onclick: () => { if (confirm(`${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now? `
+      + (need === 'reboot' ? 'The box restarts, and everything on it is away for a minute or two.'
+        : 'The WiFi, and the hotspot with it, goes away for a moment.'))) netRequest({ action: 'do', step: need }, 'up'); } })] : []));
   showUpSave();
   const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;
@@ -2061,14 +2547,38 @@ async function netRequest(body, where) {
   loadNetwork();
 }
 
-net.scan.addEventListener('click', () => netRequest({ action: 'scan', iface: net.device.value || null }, 'scan'));
+net.scan.addEventListener('click', () => netRequest({ action: 'scan' }, 'scan'));
+// A network for the box to join (item 37): added with consent, at once only when asked (and then said what it means).
+const joinForm = document.getElementById('net-join-form');
+const joinPsk = document.getElementById('net-join-psk');
+const joinOpen = () => { joinPsk.hidden = joinForm.elements.security.value === 'open'; joinForm.elements.psk.required = !joinPsk.hidden; };
+joinForm.elements.security.addEventListener('change', joinOpen);
+joinOpen();
+function joinAsk(now) {
+  const f = joinForm.elements;
+  if (!joinForm.reportValidity()) return;
+  const ssid = f.ssid.value;
+  if (now && !confirm(`Join ${ssid} now? The box leaves the network it is on: this page may lose the box until you are on ${ssid} too. `
+    + 'If it cannot join within a minute it goes back to the network it was on.')) return;
+  if (!now && !confirm(`Add ${ssid} to the networks the box knows? It joins it by itself when the networks it knows are out of reach.`)) return;
+  netRequest({ action: 'join', ssid, security: f.security.value, psk: f.security.value === 'open' ? '' : f.psk.value, hidden: f.hidden.checked, now }, 'join');
+  f.psk.value = '';
+}
+joinForm.addEventListener('submit', (e) => { e.preventDefault(); joinAsk(false); });
+document.getElementById('net-join-now').addEventListener('click', () => joinAsk(true));
 for (const box of [net.iface]) {
   box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); showUpSave(); });
 }
 net.save.addEventListener('click', () => {
   let settings;
   try { settings = readUpForm(); } catch (err) { netNotes.up = { text: err.message, ok: false }; renderNetwork(netData); return; }
-  if (settings.eagerness === 'stubborn' && !confirm('Stubborn may reset the radio and reboot the box while guests are on it. Use it?')) return;
+  const was = (netData && netData.uplink && netData.uplink.chosen) || {};
+  if (settings.roaming === 'lock' && (was.roaming !== 'lock' || was.lock_bssid !== settings.lock_bssid)
+    && !confirm(`Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now (a moment off the network), and stays with it, not moving to another access point, until you unlock. If it does not answer, the lock is taken off again.`)) return;
+  if (settings.roaming === 'no-scan' && was.roaming !== 'no-scan'
+    && !confirm('Switch wpa_supplicant\'s background scans off while the hotspot shares the radio? It changes your WiFi\'s running settings, not its profile; choosing another option puts them back.')) return;
+  if (settings.guests === 'ignore' && ['restart', 'radio', 'reboot'].includes(settings.reach)
+    && !confirm(`With guests ignored, it may ${settings.reach === 'restart' ? 'restart the network service' : settings.reach === 'radio' ? 'reset the radio' : 'reset the radio and reboot the box'} while guests are on the hotspot. Use it?`)) return;
   netRequest({ action: 'settings', settings }, 'up');
 });
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
@@ -2153,6 +2663,7 @@ const hs = {
   fields: document.getElementById('hs-fields'),
   second: document.getElementById('hs-second'),
   secondLabel: document.getElementById('hs-second-label'),
+  secondBox: document.getElementById('hs-second-box'),
   password: document.getElementById('hs-password'),
   passwordLabel: document.getElementById('hs-password-label'),
   generate: document.getElementById('hs-generate'),
@@ -2174,7 +2685,8 @@ function hsShowFields() {
   if (!hsData) return;
   const mode = hsChosen();
   const needsPw = mode === 'sae' || (mode === 'two' && hs.second.value === 'sae');
-  hs.second.hidden = hs.secondLabel.hidden = mode !== 'two';
+  // The whole group: the drop-down shows as chips, which are not the <select> and would stay.
+  hs.secondBox.hidden = mode !== 'two';
   hs.password.parentElement.hidden = hs.passwordLabel.hidden = !needsPw;
   hs.wpa2Label.hidden = !needsPw;
   hs.fields.hidden = mode !== 'two' && !needsPw;
@@ -2281,13 +2793,161 @@ hs.save.addEventListener('click', async () => {
 });
 loadHotspot();
 
-// --- an offline kit (Backup) -------------------------------------------------------------
-// The root helper makes it (hub_control.py offline_kit); the hub streams the download.
+// --- Backup and a new box (item 34): offers with sizes ----------------------------------------
+// Tom, 2026-10-09: a backup "should be an offer on the level of backup to make - settings only, settings and data,
+// full image. An estimated size of export is needed"; a new box "a similar offer list … books, toolkits, git repos
+// … a size budget is critical"; and "an export of the library or the toolkits for updating an offline box".
+// The sizes are the hub's (/admin/backup/plan); the kit, the image and the stick are the root helper's.
+const bku = { level: document.getElementById('backup-level'), keys: document.getElementById('backup-syncthing'),
+  keysLabel: document.getElementById('backup-keys-label'), leftOut: document.getElementById('backup-left-out'),
+  goBox: document.getElementById('backup-go-box'), go: document.getElementById('backup-go'),
+  imageBox: document.getElementById('backup-image-box'), stick: document.getElementById('backup-image-stick'),
+  imageGo: document.getElementById('backup-image-go'), note: noteEl('backup-note'),
+  progress: document.getElementById('backup-progress'), bar: document.getElementById('backup-bar'), step: document.getElementById('backup-step') };
+let bkPlan = null, bkLevel = 'data', bkWaiting = null, bkPoll = null, usbSticks = [];
+const BK_WORDS = {
+  settings: ['Settings only', 'What was chosen: the hub\'s settings, accounts, the apps\' and add-ons\' settings, the library\'s and mirrors\' sources. Nothing that was made on the box.'],
+  data: ['Settings and data', 'Also what was made on the box: notes, saved work, the board, the shoutbox, dropped files, the box\'s own git repositories.'],
+  image: ['Full image', 'The whole card, onto a USB stick: the system, the hub, books and all. Taken while the box runs, so as after a power cut; written back with any image writer.'],
+};
+function drawBackup() {
+  const p = bkPlan;
+  if (!p) return;
+  const img = p.image || {};
+  AW.choices(bku.level, 'backup-level', ['settings', 'data', 'image'].map((v) => ({ value: v, title: BK_WORDS[v][0], desc: BK_WORDS[v][1],
+    does: v === 'image' ? `About ${size(img.used)} (what the card holds)${img.card ? `, at most ${size(img.card)} (the card)` : ''}, compressed.`
+      : `About ${size(p.levels[v] + (bku.keys.checked ? p.syncthing : 0))}.` })), { value: bkLevel, onChange: (v) => { bkLevel = v; drawBackupGo(); } });
+  const lo = p.left_out || {};
+  bku.leftOut.textContent = `Left out of every download: books (${size(lo.books)}), the firmware mirror (${size(lo.firmware)}), `
+    + 'the git mirrors, builds and their caches, crash evidence and the library\'s archive: all fetched again.';
+  drawBackupGo();
+}
+function drawBackupGo() {
+  const image = bkLevel === 'image';
+  bku.goBox.hidden = image;
+  bku.keysLabel.hidden = image;
+  bku.imageBox.hidden = !image;
+  if (!bkPlan) return;
+  const q = `level=${bkLevel}${bku.keys.checked ? '&syncthing=1' : ''}`;
+  bku.go.href = `/admin/backup?${q}`;
+  bku.go.textContent = `Download the backup (about ${size(bkPlan.levels[bkLevel] + (bku.keys.checked ? bkPlan.syncthing : 0))})`;
+  bku.stick.replaceChildren(...(usbSticks.length ? usbSticks.map((d) => el('option', { value: d.name, textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }))
+    : [el('option', { value: '', textContent: 'No stick found yet' })]));
+  bku.imageGo.disabled = !usbSticks.length || !!bkWaiting;
+  for (const s of [document.getElementById('offline-stick')]) {
+    const keep = s.value;
+    s.replaceChildren(...bku.stick.cloneNode(true).children);
+    if ([...s.options].some((o) => o.value === keep)) s.value = keep;
+  }
+  drawOfflineTotal();
+}
+bku.keys.addEventListener('change', (e) => {
+  if (bku.keys.checked && !confirm("Include Syncthing's private keys? Anyone with the file can pose as this box to its Syncthing peers.")) { bku.keys.checked = false; return; }
+  drawBackup();
+});
+// The kit's and the offline stick's offers: a checkbox per book, toolkit and repository, with its size.
+const pickList = (box, items, name, label) => {
+  const keep = new Set([...box.querySelectorAll('input:checked')].map((i) => i.value));
+  box.replaceChildren(...(items.length ? items.map((it) => el('label', { className: 'inline' },
+    el('input', { type: 'checkbox', name, value: it.value, checked: keep.has(it.value) }), ` ${label(it)}`))
+    : [el('span', { className: 'setting-desc', textContent: 'None on this box.' })]));
+};
+const picked = (box) => [...box.querySelectorAll('input:checked')].map((i) => i.value);
 const kitEl = { form: document.getElementById('kit-form'), make: document.getElementById('kit-make'),
-  books: document.getElementById('kit-books'), progress: document.getElementById('kit-progress'),
+  books: document.getElementById('kit-books'), kits: document.getElementById('kit-kits'), repos: document.getElementById('kit-repos'),
+  total: document.getElementById('kit-total'), progress: document.getElementById('kit-progress'),
   bar: document.getElementById('kit-bar'), step: document.getElementById('kit-step'), note: noteEl('kit-note'),
   state: document.getElementById('kit-state'), details: document.getElementById('kit-details'),
   contents: document.getElementById('kit-contents') };
+const offEl = { form: document.getElementById('offline-form'), books: document.getElementById('offline-books'), kits: document.getElementById('offline-kits'),
+  total: document.getElementById('offline-total'), stick: document.getElementById('offline-stick'), go: document.getElementById('offline-go'), note: noteEl('offline-note') };
+function drawPicks() {
+  const p = bkPlan;
+  const book = (b) => `${b.name} (${size(b.size)})`, kit = (k) => `${k.title} (${size(k.size)})`;
+  pickList(kitEl.books, p.books.map((b) => ({ ...b, value: b.name })), 'book', book);
+  pickList(kitEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
+  pickList(kitEl.repos, p.repos.map((r) => ({ ...r, value: `${r.area}/${r.name}` })), 'repo',
+    (r) => `${r.name}${r.area === 'private' ? ' (private)' : ''}${r.mirror ? ', a mirror' : ''} (${size(r.size)})`);
+  pickList(offEl.books, p.books.map((b) => ({ ...b, value: b.name })), 'book', book);
+  pickList(offEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
+  drawKitTotal();
+  drawOfflineTotal();
+}
+function kitBytes() {
+  const p = bkPlan, f = kitEl.form.elements;
+  const sum = (box, list, key) => picked(box).reduce((n, v) => n + ((list.find((x) => x[key] === v) || {}).size || 0), 0);
+  return p.hub + sum(kitEl.books, p.books, 'name') + sum(kitEl.kits, p.kits, 'id')
+    + picked(kitEl.repos).reduce((n, v) => n + ((p.repos.find((r) => `${r.area}/${r.name}` === v) || {}).size || 0), 0)
+    + (f.state.value === 'none' ? 0 : p.levels[f.state.value]);
+}
+function drawKitTotal() {
+  if (!bkPlan) return;
+  const total = kitBytes(), budget = Number(kitEl.form.elements.budget.value) || 0;
+  const over = budget && total > budget * 2 ** 20;
+  kitEl.total.textContent = `About ${size(total)}` + (budget ? ` of a ${size(budget * 2 ** 20)} budget${over ? ': over it, so leave something out.' : '.'}` : ' (no budget set).')
+    + ' The code, the apps and their release files are always in it.';
+  kitEl.total.classList.toggle('bad', !!over);
+  kitEl.make.dataset.over = over ? '1' : '';
+}
+function drawOfflineTotal() {
+  if (!bkPlan) return;
+  const p = bkPlan;
+  const total = picked(offEl.books).reduce((n, v) => n + ((p.books.find((b) => b.name === v) || {}).size || 0), 0)
+    + picked(offEl.kits).reduce((n, v) => n + ((p.kits.find((k) => k.id === v) || {}).size || 0), 0);
+  offEl.total.textContent = total ? `About ${size(total)} onto the stick.` : 'Choose books or toolkits.';
+  offEl.go.disabled = !total || !usbSticks.length || !!bkWaiting;
+}
+kitEl.form.addEventListener('change', drawKitTotal);
+kitEl.form.addEventListener('input', drawKitTotal);
+offEl.form.addEventListener('change', drawOfflineTotal);
+async function loadBackupPlan() {
+  try { bkPlan = await getJSON('/admin/backup/plan'); drawBackup(); drawPicks(); } catch (err) { console.error('backup plan:', err); }
+}
+// The sticks, the image and the offline copy: the root helper, through /admin/usb, as the Books page's exports.
+async function bkSticks(scan) {
+  try {
+    if (scan) { bkWaiting = { id: (await postJSON('/admin/usb', { action: 'scan' })).id, note: bku.note }; }
+    const d = await getJSON('/admin/usb');
+    usbSticks = (d.scan && d.scan.devices) || [];
+    if (bkWaiting) {
+      const done = (d.results || []).find((r) => r.id === bkWaiting.id);
+      if (done) { say(done.message, done.ok, bkWaiting.note); bkWaiting = null; }
+    }
+    const p = d.progress;
+    bku.progress.hidden = !p;
+    if (p) {
+      bku.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
+      bku.step.textContent = `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
+    }
+    drawBackupGo();
+    clearTimeout(bkPoll);
+    if (bkWaiting || p || d.pending > 0) bkPoll = setTimeout(() => bkSticks(false), 1500);
+  } catch (err) { say(err.message, false, bku.note); }
+}
+document.getElementById('backup-image-scan').addEventListener('click', () => bkSticks(true));
+document.getElementById('offline-scan').addEventListener('click', () => bkSticks(true));
+bku.imageGo.addEventListener('click', async () => {
+  const d = usbSticks.find((x) => x.name === bku.stick.value);
+  if (!d || !confirm(`Write an image of the whole card onto ${d.label || d.name}? About ${size((bkPlan.image || {}).used)} or more, `
+    + 'an hour or more on this board; the box stays in use meanwhile.')) return;
+  try {
+    bkWaiting = { id: (await postJSON('/admin/usb', { action: 'image', device: d.name })).id, note: bku.note };
+    say('Writing the image: its progress shows here.', true, bku.note);
+    bkSticks(false);
+  } catch (err) { say(err.message, false, bku.note); }
+});
+offEl.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const books = picked(offEl.books), kits = picked(offEl.kits), d = usbSticks.find((x) => x.name === offEl.stick.value);
+  if (!d || !confirm(`Copy ${books.length} book${books.length === 1 ? '' : 's'} and ${kits.length} toolkit${kits.length === 1 ? '' : 's'} onto ${d.label || d.name}?`)) return;
+  try {
+    bkWaiting = { id: (await postJSON('/admin/usb', { action: 'export-many', device: d.name, books, kits })).id, note: offEl.note };
+    say('Copying: its progress shows above, under Back up this box.', true, offEl.note);
+    bkSticks(false);
+  } catch (err) { say(err.message, false, offEl.note); }
+});
+
+// The kit: the root helper makes it (hub_control.py offline_kit); the hub streams the download.
 let kitWaiting = null;
 let kitPoll = null;
 function renderKit(d) {
@@ -2296,9 +2956,6 @@ function renderKit(d) {
     if (done) { say(done.message, done.ok, kitEl.note); kitWaiting = null; }
   }
   const busy = !!kitWaiting || d.pending > 0 || !!d.progress;
-  kitEl.books.textContent = d.books.count
-    ? `Include the books (${d.books.count}, ${size(d.books.bytes)})` : 'Include the books (this box has none)';
-  kitEl.form.elements.books.disabled = !d.books.count;
   kitEl.make.disabled = busy;
   kitEl.progress.hidden = !d.progress;
   if (d.progress) {
@@ -2307,10 +2964,11 @@ function renderKit(d) {
     kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${p.label}` : ''}.`;
   }
   const k = d.kit;
+  const held = k ? [k.books.length && `${k.books.length} book${k.books.length === 1 ? '' : 's'}`, (k.kits || []).length && `${k.kits.length} toolkit${k.kits.length === 1 ? '' : 's'}`,
+    (k.repos || []).length && `${k.repos.length} repositor${k.repos.length === 1 ? 'y' : 'ies'}`, k.state && k.state !== 'none' && (k.state === 'data' ? 'settings and data' : 'settings')].filter(Boolean) : [];
   kitEl.state.replaceChildren(...(k ? [
     el('a', { href: '/admin/kit/download', download: k.name, textContent: `Download ${k.name}` }),
-    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}` +
-      (k.books.length ? `, with ${k.books.length} book${k.books.length === 1 ? '' : 's'}` : ', without books') + '.'),
+    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}, with ${held.length ? held.join(', ') : 'the hub alone'}.`),
   ] : [document.createTextNode(busy ? 'Making the kit…' : 'No kit made yet.')]));
   kitEl.details.hidden = !(k && k.contents && k.contents.length);
   if (k) kitEl.contents.replaceChildren(...(k.contents || []).map((t) => el('li', { textContent: t })));
@@ -2322,14 +2980,18 @@ async function loadKit() {
 }
 kitEl.form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (kitEl.make.dataset.over) { say('Over the budget: leave something out, or raise the budget.', false, kitEl.note); return; }
+  const f = kitEl.form.elements, budget = Number(f.budget.value) || null;
   try {
-    kitWaiting = (await postJSON('/admin/kit', { action: 'make', books: kitEl.form.elements.books.checked })).id;
+    kitWaiting = (await postJSON('/admin/kit', { action: 'make', books: picked(kitEl.books), kits: picked(kitEl.kits),
+      repos: picked(kitEl.repos), state: f.state.value, budget_mb: budget })).id;
     say('Making the kit: a minute or two, longer with books.', true, kitEl.note);
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
-window.addEventListener('hashchange', () => { if (paneShown('backup')) loadKit(); });
+window.addEventListener('hashchange', () => { if (paneShown('backup')) { loadKit(); loadBackupPlan(); bkSticks(false); } });
 loadKit();
+loadBackupPlan();
 
 // --- who can open each app --------------------------------------------------------------
 // Public, private or off (access.py): a three-way switch on each app (Apps), each add-on
@@ -3010,13 +3672,15 @@ function renderGit(data) {
   const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
   const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
   const list = shown.filter((r) => kindTest(r) && areaTest(r) && (!q || r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)));
-  const cards = [newCard()];
+  const cards = [];
   for (const r of list) {
     cards.push(repoCard(r, data));
     if (gitView.open === repoKey(r)) cards.push(managePanel(r, data, 'git-drawer'));
   }
-  if (gitView.open === 'new') cards.splice(1, 0, newPanel('git-drawer'));
   if (!list.length) cards.push(el('p', { className: 'setting-desc', textContent: shown.length ? 'Nothing matches.' : 'No repositories yet.' }));
+  // The New card last, after the repositories (Tom, 2026-10-09: "move the new tile to the end"), its drawer after it.
+  cards.push(newCard());
+  if (gitView.open === 'new') cards.push(newPanel('git-drawer'));
   git.grid.replaceChildren(...cards);
 }
 
@@ -3182,8 +3846,8 @@ function renderMirrors(data) {
         relNote ? el('span', { className: `setting-desc${st.releases_cached ? ' warn' : ''}`, textContent: relNote }) : null,
         el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state })),
       el('span', { className: 'library-buttons' },
-        actionButton('Check', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
-        actionButton('Update', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton('Check now', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton('Fetch', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Fetching is a mirror\'s update' }),
         actionButton(m.submodules ? 'Without submodules' : 'With submodules', act({ action: 'mirror-change',
           mirror: Object.assign({}, m, { status: undefined, submodules: !m.submodules }) }), { className: 'small' }),
         relGroups.length ? actionButton(skipping ? 'Keep revoked' : 'Leave revoked out', act({ action: 'mirror-change',
@@ -3663,7 +4327,8 @@ async function loadKitsUsb() {
         cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this stick', disabled: busy,
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
-    p ? el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` }) : null);
+    // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).
+    ...(p ? [el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` })] : []));
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
 async function kitsUsbAsk(body, confirmText) {

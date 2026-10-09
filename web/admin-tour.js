@@ -14,7 +14,7 @@ const TOUR = (() => {
   'use strict';
   // The decisions: words, the section they live in, and the part of it to highlight (a selector,
   // or a finder for a part drawn later, such as one of the security findings).
-  const finding = (re) => () => [...document.querySelectorAll('#security-findings li')].find((li) => re.test(li.textContent));
+  const finding = (re) => () => [...document.querySelectorAll('#security-findings .finding')].find((li) => re.test(li.textContent));
   const DECISIONS = [
     { id: 'visitors', label: 'Count unique visitors', section: 'security', target: '#visitor_counts',
       said: 'On by default: different devices today and this week, by salted hashes thrown away daily and weekly; only the counts are kept.' },
@@ -26,9 +26,9 @@ const TOUR = (() => {
       said: 'Off by default: an app for users shows its tile only to those signed in. On, guests see it too, with a lock that leads to sign-in. Each app\'s own "Tile shown to" still has the last word.' },
     { id: 'https', label: 'HTTPS', section: 'security', target: '#tls-state',
       said: 'The box\'s own certificate authority by default: phones install it once from /certificate. Off sends passwords in the clear.' },
-    { id: 'hotspot', label: 'The hotspot\'s security', section: 'network', target: '#hs-modes',
+    { id: 'hotspot', label: 'The hotspot\'s security', section: 'network/hotspot', fallback: 'network', target: '#hs-modes',
       said: 'Encrypted with no password (OWE) where the radio can: guests join freely, and nobody nearby can read what they do.' },
-    { id: 'guest-net', label: 'Guests reach the internet', section: 'network', target: '#guest-net-box',
+    { id: 'guest-net', label: 'Guests reach the internet', section: 'network/hotspot', fallback: 'network', target: '#guest-net-box',
       said: 'Off by default: guests on the hotspot reach the box and nothing else. Five steps up to everyone, each saying what it opens.' },
     { id: 'ssh', label: 'SSH takes passwords', section: 'security', target: finding(/SSH password/),
       said: 'Left as the box had it unless you choose here: keys only can lock out an owner who has no key.' },
@@ -45,7 +45,7 @@ const TOUR = (() => {
   // parts of the page that know it (setupStep in admin.js).
   const OWN = [
     { id: 'password', label: 'Admin password', section: 'access', target: '#access form, #access', said: 'Set at first use. Change it here whenever you like.' },
-    { id: 'connection', label: 'How guests reach the box', section: 'network', target: '#net-devices', said: 'How phones and laptops find the hub: on the network the box is on, or its own hotspot.' },
+    { id: 'connection', label: 'How guests reach the box', section: 'network/hardware', fallback: 'network', target: '#net-devices', said: 'How phones and laptops find the hub: on the network the box is on, or its own hotspot.' },
     { id: 'security', label: 'What the box exposes', section: 'security', target: '#security-findings', said: 'What a guest on the network can reach, and the choices that change it.' },
     { id: 'addons', label: 'Add-ons', section: 'addons', target: '#addons-list', said: 'The hub works without any; add the ones this box is for.' },
     { id: 'books', label: 'Books', section: 'books', target: '#books', said: 'What Kiwix serves offline, and which the librarian keeps current.' },

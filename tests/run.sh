@@ -20,6 +20,11 @@ run() {
 run sim_uplink.py
 run sim_crashwatch.py
 run sim_pkgwatch.py
+run sim_update_pattern.py
+run sim_wifijoin.py
+run sim_roaming.py
+run sim_backup.py
+run sim_one_login.py
 run sim_helper_busy.py
 run sim_widths.py
 run sim_admin_apps.py
@@ -70,6 +75,7 @@ run sim_image_step.py
 run sim_offline_step.py
 run sim_firewall.py
 run sim_secdoctor_joint.py
+run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_share.py
 run sim_guest_net.py

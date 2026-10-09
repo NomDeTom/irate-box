@@ -94,9 +94,13 @@ fi
 
 # "Keep retrying" on /admin's Network page changed two settings of the owner's WiFi profile;
 # put them back (uplink.py recorded the old values).
-if [ -f "$ETC/uplink-changes.json" ] && [ -f "$CODE/irate_box/hub/uplink.py" ]; then
+if { [ -f "$ETC/uplink-changes.json" ] || [ -f "$ETC/uplink-roaming.json" ]; } && [ -f "$CODE/irate_box/hub/uplink.py" ]; then
 	say "Putting the WiFi profile back as it was"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink undo-all | sed 's/^/    /' || true
+fi
+# Networks added on the Network page's access tab are the owner's: kept, and said how to remove them.
+if [ -f "$ETC/wifi-joined.json" ] && [ -f "$CODE/irate_box/root/wifijoin.py" ]; then
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" wifijoin kept | sed 's/^/    /' || true
 fi
 
 # A clock module set up by rtc.py: its units go, and a kernel-declared module is released.

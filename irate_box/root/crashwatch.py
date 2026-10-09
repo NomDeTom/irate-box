@@ -20,11 +20,15 @@ irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: sm
               under STATE/crashwatch/crashes/<time>/ for the box doctor (the last 30 kept).
   Pre-emption the WiFi radio watched for a hardware or driver failure, told apart from an access
               point going away (that is uplink.py's): its interface or USB device gone, or a burst
-              of driver errors. As far as the owner chose (box doctor):
+              of driver errors (the AIC8800's own "cmd queue crashed" among them). Each failure is
+              filed as it happens (crashes/<time>-radio-<iface>/: the ten minutes before it and
+              the kernel's lines), as the box may never stop. As far as the owner chose (box doctor):
                 off      nothing
                 warn     a fuller snapshot and the doctor's finding (the default)
-                radio    ... and the radio reset at once: its USB device unbound and bound again (its
-                         hub's, when the device itself is gone), or its driver reloaded
+                radio    ... and the radio reset at once (root/radio.py, shared with uplink.py): its
+                         USB device (its hub's, when the device itself is gone), then authorized
+                         0/1, then its driver, with NetworkManager stopped around it and the
+                         hotspot started again after
                 reboot   ... and the box restarted if the radio isn't back within 3 minutes
               With uplink.py's guards: the owner's Hold, guests on the hotspot (unless the uplink's
               settings say to ignore them), no reboot while a build or an update runs, within
@@ -63,6 +67,7 @@ SNAP = DIR / "snap.log"
 RUN = DIR / "run.json"               # this boot: its id, when it started, whether it stopped cleanly
 CRASHES = DIR / "crashes"
 INDEX = DIR / "crashes.json"
+INCIDENTS = DIR / "incidents.json"   # a radio's failures, filed as they happen (the box may never stop)
 EVENTS = DIR / "events.json"         # the radio's failures and what was done, newest last
 STATUS = DIR / "status.json"         # for the box doctor: the radios watched, the floods, the last look
 PROC = Path(os.environ.get("HUB_PROC", "/proc"))
@@ -86,6 +91,10 @@ ERR_BURST = 5             # driver errors within two looks that make a failure
 RADIO_ERR = re.compile(r"USB disconnect|tx timeout|cmd (?:tx )?time ?out|firmware (?:crash|error|fail)|fw (?:crash|error)"
                        r"|failed to (?:send|transmit|xmit)|error -(?:71|110|19)\b|descriptor read.*error|reset (?:high|full)-speed USB",
                        re.I)
+# The AIC8800 driver's own words when its firmware wedges, which name no interface or driver (the
+# Lyra, 2026-10-09 04:00: a burst of "check cmdqueue empty", "cmd_mgr_queue cmd timed-out", then
+# "cmd queue crashed"; none of them seen in normal running). Counted for a radio with an aic driver.
+AIC_ERR = re.compile(r"cmd queue crashed|cmd_mgr_queue cmd timed-out|check cmdqueue empty", re.I)
 HANG_SYSCTL = {"kernel.panic": "10", "kernel.panic_on_oops": "1", "kernel.softlockup_panic": "1"}
 
 
@@ -286,9 +295,36 @@ def journal_tail(n=300):
     return "\n".join([f"({n} lines like \"{k}\" left out)" for k, n in flood.items()] + keep[-n:])
 
 
-def snapshots_tail(nbytes=200_000):
+def snapshots_tail(nbytes=200_000, since=None):
+    """The last snapshots: nbytes of them, or, if it reaches further back, from the snapshot taken
+    at or just before `since` (epoch; a boot with a radio failure: a few minutes before it), at
+    most 2 MB."""
     text = _read(SNAP.with_name("snap.log.1")) + _read(SNAP)
-    return text[-nbytes:]
+    if since:
+        stamp = time.strftime("=== %Y-%m-%d %H:%M:%S", time.localtime(since))
+        heads = [m for m in re.finditer(r"^=== \d{4}-\d\d-\d\d \d\d:\d\d:\d\d", text, re.M)]
+        before = [m.start() for m in heads if m.group(0) <= stamp]
+        i = before[-1] if before else (heads[0].start() if heads else len(text))
+        nbytes = min(max(nbytes, len(text) - i), 2_000_000)
+    return text[-nbytes:] if nbytes else ""
+
+
+def file_radio(now, iface, text, kernel):
+    """A radio's failure, filed when it happens with what led to it (the last ten minutes'
+    snapshots and this look's kernel lines), for the box doctor: on 2026-10-09 the Lyra's radio
+    wedged and the box ran on, so nothing was filed at all."""
+    stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(now))
+    d = CRASHES / f"{stamp}-radio-{re.sub(r'[^A-Za-z0-9_.-]', '_', iface)}"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "snapshots.log").write_text(snapshots_tail(0, since=now - 600))
+    (d / "kernel.log").write_text("\n".join(kernel[-300:]) + "\n")
+    rec = {"dir": d.name, "kind": "radio", "iface": iface, "at": now, "boot": boot_id(), "text": text}
+    (d / "info.json").write_text(json.dumps(rec, indent=1))
+    index = _json(INCIDENTS, []) + [rec]
+    for old in index[:-KEEP_CRASHES]:
+        shutil.rmtree(CRASHES / old.get("dir", "-"), ignore_errors=True)
+    _write(INCIDENTS, index[-KEEP_CRASHES:])
+    return rec
 
 
 def last_snapshot(text):
@@ -307,10 +343,12 @@ def boot(now=None):
         stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(now))
         d = CRASHES / stamp
         d.mkdir(parents=True, exist_ok=True)
-        snaps = snapshots_tail()
+        events = [e for e in _json(EVENTS, []) if e.get("boot") == prev["boot"]]
+        # Back to a few minutes before that boot's first radio failure, if it had one.
+        first = min((e["at"] for e in events if e.get("kind") == "failed"), default=None)
+        snaps = snapshots_tail(since=first - 300 if first else None)
         (d / "snapshots.log").write_text(snaps)
         (d / "journal-previous-boot.log").write_text(journal_tail())
-        events = [e for e in _json(EVENTS, []) if e.get("boot") == prev["boot"]]
         filed = {"dir": stamp, "boot": prev["boot"], "started": prev.get("at"), "detected": now,
                  "last": last_snapshot(snaps)[:1500], "events": events[-5:]}
         (d / "info.json").write_text(json.dumps(filed, indent=1))
@@ -355,10 +393,11 @@ def radio_state(known, kernel):
             why.append(f"{iface} is gone")
         if r.get("port") and not (SYS / "bus/usb/devices" / r["port"]).exists():
             why.append(f"its USB device {r['port']} ({r.get('product') or 'the radio'}) left the bus")
-        names = {n for n in (iface, r.get("driver"), r.get("port") and f"{r['port']}:") if n}
-        if (r.get("driver") or "").startswith("aic"):
-            names |= {"aicwf", "aicbsp", "rwnx"}      # the AIC8800 driver's own prefixes
-        errs = [l for l in kernel if RADIO_ERR.search(l) and any(n in l for n in names)]
+        names = {n.lower() for n in (iface, r.get("driver"), r.get("port") and f"{r['port']}:") if n}
+        aic = (r.get("driver") or "").startswith("aic")
+        if aic:
+            names |= {"aicwf", "aicbsp", "rwnx"}      # the AIC8800 driver's own prefixes ("AICWFDBG(LOGERROR)" too)
+        errs = [l for l in kernel if (RADIO_ERR.search(l) and any(n in l.lower() for n in names)) or (aic and AIC_ERR.search(l))]
         out[iface] = (why, errs)
     return out
 
@@ -413,28 +452,11 @@ class Preempt:
 
 
 def reset_radio(iface, known):
-    """Unbind and bind its USB device again (its parent hub's when the device has gone), or reload
-    its driver."""
+    """The one radio reset the uplink watchdog uses too (root/radio.py): its USB device (or the hub
+    it hangs off), then `authorized` 0/1, then its driver; the hotspot started again after."""
+    from irate_box.root import radio
     r = known.get(iface, {})
-    drv = SYS / "bus/usb/drivers/usb"
-    port = r.get("port")
-    if port and re.fullmatch(r"[0-9]+-[0-9.]+", port):
-        target = port if (SYS / "bus/usb/devices" / port).exists() else port.rsplit(".", 1)[0] if "." in port else None
-        if target and (SYS / "bus/usb/devices" / target).exists():
-            try:
-                (drv / "unbind").write_text(target)
-                time.sleep(3)
-                (drv / "bind").write_text(target)
-                return f"USB {target} unbound and bound again" + ("" if target == port else f" (the hub the radio hangs off: {port} had gone)")
-            except OSError as exc:
-                return f"USB {target}: {exc}"
-    mod = r.get("driver")
-    if mod and re.fullmatch(r"[A-Za-z0-9_-]+", mod):
-        subprocess.run(["modprobe", "-r", mod], capture_output=True, timeout=60)
-        time.sleep(2)
-        p = subprocess.run(["modprobe", mod], capture_output=True, text=True, timeout=60)
-        return f"{mod} reloaded" if p.returncode == 0 else f"modprobe {mod}: {p.stderr.strip()[:160]}"
-    return "no way to reset this radio here"
+    return radio.reset(iface, r.get("port"), r.get("driver"), r.get("product"))
 
 
 def guards(step, now):
@@ -566,7 +588,7 @@ def undo_all():
 def status():
     s = load_settings()
     st = _json(STATUS, {})
-    return {"settings": s, "running": st, "crashes": _json(INDEX, []), "events": _json(EVENTS, [])[-20:],
+    return {"settings": s, "running": st, "crashes": _json(INDEX, []), "incidents": _json(INCIDENTS, []), "events": _json(EVENTS, [])[-20:],
             "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device()}
 
 
@@ -577,10 +599,15 @@ def run(once=False):
     floods_hour = Counter()
     hour_start = time.time()
     status_at = 0.0
-    pending = {"snap": None}
+    pending = {"snap": None, "lines": []}
 
     def log(now, iface, kind, text, snapshot=False):
         e = {"at": now, "boot": boot_id(), "iface": iface, "kind": kind, "text": text}
+        if kind == "failed":
+            try:
+                e["filed"] = file_radio(now, iface, text, pending["lines"])["dir"]
+            except OSError as exc:
+                print(f"crashwatch: radio failure not filed: {exc}", file=sys.stderr)
         events.append(e)
         _write(EVENTS, list(events))
         if snapshot:
@@ -600,6 +627,7 @@ def run(once=False):
             mtime, settings = m, load_settings()
             pre.level = settings["preempt"]
         lines = kmsg.read()
+        pending["lines"] = lines
         keep, flood = floods(lines)
         floods_hour.update(flood)
         if settings["preempt"] != "off":

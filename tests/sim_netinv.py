@@ -37,5 +37,38 @@ v = netinv.ap_verdicts(inv({"ap": False}))[0]
 check("no AP mode at all: not possible, one limit", not v["possible"] and kinds(v) == ["limit"], v)
 h = netinv._h("x", "warn", "t", "d", iface="wlan0")
 check("a finding can name its device", h["iface"] == "wlan0" and "iface" not in netinv._h("y", "ok", "t", "d"))
+
+# Roaming (item 35, stage 1): the access points sharing the network, the background scan, the choices that work.
+# nmcli's and wpa_cli's own output, as the Lyra gave them (2026-10-09), the addresses and names changed.
+LIST = ("04\\:95\\:E6\\:00\\:00\\:01:6:2437 MHz:100:HomeNet\n50\\:0F\\:F5\\:00\\:00\\:02:6:2437 MHz:87:HomeNet\n"
+        "50\\:0F\\:F5\\:00\\:00\\:03:11:2462 MHz:80:HomeNet\nB2\\:41\\:D9\\:00\\:00\\:04:6:2437 MHz:0:Irate-Box\n")
+aps = netinv.parse_wifi_list(LIST, "HomeNet")
+check("three access points for the network, strongest first, the hotspot's own not among them", [a["bssid"] for a in aps]
+      == ["04:95:e6:00:00:01", "50:0f:f5:00:00:02", "50:0f:f5:00:00:03"] and aps[2]["channel"] == 11 and aps[0]["freq"] == 2437, aps)
+def fake(*cmd, **_):
+    if cmd[:2] == ("nmcli", "-t"):
+        return 0, LIST
+    if cmd[-1] == "status":
+        return 0, "bssid=04:95:e6:00:00:01\nfreq=2437\nssid=HomeNet\nid=0\nwpa_state=COMPLETED\n"
+    if cmd[-1] == "bgscan":
+        return 0, '"simple:30:-65:300"'
+    return 1, ""
+netinv.shutil.which = lambda c: "/usr/sbin/" + c
+r = {"iface": "wlan0", "owner": "networkmanager", "link": {"ssid": "HomeNet"}}
+f = netinv.roaming_facts(r, {"version": "1.52.1"}, fake)
+check("NetworkManager with wpa_supplicant's socket: two channels, NM's background scan read, all four choices",
+      f["channels"] == [6, 11] and f["bgscan"] == "simple:30:-65:300" and f["choices"] == ["roam", "no-scan", "lock"] and f["nm_version"] == "1.52.1", f)
+f = netinv.roaming_facts(dict(r, owner="wpa_supplicant"), None, fake)
+check("  wpa_supplicant alone: no lock (NetworkManager's), said why", "lock" not in f["choices"] and "NetworkManager" in f["why"]["lock"] and f["aps"] == [], f)
+f = netinv.roaming_facts(r, {}, lambda *c, **_: (1, ""))
+check("  no control socket: no background-scan choice, said why", "no-scan" not in f["choices"] and "control socket" in f["why"]["no-scan"], f)
+# iw dev on the Lyra (2026-10-09): a P2P device between the hotspot and the link, with no interface of its own.
+IW = ("phy#3\n\tInterface ap0\n\t\tifindex 9\n\t\taddr b2:00:00:00:00:01\n\t\tssid Irate-Box\n\t\ttype AP\n"
+      "\t\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz\n\tUnnamed/non-netdev interface\n\t\twdev 0x300000002\n"
+      "\t\taddr be:00:00:00:00:02\n\t\ttype P2P-device\n\tInterface wlan0\n\t\tifindex 8\n\t\taddr b8:00:00:00:00:03\n"
+      "\t\tssid HomeNet\n\t\ttype managed\n\t\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz\n")
+dev = netinv.parse_iw_dev(IW)
+check("iw dev: the hotspot stays AP with its own address, the P2P device's lines go nowhere", dev["ap0"]["type"] == "AP"
+      and dev["ap0"]["addr"] == "b2:00:00:00:00:01" and dev["wlan0"]["type"] == "managed" and set(dev) == {"ap0", "wlan0"}, dev)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

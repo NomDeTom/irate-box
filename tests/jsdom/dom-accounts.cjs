@@ -59,8 +59,9 @@ function page(file, url, fetcher, scripts) {
   view = { signup: 'off', http: 'prevented', https: true, me: null };
   p = page('account.html', 'https://box.local/account.html', async () => json(view), ['account.js']);
   await wait(); d = p.d;
-  check('off, over HTTPS: no warning; says the box has no accounts, no forms', d.getElementById('acct-http').hidden && /has no accounts/.test(t(d.getElementById('acct-subtitle')))
-    && d.getElementById('acct-login-form').hidden && d.getElementById('acct-signup-form').hidden);
+  // One login (Tom, 2026-10-09): with sign-up off the box's admins still sign in here.
+  check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /admins sign in here/.test(t(d.getElementById('acct-subtitle')))
+    && !d.getElementById('acct-login-form').hidden && d.getElementById('acct-signup-form').hidden, t(d.getElementById('acct-subtitle')));
   check('account page: no errors', !p.errors.length, p.errors.join(' | '));
 
   // The shoutbox and forum on the home page (stage 5): as the admin set posting.

@@ -30,6 +30,7 @@ import html
 from irate_box import confine
 from irate_box.hub import access
 from irate_box.hub import accounts
+from irate_box.hub import backup
 from irate_box.hub import board
 from irate_box.hub import ci
 from irate_box.library import firmware
@@ -684,12 +685,18 @@ _home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
 def _account_nav(signed_in):
-    """A link to /account.html in the hub bar, item 6 of current-and-next-actions: while sign-up
-    is on, "Sign in" for a guest, "My account" for anyone already in."""
-    if accounts.settings()["signup"] == "off":
-        return ""
-    title, label = (("Your account", "My account") if signed_in else ("Sign in or sign up", "Sign in"))
-    return f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
+    """The header's account buttons. One login for everyone (Tom, 2026-10-09: "get rid of the
+    admin-specific login, and have them log in through the standard user login"): "Sign in" for a guest
+    (admins sign in there too, so it shows with sign-up off), "My account" for anyone in; "Admin" for an
+    admin, and for everyone while no admin account can sign in yet (the box's own login, or its first use)."""
+    signup = accounts.settings()["signup"]
+    title, label = (("Your account", "My account") if signed_in else
+                    ("Sign in" if signup == "off" else "Sign in or sign up", "Sign in"))
+    out = f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
+    if signed_in == "admin" or not accounts.admin_ready():
+        out += ('<a class="head-btn labelled" href="/admin/" title="Options for whoever owns the box">'
+                '<span class="head-emoji" aria-hidden="true">⚙️</span> Admin</a>')
+    return out
 
 
 def home_page(signed_in=False):
@@ -707,7 +714,7 @@ def home_page(signed_in=False):
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     signup = accounts.settings()["signup"]
-    mtime = (path.stat().st_mtime, chosen, show_factory, signup)
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready())
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -1388,15 +1395,30 @@ def setup_status(rid):
     if rid:
         out["result"] = next((r for r in control_results(20) if r.get("id") == rid), None)
     return out
-# Never in a backup: the big or regenerable (ZIMs, archived versions), the transient, and
-# the one secret the page can set (the GitHub token).
-BACKUP_SKIP = ("zim", "control", "library/archive", "library/tmp", "library/github-token",
-               "library/lock", "library/apps")
-# Syncthing's identity: its private keys (key.pem, https-key.pem) and config.xml (device list,
-# GUI password hash, API key). Restoring them keeps the box's device ID, so peers need no
-# re-pairing -- but whoever holds the file can pose as the box to those peers. Left out
-# unless the backup is asked for with ?syncthing=1, which the page labels as such.
-SYNCTHING_DIRS = (".local/state/syncthing", ".config/syncthing")
+# What a backup holds is hub/backup.py's (item 34): settings only, or settings and data; never what is
+# fetched again (books, mirrors, builds, caches), nor the GitHub token. Syncthing's identity (its private
+# keys and config.xml: restored, the box keeps its device ID, but whoever holds the file can pose as the box
+# to its peers) only when asked for with ?syncthing=1, which the page labels as such.
+
+
+def _str_list(v, limit=500):
+    return isinstance(v, list) and len(v) <= limit and all(isinstance(x, str) and 0 < len(x) <= 80 for x in v)
+
+
+def backup_plan():
+    """Everything the Backup page offers, with its size (hub/backup.py plan)."""
+    from irate_box.hub import kitdefs
+    try:
+        kits_status = json.loads((CONTROL_DIR / "kits.json").read_text())
+    except (OSError, ValueError):
+        kits_status = {}
+    try:
+        titles = {k: d.get("title", k) for k, d in kitdefs.definitions().items()}
+    except (OSError, ValueError, AttributeError):
+        titles = {}
+    out = backup.plan(STATE_DIR, STATE_DIR / "zim", kits_status, apps_dir=Path("/usr/share/hub/apps"), kit_titles=titles)
+    out["image_pending"] = _pending_actions("backup-image")
+    return out
 
 
 # This box's own source, as installed (install.sh writes it; the AGPL's offer to everyone who
@@ -1574,27 +1596,78 @@ IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
 SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?$")
 
 
+SECURITY_ACCEPTED = STATE_DIR / "security-accepted.json"
+ACCEPT_KEY_RE = re.compile(r"^(setting|service|finding|compound|kit|package|hub):[A-Za-z0-9:/._@+-]{1,180}$")
+
+
+def security_accepted():
+    """{item key: {at, title}}: what the owner has looked at and accepted as it is (item 11; Tom,
+    2026-10-09). The page lists them apart and leaves them out of its counts; Undo takes one back."""
+    try:
+        data = json.loads(SECURITY_ACCEPTED.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def security_accept(key, title, yes):
+    if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
+        raise ValueError("key: an item's key from the report")
+    data = security_accepted()
+    if yes:
+        if len(data) >= 500 and key not in data:
+            raise ValueError("500 accepted already: take some back first")
+        data[key] = {"at": time.time(), "title": str(title or "")[:200]}
+    else:
+        data.pop(key, None)
+    tmp = SECURITY_ACCEPTED.parent / (SECURITY_ACCEPTED.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, SECURITY_ACCEPTED)
+    return data
+
+
+def _tls_status():
+    try:
+        return json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
 def security_snapshot():
     """What the Security page shows: the hub's own lines (which only the hub knows), then the
-    root helper's last scan of the box."""
-    hub = [{
-        "id": "admin-password", "title": "Admin password",
-        **({"status": "problem", "detail": "Not chosen yet: anyone on the network can open /admin and choose it.",
-            "fix": "Choose it now, on this page's Access section."} if unclaimed() else
-           {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening "
-            "can read it the first time a browser sends it.",
-            "fix": "Log in to /admin from the LAN or over Tailscale rather than over the hotspot; a safer login is planned."}),
-    }, {
-        "id": "plain-http", "title": "Plain HTTP", "status": "warn",
-        "detail": "The hub has no certificate, so everything a browser and the box say to each other — pages, "
-                  "messages, uploads — can be read by anyone on the same open network, and changed by anyone "
-                  "who sets out to.",
-        "fix": "That is the price of working offline with no setup. Keep secrets off the hub.",
+    root helper's last scan of the box. The lines follow HTTPS as it is (until 2026-10-09 they
+    said "no certificate" with HTTPS on)."""
+    tls = _tls_status()
+    https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
+    to_https = {"go": "security-https", "where": "Security → HTTPS"}
+    if unclaimed():
+        pw = {"status": "problem", "detail": "Not chosen yet: anyone on the network can open /admin and choose it.",
+              "fix": "Choose it now, on the Access page.", "do": {"go": "access", "where": "Access"}}
+    elif https and admin_only:
+        pw = {"status": "ok", "detail": "Set, and /admin answers over HTTPS only, so the password never crosses the network in clear."}
+    elif https:
+        pw = {"status": "warn", "detail": "Set. HTTPS is on, but /admin still answers on plain HTTP too: a browser that opens "
+              "it as http:// sends the password in clear, readable by anyone listening on an open hotspot.",
+              "fix": "Make /admin HTTPS only (once this device trusts the box's certificate).", "do": to_https}
+    else:
+        pw = {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening can read it "
+              "the first time a browser sends it.",
+              "fix": "Turn HTTPS on and install the box's certificate on your devices; until then, log in from the LAN or over Tailscale.",
+              "do": to_https}
+    hub = [{"id": "admin-password", "title": "Admin password", **pw}, {
+        "id": "plain-http", "title": "HTTPS" if https else "Plain HTTP only",
+        **({"status": "ok", "detail": "On: devices that installed the box's certificate (from /certificate) talk to it privately. "
+            "Plain HTTP still answers, for the hotspot's sign-in sheet and devices without the certificate."} if https else
+           {"status": "warn", "detail": "The box has no certificate in use, so everything a browser and the box say to each other "
+            "(pages, messages, uploads) can be read by anyone on the same open network, and changed by anyone who sets out to.",
+            "fix": "Make the box's certificate, then install it on your own devices from /certificate.", "do": to_https}),
     }, {
         "id": "one-origin", "title": "Apps share the admin page's address", "status": "warn",
-        "detail": "Kiwix books, the calculators and the drawing apps run on the same origin as /admin, so a "
-                  "hostile page among them could act with your login while you are logged in.",
-        "fix": "Log out (close the browser) after admin work; giving /admin an address of its own is planned.",
+        "detail": "Notes, the books, git and the add-ons have addresses of their own; the drawing editors (Excalidraw, Mermaid) "
+                  "and the hub's other apps still run on /admin's, so a hostile page among them could act with your login "
+                  "while you are logged in.",
+        "fix": "Log out (close the browser) after admin work. Giving the editors an address of their own is on irate-box's plan.",
+        "do": {"hub": "The hub's own work (its plan, item 27): nothing to set here. Accept it if logging out after admin work suits you."},
     }]
     for f in hub:
         f.setdefault("actions", [])
@@ -1628,7 +1701,7 @@ def security_snapshot():
         except (OSError, ValueError):
             pass
     return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "imports": imports, "log": log, "pending": _pending_actions("security-"),
-            "results": control_results(5)}
+            "results": control_results(5), "accepted": security_accepted()}
 
 
 HEALTH_STATE = CONTROL_DIR / "health.json"
@@ -1760,6 +1833,7 @@ def health_snapshot():
     except OSError:
         log = []
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
+            "ladder": load(uplink.LADDER) or [],
             "helper": helper_state(), "pending": _pending_actions("health-"), "results": control_results(5),
             "progress": update_progress()}
 
@@ -1784,12 +1858,16 @@ def network_snapshot():
     # Each link's uptime (step 34): hours for a week, days for 35, summed here from the watchdog's
     # five-minute slots, so the page gets a few KB rather than the slots.
     return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
-            "levels": {"eagerness": list(uplink.EAGERNESS), "forgiveness": list(uplink.FORGIVENESS),
-                       "describe": uplink.DESCRIBE, "presets": {"eagerness": uplink.EAGERNESS,
-                                                                "forgiveness": uplink.FORGIVENESS, "common": uplink.COMMON},
+            "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab (item 37)
+            "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
+            "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
+                       "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
+                       "roaming": list(uplink.ROAMING),
+                       "describe": uplink.DESCRIBE, "default": uplink.DEFAULT,
+                       "presets": {"pace": uplink.PACE, "common": uplink.COMMON},
                        "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}
                                   for k, v in uplink.FIELDS.items()}},
-            "pending": _pending_actions("net-") + _pending_actions("uplink-"), "results": control_results(5)}
+            "pending": _pending_actions("net-") + _pending_actions("uplink-") + _pending_actions("wifi-"), "results": control_results(5)}
 
 
 # install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
@@ -2442,12 +2520,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_backup(self, with_syncthing=False):
-        """The hub's state as a .tar.gz, streamed: notes, saves, board, shoutbox, settings,
-        the library's sources and the clock -- everything but BACKUP_SKIP, and Syncthing's
-        identity only when asked for. BACKUP-CONTENTS.txt at the top says which this is."""
+    def _send_backup(self, with_syncthing=False, level="data"):
+        """The hub's state as a .tar.gz, streamed, at the level asked for (hub/backup.py): settings only,
+        or settings and data; Syncthing's identity only when asked for. BACKUP-CONTENTS.txt at the top
+        says which this is."""
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-        kind = "with-syncthing-keys" if with_syncthing else "state"
+        kind = ("settings" if level == "settings" else "settings-and-data") + ("-with-syncthing-keys" if with_syncthing else "")
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
         self.send_header("Content-Disposition", f'attachment; filename="irate-box-{kind}-{stamp}.tar.gz"')
@@ -2455,13 +2533,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
 
-        skip = BACKUP_SKIP if with_syncthing else BACKUP_SKIP + SYNCTHING_DIRS
-
-        def keep(info):
-            rel = info.name.split("/", 1)[1] if "/" in info.name else ""
-            if any(rel == s or rel.startswith(s + "/") for s in skip) or rel.endswith(".tmp"):
-                return None
-            return info
+        keep = backup.keep_for(level, with_syncthing, backup.git_mirrors(STATE_DIR))
 
         if with_syncthing:
             about = ("This backup CONTAINS SYNCTHING'S PRIVATE KEYS AND CONFIG\n"
@@ -2472,9 +2544,14 @@ class Handler(BaseHTTPRequestHandler):
             about = ("Syncthing's identity (private keys, config.xml) is NOT in this backup.\n"
                      "Restored on a box, Syncthing starts with a new device ID, and its peers\n"
                      "need to be paired again.\n")
-        about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{about}\n"
-                 "Left out: ZIM books and archived versions (they come from their sources),\n"
-                 "the GitHub token, and transient files.\n")
+        held = ("SETTINGS ONLY: what was chosen (the hub's settings, accounts, the apps' and add-ons'\n"
+                "settings, the library's and mirrors' sources), none of what was made on the box.\n"
+                if level == "settings" else
+                "SETTINGS AND DATA: what was chosen, and what was made on the box (notes, saved work,\n"
+                "the board, the shoutbox, dropped files, the box's own git repositories).\n")
+        about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
+                 "Left out: books, the firmware and git mirrors, builds and their caches, crash\n"
+                 "evidence, the library's archive (all fetched again), the GitHub token, transient files.\n")
         try:
             with tarfile.open(fileobj=self.wfile, mode="w|gz") as tar:
                 data = about.encode()
@@ -2584,7 +2661,10 @@ class Handler(BaseHTTPRequestHandler):
         query = self.path.partition("?")[2].split("&")
         admin = me is not None and me.get("role") == "admin"
         if path == "/_irate/admin" and ("soft=1" in query or "redirect=1" in query):
-            if admin or "soft=1" in query:
+            # basic=1 (Caddy, the box's own login on and an admin account ready): a request carrying a
+            # login of its own (a script's) goes on to Caddy's basic_auth, which checks it; anyone else
+            # without an admin session is sent to the standard sign-in rather than asked for that login.
+            if admin or "soft=1" in query or ("basic=1" in query and self.headers.get("Authorization", "").startswith("Basic ")):
                 self.send_response(204)
                 self.send_header("X-Irate-Session", "admin" if admin else "")   # always: see git-access
                 self.send_header("Content-Length", "0")
@@ -2697,7 +2777,9 @@ class Handler(BaseHTTPRequestHandler):
                 accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr)
                 self.send_json(200, {"changed": True})
             elif action == "code":
+                before = accounts.admin_ready()
                 name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
+                self._admin_gate_follow(before)
                 self.send_json(200, {"name": name})
             elif action == "prefs":
                 # A person's own settings (M12): theirs alone, through their own session.
@@ -2708,6 +2790,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(429, {"error": str(exc)})
         except accounts.AccountError as exc:
             self.send_json(400, {"error": str(exc)})
+
+    def _admin_gate_follow(self, before):
+        """The admin accounts changed: if one being able to sign in became true or false, the root helper
+        rewrites the admin's gates (no login prompt of the box's own while one can; hub_control admin-gate)."""
+        if accounts.admin_ready() != before:
+            control_request({"action": "admin-gate"})
 
     def _forged(self, path):
         """An /admin POST a page elsewhere could have made (S3): it must carry X-Irate-Admin,
@@ -2938,7 +3026,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/backup":
-            self._send_backup(with_syncthing="syncthing=1" in self.path.partition("?")[2].split("&"))
+            q = self.path.partition("?")[2].split("&")
+            self._send_backup(with_syncthing="syncthing=1" in q, level="settings" if "level=settings" in q else "data")
+            return
+
+        if path == "/admin/backup/plan":
+            self.send_json(200, backup_plan())
             return
 
         if path == "/admin/update":
@@ -3387,6 +3480,7 @@ class Handler(BaseHTTPRequestHandler):
             # Accounts (accounts.py): the sign-up level and the HTTP stance; accept, disable,
             # enable, delete, the role; a new account or a reset, each with a one-time code.
             action = payload.get("action")
+            before = accounts.admin_ready()
             try:
                 keep = not admin_login_on()
                 if action == "admin-login":
@@ -3405,17 +3499,34 @@ class Handler(BaseHTTPRequestHandler):
             except accounts.AccountError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
+            self._admin_gate_follow(before)
             self.send_json(200, dict(out, **accounts_view()))
             return
 
         if path == "/admin/setup":
-            pw = payload.get("password")
+            pw, name = payload.get("password"), payload.get("name")
             if not unclaimed():
                 self.send_json(403, {"error": "the admin password has already been set"})
             elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
                 self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
-            else:
+            elif name is None:
+                # A script's first use (no name): the box's own login, as before.
                 self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
+            else:
+                # The owner's first use (Tom, 2026-10-09: one login): their admin account, signed in at once.
+                # The box's own login gets a random password, root's alone (/etc/hub/admin-password), for
+                # scripts and the console: it shares no secret with the account.
+                try:
+                    token, _me = accounts.claim_admin(name, pw, self._client_addr())
+                except accounts.Wait as exc:
+                    self.send_json(429, {"error": str(exc)})
+                    return
+                except accounts.AccountError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                rid = control_request({"action": "password", "password": secrets.token_urlsafe(24), "setup": True})
+                control_request({"action": "admin-gate"})
+                self.send_json(202, {"id": rid}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
             return
 
         if path == "/admin/settings":
@@ -3636,15 +3747,29 @@ class Handler(BaseHTTPRequestHandler):
                                                             "book": payload["book"][:64]})})
             elif action in ("kit-import", "kit-export") and USB_DEVICE_RE.match(device) and isinstance(payload.get("kit"), str):
                 self.send_json(202, {"id": control_request({"action": f"usb-{action}", "device": device, "kit": payload["kit"][:32]})})
+            elif action == "export-many" and USB_DEVICE_RE.match(device) and _str_list(payload.get("books")) and _str_list(payload.get("kits")):
+                # Updating an offline box (item 34): books and toolkits in the layout its USB imports read.
+                self.send_json(202, {"id": control_request({"action": "usb-export-many", "device": device,
+                                                            "books": payload["books"][:200], "kits": payload["kits"][:50]})})
+            elif action == "image" and USB_DEVICE_RE.match(device):
+                self.send_json(202, {"id": control_request({"action": "backup-image", "device": device})})
             else:
-                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export (device, kit)"})
+                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export "
+                                              "(device, kit), export-many (device, books, kits) or image (device)"})
             return
 
         if path == "/admin/kit":
-            if payload.get("action") == "make" and type(payload.get("books", False)) is bool:
-                self.send_json(202, {"id": control_request({"action": "offline-kit", "books": payload.get("books", False)})})
+            books, budget = payload.get("books", False), payload.get("budget_mb")
+            if payload.get("action") == "make" and (type(books) is bool or _str_list(books)) and _str_list(payload.get("kits", []))  \
+                    and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data") \
+                    and (budget is None or (type(budget) is int and budget > 0)):
+                # A new box's kit with what the owner chose (item 34); root checks each again (kit_choices).
+                self.send_json(202, {"id": control_request({"action": "offline-kit", "books": books, "kits": payload.get("kits", []),
+                                                            "repos": payload.get("repos", []), "state": payload.get("state", "none"),
+                                                            "budget_mb": budget})})
             else:
-                self.send_json(400, {"error": "action must be make (books: true or false)"})
+                self.send_json(400, {"error": "action must be make (books: true, false or names; kits; repos; state: none, settings "
+                                              "or data; budget_mb)"})
             return
 
         if path == "/admin/tiles":
@@ -3766,12 +3891,23 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 settings.pop("hold_until", None)
                 self.send_json(202, {"id": control_request({"action": "uplink-set", "settings": settings})})
+            elif act == "do" and payload.get("step") in uplink.STEPS:
+                self.send_json(202, {"id": control_request({"action": "uplink-do", "step": payload["step"]})})
             elif act == "hold" and type(payload.get("minutes")) is int and 0 <= payload["minutes"] <= 1440:
                 self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
+            elif act == "join" and isinstance(payload.get("ssid"), str) and payload.get("security") in ("wpa-psk", "sae", "open") \
+                    and isinstance(payload.get("psk", ""), str) and type(payload.get("hidden", False)) is bool and type(payload.get("now", False)) is bool:
+                # A network for the box to join (item 37): checked again by root (wifijoin.validate); the password
+                # goes only into the request file (0600, the hub's) and NetworkManager's keyfile (root's).
+                self.send_json(202, {"id": control_request({"action": "wifi-join", "ssid": payload["ssid"], "security": payload["security"],
+                                                            "psk": payload.get("psk", ""), "hidden": payload.get("hidden", False),
+                                                            "now": payload.get("now", False)})})
+            elif act == "forget" and isinstance(payload.get("uuid"), str):
+                self.send_json(202, {"id": control_request({"action": "wifi-forget", "uuid": payload["uuid"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
+                self.send_json(400, {"error": "action must be scan, settings, do (with a step), hold, profile, join or forget"})
             return
 
         if path == "/admin/packages":
@@ -3787,8 +3923,10 @@ class Handler(BaseHTTPRequestHandler):
             elif act == "rollback":
                 req = {"action": "pkg-rollback", "package": pkg}
             elif act == "settings" and payload.get("channel") in ("beta", "alpha", "daily") and payload.get("mode") in ("watch", "auto", "aged") \
-                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool):
-                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"]}
+                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool) \
+                    and payload.get("every", 24) in (0, 6, 24, 168) and not isinstance(payload.get("every"), bool):
+                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"],
+                       "every": payload.get("every", 24)}
             else:
                 self.send_json(400, {"error": "action: check, install (with version), rollback, or settings (channel, mode, days)"})
                 return
@@ -3842,10 +3980,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": str(exc)})
                     return
                 self.send_json(202, {"id": control_request({"action": "security-audit"}), "message": msg})
+            elif payload.get("action") in ("accept", "unaccept"):
+                # The owner's own: looked at, and accepted as it is (or taken back). The hub's file; no root.
+                try:
+                    data = security_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(200, {"accepted": data, "message": "Accepted as it is." if payload["action"] == "accept" else "Taken back."})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, audit, or fix with a choice"})
+                self.send_json(400, {"error": "action must be scan, audit, deep, import, accept, unaccept, or fix with a choice"})
             return
 
         if path == "/messages":

@@ -83,7 +83,7 @@ j = sd.joint(steps, {"doctor": time.time()})
 items = {i["about"]["key"]: i for i in j["items"]}
 check("the doctor and the Security page on kernel links: one item, both sources, a problem", items["kernel-links"]["sources"] == ["doctor", "security-page"]
       and items["kernel-links"]["status"] == "problem" and items["kernel-links"]["title"].startswith("Kernel link protections"))
-check("TCP 80: the page (fine), nmap (fine) and OpenVAS (a problem): one item, three sources, a problem", sorted(items["tcp/80"]["sources"]) == ["nmap", "openvas", "security-page"] and items["tcp/80"]["title"] == "TCP 80"
+check("TCP 80: the page (fine), nmap (fine) and OpenVAS (a problem): one item, three sources, a problem", sorted(items["tcp/80"]["sources"]) == ["nmap", "openvas", "security-page"] and items["tcp/80"]["title"].endswith("(TCP 80)")
       and items["tcp/80"]["status"] == "problem" and items["tcp/80"]["fix"] == "Update nginx", items["tcp/80"])
 check("TCP 9999: only nmap saw it, the Security page could have: listed apart", items["tcp/9999"]["alone"] and items["tcp/9999"]["could_see"] == ["openvas", "security-page"], items["tcp/9999"])
 j2 = sd.joint([{"findings": [sd.F("debsecan-perl", "perl", "warn", "", source="debsecan", about={"kind": "package", "key": "perl"}),

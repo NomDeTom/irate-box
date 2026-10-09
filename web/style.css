@@ -675,7 +675,9 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 /* Library (admin): sources, the add form and the policy. */
 #library-sources, #apps-list, #builtin-list, #addons-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .library-source { cursor: default; }
-.library-buttons, .library-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+/* Centred, not stretched: a button beside something taller (a label over its chips) keeps its own
+   height (Tom, 2026-10-09: Network's Refresh was twice the height of the device chips beside it). */
+.library-buttons, .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .action-btn.big { padding: 0.55rem 1.2rem; font-size: 1rem; }
 .chip-says { margin: 0.25rem 0 0; }
 .library-form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 34rem; }
@@ -700,6 +702,7 @@ body.admin button.link-button {
   border: none;
   text-decoration: underline;
 }
+.setting-desc[hidden] { display: none; }  /* display: block outranks the hidden attribute (the doctors' "Nothing matches" showed beside their items) */
 .setting-desc.bad { color: #e5484d; }
 .setting-desc.warn { color: var(--warn); }
 /* The heavy warning before a pasted add-on (admin.html, Web add-ons). */
@@ -1218,6 +1221,7 @@ label > .select-chips { margin-top: 0.25rem; }
 .ok-pill, .warn-pill, .bad-pill, .info-pill { display: inline-block; font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
   border: 1px solid; padding: 0.05rem 0.35rem; border-radius: 3px; white-space: nowrap; font-weight: 600; }
 .ok-pill { color: var(--ok); } .warn-pill { color: var(--warn); } .bad-pill { color: var(--bad); } .info-pill { color: var(--muted); }
+.update-pill { vertical-align: 0.1em; }
 .fresh-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0 0.8rem; }
 .field-help { border: 1px solid var(--border); background: var(--accent-soft); padding: 0.35rem 0.55rem; color: var(--muted); font-size: 0.84rem; border-radius: 4px; }
 .field-help summary { cursor: pointer; color: var(--text); }
@@ -1382,3 +1386,111 @@ html:has(> body.admin) { background: var(--bg); }
 /* The sign-in sheet's offer of the internet (guest-net.js). */
 .guest-net { margin: 0 auto 1rem; padding: 0.7rem 1rem; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
 .guest-net p { margin: 0 0 0.5rem; }
+/* Findings (the Security page and the Security doctor, item 11): one shape everywhere. A status word
+   on the left edge's colour, the title, what it means, and one thing to do; no emoji to decode. */
+.findings { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0 1rem; }
+.finding { --f: var(--muted); background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--f);
+  border-radius: 6px; padding: 0.55rem 0.8rem 0.6rem; font-size: 0.88rem; }
+.finding-problem { --f: var(--bad); } .finding-warn { --f: var(--warn); } .finding-ok, .finding-fixed { --f: var(--ok); }
+.finding-suggest { --f: var(--accent); } .finding-not-here, .finding-accepted { --f: var(--border); }
+.finding.landed { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow 0.3s; }
+.fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; }
+.ftitle { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.fmeta { margin-left: auto; color: var(--muted); font-size: 0.75rem; }
+.fdetail { margin: 0.3rem 0 0; }
+.fdo { margin-top: 0.4rem; }
+.fhow { margin: 0; }
+.fdo-label { font-weight: 600; }
+.fdo-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+.fdo-cmd { display: inline-flex; align-items: center; gap: 0.4rem; max-width: 100%; }
+.fdo-cmd code { padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg);
+  font-size: 0.78rem; overflow-x: auto; white-space: nowrap; max-width: min(60ch, 70vw); }
+a.action-btn.go-btn { text-decoration: none; display: inline-block; }
+.fsaid { margin-top: 0.35rem; font-size: 0.8rem; }
+.fsaid summary { cursor: pointer; color: var(--muted); }
+.fsaid ul { margin: 0.3rem 0 0; padding-left: 1rem; }
+.fsaid li { margin: 0.2rem 0; }
+.fchecks li { margin: 0.35rem 0; }
+.fchecks .fdo-cmd { margin-top: 0.2rem; }
+.fchecks .fdo-cmd code { font-size: 0.75rem; }
+.faccept { display: flex; justify-content: flex-end; margin-top: 0.2rem; font-size: 0.8rem; }
+.findings.compact .finding { padding: 0.35rem 0.7rem; }
+.findings.compact .fdetail { color: var(--muted); }
+.fstate { display: inline-block; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 0.05rem 0.4rem; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.fstate-problem { color: var(--bad); } .fstate-warn { color: var(--warn); } .fstate-ok, .fstate-fixed { color: var(--ok); }
+.fstate-suggest { color: var(--accent); }
+.sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.5rem 0; }
+.sec-head > p { margin: 0; flex: 1 1 18rem; }
+.sec-counts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.6rem 0; }
+.sec-count.sec-count { display: inline-flex; align-items: baseline; gap: 0.3rem; padding: 0.35rem 0.8rem; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 0.85rem; text-decoration: none; cursor: pointer; }
+.sec-count strong { font-size: 1.15rem; }
+.sec-count-problem strong { color: var(--bad); } .sec-count-warn strong { color: var(--warn); } .sec-count-ok strong { color: var(--ok); }
+.sec-count.active { border-color: var(--accent); background: var(--accent-soft); }
+.sec-search { width: 100%; max-width: 28rem; margin: 0.2rem 0 0.4rem; }
+.sec-fold { margin: 0.6rem 0; }
+.sec-fold > summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; }
+.raw-lines { list-style: none; padding: 0 0 0 0.5rem; margin: 0.4rem 0; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.3rem; }
+#security-listeners td:last-child { font-size: 0.82rem; }
+
+/* The uplink watchdog's escalations on the box doctor (ladder-chart.js): one series, thin marks,
+   recessive grid and axes, the outages as a neutral wash. */
+.ladder-periods { margin: 0.4rem 0 0.5rem; }
+.ladder-frame { position: relative; }
+.ladder-svg { display: block; width: 100%; height: auto; max-width: 900px; outline-offset: 2px; }
+.ladder-band { fill: var(--muted); opacity: 0.14; }
+.ladder-grid { stroke: var(--border); stroke-width: 1; }
+.ladder-axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ladder-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ladder-mark { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.ladder-mark.hollow { fill: var(--surface); stroke: var(--accent); }
+.ladder-cross { stroke: var(--muted); stroke-width: 1; }
+.ladder-sym { fill: var(--muted); opacity: 0.55; }
+.ladder-sym.over { fill: var(--accent); opacity: 1; }
+.ladder-th { fill: none; stroke: var(--text); stroke-width: 1.5; opacity: 0.6; }
+.ladder-roam { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.ladder-tip { min-height: 2.6em; font-size: 0.8rem; color: var(--muted); }
+.ladder-tip.on { color: var(--text); }
+.ladder-tip .ladder-tip-text { color: var(--muted); }
+.ladder-sum, .ladder-key { margin: 0.35rem 0 0; }
+.ladder-table { margin-top: 0.35rem; font-size: 0.8rem; }
+.ladder-table summary { cursor: pointer; color: var(--muted); }
+.ladder-table table { border-collapse: collapse; margin-top: 0.3rem; }
+.ladder-table th, .ladder-table td { text-align: left; padding: 0.15rem 0.6rem 0.15rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+.ladder-table td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* One pattern for every update (item 36): the two choices, then Check now / Fetch / Install. */
+.update-pattern { display: grid; gap: 0.5rem; }
+.update-pattern .update-choice { display: grid; gap: 0.25rem; }
+.update-actions { margin: 0.5rem 0; }
+.update-why { margin-top: 0.25rem; }
+
+/* The Network page in tabs (item 37): a card per connection or device within each tab. */
+.net-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 0.75rem; margin: 0.75rem 0; }
+.net-card { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.net-card h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.25rem; padding-bottom: 0.45rem; font-size: 1rem;
+  border-bottom: 1px solid var(--border); }
+.net-card h4 .state { color: var(--muted); }
+.net-card h5 { margin: 0.6rem 0 0.2rem; font-size: 0.9rem; }
+.net-card-wide { grid-column: 1 / -1; }
+.net-overview { font-size: 0.95rem; }
+.net-known { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
+.net-known li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
+#ap-health-card { margin: 0.75rem 0; }
+
+/* Backup and a new box (item 34): offers with their sizes; a list of checkboxes per kind, bounded. */
+.kit-offer { max-width: 44rem; }
+.kit-pick { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.7rem; margin: 0; }
+.kit-pick > div { display: flex; flex-direction: column; gap: 0.2rem; max-height: 12rem; overflow-y: auto; }
+.kit-total.bad { color: var(--bad); }
+
+/* A narrow screen (Tom, 2026-10-09: "on mobile the help/hub/admin/login/theme picker all overlap each other"):
+   the header's buttons and the theme picker in rows of their own above the title, wrapping, never over each
+   other or the title. Wide screens keep them in the corners (from 960 px, where nothing meets). */
+@media (max-width: 960px) {
+  header { display: flex; flex-direction: column; align-items: center; padding-top: 0; }
+  header > .head-nav { position: static; order: -2; flex-wrap: wrap; justify-content: center; margin-bottom: 0.5rem; }
+  header > .theme-picker { position: relative; top: auto; right: auto; order: -1; margin-bottom: 0.9rem; max-width: 100%; flex-wrap: wrap; justify-content: center; }
+  header > .theme-picker .theme-menu { right: 50%; transform: translateX(50%); }
+}
