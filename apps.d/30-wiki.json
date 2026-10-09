@@ -29,5 +29,10 @@
     "sections": [
       "books"
     ]
+  },
+  "addon": {
+    "option": "--with-kiwix",
+    "title": "Kiwix, the offline library",
+    "summary": "kiwix-serve for the books in Library → Books, at /wiki/ on its own origin. A box with books has it already; add it here to have it ready before the first one. About 10 MB, and memory for each book it serves."
   }
 }

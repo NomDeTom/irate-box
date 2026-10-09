@@ -66,6 +66,8 @@ Usage: sudo ./install.sh [options]
                         downloaded on the box). Installs kiwix-serve.
   --with-mqtt           install the mosquitto MQTT broker: :1883 for nodes and the phone
                         app, and WebSockets at /mqtt for pages. Anonymous, limited to msh/#.
+  --with-kiwix          install Kiwix, the offline library at /wiki/, even before any book (a box with
+                        books gets it anyway, unless it was taken out with --remove kiwix)
   --with-irc            install ngIRCd, a small IRC server: :6667 for any IRC app, with a
                         #lobby channel ready. Open to everyone on the box's network, with no
                         accounts and no encryption; hosts are hidden from other users.
@@ -86,7 +88,7 @@ Usage: sudo ./install.sh [options]
   --port N              the port the hub is served on (default: 80). If something else
                         already serves :80, the hub is put on a free port (8080 first) and
                         says so; the other service is left as it is.
-  --remove NAME         take an add-on off again: notes, sync, mqtt, irc, term or collab
+  --remove NAME         take an add-on off again: notes, sync, mqtt, irc, term, collab or kiwix
                         (repeatable). Its service stops and its unit and config go; its
                         data (the notes folder, Syncthing's state) and packages stay. This
                         is what /admin's Add-ons page runs.
@@ -129,7 +131,7 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
-APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
@@ -156,6 +158,7 @@ while [ $# -gt 0 ]; do
 	--with-eliza) shift ;;
 	--with-mqtt) WITH_MQTT=1; shift ;;
 	--with-irc) WITH_IRC=1; shift ;;
+	--with-kiwix) WITH_KIWIX=1; shift ;;
 	--with-collab) WITH_COLLAB=1; shift ;;
 	--admin-password) ADMIN_PW="$2"; shift 2 ;;
 	--hub-url) HUB_URL="$2"; shift 2 ;;
@@ -177,7 +180,7 @@ while [ $# -gt 0 ]; do
 		fi
 		shift 2 ;;
 	--remove)
-		case "$2" in notes | sync | mqtt | irc | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term or collab" ;; esac
+		case "$2" in notes | sync | mqtt | irc | term | collab | kiwix) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term, collab or kiwix" ;; esac
 		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
@@ -195,7 +198,7 @@ done
 # An add-on being removed is not installed by this run, whatever else asks for it.
 for r in "${REMOVE[@]}"; do
 	case "$r" in
-	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;;
+	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;; kiwix) WITH_KIWIX=0 ;;
 	esac
 done
 
@@ -260,6 +263,7 @@ keep_addon mqtt WITH_MQTT /etc/mosquitto/conf.d/irate-box.conf mosquitto
 keep_addon irc WITH_IRC /etc/ngircd/irate-box.conf ngircd
 keep_addon term WITH_TERM /etc/systemd/system/ttyd.service ttyd
 keep_addon collab WITH_COLLAB /etc/systemd/system/excalidraw-room.service excalidraw-room
+keep_addon kiwix WITH_KIWIX /etc/systemd/system/kiwix.service kiwix
 
 # Bold on a terminal only: from /admin the output goes to a log file that a page shows.
 # Decided now, before the output is also copied to the install log (below).
@@ -760,8 +764,13 @@ pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libj
 [ "$WITH_IRC" = 1 ] && pkgs+=(ngircd)
 # Kiwix is in use when --zim adds a book, and also when books are already on disk: a reinstall
 # over kept state (uninstall.sh --keep-state, then install.sh) brings /wiki/ back with them.
+# Kiwix: asked for (--with-kiwix, an add-on), or brought by the books, unless it was taken out (--remove kiwix
+# leaves a mark, so the books already there do not bring it back at the next update).
 KIWIX=0
-{ [ ${#ZIMS[@]} -gt 0 ] || compgen -G "$STATE/zim/*.zim" >/dev/null; } && KIWIX=1
+[ "$WITH_KIWIX" = 1 ] && { KIWIX=1; rm -f "$ETC/kiwix-removed"; }
+[ -e "$ETC/kiwix-removed" ] || { { [ ${#ZIMS[@]} -gt 0 ] || compgen -G "$STATE/zim/*.zim" >/dev/null; } && KIWIX=1; }
+printf '%s\n' "${REMOVE[@]}" | grep -qx kiwix && KIWIX=0
+[ "$KIWIX" = 1 ] && WITH_KIWIX=1
 [ "$KIWIX" = 1 ] && pkgs+=(kiwix-tools)
 [ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
 apt_update() {
@@ -969,6 +978,7 @@ esac
 	[ "$WITH_IRC" = 1 ] && echo --with-irc
 	[ "$WITH_TERM" = 1 ] && echo --with-term
 	[ "$WITH_COLLAB" = 1 ] && echo --with-collab
+	[ "$WITH_KIWIX" = 1 ] && echo --with-kiwix
 	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
 	[ "$HUB_PORT" != 80 ] && printf '%s\n' --port "$HUB_PORT"
 	true
@@ -2247,7 +2257,11 @@ if [ "$KIWIX" = 1 ] && [ "$KIWIX_READY" = 1 ]; then
 elif [ "$KIWIX" = 1 ]; then
 	systemctl disable --quiet --now kiwix 2>/dev/null || true
 	systemctl reset-failed kiwix 2>/dev/null || true
-	problem "Kiwix not started: none of the books in $STATE/zim can be read. Add one (Library → Books, a USB stick, --zim); health.py says what is wrong with these"
+	if compgen -G "$STATE/zim/*.zim" >/dev/null; then
+		problem "Kiwix not started: none of the books in $STATE/zim can be read. Add one (Library → Books, a USB stick, --zim); health.py says what is wrong with these"
+	else
+		echo "    kiwix: installed, waiting for a first book (Library → Books, a USB stick); the box doctor starts it then"
+	fi
 fi
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
 [ "$WITH_MQTT" = 1 ] && units+=(mosquitto)
@@ -2331,6 +2345,11 @@ fi
 # it back finds the notes, Syncthing's identity and so on where they were.
 for r in "${REMOVE[@]}"; do
 	case "$r" in
+	kiwix)
+		say "Removing Kiwix; the books in $STATE/zim stay"
+		systemctl disable --now kiwix >/dev/null 2>&1 || true
+		rm -f /etc/systemd/system/kiwix.service
+		install -d -m 755 "$ETC" && touch "$ETC/kiwix-removed" ;;
 	notes)
 		say "Removing the notes add-on (SilverBullet); $STATE/notes stays"
 		systemctl disable --now silverbullet >/dev/null 2>&1 || true
