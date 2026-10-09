@@ -1,0 +1,178 @@
+Oct 09 04:00:16 luckfox-lyra-zero-w kernel: cmd_mgr_queue cmd timed-out cmd_mgr->queue_sz:1
+Oct 09 04:00:16 luckfox-lyra-zero-w kernel: AICWFDBG(LOGERROR)        cmd queue crashed
+Oct 09 04:00:16 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-32
+Oct 09 04:00:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:00:16 luckfox-lyra-zero-w kernel: AICWFDBG(LOGERROR)        cmd queue crashed
+Oct 09 04:00:16 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:00:21 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:00:26 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:00:33 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:00:43 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:00:46 luckfox-lyra-zero-w kernel: AICWFDBG(LOGERROR)        cmd queue crashed
+Oct 09 04:00:57 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:01:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:01:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:01:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:01:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:01:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:01:16 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:01:17 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:01:46 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:02:29 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:03:33 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:05:08 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:05:09 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:10 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:11 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:12 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:13 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:14 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:15 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:16 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:17 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:18 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:19 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:20 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:21 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:22 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:23 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:24 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:25 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:26 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:27 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:28 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:29 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:30 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:31 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:32 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:33 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:34 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16 retry=1
+Oct 09 04:05:34 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:05:34 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:05:39 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:05:44 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:05:51 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:06:01 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:06:15 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:06:35 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:07:04 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:07:47 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:08:51 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: CTRL-EVENT-SCAN-FAILED ret=-16
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:42 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:09:43 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'ap0' UP
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'ap0' UP
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: ap0: Failed to initialize driver interface
+Oct 09 04:09:43 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:43 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515383.8618] device (ap0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'wlan0' UP
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'wlan0' UP
+Oct 09 04:09:43 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: Failed to initialize driver interface
+Oct 09 04:09:43 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515383.8910] device (wlan0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:09:54 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515394.1868] device (ap0): re-acquiring supplicant interface (#1).
+Oct 09 04:09:54 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515394.1881] device (wlan0): re-acquiring supplicant interface (#1).
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:09:54 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:54 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'ap0' UP
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:09:54 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515394.1992] device (ap0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'ap0' UP
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: ap0: Failed to initialize driver interface
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'wlan0' UP
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:09:54 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:54 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'wlan0' UP
+Oct 09 04:09:54 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: Failed to initialize driver interface
+Oct 09 04:09:54 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515394.2119] device (wlan0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:04 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515404.1902] device (ap0): re-acquiring supplicant interface (#2).
+Oct 09 04:10:04 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515404.1912] device (wlan0): re-acquiring supplicant interface (#2).
+Oct 09 04:10:04 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'ap0' UP
+Oct 09 04:10:04 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'ap0' UP
+Oct 09 04:10:04 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515404.2047] device (ap0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: ap0: Failed to initialize driver interface
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:04 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'wlan0' UP
+Oct 09 04:10:04 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:04 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515404.2169] device (wlan0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'wlan0' UP
+Oct 09 04:10:04 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: Failed to initialize driver interface
+Oct 09 04:10:14 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515414.1858] device (ap0): re-acquiring supplicant interface (#3).
+Oct 09 04:10:14 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515414.1869] device (wlan0): re-acquiring supplicant interface (#3).
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:14 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:14 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'ap0' UP
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'ap0' UP
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: ap0: Failed to initialize driver interface
+Oct 09 04:10:14 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515414.2009] device (ap0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:14 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'wlan0' UP
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:14 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'wlan0' UP
+Oct 09 04:10:14 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: Failed to initialize driver interface
+Oct 09 04:10:14 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515414.2117] device (wlan0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:24 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515424.1948] device (ap0): re-acquiring supplicant interface (#4).
+Oct 09 04:10:24 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515424.1959] device (wlan0): re-acquiring supplicant interface (#4).
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:24 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:24 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'ap0' UP
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'ap0' UP
+Oct 09 04:10:24 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515424.2082] device (ap0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: ap0: Failed to initialize driver interface
+Oct 09 04:10:24 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'wlan0' UP
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:24 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'wlan0' UP
+Oct 09 04:10:24 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515424.2171] device (wlan0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:24 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: Failed to initialize driver interface
+Oct 09 04:10:34 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515434.1894] device (ap0): re-acquiring supplicant interface (#5).
+Oct 09 04:10:34 luckfox-lyra-zero-w NetworkManager[3933]: <warn>  [1791515434.1902] device (wlan0): re-acquiring supplicant interface (#5).
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:34 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:34 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'ap0' UP
+Oct 09 04:10:34 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515434.2007] device (ap0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:34 luckfox-lyra-zero-w NetworkManager[3933]: <info>  [1791515434.2009] device (ap0): supplicant interface keeps failing, giving up
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface ap0 flags (UP): Broken pipe
+Oct 09 04:10:34 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'ap0' UP
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: ap0: Failed to initialize driver interface
+Oct 09 04:10:34 luckfox-lyra-zero-w kernel: cmd queue crashed
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:34 luckfox-lyra-zero-w NetworkManager[3933]: <error> [1791515434.2102] device (wlan0): Couldn't initialize supplicant interface: GDBus.Error:fi.w1.wpa_supplicant1.UnknownError: wpa_supplicant couldn't grab this interface.
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: nl80211: Could not set interface 'wlan0' UP
+Oct 09 04:10:34 luckfox-lyra-zero-w NetworkManager[3933]: <info>  [1791515434.2104] device (wlan0): supplicant interface keeps failing, giving up
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: Could not set interface wlan0 flags (UP): Broken pipe
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: WEXT: Could not set interface 'wlan0' UP
+Oct 09 04:10:34 luckfox-lyra-zero-w wpa_supplicant[609]: wlan0: Failed to initialize driver interface
