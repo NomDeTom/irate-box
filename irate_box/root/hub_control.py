@@ -568,7 +568,7 @@ def _access_files(state):
     local, _ = manifests.load_local(builtin=MANIFESTS)
     if WEB_SERVER == "nginx":
         gates_dir = NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d")   # the template's @ACCESS@.d/gate-<id>.conf*
-        gates = access.nginx_gates(state, admin_login=not ADMIN_LOGIN_OFF.exists())
+        gates = access.nginx_gates(state, admin_login=not ADMIN_LOGIN_OFF.exists(), accounts_ready=_admin_accounts_ready())
         gates_dir.mkdir(mode=0o755, exist_ok=True)
         addon_gates = access.addon_gates(state, local)
         NGINX_ADDON_GATES.mkdir(mode=0o755, exist_ok=True)
@@ -594,7 +594,8 @@ def _access_files(state):
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
-    files = dict(access.caddy_snippets(state, login, _caddy_directive(), admin_login=not ADMIN_LOGIN_OFF.exists()))
+    files = dict(access.caddy_snippets(state, login, _caddy_directive(), admin_login=not ADMIN_LOGIN_OFF.exists(),
+                                       accounts_ready=_admin_accounts_ready()))
     files["addons-routes.caddy"] = access.addon_caddy_routes(state, local, login, _caddy_directive())
     for name, text in files.items():
         path = CADDY_ACCESS / name
@@ -714,6 +715,34 @@ def _https_admins():
         return []
     return sorted(a.get("name", "?") for a in (data.get("accounts") or {}).values()
                   if isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash") and a.get("https_login"))
+
+
+def _admin_accounts_ready():
+    """An admin account that can sign in (accounts.admin_ready, read here from the hub's file): then the
+    admin's routes send a browser to the standard sign-in, never the box's own login. The hub's file could
+    say otherwise only to bring back the box's own login prompt, which still asks for its password."""
+    try:
+        data = json.loads((STATE / "accounts.json").read_text())
+        return any(isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash")
+                   for a in (data.get("accounts") or {}).values())
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def admin_gate(req):
+    """The hub's word that the admin accounts changed: the gates written afresh, if they would differ."""
+    old = {p: p.read_text() if p.exists() else None for p in _gate_paths()}
+    _access_files(access.read(ACCESS_FILE))
+    if any((p.read_text() if p.exists() else None) != t for p, t in old.items()):
+        _reload_web()
+        return "the admin's sign-in: " + ("the standard one" if _admin_accounts_ready() else "the box's own login (no admin account yet)")
+    return "the admin's sign-in: unchanged"
+
+
+def _gate_paths():
+    if WEB_SERVER == "nginx":
+        return sorted(NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d").glob("gate-*.conf"))
+    return [CADDY_ACCESS / "admin-gate.caddy"]
 
 
 def _reload_web():
@@ -2548,7 +2577,7 @@ ACTIONS = {"service": service, "password": password,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget,
+           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

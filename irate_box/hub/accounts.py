@@ -288,13 +288,18 @@ def signup(name, password, addr=""):
 def login(name, password, addr="", https=False):
     """A session for a user whose password is right: (cookie value, account). Over HTTPS it is
     recorded (https_login): an admin account that has can stand in for the box's own login."""
-    if settings()["signup"] == "off":
-        raise AccountError("this box has no accounts")
     now = time.time()
     with _lock:
         _limited(name, addr, now)
     acc = _load()["accounts"].get((name or "").lower()) if isinstance(name, str) else None
     ok = check_password(password if isinstance(password, str) else "", acc["hash"] if acc and acc.get("hash") else _DUMMY)
+    # With sign-up off the box has no users' accounts, but its admins still sign in here: the one login
+    # (Tom, 2026-10-09: "get rid of the admin-specific login, and have them log in through the standard
+    # user login"). Judged after the password check, so the answer takes as long either way.
+    if settings()["signup"] == "off" and not (acc and acc.get("role") == "admin"):
+        with _lock:
+            _failed(name, addr, now)
+        raise AccountError("this box has no accounts")
     with _lock:
         if not ok or not acc:
             _failed(name, addr, now)
@@ -362,13 +367,14 @@ def session(token):
         return None
     now = time.time()
     data = _load()
-    if data["settings"].get("signup", DEFAULTS["signup"]) == "off":
-        return None
     s = data["sessions"].get(_digest(token))
     if not s or s.get("expires", 0) <= now:
         return None
     acc = data["accounts"].get(s.get("name"))
     if not acc or acc.get("state") != "user":
+        return None
+    # Sign-up off: no users' accounts, but the admins' still (one login, as login() above).
+    if data["settings"].get("signup", DEFAULTS["signup"]) == "off" and acc.get("role") != "admin":
         return None
     if s["expires"] - now < (SESSION_DAYS - 1) * 86400:
         with _lock:
@@ -412,8 +418,6 @@ def use_code(code, password, addr=""):
     """Set an account's password with a one-time code (an admin's new account, or a reset).
     Returns the account's name."""
     _valid_password(password)
-    if settings()["signup"] == "off":
-        raise AccountError("this box has no accounts")
     now = time.time()
     with _lock:
         _limited("", addr, now)
@@ -423,6 +427,9 @@ def use_code(code, password, addr=""):
             _failed("", addr, now)
             raise AccountError("that code is not one this box gave, or it has been used or has expired")
         acc = data["accounts"][c["name"]]
+        # Sign-up off: an admin's code still sets an admin account's password (one login); a user's waits.
+        if data["settings"].get("signup", DEFAULTS["signup"]) == "off" and acc.get("role") != "admin":
+            raise AccountError("this box has no accounts")
         acc["hash"] = hash_password(password)
         _forget_basic(c["name"])
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != c["name"]}
@@ -461,6 +468,28 @@ def make(name, role="user"):
         code = _code(data, key, "new")
         _save(data)
     return code
+
+
+def admin_ready(data=None):
+    """Whether an admin account can sign in (switched on, a password set): then /admin asks for no
+    login of its own and sends anyone else to sign in (access.py's gates)."""
+    return bool(_admins(data or _load()))
+
+
+def claim_admin(name, password, addr=""):
+    """The box's first use (or after reset-password at the console): its owner's admin account, made or,
+    when the name is an account already, made an admin with this password (the console's say-so). Then
+    signed in: (cookie value, account)."""
+    key = _valid_name(name)
+    _valid_password(password)
+    with _lock:
+        data = _load()
+        acc = data["accounts"].get(key) or {"name": name, "created": round(time.time()), "seen": None, "by": "the box's first use"}
+        acc.update(hash=hash_password(password), state="user", role="admin")
+        data["accounts"][key] = acc
+        data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != key}
+        _save(data)
+    return login(name, password, addr)
 
 
 def reset(name):

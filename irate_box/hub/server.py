@@ -685,12 +685,18 @@ _home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
 def _account_nav(signed_in):
-    """A link to /account.html in the hub bar, item 6 of current-and-next-actions: while sign-up
-    is on, "Sign in" for a guest, "My account" for anyone already in."""
-    if accounts.settings()["signup"] == "off":
-        return ""
-    title, label = (("Your account", "My account") if signed_in else ("Sign in or sign up", "Sign in"))
-    return f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
+    """The header's account buttons. One login for everyone (Tom, 2026-10-09: "get rid of the
+    admin-specific login, and have them log in through the standard user login"): "Sign in" for a guest
+    (admins sign in there too, so it shows with sign-up off), "My account" for anyone in; "Admin" for an
+    admin, and for everyone while no admin account can sign in yet (the box's own login, or its first use)."""
+    signup = accounts.settings()["signup"]
+    title, label = (("Your account", "My account") if signed_in else
+                    ("Sign in" if signup == "off" else "Sign in or sign up", "Sign in"))
+    out = f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
+    if signed_in == "admin" or not accounts.admin_ready():
+        out += ('<a class="head-btn labelled" href="/admin/" title="Options for whoever owns the box">'
+                '<span class="head-emoji" aria-hidden="true">⚙️</span> Admin</a>')
+    return out
 
 
 def home_page(signed_in=False):
@@ -708,7 +714,7 @@ def home_page(signed_in=False):
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     signup = accounts.settings()["signup"]
-    mtime = (path.stat().st_mtime, chosen, show_factory, signup)
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready())
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -2655,7 +2661,10 @@ class Handler(BaseHTTPRequestHandler):
         query = self.path.partition("?")[2].split("&")
         admin = me is not None and me.get("role") == "admin"
         if path == "/_irate/admin" and ("soft=1" in query or "redirect=1" in query):
-            if admin or "soft=1" in query:
+            # basic=1 (Caddy, the box's own login on and an admin account ready): a request carrying a
+            # login of its own (a script's) goes on to Caddy's basic_auth, which checks it; anyone else
+            # without an admin session is sent to the standard sign-in rather than asked for that login.
+            if admin or "soft=1" in query or ("basic=1" in query and self.headers.get("Authorization", "").startswith("Basic ")):
                 self.send_response(204)
                 self.send_header("X-Irate-Session", "admin" if admin else "")   # always: see git-access
                 self.send_header("Content-Length", "0")
@@ -2768,7 +2777,9 @@ class Handler(BaseHTTPRequestHandler):
                 accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr)
                 self.send_json(200, {"changed": True})
             elif action == "code":
+                before = accounts.admin_ready()
                 name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
+                self._admin_gate_follow(before)
                 self.send_json(200, {"name": name})
             elif action == "prefs":
                 # A person's own settings (M12): theirs alone, through their own session.
@@ -2779,6 +2790,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(429, {"error": str(exc)})
         except accounts.AccountError as exc:
             self.send_json(400, {"error": str(exc)})
+
+    def _admin_gate_follow(self, before):
+        """The admin accounts changed: if one being able to sign in became true or false, the root helper
+        rewrites the admin's gates (no login prompt of the box's own while one can; hub_control admin-gate)."""
+        if accounts.admin_ready() != before:
+            control_request({"action": "admin-gate"})
 
     def _forged(self, path):
         """An /admin POST a page elsewhere could have made (S3): it must carry X-Irate-Admin,
@@ -3463,6 +3480,7 @@ class Handler(BaseHTTPRequestHandler):
             # Accounts (accounts.py): the sign-up level and the HTTP stance; accept, disable,
             # enable, delete, the role; a new account or a reset, each with a one-time code.
             action = payload.get("action")
+            before = accounts.admin_ready()
             try:
                 keep = not admin_login_on()
                 if action == "admin-login":
@@ -3481,17 +3499,34 @@ class Handler(BaseHTTPRequestHandler):
             except accounts.AccountError as exc:
                 self.send_json(400, {"error": str(exc)})
                 return
+            self._admin_gate_follow(before)
             self.send_json(200, dict(out, **accounts_view()))
             return
 
         if path == "/admin/setup":
-            pw = payload.get("password")
+            pw, name = payload.get("password"), payload.get("name")
             if not unclaimed():
                 self.send_json(403, {"error": "the admin password has already been set"})
             elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
                 self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
-            else:
+            elif name is None:
+                # A script's first use (no name): the box's own login, as before.
                 self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
+            else:
+                # The owner's first use (Tom, 2026-10-09: one login): their admin account, signed in at once.
+                # The box's own login gets a random password, root's alone (/etc/hub/admin-password), for
+                # scripts and the console: it shares no secret with the account.
+                try:
+                    token, _me = accounts.claim_admin(name, pw, self._client_addr())
+                except accounts.Wait as exc:
+                    self.send_json(429, {"error": str(exc)})
+                    return
+                except accounts.AccountError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                rid = control_request({"action": "password", "password": secrets.token_urlsafe(24), "setup": True})
+                control_request({"action": "admin-gate"})
+                self.send_json(202, {"id": rid}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
             return
 
         if path == "/admin/settings":
