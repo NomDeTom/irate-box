@@ -69,8 +69,13 @@ check 401 code -u "admin:$PW1" "http://$H/admin/"
 set_pw "$PW2" "$PW1" >/dev/null; until_pw "$PW1" || bad "could not set the password back"
 
 echo "== routes"
-for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki 301" "/draw 301" "/mermaid 301" "/tools 301" "/serial 301" \
-	"/notes 301" "/sync 301" "/admin 301" "/term 301" "/sync/ 401" "/term/ 401" "/status 200"; do
+# Under nginx, /wiki and /notes live on their own origin (a port of their own, for origin
+# isolation), so the main origin sends a cross-origin 302 to that port; under Caddy they stay on
+# the main origin and 301 to their trailing slash, like /draw, /mermaid, /tools, /serial, /sync,
+# /admin and /term do on both fronts.
+wn=302; [ "$WEB" = caddy ] && wn=301
+for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki $wn" "/draw 301" "/mermaid 301" "/tools 301" "/serial 301" \
+	"/notes $wn" "/sync 301" "/admin 301" "/term 301" "/sync/ 401" "/term/ 401" "/status 200"; do
 	set -- $pr; check "$2" code "http://$H$1"
 done
 check "/draw/" sh -c "curl -s -o /dev/null -w '%{redirect_url}' http://$H/draw | sed 's|^http://[^/]*||'"

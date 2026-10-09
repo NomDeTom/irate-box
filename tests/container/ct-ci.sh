@@ -10,7 +10,7 @@ wait_runs() { for _ in $(seq 60); do n=$(ci | python3 -c 'import json,sys; d=jso
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; cd "$W"
 admin '{"action":"create","area":"private","name":"citest"}'; admin '{"action":"create","area":"public","name":"pubci"}'
 [ "$(runuser -u hub -- git -C /var/lib/hub/git/private/citest.git config core.hooksPath)" = /opt/irate-box/scripts/git-hooks ] && ok "private repo has the hub's hooks" || bad "hooksPath"
-[ -z "$(runuser -u hub -- git -C /var/lib/hub/git/public/pubci.git config core.hooksPath)" ] && ok "public repo has none" || bad "public hooksPath"
+[ "$(runuser -u hub -- git -C /var/lib/hub/git/public/pubci.git config core.hooksPath)" = /opt/irate-box/scripts/git-hooks-public ] && ok "public repo has the public guard hook" || bad "public hooksPath"
 git init -q -b main p && cd p && cat > .irate-ci.sh <<'S'
 echo "building $CI_REPO $CI_BRANCH $CI_COMMIT as $(id -un), HOME=$HOME"
 uname -m > "$CI_ARTIFACTS/arch.txt"
