@@ -108,6 +108,7 @@ Stdlib only.
 
 import hashlib
 import json
+import errno
 import os
 import platform
 import pwd
@@ -443,18 +444,71 @@ def offline_kit(req):
     if budget is not None and base + chosen > budget << 20:
         raise ValueError(f"the kit would be about {(base + chosen) >> 20} MB, over the budget of {budget} MB: leave something out")
     need = 2 * base + chosen + (64 << 20)
-    # The hub owns $STATE, so kits/ is made root's through its own fd (never a link the hub
-    # planted), and every path below goes through that fd: a kits/ renamed away and replaced by
-    # a link while this runs changes nothing, and HOME for the installer is a root-only folder
-    # (security stance review 2026-10-08, N1).
-    safeio.mkdir(KITS, 0, 0, 0o755)
-    kits_fd = safeio._dir_fd(KITS)
-    try:
-        if os.fstat(kits_fd).st_uid != 0:
+    with KitRoom() as room:
+        return _offline_kit(room, zims, apps, arch, need, kit_ids, repo_dirs, state)
+
+
+KIT_WORK = Path(os.environ.get("HUB_KIT_WORK", "/var/lib/irate-box-kit-work"))
+ROOT_UID = 0   # who must own kits/ and the work folder (the tests stand in their own)
+
+
+class KitRoom:
+    """Where a kit or export is made, and how it lands. The hub owns $STATE, so nothing is made inside it:
+    the work folder is root's alone beside it (KIT_WORK, the same filesystem), where the installer and tar
+    are given real paths that no link the hub plants can redirect. The finished .tar and kit.json then move
+    into kits/ through kits/'s own fd (kits/ made root's first), so a kits/ renamed away and replaced by a
+    link while this runs changes nothing."""
+
+    def __enter__(self):
+        safeio.mkdir(KITS, ROOT_UID, ROOT_UID, 0o755)
+        self.fd = safeio._dir_fd(KITS)
+        if os.fstat(self.fd).st_uid != ROOT_UID:
+            os.close(self.fd)
             raise ValueError(f"{KITS} is not root's: refused")
-        return _offline_kit(Path(f"/proc/self/fd/{kits_fd}"), zims, apps, arch, need, kit_ids, repo_dirs, state)
-    finally:
-        os.close(kits_fd)
+        safeio.mkdir(KIT_WORK, ROOT_UID, ROOT_UID, 0o700)
+        self.work = Path(tempfile.mkdtemp(prefix="kit-", dir=KIT_WORK))
+        return self
+
+    def __exit__(self, *exc):
+        shutil.rmtree(self.work, ignore_errors=True)
+        os.close(self.fd)
+
+    def free(self):
+        return shutil.disk_usage(self.work).free
+
+    def publish(self, src, name, meta):
+        """src (a finished .tar in the work folder) into kits/ as name, the last kit or export there removed,
+        and its record as kit.json; meta gains the size. Returns meta."""
+        os.chmod(src, 0o644)
+        for old in os.listdir(self.fd):
+            if re.fullmatch(r"irate-box-(kit|content)-[A-Za-z0-9._-]+\.tar", old) and old != name:
+                os.unlink(old, dir_fd=self.fd)
+        try:
+            os.rename(src, name, dst_dir_fd=self.fd)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            part = f".{name}.part"   # another filesystem: copied in, new and never through a link, then renamed
+            try:
+                os.unlink(part, dir_fd=self.fd)
+            except FileNotFoundError:
+                pass
+            fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644, dir_fd=self.fd)
+            with open(fd, "wb") as out, open(src, "rb") as inp:
+                shutil.copyfileobj(inp, out, 1 << 20)
+            os.rename(part, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)
+            os.unlink(src)
+        meta["size"] = os.stat(name, dir_fd=self.fd, follow_symlinks=False).st_size
+        rec = self.work / "kit.json"
+        rec.write_text(json.dumps(meta, indent=2))
+        os.chmod(rec, 0o644)
+        try:
+            os.rename(rec, "kit.json", dst_dir_fd=self.fd)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            safeio.write(KITS / "kit.json", rec.read_text())
+        return meta
 
 
 CONTENT_IMPORT = Path(__file__).with_name("content-import.sh")
@@ -506,57 +560,38 @@ def content_export(req):
         raise ValueError("choose something to export")
     if budget is not None and size > budget << 20:
         raise ValueError(f"the export would be about {size >> 20} MB, over the budget of {budget} MB: leave something out")
-    safeio.mkdir(KITS, 0, 0, 0o755)
-    kits_fd = safeio._dir_fd(KITS)
-    try:
-        if os.fstat(kits_fd).st_uid != 0:
-            raise ValueError(f"{KITS} is not root's: refused")
-        kdir = Path(f"/proc/self/fd/{kits_fd}")
+    with KitRoom() as room:
         books = sum(z.stat().st_size for z in zims)
         need = 2 * (size - books) + books + (16 << 20)   # the work folder (no books), then the tar (all)
-        free = shutil.disk_usage(kdir).free
-        if free - need < _min_free():
-            raise ValueError(f"not enough space: the export needs about {need >> 20} MB and {free >> 20} MB is free "
+        if room.free() - need < _min_free():
+            raise ValueError(f"not enough space: the export needs about {need >> 20} MB and {room.free() >> 20} MB is free "
                              f"(keeping {_min_free() >> 20} MB spare)")
         with Progress("kit", 2 + bool(kit_ids), path=KIT_PROGRESS) as progress:
-            work = Path(tempfile.mkdtemp(prefix=".export-", dir=kdir))
-            try:
-                top = work / "irate-box"
-                top.mkdir()
-                report = []
-                if kit_ids:
-                    progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
-                    (top / "kits").mkdir()
-                    for k in kit_ids:
-                        report.append(kits.export_usb(k, top / "kits", progress.bytes))
-                progress.step("Adding the repositories and this box's state")
-                report += content_extras(top, repo_dirs, state)
-                progress.step("Packing it into one file")
-                ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
-                name = f"irate-box-content-{ver}.tar"
-                part = kdir / f".{name}.part"
-                part.unlink(missing_ok=True)
-                safeio.create(part, 0o644).close()
-                tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box", timeout=3600)
-                if tar.returncode == 0 and zims:
-                    tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box/,",
-                              *[z.name for z in zims], timeout=7200)
-                if tar.returncode != 0:
-                    part.unlink(missing_ok=True)
-                    raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
-                part.chmod(0o644)
-                for old in [*kdir.glob("irate-box-kit-*.tar"), *kdir.glob("irate-box-content-*.tar")]:
-                    old.unlink()
-                final = kdir / name
-                os.replace(part, final)
-                meta = {"name": name, "kind": "content", "size": final.stat().st_size, "at": time.time(), "arch": platform.machine(),
-                        "books": [z.name for z in zims], "kits": list(kit_ids), "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
-                        "state": state, "contents": ([f"book: {z.stem}" for z in zims] + report)[:60]}
-                safeio.write(kdir / "kit.json", json.dumps(meta, indent=2))
-            finally:
-                shutil.rmtree(work, ignore_errors=True)
-    finally:
-        os.close(kits_fd)
+            work = room.work
+            top = work / "irate-box"
+            top.mkdir()
+            report = []
+            if kit_ids:
+                progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
+                (top / "kits").mkdir()
+                for k in kit_ids:
+                    report.append(kits.export_usb(k, top / "kits", progress.bytes))
+            progress.step("Adding the repositories and this box's state")
+            report += content_extras(top, repo_dirs, state)
+            progress.step("Packing it into one file")
+            ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
+            name = f"irate-box-content-{ver}.tar"
+            part = work / name
+            tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box", timeout=3600)
+            if tar.returncode == 0 and zims:
+                tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box/,",
+                          *[z.name for z in zims], timeout=7200)
+            if tar.returncode != 0:
+                raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+            meta = room.publish(part, name, {"name": name, "kind": "content", "at": time.time(), "arch": platform.machine(),
+                                             "books": [z.name for z in zims], "kits": list(kit_ids),
+                                             "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs], "state": state,
+                                             "contents": ([f"book: {z.stem}" for z in zims] + report)[:60]})
     return f"content export ready: {name} ({meta['size'] >> 20} MB)"
 
 
@@ -566,78 +601,65 @@ def _state_size(level):
     return sums["settings"] + (sums["data"] if level == "data" else 0)
 
 
-def _offline_kit(kdir, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="none"):
-    free = shutil.disk_usage(kdir).free
+def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="none"):
+    free = room.free()
     if free - need < _min_free():
         raise ValueError(f"not enough space: the kit needs about {need >> 20} MB and {free >> 20} MB is free "
                          f"(keeping {_min_free() >> 20} MB spare)" + (" — try without the books" if zims else ""))
     with Progress("kit", 3 + bool(kit_ids) + bool(repo_dirs) + (state != "none"), path=KIT_PROGRESS) as progress:
-        work = Path(tempfile.mkdtemp(prefix=".kit-", dir=kdir))
-        try:
-            progress.step("Gathering the code, the apps and the downloads")
-            kit = work / "irate-box-kit"
-            args = ["bash", str(CODE / "install.sh"), "--make-offline-bundle", str(kit), "--apps", str(apps),
-                    "--download-cache", str(DOWNLOADS), "--arch", arch]
-            if WEB_SERVER == "caddy":
-                args += ["--web", "caddy"]
-            out = run(*args, timeout=3600, env=dict(os.environ, HOME=str(work)))
-            if out.returncode != 0:
-                raise ValueError("the kit could not be made: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
-            report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
-            if kit_ids:
-                # The toolkits in the stick layout (kits.export_usb) beside the kit: unpacked on a stick,
-                # the new box's setup.sh imports them, each .deb checked against Debian's signatures.
-                progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
-                for k in kit_ids:
-                    report.append(kits.export_usb(k, kit / "kits", progress.bytes))
-            if repo_dirs:
-                progress.step(f"Copying {len(repo_dirs)} git repositor{'ies' if len(repo_dirs) != 1 else 'y'}")
-                for d in repo_dirs:
-                    dest = kit / "git" / d.parent.name / d.name
-                    shutil.copytree(d, dest, symlinks=True)
-                    report.append(f"git: {d.parent.name}/{d.name}")
-            if state != "none":
-                from irate_box.hub import backup
-                import tarfile
-                progress.step("Adding this box's settings" + (" and data" if state == "data" else ""))
-                with tarfile.open(kit / "state-backup.tar.gz", "w:gz") as tar:
-                    tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
-                report.append(f"this box's {'settings' if state == 'settings' else 'settings and data'} (restored by setup.sh)")
-            if zims:
-                progress.step(f"Checksumming {len(zims)} book{'s' if len(zims) != 1 else ''}")
-                with open(kit / "SHA256SUMS", "a") as fh:
-                    for z in zims:
-                        h = hashlib.sha256()
-                        with open(z, "rb") as zf:
-                            for chunk in iter(lambda: zf.read(1 << 20), b""):
-                                h.update(chunk)
-                        fh.write(f"{h.hexdigest()}  ./zim/{z.name}\n")
-            progress.step("Packing it into one file")
-            ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
-            name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
-            # kits/ may hold entries the hub made before root took the folder: the part file is
-            # made fresh at exactly this name (a planted link there is removed, never written through).
-            part = kdir / f".{name}.part"
-            part.unlink(missing_ok=True)
-            safeio.create(part, 0o644).close()
-            tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
-            if tar.returncode == 0 and zims:
-                tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
-                          *[z.name for z in zims], timeout=7200)
-            if tar.returncode != 0:
-                part.unlink(missing_ok=True)
-                raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
-            part.chmod(0o644)
-            for old in [*kdir.glob("irate-box-kit-*.tar"), *kdir.glob("irate-box-content-*.tar")]:
-                old.unlink()
-            final = kdir / name
-            os.replace(part, final)
-            meta = {"name": name, "size": final.stat().st_size, "at": time.time(), "arch": arch,
-                    "books": [z.name for z in zims], "kits": list(kit_ids), "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
-                    "state": state, "contents": report[:60]}
-            safeio.write(kdir / "kit.json", json.dumps(meta, indent=2))
-        finally:
-            shutil.rmtree(work, ignore_errors=True)
+        work = room.work
+        progress.step("Gathering the code, the apps and the downloads")
+        kit = work / "irate-box-kit"
+        args = ["bash", str(CODE / "install.sh"), "--make-offline-bundle", str(kit), "--apps", str(apps),
+                "--download-cache", str(DOWNLOADS), "--arch", arch]
+        if WEB_SERVER == "caddy":
+            args += ["--web", "caddy"]
+        out = run(*args, timeout=3600, env=dict(os.environ, HOME=str(work)))
+        if out.returncode != 0:
+            raise ValueError("the kit could not be made: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
+        report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
+        if kit_ids:
+            # The toolkits in the stick layout (kits.export_usb) beside the kit: unpacked on a stick,
+            # the new box's setup.sh imports them, each .deb checked against Debian's signatures.
+            progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
+            for k in kit_ids:
+                report.append(kits.export_usb(k, kit / "kits", progress.bytes))
+        if repo_dirs:
+            progress.step(f"Copying {len(repo_dirs)} git repositor{'ies' if len(repo_dirs) != 1 else 'y'}")
+            for d in repo_dirs:
+                dest = kit / "git" / d.parent.name / d.name
+                shutil.copytree(d, dest, symlinks=True)
+                report.append(f"git: {d.parent.name}/{d.name}")
+        if state != "none":
+            from irate_box.hub import backup
+            import tarfile
+            progress.step("Adding this box's settings" + (" and data" if state == "data" else ""))
+            with tarfile.open(kit / "state-backup.tar.gz", "w:gz") as tar:
+                tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
+            report.append(f"this box's {'settings' if state == 'settings' else 'settings and data'} (restored by setup.sh)")
+        if zims:
+            progress.step(f"Checksumming {len(zims)} book{'s' if len(zims) != 1 else ''}")
+            with open(kit / "SHA256SUMS", "a") as fh:
+                for z in zims:
+                    h = hashlib.sha256()
+                    with open(z, "rb") as zf:
+                        for chunk in iter(lambda: zf.read(1 << 20), b""):
+                            h.update(chunk)
+                    fh.write(f"{h.hexdigest()}  ./zim/{z.name}\n")
+        progress.step("Packing it into one file")
+        ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
+        name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
+        part = work / name
+        tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
+        if tar.returncode == 0 and zims:
+            tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
+                      *[z.name for z in zims], timeout=7200)
+        if tar.returncode != 0:
+            raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+        meta = room.publish(part, name, {"name": name, "at": time.time(), "arch": arch,
+                                         "books": [z.name for z in zims], "kits": list(kit_ids),
+                                         "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
+                                         "state": state, "contents": report[:60]})
     return f"offline kit ready: {name} ({meta['size'] >> 20} MB)"
 
 
