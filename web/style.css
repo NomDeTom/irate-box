@@ -702,6 +702,7 @@ body.admin button.link-button {
   border: none;
   text-decoration: underline;
 }
+.setting-desc[hidden] { display: none; }  /* display: block outranks the hidden attribute (the doctors' "Nothing matches" showed beside their items) */
 .setting-desc.bad { color: #e5484d; }
 .setting-desc.warn { color: var(--warn); }
 /* The heavy warning before a pasted add-on (admin.html, Web add-ons). */

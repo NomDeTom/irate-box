@@ -1671,6 +1671,12 @@ const hl = {
   bar: document.getElementById('health-bar'),
   step: document.getElementById('health-step'),
   findings: document.getElementById('health-findings'),
+  summary: document.getElementById('health-summary'),
+  search: document.getElementById('health-search'),
+  empty: document.getElementById('health-empty'),
+  fine: document.getElementById('health-fine'),
+  fineFold: document.getElementById('health-fine-fold'),
+  fineCount: document.getElementById('health-fine-count'),
   install: document.getElementById('health-install'),
   output: document.getElementById('health-output'),
   log: document.getElementById('health-log'),
@@ -1698,7 +1704,49 @@ function installText(st) {
   return `Started ${when} (${st.args || 'no options'}); finished${n ? ` with ${n} problem${n === 1 ? '' : 's'}: ${st.problems.join('; ')}` : ' with no problems'}.`;
 }
 
+// What to do about one of the box doctor's findings: its repair buttons; a link to the page where it
+// is changed, when its words name one ("Network → the hotspot"); a command to copy, when they end
+// in one; and the words. A fine finding says nothing more.
+const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
+  [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
+  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts & users']];
+// A command in a finding's words: where it starts, up to the end of its sentence (or before "  (").
+// Not prose that begins like one ("journalctl -u NAME says why"), nor one with a NAME to fill in.
+const CMD_RE = /(?:^|[.:;,]\s+|\(|\bor\s+)((?:sudo |journalctl |systemctl |dmesg|df |du |ls |nmcli |ip |iw |apt |cat |tail |\.\/irate-box |\/opt\/irate-box\/)[^]*)/i;
+function splitCmd(text) {
+  text = (text || '').trim();
+  const m = text.match(CMD_RE);
+  if (!m) return null;
+  const start = m.index + m[0].length - m[1].length;
+  const end = m[1].search(/\.\s+(?=[A-Z(])|\.$|\s{2,}\(/);
+  const cmd = (end >= 0 ? m[1].slice(0, end) : m[1]).trim();
+  if (/\b(says|clears|once|which|starts|stops|again)\b/.test(cmd) || /\b[A-Z]{3,}\b/.test(cmd.replace(/YYYY-MM-DD|HH:MM/g, ''))) return null;
+  const after = end >= 0 ? m[1].slice(end).replace(/^\.?\s*/, '').trim() : '';
+  const before = text.slice(0, start).trim().replace(/\bor$/, '').trim().replace(/[.:;,]$/, '').trim();
+  return { cmd, before, after };
+}
+function healthDo(f, busy) {
+  if (f.status === 'ok') return { how: '', controls: [] };
+  const controls = (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
+    onclick: () => hlFix(f.id, a) }));
+  let how = f.fix || '';
+  const c = splitCmd(how);
+  if (c) {
+    controls.push(copyBox(c.cmd));
+    how = [c.before ? `${c.before}${/[.!?]$/.test(c.before) ? '' : (controls.length > 1 ? ', or by hand' : ', by hand')}:` : 'By hand, on the box:',
+      c.after].filter(Boolean).join(' ').replace(/::$/, ':');
+  }
+  const go = HEALTH_GO.find(([re]) => re.test(f.fix || ''));
+  if (go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${go[1]}`, textContent: `Go to ${go[2]} →` }));
+  if (!how && !controls.length) how = 'Nothing to press: it is said so you know.';
+  return { how, controls };
+}
+let hlShow = 'all';  // the counters double as the list's filter: all, problem, warn
+document.getElementById('health-search').addEventListener('input', () => hlLast && renderHealth(hlLast));
+
+let hlLast = null;
 function renderHealth(data) {
+  hlLast = data;
   const h = data.helper || {};
   // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
   const lad = document.getElementById('health-ladder');
@@ -1743,15 +1791,34 @@ function renderHealth(data) {
     ? el('span', { className: `setting-desc action-note${hlNote.ok ? '' : ' bad'}`, role: 'status', textContent: hlNote.text }) : null);
   // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
   const isClock = (f) => f.id.startsWith('clock') || f.id.startsWith('rtc');
-  const item = (f) => el('li', { className: `check check-${f.status}` },
-    el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.check }),
-    el('span', { textContent: ` — ${f.detail}` }),
-    f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
-    f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
-    }))) : null,
-    noteUnder(f.id));
-  hl.findings.replaceChildren(...all.filter((f) => !isClock(f)).map(item));
+  // One shape for every finding, as the security doctor's (#164; Tom, 2026-10-09: "the box doctor
+  // needs similar treatment to the security doctor to remove the info-soup look"): a status word,
+  // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
+  const item = (f) => {
+    const d = healthDo(f, busy || h.stuck);
+    return findingRow({ id: `hl-${f.id}`, state: f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id) });
+  };
+  const needle = hl.search.value.trim().toLowerCase();
+  const match = (f) => !needle || `${f.check} ${f.detail} ${f.fix || ''}`.toLowerCase().includes(needle);
+  const services = all.filter((f) => !isClock(f));
+  const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn').length };
+  hl.summary.replaceChildren(...(!rep ? [] : [
+    ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
+    ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
+    ['warn', counts.warn, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${hlShow === key ? ' active' : ''}`,
+      onclick: () => { hlShow = key; renderHealth(data); } }, el('strong', { textContent: String(n) }), ` ${word}`);
+    b.setAttribute('aria-pressed', String(hlShow === key));
+    return b;
+  })));
+  const open = services.filter((f) => f.status !== 'ok' && match(f) && (hlShow === 'all' || f.status === hlShow));
+  hl.findings.replaceChildren(...open.map(item));
+  hl.empty.hidden = !rep || open.length > 0;
+  hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or look at.';
+  const fine = services.filter((f) => f.status === 'ok' && match(f));
+  hl.fineFold.hidden = !fine.length;
+  hl.fineCount.textContent = `(${fine.length})`;
+  hl.fine.replaceChildren(...fine.map(item));
   hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
   const loose = hlNote && (hlNote.fid === 'scan' || hlNote.fid === 'clock-scan' || !shown.has(hlNote.fid)) ? hlNote : null;
   const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
