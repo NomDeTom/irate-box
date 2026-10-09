@@ -1829,6 +1829,7 @@ const net = {
   fields: document.getElementById('up-fields'),
   save: document.getElementById('up-save'),
   hold: document.getElementById('up-hold'),
+  stall: document.getElementById('up-stall'),
   unhold: document.getElementById('up-unhold'),
   note: document.getElementById('up-note'),
   profile: document.getElementById('up-profile'),
@@ -2022,8 +2023,11 @@ function upStatusText(u) {
   } else {
     const o = u.outage;
     parts.push(o ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.` : `Down on ${u.iface}.`);
-    if (o && o.done.length) parts.push(`Tried: ${o.done.join(', ')}.`);
+    const tried = o ? o.done.filter((s) => !(o.skipped || []).includes(s)) : [];
+    if (tried.length) parts.push(`Tried: ${tried.join(', ')}.`);
+    if (o && (o.skipped || []).length) parts.push(`Not possible here: ${o.skipped.join(', ')}.`);
     if (u.next) parts.push(`Next: ${u.next.label} at ${when(u.next.at)}.`);
+    if (u.state === 'stalled' && u.stall) parts.push(u.stall.text);
   }
   if (u.pinned) parts.push(`Locked to ${u.pinned.bssid} since ${when(u.pinned.at)}, until the next drop.`);
   if (u.paused_until && u.paused_until > Date.now() / 1000) parts.push(`No repairs until ${when(u.paused_until)}.`);
@@ -2172,6 +2176,15 @@ function renderNetwork(data) {
   buildUpFields(levels);
   if (!upDirty) fillUpForm((u && u.chosen) || { eagerness: 'patient', forgiveness: 'normal', iface: 'auto', overrides: {} }, levels);
   net.status.textContent = upStatusText(u);
+  // Stalled (uplink-ladder-plan, stage 2): the step that could help, one press away; the watchdog's
+  // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
+  const need = u && !u.stale && u.state === 'stalled' && u.stall && u.stall.needs;
+  net.stall.hidden = !need;
+  net.stall.replaceChildren(...(need ? [el('button', { type: 'button', className: 'action-btn primary', disabled: busy,
+    textContent: `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now`,
+    onclick: () => { if (confirm(`${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now? `
+      + (need === 'reboot' ? 'The box restarts, and everything on it is away for a minute or two.'
+        : 'The WiFi, and the hotspot with it, goes away for a moment.'))) netRequest({ action: 'do', step: need }, 'up'); } })] : []));
   showUpSave();
   const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;

@@ -3817,12 +3817,14 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 settings.pop("hold_until", None)
                 self.send_json(202, {"id": control_request({"action": "uplink-set", "settings": settings})})
+            elif act == "do" and payload.get("step") in uplink.STEPS:
+                self.send_json(202, {"id": control_request({"action": "uplink-do", "step": payload["step"]})})
             elif act == "hold" and type(payload.get("minutes")) is int and 0 <= payload["minutes"] <= 1440:
                 self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
+                self.send_json(400, {"error": "action must be scan, settings, do (with a step), hold or profile"})
             return
 
         if path == "/admin/packages":
