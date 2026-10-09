@@ -1288,8 +1288,7 @@
         <h3 id="backup-kit">Set up another box</h3>
         <p class="setting-desc">
           An offline kit: everything another box needs to be set up with no internet, as one file. This box's code, its
-          apps and the release files it keeps are always in it; choose what else goes with them, against a budget (Tom:
-          "a size budget is critical"). Unpack it on the new box (a USB stick will do) and run <code>sudo ./setup.sh</code>
+          apps and the release files it keeps are always in it; choose what else goes with them, against a size budget if you set one. Unpack it on the new box (a USB stick will do) and run <code>sudo ./setup.sh</code>
           in it: it installs, then restores the state and repositories chosen, and imports the toolkits (each package checked
           against Debian's signatures). Debian's own packages still come from the new box's system.
         </p>
@@ -1321,8 +1320,7 @@
 
         <h3 id="backup-offline">Update an offline box</h3>
         <p class="setting-desc">
-          Books and toolkits onto a USB stick, without the hub (Tom: "simply an export of the library or the toolkits for
-          updating an offline box"), in the layout the other box reads with its own Books → USB stick and Toolkits → USB stick.
+          Books and toolkits onto a USB stick, without the hub, for a box that has no internet, in the layout the other box reads with its own Books → USB stick and Toolkits → USB stick.
         </p>
         <form id="offline-form" class="library-form kit-offer">
           <fieldset class="kit-pick"><legend>Books</legend><div id="offline-books"></div></fieldset>

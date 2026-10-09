@@ -243,6 +243,7 @@ setTimeout(() => {
   check('  settings only: the address follows', d.getElementById('backup-go').getAttribute('href') === '/admin/backup?level=settings');
   lv[2].querySelector('input').click();
   check('  the full image: no download, a stick to choose instead', d.getElementById('backup-go-box').hidden && !d.getElementById('backup-image-box').hidden);
+  check('  the full image: the download keeps the last real level, never a size of nothing', /about 0\.1 MB|about 117/.test(t('#backup-go')[0]) && !/0 MB\)|unknown/.test(t('#backup-go')[0].replace(/0\.1 MB/, '')), t('#backup-go')[0]);
   const pk = d.querySelector('#pkg-list .library-source');
   const pkChips = pk ? [...pk.querySelectorAll('.chip')].map((c) => c.textContent + (c.classList.contains('selected') || c.getAttribute('aria-pressed') === 'true' ? '*' : '')) : [];
   check('packages: Flag, Fetch and Install offered, Flag chosen', ['Flag*', 'Fetch', 'Install'].every((x) => pkChips.includes(x)), pkChips);
