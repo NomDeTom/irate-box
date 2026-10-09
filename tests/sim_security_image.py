@@ -42,7 +42,8 @@ for name, body in {
               "if sys.argv[1] == '-S': print('root ' + st.read_text().strip() + ' 2026-10-07 0 99999 7 -1')\n"
               "elif sys.argv[1] == '-l': st.write_text('L')\n"
               "elif sys.argv[1] == '-u': st.write_text('P')\n",
-    "systemctl": f"import sys, os\nif sys.argv[1:] == ['restart', 'systemd-sysctl.service'] and os.path.exists('{T}/installed'):\n"
+    "systemctl": f"import sys, os\nopen('{T}/systemctl-log', 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+                 f"if sys.argv[1:] == ['restart', 'systemd-sysctl.service'] and os.path.exists('{T}/installed'):\n"
                  f"    [open('{PROC}/fs/' + k, 'w').write('1\\n') for k in ('protected_symlinks', 'protected_hardlinks')]",
     "sshd": f"import sys, os\nif '-T' in sys.argv: print('passwordauthentication ' + ('no' if os.path.exists('{T}/pw-off') else 'yes')); print('authorizedkeysfile %h/.ssh/keys_%u .ssh/authorized_keys')",
     "findmnt": f"import os\nprint('/dev/mmcblk0p1 ext4' if os.path.exists('{T}/log-on-card') else '/dev/zram1 ext4')",
@@ -64,6 +65,7 @@ os.environ.update(HUB_SUDOERS=str(T / "sudoers"), HUB_SUDOERS_DIR=str(T / "sudoe
                   HUB_RAMLOG_DEFAULT=str(T / "ramlog"), HUB_JOURNALD_DROPIN=str(T / "journald.conf.d" / "irate-box.conf"), HUB_LOG_DIR=str(T / "log"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_PROC_SYS=str(PROC), HUB_GROUP_FILE=str(T / "group"),
                   HUB_PASSWD_FILE=str(T / "passwd"), HUB_SYSCTL_DROPIN=str(T / "sysctl.d" / "60-irate-box.conf"),
+                  HUB_AUTOUPDATE_CONF=str(T / "apt.conf.d" / "52irate-box-autoupdate"),
                   PATH=f"{BIN}:{os.environ['PATH']}")
 sys.path.insert(0, str(REPO))
 from irate_box.root import security  # noqa: E402
@@ -173,17 +175,45 @@ import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
       ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "root-lock", "firstrun-off", "firstrun-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
-# I3 (stance review 2026-10-08): automatic security updates judged by what would run, not by
-# the binary being there. Armbian ships APT::Periodic::Enable "0".
+# Automatic security updates: the owner's choice on the Updates page, off, download or install (Tom,
+# 2026-10-09: "the toolkit is independent of the system update itself"), judged by what would run (I3:
+# Armbian ships APT::Periodic::Enable "0", so the binary being there means nothing).
 uf = security.unattended_finding
-check("unattended: not installed is a warning", uf(False, {}, None)["status"] == "warn")
-check("  installed but apt's periodic work off (the image's setting): a warning that says so",
-      uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "7"}, None)["status"] == "warn"
-      and "never runs" in uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "7"}, None)["detail"])
-check("  Unattended-Upgrade unset or 0: likewise", uf(True, {}, 1)["status"] == "warn" and uf(True, {"APT::Periodic::Unattended-Upgrade": "0"}, 1)["status"] == "warn")
-check("  on, but never ran or ran long ago: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None)["status"] == "warn"
-      and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30)["status"] == "warn")
-check("  on and ran this week: ok", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2)["status"] == "ok")
+nf = uf(False, {}, None)
+check("not chosen: a warning offering the three choices, no toolkit in sight", nf["status"] == "warn"
+      and [a["choice"] for a in nf["actions"]] == ["autoupdate-off", "autoupdate-download", "autoupdate-install"]
+      and "oolkit" not in nf["detail"] + nf["fix"], nf)
+on_by_image = uf(True, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, 2)
+check("  not chosen here but already running (Debian's own package can switch it on): said so, fine",
+      on_by_image["status"] == "ok" and "not chosen here" in on_by_image["detail"], on_by_image)
+check("off, chosen: fine, its other choices and an Undo offered", uf(False, {}, None, "off")["status"] == "ok"
+      and [a["choice"] for a in uf(False, {}, None, "off")["actions"]] == ["autoupdate-download", "autoupdate-install", "autoupdate-undo"])
+check("download, chosen and apt's periodic work on: fine; off again (another file wins): a warning",
+      uf(False, {"APT::Periodic::Enable": "1"}, None, "download")["status"] == "ok"
+      and uf(False, {"APT::Periodic::Enable": "0"}, None, "download")["status"] == "warn")
+check("install, chosen: a warning while it would not run (not installed, or the image's Enable 0)",
+      uf(False, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, None, "install")["status"] == "warn"
+      and uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "1"}, None, "install")["status"] == "warn")
+check("  running: fine; not run in a fortnight: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2, "install")["status"] == "ok"
+      and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, "install")["status"] == "warn")
+conf = T / "apt.conf.d" / "52irate-box-autoupdate"
+(T / "systemctl-log").unlink(missing_ok=True); (T / "apt-log").unlink(missing_ok=True)
+msg = security.fix("autoupdate-install", None)
+check("install chosen: unattended-upgrades installed, apt's periodic work on in our own file, the daily timers on",
+      "unattended-upgrades installed" in msg and 'APT::Periodic::Enable "1";' in conf.read_text() and 'APT::Periodic::Unattended-Upgrade "1";' in conf.read_text()
+      and "install -y unattended-upgrades" in (T / "apt-log").read_text() and "enable --now apt-daily-upgrade.timer" in (T / "systemctl-log").read_text(), msg)
+msg = security.fix("autoupdate-download", None)
+check("  download chosen: downloads only", 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text()
+      and 'APT::Periodic::Unattended-Upgrade "0";' in conf.read_text() and security.load_record()["autoupdate"]["level"] == "download", msg)
+msg = security.fix("autoupdate-undo", None)
+check("  undo: our file gone, the timers as they were (off here: disabled again), the package removed as it was installed here",
+      not conf.exists() and "disable --now apt-daily.timer" in (T / "systemctl-log").read_text()
+      and "remove -y unattended-upgrades" in (T / "apt-log").read_text() and "autoupdate" not in security.load_record(), msg)
+try:
+    security.fix("autoupdate-undo", None); check("  undo twice: refused", False)
+except ValueError:
+    check("  undo twice: refused", True)
+check("  undo_all knows it", "autoupdate-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1])
 
 # I6 (stance review 2026-10-08): SSH forwarding, found from sshd -T's words and offered off.
 sf = lambda s, rec={}: {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec)}  # noqa: E731
