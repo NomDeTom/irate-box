@@ -162,6 +162,14 @@ setTimeout(() => {
   }
   check('moderation: a reported message is marked where all the messages are listed; an unreported one is not',
     /reported ×3/.test(t('#mod-messages .admin-item')[0]) && !/reported/.test(t('#mod-messages .admin-item')[1]), t('#mod-messages .admin-item').join(' | '));
+  {
+    const f = d.getElementById('accounts-settings'), sb = f.querySelector('button.primary');
+    check('save buttons: unfilled while there is nothing to save', sb.classList.contains('idle'));
+    f.querySelector('.select-chips .chip:not(.selected)').click();
+    check('  a change filled it', !sb.classList.contains('idle'));
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    setTimeout(() => check('  saved: unfilled again', sb.classList.contains('idle')), 20);
+  }
   // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));

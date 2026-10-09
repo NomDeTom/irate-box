@@ -344,17 +344,40 @@ const AW = (() => {
     watchSetters();
     (root || document).querySelectorAll('select').forEach(chipSelect);
   }
+  // A Save button in a form stays unfilled (outlined) until something in the form has been changed by
+  // its user (Tom, 2026-10-09: "stay unfilled colour until they have something to save"). Events from
+  // people only: a form the page fills from the hub raises none, so it starts quiet; a submit, or a
+  // reset, quiets it again. The button is never disabled here: it still works.
+  const isSave = (b) => b.classList.contains('primary') && b.type === 'submit' && /^Save/.test(b.textContent.trim());
+  function quietSaves(root) {
+    (root || document).querySelectorAll('form').forEach((f) => {
+      if (f._quiet) return;
+      const btns = () => [...f.querySelectorAll('button')].filter(isSave);
+      if (!btns().length) return;
+      f._quiet = true;
+      const set = (dirty) => btns().forEach((b) => b.classList.toggle('idle', !dirty));
+      set(false);
+      const touch = (e) => { if (e.target.closest && !e.target.closest('button[type=submit]')) set(true); };
+      f.addEventListener('input', touch);
+      f.addEventListener('change', touch);
+      f.addEventListener('click', (e) => { if (e.target.closest('.chip, .choice-tile')) set(true); });
+      f.addEventListener('submit', () => setTimeout(() => set(false)));
+      f.addEventListener('reset', () => setTimeout(() => set(false)));
+    });
+  }
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
     const start = () => {
       chipSelects(document);
+      quietSaves(document);
       new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
         if (n.nodeType !== 1) return;
         if (n.tagName === 'SELECT') chipSelect(n); else chipSelects(n);
+        quietSaves(n.tagName === 'FORM' ? n.parentNode : n);
       }))).observe(document.body, { childList: true, subtree: true });
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
