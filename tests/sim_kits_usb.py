@@ -4,7 +4,7 @@
 the kit's .debs and the signed indexes that list them; the import accepts a .deb only when a signed
 InRelease (its signature checked with the box's keys), the Packages file it lists, and the .deb's
 own hash all agree. gpgv and dpkg-deb are stood in. python3 tests/sim_kits_usb.py"""
-import hashlib, json, os, shutil, sys, tempfile
+import hashlib, json, lzma, os, shutil, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kitsusb-"))
@@ -62,7 +62,8 @@ stick = T / "stick" / "irate-box" / "kits"; stick.mkdir(parents=True)
 line = kits.export_usb("small", stick)
 kf = stick / "armhf" / "small"
 check("export: the .debs (an epoch's name as apt saves it), the manifest, and only the signed indexes that list them", sorted(p.name for p in (kf / "debs").iterdir()) == ["gdb_16.3-1_armhf.deb", "libgdb_1%3a16.3-1_armhf.deb"]
-      and sorted(p.name for p in (kf / "lists").iterdir()) == ["deb.debian.org_debian_dists_trixie_InRelease", "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages"]
+      and sorted(p.name for p in (kf / "lists").iterdir()) == ["deb.debian.org_debian_dists_trixie_InRelease", "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages.xz"]
+      and lzma.decompress((kf / "lists" / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages.xz").read_bytes()).decode() == packages
       and json.loads((kf / "manifest.json").read_text())["title"] == "Small", line)
 check("the stick's kits are listed by a scan", kits.stick_kits(T / "stick") == [{"kit": "small", "arch": "armhf", "title": "Small", "packages": 2, "bytes": 10, "fetched": 1790000000}],
       kits.stick_kits(T / "stick"))
@@ -85,8 +86,26 @@ def refused(mutate, why):
     except ValueError as exc:
         check(f"refused: {why} ({exc})", not kits.MANIFESTS.exists() or not kits.manifest("small"))
 refused(lambda k: (k / "debs" / "gdb_16.3-1_armhf.deb").write_text("evil"), "a .deb changed on the stick")
-refused(lambda k: (k / "lists" / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages").write_text(packages.replace(pkgs[0]["sha256"], "0" * 64)),
+XZ = "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages.xz"
+refused(lambda k: (k / "lists" / XZ).write_bytes(lzma.compress(packages.replace(pkgs[0]["sha256"], "0" * 64).encode())),
         "a Packages file not the one its release lists")
+refused(lambda k: (k / "lists" / XZ.removesuffix(".xz")).write_text(packages.replace(pkgs[0]["sha256"], "0" * 64)),
+        "a plain Packages file beside it, not the one its release lists")
+refused(lambda k: (k / "lists" / XZ).write_bytes((k / "lists" / XZ).read_bytes()[:40]), "a cut-off .xz index")
+def bomb(k):
+    kits.INDEX_MAX = 1 << 16
+    (k / "lists" / XZ).write_bytes(lzma.compress(packages.encode() + b"\n" * (1 << 20)))
+refused(bomb, "an index that unpacks past the ceiling")
+kits.INDEX_MAX = 512 << 20
+def link_index(k):
+    (k / "lists" / XZ).unlink(); os.symlink(L / XZ.removesuffix(".xz"), k / "lists" / XZ)
+refused(link_index, "a link in place of an index")
+# A stick written before the indexes were compressed still reads.
+fresh()
+old = T / "old-stick"; shutil.copytree(T / "stick", old)
+ol = old / "irate-box" / "kits" / "armhf" / "small" / "lists"
+(ol / XZ.removesuffix(".xz")).write_bytes(lzma.decompress((ol / XZ).read_bytes())); (ol / XZ).unlink()
+check("a stick with plain indexes (an older export) still imports", "checked against" in kits.import_usb(old / "irate-box" / "kits", "small", 500))
 def resign(k):
     p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
     p.write_text(p.read_text().replace("SIGNED BY: good key", "SIGNED BY: someone else"))
@@ -141,7 +160,7 @@ for f in ("deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages", "deb.
 line = kits.export_usb("small", T / "stick3")
 check("export: a debug-archive kit vouched for by the index kept in the kits' own lists",
       sorted(p.name for p in (T / "stick3" / "armhf" / "small" / "lists").iterdir()) == ["deb.debian.org_debian-debug_dists_trixie-debug_InRelease",
-      "deb.debian.org_debian-debug_dists_trixie-debug_main_binary-armhf_Packages"], line)
+      "deb.debian.org_debian-debug_dists_trixie-debug_main_binary-armhf_Packages.xz"], line)
 from irate_box.root import hub_control  # noqa: E402
 check("the root helper has both", {"usb-kit-import", "usb-kit-export"} <= set(hub_control.ACTIONS))
 print("ok" if not fails else f"{fails} failure(s)")

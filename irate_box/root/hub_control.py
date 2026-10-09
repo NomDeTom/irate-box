@@ -436,7 +436,8 @@ def offline_kit(req):
     zims, kit_ids, repo_dirs, state, budget = kit_choices(req)
     apps = Path("/usr/share/hub/apps")
     arch = platform.machine()
-    base = _du(apps, Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
+    from irate_box.hub import backup
+    base = backup.apps_size(apps) + _du(Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
     chosen = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs)
               + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
               + (_state_size(state) if state != "none" else 0))
