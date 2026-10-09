@@ -147,7 +147,7 @@ if [ -f /etc/nginx/conf.d/irate-box.conf ] || [ -f "$ETC/nginx-default-site-off"
 fi
 
 say "Removing code, apps, config and binaries"
-rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box /var/log/irate-box
+rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box /var/log/irate-box /var/lib/irate-box-kit-work
 rm -f /usr/local/bin/silverbullet /usr/local/bin/ttyd
 
 if [ "$KEEP_STATE" = 1 ]; then

@@ -191,8 +191,8 @@ except (ValueError, OSError):
 check("N1: kits/ as a link: refused, its target untouched", refused and (target.stat().st_mode & 0o777) == 0o700 and not any(target.iterdir()))
 (STATE / "kits").unlink()
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
-check("N1: the kit is built through kits/'s own fd, with no chown or chmod by path",
-      "/proc/self/fd/{kits_fd}" in src_ and "os.chown(KITS" not in src_ and "os.chmod(KITS" not in src_)
+check("N1: the kit is built in root's own work folder and moved into kits/ through its fd, with no chown or chmod by path",
+      "dst_dir_fd=self.fd" in src_ and "KIT_WORK" in src_ and "os.chown(KITS" not in src_ and "os.chmod(KITS" not in src_)
 
 # --- install.sh's state_dir, for real --------------------------------------------------------
 fn = inst[inst.index("state_dir() {"):]

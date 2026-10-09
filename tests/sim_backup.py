@@ -160,5 +160,21 @@ out = subprocess.run(["sh", str(stick / "irate-box/import.sh"), "--dry-run"], ca
                      env=dict(os.environ, IRATE_BOX_CLI=str(T / "nosuch"), HUB_STATE_DIR=str(box)))
 check("  on a box without irate-box: refused, saying why", out.returncode == 1 and "not installed here" in out.stderr, out.stderr)
 check("  an unknown option: refused", run("--everything").returncode == 2)
+# The whole download without the hub program, as root makes it: in its own work folder, moved into kits/.
+code = T / "code"; code.mkdir(); (code / "VERSION").write_text("abc1234 (installed)\n")
+H.CODE, H.KITS, H.KIT_WORK, H.ROOT_UID = code, T / "kits-out", T / "kit-work", os.getuid()
+H.KIT_PROGRESS = T / "control" / "kit-progress.json"; H.KIT_PROGRESS.parent.mkdir(parents=True, exist_ok=True)
+H._min_free = lambda: 0
+H.KITS.mkdir(); (H.KITS / "irate-box-kit-old-armv7l.tar").write_text("old")
+msg = H.content_export({"books": ["book"], "repos": ["public/mine"], "state": "settings"})
+meta = json.loads((H.KITS / "kit.json").read_text())
+out = tarfile.open(H.KITS / meta["name"])
+names = out.getnames()
+check("content export, the download: made, the last kit replaced, its record kept", "content export ready: irate-box-content-abc1234.tar" in msg
+      and sorted(p.name for p in H.KITS.iterdir()) == ["irate-box-content-abc1234.tar", "kit.json"] and meta["kind"] == "content"
+      and meta["size"] == (H.KITS / meta["name"]).stat().st_size, (msg, sorted(p.name for p in H.KITS.iterdir())))
+check("  its layout: the book at the top of irate-box/, the repository, the state, import.sh",
+      {"irate-box/book.zim", "irate-box/git/public/mine.git/HEAD", "irate-box/state-backup.tar.gz", "irate-box/import.sh"} <= set(names), names)
+check("  the work folder cleared after", H.KIT_WORK.is_dir() and not any(H.KIT_WORK.iterdir()))
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
