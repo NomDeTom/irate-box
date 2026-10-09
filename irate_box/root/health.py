@@ -407,8 +407,12 @@ def check_uplink():
         return [_f("uplink-report", "Uplink watchdog report", "problem", f"Last report {int(age // 60)} min ago: it has stopped looking.",
                    "journalctl -u irate-box-uplink -n 30; systemctl restart irate-box-uplink",
                    [_act("unit-restart:irate-box-uplink.service", "Start it again")])]
-    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, "
-              f"{st.get('chosen', {}).get('eagerness')}, {st.get('chosen', {}).get('forgiveness')}.")]
+    from irate_box.hub import uplink
+    try:
+        said = uplink.words(uplink.validate(st.get("chosen") or {}))
+    except (ValueError, TypeError, KeyError):
+        said = "settings not readable"
+    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, {said}.")]
     # Stalled: down, with nothing left the level allows that could help (uplink-ladder-plan, stage 2).
     stall = st.get("stall") if st.get("state") == "stalled" else None
     if stall:

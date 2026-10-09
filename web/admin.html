@@ -935,14 +935,20 @@
         <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
         <div class="library-buttons" id="up-stall" hidden></div>
         <div class="net-settings">
-          <span class="setting-name" id="up-eager-label">Eagerness: how hard it works to get back on</span>
-          <div class="choice-tiles" id="up-eager" role="radiogroup" aria-labelledby="up-eager-label"></div>
+          <span class="setting-name" id="up-pace-label">Pace: how soon it acts, and how often</span>
+          <div class="choice-tiles" id="up-pace" role="radiogroup" aria-labelledby="up-pace-label"></div>
+          <span class="setting-name" id="up-reach-label">Reach: the furthest it may go</span>
+          <div class="choice-tiles" id="up-reach" role="radiogroup" aria-labelledby="up-reach-label"></div>
+          <span class="setting-name" id="up-guests-label">Guests on the hotspot</span>
+          <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
+          <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
+          <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
           <span class="setting-name" id="up-forgive-label">Forgiveness: how much it puts up with first</span>
           <div class="choice-tiles" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
           <label class="setting-name" for="up-iface">Watch</label>
           <select id="up-iface"><option value="auto">The box's route to its network</option></select>
           <details id="up-custom">
-            <summary>Custom values (blank: the level's own)</summary>
+            <summary>Custom values (blank: the pace's and forgiveness's own)</summary>
             <div class="net-fields" id="up-fields"></div>
           </details>
         </div>

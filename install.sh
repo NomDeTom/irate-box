@@ -89,10 +89,12 @@ Usage: sudo ./install.sh [options]
   --take-port-80        when something else serves :80, stop and disable it so the hub can
                         have the port (the captive portal needs it). Recorded, so /admin's
                         Security page can undo it and uninstall.sh starts it again.
-  --uplink E[,F]        how hard the box works to stay on its network (uplink.py): eagerness
-                        off, patient (default), standard, persistent or stubborn, and
-                        optionally forgiveness tolerant, normal (default) or strict, e.g.
-                        --uplink standard,strict. Kept in /etc/hub/uplink.json, not in the
+  --uplink K=V[,K=V]    how the box works to stay on its network (uplink.py): pace gentle
+                        (default), steady, prompt or urgent; reach watch, reconnect, restart,
+                        radio or reboot (default); forgiveness tolerant, normal (default) or
+                        strict; guests protect (default) or ignore; on_wedge ladder (default) or
+                        radio. E.g. --uplink pace=steady,reach=radio. (The old single level, e.g.
+                        standard,strict, is still read.) Kept in /etc/hub/uplink.json, not in the
                         install options, so an update never undoes a choice made on /admin's
                         Network page, which also has the custom values. The owner's own WiFi profile is never
                         changed here: "Keep retrying" on that page does it, by consent.
@@ -161,12 +163,13 @@ while [ $# -gt 0 ]; do
 		case "$2" in auto | off) RTC="$2" ;; *) echo "--rtc takes auto or off" >&2; exit 2 ;; esac
 		shift 2 ;;
 	--uplink)
-		case "$2" in
-		off | patient | standard | persistent | stubborn | \
-			off,* | patient,* | standard,* | persistent,* | stubborn,*) UPLINK="$2" ;;
-		*) echo "--uplink takes off, patient, standard, persistent or stubborn, optionally ,tolerant ,normal or ,strict" >&2; exit 2 ;;
-		esac
-		case "$UPLINK" in *,*) case "${UPLINK#*,}" in tolerant | normal | strict) ;; *) echo "--uplink: forgiveness is tolerant, normal or strict" >&2; exit 2 ;; esac ;; esac
+		# KEY=VALUE pairs (uplink.py checks each again), or the old single level E[,F].
+		if [[ "$2" =~ ^(pace|reach|forgiveness|guests|on_wedge)=[a-z]+(,(pace|reach|forgiveness|guests|on_wedge)=[a-z]+)*$ ]] ||
+			[[ "$2" =~ ^(off|patient|standard|persistent|stubborn)(,(tolerant|normal|strict))?$ ]]; then
+			UPLINK="$2"
+		else
+			echo "--uplink takes KEY=VALUE pairs (pace, reach, forgiveness, guests, on_wedge), e.g. pace=steady,reach=radio" >&2; exit 2
+		fi
 		shift 2 ;;
 	--remove)
 		case "$2" in notes | sync | mqtt | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, term or collab" ;; esac
@@ -1866,17 +1869,13 @@ fi
 # --- the network: inventory and the uplink watchdog ---------------------------------------
 # netinv.py looks at the radios and the stack that runs them (read-only); uplink.py watches
 # the link and repairs it as eagerly as chosen. Settings in $ETC/uplink.json: written here
-# only by --uplink (or the first time, as patient,normal), otherwise by /admin's Network page
+# only by --uplink (or the first time, as the defaults), otherwise by /admin's Network page
 # through the root helper, so an update keeps what the owner chose there.
 say "Looking at the network"
 "$CODE/irate-box" netinv --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
 if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
-	up="${UPLINK:-patient,normal}"
-	if [ "$up" = "${up#*,}" ]; then
-		HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink set "$up" >/dev/null
-	else
-		HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink set "${up%%,*}" "${up#*,}" >/dev/null
-	fi
+	IFS=, read -r -a up <<<"${UPLINK:-pace=gentle,reach=reboot,forgiveness=normal}"
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink set "${up[@]}" >/dev/null || problem "--uplink $UPLINK: not taken (uplink.py set)"
 fi
 # A clock module on I2C: found and set up if there is exactly one (rtc.py auto), kept if set up
 # before. Nothing in /boot or the device tree changes.
@@ -2236,7 +2235,7 @@ echo "    git:   /git/ (public: clone for all, push with the admin login) and /g
 [ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
 
-up_now="$(HUB_ETC_DIR="$ETC" python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["eagerness"]+", "+d["forgiveness"]+(" (custom values)" if d.get("overrides") else ""))' "$ETC/uplink.json" 2>/dev/null || echo unknown)"
+up_now="$(HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -c 'from irate_box.hub import uplink as u; s=u.load_settings(); print(u.words(s)+(" (custom values)" if s["overrides"] else ""))' 2>/dev/null || echo unknown)"
 echo "    uplink: $up_now — how hard it works to stay on the network; change on $where/admin/#network"
 
 # What install.sh found and did not change: said once more here, then the Security page's

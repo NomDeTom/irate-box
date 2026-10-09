@@ -71,7 +71,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
       What the box has for networking (netinv.py): radios, who runs them, what each can do,
       what is in the way; to control/netinv.json. With "iface", that device alone.
-  {"id": ..., "action": "uplink-set", "settings": {eagerness, forgiveness, iface, overrides}}
+  {"id": ..., "action": "uplink-set", "settings": {pace, reach, guests, forgiveness, on_wedge, iface, overrides}}
       How hard the watchdog (uplink.py) works to keep the box on its network: checked by
       uplink.validate, written to /etc/hub/uplink.json, which irate-box-uplink picks up.
   {"id": ..., "action": "uplink-do", "step": "reconnect"|"restart"|"radio"|"reboot"}
@@ -2312,7 +2312,7 @@ def uplink_set(req):
     new.setdefault("hold_until", s.get("hold_until", 0))
     s = uplink.save_settings(new)
     _uplink_running()
-    return (f"Uplink: {s['eagerness']}, {s['forgiveness']}" + (", custom values" if s["overrides"] else "")
+    return (f"Uplink: {uplink.words(s)}" + (", custom values" if s["overrides"] else "")
             + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest.")
 
 

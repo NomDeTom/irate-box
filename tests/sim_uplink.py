@@ -15,9 +15,17 @@ def check(name, cond, info=""):
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
     fails += (not cond)
 
+# The levels by name in these tests: pace/reach (and guests). The old single dial's names map to
+# these where a case is about the same thing (patient: reconnect only; stubborn: everything, guests or not).
+LV = {"off": ("gentle", "watch", "protect"), "patient": ("gentle", "reconnect", "protect"), "standard": ("steady", "restart", "protect"),
+      "persistent": ("prompt", "radio", "protect"), "stubborn": ("urgent", "reboot", "ignore")}
+def C(e, f="normal", over=None, **kw):
+    pace, reach, guests = LV[e] if e in LV else (*e.split("/"), "protect")
+    return dict({"pace": pace, "reach": reach, "guests": guests, "forgiveness": f, "overrides": over or {}}, **kw)
+
 def outage(e, f, dur, link=False, guests=0, busy=None, uptime=1e9, can=ALL, over=None, step=5):
     """Link down (or gateway silent) for dur seconds, observed every `step` s; returns [(t, action)]."""
-    w = U.Watch(U.effective({"eagerness": e, "forgiveness": f, "overrides": over or {}}))
+    w = U.Watch(U.effective(C(e, f, over)))
     acts = []
     for t in range(0, dur, step):
         obs = {"link": link, "gateway": False if link else None, "drops": [], "guests": guests, "busy": busy,
@@ -28,14 +36,19 @@ def outage(e, f, dur, link=False, guests=0, busy=None, uptime=1e9, can=ALL, over
 
 # 1. Ladder timing, link lost (certain: no misses needed), normal forgiveness (grace 60)
 a, w = outage("patient", "normal", 3600)
-check("patient: first reconnect at grace (60 s)", a[0] == (60, "reconnect"), a[:3])
-check("patient: only reconnects", {x for _, x in a} == {"reconnect"}, a)
+check("gentle pace: the first reconnect 5 min after the grace (60 + 300 s)", a[0] == (360, "reconnect"), a[:3])
+check("reach reconnect: only reconnects", {x for _, x in a} == {"reconnect"}, a)
 gaps = [a[i+1][0]-a[i][0] for i in range(len(a)-1)]
-check("patient: reconnects back off 600→1200→…", gaps[:2] == [600, 1200], gaps)
+check("gentle: reconnects back off 900→1800→…", gaps[:2] == [900, 1800], gaps)
+a, w = outage("gentle/reboot", "normal", 8000)
+check("gentle pace, reach reboot (the defaults): restart at +30 min, radio +60, reboot +120, all after the grace",
+      [x for x in a if x[1] != "reconnect"] == [(1860, "restart"), (3660, "radio"), (7260, "reboot")], [x for x in a if x[1] != "reconnect"])
+check("the defaults are the gentlest pace and the highest reach (Tom)", U.DEFAULT["pace"] == "gentle" and U.DEFAULT["reach"] == "reboot"
+      and U.load_settings()["reach"] == "reboot")
 
 a, w = outage("standard", "normal", 3600)
-check("standard: restart at 60+600", (660, "restart") in a, a)
-check("standard: no radio/reboot", not ({"radio","reboot"} & {x for _, x in a}), a)
+check("steady pace: reconnect at 60+60, restart at 60+600", a[0] == (120, "reconnect") and (660, "restart") in a, a)
+check("reach restart: no radio/reboot", not ({"radio","reboot"} & {x for _, x in a}), a)
 
 a, w = outage("persistent", "normal", 3600)
 check("persistent: restart 360, radio 960", (360, "restart") in a and (960, "radio") in a, a)
@@ -45,19 +58,19 @@ check("stubborn: reboot at 60+1800", (1860, "reboot") in a, [x for x in a if x[1
 
 # 2. Gateway silent (link up): misses before declaring
 a, w = outage("standard", "strict", 600, link=True, step=30)
-check("strict, gateway silent: 2 misses then +15 s grace → reconnect at t=30+…", a and a[0][1] == "reconnect" and a[0][0] <= 60, a[:2])
+check("strict, gateway silent: 2 misses then +15 s grace, then steady's minute → reconnect by 2 min", a and a[0][1] == "reconnect" and a[0][0] <= 120, a[:2])
 a, w = outage("standard", "tolerant", 1200, link=True, step=60)
 check("tolerant, gateway silent: no action before 5 min down (misses overlap the grace)", a and a[0][0] >= 300, a[:2])
 
 # 3. A blip shorter than the misses is forgiven and not logged
-w = U.Watch(U.effective({"eagerness": "standard", "forgiveness": "normal", "overrides": {}}))
+w = U.Watch(U.effective(C("standard", "normal", {})))
 for t, ok in [(0, False), (60, False), (120, True)]:
     w.tick(t, {"link": True, "gateway": ok, "drops": [], "can": ALL})
 check("normal: 2 missed checks then fine → no outage, no events", w.outage is None and not w.events, list(w.events))
 
 # 4. Flaps
 def flap(f, can=ALL, hold=0):
-    w = U.Watch(U.effective({"eagerness": "standard", "forgiveness": f, "overrides": {}}))
+    w = U.Watch(U.effective(C("standard", f, {})))
     acts = []
     for i in range(10):
         acts += w.tick(1000 + i * 60, {"link": True, "gateway": True, "drops": [1000 + i * 60 - 1], "can": can, "hold_until": hold})
@@ -77,7 +90,7 @@ a, w = outage("stubborn", "normal", 7200, busy="a build")
 check("stubborn + build running: reboot held", "reboot" not in {x for _, x in a} and any("a build" in e["text"] for e in w.events))
 a, w = outage("stubborn", "normal", 7200, uptime=0)
 check("stubborn soon after boot: reboot only after reboot_gap uptime", (1860, "reboot") not in a and any(x == "reboot" for _, x in a), [x for x in a if x[1]=="reboot"])
-w = U.Watch(U.effective({"eagerness": "stubborn", "forgiveness": "normal", "overrides": {}}), reboots=[0, 10000, 20000])
+w = U.Watch(U.effective(C("stubborn", "normal", {})), reboots=[0, 10000, 20000])
 acts = []
 for t in range(30000, 40000, 5):
     acts += w.tick(t, {"link": False, "drops": [], "can": ALL})
@@ -86,13 +99,15 @@ a, w = outage("persistent", "normal", 3600, can={"reconnect", "reboot"})
 check("radio not possible → skipped, logged", "radio" not in {x for _, x in a} and any(e["kind"] == "skip" for e in w.events))
 
 # 6. Overrides
-a, w = outage("standard", "normal", 3600, over={"grace": 0, "steps": {"restart": 120, "radio": 300}, "repeat": 0})
+a, w = outage("persistent", "normal", 3600, over={"grace": 0, "steps": {"restart": 120, "radio": 300}, "repeat": 0})
 check("custom: grace 0, restart 120, radio 300, no repeats", a == [(0, "reconnect"), (120, "restart"), (300, "radio")], a)
+a, w = outage("standard", "normal", 3600, over={"steps": {"radio": 300}})
+check("custom: a step's time set beyond the reach stays beyond it", "radio" not in {x for _, x in a}, a)
 a, w = outage("stubborn", "normal", 7200, over={"steps": {"reboot": None}})
 check("custom: stubborn without reboot", "reboot" not in {x for _, x in a}, a)
 
 # 7. Recovery logs duration and steps; next outage starts afresh
-w = U.Watch(U.effective({"eagerness": "standard", "forgiveness": "normal", "overrides": {}}))
+w = U.Watch(U.effective(C("standard", "normal", {})))
 for t in range(0, 700, 5): w.tick(t, {"link": False, "drops": [], "can": ALL})
 w.tick(700, {"link": True, "gateway": True, "drops": [], "can": ALL})
 check("recovery logged with what was tried", w.events[-1]["kind"] == "up" and "restart" in w.events[-1]["text"], w.events[-1])
@@ -102,7 +117,7 @@ check("outage cleared", w.outage is None and w.misses == 0)
 # 3.5–5 and 11–22 min with NetworkManager there; then NM's restart left no backend (only a radio reset
 # or a reboot possible) and the link stayed down for 5 hours.
 def night(e="standard", f="normal", over=None, step=30, hours=5):
-    w = U.Watch(U.effective({"eagerness": e, "forgiveness": f, "overrides": over or {}}))
+    w = U.Watch(U.effective(C(e, f, over)))
     acts, down = [], [(0, 120), (210, 300), (660, 1320)]
     for t in range(0, 1320 + hours * 3600, step):
         lost = t >= 1320 or any(a <= t < b for a, b in down)
@@ -114,7 +129,7 @@ a, w = night()
 # Stage 3, memory across outages: was a reconnect at 1.0, 4.5 and 12.0 min (the ladder starting afresh
 # each outage; the third wedged the firmware). Now the three outages are one episode: one reconnect,
 # nothing on the quick relapse (restart is not due yet), and the restart at 12 min, as one long outage would.
-check("night: one reconnect in the episode, then the restart when due, not reconnect again", a[:2] == [(60, "reconnect"), (720, "restart")]
+check("night: one reconnect in the episode, then the restart when due, not reconnect again", a[:2] == [(270, "reconnect"), (720, "restart")]
       and [x for _, x in a].count("reconnect") == 1, a[:5])
 check("  the relapse said, and the episode kept", any("did not hold" in e["text"] for e in w.events) and w.episode["outages"] == 3
       and w.episode["failed"] == ["reconnect"], (w.episode, [e["text"] for e in w.events][:8]))
@@ -123,8 +138,12 @@ end = 1320 + 5 * 3600
 check("  after NM's restart, no next step: none it may take is possible", not [x for t, x in a if t >= 1320] and w.next_step(end) is None,
       (a[-3:], w.next_step(end)))
 st = w.stall(end)
-check("  stalled, needing a radio reset, which standard does not go to", st and st["needs"] == "radio"
-      and st["text"] == "Stalled: what could help now is to reset the radio, and this level goes no further than to restart the network service.", st)
+check("  stalled, needing a radio reset, which reach restart does not go to", st and st["needs"] == "radio"
+      and st["text"] == "Stalled: what could help now is to reset the radio, and the reach set goes no further than to restart the network service.", st)
+a, w = night("gentle/reboot")
+check("night with the defaults (gentle, reach reboot): nothing on the two short outages, one reconnect at 12 min, the restart"
+      " skipped (NM gone), the radio reset at 61 min, a reboot at 121 if that fails: not 5 hours stalled",
+      a == [(720, "reconnect"), (3660, "radio"), (7260, "reboot")] and any(e["text"] == "Cannot restart the network service here; skipped." for e in w.events), a)
 check("  said once in the log", sum(e["kind"] == "stalled" for e in w.events) == 1, [e["text"] for e in w.events if e["kind"] == "stalled"])
 
 # Stalls: not while a step is only held, not for watch-only, nothing possible at all said so.
@@ -136,7 +155,7 @@ a, w = outage("standard", "normal", 3600, can=set())
 check("stall: nothing possible at all", w.stall(1000 + 3600)["needs"] is None and "nothing the box can do" in w.stall(1000 + 3600)["text"])
 
 # A step asked for on /admin: done now whatever the level and a hold, but only if possible and not held.
-w = U.Watch(U.effective({"eagerness": "standard", "forgiveness": "normal", "overrides": {}}))
+w = U.Watch(U.effective(C("standard", "normal", {})))
 obs = {"link": False, "drops": [], "can": {"radio", "reboot"}, "guests": 0, "hold_until": 1e12}
 for t in range(0, 1200, 30):
     w.tick(t, obs)
@@ -161,7 +180,7 @@ except ValueError:
 
 # 7c. Episodes (stage 3): relapses climb within reach, a single outage is as before, an episode ends.
 def relapses(e, downs, can=ALL, total=None, step=10):
-    w = U.Watch(U.effective({"eagerness": e, "forgiveness": "normal", "overrides": {}}))
+    w = U.Watch(U.effective(C(e, "normal", {})))
     acts = []
     for t in range(0, total or downs[-1][1] + 1200, step):
         lost = any(a <= t < b for a, b in downs)
@@ -179,10 +198,10 @@ check("  steady again: the episode ends after `relapse` (15 min) up, said with w
 a, w = relapses("persistent", [(0, 120), (2000, 2120)])
 check("episode: an outage more than 15 min after the last is a new episode, from the bottom", [x for _, x in a] == ["reconnect", "reconnect"], a)
 a, w = relapses("patient", [(0, 120), (300, 420), (600, 720)])
-check("episode: with nothing heavier to climb to (reconnect only), reconnect is tried again", [x for _, x in a] == ["reconnect"] * 3, a)
+check("episode: with nothing heavier to climb to (reach reconnect), reconnect is tried again", a == [(360, "reconnect"), (660, "reconnect")], a)
 a1, _ = outage("standard", "normal", 3600)
-check("episode: a single outage is as it was (reconnect, back-off, restart at +10 min)", (660, "restart") in a1 and a1[0] == (60, "reconnect"))
-w = U.Watch(U.effective({"eagerness": "persistent", "forgiveness": "strict", "overrides": {}}))
+check("episode: a single outage is as it was (reconnect, back-off, restart at +10 min)", (660, "restart") in a1 and a1[0] == (120, "reconnect"), a1[:3])
+w = U.Watch(U.effective(C("persistent", "strict", {})))
 acts = []
 for k in range(3):  # three rounds of flapping, each repaired, within the relapse window
     for i in range(4):
@@ -207,7 +226,7 @@ check("  a quiet journal and a backend that never was: nothing", U.wedge_evidenc
 check("  not WiFi: never", U.wedge_evidence("eth0", "none", "networkmanager", after, cwev, 1000, wifi=False) is None)
 
 def wedged_night(e, on_wedge, guests=0):
-    w = U.Watch(U.effective({"eagerness": e, "forgiveness": "normal", "overrides": {}, "on_wedge": on_wedge}))
+    w = U.Watch(U.effective(C(e, "normal", on_wedge=on_wedge)))
     acts = []
     for t in range(0, 3600, 30):
         obs = {"link": False, "drops": [], "can": ALL if t < 600 else {"radio", "reboot"}, "guests": guests,
@@ -234,6 +253,34 @@ try:
 except ValueError:
     check("validate refuses on_wedge reboot", True)
 
+# 7e. Stage 5: two dials, the restart guard on a shared radio, settings from before carried over.
+def shared(guests, sharing, ignore=False):
+    w = U.Watch(U.effective(C("prompt/radio", guests="ignore" if ignore else "protect")))
+    acts = []
+    for t in range(0, 1200, 10):
+        acts += [(t, x) for x in w.tick(t, {"link": False, "drops": [], "can": ALL, "guests": guests, "shared_radio": sharing})]
+    return acts, w
+a, w = shared(2, True)
+check("D3: guests on a hotspot that shares the radio: the restart held too, said why", "restart" not in [x for _, x in a]
+      and any("2 guests are on the hotspot, which shares the radio" in e["text"] for e in w.events), [e["text"] for e in w.events if e["kind"] == "held"])
+a, w = shared(2, False)
+check("  a hotspot on a radio of its own: the restart goes ahead (the radio reset is held)", (360, "restart") in a and "radio" not in [x for _, x in a], a)
+a, w = shared(0, True)
+check("  no guests: the restart goes ahead", (360, "restart") in a, a)
+a, w = shared(2, True, ignore=True)
+check("  guests ignored by the owner: everything goes ahead", {"restart", "radio"} <= {x for _, x in a}, a)
+v = U.validate({"eagerness": "standard", "forgiveness": "strict", "overrides": {"guests": "ignore", "check": 45}})
+check("settings from before carried over: eagerness as pace and reach, an overridden guests as the setting",
+      (v["pace"], v["reach"], v["guests"], v["forgiveness"], v["overrides"]) == ("steady", "reboot", "ignore", "strict", {"check": 45}), v)
+check("  stubborn: urgent, reboot, guests or not; off: watch", U.validate({"eagerness": "stubborn"})["guests"] == "ignore"
+      and U.validate({"eagerness": "off"})["reach"] == "watch")
+check("  watch: no steps at all, no repeats", U.effective(C("gentle/watch"))["steps"] == {} and U.effective(C("gentle/watch"))["repeat"] == 0)
+for bad in [{"pace": "fast"}, {"reach": "nuke"}, {"guests": "maybe"}]:
+    try: U.validate(bad); check(f"validate rejects {bad}", False)
+    except ValueError: check(f"validate rejects {bad}", True)
+check("the settings in words", U.words(U.validate({"pace": "steady", "reach": "radio", "guests": "ignore", "on_wedge": "radio"}))
+      == "steady pace, reach radio, normal, guests or not, a wedged radio reset at once")
+
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"overrides": {"check": 5}}, {"overrides": {"rm": 1}}, {"iface": "a;b"},
             {"overrides": {"steps": {"nuke": 1}}}, {"overrides": {"flap_action": "x"}}]:
@@ -243,7 +290,7 @@ v = U.validate({"eagerness": "stubborn", "forgiveness": "strict", "overrides": {
 check("validate accepts and coerces", v["overrides"] == {"check": 45, "steps": {"reboot": None}}, v)
 
 # 9. Disconnected by hand: no repairs, logged once; connected again → normal
-w = U.Watch(U.effective({"eagerness": "stubborn", "forgiveness": "strict", "overrides": {}}))
+w = U.Watch(U.effective(C("stubborn", "strict", {})))
 acts = []
 for t in range(0, 3000, 10):
     acts += w.tick(t, {"link": False, "drops": [], "can": ALL, "owner_off": True})
