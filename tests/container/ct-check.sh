@@ -83,8 +83,16 @@ check "no-cache" sh -c "curl -s -D - -o /dev/null http://$H/style.css | tr -d '\
 check "True" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"proxied\"])'"
 want_name=nginx; [ "$WEB" = caddy ] && want_name=Caddy
 check "running" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; print([s[\"state\"] for s in json.load(sys.stdin)[\"services\"] if s[\"name\"]==\"Web server ($want_name)\"][0])'"
-want413=413; [ "$WEB" = caddy ] && want413=502   # Caddy streams to the hub, then fails mid-body (as before)
-check "$want413" code -X POST -H 'Content-Type: application/octet-stream' --data-binary @<(head -c 27000000 /dev/zero) "http://$H/api/drop?name=big.bin"
+# An over-cap upload is rejected. The hub answers 413 and closes without draining the body
+# (Connection: close). Under nginx the client always sees that 413. Under Caddy the body is
+# streamed to the hub, so whether the client gets the forwarded 413 or a 502 from the upload
+# connection breaking mid-stream is a timing race — accept either as "rejected".
+if [ "$WEB" = caddy ]; then
+	got=$(code -X POST -H 'Content-Type: application/octet-stream' --data-binary @<(head -c 27000000 /dev/zero) "http://$H/api/drop?name=big.bin")
+	case "$got" in 413 | 502) ok "over-cap upload refused ($got)" ;; *) bad "over-cap upload -> $got (want 413 or 502)" ;; esac
+else
+	check 413 code -X POST -H 'Content-Type: application/octet-stream' --data-binary @<(head -c 27000000 /dev/zero) "http://$H/api/drop?name=big.bin"
+fi
 
 echo "== captive probes"
 for hp in "captive.apple.com /hotspot-detect.html" "connectivitycheck.gstatic.com /generate_204"; do
