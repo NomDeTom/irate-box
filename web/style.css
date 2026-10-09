@@ -1261,6 +1261,8 @@ label > .select-chips { margin-top: 0.25rem; }
 .aw-foot[hidden] { display: none; }
 .aw-foot .note { font-size: 0.78rem; color: var(--muted); margin-right: auto; }
 .aw-settings { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.3rem 0.8rem; }
+/* Appearance: the cards (page widths, emoji set) clear the text above them. */
+#appearance-box .aw-settings { margin-top: 0.75rem; }
 .aw-field { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; padding: 0.45rem 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
 .aw-field:first-child { border-top: 0; }
 .aw-label { min-width: 10rem; color: var(--muted); }
