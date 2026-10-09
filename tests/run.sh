@@ -20,6 +20,7 @@ run() {
 run sim_uplink.py
 run sim_crashwatch.py
 run sim_doctor_choices.py
+run sim_sbdocs.py
 run sim_pkgwatch.py
 run sim_update_pattern.py
 run sim_wifijoin.py

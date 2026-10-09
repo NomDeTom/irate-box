@@ -227,6 +227,13 @@ SB_VERSION=2.11.1
 SB_SHA256_x86_64=82af0d5d008c377cdb4b49dbd21db0d21f8d14619efa40b0fdeae1dce778d018
 SB_SHA256_aarch64=4ca826b88431fcbe8d4c8f4d7d3f8cc3b076d42f724a40b6dc4d45a676d9dd87
 SB_SHA256_armv7=fb27b0cf7af3d95d03ccfbeb25c4260ce5228d6b8402d531f84535bafbe25855
+# Its manual (the repository's docs/ at the release's commit), packed reproducibly by library/sbdocs.py:
+# the commit, and the sha256 of the tar the pack holds. A new SB_VERSION needs both:
+#   gh api repos/silverbulletmd/silverbullet/git/ref/tags/VERSION --jq .object.sha
+#   ./irate-box sbdocs fetch COMMIT /tmp/d.tar.gz && ./irate-box sbdocs sum /tmp/d.tar.gz
+SB_DOCS_COMMIT=1340f7369e782a9c99e898de75cd588051fdb7cd
+SB_DOCS_SHA256=ebc4f8134b98d8a21596f874b580c71f75ed6e3801d69534ea68bff3f493f280
+SB_DOCS_NAME="silverbullet-docs-$SB_VERSION.tar.gz"
 TTYD_VERSION=1.7.7
 
 # Add-ons already on this box stay added on a rerun that does not name them (an update, the
@@ -416,6 +423,21 @@ kit_get() {
 		curl -fsSL -o "$dest" "$2" 2>/dev/null || { rm -f "$dest"; return 1; }
 	fi
 }
+# SilverBullet's manual ($1, the pack's path) from the download cache, the box's own, or git; checked
+# against SB_DOCS_SHA256 either way. Returns 1 when none has it (no internet and no copy), 2 when what it
+# got does not match (and removes it).
+sb_docs_get() {
+	local src="" d
+	for d in "$DL_CACHE" "$OWN_CACHE"; do
+		[ -n "$d" ] && [ -s "$d/$SB_DOCS_NAME" ] && { src="$d/$SB_DOCS_NAME"; break; }
+	done
+	if [ -n "$src" ]; then
+		cp "$src" "$1"
+	else
+		"$(dirname "$(readlink -f "$0")")/irate-box" sbdocs fetch "$SB_DOCS_COMMIT" "$1" 2>/dev/null || { rm -f "$1"; return 1; }
+	fi
+	[ "$("$(dirname "$(readlink -f "$0")")/irate-box" sbdocs sum "$1" 2>/dev/null)" = "$SB_DOCS_SHA256" ] || { rm -f "$1"; return 2; }
+}
 own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | armv8l) echo armhf ;; armv6l) echo arm ;; esac; }
 own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac; }
 make_bundle() {
@@ -524,6 +546,14 @@ make_bundle() {
 			fi
 		fi
 	done
+	# SilverBullet's manual, the same for every architecture.
+	if [ -s "$KIT_DL/$SB_DOCS_NAME" ] || sb_docs_get "$KIT_DL/$SB_DOCS_NAME"; then
+		echo "    SilverBullet's manual ($SB_VERSION)"
+	elif [ $? = 2 ]; then
+		die "$SB_DOCS_NAME does not match its pinned digest (SB_DOCS_SHA256)"
+	else
+		echo "    no SilverBullet manual (not in the download cache, and no internet): notes work without it"
+	fi
 	if [ ${#ZIMS[@]} -gt 0 ]; then
 		echo "==> Books"
 		for z in "${ZIMS[@]}"; do
@@ -2240,6 +2270,27 @@ done
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ "$KIWIX" = 1 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
+# SilverBullet's manual in the notes, under SilverBullet/, once SilverBullet has written its starting page
+# (on its first start), so that page's links to the manual can point at the copy.
+if [ "$WITH_NOTES" = 1 ] && systemctl is-active --quiet silverbullet; then
+	for _ in $(seq 1 30); do [ -f "$STATE/notes/index.md" ] && break; sleep 1; done
+	tmp="$(mktemp -d)"
+	got=0; sb_docs_get "$tmp/$SB_DOCS_NAME" || got=$?
+	if [ "$got" = 0 ]; then
+		[ -s "$OWN_CACHE/$SB_DOCS_NAME" ] || install -D -m 644 "$tmp/$SB_DOCS_NAME" "$OWN_CACHE/$SB_DOCS_NAME" || true
+		chmod 755 "$tmp" && chmod 644 "$tmp/$SB_DOCS_NAME"
+		if said="$(runuser -u "$HUB_USER" -- "$CODE/irate-box" sbdocs install "$tmp/$SB_DOCS_NAME" "$STATE/notes" "$SB_VERSION" 2>&1)"; then
+			echo "    $said"
+		else
+			problem "SilverBullet's manual was not put in the notes: ${said##*$'\n'}"
+		fi
+	elif [ "$got" = 2 ]; then
+		problem "SilverBullet's manual was not put in the notes: $SB_DOCS_NAME does not match its pinned digest (SB_DOCS_SHA256)"
+	else
+		echo "    SilverBullet's manual: not in the download cache, and no internet; the notes work without it"
+	fi
+	rm -rf "$tmp"
+fi
 for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
