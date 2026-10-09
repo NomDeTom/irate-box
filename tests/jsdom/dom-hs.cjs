@@ -25,9 +25,12 @@ setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('MODES:'); [...d.querySelectorAll('#hs-modes .choice-tile')].forEach((m) => console.log('  ', m.querySelector('input').disabled ? '[disabled]' : '[ ]', m.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)));
   console.log('FIELDS hidden (open):', d.getElementById('hs-fields').hidden);
+  const vis = (n) => !n.closest('[hidden]');
+  console.log('ENCRYPTED-NETWORK choice visible (open; should be false):', vis(d.querySelector('#hs-second-box .select-chips') || d.getElementById('hs-second')));
   console.log('WARNINGS (open):', t('#hs-warnings li').length);
   const sae = d.querySelector('input[value="sae"]'); sae.checked = true; sae.dispatchEvent(new w.Event('change'));
   console.log('FIELDS hidden (sae):', d.getElementById('hs-fields').hidden, '| password shown:', !d.getElementById('hs-password').parentElement.hidden);
+  console.log('ENCRYPTED-NETWORK choice visible (sae, password shown; should be false):', vis(d.querySelector('#hs-second-box .select-chips') || d.getElementById('hs-second')));
   d.getElementById('hs-generate').click(); console.log('GENERATED:', d.getElementById('hs-password').value);
   d.getElementById('hs-wpa2').checked = true; d.getElementById('hs-wpa2').dispatchEvent(new w.Event('change'));
   console.log('WARNINGS (sae+wpa2):'); t('#hs-warnings li').forEach((x) => console.log('   -', x.slice(0, 110)));

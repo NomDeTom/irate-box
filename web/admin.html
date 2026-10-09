@@ -844,7 +844,6 @@
         <h3>What the box has</h3>
         <p class="setting-desc" id="net-when">Not looked yet.</p>
         <div class="library-buttons">
-          <label>Device <select id="net-device"><option value="">All</option></select></label>
           <button class="action-btn" type="button" id="net-scan" aria-label="Refresh the network inventory">↻ Refresh</button>
         </div>
         <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
@@ -894,11 +893,13 @@
         </p>
         <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
         <div class="net-settings" id="hs-fields">
-          <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
-          <select id="hs-second">
-            <option value="owe">Enhanced Open (OWE): no password</option>
-            <option value="sae">WPA3 with a published password</option>
-          </select>
+          <div id="hs-second-box" class="net-settings">
+            <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
+            <select id="hs-second">
+              <option value="owe">Enhanced Open (OWE): no password</option>
+              <option value="sae">WPA3 with a published password</option>
+            </select>
+          </div>
           <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
           <span class="library-buttons">
             <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
