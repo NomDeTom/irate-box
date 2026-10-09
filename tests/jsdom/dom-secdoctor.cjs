@@ -152,7 +152,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  the hub\'s own lines, with where to change them', /Plain HTTP only/.test(t(d.getElementById('security-hub')))
     && d.querySelector('#security-hub a.go-btn').getAttribute('href') === '#security-https' && !!d.getElementById('security-https'));
   check('Debian\'s security updates on Updates', ids('#updates-security') === 'Security updates', ids('#updates-security'));
-  check('Security links to where the rest went', ['#secdoctor', '#updates-debian', '#network'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
+  check('Security links to where the rest went', ['#secdoctor', '#updates-debian', '#network/hotspot'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
   check('the hotspot\'s WiFi security with the hotspot, on Network', !!d.querySelector('#network #hs-modes') && !d.querySelector('#security #hs-modes'));
   w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });  // the answer to what was asked: no longer busy
   const sudo = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));

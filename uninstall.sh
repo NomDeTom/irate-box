@@ -95,6 +95,10 @@ if [ -f "$ETC/uplink-changes.json" ] && [ -f "$CODE/irate_box/hub/uplink.py" ]; 
 	say "Putting the WiFi profile back as it was"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink undo-all | sed 's/^/    /' || true
 fi
+# Networks added on the Network page's access tab are the owner's: kept, and said how to remove them.
+if [ -f "$ETC/wifi-joined.json" ] && [ -f "$CODE/irate_box/root/wifijoin.py" ]; then
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" wifijoin kept | sed 's/^/    /' || true
+fi
 
 # A clock module set up by rtc.py: its units go, and a kernel-declared module is released.
 # Crash watch's hang settings: the kernel's panic restart and the watchdog, taken away.

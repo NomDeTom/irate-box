@@ -1773,7 +1773,8 @@ function installText(st) {
 // What to do about one of the box doctor's findings: its repair buttons; a link to the page where it
 // is changed, when its words name one ("Network → the hotspot"); a command to copy, when they end
 // in one; and the words. A fine finding says nothing more.
-const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
+const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Staying|Hold|The box's access)/, 'network/access', 'Network → The box\'s access'],
+  [/\bNetwork → (the )?[Hh]otspot/, 'network/hotspot', 'Network → Hotspot'], [/\bNetwork → (Look|Hardware)/, 'network/hardware', 'Network → Hardware'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
   [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
   [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts & users']];
 // A command in a finding's words: where it starts, up to the end of its sentence (or before "  (").
@@ -2294,10 +2295,67 @@ function deviceCard(inv, d, wifi, hazards) {
           el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` }))))));
     }
   }
-  if (!(wifi && d.type === 'AP')) kids.push(section(uptimeSection(d.iface)));
   const mine = hazards.filter((h) => h.iface === d.iface);
   if (mine.length) kids.push(section(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix)))));
   return el('div', { className: 'net-device setting' }, ...kids);
+}
+
+// --- the tabs' own parts (item 37): a card per connection on Status and on The box's access ----------------
+const netTabs = { overview: document.getElementById('net-overview'), statusCards: document.getElementById('net-status-cards'),
+  ladder: document.getElementById('net-ladder'), wifiNow: document.getElementById('net-wifi-now'), saved: document.getElementById('net-saved'),
+  wiredNow: document.getElementById('net-wired-now'), wiredCard: document.getElementById('net-wired-card'), apHealth: document.getElementById('ap-health') };
+const bandOf = (f) => (f ? (f < 3000 ? '2.4 GHz' : f < 5925 ? '5 GHz' : '6 GHz') : '');
+const netLine = (label, text) => el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: label }), el('span', { textContent: text }));
+function linkNow(inv, d) {
+  if (d.link && d.link.ssid) return `On ${d.link.ssid}, channel ${d.link.channel}${d.link.freq ? ` (${bandOf(d.link.freq)})` : ''}, signal ${d.link.signal} dBm (${signalWords(d.link.signal)}).`;
+  if (d.type === 'AP') return 'Running the hotspot.';
+  if ('carrier' in d) return d.carrier ? 'Cable in.' : 'No cable.';
+  return 'Not connected to a network.';
+}
+function drawNetTabs(data, inv, u) {
+  const up = inv && inv.uplink;
+  // Status: one line for the whole, then a card per link the box could reach a network by.
+  netTabs.overview.textContent = !inv ? 'Not looked yet.' : !up || !up.iface ? 'The box has no link to a network right now.'
+    : `The box reaches your network through ${up.iface} (${up.kind === 'wifi' ? 'WiFi' : 'wired'}). ${upStatusText(u)}`;
+  const links = inv ? [...inv.radios.filter((r) => r.type !== 'AP'), ...inv.wired] : [];
+  netTabs.statusCards.replaceChildren(...links.map((d) => el('div', { className: 'net-card setting' },
+    el('h4', {}, el('span', { textContent: d.iface }), el('span', { className: 'state', textContent: 'carrier' in d ? 'Wired' : 'WiFi' }),
+      up && up.iface === d.iface ? el('span', { className: 'info-pill', textContent: 'the box\'s link' }) : null),
+    netLine('Now', linkNow(inv, d)), uptimeSection(d.iface))));
+  if (typeof LadderChart !== 'undefined' && netTabs.ladder.dataset.key !== String((data.ladder || []).length)) {
+    netTabs.ladder.dataset.key = String((data.ladder || []).length);
+    LadderChart.render(netTabs.ladder, data.ladder || []);
+  }
+  // The box's access: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
+  const wifi = inv ? inv.radios.filter((r) => r.type === 'managed') : [];
+  netTabs.wifiNow.replaceChildren(...(wifi.length ? wifi.map((r) => el('div', {}, netLine(r.iface, linkNow(inv, r)),
+    r.link && r.link.bssid ? netLine('Access point', `${r.link.bssid}${r.profile && r.profile.bssid_lock ? ' (locked to it)' : ''}`) : null,
+    r.profile ? netLine('Profile', `${r.profile.name}${r.profile.autoconnect ? '' : ', autoconnect off'}`) : null))
+    : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here: the box reaches its network another way.' : 'Not looked yet.' })]));
+  const nm = inv && inv.stacks && inv.stacks.networkmanager;
+  const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== 'ap');
+  const current = new Set(wifi.map((r) => r.profile && r.profile.uuid).filter(Boolean));
+  const mine = new Map((data.joined || []).map((j) => [j.uuid, j]));
+  const busy = data.pending > 0 || !!netWaiting;
+  netTabs.saved.replaceChildren(...(known.length ? [el('ul', { className: 'net-known' }, ...known.map((p) => el('li', {},
+    el('strong', { textContent: p.ssid || p.name }), current.has(p.uuid) ? el('span', { className: 'ok-pill', textContent: 'in use' }) : null,
+    el('span', { className: 'setting-desc', textContent: ` ${p.name}${p.autoconnect ? `, joins by itself${p.priority ? ` (priority ${p.priority})` : ''}` : ', only by hand'}`
+      + `${p.bssid_lock ? `, locked to ${p.bssid_lock}` : ''}${p.iface ? `, on ${p.iface} only` : ''}.` }),
+    mine.has(p.uuid) ? el('span', { className: 'info-pill', textContent: 'added here' }) : null,
+    mine.has(p.uuid) ? actionButton('Forget', () => { if (confirm(`Forget ${p.ssid || p.name}? The box will not join it again.`)) netRequest({ action: 'forget', uuid: p.uuid }, 'join'); },
+      { className: 'small', disabled: busy || current.has(p.uuid), title: current.has(p.uuid) ? 'In use: the box is on it now' : '' }) : null)))]
+    : [el('p', { className: 'setting-desc', textContent: nm && nm.running ? 'None saved in NetworkManager.' : 'NetworkManager does not run this box\'s WiFi, so its saved networks are not listed here.' })]));
+  const wired = inv ? inv.wired : [];
+  netTabs.wiredCard.hidden = !!inv && !wired.length;
+  netTabs.wiredNow.replaceChildren(...wired.map((w) => netLine(w.iface, linkNow(inv, w) + (up && up.iface === w.iface ? ' The box\'s link to your network.' : ''))));
+  // Hotspot: how it is doing, from the same inventory (its radio, channel, guests, and whether it follows the WiFi).
+  const aps = inv ? inv.radios.filter((r) => r.type === 'AP') : [];
+  netTabs.apHealth.replaceChildren(...(aps.length ? aps.flatMap((a) => {
+    const shared = wifi.find((r) => r.phy === a.phy);
+    const n = (a.stations || []).length;
+    return [netLine(a.iface, `Up${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}; ${n} guest device${n === 1 ? '' : 's'} joined.`),
+      shared ? netLine('Its radio', `Shared with the box's WiFi (${shared.iface}): it follows that network's channel, so a roam or a reconnect there moves guests too.`) : null];
+  }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not looked yet.' })]));
 }
 
 function renderNetwork(data) {
@@ -2331,9 +2389,12 @@ function renderNetwork(data) {
   const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
   const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
   net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
+  drawNetTabs(data, inv, u);
   net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => checkItem(h.status, h.title, h.detail, h.fix)));
   const sn = netNotes.scan;
   say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
+  const jn = netNotes.join;
+  say(jn ? jn.text : '', jn ? jn.ok : true, noteEl('net-join-note'));
 
   // Staying on the network
   buildUpFields(levels);
@@ -2409,6 +2470,24 @@ async function netRequest(body, where) {
 }
 
 net.scan.addEventListener('click', () => netRequest({ action: 'scan' }, 'scan'));
+// A network for the box to join (item 37): added with consent, at once only when asked (and then said what it means).
+const joinForm = document.getElementById('net-join-form');
+const joinPsk = document.getElementById('net-join-psk');
+const joinOpen = () => { joinPsk.hidden = joinForm.elements.security.value === 'open'; joinForm.elements.psk.required = !joinPsk.hidden; };
+joinForm.elements.security.addEventListener('change', joinOpen);
+joinOpen();
+function joinAsk(now) {
+  const f = joinForm.elements;
+  if (!joinForm.reportValidity()) return;
+  const ssid = f.ssid.value;
+  if (now && !confirm(`Join ${ssid} now? The box leaves the network it is on: this page may lose the box until you are on ${ssid} too. `
+    + 'If it cannot join within a minute it goes back to the network it was on.')) return;
+  if (!now && !confirm(`Add ${ssid} to the networks the box knows? It joins it by itself when the networks it knows are out of reach.`)) return;
+  netRequest({ action: 'join', ssid, security: f.security.value, psk: f.security.value === 'open' ? '' : f.psk.value, hidden: f.hidden.checked, now }, 'join');
+  f.psk.value = '';
+}
+joinForm.addEventListener('submit', (e) => { e.preventDefault(); joinAsk(false); });
+document.getElementById('net-join-now').addEventListener('click', () => joinAsk(true));
 for (const box of [net.iface]) {
   box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); showUpSave(); });
 }

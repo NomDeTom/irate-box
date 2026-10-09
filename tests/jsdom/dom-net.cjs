@@ -59,9 +59,43 @@ setTimeout(() => {
   check('its own warnings on its card (3)', own === 3, own);
   // Each labelled part a section, a hairline between them (inbox, 2026-10-06: the parts ran together).
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
-  // Since #117 a device's uptime bars are a section of their own, before its warnings.
-  check('the card in sections: what, now, managed by, the hotspot, its uptime, its warnings', secs.length === 6
-    && secs.every((n) => n.querySelector('.net-line, .admin-checks, .net-uptime')) && !!secs[4].querySelector('.net-uptime'), secs.length);
+  // Since item 37 a device's uptime is on the Status tab, with the link it belongs to.
+  check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
+    && secs.every((n) => n.querySelector('.net-line, .admin-checks')) && !cards[0].querySelector('.net-uptime'), secs.length);
+  // The page in tabs by role (item 37; Tom, 2026-10-09: "tabs by role is the way to do it, with cards per device/connection type within there").
+  const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
+  check('four tabs: Status, Hardware, The box\'s access, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|The box\'s access|Hotspot');
+  const panel = (id) => d.getElementById(id);
+  check('  each part in its tab: devices on Hardware, the watchdog on access, guests\' security on Hotspot, the log on Status',
+    panel('network/hardware').contains(d.getElementById('net-devices')) && panel('network/access').contains(d.getElementById('up-pace'))
+    && panel('network/hotspot').contains(d.getElementById('hs-modes')) && panel('network/hotspot').contains(d.getElementById('guest-net-box'))
+    && panel('network/status').contains(d.getElementById('up-events')));
+  const sc = [...d.querySelectorAll('#net-status-cards .net-card')];
+  check('Status: a card per link, with its uptime', sc.length === 1 && /wlan0/.test(sc[0].querySelector('h4').textContent) && !!sc[0].querySelector('.net-uptime')
+    && /the box's link/.test(sc[0].textContent), sc.map((c) => c.textContent.slice(0, 80)));
+  check('  one line for the whole', /reaches your network through wlan0 \(WiFi\)/.test(t('#net-overview')[0]), t('#net-overview')[0]);
+  check('Access: WiFi now, and the networks it knows', /ExampleWiFi/.test(t('#net-wifi-now')[0]) && d.querySelectorAll('#net-saved li').length >= 1
+    && /in use/.test(t('#net-saved')[0]), t('#net-saved')[0]);
+  w.location.hash = '#network/hotspot';
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('an address opens its tab (#network/hotspot)', !panel('network/hotspot').hidden && panel('network/status').hidden
+    && d.getElementById('tab-net-hotspot').getAttribute('aria-selected') === 'true');
+  w.location.hash = '#up-sens';
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  check('  and so does any setting\'s own (#up-sens on access)', !panel('network/access').hidden);
+  // A network for the box to join (item 37): open hides the password; each add asked first; the form sent and the password cleared.
+  const jf = d.getElementById('net-join-form');
+  jf.elements.ssid.value = 'Cafe'; jf.elements.security.value = 'open'; jf.elements.security.dispatchEvent(new w.Event('change'));
+  check('join: an open network asks no password', d.getElementById('net-join-psk').hidden && !jf.elements.psk.required);
+  jf.elements.security.value = 'wpa-psk'; jf.elements.security.dispatchEvent(new w.Event('change'));
+  jf.elements.psk.value = 'a-long-secret';
+  let asked = '';
+  w.confirm = (q) => { asked = q; return true; };
+  d.getElementById('net-join-now').click();
+  w.confirm = () => true;
+  const sentJoin = posted.find((p) => p.action === 'join');
+  check('  Add and join it now: warned the page may lose the box, sent, the password cleared from the form', /may lose the box/.test(asked)
+    && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)

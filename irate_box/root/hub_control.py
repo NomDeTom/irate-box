@@ -2349,6 +2349,33 @@ def uplink_profile(req):
     return msg
 
 
+def _wifi_after(fn):
+    """A network added or forgotten (wifijoin.py), then the inventory and control/wifi-joined.json afresh."""
+    def action(req):
+        from irate_box.root import wifijoin
+        try:
+            return fn(req, wifijoin)
+        finally:
+            safeio.write(CONTROL / "wifi-joined.json", json.dumps(wifijoin.public()))
+            try:
+                netinv.write(netinv.scan(), CONTROL / "netinv.json")
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+    action.__name__ = fn.__name__
+    return action
+
+
+@_wifi_after
+def wifi_join(req, wifijoin):
+    return wifijoin.join(req.get("ssid"), req.get("security", "wpa-psk"), req.get("psk") or "",
+                         req.get("hidden", False), req.get("now") is True)
+
+
+@_wifi_after
+def wifi_forget(req, wifijoin):
+    return wifijoin.forget(req.get("uuid"))
+
+
 def _kits_status():
     safeio.write(CONTROL / "kits.json", json.dumps(kits.status()))
 
@@ -2400,7 +2427,7 @@ ACTIONS = {"service": service, "password": password,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

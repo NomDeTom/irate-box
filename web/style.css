@@ -1464,3 +1464,16 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .update-pattern .update-choice { display: grid; gap: 0.25rem; }
 .update-actions { margin: 0.5rem 0; }
 .update-why { margin-top: 0.25rem; }
+
+/* The Network page in tabs (item 37): a card per connection or device within each tab. */
+.net-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 0.75rem; margin: 0.75rem 0; }
+.net-card { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.net-card h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.25rem; padding-bottom: 0.45rem; font-size: 1rem;
+  border-bottom: 1px solid var(--border); }
+.net-card h4 .state { color: var(--muted); }
+.net-card h5 { margin: 0.6rem 0 0.2rem; font-size: 0.9rem; }
+.net-card-wide { grid-column: 1 / -1; }
+.net-overview { font-size: 0.95rem; }
+.net-known { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
+.net-known li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
+#ap-health-card { margin: 0.75rem 0; }
