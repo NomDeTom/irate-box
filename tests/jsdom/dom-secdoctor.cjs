@@ -27,7 +27,8 @@ const CSV = 'IP,Hostname,Port,Port Protocol,CVSS,Severity,QoD,Solution Type,NVT 
   '192.168.4.1,,,tcp,0.0,Log,80,,OS detection,,,1,,t,task,2026-10-05T10:00:00Z,r2,,\n';
 // The box's scan, one of each kind (S of the menu overhaul): a cure, two choices, a toggle, an update.
 const F = (id, title, status, actions) => ({ id, title, status, detail: 'd', fix: '', actions });
-const sec = { hub: [], scan: { at: now, listeners: [], findings: [
+const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn', detail: 'No certificate in use.', fix: 'Make the box\'s certificate.',
+    actions: [], do: { go: 'security-https', where: 'Security → HTTPS' } }], accepted: {}, scan: { at: now, listeners: [], findings: [
     F('kernel-links', 'Kernel link protections', 'problem', [{ choice: 'kernel-links-debian', label: "Install Debian's defaults" }]),
     F('ssh-password', 'SSH password login', 'warn', [{ choice: 'ssh-password-off', label: 'Turn password login off' }]),
     F('sudo-nopasswd', 'Passwordless sudo', 'problem', [{ choice: 'sudo-drop:90-lyra', label: 'Remove 90-lyra', confirm: 'Remove it?' }]),
@@ -40,9 +41,18 @@ const sec = { hub: [], scan: { at: now, listeners: [], findings: [
       coverage: { doctor: "The box's own design.", 'security-page': 'What listens.', nmap: 'Only which ports answer, from where it ran.' },
       freshness: { doctor: now, 'security-page': now - 600, nmap: now - 86400 },
       items: [{ about: { kind: 'setting', key: 'kernel-links' }, title: 'Kernel link protections', sources: ['doctor', 'security-page'], status: 'problem',
-        titles: ['doctor: Link protections off', 'security-page: Kernel link protections'], fix: 'Turn them on', alone: false, could_see: [] },
+        titles: ['doctor: Link protections off', 'security-page: Kernel link protections'], fix: 'Turn them on', alone: false, could_see: [],
+        key: 'setting:kernel-links', area: 'Kernel protections', detail: 'Off.', page: ['kernel-links'], tier: null, do: null,
+        lines: [{ source: 'doctor', id: 'kernel-links', title: 'Link protections off', status: 'problem', detail: 'x', fix: 'y' },
+          { source: 'security-page', id: 'page-kernel-links', title: 'Kernel link protections', status: 'problem', detail: 'd', fix: '' }] },
+      { about: { kind: 'finding', key: 'doctor:image-bluetooth' }, title: 'Bluetooth is on', sources: ['doctor'], status: 'warn', titles: [], fix: 'Switch it off.',
+        key: 'finding:doctor:image-bluetooth', area: 'The image', detail: 'bluetoothd runs.', page: [], tier: null, do: { cmd: 'sudo systemctl disable --now bluetooth.service' },
+        lines: [{ source: 'doctor', id: 'image-bluetooth', title: 'Bluetooth is on', status: 'warn', detail: 'bluetoothd runs.', fix: 'Switch it off.' }], alone: false, could_see: [] },
+      { about: { kind: 'setting', key: 'cis-1.7' }, title: 'AppArmor (CIS 1.7)', sources: ['debian-cis'], status: 'warn', titles: [], fix: 'The vendor kernel lacks it.',
+        key: 'setting:cis-1.7', area: 'CIS', detail: 'Not met.', page: [], tier: 'not-here', do: null, lines: [{ source: 'debian-cis', id: 'cis-1.7', title: 'AppArmor', status: 'warn', detail: 'Not met.', fix: '' }], alone: false, could_see: [] },
       { about: { kind: 'service', key: 'tcp/9999' }, title: 'TCP 9999', sources: ['nmap'], status: 'warn', titles: ['nmap: nmap found TCP 9999 open'], fix: '',
-        alone: true, could_see: ['security-page'] }] } } };
+        alone: true, could_see: ['security-page'], key: 'service:tcp/9999', area: 'Imported scans', detail: 'Open.', page: [], tier: null, do: null,
+        lines: [{ source: 'nmap', id: 'nmap-tcp-9999', title: 'nmap found TCP 9999 open', status: 'warn', detail: 'Open.', fix: '' }] }] } } };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -80,22 +90,40 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   try { w.eval('parseScanReport')('Name,Value\na,b\n', 'x.csv'); threw = ''; } catch (e) { threw = e.message; }
   check('a CSV that is not OpenVAS: refused, and says why', /Not an OpenVAS CSV report/.test(threw), threw);
 
-  // The joint report on the page.
-  check('the summary: counted after merging', /After merging what the sources agree on: 2 to fix, 5 to look at; 3 things several sources agree are fine\./.test(t(d.getElementById('joint-summary'))),
-    t(d.getElementById('joint-summary')));
-  const rows = [...d.querySelectorAll('#joint-items .aw-row')];
-  rows.forEach((r) => r.querySelector('.aw-row-head').click());
-  check('one list, an entry per thing: what it is about, the sources that agree, what to do (step 4)', rows.length === 2 && /Kernel link protections/.test(t(rows[0]))
-    && /2 sources agree/.test(t(rows[0])) && /the doctor/.test(t(rows[0])) && /the Security page/.test(t(rows[0])) && /To do: Turn them on/.test(t(rows.find((r) => /Kernel link/.test(t(r))))));
-  check('  worst first, each tagged to fix / to look at, its area and its sources', rows[0].dataset.tags.split('|')[0] === 'to fix'
-    && rows.every((r) => /^(to fix|to look at)\|/.test(r.dataset.tags)), rows.map((r) => r.dataset.tags).join(' ; '));
-  check('seen by one source only: listed apart, saying who could have seen it', !d.getElementById('joint-alone').hidden
-    && /TCP 9999 — only nmap said so; the Security page could have seen it and did not\./.test(t(d.getElementById('joint-alone-list'))), t(d.getElementById('joint-alone-list')));
+  // The joint report on the page: one list, each item ending in what to do (item 11, 2026-10-09).
+  const rows = () => [...d.querySelectorAll('#joint-items .finding')];
+  check('the counters: after merging, less what is not for this box', /^3 all\s*1 to fix\s*2 to look at$/.test(t(d.getElementById('joint-summary'))), t(d.getElementById('joint-summary')));
+  check('one list, worst first: what it is about, the sources that agree', rows().length === 3 && /^To fix/.test(t(rows()[0])) && /Kernel link protections/.test(t(rows()[0]))
+    && /2 sources agree/.test(t(rows()[0])), rows().map(t).join(' || '));
+  const kl = rows()[0];
+  check('  a cure is a button on its item (the Security page\'s, from its scan now), not a block of its own', [...kl.querySelectorAll('button')].some((b) => t(b) === "Install Debian's defaults")
+    && !d.getElementById('secdoctor-cures'));
+  check('  what each source said, folded in the item', /What each source said \(2\)/.test(t(kl.querySelector('.fsaid summary'))));
+  const bt = rows().find((r) => /Bluetooth/.test(t(r)));
+  check('  a command to type, with Copy', bt && t(bt.querySelector('.fdo-cmd code')) === 'sudo systemctl disable --now bluetooth.service' && /Copy/.test(t(bt.querySelector('.fdo-cmd button'))));
+  check('  only one source saw it: said in the item, with who could have', /the Security page could have seen it and did not/.test(t(rows().find((r) => /TCP 9999/.test(t(r))))));
+  check('not for this box: folded apart, not counted', !d.getElementById('joint-nothere-fold').hidden && /AppArmor/.test(t(d.getElementById('joint-nothere'))) && /\(1\)/.test(t(d.getElementById('joint-nothere-count'))));
+  [...d.querySelectorAll('#joint-summary button')].find((b) => /to fix/.test(t(b))).click();
+  check('a counter filters the list (to fix: one)', rows().length === 1 && /Kernel link/.test(t(rows()[0])));
+  [...d.querySelectorAll('#joint-summary button')].find((b) => /all/.test(t(b))).click();
+  d.getElementById('joint-search').value = 'bluetooth';
+  d.getElementById('joint-search').dispatchEvent(new w.Event('input'));
+  check('the search finds by what is said', rows().length === 1 && /Bluetooth/.test(t(rows()[0])));
+  d.getElementById('joint-search').value = '';
+  d.getElementById('joint-search').dispatchEvent(new w.Event('input'));
+  [...rows().find((r) => /Bluetooth/.test(t(r))).querySelectorAll('button')].find((b) => /Accept as it is/.test(t(b))).click();
+  await wait();
+  check('Accept: the hub keeps it, by the item\'s key', posted.some(([, b]) => b.action === 'accept' && b.key === 'finding:doctor:image-bluetooth'));
+  w.renderSecurity({ ...sec, accepted: { 'finding:doctor:image-bluetooth': { at: now, title: 'Bluetooth is on' } } });
+  check('  accepted: out of the list and the counts, in its own fold with Take back', !rows().some((r) => /Bluetooth/.test(t(r)))
+    && /Bluetooth/.test(t(d.getElementById('joint-accepted'))) && /Take back/.test(t(d.getElementById('joint-accepted'))) && /^2 all/.test(t(d.getElementById('joint-summary'))));
+  w.renderSecurity(sec);
   const pills = [...d.querySelectorAll('#joint-fresh span')];
   check('each source in one strip at the top: how fresh, what it covers in its title', pills.length === 3
     && pills.some((x) => /^nmap: 1(\.0)? days? ago|^nmap: 24 h ago/.test(t(x)) && /Only which ports answer/.test(x.title)), pills.map(t).join(' | '));
   check('  none stale here (the newest is a day old, under nmap\'s 30)', !pills.some((x) => x.className === 'warn-pill'), pills.map((x) => x.className + ':' + t(x)).join(' | '));
-  check('the badge counts merged items (2), not every source\'s (3)', d.querySelector('a[href="#secdoctor"]').dataset.badge === '2', d.querySelector('a[href="#secdoctor"]').dataset.badge);
+  check('the badge counts what is to fix after merging (1), not every source\'s (3)', d.querySelector('a[href="#secdoctor"]').dataset.badge === '1', d.querySelector('a[href="#secdoctor"]').dataset.badge);
+  check('no emoji to decode in the list', !/[✅⚠❌]/.test(t(d.getElementById('joint-items'))));
   check('the imported report is listed, with Remove', /nmap scan\.xml: 3 results/.test(t(d.getElementById('import-list'))) && [...d.querySelectorAll('#import-list button')].some((b) => t(b) === 'Remove'));
   check('the deep audit\'s last run is said', /Last deep audit .*, 7 min\./.test(t(d.getElementById('audit-deep-when'))), t(d.getElementById('audit-deep-when')));
 
@@ -117,13 +145,14 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
-  // S: each line of the scan where it belongs (checklist 4d, 5d).
-  const ids = (sel) => [...d.querySelectorAll(`${sel} li strong`)].map(t).join('|');
-  check('the doctor offers the cure beside its findings', ids('#secdoctor-cures') === 'Kernel link protections'
-    && [...d.querySelectorAll('#secdoctor-cures button')].some((b) => t(b) === "Install Debian's defaults"), ids('#secdoctor-cures'));
-  check('Security keeps the real choices', ids('#security-findings') === 'Passwordless sudo|Cockpit|SSH password login', ids('#security-findings'));
+  // S: each line of the scan where it belongs (checklist 4d, 5d), in the same shape.
+  const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
+  check('Security: what waits for a choice, worst first', ids('#security-findings') === 'Passwordless sudo|Cockpit|SSH password login', ids('#security-findings'));
+  check('  the cure is not there (it is the doctor\'s)', !/Kernel link/.test(t(d.getElementById('security-findings'))));
+  check('  the hub\'s own lines, with where to change them', /Plain HTTP only/.test(t(d.getElementById('security-hub')))
+    && d.querySelector('#security-hub a.go-btn').getAttribute('href') === '#security-https' && !!d.getElementById('security-https'));
   check('Debian\'s security updates on Updates', ids('#updates-security') === 'Security updates', ids('#updates-security'));
-  check('Security links to where the rest went', ['#secdoctor', '#updates', '#network'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
+  check('Security links to where the rest went', ['#secdoctor', '#updates-debian', '#network'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
   check('the hotspot\'s WiFi security with the hotspot, on Network', !!d.querySelector('#network #hs-modes') && !d.querySelector('#security #hs-modes'));
   w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });  // the answer to what was asked: no longer busy
   const sudo = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));

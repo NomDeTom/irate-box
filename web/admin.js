@@ -1202,8 +1202,9 @@ const CURE_ID = /^(kernel-|root-password|root-firstrun|ssh-root|llmnr)/;
 const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
 function secKind(f) {
   if (f.id === 'security-updates' || f.id === 'unattended') return 'update';
-  if (/^port-/.test(f.id)) return 'port';
   if (CURE_ID.test(f.id) || (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))) return 'cure';
+  // A port is in the listening table; one that offers a choice (Cockpit, a service to stop) is a choice too.
+  if (/^port-/.test(f.id) && (f.status === 'ok' || !(f.actions || []).length)) return 'port';
   return 'choice';
 }
 // Passwordless sudo as a toggle (Tom, 2026-10-08: "I like the idea of a toggle"): On while a
@@ -1326,23 +1327,26 @@ function renderSecurity(data) {
   renderAudit(data.audit, busy, data);
   renderImports(data.imports);
   // Each port with the scan's word on it and, where there is one, its button: no separate list of ports.
-  const portLine = new Map(by('port').map((f) => [f.id, f]));
+  const portLine = new Map(lines.filter((f) => /^port-/.test(f.id)).map((f) => [f.id, f]));
   sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => {
-    const f = portLine.get(`port-${l.proto}-${l.port}`);
-    return el('tr', { id: f ? `sec-${f.id}` : '' },
+    // TCP and UDP of one service share a line (LLMNR); SSH's port is said with SSH's own settings.
+    const f = portLine.get(`port-${l.proto}-${l.port}`) || portLine.get(`port-${l.proto === 'tcp' ? 'udp' : 'tcp'}-${l.port}`);
+    const ssh = !f && l.proto === 'tcp' && l.port === 22;
+    return el('tr', { id: f && secKind(f) === 'port' ? `sec-${f.id}` : '' },
       el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
       el('td', {}, el('span', { className: 'setting-name', textContent: f ? f.title : l.name }),
         el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
       el('td', { textContent: l.addr }),
       el('td', {}, f ? el('span', { className: `fstate fstate-${f.status}`, textContent: f.status === 'ok' ? 'Yes' : STATE_WORD[f.status] }) : null,
-        f ? el('span', { className: 'setting-desc', textContent: ` ${f.detail.replace(/^[^.]*\)\.\s*/, '')}` }) : null,
+        f ? el('span', { className: 'setting-desc', textContent: ` ${f.detail.replace(/^(TCP|UDP) \d+ on .*?\.\s+/, '')}` }) : null,
+        ssh ? el('a', { href: '#sec-ssh-password', textContent: 'Who may log in, and how: SSH\'s settings' }) : null,
         f && f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: ` ${f.fix}` }) : null,
         f && f.actions.length ? el('span', { className: 'library-buttons' }, ...scanButtons(f, busy)) : null, f ? noteUnder(f.id) : null));
   }));
   sec.output.hidden = !data.log.length;
   sec.log.textContent = data.log.join('\n');
   const problems = waiting.filter((f) => f.status === 'problem').length;
-  const ports = by('port').filter((f) => f.status !== 'ok').length;
+  const ports = lines.filter((f) => /^port-/.test(f.id) && f.status !== 'ok').length;
   sec.counts.replaceChildren(...[
     [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
     [ports, `port${ports === 1 ? '' : 's'} worth a look`, ports ? 'warn' : 'ok', 'security-ports'],
