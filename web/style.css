@@ -1446,6 +1446,9 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .ladder-mark { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
 .ladder-mark.hollow { fill: var(--surface); stroke: var(--accent); }
 .ladder-cross { stroke: var(--muted); stroke-width: 1; }
+.ladder-sym { fill: var(--muted); opacity: 0.55; }
+.ladder-sym.over { fill: var(--accent); opacity: 1; }
+.ladder-th { fill: none; stroke: var(--text); stroke-width: 1.5; opacity: 0.6; }
 .ladder-tip { min-height: 2.6em; font-size: 0.8rem; color: var(--muted); }
 .ladder-tip.on { color: var(--text); }
 .ladder-tip .ladder-tip-text { color: var(--muted); }

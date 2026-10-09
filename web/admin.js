@@ -1899,7 +1899,8 @@ const net = {
   reach: document.getElementById('up-reach'),
   guests: document.getElementById('up-guests'),
   wedge: document.getElementById('up-wedge'),
-  forgive: document.getElementById('up-forgive'),
+  sens: document.getElementById('up-sens'),
+  sensSays: document.getElementById('up-sens-says'),
   will: document.getElementById('up-will'),
   iface: document.getElementById('up-iface'),
   custom: document.getElementById('up-custom'),
@@ -1913,16 +1914,13 @@ const net = {
   events: document.getElementById('up-events'),
 };
 const UP_FIELDS = [
-  ['check', 'Check every (s)'], ['misses', 'Failed checks before it counts as down'],
-  ['grace', 'Then wait (s) before acting'], ['steps.reconnect', 'Reconnect after (s)'],
+  ['check', 'Check every (s)'], ['window', 'Count misses over (s)'], ['steps.reconnect', 'Reconnect after (s)'],
   ['steps.restart', 'Restart the network service after (s)'], ['steps.radio', 'Reset the radio after (s)'],
   ['steps.reboot', 'Reboot after (s)'], ['repeat', 'Reconnect again every (s)'], ['backoff', '… that gap growing ×'],
-  ['max_repeat', '… up to (s)'], ['relapse', 'Down again within (s): the same episode'], ['flap_count', 'Drops that count as flapping'],
-  ['flap_window', '… within (s)'], ['flap_action', 'A flapping link is'],
+  ['max_repeat', '… up to (s)'], ['relapse', 'Down again within (s): the same episode'],
   ['reboots_per_day', 'Reboots a day, at most'], ['reboot_gap', 'Never reboot within (s) of the last'],
 ];
 const UP_WORDS = {
-  flap_action: { note: 'only noted', pin: 'locked to the strongest AP', repair: 'repaired' },
 };
 let netData = null;
 let netWaiting = null; // { id, where: 'scan' | 'up' }
@@ -1930,16 +1928,17 @@ let netNotes = {};
 let netPoll = null;
 let upDirty = false;
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach (Tom,
-// 2026-10-09: "two dials always"), and guests, a wedged driver, forgiveness.
-const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', forgiveness: 'normal' };
-const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['forgive', 'forgiveness']];
+// 2026-10-09: "two dials always"), guests, a wedged driver, and the sensitivity, a number of missed
+// checks within the pace's window (Tom: forgiveness "rebranded as sensitivity, with a numeric value").
+const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3 };
+const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge']];
 let netAsked = false;
 
 // The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
 function upPreset(pick, levels) {
   const p = levels.presets, pace = p.pace[pick.pace];
   const allowed = levels.steps.slice(0, levels.reach.indexOf(pick.reach));
-  const eff = { ...p.common, ...p.forgiveness[pick.forgiveness], check: pace.check, repeat: pace.repeat, guests: pick.guests };
+  const eff = { ...p.common, check: pace.check, window: pace.window, repeat: pace.repeat, guests: pick.guests, sensitivity: pick.sensitivity };
   eff.steps = Object.fromEntries(Object.entries(pace.steps).filter(([s]) => allowed.includes(s)));
   if (!('reconnect' in eff.steps)) eff.repeat = 0;
   return eff;
@@ -1965,7 +1964,6 @@ function buildUpFields(levels) {
 // --- the choices in words ---------------------------------------------------------------
 const cap1 = (t) => t[0].toUpperCase() + t.slice(1);
 const dur = (sec) => (sec < 60 ? `${sec} s` : sec % 3600 === 0 ? `${sec / 3600} h` : `${Math.round(sec / 60)} min`);
-const FLAP_DOES = { note: 'is only noted', pin: 'is locked to the strongest access point', repair: 'is repaired, climbing past what did not hold' };
 const STEP_DOES = { reconnect: 'reconnects', restart: 'restarts the network service', radio: 'resets the radio', reboot: 'reboots' };
 
 // What a set of numbers does once the link counts as down ("What this will do").
@@ -1991,12 +1989,15 @@ function paceLine(name, levels) {
   const p = levels.presets.pace[name];
   return `First a reconnect ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : 'at once'}, again every ${dur(p.repeat)}; `
     + `then ${['restart', 'radio', 'reboot'].map((s) => `${STEP_DOES[s].replace('the network service', 'the service')} after ${dur(p.steps[s])}`).join(', ')}`
-    + ` — each only if the reach goes that far. It checks every ${dur(p.check)}.`;
+    + ` — each only if the reach goes that far. It checks every ${dur(p.check)}, and counts missed checks over ${dur(p.window)}.`;
 }
 
-function forgiveLine(f) {
-  return `Down after ${f.misses} failed check${f.misses === 1 ? '' : 's'} and ${dur(f.grace)} more. `
-    + `${f.flap_count} drops within ${dur(f.flap_window)} count as flapping, which ${FLAP_DOES[f.flap_action] || f.flap_action}.`;
+// The sensitivity said for the pace chosen: how many checks fit its window, so a number that can
+// never be reached by failed checks alone says so.
+function sensLine(n, eff) {
+  const fit = Math.floor(eff.window / eff.check) + 1;
+  return `${n} missed check${n === 1 ? '' : 's'} (or drops of the link) within ${dur(eff.window)}, together or spread out, `
+    + 'put it on the ladder; fewer is more sensitive.' + (n > fit ? ` Only ${fit} checks fit that window, so only drops between them can reach it.` : '');
 }
 
 const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while guests are on the hotspot, nor a restart of the network service when the hotspot shares the radio. Said, and done once they have gone.'],
@@ -2005,10 +2006,10 @@ const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, wit
   radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a wedged driver: go straight to the radio reset, if the reach allows it and no guests are held for.'] };
 
 function willText(eff) {
-  return `What this will do: it checks the link every ${dur(eff.check)}. It counts it as down after ${eff.misses} failed `
-    + `check${eff.misses === 1 ? '' : 's'} and ${dur(eff.grace)} more, and then ${stepsInWords(eff)}. `
-    + `Outages within ${dur(eff.relapse)} of each other are one episode: what did not hold is not repeated while a heavier step is left. `
-    + `A link that drops ${eff.flap_count} times within ${dur(eff.flap_window)} ${FLAP_DOES[eff.flap_action] || eff.flap_action}.`;
+  return `What this will do: it checks the link every ${dur(eff.check)}. When ${eff.sensitivity} checks have failed, or the link has dropped, `
+    + `within ${dur(eff.window)}, it goes on the ladder (a link that keeps dropping too, until it settles), and then ${stepsInWords(eff)}. `
+    + `Outages within ${dur(eff.relapse)} of each other are one episode: what did not hold is not repeated while a heavier step is left, `
+    + 'and a reconnect after the first is locked to the strongest access point.';
 }
 
 // Every choice the same way (Tom, 2026-10-06): radio cards, each one's description and what it does.
@@ -2023,8 +2024,11 @@ function buildUpChoices(levels) {
     does: n === 'watch' ? 'Checks, and never acts.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
   rungs(net.guests, 'guests', levels.guests.map((n) => ({ value: n, title: GUEST_WORDS[n][0], desc: GUEST_WORDS[n][1] })));
   rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
-  rungs(net.forgive, 'forgiveness', levels.forgiveness.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '',
-    does: forgiveLine({ ...levels.presets.common, ...levels.presets.forgiveness[n] }) })));
+  net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
+  net.sens.addEventListener('input', () => {
+    const n = Math.round(Number(net.sens.value));
+    if (n >= levels.sensitivity[0] && n <= levels.sensitivity[1]) upChoose({ sensitivity: n }, netData.levels);
+  });
 }
 
 function upChoose(change, levels) {
@@ -2061,6 +2065,8 @@ function showUpPreset(levels) {
     }
   }
   const eff = upPreset(upPick, levels);
+  if (document.activeElement !== net.sens) net.sens.value = String(upPick.sensitivity);
+  net.sensSays.textContent = sensLine(upPick.sensitivity, { ...eff, ...(() => { try { return readUpForm().overrides; } catch (_) { return {}; } })() });
   try {
     const over = readUpForm().overrides;
     const shown = { ...eff, ...over, steps: { ...eff.steps } };
@@ -2072,9 +2078,6 @@ function showUpPreset(levels) {
   for (const input of net.fields.querySelectorAll('input[data-key]')) {
     const v = upGet(eff, input.dataset.key);
     input.placeholder = v === undefined ? 'off' : String(v);
-  }
-  for (const s of net.fields.querySelectorAll('select[data-key]')) {
-    s.options[0].textContent = `(the level's: ${UP_WORDS[s.dataset.key][eff[s.dataset.key]]})`;
   }
 }
 
@@ -2109,7 +2112,8 @@ function upStatusText(u) {
   if (u.state === 'up') {
     parts.push(`Up on ${on}. The gateway (${u.gateway}) answers.`);
   } else if (u.state === 'checking') {
-    parts.push(`Checking ${u.iface}: the gateway has missed ${u.misses} check${u.misses === 1 ? '' : 's'}.`);
+    parts.push(`Checking ${u.iface}: ${u.misses} missed check${u.misses === 1 ? '' : 's'} within ${dur((u.settings || {}).window || 0)}, `
+      + `of the ${(u.settings || {}).sensitivity} that put it on the ladder.`);
   } else {
     const o = u.outage;
     parts.push(o ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.` : `Down on ${u.iface}.`);

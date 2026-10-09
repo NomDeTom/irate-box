@@ -37,7 +37,7 @@ check('four periods, 7 days chosen to start', chips.map((c) => c.textContent).jo
 const svg = box.querySelector('svg');
 check('an image with its summary for a screen reader', svg.getAttribute('role') === 'img' && /2 outages; steps taken: 2 reconnects, 2 radio resets; 1 held/.test(svg.getAttribute('aria-label')),
   svg.getAttribute('aria-label'));
-check('the rungs on the axis, up at the bottom', [...svg.querySelectorAll('text.ladder-axis')].slice(0, 6).map((t) => t.textContent).join(',') === 'up,down,reconnect,restart,radio reset,reboot');
+check('the rungs on the axis, up at the bottom', [...svg.querySelectorAll('text.ladder-axis')].map((t) => t.textContent).join(',').includes('up,down,reconnect,restart,radio reset,reboot'));
 check('the two outages as bands', svg.querySelectorAll('rect.ladder-band').length === 2);
 const m = LC.model(rows.slice().sort((a, b) => a.at - b.at), now - 7 * 86400, now);
 check('the line holds each outage\'s furthest rung, then back to up', JSON.stringify(m.pts.map((p) => p[1])) === '[0,1,2,4,0,1,2,0,0]', JSON.stringify(m.pts.map((p) => p[1])));
@@ -61,6 +61,20 @@ chips[0].click();
 check('24 h: only the last outage and the reset by hand', box.querySelectorAll('rect.ladder-band').length === 1
   && /1 outage; steps taken: 1 reconnect, 1 radio reset/.test(box.querySelector('.ladder-sum').textContent), box.querySelector('.ladder-sum').textContent);
 check('  the choice kept for the next draw', box.dataset.span === '86400');
+// The symptoms above the ladder (Tom, 2026-10-09): missed checks within the window, the sensitivity's line.
+const withSym = rows.concat([
+  { at: now - 30 * h - 300, k: 'm', n: 2, th: 3, i: 'wlan0' }, { at: now - 30 * h, k: 'm', n: 5, th: 3, i: 'wlan0' },
+  { at: now - 2 * h, k: 'm', n: 1, th: 3, i: 'wlan0' }, { at: now - 1 * h, k: 'm', n: 3, th: 3, i: 'wlan0' }]);
+const sb = d.createElement('div'); d.body.append(sb);
+LC.render(sb, withSym, now);
+const ssvg = sb.querySelector('svg');
+check('symptoms: a column per slot with misses, those at or over the line in colour (2 of 4)', ssvg.querySelectorAll('path.ladder-sym').length === 2
+  && (ssvg.querySelector('path.ladder-sym.over').getAttribute('d').match(/M/g) || []).length === 2
+  && (ssvg.querySelector('path.ladder-sym:not(.over)').getAttribute('d').match(/M/g) || []).length === 2);
+check('  the sensitivity\'s line, labelled', !!ssvg.querySelector('path.ladder-th') && [...ssvg.querySelectorAll('text')].some((x) => x.textContent === 'sensitivity 3'));
+check('  said in words: the most misses, the spells at or over the line', /At most 5 missed checks within the pace's window; at or over the line in 2 five-minute spells/.test(sb.querySelector('.ladder-sum').textContent),
+  sb.querySelector('.ladder-sum').textContent);
+check('  not events: the readout and the table leave them out', /The 11 events as a table/.test(sb.querySelector('.ladder-table summary').textContent));
 const e = d.getElementById('e');
 LC.render(e, [], now);
 check('nothing recorded: said, and no chart', !e.querySelector('svg') && /Nothing recorded yet/.test(e.textContent));

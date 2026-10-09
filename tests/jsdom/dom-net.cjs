@@ -29,7 +29,7 @@ w.fetch = async (u, opts = {}) => {
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
     data.uplink = data.uplink || { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager',
-      repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', forgiveness: 'normal', iface: 'auto', overrides: {} },
+      repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} },
       events: [{ at: now - 600, text: 'wlan0 down: the gateway missed 3 checks' }, { at: now - 540, text: 'Reconnected wlan0 (nmcli device connect)' },
         { at: now - 530, text: 'wlan0 up again after 70 s' }] };
     data.results = [...(data.results || []), { id: 'x', ok: true, message: 'Done.' }];
@@ -82,7 +82,7 @@ setTimeout(() => {
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
   // Staying on the network: two dials, pace and reach (Tom, 2026-10-09), guests, a wedged driver and
-  // forgiveness, each as radio cards (2026-10-06).
+  // the sensitivity, a number of missed checks (Tom, 2026-10-09), each choice as radio cards (2026-10-06).
   const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
   const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
   const pace = tiles('up-pace'), reach = tiles('up-reach');
@@ -91,14 +91,14 @@ setTimeout(() => {
   check('guests and a wedged driver: two cards each', vals('up-guests') === 'protect ignore' && vals('up-wedge') === 'ladder radio');
   check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2
     && r.querySelector('.choice-does').textContent.length > 10));
-  check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge', 'up-forgive'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
+  check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
   check('the gentle pace\'s line says when each step comes', /reboots after 2 h — each only if the reach goes that far/.test(pace[0].querySelector('.choice-does').textContent),
     pace[0].querySelector('.choice-does').textContent);
   check('watch\'s line says it never acts', /never acts/.test(reach[0].querySelector('.choice-does').textContent));
-  const frungs = tiles('up-forgive');
-  check('forgiveness: radio cards too, tolerant to strict', vals('up-forgive') === 'tolerant normal strict'
-    && frungs.every((r) => r.querySelectorAll('.setting-desc').length === 2));
-  check('no toggle left on the page', !d.querySelector('#up-forgive button'));
+  const sens = d.getElementById('up-sens');
+  check('sensitivity: a number, 1 to 20, 3 to start, said for the pace (30 min for gentle)', sens.type === 'number' && sens.min === '1' && sens.max === '20'
+    && sens.value === '3' && /3 missed checks \(or drops of the link\) within 30 min/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
+  check('no forgiveness left on the page', !d.getElementById('up-forgive') && !/[Ff]orgiveness/.test(d.getElementById('network').textContent));
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
   check('Save is off until something changes', save.disabled && save.textContent === 'Save');
@@ -107,9 +107,11 @@ setTimeout(() => {
   check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
   reach[3].querySelector('input').click();
   check('reach radio: the sentence says it never reboots', /resets the radio after 8 min/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
-  frungs[2].querySelector('input').click();
-  check('strict chosen, its card says what it does', frungs[2].classList.contains('chosen') && /Down after 2 failed checks and 15 s more/.test(frungs[2].querySelector('.choice-does').textContent),
-    frungs[2].querySelector('.choice-does').textContent);
+  sens.value = '2'; sens.dispatchEvent(new w.Event('input'));
+  check('sensitivity 2: the sentence follows (2 checks within urgent\'s 2 minutes)', /When 2 checks have failed, or the link has dropped, within 2 min/.test(t('#up-will')[0]), t('#up-will')[0]);
+  sens.value = '9'; sens.dispatchEvent(new w.Event('input'));
+  check('  a number the checks alone can\'t reach in the window is said so', /Only 5 checks fit that window/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
+  sens.value = '2'; sens.dispatchEvent(new w.Event('input'));
   const reboot = d.querySelector('[data-key="steps.reboot"]'); reboot.value = 'off'; reboot.dispatchEvent(new w.Event('input'));
   const chk = d.querySelector('[data-key="check"]'); chk.value = '45'; chk.dispatchEvent(new w.Event('input'));
   check('custom values change the sentence', /every 45 s/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
@@ -123,7 +125,7 @@ setTimeout(() => {
   setTimeout(() => {
     const sent = posted.find((p) => p.action === 'settings');
     check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
-      && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.forgiveness === 'strict'
+      && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.sensitivity === 2
       && sent.settings.overrides.check === 45 && sent.settings.overrides.steps.reboot === null, JSON.stringify(posted));
     check('a bad custom value is refused on the page', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-note')[0] || ''), t('#up-note')[0]);
     check('no page errors', errors.length === 0, errors.join(' | '));

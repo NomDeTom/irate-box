@@ -1836,10 +1836,10 @@ def network_snapshot():
     # Each link's uptime (step 34): hours for a week, days for 35, summed here from the watchdog's
     # five-minute slots, so the page gets a few KB rather than the slots.
     return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
-            "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "forgiveness": list(uplink.FORGIVENESS),
+            "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
                        "describe": uplink.DESCRIBE, "default": uplink.DEFAULT,
-                       "presets": {"pace": uplink.PACE, "forgiveness": uplink.FORGIVENESS, "common": uplink.COMMON},
+                       "presets": {"pace": uplink.PACE, "common": uplink.COMMON},
                        "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}
                                   for k, v in uplink.FIELDS.items()}},
             "pending": _pending_actions("net-") + _pending_actions("uplink-"), "results": control_results(5)}
