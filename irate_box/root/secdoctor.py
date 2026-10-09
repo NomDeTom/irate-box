@@ -1778,8 +1778,9 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
                      f"{len(fixed)} fixed: " + ", ".join(c + (" (remotely exploitable)" if n["remote"] else "") +
                                                          (f" ({n['urgency']} urgency)" if n["urgency"] else "") for c, n in fixed[:8])
                      + ("…" if len(fixed) > 8 else "") + "." + age,
-                     "Install the security updates: the Security page, or apt-get upgrade while online.", "",
-                     source="debsecan", about={"kind": "package", "key": src}))
+                     "Install them: Updates → Debian's security updates (the box asks Debian for the fixed versions, so it "
+                     "needs the internet once).", "",
+                     source="debsecan", about={"kind": "setting", "key": "security-updates"}))
     unfixed = sorted(p for p, v in installed.items() if not any(n["fixed"] for _, n in v))
     out.append(F("debsecan-unfixed", "Known vulnerabilities with no fix released yet", "ok",
                  (f"{len(unfixed)} installed packages have CVEs Debian hasn't fixed yet (listed, not counted): " + _list(unfixed, 20) + "."
@@ -1849,7 +1850,29 @@ def _deep_findings(source):
         out.append(F(f"{source}-old", f"{source}: the last deep audit is old", "warn", f"From {when}.", "Run the deep audit again.", "", source=source))
     for f in out:
         f["detail"] = f"{f['detail']} (deep audit of {when})"
+        _dress_cis(f)
     return out
+
+
+CIS_SECTION_RE = re.compile(r"^cis-(\d+\.\d+)$")
+
+
+def _dress_cis(f):
+    """A CIS section's finding ("CIS 4.1: 22 checks not met") as what it is about, in plain words, and
+    how it stands on a box like this (secdoctor_xref.CIS): a suggestion, or not for this board, and why."""
+    m = CIS_SECTION_RE.match(f.get("id", ""))
+    known = m and secdoctor_xref.cis(m.group(1))
+    if not known or f["status"] == "ok":
+        return
+    title, tier, what, here = known
+    checks = f["detail"].split(". For example:")[0].split(" (deep audit")[0].rstrip(".")
+    when = re.search(r" \(deep audit of [^)]*\)$", f["detail"])
+    f["title"] = f"{title} (CIS {m.group(1)})"
+    f["detail"] = f"{what} Not met here: {checks.replace('_', ' ')}." + (when.group(0) if when else "")
+    f["fix"] = here
+    f["tier"] = tier
+    if m.group(1) == "1.9":
+        f["about"] = {"kind": "setting", "key": "security-updates"}
 
 
 def step_security_page(ctx):
@@ -1963,58 +1986,87 @@ def freshness():
 
 
 def joint(steps, freshness=None):
-    """The joint report (security-doctor-plan §5): findings merged by what they are about, each
-    item saying which sources agree, the worst status and its fix; items only one source saw where
-    others could have (worth a look, or a false positive); each source's counts, what it covers,
-    and how fresh it is; and the counts after merging, which the page's badge shows, so four tools
-    saying the same thing count once."""
+    """The joint report (security-doctor-plan §5): every finding that is not fine, once. Findings about
+    the same thing (a setting, a port, Debian's security updates) are merged into one item saying which
+    sources agree, the worst status, and what each source said; the rest stand as items of their own
+    (until 2026-10-09 they were only counted, so most of the doctor's own findings never showed). Each
+    item carries where it is put right (secdoctor_xref.DO) and, for the deep audit's CIS sections, a
+    tier: "suggest" or "not-here", counted apart from what is to fix or look at. Also: items only one
+    source saw where others could have (worth a look, or a false positive); each source's counts, what
+    it covers, and how fresh it is; and the counts after merging, which the page's badge shows."""
     rank = {"ok": 0, "warn": 1, "problem": 2}
-    items, sources, loose = {}, {}, {"problem": 0, "warn": 0}
-    for f in (f for s in steps for f in s["findings"]):
-        src = f.get("source", "doctor")
-        c = sources.setdefault(src, {"problem": 0, "warn": 0, "ok": 0})
-        c[f["status"]] = c.get(f["status"], 0) + 1
-        a = f.get("about")
-        if f.get("accepted"):
-            continue
-        if not a:
-            if f["status"] in loose:
-                loose[f["status"]] += 1
-            continue
-        key = f"{a['kind']}:{a['key']}"
-        label = secdoctor_xref.title(a["key"]) if a["kind"] == "setting" else \
-            " ".join(x.upper() if i == 0 else x for i, x in enumerate(a["key"].split("/"))) if a["kind"] == "service" else a["key"]
-        it = items.setdefault(key, {"about": a, "title": label,
-                                    "sources": [], "status": "ok", "titles": [], "fix": ""})
-        if src not in it["sources"]:
-            it["sources"].append(src)
-        it["titles"].append(f"{src}: {f['title']}")
-        if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
-            it["status"], it["fix"] = max((it["status"], f["status"]), key=rank.get), f["fix"] or it["fix"]
+    items, sources = {}, {}
+    for st in steps:
+        for f in st["findings"]:
+            src = f.get("source", "doctor")
+            c = sources.setdefault(src, {"problem": 0, "warn": 0, "ok": 0})
+            c[f["status"]] = c.get(f["status"], 0) + 1
+            if f.get("accepted"):
+                continue
+            a = f.get("about") or secdoctor_xref.about(src, f["id"])
+            if not a:
+                if f["status"] == "ok":
+                    continue
+                a = {"kind": "finding", "key": f"{src}:{f['id']}"}
+            key = f"{a['kind']}:{a['key']}"
+            if a["kind"] == "setting" and a["key"] in secdoctor_xref.XREF:
+                label = secdoctor_xref.title(a["key"])
+            elif a["kind"] == "service":
+                label = f"{f['title']} ({' '.join(x.upper() if i == 0 else x for i, x in enumerate(a['key'].split('/')))})"
+            else:
+                label = f["title"]
+            it = items.setdefault(key, {"key": key, "about": a, "title": label, "sources": [], "status": "ok", "titles": [], "lines": [],
+                                        "detail": "", "fix": "", "do": None, "area": st.get("title", ""), "tiers": []})
+            if src not in it["sources"]:
+                it["sources"].append(src)
+            it["titles"].append(f"{src}: {f['title']}")
+            it["lines"].append({"source": src, "id": f["id"], "title": f["title"], "status": f["status"], "detail": f["detail"], "fix": f["fix"]})
+            if f["status"] != "ok":
+                it["tiers"].append(f.get("tier") or "")
+                it["do"] = it["do"] or secdoctor_xref.do_for(src, f["id"])
+            if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
+                if rank[f["status"]] > rank[it["status"]]:
+                    it["area"], it["detail"] = st.get("title", ""), f["detail"]
+                it["status"], it["fix"] = max((it["status"], f["status"]), key=rank.get), f["fix"] or it["fix"]
+            if not it["detail"]:
+                it["detail"] = f["detail"]
     # A source ran when it said something real, not only "not run yet" / "none imported".
     ran = {f.get("source", "doctor") for s in steps for f in s["findings"] if not f["id"].endswith("-none")}
     for it in items.values():
         # Who could have said the same: any port-seeing source for a port; for a setting, the
-        # sources the cross-reference table lists for it; a package or a kit, debsecan alone.
+        # sources the cross-reference table lists for it.
         a = it["about"]
         could = set(KIND_SOURCES["service"]) if a["kind"] == "service" else \
             {k for k, v in secdoctor_xref.XREF.get(a["key"], {}).items() if isinstance(v, list)} if a["kind"] == "setting" else set()
         could &= ran
         it["alone"] = len(it["sources"]) == 1 and len(could - set(it["sources"])) > 0
         it["could_see"] = sorted(could - set(it["sources"]))
+        # The Security page's lines in it: the page offers their buttons (from its scan at the time).
+        it["page"] = [l["id"].removeprefix("page-") for l in it["lines"] if l["source"] == "security-page"]
+        # A tier only when every line not fine has one: a CIS suggestion merged with a real finding is real.
+        tiers = it.pop("tiers")
+        it["tier"] = ("not-here" if all(t == "not-here" for t in tiers) else "suggest") if tiers and all(tiers) else None
     # Together a problem (secdoctor_xref.COMPOUND): each named finding present and not ok.
     present = {(f.get("source", "doctor"), f["id"]): f for s in steps for f in s["findings"]}
     for c in secdoctor_xref.COMPOUND:
         if all((src, i) in present and present[(src, i)]["status"] != "ok" for src, i in c["needs"]):
-            items[f"compound:{c['key']}"] = {"about": {"kind": "compound", "key": c["key"]}, "title": c["title"], "sources": sorted({s for s, _ in c["needs"]}),
-                                            "status": "problem", "titles": [f"{s}: {present[(s, i)]['title']}" for s, i in c["needs"]],
-                                            "fix": c["fix"], "detail": c["detail"], "alone": False, "could_see": []}
-    merged = sorted((i for i in items.values() if i["status"] != "ok"), key=lambda i: (-rank[i["status"]], i["about"]["kind"], i["about"]["key"]))
+            lines = [{"source": src, "id": i, "title": present[(src, i)]["title"], "status": present[(src, i)]["status"],
+                      "detail": present[(src, i)]["detail"], "fix": present[(src, i)]["fix"]} for src, i in c["needs"]]
+            items[f"compound:{c['key']}"] = {"key": f"compound:{c['key']}", "about": {"kind": "compound", "key": c["key"]}, "title": c["title"],
+                                            "sources": sorted({s for s, _ in c["needs"]}), "status": "problem",
+                                            "titles": [f"{s}: {present[(s, i)]['title']}" for s, i in c["needs"]], "lines": lines,
+                                            "fix": c["fix"], "detail": c["detail"], "do": None, "area": "Together", "tier": None,
+                                            "page": [i.removeprefix("page-") for _, i in c["needs"]], "alone": False, "could_see": []}
+    tier_rank = {None: 0, "suggest": 1, "not-here": 2}
+    merged = sorted((i for i in items.values() if i["status"] != "ok"),
+                    key=lambda i: (tier_rank[i["tier"]], -rank[i["status"]], i["area"], i["title"]))
     agreed = [i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1]
-    after = {"problem": loose["problem"] + sum(1 for i in merged if i["status"] == "problem"),
-             "warn": loose["warn"] + sum(1 for i in merged if i["status"] == "warn")}
+    real = [i for i in merged if not i["tier"]]
+    after = {"problem": sum(1 for i in real if i["status"] == "problem"), "warn": sum(1 for i in real if i["status"] == "warn"),
+             "suggest": sum(1 for i in merged if i["tier"] == "suggest"), "not_here": sum(1 for i in merged if i["tier"] == "not-here")}
     return {"items": merged, "agreed_ok": len(agreed), "sources": sources, "after": after,
             "coverage": {s: secdoctor_xref.COVERAGE.get(s, "") for s in sources}, "freshness": freshness or {}}
+
 
 def _local_headers(url):
     """A local request's status and headers (the box's own front), or None. Certificates unchecked:

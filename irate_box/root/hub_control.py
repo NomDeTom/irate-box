@@ -1628,8 +1628,10 @@ def _write_security(data):
 def security_scan(req):
     data = security.scan()
     _write_security(data)
-    bad = [f for f in data["findings"] if f["status"] == "problem"]
-    return f"security scan: {len(bad)} to fix" if bad else "security scan: nothing to fix"
+    bad = sum(1 for f in data["findings"] if f["status"] == "problem")
+    look = sum(1 for f in data["findings"] if f["status"] == "warn")
+    # "nothing to fix" with eight warnings read as all clear (2026-10-09): both counts, always.
+    return f"security scan: {bad} to fix, {look} to look at"
 
 
 def security_audit(req):

@@ -249,5 +249,16 @@ check("undo_all puts the three back", (T / "sudoers.d" / "claude-temp").exists()
       and not (T / "journald.conf.d" / "irate-box.conf").exists() and not security.load_record(), done)
 
 
+
+# Security updates (2026-10-09): Debian's stable fixes count, as the security archive's do; others' don't.
+SIM = """Inst base-files [26.05.0-trunk-13.8+deb13u6-trixie] (26.8.3-13.8+deb13u6-trixie Armbian:trixie [armhf])
+Inst bash [5.2.37-2+b9] (5.2.37-2+b10 Debian:13.7/stable [armhf])
+Inst gzip [1.13-1] (1.13-1+deb13u1 Debian:13.7/stable [armhf])
+Inst libglib2.0-0t64 [2.84.4-3~deb13u3] (2.84.4-3~deb13u5 Debian:13.7/stable [armhf])
+Inst openssl [3.5.1-1] (3.5.1-1+deb13u2 Debian-Security:13/stable-security [armhf])
+Inst meshtasticd [2.8.0.696~obs5f198c4~unstable] (2.8.1.752~obs790944a~unstable network:Meshtastic:daily:download.opensuse.org [armhf])
+Inst tailscale [1.98.9] (1.104.1 Tailscale:pkgs.tailscale.com [armhf])"""
+check("security updates: the security archive's and Debian's point-release fixes (+debNuM), not Armbian's, a rebuild's or others'",
+      security.pending_security(SIM) == ["gzip", "libglib2.0-0t64", "openssl"], security.pending_security(SIM))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
