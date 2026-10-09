@@ -123,5 +123,42 @@ except ValueError:
 inst = (REPO / "install.sh").read_text()
 check("setup.sh restores the state as the hub, copies repositories it has not got, imports the toolkits checked",
       "runuser -u hub -- tar -xzf \"$here/state-backup.tar.gz\"" in inst and "is there already: left as it is" in inst and "kits import-dir" in inst)
+# The content export without the hub program: repositories, state and import.sh beside the books and toolkits.
+import subprocess  # noqa: E402
+top = T / "export" / "irate-box"; top.mkdir(parents=True)
+said = H.content_extras(top, [S / "git/public/mine.git"], "settings")
+names = tarfile.open(top / "state-backup.tar.gz").getnames()
+check("content export: the repository copied, the settings as state-backup.tar.gz (no data), import.sh beside them",
+      (top / "git/public/mine.git/HEAD").is_file() and "irate-box-state/settings.json" in names and "irate-box-state/notes/index.md" not in names
+      and os.access(top / "import.sh", os.X_OK) and said == ["git: public/mine.git", "this box's settings"], (said, names[:5]))
+(top / "git/public/mine.git/stale").write_text("x")
+H.content_extras(top, [S / "git/public/mine.git"], "none")
+check("  made again: the repository replaced whole", not (top / "git/public/mine.git/stale").exists())
+for bad in ({}, {"books": []}):
+    try:
+        H.content_export(bad); check("content export with nothing chosen: refused", False)
+    except ValueError as exc:
+        check("content export with nothing chosen: refused", "choose something" in str(exc), str(exc))
+U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": str(stick)}
+H._kits_status = lambda: None
+msg = H.usb_export_many({"device": "sdz1", "repos": ["public/mine", "private/secret"], "state": "data"})
+check("onto a stick: the repositories and the state in its irate-box/, with import.sh", (stick / "irate-box/git/private/secret.git/HEAD").is_file()
+      and (stick / "irate-box/state-backup.tar.gz").is_file() and (stick / "irate-box/import.sh").is_file()
+      and "2 repositories and this box's state on the stick" in msg, msg)
+try:
+    H.usb_export_many({"device": "sdz1"}); check("onto a stick with nothing chosen: refused", False)
+except ValueError:
+    check("onto a stick with nothing chosen: refused", True)
+box = T / "otherbox"; (box / "git/public").mkdir(parents=True)
+run = lambda *a: subprocess.run(["sh", str(stick / "irate-box/import.sh"), *a], capture_output=True, text=True,  # noqa: E731
+                                env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)))
+out = run("--dry-run")
+check("import.sh --dry-run: says what it would add and replace, changes nothing", out.returncode == 0
+      and f"would add {box}/git/public/mine.git" in out.stdout and "settings.json" in out.stdout and "would replace" in out.stdout
+      and not (box / "git/public/mine.git").exists(), out.stdout + out.stderr)
+out = subprocess.run(["sh", str(stick / "irate-box/import.sh"), "--dry-run"], capture_output=True, text=True,
+                     env=dict(os.environ, IRATE_BOX_CLI=str(T / "nosuch"), HUB_STATE_DIR=str(box)))
+check("  on a box without irate-box: refused, saying why", out.returncode == 1 and "not installed here" in out.stderr, out.stderr)
+check("  an unknown option: refused", run("--everything").returncode == 2)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

@@ -254,6 +254,18 @@ setTimeout(() => {
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
   check('new box: books, toolkits and repositories offered with their sizes, mirrors marked', kb.querySelectorAll('input').length === 2 && /wikipedia_en \(2\.6 GB\)/.test(kb.textContent)
     && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);
+  const preset = (k) => d.querySelector(`#export-presets [data-export="${k}"]`);
+  check('content export: starts as Update a box, the hub program left out and said with its size', preset('update').classList.contains('selected')
+    && !kf.elements.hub.checked && /about 90\.6 MB/.test(t('#kit-hub-size')[0]) && /Nothing chosen yet/.test(t('#kit-total')[0]), t('#kit-total')[0]);
+  preset('level').click();
+  check('  Bring a box level: every repository and the settings ticked, still no hub program', kf.elements.state.value === 'settings'
+    && [...d.querySelectorAll('#kit-repos input')].every((i) => i.checked) && !kf.elements.hub.checked, kf.elements.state.value);
+  kf.elements.dest.value = 'stick'; kf.dispatchEvent(new w.Event('change'));
+  check('  onto a stick: the stick offered, the button says so', !d.getElementById('offline-stick-box').hidden && t('#kit-make')[0] === 'Copy to the stick', t('#kit-make')[0]);
+  preset('new').click();
+  check('A new box: the hub program in, and so a download', kf.elements.hub.checked && kf.elements.dest.value === 'download' && d.getElementById('offline-stick-box').hidden
+    && /hub program is in it/.test(t('#kit-total')[0]), t('#kit-total')[0]);
+  kf.elements.state.value = 'none'; d.querySelectorAll('#kit-repos input').forEach((i) => { i.checked = false; });
   kb.querySelector('input').click(); kf.elements.budget.value = '1000'; kf.dispatchEvent(new w.Event('input'));
   check('  a book chosen over a 1000 MB budget: said, in red, and Make refused', /over it/.test(t('#kit-total')[0]) && d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
   kb.querySelector('input').click(); d.querySelector('#kit-repos input').click(); kf.elements.state.value = 'settings'; kf.dispatchEvent(new w.Event('change'));
@@ -394,8 +406,17 @@ setTimeout(() => {
     const keepRev = posted.find((p) => p[1].action === 'mirror-change');
     check('git: Keep revoked switches it off on the release groups only', keepRev && keepRev[1].mirror.groups.every((g) => g.skip_revoked === false)
       && keepRev[1].mirror.status === undefined, JSON.stringify(keepRev));
+    {
+      const kf = d.getElementById('kit-form');
+      d.querySelector('#export-presets [data-export="level"]').click();
+      kf.elements.dest.value = 'stick'; kf.dispatchEvent(new w.Event('change'));
+      kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
+      const toStick = posted.find((p) => p[0] === '/admin/usb' && p[1].action === 'export-many');
+      check('content export: Copy sends the books, toolkits, repositories and state to the stick', toStick && toStick[1].device === 'sda1'
+        && JSON.stringify(toStick[1].repos) === JSON.stringify(['public/firmware', 'private/notes']) && toStick[1].state === 'settings', JSON.stringify(toStick));
+    }
     const kitMade = posted.find((p) => p[0] === '/admin/kit');
-    check('new box: Make sends the choices (the mirror, settings, the budget; no books)', kitMade && JSON.stringify(kitMade[1]) === JSON.stringify({ action: 'make', books: [],
+    check('new box: Make sends the choices (the mirror, settings, the budget; no books)', kitMade && JSON.stringify(kitMade[1]) === JSON.stringify({ action: 'make', hub: true, books: [],
       kits: [], repos: ['public/firmware'], state: 'settings', budget_mb: 1000 }), JSON.stringify(kitMade));
     const fwm = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'meshtastic-firmware');
     check('firmware: Mirror the source adds meshtastic/firmware with its submodules', fwm && fwm[1].mirror.submodules === true
