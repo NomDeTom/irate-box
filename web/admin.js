@@ -2900,6 +2900,7 @@ function drawPresets() {
   stickEl.presetSays.textContent = EXPORT_PRESETS[exportPreset][0];
 }
 stickEl.presets.addEventListener('click', (e) => { const b = e.target.closest('[data-export]'); if (b) applyPreset(b.dataset.export); });
+drawPresets();  // the default preset shown chosen before any is pressed
 function drawPicks() {
   const p = bkPlan;
   const book = (b) => `${b.name} (${size(b.size)})`, kit = (k) => `${k.title} (${size(k.size)})`;

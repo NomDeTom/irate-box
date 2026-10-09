@@ -1504,3 +1504,9 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
   header > .theme-picker { position: relative; top: auto; right: auto; order: -1; margin-bottom: 0.9rem; max-width: 100%; flex-wrap: wrap; justify-content: center; }
   header > .theme-picker .theme-menu { right: 50%; transform: translateX(50%); }
 }
+
+/* Each of these sets a display of its own, which outranks the browser's rule for [hidden]: without this,
+   an element the page hides stays on screen (found by tests/browser/look.mjs). Kept last, and as specific
+   as the rules they answer. */
+.action-btn.action-btn[hidden], .books-bulk[hidden], #library-sources[hidden], .git-manage[hidden], .aw-filter[hidden],
+.admin-checks[hidden], .net-settings[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden] { display: none; }
