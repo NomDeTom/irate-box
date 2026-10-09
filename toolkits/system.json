@@ -1,7 +1,7 @@
 {
  "id": "system",
  "title": "System",
- "summary": "Debian's own base a minimal image can lack: kernel defaults, the clock tool, the firewall, security updates, small network checks, any USB stick's filesystem and the manual pages. Kept installed; the alternative network and time tools cached beside it.",
+ "summary": "Debian's own base a minimal image can lack: kernel defaults, the clock tool, the firewall, security updates, small network checks, any USB stick's filesystem, the archive tools (zip, unzip, xz, zstd, bzip2) and the manual pages. Kept installed; the alternative network and time tools cached beside it.",
  "packages": [
   "linux-sysctl-defaults",
   "util-linux-extra",
@@ -19,6 +19,11 @@
   "iotop",
   "exfatprogs",
   "ntfs-3g",
+  "zip",
+  "unzip",
+  "xz-utils",
+  "zstd",
+  "bzip2",
   "manpages",
   "pciutils",
   "smartmontools",
