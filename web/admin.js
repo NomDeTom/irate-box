@@ -2175,13 +2175,15 @@ function renderHotspot(data) {
 }
 
 // Guests' onward internet (root/share.py; Tom, 2026-10-08: "give options, and a sliding scale"):
-// five stops from nobody to everyone, the safest the default; held until Save.
+// five stops from nobody to everyone, the safest the default; held until Save. "The sheet" is the
+// page a phone is shown when it joins the hotspot (Tom, 2026-10-09: "what does after the sheet mean?"),
+// so the labels now say "welcome page" and the lines say what that is.
 const GUEST_NET = [
   ['off', 'Off', 'Guests reach the box and nothing else.'],
   ['users-web', 'Users, web only', 'A device signed in to an account on the hub reaches the web (ports 80 and 443).'],
-  ['sheet-web', 'After the sheet, web only', 'Any device reaches the web once it has tapped through the sign-in sheet.'],
-  ['sheet-all', 'After the sheet, everything', 'Any device reaches everything once through the sheet.'],
-  ['open', 'Everyone, no sheet', 'Every device on the hotspot reaches everything. The sheet stops appearing.'],
+  ['sheet-web', 'After the welcome page, web only', 'A phone that joins the hotspot is shown the box\'s welcome page; any device that taps through it reaches the web.'],
+  ['sheet-all', 'After the welcome page, everything', 'Any device reaches everything once it has tapped through the welcome page.'],
+  ['open', 'Everyone, no welcome page', 'Every device on the hotspot reaches everything, straight away. The welcome page stops appearing.'],
 ];
 let guestNetSaved = 'off', guestNetDraft = null, guestNetWaiting = null;
 function drawGuestNet(level, results) {
