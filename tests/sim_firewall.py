@@ -34,7 +34,7 @@ for b in (BIN / "nft", BIN / "systemctl"):
 os.environ.update(HUB_ETC_DIR=str(ETC), HUB_AP_DNSMASQ=str(T / "ap-dnsmasq.conf"), PATH=f"{BIN}:{os.environ['PATH']}",
                   HUB_PROC_SYS=str(T / "proc"), HUB_GROUP_FILE=str(T / "group"), HUB_PASSWD_FILE=str(T / "passwd"),
                   HUB_SUDOERS=str(T / "sudoers"), HUB_SUDOERS_DIR=str(T / "sudoers.d"), HUB_APT_DIR=str(T / "apt"),
-                  HUB_MOSQUITTO_DIR=str(T / "mosquitto"), HUB_UNIT_DIR=str(T / "units"))
+                  HUB_MOSQUITTO_DIR=str(T / "mosquitto"), HUB_NGIRCD_DIR=str(T / "ngircd"), HUB_UNIT_DIR=str(T / "units"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import firewall as fw, security  # noqa: E402
 fails = 0
@@ -108,6 +108,21 @@ check("hub only: the apps' ports closed, said, the switch back to hub and apps",
       and security.load_record()["firewall"]["level"] == "hub" and f["detail"].startswith("Hub only") and f["actions"][0]["choice"] == "firewall-apps", f)
 print(security.fix("firewall-apps", None))
 check("  and back", "8090" in (ETC / "firewall.nft").read_text() and security.load_record()["firewall"]["level"] == "apps")
+# IRC: no switch while it isn't installed; added after the floor, closed until the floor is written again.
+check("no IRC on the box: no IRC switch, 6667 not opened", "firewall-irc-on" not in [x["choice"] for x in finding()["actions"]]
+      and "6667" not in (ETC / "firewall.nft").read_text())
+(T / "ngircd").mkdir(); (T / "ngircd" / "irate-box.conf").write_text("[Global]\n")
+f = finding()
+check("  IRC added later: said closed, its rules unchanged, the switch opens it", "6667" not in (ETC / "firewall.nft").read_text()
+      and "IRC chat closed" in f["detail"] and "firewall-irc-on" in [x["choice"] for x in f["actions"]], f)
+print(security.fix("firewall-irc-on", None))
+f = finding()
+check("  opened: 6667 in the ruleset, said open, the switch now closes it", "6667" in (ETC / "firewall.nft").read_text()
+      and "IRC chat open" in f["detail"] and "firewall-irc-off" in [x["choice"] for x in f["actions"]], f)
+print(security.fix("firewall-irc-off", None))
+check("  closed by choice: out of the ruleset and the record, said so", "6667" not in (ETC / "firewall.nft").read_text()
+      and "irc" not in security.load_record()["firewall"]["services"] and "closed to guests, by your choice" in finding()["detail"])
+print(security.fix("firewall-irc-on", None))
 (T / "loaded").unlink()
 check("on but not loaded: a problem", finding()["status"] == "problem")
 print(security.fix("firewall-on", None))
@@ -129,6 +144,10 @@ u = fw.unit_text("/opt/irate-box")
 check("the unit loads the file only when it is there, deletes the table on stop, runs before the network",
       f"if [ -f {fw.RULES} ]; then nft -f {fw.RULES}; fi" in u and "nft delete table inet irate_box" in u
       and "Before=network-pre.target" in u and "RemainAfterExit=yes" in u)
+lf = security.listener_findings([{"proto": "tcp", "port": 6667, "addr": "0.0.0.0", "unit": "ngircd.service", "pid": 1,
+                                  "process": "ngircd", "name": "IRC server (ngIRCd)"}], {})[0]
+check("the Security page: IRC's port a warning, saying anyone on the network can join, unencrypted", lf["status"] == "warn"
+      and "no accounts and nothing encrypted" in lf["detail"], lf)
 inst = (REPO / "install.sh").read_text()
 check("install.sh writes it from the module; uninstall.sh takes it away", "firewall.unit_text" in inst and "irate-box-firewall.service" in (REPO / "uninstall.sh").read_text())
 shutil.rmtree(T, ignore_errors=True)
