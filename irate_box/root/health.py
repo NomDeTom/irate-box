@@ -74,6 +74,15 @@ def ours(unit):
     return bool(OUR_UNIT.match(unit or "")) or services.by_unit(unit) is not None
 
 
+def watched_units():
+    """{unit: package title} for the packages the box watches on their makers' channels (pkgwatch.py)."""
+    try:
+        from irate_box.root import pkgwatch
+        return {d["unit"]: d.get("title") or d["package"] for d in pkgwatch.definitions().values() if d.get("unit")}
+    except (OSError, ValueError, KeyError, ImportError):
+        return {}
+
+
 def run(*cmd, timeout=60, **kw):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
@@ -261,7 +270,17 @@ def check_units():
     failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]
     # Each failed unit that isn't irate-box's (the image's, or the owner's own), with its options, from the least
     # done: see why; accept it (often harmless on these images); start it again, asked first, as it isn't ours.
-    for u in [u for u in failed if not ours(u)][:12]:
+    # A package the box watches (Updates → Packages from their makers): known, so said as itself.
+    watched = watched_units()
+    for u in [u for u in failed if u in watched]:
+        out.append(_f(f"watched-failed:{u}", f"{watched[u]}: its service failed", "warn",
+                      f"{u} stopped with an error. The box watches this package's updates; whether it runs is the "
+                      "package's own business, and a build can fail on a board without the hardware it expects.",
+                      f"See why: journalctl -u {u} -n 50. Then start it again, try another build on Updates → Packages "
+                      "from their makers (Roll back, or another channel), or accept it if the board doesn't use it.",
+                      [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? The doctor clears its failed mark "
+                            "and starts it.")]))
+    for u in [u for u in failed if not ours(u) and u not in watched][:12]:
         out.append(_f(f"other-failed:{u}", f"{u} failed (not irate-box's)", "warn",
                       "A service of the image's or of your own stopped with an error. The hub doesn't use it.",
                       f"See why: journalctl -u {u} -n 50. Often harmless on these images: accept it, or start it again.",
