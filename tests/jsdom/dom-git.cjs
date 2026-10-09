@@ -80,7 +80,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   const button = (root, label) => root && [...root.querySelectorAll('button')].find((b) => t(b) === label);
   const chip = (label) => [...d.querySelectorAll('#git-chips-kind .chip, #git-chips-area .chip')].find((b) => t(b).replace(/ \d+$/, '') === label);
 
-  check('a New card first, then a card per repository', d.querySelector('#git-grid > :first-child').classList.contains('git-new') && cards().length === 5, cards().length);
+  check('a card per repository, then the New card last', d.querySelector('#git-grid > :last-child').classList.contains('git-new') && cards().length === 5, cards().length);
   check('a submodule mirror has no card of its own', !card('meshtastic-firmware--protobufs'));
   check('chips with counts: All 5 · Mine 4 · Mirrors 1 · Builds 1', ['All 5', 'Mine 4', 'Mirrors 1', 'Builds 1'].every((l) => chip(l.split(' ')[0]) && t(chip(l.split(' ')[0])) === l),
     [...d.querySelectorAll('#git-chips-kind .chip')].map(t).join(', '));
