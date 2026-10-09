@@ -188,8 +188,8 @@ setTimeout(() => {
     && d.querySelector('#factory-open').getAttribute('href') === '/admin/factory.html' && !d.getElementById('factory-form') && !d.getElementById('factory-runs'));
   check('All apps starts with the tiles in order', [...d.querySelectorAll('#page-tile-order > .admin-pane')].map((x) => x.id).join(' ') === 'tile-order apps addons');
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
-  check('clock findings in the Clock pane', t('#clock-findings li').length === 2 && t('#clock-findings li')[0].includes('Clock'), t('#clock-findings li'));
-  check('no clock findings in the services doctor', !t('#health-findings li').some((x) => x.startsWith('🔴 Clock') || /Clock module|^.{0,3}Clock —/.test(x)), t('#health-findings li'));
+  check('clock findings in the Clock pane, in the doctors\' one shape', t('#clock-findings .finding').length === 2 && t('#clock-findings .finding .ftitle')[0].includes('Clock'), t('#clock-findings .finding'));
+  check('no clock findings in the services doctor', !t('#health-findings .finding .ftitle, #health-fine .finding .ftitle').some((x) => /Clock/.test(x)), t('#health-findings .finding .ftitle'));
   check('the clock\'s badge counts its problem', d.querySelector('a[href="#clock"]').dataset.badge === '1');
   check('the box doctor is titled so', t('#health-title')[0] === 'Box doctor');
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));

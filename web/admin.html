@@ -187,7 +187,7 @@
           <button class="action-btn" type="button" id="clock-scan">Look again</button>
         </div>
         <p class="setting-desc action-note" id="clock-note" role="status" hidden></p>
-        <ul class="admin-checks" id="clock-findings"></ul>
+        <div class="findings" id="clock-findings"></div>
       </section>
 
       <section class="admin-pane" id="appearance" aria-labelledby="appearance-title">
@@ -826,7 +826,14 @@
           <progress class="admin-bar" id="health-bar" max="1" value="0"></progress>
           <p class="setting-desc" id="health-step"></p>
         </div>
-        <ul class="admin-checks" id="health-findings"></ul>
+        <div class="sec-counts" id="health-summary" role="group" aria-label="Show"></div>
+        <input type="search" class="sec-search" id="health-search" placeholder="Search the findings…" aria-label="Search the findings">
+        <div class="findings" id="health-findings"></div>
+        <p class="setting-desc" id="health-empty" hidden></p>
+        <details class="sec-fold" id="health-fine-fold">
+          <summary>Fine <span id="health-fine-count"></span>: what the doctor looked at and found as it should be</summary>
+          <div class="findings compact" id="health-fine"></div>
+        </details>
         <h3>Staying on the network: how far the watchdog went</h3>
         <p class="setting-desc">Each outage of the box's link and the steps the uplink watchdog took, over time. Many outages
           ending at the first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace

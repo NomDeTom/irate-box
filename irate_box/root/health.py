@@ -301,7 +301,7 @@ def check_kiwix():
         (bad if why else good).append((b, why))
     for b, why in bad:
         out.append(_f(f"zim:{b.name}", f"Book {b.name}", "problem", f"{b.stat().st_size >> 20} MB, {why}.",
-                      f"Download or copy it again (Library → Books keeps sources current), or set it aside: "
+                      f"Download or copy it again (Books keeps its sources current), or set it aside: "
                       f"mv {b} {QUARANTINE}/ — then rebuild the library.",
                       [_act(f"kiwix-quarantine:{b.name}", "Set it aside",
                             f"Move {b.name} to {QUARANTINE}/ and rebuild the library without it?")]))
@@ -331,13 +331,13 @@ def check_kiwix():
             if p.get("UnitFileState") != "enabled" and p.get("ActiveState") in ("inactive", "failed"):
                 out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "warn",
                               "Stopped until there is a readable book (the installer or this page stopped it, so it does not loop).",
-                              "Add a book (Library → Books, a USB stick, or install.sh --zim), then rebuild the library: "
+                              "Add a book (Books, a USB stick, or install.sh --zim), then rebuild the library: "
                               "that starts it again.", [_act("kiwix-rebuild", "Rebuild the library")]))
             else:
                 out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "problem",
                               "There is no readable book, so kiwix-serve cannot start: systemd keeps trying and then gives up "
                               f"({p.get('Result') or p.get('ActiveState')}).",
-                              "Add a book (Library → Books, a USB stick, or install.sh --zim), then rebuild the library. "
+                              "Add a book (Books, a USB stick, or install.sh --zim), then rebuild the library. "
                               "Until then, stop Kiwix so it does not loop: systemctl disable --now kiwix.",
                               [_act("kiwix-off", "Stop Kiwix until there are books")]))
         elif p.get("ActiveState") != "active" and p.get("Result") in ("success", "", None):
@@ -508,7 +508,7 @@ def check_space():
         free = shutil.disk_usage(path).free >> 20
         if free < need:
             out.append(_f(f"space:{path}", label, "problem", f"{free} MB free in {path}.",
-                          "Free some: old books (Library → Books), saved work, build runs (Git → Builds), "
+                          "Free some: old books (Books), saved work, build runs (Git → Builds), "
                           "journalctl --vacuum-size=16M."))
     return out
 
