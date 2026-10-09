@@ -190,6 +190,50 @@ for k in range(3):  # three rounds of flapping, each repaired, within the relaps
         acts += w.tick(tt, {"link": True, "gateway": True, "drops": [tt - 1], "can": ALL})
 check("flapping, strict: repaired as an episode, climbing (restart, then radio) and staying at the top", acts == ["restart", "radio", "radio"], acts)
 
+# 7d. A wedged driver (stage 4): the evidence, from the Lyra's own journal lines, and what is done with it.
+J = (Path(REPO) / "tests/fixtures/aic8800-wedge-2026-10-09/journal.txt").read_text().splitlines()
+minute5 = [l for l in J if l.startswith("Oct 09 04:05")]
+ev = U.wedge_evidence("wlan0", "networkmanager", "networkmanager", minute5, [], 0)
+check("wedged: scans failing as busy, from the journal (04:05, 32 of them)", ev == "scans keep failing as busy (32 in 2 minutes)", ev)
+after = [l for l in J if l.startswith("Oct 09 04:10")]
+ev = U.wedge_evidence("wlan0", "none", "networkmanager", after, [], 0)
+check("  after NM's restart: the backend gone though wlan0 is there, and no supplicant for it",
+      ev == "networkmanager no longer runs wlan0, though it is still there; the supplicant cannot be started for wlan0", ev)
+check("  ap0's own lines are not wlan0's", U.wedge_evidence("ap0", "networkmanager", "networkmanager", minute5, [], 0) is None)
+cwev = [{"at": 900, "iface": "wlan0", "kind": "failed", "text": "57 driver errors in a minute: cmd queue crashed"}]
+check("  crash watch's radio failure, while not recovered", "crash watch saw the radio fail" in U.wedge_evidence("wlan0", "networkmanager", None, [], cwev, 1000)
+      and U.wedge_evidence("wlan0", "networkmanager", None, [], cwev + [{"at": 950, "iface": "wlan0", "kind": "recovered"}], 1000) is None)
+check("  a quiet journal and a backend that never was: nothing", U.wedge_evidence("wlan0", "none", None, ["wlan0: CTRL-EVENT-CONNECTED"], [], 0) is None)
+check("  not WiFi: never", U.wedge_evidence("eth0", "none", "networkmanager", after, cwev, 1000, wifi=False) is None)
+
+def wedged_night(e, on_wedge, guests=0):
+    w = U.Watch(U.effective({"eagerness": e, "forgiveness": "normal", "overrides": {}, "on_wedge": on_wedge}))
+    acts = []
+    for t in range(0, 3600, 30):
+        obs = {"link": False, "drops": [], "can": ALL if t < 600 else {"radio", "reboot"}, "guests": guests,
+               "wedged": "scans keep failing as busy (32 in 2 minutes)" if t >= 300 else None}
+        acts += [(t, x) for x in w.tick(t, obs)]
+    return acts, w
+a, w = wedged_night("persistent", "radio")
+check("on_wedge radio, the level reaching it: straight to the radio reset when the evidence comes (not restart at 6 min, radio at 16)",
+      a == [(60, "reconnect"), (240, "reconnect"), (300, "radio")] and any("can't mend a wedged driver" in e["text"] for e in w.events), a)
+a, w = wedged_night("persistent", "ladder")
+check("on_wedge ladder (the default): the ladder as set, the evidence said once",
+      (360, "restart") in a and (960, "radio") in a and sum(e["kind"] == "wedged" for e in w.events) == 1, a)
+a, w = wedged_night("standard", "radio")
+st = w.stall(3600)
+check("on_wedge radio, the level stopping short of it: stalled, needing a radio reset, with the evidence",
+      [x for _, x in a] == ["reconnect"] and st and st["needs"] == "radio" and "looks wedged: scans keep failing" in st["text"], (a, st))
+a, w = wedged_night("persistent", "radio", guests=1)
+check("on_wedge radio, guests on the hotspot: held, said once, not reset", "radio" not in [x for _, x in a]
+      and sum(e["kind"] == "held" for e in w.events) == 1, [e["text"] for e in w.events if e["kind"] == "held"])
+check("validate: on_wedge ladder by default, radio accepted, nothing else",
+      U.validate({})["on_wedge"] == "ladder" and U.validate({"on_wedge": "radio"})["on_wedge"] == "radio")
+try:
+    U.validate({"on_wedge": "reboot"}); check("validate refuses on_wedge reboot", False)
+except ValueError:
+    check("validate refuses on_wedge reboot", True)
+
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"overrides": {"check": 5}}, {"overrides": {"rm": 1}}, {"iface": "a;b"},
             {"overrides": {"steps": {"nuke": 1}}}, {"overrides": {"flap_action": "x"}}]:

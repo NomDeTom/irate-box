@@ -852,10 +852,13 @@ def check_crashwatch(now=None):
             for lv in cw.PREEMPT if lv != level]
     detail = (f"Watching: {radios}. Pre-emption: {PREEMPT_WORDS[level]}" + {
         "off": " (a failing radio isn't looked for).", "warn": " (a failing radio is noted and said here, nothing more).",
-        "radio": " (a failing radio is reset at once: its USB device unbound and bound again).",
+        "radio": " (a failing radio is reset at once: its USB device, then its driver, and the hotspot started again).",
         "reboot": " (a failing radio is reset, and the box restarted if it isn't back within 3 minutes)."}[level])
     if day:
         detail += " In the last day: " + "; ".join(f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}" for e in day[-4:])
+    kept = [i for i in st.get("incidents", []) if i.get("at", 0) > now - 7 * 86400]
+    if kept:
+        detail += f" Kept as it happened: {len(kept)} this week, the last in {cw.CRASHES}/{kept[-1]['dir']}/ (snapshots.log, kernel.log)."
     out.append(_f("crash-radio", "The WiFi radio", "warn" if day else "ok", detail,
                   "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver.", acts))
     wd = st.get("watchdog_device")
