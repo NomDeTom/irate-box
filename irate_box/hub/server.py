@@ -1811,6 +1811,7 @@ def health_snapshot():
     except OSError:
         log = []
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
+            "ladder": load(uplink.LADDER) or [],
             "helper": helper_state(), "pending": _pending_actions("health-"), "results": control_results(5),
             "progress": update_progress()}
 

@@ -827,6 +827,11 @@
           <p class="setting-desc" id="health-step"></p>
         </div>
         <ul class="admin-checks" id="health-findings"></ul>
+        <h3>Staying on the network: how far the watchdog went</h3>
+        <p class="setting-desc">Each outage of the box's link and the steps the uplink watchdog took, over time. Many outages
+          ending at the first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace
+          could go further (Network → Staying on the network).</p>
+        <div id="health-ladder"></div>
         <h3>The last install</h3>
         <p class="setting-desc" id="health-install">No record yet.</p>
         <details class="admin-output" id="health-output">
@@ -1298,6 +1303,7 @@
 
   <script src="/krab-loop.js"></script>
   <script src="/heatmap.js"></script>
+  <script src="/ladder-chart.js"></script>
   <script src="/emoji.js"></script>
   <script src="/admin-widgets.js"></script>
   <script src="/admin-layout.js"></script>
