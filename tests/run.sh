@@ -70,6 +70,7 @@ run sim_image_step.py
 run sim_offline_step.py
 run sim_firewall.py
 run sim_secdoctor_joint.py
+run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_share.py
 run sim_guest_net.py

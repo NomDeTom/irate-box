@@ -2012,7 +2012,9 @@ def joint(steps, freshness=None):
             c[f["status"]] = c.get(f["status"], 0) + 1
             if f.get("accepted"):
                 continue
-            a = f.get("about") or secdoctor_xref.about(src, f["id"])
+            # Looked up again for a finding kept from before the table knew it (the Security page's
+            # ids are the page's own, without "page-").
+            a = f.get("about") or secdoctor_xref.about(src, f["id"].removeprefix("page-") if src == "security-page" else f["id"])
             if not a:
                 if f["status"] == "ok":
                     continue
@@ -2025,13 +2027,16 @@ def joint(steps, freshness=None):
             else:
                 label = f["title"]
             it = items.setdefault(key, {"key": key, "about": a, "title": label, "sources": [], "status": "ok", "titles": [], "lines": [],
-                                        "detail": "", "fix": "", "cmd": "", "do": None, "area": st.get("title", ""), "tiers": []})
+                                        "detail": "", "fix": "", "cmd": "", "do": None, "area": st.get("title", ""), "tiers": [],
+                                        "checks": []})
             if src not in it["sources"]:
                 it["sources"].append(src)
             it["titles"].append(f"{src}: {f['title']}")
             it["lines"].append({"source": src, "id": f["id"], "title": f["title"], "status": f["status"], "detail": f["detail"], "fix": f["fix"]})
             if f["status"] != "ok":
                 it["tiers"].append(f.get("tier") or "")
+                # The deep audit's checks one by one, each with its own fix (deepaudit.cis_findings).
+                it["checks"] += [dict(c, source=src) for c in f.get("checks") or []]
                 it["cmd"] = it["cmd"] or f.get("cmd", "")
                 it["do"] = it["do"] or secdoctor_xref.do_for(src, f["id"])
             if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
@@ -2066,7 +2071,8 @@ def joint(steps, freshness=None):
                                             "sources": sorted({s for s, _ in c["needs"]}), "status": "problem",
                                             "titles": [f"{s}: {present[(s, i)]['title']}" for s, i in c["needs"]], "lines": lines,
                                             "fix": c["fix"], "detail": c["detail"], "do": None, "area": "Together", "tier": None,
-                                            "page": [i.removeprefix("page-") for _, i in c["needs"]], "alone": False, "could_see": []}
+                                            "page": [i.removeprefix("page-") for _, i in c["needs"]], "alone": False, "could_see": [],
+                                            "checks": []}
     tier_rank = {None: 0, "suggest": 1, "not-here": 2}
     merged = sorted((i for i in items.values() if i["status"] != "ok"),
                     key=lambda i: (tier_rank[i["tier"]], -rank[i["status"]], i["area"], i["title"]))

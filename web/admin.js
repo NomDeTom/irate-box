@@ -1240,7 +1240,7 @@ function copyBox(cmd) {
   });
   return el('span', { className: 'fdo-cmd' }, el('code', { textContent: cmd }), b);
 }
-// r: {id, state, title, detail, how, controls[], meta, said[], accept: {key, title, on} | null, note}
+// r: {id, state, title, detail, how, controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
 function findingRow(r) {
   const state = r.state || 'warn';
   return el('article', { className: `finding finding-${state}`, id: r.id || '' },
@@ -1254,6 +1254,13 @@ function findingRow(r) {
       r.how ? el('p', { className: 'fhow' }, el('span', { className: 'fdo-label', textContent: state === 'ok' || state === 'fixed' ? 'Undo: ' : 'What to do: ' }), r.how) : null,
       (r.controls || []).length ? el('div', { className: 'fdo-controls' }, ...r.controls) : null) : null,
     r.note || null,
+    // The deep audit's checks one by one (deepaudit.cis_findings): what each wants, what it found, its own fix.
+    (r.checks || []).length ? el('details', { className: 'fsaid fchecks' }, el('summary', { textContent: `Each check, with its fix (${r.checks.length})` }),
+      el('ul', {}, ...r.checks.map((c) => el('li', {},
+        el('strong', { textContent: (c.check || '').replace(/^[\d.]+_/, '').replace(/_/g, ' ') }), c.what ? ` — ${c.what}` : '',
+        (c.msgs || []).length ? el('span', { className: 'setting-desc', textContent: ` Found: ${c.msgs.join('; ')}.` }) : null,
+        c.say ? el('span', { className: 'setting-desc', textContent: ` ${c.say}` }) : null,
+        c.cmd ? el('div', {}, copyBox(c.cmd)) : null)))) : null,
     (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `What each source said (${r.said.length})` }),
       el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
         el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
@@ -1422,7 +1429,7 @@ function jointRow(i, data, busy, accepted) {
   const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].detail !== i.detail) ? i.lines : [];
   return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
     title: i.title, detail: i.detail, how: fixed ? 'Put right here since the doctor last ran; it drops off at its next run.' : how,
-    controls, meta, said, note: (i.page || []).map(noteUnder).find(Boolean) || null,
+    controls, meta, said, checks: i.checks, note: (i.page || []).map(noteUnder).find(Boolean) || null,
     accept: { key: i.key, title: i.title, on: !!accepted } });
 }
 
