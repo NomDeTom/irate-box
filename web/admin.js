@@ -670,6 +670,7 @@ loadBooks();
 
 // --- shared helpers for the sections below --------------------------------------
 const size = (bytes) => {
+  if (Number.isNaN(bytes)) return 'size unknown';
   if (!bytes) return '0 MB';
   const gb = bytes / 2 ** 30;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.max(0.1, bytes / 2 ** 20).toFixed(1)} MB`;
@@ -2828,9 +2829,11 @@ function drawBackupGo() {
   bku.keysLabel.hidden = image;
   bku.imageBox.hidden = !image;
   if (!bkPlan) return;
-  const q = `level=${bkLevel}${bku.keys.checked ? '&syncthing=1' : ''}`;
-  bku.go.href = `/admin/backup?${q}`;
-  bku.go.textContent = `Download the backup (about ${size(bkPlan.levels[bkLevel] + (bku.keys.checked ? bkPlan.syncthing : 0))})`;
+  if (!image) {   // the image has no download, so no link and no size of its own here
+    const q = `level=${bkLevel}${bku.keys.checked ? '&syncthing=1' : ''}`;
+    bku.go.href = `/admin/backup?${q}`;
+    bku.go.textContent = `Download the backup (about ${size(bkPlan.levels[bkLevel] + (bku.keys.checked ? bkPlan.syncthing : 0))})`;
+  }
   bku.stick.replaceChildren(...(usbSticks.length ? usbSticks.map((d) => el('option', { value: d.name, textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }))
     : [el('option', { value: '', textContent: 'No stick found yet' })]));
   bku.imageGo.disabled = !usbSticks.length || !!bkWaiting;
