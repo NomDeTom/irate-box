@@ -144,6 +144,35 @@ check("  a week on, with a newer one out since: the one that has been out 7 days
 pkgwatch.set_settings("meshtasticd", "daily", "watch", 7)
 check("back to watch: apt's hold taken away", not (T / "prefs.d/irate-box-meshtasticd.pref").exists())
 
+# --- flag: said, nothing downloaded; Fetch keeps it; Install fetches first ---
+said = pkgwatch.set_settings("meshtasticd", "daily", "flag", 7)
+check("flag chosen: said as downloading nothing", "nothing downloaded" in said, said)
+V1 = CHANNEL["daily"] = "2.8.1.950~obseeeeeee~unstable"
+ran.clear()
+msg = pkgwatch.check("meshtasticd", now=T0 + 10 * 86400, log=lambda *a: None)
+pub = json.loads(pkgwatch.PUBLIC.read_text())["meshtasticd"]
+check("  a check: the new build flagged, not downloaded, not cached", "flagged" in msg and V1 not in pkgwatch.seen("meshtasticd")
+      and not any("download" in c for c in ran) and V1 in pkgwatch.flagged("meshtasticd"), (msg, ran))
+check("  published as newer and flagged, when first seen kept", pub["newer"] == V1 and pub["flagged"]["version"] == V1
+      and pub["flagged"]["first_seen"] == T0 + 10 * 86400, pub)
+pkgwatch.check("meshtasticd", now=T0 + 11 * 86400, log=lambda *a: None)
+check("  a second check: still flagged from when it was first seen", pkgwatch.flagged("meshtasticd")[V1]["first_seen"] == T0 + 10 * 86400)
+msg = hub_control.ACTIONS["pkg-fetch"]({"package": "meshtasticd"})
+got = pkgwatch.seen("meshtasticd")
+check("Fetch: downloaded and kept, its first sighting carried over, no longer flagged, nothing installed",
+      V1 in got and got[V1]["first_seen"] == T0 + 10 * 86400 and not pkgwatch.flagged("meshtasticd")
+      and state["installed"] == "2.8.1.800~obsaaaaaaa~unstable" and "new on daily" in msg, (msg, got.get(V1)))
+V2 = CHANNEL["daily"] = "2.8.1.960~obsfffffff~unstable"
+pkgwatch.check("meshtasticd", now=T0 + 12 * 86400, log=lambda *a: None)
+check("  the next build flagged; Install of it fetches first, then installs",
+      V2 in pkgwatch.flagged("meshtasticd") and pkgwatch.install("meshtasticd", V2, log=lambda *a: None).startswith(f"meshtasticd {V2} installed")
+      and state["installed"] == V2 and V2 in pkgwatch.seen("meshtasticd") and not pkgwatch.flagged("meshtasticd"))
+pkgwatch.set_settings("meshtasticd", "daily", "auto", 7)
+V3 = CHANNEL["daily"] = "2.8.1.970~obsggggggg~unstable"
+pkgwatch.check("meshtasticd", now=T0 + 13 * 86400, log=lambda *a: None, fetch=True)
+check("  Fetch with Install chosen: kept, still not installed (only a check installs)", V3 in pkgwatch.seen("meshtasticd") and state["installed"] == V2)
+pkgwatch.set_settings("meshtasticd", "daily", "watch", 7)
+
 # --- refused ---
 for bad in (("meshtasticd", "nightly", "auto", 7), ("meshtasticd", "beta", "always", 7), ("meshtasticd", "beta", "aged", 2), ("nosuch", "beta", "watch", 7)):
     try:
