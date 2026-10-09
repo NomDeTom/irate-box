@@ -61,11 +61,17 @@ CONTROL = STATE / "control"
 UNIT_DIR = Path("/etc/systemd/system")
 # Units this page may restart or enable: irate-box's own and the add-ons'.
 OUR_UNIT = re.compile(r"^(irate-box(-[a-z]+)*\.(service|socket|path|timer)|nginx\.service|caddy\.service|kiwix\.service|"
-                      r"silverbullet\.service|syncthing@" + re.escape(HUB_USER) + r"\.service|mosquitto\.service|ngircd\.service|"
+                      r"silverbullet\.service|syncthing@" + re.escape(HUB_USER) + r"\.service|mosquitto\.service|"
                       r"excalidraw-room\.service|ttyd\.service)$")
 ADDON_UNITS = {"--with-notes": "silverbullet.service", "--with-sync": f"syncthing@{HUB_USER}.service",
-               "--with-mqtt": "mosquitto.service", "--with-irc": "ngircd.service", "--with-collab": "excalidraw-room.service",
-               "--with-term": "ttyd.service"}
+               "--with-mqtt": "mosquitto.service", "--with-collab": "excalidraw-room.service",
+               "--with-term": "ttyd.service"}   # and each declared service's (services.py)
+
+
+def ours(unit):
+    """irate-box's own unit, an add-on's, or a declared service's: the doctor may restart or enable it."""
+    from irate_box.hub import services
+    return bool(OUR_UNIT.match(unit or "")) or services.by_unit(unit) is not None
 
 
 def run(*cmd, timeout=60, **kw):
@@ -168,7 +174,9 @@ def expected_units():
         units.append(("irate-box-uplink.service", "the uplink watchdog"))
     if (UNIT_DIR / "irate-box-crashwatch.service").exists() or "irate-box-crashwatch" in _installed_text():
         units.append(("irate-box-crashwatch.service", "crash watch"))
-    for opt, unit in ADDON_UNITS.items():
+    from irate_box.hub import services
+    declared = {s["option"]: s["unit"] for s in services.declared() if s["option"] and s["unit"]}
+    for opt, unit in {**declared, **ADDON_UNITS}.items():
         if opt in opts:
             units.append((unit, f"the {opt.removeprefix('--with-')} add-on"))
     if (UNIT_DIR / "kiwix.service").exists() or _books():
@@ -251,10 +259,14 @@ def check_units():
                       [RERUN]))
     # Anything else that failed on the box: not ours to restart, but worth knowing when troubleshooting.
     failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]
-    others = [u for u in failed if not OUR_UNIT.match(u)]
-    if others:
-        out.append(_f("other-failed", "Other failed units on the box", "warn", ", ".join(others[:8]),
-                      "Not irate-box's; journalctl -u NAME says why. Often harmless on these images."))
+    # Each failed unit that isn't irate-box's (the image's, or the owner's own), with its options, from the least
+    # done: see why; accept it (often harmless on these images); start it again, asked first, as it isn't ours.
+    for u in [u for u in failed if not ours(u)][:12]:
+        out.append(_f(f"other-failed:{u}", f"{u} failed (not irate-box's)", "warn",
+                      "A service of the image's or of your own stopped with an error. The hub doesn't use it.",
+                      f"See why: journalctl -u {u} -n 50. Often harmless on these images: accept it, or start it again.",
+                      [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? It isn't irate-box's: the doctor "
+                            "only clears its failed mark and starts it.")]))
     return out
 
 
@@ -929,6 +941,7 @@ def scan():
 # --- repairs ---------------------------------------------------------------------------------------
 
 CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
+                       r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
                        r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$|^crashwatch-preempt:(off|warn|radio|reboot)$"
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
 
@@ -940,8 +953,15 @@ def fix(choice):
     if kind.startswith("crashwatch-"):
         from irate_box.root import crashwatch
         return crashwatch.set_option(kind[len("crashwatch-"):], arg)
+    if kind == "other-restart":
+        failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]
+        if arg not in failed or ours(arg) or not re.match(r"^[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]*\.(service|socket|timer|mount)$", arg):
+            raise ValueError(f"{arg} is not a failed unit of the box's to start again")
+        run("systemctl", "reset-failed", arg)
+        r = run("systemctl", "start", arg)
+        return f"{arg}: started" if r.returncode == 0 else f"{arg}: {r.stderr.strip()[-200:] or 'failed again'}"
     if kind in ("unit-restart", "unit-enable"):
-        if not OUR_UNIT.match(arg):
+        if not ours(arg):
             raise ValueError(f"{arg} is not irate-box's to restart")
         if kind == "unit-enable":
             r = run("systemctl", "enable", arg)

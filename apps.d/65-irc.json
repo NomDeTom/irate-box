@@ -15,6 +15,18 @@
     "control": true,
     "note": "chat in any IRC app, on :6667"
   },
+  "network": {
+    "listen": [
+      {
+        "proto": "tcp",
+        "port": 6667
+      }
+    ],
+    "present": "/etc/ngircd/irate-box.conf",
+    "hotspot": "open",
+    "risk": "warn",
+    "says": "The IRC chat: anyone on the network can join, with no accounts and nothing encrypted (limited to 5 connections an address)."
+  },
   "addon": {
     "option": "--with-irc",
     "title": "IRC server (ngIRCd)",

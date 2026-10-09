@@ -8,6 +8,7 @@ apps.d/ ships with the code (/opt/irate-box/apps.d, root-owned), so the root hel
 on it. Every part but "id" and "order" is optional:
 
   {
+    "api": 1,                         the manifest format it was written for (API below; 1 if left out)
     "id": "draw",                     letters, digits, '-'; unique
     "order": 10,                      tiles and /status are sorted by this
     "tile":    {"icon", "name", "desc", "href", "new_tab": bool, "element_id": str,
@@ -29,6 +30,13 @@ on it. Every part but "id" and "order" is optional:
                                       how /status and /admin see it: a loopback port to probe,
                                       or the environment variable naming the folder the
                                       web server serves it from; "control" offers start/stop/boot on /admin
+    "network": {"listen": [{"proto": "tcp" | "udp", "port"}], "present", "hotspot": "open" | "closed",
+                "risk": "ok" | "warn", "says"}
+                                      a service that answers the network itself, not through the
+                                      web server: its ports; the file that shows it is installed;
+                                      whether a new floor opens it to hotspot guests; how its
+                                      listener is rated on the Security page, and what it exposes,
+                                      in one plain sentence (services.py; SERVICES.md)
     "install": {"dir", "needs", "title", "restart"},
                                       where its bundle goes, under /usr/share/hub ("apps/draw");
                                       the file (or glob) that proves a bundle is whole; a unit
@@ -97,7 +105,11 @@ REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
 
 
-LOCAL_KEYS = {"id", "order", "tile", "menu", "entries", "source", "needs", "addon", "capabilities"}
+LOCAL_KEYS = {"api", "id", "order", "tile", "menu", "entries", "source", "needs", "addon", "capabilities"}
+# The manifest format this irate-box reads: a manifest says which it was written for ("api", 1 if left out).
+# API goes up only when a change would mislead an older reader; API_OLDEST up only when an old form is dropped.
+# Outside the range, a local add-on is listed with the reason and not loaded; a built-in one stops the hub.
+API, API_OLDEST = 1, 1
 # A path inside an add-on: no scheme, no host, no "..", no leading "/".
 LOCAL_PATH_RE = re.compile(r"^(?![./])(?!.*\.\.)[A-Za-z0-9._~/-]*(\?[A-Za-z0-9._~=&%+-]*)?$")
 # What an add-on's pages may connect to: {box} is the hub's own host.
@@ -111,12 +123,25 @@ class ManifestError(ValueError):
     pass
 
 
+def _api_problem(m):
+    """Why this irate-box can't read the manifest's format, or None."""
+    api = m.get("api", 1) if isinstance(m, dict) else 1
+    if type(api) is not int:
+        return "api: an integer, the manifest format it was written for"
+    if api > API:
+        return f"written for manifest format {api}; this irate-box reads up to {API}: update the hub"
+    if api < API_OLDEST:
+        return f"written for manifest format {api}, which this irate-box no longer reads (from {API_OLDEST}): update the add-on"
+    return None
+
+
 def _check(m, where):
     def need(cond, what):
         if not cond:
             raise ManifestError(f"{where}: {what}")
 
     need(isinstance(m, dict), "not a JSON object")
+    need(_api_problem(m) is None, _api_problem(m) or "")
     need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: lower-case letters, digits, '-'")
     need(type(m.get("order")) is int, "order: an integer")
     tile = m.get("tile")
@@ -160,6 +185,20 @@ def _check(m, where):
         need("port" not in status or type(status["port"]) is int, "status.port: an integer")
         need("unit" not in status or UNIT_RE.match(str(status["unit"])), "status.unit: a .service name")
         need(not status.get("control") or "unit" in status, "status.control needs a unit")
+    net = m.get("network")
+    if net is not None:
+        need(isinstance(net, dict), "network: an object")
+        listen = net.get("listen")
+        need(isinstance(listen, list) and 0 < len(listen) <= 16, "network.listen: 1 to 16 entries")
+        for l in listen:
+            need(isinstance(l, dict) and l.get("proto") in ("tcp", "udp"), "network.listen: each with proto tcp or udp")
+            need(type(l.get("port")) is int and 0 < l["port"] < 65536, "network.listen: each with a port, 1 to 65535")
+        need(isinstance(net.get("present"), str) and net["present"].startswith("/") and ".." not in net["present"],
+             "network.present: an absolute path, the file that shows it is installed")
+        need(net.get("hotspot", "closed") in ("open", "closed"), "network.hotspot: open or closed")
+        need(net.get("risk", "warn") in ("ok", "warn"), "network.risk: ok or warn")
+        need(isinstance(net.get("says"), str) and 0 < len(net["says"]) <= 300, "network.says: one sentence, up to 300 characters")
+        need(status is not None and "unit" in status, "network needs status.unit (the service that listens)")
     inst = m.get("install")
     if inst is not None:
         need(isinstance(inst.get("dir"), str) and DIR_RE.match(inst["dir"]), "install.dir: e.g. apps/draw")
@@ -229,6 +268,7 @@ def check_local(m, where="local manifest", builtin_ids=()):
             raise ManifestError(f"{where}: {what}")
 
     need(isinstance(m, dict), "not a JSON object")
+    need(_api_problem(m) is None, _api_problem(m) or "")
     extra = set(m) - LOCAL_KEYS
     need(not extra, f"not allowed in a local add-on: {', '.join(sorted(extra))}")
     need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: lower-case letters, digits, '-'")
