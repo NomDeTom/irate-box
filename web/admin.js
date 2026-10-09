@@ -2153,6 +2153,7 @@ const hs = {
   fields: document.getElementById('hs-fields'),
   second: document.getElementById('hs-second'),
   secondLabel: document.getElementById('hs-second-label'),
+  secondBox: document.getElementById('hs-second-box'),
   password: document.getElementById('hs-password'),
   passwordLabel: document.getElementById('hs-password-label'),
   generate: document.getElementById('hs-generate'),
@@ -2174,7 +2175,8 @@ function hsShowFields() {
   if (!hsData) return;
   const mode = hsChosen();
   const needsPw = mode === 'sae' || (mode === 'two' && hs.second.value === 'sae');
-  hs.second.hidden = hs.secondLabel.hidden = mode !== 'two';
+  // The whole group: the drop-down shows as chips, which are not the <select> and would stay.
+  hs.secondBox.hidden = mode !== 'two';
   hs.password.parentElement.hidden = hs.passwordLabel.hidden = !needsPw;
   hs.wpa2Label.hidden = !needsPw;
   hs.fields.hidden = mode !== 'two' && !needsPw;
