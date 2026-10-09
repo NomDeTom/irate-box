@@ -28,6 +28,7 @@ what the install added, unless another installed kit added it too.
 """
 import hashlib
 import json
+import lzma
 import os
 import re
 import shutil
@@ -305,8 +306,10 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
                 if not (dest.exists() and sha256(dest) == w["sha256"]):
                     os.replace(stage / "wheelhouse" / w["file"], dest)
                 os.chmod(dest, 0o644)
+        lists, _ = _vouching({p["file"]: p["sha256"] for p in pkgs})
         new = {"id": kit_id, "fetched": time.time(), "packages": pkgs, "wheels": wheels, "on_box": on_box, "left_out": left_out, "arch": arch(),
-               "bytes": sum(p["size"] for p in pkgs) + sum(w["size"] for w in wheels)}
+               "bytes": sum(p["size"] for p in pkgs) + sum(w["size"] for w in wheels),
+               "index_bytes": sum(l.stat().st_size for l in set(lists))}
         if cur and not same:
             _write(MANIFESTS / f"{kit_id}.previous.json", cur)
         _write(MANIFESTS / f"{kit_id}.json", new)
@@ -639,32 +642,60 @@ LIST_RE = re.compile(r"^(?P<release>.+_dists_[^_]+)_(?P<path>.+_Packages)$")
 
 def _packages_hashes(path):
     """{deb file name: sha256} from an apt Packages file."""
-    out, name, sha = {}, None, None
     with open(path, errors="replace") as fh:
-        for line in fh:
-            if line.startswith("Filename: "):
-                name = line[10:].strip().rsplit("/", 1)[-1]
-            elif line.startswith("SHA256: "):
-                sha = line[8:].strip()
-            elif not line.strip():
-                if name and sha:
-                    out[name] = sha
-                name = sha = None
+        return _hashes_in(fh)
+
+
+def _hashes_in(lines):
+    out, name, sha = {}, None, None
+    for line in lines:
+        if line.startswith("Filename: "):
+            name = line[10:].strip().rsplit("/", 1)[-1]
+        elif line.startswith("SHA256: "):
+            sha = line[8:].strip()
+        elif not line.strip():
+            if name and sha:
+                out[name] = sha
+            name = sha = None
     if name and sha:
         out[name] = sha
     return out
 
 
-def export_usb(kit_id, dest, report=None):
-    """The kit's current set onto a stick folder (`dest`, its irate-box/kits/), with the signed
-    indexes that vouch for it. Returns where it went."""
-    kit = _kit(kit_id)
-    man = manifest(kit_id)
-    if not man:
-        raise ValueError(f"{kit['title']} is not cached: refresh it while the box has internet first")
-    if verify(kit_id):
-        raise ValueError("the cache fails its check, so it was not copied: refresh it first")
-    want = {p["file"]: p["sha256"] for p in man["packages"]}
+INDEX_XZ_RATIO = 5          # Debian's Packages indexes shrink about this much in xz, for the size said beforehand
+INDEX_MAX = 512 << 20       # an index read back from a stick is refused past this, uncompressed
+
+
+def _stick_index(path):
+    """(sha256 of the index as its release lists it, {deb file: sha256}) for a Packages index on a stick, plain or
+    .xz: read as a stream, nothing unpacked to disk, refused past INDEX_MAX."""
+    h, n = hashlib.sha256(), 0
+
+    def lines(fh):
+        nonlocal n
+        rest = b""
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            n += len(chunk)
+            if n > INDEX_MAX:
+                raise ValueError(f"{path.name} unpacks to more than {INDEX_MAX >> 20} MB: refused")
+            h.update(chunk)
+            *whole, rest = (rest + chunk).split(b"\n")
+            for line in whole:
+                yield line.decode(errors="replace") + "\n"
+        if rest:
+            yield rest.decode(errors="replace")
+
+    try:
+        with (lzma.open if path.suffix == ".xz" else open)(path, "rb") as fh:
+            hashes = _hashes_in(lines(fh))
+    except (lzma.LZMAError, EOFError, OSError) as e:
+        raise ValueError(f"{path.name} could not be read: {e}") from None
+    return h.hexdigest(), hashes
+
+
+def _vouching(want):
+    """([index, its InRelease, ...], {file vouched for}): the signed indexes on this box that list the wanted
+    files' hashes. want: {file: sha256}."""
     lists, vouched = [], set()
     for pk in sorted(p for d in (APT_LISTS, DEBUG_LISTS) for p in d.glob("*_Packages")):
         m = LIST_RE.match(pk.name)
@@ -677,6 +708,20 @@ def export_usb(kit_id, dest, report=None):
         if hit:
             lists += [pk, pk.parent / f"{m.group('release')}_InRelease"]
             vouched |= hit
+    return lists, vouched
+
+
+def export_usb(kit_id, dest, report=None):
+    """The kit's current set onto a stick folder (`dest`, its irate-box/kits/), with the signed
+    indexes that vouch for it. Returns where it went."""
+    kit = _kit(kit_id)
+    man = manifest(kit_id)
+    if not man:
+        raise ValueError(f"{kit['title']} is not cached: refresh it while the box has internet first")
+    if verify(kit_id):
+        raise ValueError("the cache fails its check, so it was not copied: refresh it first")
+    want = {p["file"]: p["sha256"] for p in man["packages"]}
+    lists, vouched = _vouching(want)
     unvouched = sorted(set(want) - vouched)
     if unvouched:
         raise ValueError("these are in no signed index on this box, so another box could not check them: "
@@ -685,17 +730,25 @@ def export_usb(kit_id, dest, report=None):
     shutil.rmtree(folder, ignore_errors=True)
     (folder / "debs").mkdir(parents=True)
     (folder / "lists").mkdir()
-    files = [(POOL / f, folder / "debs" / f) for f in sorted(want)] + [(l, folder / "lists" / l.name) for l in sorted(set(lists))]
-    total = sum(src.stat().st_size for src, _ in files)
+    # The indexes go xz-compressed (a fifth of their size or less); the import checks what they decompress to
+    # against the hash their signed release lists, as for a plain one.
+    files = [(POOL / f, folder / "debs" / f) for f in sorted(want)] + \
+            [(l, folder / "lists" / (l.name + ".xz" if l.name.endswith("_Packages") else l.name)) for l in sorted(set(lists))]
+    total = sum(src.stat().st_size // (INDEX_XZ_RATIO if dst.suffix == ".xz" else 1) for src, dst in files)
     if shutil.disk_usage(folder).free < total:
         shutil.rmtree(folder, ignore_errors=True)
         raise ValueError(f"not enough room on the stick: {total >> 20} MB needed")
     done = 0
     for src, dst in files:
-        shutil.copyfile(src, dst, follow_symlinks=False)
-        done += src.stat().st_size
+        if dst.suffix == ".xz":
+            with open(src, "rb") as inp, lzma.open(dst, "wb", preset=3) as out:
+                shutil.copyfileobj(inp, out, 1 << 20)
+        else:
+            shutil.copyfile(src, dst, follow_symlinks=False)
+        done += dst.stat().st_size
         if report:
             report(done, total)
+    total = sum(dst.stat().st_size for _, dst in files)
     _write(folder / "manifest.json", dict(man, kit=kit_id, title=kit["title"], exported=time.time()))
     return f"{kit['title']}: {len(want)} packages and {len(set(lists)) // 2} signed indexes, {total >> 20} MB"
 
@@ -791,8 +844,8 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
     work = Path(tempfile.mkdtemp(prefix="kit-usb-"))
     try:
         vouch = set()
-        for pk in sorted((folder / "lists").glob("*_Packages")):
-            m = LIST_RE.match(pk.name)
+        for pk in sorted([*(folder / "lists").glob("*_Packages"), *(folder / "lists").glob("*_Packages.xz")]):
+            m = LIST_RE.match(pk.name.removesuffix(".xz"))
             rel = folder / "lists" / f"{m.group('release')}_InRelease" if m else None
             if not rel or not rel.is_file() or pk.is_symlink() or rel.is_symlink():
                 continue
@@ -800,9 +853,10 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
             _not_stale(text, rel.name)
             listed = _sha256_section(text)
             path = m.group("path").replace("_", "/")
-            if listed.get(path) != sha256(pk):
+            digest, hashes = _stick_index(pk)
+            if listed.get(path) != digest:
                 raise ValueError(f"{pk.name} is not the index its signed release lists")
-            vouch |= set(_packages_hashes(pk).values())
+            vouch |= set(hashes.values())
         pkgs = []
         for p in man["packages"]:
             name = str(p.get("file", ""))
@@ -858,6 +912,7 @@ def status():
     for kid, k in definitions().items():
         cur, prev = manifest(kid), manifest(kid, "previous")
         kits[kid] = {"cached": cur and {"fetched": cur["fetched"], "packages": len(cur["packages"]), "bytes": cur["bytes"],
+                                        "export_bytes": cur["bytes"] + cur.get("index_bytes", 0) // INDEX_XZ_RATIO,
                                         "wheels": len(cur.get("wheels", [])),
                                         "on_box": cur.get("on_box", []), "left_out": cur.get("left_out", []), "arch": cur.get("arch"), "versions": {p["name"]: p["version"] for p in cur["packages"]}},
                      "previous": prev and {"fetched": prev["fetched"], "bytes": prev["bytes"]}}

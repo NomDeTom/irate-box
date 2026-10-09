@@ -150,6 +150,19 @@ def card_size():
         return None
 
 
+def apps_size(apps_dir):
+    """The apps as a kit carries them: each app's folder, not the previous copies kept for rolling back
+    (.<app>.prev), which are as big again."""
+    apps = Path(apps_dir) if apps_dir else None
+    return sum(du(p) for p in apps.iterdir() if not p.name.startswith(".")) if apps and apps.is_dir() else 0
+
+
+def hub_program_size(apps_dir, room=Path("/usr/share/hub/room"), downloads=Path("/var/cache/irate-box/downloads"),
+                     code=Path("/opt/irate-box")):
+    """About what a kit's hub program weighs: the apps, the collaboration relay, the release files and the code."""
+    return apps_size(apps_dir) + sum(du(p) for p in (room, downloads, code) if p.is_dir())
+
+
 def plan(state, zim_dir, kits_status=None, mirrors=None, apps_dir=None, kit_titles=None):
     """Everything on offer, with sizes in bytes, for the Backup page."""
     state = Path(state)
@@ -157,15 +170,16 @@ def plan(state, zim_dir, kits_status=None, mirrors=None, apps_dir=None, kit_titl
     sums = walk(state, gm)
     books = sorted(({"name": p.stem, "size": p.stat().st_size} for p in Path(zim_dir).glob("*.zim") if p.is_file()),
                    key=lambda b: b["name"])
-    kits = [{"id": k, "title": (kit_titles or {}).get(k, k), "size": (v.get("cached") or {}).get("bytes") or 0}
+    kits = [{"id": k, "title": (kit_titles or {}).get(k, k),
+             "size": (v.get("cached") or {}).get("export_bytes") or (v.get("cached") or {}).get("bytes") or 0}
             for k, v in sorted(((kits_status or {}).get("kits") or {}).items()) if (v.get("cached") or {}).get("bytes")]
     repos = []
     for area in ("public", "private"):
         for p in sorted((state / "git" / area).glob("*.git")) if (state / "git" / area).is_dir() else []:
             rel = f"git/{area}/{p.name}"
             repos.append({"name": p.name[:-4], "area": area, "mirror": kind_of(rel, gm) == "refetched", "size": du(p)})
-    code = du(Path(apps_dir)) if apps_dir and Path(apps_dir).is_dir() else 0
+    code = hub_program_size(apps_dir)
     return {"levels": {"settings": sums["settings"], "data": sums["settings"] + sums["data"]},
             "syncthing": sums["syncthing"], "left_out": {"books": sums["books"], "firmware": sums["firmware"]},
             "image": image_estimate(card_size()), "books": books, "kits": kits, "repos": repos,
-            "hub": code + (64 << 20)}   # the code, the apps and the release files kept: a rough floor
+            "hub": code}

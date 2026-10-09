@@ -76,6 +76,15 @@ check("the plan: each level's size, books with theirs, a cached toolkit (not one
       and p["kits"] == [{"id": "build", "title": "Building", "size": 25 << 20}]
       and {(r["name"], r["mirror"]) for r in p["repos"]} == {("mine", False), ("firmware", True), ("firmware--protobufs", True), ("secret", False)}
       and p["left_out"] == {"books": 100000, "firmware": 100000} and "used" in p["image"], p)
+p = B.plan(S, S / "zim", {"kits": {"build": {"cached": {"bytes": 25 << 20, "export_bytes": 30 << 20}}}}, apps_dir=None)
+check("  a toolkit's offer is what its export weighs, the compressed indexes in", p["kits"][0]["size"] == 30 << 20, p["kits"])
+apps = T / "apps"
+for name, size in (("notes", 3000), (".notes.prev", 3000), ("draw", 2000)):
+    (apps / name).mkdir(parents=True); (apps / name / "index.js").write_bytes(b"x" * size)
+check("  the apps as a kit carries them: not the copies kept for rolling back", B.apps_size(apps) == 5000 and B.apps_size(None) == 0,
+      B.apps_size(apps))
+check("  the hub program: the apps and what exists of the relay, downloads and code, no padding",
+      B.hub_program_size(apps, T / "none", T / "none", T / "none") == 5000)
 srv = (REPO / "irate_box/hub/server.py").read_text()
 check("the hub: the level from the address, the plan at /admin/backup/plan, no list of its own left", "level=settings" in srv
       and '"/admin/backup/plan"' in srv and "BACKUP_SKIP" not in srv)
