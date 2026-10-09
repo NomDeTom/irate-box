@@ -663,29 +663,33 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
-// The services' uptime (step 35): a row per service, the last 72 hours by hour and 72 days by
-// day (githubstatus.com's format), from the hub's five-minute samples (svchistory.py); a dot
-// where it started (a reboot starts them all).
+// The services' uptime (step 35): in each service's own row, a thin strip of the last 72 hours by
+// hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
+// (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
+// and each service's week in words (Tom, 2026-10-09: put the heatmap with the service).
+function serviceStrips(s, u) {
+  const rec = u && s.unit && (u.units || {})[s.unit];
+  if (!rec) return el('span', { className: 'setting-desc', textContent: '—' });
+  const dayLabel = (back) => u.month_days[71 - back].label;
+  return el('div', { className: 'svc-strips' },
+    Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 hours by hour`, cols: u.hour_cols,
+      rows: [{ label: s.name, cells: rec.hours, where: (i) => `${s.name}, ${u.hour_full[i]}` }] }),
+    Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 days by day`, cols: rec.month,
+      rows: [{ label: s.name, cells: rec.month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` }] }));
+}
 function renderServiceUptime(services, u) {
   const body = document.getElementById('svc-uptime-body');
   const units = (u && u.units) || {};
   const mine = services.filter((s) => s.unit && units[s.unit]);
   if (!mine.length) {
-    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing recorded yet: the hub looks at every service every five minutes, '
+    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Uptime: nothing recorded yet. The hub looks at every service every five minutes, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return;
   }
   const said = (s) => { const sm = units[s.unit].summary;
     return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
-  const dayLabel = (back) => u.month_days[71 - back].label;
   body.replaceChildren(
     el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
-    el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
-    Heatmap.grid({ caption: 'Each service, the last 72 hours by hour', cols: u.hour_cols,
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].hours, where: (i) => `${s.name}, ${u.hour_full[i]}` })) }),
-    el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
-    Heatmap.grid({ caption: 'Each service, the last 72 days by day', cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : dayLabel(71 - i))),
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` })) }),
     Heatmap.legend(),
     el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
 }
@@ -707,11 +711,12 @@ function renderBox(data) {
         : op === 'enable' ? !s.enabled
           : op === 'disable' ? s.enabled : true));
     return el('tr', {},
-      el('td', {}, el('span', { className: 'setting-name', textContent: s.name }),
+      el('td', { className: 'svc-name' }, el('span', { className: 'setting-name', textContent: s.name }),
         el('span', { className: 'setting-desc', textContent: s.unit || s.note || s.path || '' }),
         s.why ? el('span', { className: 'setting-desc bad', textContent: s.why }) : null),
       el('td', {}, el('span', { className: `state state-${s.state}`, textContent: STATE_LABEL[s.state] || s.state })),
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
+      el('td', {}, serviceStrips(s, data.service_uptime)),
       el('td', {}, el('span', { className: 'library-buttons' },
         ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op)))))),
     );

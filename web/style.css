@@ -810,9 +810,16 @@ body[data-art] > header { z-index: 2; }
 .hm-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.75rem; color: var(--muted); }
 .hm-key { display: inline-flex; align-items: center; gap: 0.3rem; }
 .hm-key .hm-cell { width: 0.7rem; min-height: 0.7rem; }
-.svc-uptime summary { cursor: pointer; }
+/* The services' strips: one thin row of cells in the service's own table row, hours over days. */
 .svc-uptime { margin: 0.75rem 0; }
-.svc-uptime .hm-row { grid-template-columns: 9rem repeat(var(--hm-cols), minmax(0.45rem, 1fr)); }
+.hm-bare { margin: 0; }
+.hm-bare .hm-row { grid-template-columns: repeat(var(--hm-cols), minmax(0.2rem, 1fr)); gap: 1px; }
+.hm-bare .hm-cell { aspect-ratio: auto; height: 0.5rem; min-height: 0; border-radius: 1px; }
+.svc-strips { display: flex; flex-direction: column; gap: 3px; min-width: 14rem; }
+#service-table td { padding-top: 0.3rem; padding-bottom: 0.3rem; vertical-align: middle; }
+/* Name and what it is (the unit) on one line. */
+#service-table .svc-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.5rem; }
+#service-table .svc-name .setting-desc { display: inline; }
 .admin-pane > h2 {
   margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;
   text-transform: none; color: var(--text);

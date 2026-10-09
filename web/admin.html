@@ -49,12 +49,13 @@
           it takes a second or two to show here.
         </p>
         <table class="admin-table" id="service-table">
-          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th></th></tr></thead>
+          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th>Up, last 72 hours and 72 days</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
-        <!-- The services' uptime (step 35, svchistory.py): closed by default, its inside redrawn by admin.js. -->
-        <details class="svc-uptime" id="svc-uptime"><summary>Uptime, last 72 hours</summary><div id="svc-uptime-body"></div></details>
+        <!-- The services' uptime (step 35, svchistory.py): a strip per service in its own row (Tom, 2026-10-09);
+             the legend and the week in words below, redrawn by admin.js. -->
+        <div class="svc-uptime" id="svc-uptime"><div id="svc-uptime-body"></div></div>
         <div id="control-results"></div>
         <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps again</a></p>
       </section>
