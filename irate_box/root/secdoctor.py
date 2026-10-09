@@ -1869,6 +1869,13 @@ CIS_SECTION_RE = re.compile(r"^cis-(\d+\.\d+)$")
 def _dress_cis(f):
     """A CIS section's finding ("CIS 4.1: 22 checks not met") as what it is about, in plain words, and
     how it stands on a box like this (secdoctor_xref.CIS): a suggestion, or not for this board, and why."""
+    # A check split out of its section because another source asks the same (cis-5.2.10_disable_root_login):
+    # a suggestion as its section is, so beside a fine Security page line it is not a real item (the
+    # Lyra, 2026-10-09: root login, forwarding and the rest counted as "to look at").
+    one = re.match(r"^cis-(\d+\.\d+)[\d.]*_\w", f.get("id", ""))
+    if one and f.get("source") == "debian-cis" and f["status"] != "ok" and not f.get("tier"):
+        f["tier"] = (secdoctor_xref.cis(one.group(1)) or (None, "suggest"))[1]
+        return
     m = CIS_SECTION_RE.match(f.get("id", ""))
     known = m and secdoctor_xref.cis(m.group(1))
     if not known or f["status"] == "ok":
@@ -2037,7 +2044,11 @@ def joint(steps, freshness=None):
                 it["tiers"].append(f.get("tier") or "")
                 # The deep audit's checks one by one, each with its own fix (deepaudit.cis_findings).
                 it["checks"] += [dict(c, source=src) for c in f.get("checks") or []]
-                it["cmd"] = it["cmd"] or f.get("cmd", "")
+                # A finding with one check of its own: that check's command, or its words, are the item's.
+                own = f.get("checks") or []
+                it["cmd"] = it["cmd"] or f.get("cmd", "") or (own[0].get("cmd", "") if len(own) == 1 else "")
+                if not f["fix"] and len(own) == 1 and own[0].get("say"):
+                    f = dict(f, fix=own[0]["say"])
                 it["do"] = it["do"] or secdoctor_xref.do_for(src, f["id"])
             if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
                 if rank[f["status"]] > rank[it["status"]]:
