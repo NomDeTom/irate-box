@@ -123,13 +123,25 @@ def fake(cmd, timeout=0, check=True, env=None):
             installed.update(need)
             return R()
         if verb == "purge":
-            installed.difference_update(pkgs)
+            # As apt: a purge takes what depends on what it purges too; "name+" keeps a package; -s only says.
+            keep = {x[:-1] for x in pkgs if x.endswith("+")}
+            gone, more = {x for x in pkgs if not x.endswith("+")}, True
+            while more:
+                more = False
+                for q in installed - gone:
+                    if q in ARCHIVE and set(ARCHIVE[q][1]) & gone:
+                        gone.add(q); more = True
+            if "-s" in cmd:
+                return R(rc=100) if gone & keep else R("\n".join(f"Purg {g} [1]" for g in sorted(gone)))
+            installed.difference_update(gone)
             return R()
     raise AssertionError(f"unexpected command {cmd}")
 kits.run = fake
 
 defs = kits.definitions()
 check("the shipped kits load: debug, build, capture, security", {"debug", "build", "capture", "security"} <= set(defs), sorted(defs))
+check("  and the off-grid ones (stance review, resources): recovery, network, gpstime (kept, gpsd running), radio",
+      {"recovery", "network", "gpstime", "radio"} <= set(defs) and defs["gpstime"].get("remove_after_hours") is None and defs["gpstime"].get("services") == ["gpsd.socket"], sorted(defs))
 check("a kit naming an option, or a broken file, is left out", "bad" not in defs and "notjson" not in defs)
 check("every shipped kit has a consent text and a summary", all(defs[k].get("consent") and defs[k].get("summary") for k in ("debug", "build", "capture", "security")))
 check("the debug kit has valgrind and perf in it (Tom)", {"valgrind", "linux-perf"} <= set(defs["debug"]["packages"]))
@@ -419,7 +431,7 @@ d = json.loads((T / "defs" / "small.json").read_text()); d["needs_64bit"] = ["gd
 ARCHIVE["gdb"] = ("16.3-9", ARCHIVE["gdb"][1])
 calls.clear()
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("fetched on a 32-bit board: left out, and said", "left out on this armhf board (64-bit only): gdb" in line
+check("fetched on a 32-bit board: left out, and said", "left out on this armhf board: gdb (64-bit only)" in line
       and "gdb" not in {p["name"] for p in kits.manifest("small")["packages"]} and kits.manifest("small")["left_out"] == ["gdb"]
       and not any("gdb" in c for c in calls if c[0] == "apt-get"), line)
 check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_out"] == ["gdb"])
@@ -432,13 +444,54 @@ kits.fetch("small", budget_mb=10, log=lambda *a: None)
 (T / "defs" / "odd.json").write_text(json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]}))
 check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
 (T / "defs" / "odd.json").unlink()
+# The System kit (os-image-plan §2): each package only where it fits, the alternatives cached, never installed.
+sysk = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "system.json").read_text())
+check("the System kit loads, kept installed", kitdefs._ok(sysk, "system") and sysk["remove_after_hours"] is None)
+board = T / "board"
+real_paths = kitdefs.SYSFS, kitdefs.ROOTFS
+kitdefs.SYSFS, kitdefs.ROOTFS = board / "sys", board / "root"
+(board / "root/usr/lib/sysctl.d").mkdir(parents=True)
+(board / "root/usr/lib/sysctl.d/50-default.conf").write_text("")
+(board / "sys/bus/pci/devices").mkdir(parents=True); (board / "sys/block/mmcblk0").mkdir(parents=True)
+keep, left = kitdefs.packages_for(sysk, "armhf")
+check("  on a Lyra (armhf, no PCI, an SD card, no AppArmor, the kernel defaults in place): only what fits",
+      set(left) == {"linux-sysctl-defaults", "pciutils", "smartmontools", "apparmor", "apparmor-utils", "dmidecode"} and "exfatprogs" in keep, left)
+check("  each left out with its reason", kitdefs.why_left_out(sysk, left) == "apparmor, apparmor-utils (no AppArmor in the kernel); dmidecode (64-bit only); "
+      "linux-sysctl-defaults (already in place); pciutils (no PCI); smartmontools (no disk that reports SMART)", kitdefs.why_left_out(sysk, left))
+check("  the alternatives fetched, never installed", not {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} & set(keep)
+      and {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} <= set(kitdefs.packages_for(sysk, "armhf", fetching=True)[0]))
+(board / "root/usr/lib/sysctl.d/50-default.conf").unlink()
+(board / "sys/bus/pci/devices/0000:00:00.0").mkdir(); (board / "sys/block/nvme0n1").mkdir(); (board / "sys/kernel/security/apparmor").mkdir(parents=True)
+keep, left = kitdefs.packages_for(sysk, "amd64")
+check("  on a PC (amd64, PCI, NVMe, AppArmor, no kernel defaults): all of it", not left and set(sysk["packages"]) == set(keep), left)
+kitdefs.SYSFS, kitdefs.ROOTFS = real_paths
+for bad in ({"alternatives": ["gdb"]}, {"only_where": {"gdb": "moon"}}, {"only_where": {"notinkit": "pci"}}):
+    check(f"  a kit with {bad} is refused", not kitdefs._ok({"id": "x", "packages": ["gdb"], **bad}, "x"))
+# Kits overlap (Recovery and System both list smartmontools): removing one keeps what another lists,
+# and what that needs, however the two were installed.
+for kid, hours in (("lend", 24), ("keepr", None)):
+    (T / "defs" / f"{kid}.json").write_text(json.dumps({"id": kid, "title": kid, "summary": "s", "consent": "c", "packages": ["platformio"],
+                                                         "remove_after_hours": hours}))
+    kits.fetch(kid, budget_mb=10, log=lambda *a: None)
+kits.install("lend", hours=24, log=lambda *a: None)
+kits.install("keepr", hours=None, log=lambda *a: None)
+check("two kits listing platformio: the first adds it and python3-click, the second nothing", set(kits.installed_state()["lend"]["added"]) == {"platformio", "python3-click"}
+      and not kits.installed_state()["keepr"]["added"], kits.installed_state())
+line = kits.remove("lend", log=lambda *a: None)
+check("  removing the first keeps platformio (the other lists it) and python3-click (platformio needs it)", {"platformio", "python3-click"} <= installed and "kept 2" in line, (line, installed))
+kits.install("lend", hours=24, log=lambda *a: None)
+kits.remove("keepr", log=lambda *a: None)
+kits.remove("lend", log=lambda *a: None)
+check("  with neither left, both go", not {"platformio", "python3-click"} & installed, installed)
+for kid in ("lend", "keepr"):
+    (T / "defs" / f"{kid}.json").unlink()
 # Step 38: the owner's own kits, and extra tools in a shipped kit.
-line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "radio", "title": "Radio tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
+line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "scanner", "title": "Scanner tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
                                                   "remove_after_hours": 4}})
-own = kits.definitions().get("radio")
+own = kits.definitions().get("scanner")
 check("an own kit: kept by root, marked as the owner's, repeats dropped, its consent names the packages", own and own["owner"] and own["packages"] == ["gdb", "tcpdump"]
-      and "gdb, tcpdump" in own["consent"] and "added" in line and (kits.ROOT / "owner" / "radio.json").stat().st_mode & 0o777 == 0o644, (line, own))
-check("  and the hub sees it too (kitdefs, readable)", "radio" in toolkits.definitions() and toolkits.settings()["kits"]["radio"]["remove_after"] == 4)
+      and "gdb, tcpdump" in own["consent"] and "added" in line and (kits.ROOT / "owner" / "scanner.json").stat().st_mode & 0o777 == 0o644, (line, own))
+check("  and the hub sees it too (kitdefs, readable)", "scanner" in toolkits.definitions() and toolkits.settings()["kits"]["scanner"]["remove_after"] == 4)
 for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "one of the box's own kits"), ({"id": "r2", "title": "x", "packages": ["no-such-pkg"]}, "not in this box's package lists"),
                  ({"id": "r2", "title": "x", "packages": ["--force"]}, "Debian package names"), ({"id": "r2", "title": "", "packages": ["gdb"]}, "title"),
                  ({"id": "../x", "title": "x", "packages": ["gdb"]}, "id"), ({"id": "extras", "title": "x", "packages": ["gdb"]}, "id"),
@@ -447,17 +500,17 @@ for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "one of th
         kits.define(bad); check(f"define refuses: {why}", False)
     except ValueError as exc:
         check(f"define refuses: {why}", why in str(exc), str(exc))
-kits.fetch("radio", budget_mb=10, log=lambda *a: None)
-check("an own kit is fetched like the others", kits.manifest("radio") and {p["name"] for p in kits.manifest("radio")["packages"]} >= {"gdb"})
-kits.install("radio", hours=1, log=lambda *a: None)
+kits.fetch("scanner", budget_mb=10, log=lambda *a: None)
+check("an own kit is fetched like the others", kits.manifest("scanner") and {p["name"] for p in kits.manifest("scanner")["packages"]} >= {"gdb"})
+kits.install("scanner", hours=1, log=lambda *a: None)
 try:
-    kits.undefine("radio"); check("an installed own kit can't be deleted", False)
+    kits.undefine("scanner"); check("an installed own kit can't be deleted", False)
 except ValueError:
     check("an installed own kit can't be deleted", True)
-kits.remove("radio", log=lambda *a: None)
-print_ = hub_control.ACTIONS["kit-undefine"]({"kit": "radio"})
-check("deleted: its definition and its cache", "radio" not in kits.definitions() and not kits.manifest("radio")
-      and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("radio") is None, print_)
+kits.remove("scanner", log=lambda *a: None)
+print_ = hub_control.ACTIONS["kit-undefine"]({"kit": "scanner"})
+check("deleted: its definition and its cache", "scanner" not in kits.definitions() and not kits.manifest("scanner")
+      and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("scanner") is None, print_)
 try:
     kits.undefine("debug"); check("a shipped kit can't be deleted", False)
 except ValueError:
@@ -467,7 +520,7 @@ cap = kits.definitions()["capture"]
 check("extra tools in a shipped kit: added to its packages, one it has already left out", cap["packages"] == ["tcpdump", "tshark", "gdb"] and cap["extra"] == ["gdb"], (line, cap))
 hub_control.ACTIONS["kit-extra"]({"kit": "capture", "packages": []})
 check("  and cleared", kits.definitions()["capture"]["packages"] == ["tcpdump", "tshark"] and "extra" not in kits.definitions()["capture"])
-for bad in ({"kit": "radio", "packages": ["gdb"]}, {"kit": "capture", "packages": ["no-such-pkg"]}, {"kit": "capture", "packages": "gdb"}):
+for bad in ({"kit": "scanner", "packages": ["gdb"]}, {"kit": "capture", "packages": ["no-such-pkg"]}, {"kit": "capture", "packages": "gdb"}):
     try:
         hub_control.ACTIONS["kit-extra"](bad); check(f"extra refused: {bad}", False)
     except ValueError:

@@ -40,23 +40,28 @@ const T = w.TOUR;
 const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hidden);
 (async () => {
   await wait(400);
-  const links = [...d.querySelectorAll('#setup-steps [data-step="decisions"] .tour-list a[data-tour]')];
-  check('the setup step lists every decision as a link', links.length === T.DECISIONS.length && links.length === 11, links.length);
+  // One list, every step in the same form (Tom, 2026-10-08): the setup's own steps, the decisions, a backup last.
+  const rows = [...d.querySelectorAll('#setup-steps > li[data-step]')];
+  check('one list: every step and decision, the backup last', rows.length === T.STEPS.length && T.STEPS.length === 17 && rows[rows.length - 1].dataset.step === 'backup', rows.length);
+  check('  each the same form: its name, its pill, a line, Go there', rows.every((r) => r.querySelector('strong') && r.querySelector('[class$="-pill"]') && r.querySelector('.step-text') && r.querySelector('a[data-tour]')));
   const py = fs.readFileSync(require('path').resolve(__dirname, '../../irate_box/hub/server.py'), 'utf8');
   const ids = (py.match(/SETUP_DECISIONS = \(([\s\S]*?)\)/) || [])[1] || '';
-  check('the hub knows the same decisions', T.DECISIONS.every((x) => ids.includes(`"${x.id}"`)) && (ids.match(/"/g) || []).length / 2 === T.DECISIONS.length, ids);
-  for (const dec of T.DECISIONS) {
+  check('the hub knows the same steps', T.STEPS.every((x) => ids.includes(`"${x.id}"`)) && (ids.match(/"/g) || []).length / 2 === T.STEPS.length, ids);
+  for (const dec of T.STEPS) {
     const sec = d.getElementById(dec.section) || d.getElementById(dec.fallback);
     check(`"${dec.label}": its section is on a page`, sec && !!sec.closest('.admin-page'), dec.section);
     if (typeof dec.target === 'string') check('  and its part is there', !!d.querySelector(dec.target), dec.target);
   }
   // The tour, from the start.
-  click([...d.querySelectorAll('#setup-steps .tour-start')][0]);
+  click(d.querySelector('#welcome .tour-start'));
   await wait();
   let p = shownPage();
-  check('starting: the first decision\'s page opens (Security)', p && p.contains(d.getElementById('security')), p && p.getAttribute('aria-label'));
-  check('  its part highlighted', !!d.querySelector('.tour-target') && d.querySelector('.tour-target').contains(d.getElementById('visitor_counts')));
-  check('  the bar, with the clipboard krab', !!d.querySelector('.tour-bar img.tour-guide[src$="krab-controller-clipboard.webp"]') && /1 of 11/.test(d.querySelector('.tour-bar').textContent));
+  check('starting: the first step not done opens, the bar counting all of them', !!d.querySelector('.tour-bar') && / of 17: /.test(d.querySelector('.tour-bar').textContent), d.querySelector('.tour-bar') && d.querySelector('.tour-bar').textContent.slice(0, 80));
+  check('  the bar, with the clipboard krab', !!d.querySelector('.tour-bar img.tour-guide[src$="krab-controller-clipboard.webp"]'));
+  T.go(T.STEPS.findIndex((x) => x.id === 'visitors'));
+  await wait(400);
+  p = shownPage();
+  check('a decision\'s page opens (Security), its part highlighted', p && p.contains(d.getElementById('security')) && !!d.querySelector('.tour-target') && d.querySelector('.tour-target').contains(d.getElementById('visitor_counts')));
   click([...d.querySelectorAll('.tour-bar button')].find((b) => /Keep this/.test(b.textContent)));
   await wait();
   check('Keep and next: decided on the hub', posted.some((b) => (b.setup_decided || []).includes('visitors')), JSON.stringify(posted));
@@ -66,21 +71,37 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   d.querySelector('.tour-target').dispatchEvent(new w.Event('change', { bubbles: true }));
   await wait();
   check('changing the setting in place decides it', posted.some((b) => (b.setup_decided || []).includes('names')));
-  T.go(T.DECISIONS.findIndex((x) => x.id === 'cockpit'));
+  T.go(T.STEPS.findIndex((x) => x.id === 'cockpit'));
   await wait(400);
   check('a finding drawn later is found: Cockpit highlighted', /Cockpit/.test((d.querySelector('.tour-target') || {}).textContent || ''));
-  // Past the last decision, the tour ends back at the setup steps.
-  T.go(T.DECISIONS.length - 1);
+  // The last step is the backup; past it, the tour ends back at the setup steps.
+  T.go(T.STEPS.length - 1);
   await wait(400);
+  check('the last step: Take a backup, its download highlighted', /Take a backup/.test(d.querySelector('.tour-bar').textContent) && !!d.querySelector('.tour-target[download]'));
   click([...d.querySelectorAll('.tour-bar button')].find((b) => /Skip/.test(b.textContent)));
   await wait();
   p = shownPage();
-  check('past the last decision: the bar is gone and the setup steps show', !d.querySelector('.tour-bar') && p && p.contains(d.getElementById('welcome')) && w.location.hash === '#welcome', p && p.getAttribute('aria-label'));
-  T.go(T.DECISIONS.findIndex((x) => x.id === 'cockpit'));
+  check('past the last step: the bar is gone and the setup steps show', !d.querySelector('.tour-bar') && p && p.contains(d.getElementById('welcome')) && w.location.hash === '#welcome', p && p.getAttribute('aria-label'));
+  T.go(T.STEPS.findIndex((x) => x.id === 'cockpit'));
   await wait(400);
   click([...d.querySelectorAll('.tour-bar button')].find((b) => /Leave/.test(b.textContent)));
   check('Leave the tour: no bar, no highlight', !d.querySelector('.tour-bar') && !d.querySelector('.tour-target'));
-  check('the setup step says how many are left', /9 of 11 still to decide/.test(d.querySelector('#setup-steps [data-step="decisions"] span').textContent), d.querySelector('#setup-steps [data-step="decisions"] span').textContent);
+  check('the setup page says how many are left, of all 17', / of 17 still to do or decide/.test(d.getElementById('setup-left').textContent), d.getElementById('setup-left').textContent);
+  click(d.querySelector('#backup a[download]'));
+  await wait();
+  check('downloading a backup is the backup step done', posted.some((b) => (b.setup_decided || []).includes('backup')) && /done/.test(d.querySelector('#setup-steps [data-step="backup"]').textContent));
+  check('the global override of "seen but not opened": offered, Per app by default',
+    /When seen but not opened, for every app/.test(d.getElementById('sign-in-offer-box').textContent) && /Per app/.test(d.getElementById('sign-in-offer-box').textContent));
+  // Muted: still listed, greyed, but not counted as left to do (Tom, 2026-10-09).
+  const before = T.left();
+  const row = d.querySelector('#setup-steps [data-step="cockpit"]');
+  [...row.querySelectorAll('button.mute-step')][0].click();
+  await wait();
+  check('mute: asked of the hub, still listed with a muted word, and no longer counted', posted.some((b) => (b.setup_muted || []).includes('cockpit'))
+    && /muted/.test(d.querySelector('#setup-steps [data-step="cockpit"]').textContent) && T.left() === before - 1, `${before} -> ${T.left()}`);
+  [...d.querySelector('#setup-steps [data-step="cockpit"]').querySelectorAll('button.mute-step')][0].click();
+  await wait();
+  check('  Unmute counts it again', T.left() === before);
   check('no page errors', !errors.length, errors.join('; '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

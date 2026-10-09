@@ -185,6 +185,7 @@ async function libAct(key, body, confirmText) {
       ? { key, busy: true, text: 'The librarian is already running. The buttons come back when it is free; try again then.' }
       : { key, busy: false, text: e.message };
     loadLibrary();
+
   }
 }
 
@@ -199,7 +200,7 @@ function sourceRow(src, st, busy) {
   const archive = st.archive || [];
   const key = `book:${src.name}`;
   const button = (label, body, confirmText, opts = {}) => el('button', {
-    type: 'button', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
+    type: 'button', className: 'action-btn', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
     onclick: () => libAct(key, body, confirmText),
   });
   // Check finds a newer version; Fetch downloads and checks it beside the book in use;
@@ -268,18 +269,18 @@ function renderApps(snap, busy) {
       withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
-        el('button', { type: 'button', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
-        el('button', { type: 'button', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
           title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
-        el('button', { type: 'button', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
-        inst && inst.has_previous ? el('button', { type: 'button', textContent: 'Roll back', disabled: busy,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
+        inst && inst.has_previous ? el('button', { type: 'button', className: 'action-btn', textContent: 'Roll back', disabled: busy,
           onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null,
-        a.pin ? el('button', { type: 'button', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
+        a.pin ? el('button', { type: 'button', className: 'action-btn', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
           onclick: post(`app:${name}`, { action: 'add', source: { ...src, follow: follow === 'pinned' ? 'latest' : 'pinned' } },
             follow === 'pinned' ? `Install the newest ${a.title} from now on, rather than the pinned commit the hub's maintainers checked? Nobody will have looked at it first.` : null) }) : null)
         : el('span', { className: 'library-buttons' },
-          el('button', { type: 'button', textContent: 'Keep current', disabled: busy,
+          el('button', { type: 'button', className: 'action-btn', textContent: 'Keep current', disabled: busy,
             title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
@@ -324,7 +325,15 @@ function renderLibrary(snap) {
   if (libWasBusy && !busy) loadBooks();
   libWasBusy = busy;
   libBusy = busy;
-  document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
+  document.getElementById('library-adapt').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted: GitHub was asked what it allows.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.getElementById('library-adapt-off').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
   document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
@@ -341,6 +350,13 @@ function renderLibrary(snap) {
   lib.tokenState.textContent = (snap.token_set ? 'A token is set.' : 'No token is set.')
     + (gh.limit && gh.reset * 1000 > Date.now() ? ` GitHub: ${gh.remaining} of ${gh.limit} requests left this hour (until ${resets})`
       + (gh.remaining < 10 ? '; scheduled checks wait for the next hour.' : '.') : '');
+
+  const pc = snap.pace || {};
+  const paceEl = document.getElementById('library-pace-state');
+  if (paceEl) paceEl.textContent = pc.budget
+    ? `Adapted: a budget of ${pc.budget} requests an hour (GitHub allows ${pc.limit}), ${pc.left} left this hour${pc.backed_off ? '; it has backed off after refusals' : ''}.`
+    : 'Not adapted: the librarian asks as it likes, and stops only when GitHub says it is nearly out.';
+  document.getElementById('library-adapt-off').hidden = !pc.budget;
 
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.
@@ -549,6 +565,74 @@ cat.more.addEventListener('click', () => searchCatalogue(true));
 
 showTypeFields();
 loadLibrary();
+
+// --- packages from their makers (root/pkgwatch.py: meshtasticd on its channel) ------------------------
+// Tom, 2026-10-08: "automatically update against beta, alpha or nightly, or alpha/nightly after a certain
+// period of time"; on mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
+const PKG_MODES = [['watch', 'Watch'], ['auto', 'Automatic'], ['aged', 'After a while']];
+let pkgWaiting = null;
+async function loadPackages() {
+  const box = document.getElementById('pkg-list');
+  if (!box) return;
+  let d;
+  try { d = await getJSON('/admin/packages'); } catch (_) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Could not read the watched packages.' })); return; }
+  if (pkgWaiting) {
+    const done = (d.results || []).find((r) => r.id === pkgWaiting.id);
+    if (done) { say(done.ok ? done.message : done.error || done.message, done.ok, noteEl('pkg-note')); pkgWaiting = null; }
+    else if (Date.now() - pkgWaiting.at < 600000) setTimeout(loadPackages, 3000);
+  }
+  const pkgs = Object.entries(d.packages || {});
+  box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => pkgCard(id, p))
+    : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
+      el('p', { className: 'library-buttons' }, actionButton('Check', () => pkgAct({ action: 'check', package: '' })))]));
+}
+async function pkgAct(body, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try {
+    pkgWaiting = { id: (await postJSON('/admin/packages', body)).id, at: Date.now() };
+    say('Asked: the root helper is on it.', true, noteEl('pkg-note'));
+    setTimeout(loadPackages, 2000);
+  } catch (err) { say(err.message, false, noteEl('pkg-note')); }
+}
+function pkgCard(id, p) {
+  const s = p.settings, label = (ch) => (p.labels || {})[ch] || ch;
+  const builds = p.builds || [];
+  const onChannel = builds.filter((b) => b.channel === s.channel);
+  const newest = onChannel.length ? onChannel[onChannel.length - 1] : null;
+  const ageOf = (b) => ago(Date.now() / 1000 - b.first_seen);
+  const lines = [
+    p.installed ? `Installed: ${p.installed}.` : 'Not installed.',
+    p.image ? (p.image.channels.length === 1 ? `${p.image.name} lists ${label(p.image.channels[0])}.`
+      : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
+        : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
+    newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}.` : 'Not checked yet.',
+    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (watching only: press Update to install it).' : ', at the next check.')
+      : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
+        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Update installs it anyway.' : null,
+    s.mode === 'aged' ? `apt upgrade leaves it alone while it waits (${p.held ? 'held' : 'not held yet'}).` : null,
+    p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
+  ];
+  const kept = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
+    el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
+  const settings = AW.settings([
+    { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
+    { key: 'mode', label: 'Updates', kind: 'choice', value: s.mode, options: PKG_MODES,
+      note: 'Watch says what is newer; Automatic installs each new build; After a while installs a build once it has been out the days below' },
+    { key: 'days', label: 'After', kind: 'choice', value: s.days, options: (p.days || [1, 3, 7, 14, 30]).map((n) => [n, `${n} day${n === 1 ? '' : 's'}`]) },
+  ], { save: (v) => pkgAct({ action: 'settings', package: id, channel: v.channel, mode: v.mode, days: v.days },
+    v.mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(v.channel)} by itself${v.mode === 'aged' ? ` once they have been out ${v.days} day${v.days === 1 ? '' : 's'}` : ''}? `
+      + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null) });
+  return el('div', { className: 'setting library-source' }, el('span', {},
+    el('span', { className: 'setting-name', textContent: p.title }),
+    ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
+    kept, settings,
+    el('span', { className: 'library-buttons' },
+      actionButton('Check', () => pkgAct({ action: 'check', package: id })),
+      newest && newest.version !== p.installed ? actionButton(`Update to ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
+        `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
+      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));
+}
+loadPackages();
 loadBooks();
 
 // --- shared helpers for the sections below --------------------------------------
@@ -594,29 +678,33 @@ function tile(label, value) {
     el('span', { className: 'setting-name', textContent: value }));
 }
 
-// The services' uptime (step 35): a row per service, the last 72 hours by hour and 72 days by
-// day (githubstatus.com's format), from the hub's five-minute samples (svchistory.py); a dot
-// where it started (a reboot starts them all).
+// The services' uptime (step 35): in each service's own row, a thin strip of the last 72 hours by
+// hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
+// (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
+// and each service's week in words (Tom, 2026-10-09: put the heatmap with the service).
+function serviceStrips(s, u) {
+  const rec = u && s.unit && (u.units || {})[s.unit];
+  if (!rec) return el('span', { className: 'setting-desc', textContent: '—' });
+  const dayLabel = (back) => u.month_days[71 - back].label;
+  return el('div', { className: 'svc-strips' },
+    Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 hours by hour`, cols: u.hour_cols,
+      rows: [{ label: s.name, cells: rec.hours, where: (i) => `${s.name}, ${u.hour_full[i]}` }] }),
+    Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 days by day`, cols: rec.month,
+      rows: [{ label: s.name, cells: rec.month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` }] }));
+}
 function renderServiceUptime(services, u) {
   const body = document.getElementById('svc-uptime-body');
   const units = (u && u.units) || {};
   const mine = services.filter((s) => s.unit && units[s.unit]);
   if (!mine.length) {
-    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Nothing recorded yet: the hub looks at every service every five minutes, '
+    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Uptime: nothing recorded yet. The hub looks at every service every five minutes, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return;
   }
   const said = (s) => { const sm = units[s.unit].summary;
     return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
-  const dayLabel = (back) => u.month_days[71 - back].label;
   body.replaceChildren(
     el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
-    el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
-    Heatmap.grid({ caption: 'Each service, the last 72 hours by hour', cols: u.hour_cols,
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].hours, where: (i) => `${s.name}, ${u.hour_full[i]}` })) }),
-    el('p', { className: 'setting-desc', textContent: 'The last 72 days, by day:' }),
-    Heatmap.grid({ caption: 'Each service, the last 72 days by day', cols: Array.from({ length: 72 }, (_, i) => (i % 12 ? '' : dayLabel(71 - i))),
-      rows: mine.map((s) => ({ label: s.name, cells: units[s.unit].month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` })) }),
     Heatmap.legend(),
     el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
 }
@@ -638,11 +726,12 @@ function renderBox(data) {
         : op === 'enable' ? !s.enabled
           : op === 'disable' ? s.enabled : true));
     return el('tr', {},
-      el('td', {}, el('span', { className: 'setting-name', textContent: s.name }),
+      el('td', { className: 'svc-name' }, el('span', { className: 'setting-name', textContent: s.name }),
         el('span', { className: 'setting-desc', textContent: s.unit || s.note || s.path || '' }),
         s.why ? el('span', { className: 'setting-desc bad', textContent: s.why }) : null),
       el('td', {}, el('span', { className: `state state-${s.state}`, textContent: STATE_LABEL[s.state] || s.state })),
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
+      el('td', {}, serviceStrips(s, data.service_uptime)),
       el('td', {}, el('span', { className: 'library-buttons' },
         ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op)))))),
     );
@@ -691,9 +780,13 @@ function renderModeration(data) {
     try { renderModeration(await postJSON('/admin/moderation', body)); } catch (err) { say(err.message, false, noteEl('mod-note')); }
   };
   renderReports(data, del);
+  // What was reported, marked where the content is listed too, so it is all in one place (Tom, 2026-10-09).
+  const reportedN = new Map((data.queue || []).map((r) => [r.key, r.count]));
+  const flag = (key) => (reportedN.has(key)
+    ? AW.pill(`reported ×${reportedN.get(key)}`, 'bad') : null);
   document.getElementById('mod-messages').replaceChildren(...(data.messages.length ? data.messages.map((m) =>
     el('div', { className: 'admin-item' },
-      el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)}`),
+      el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)} `, flag(`shoutbox:${m.created}:${String(m.name).slice(0, 40)}`)),
       el('span', { className: 'admin-text', textContent: m.text }),
       actionButton('Delete', del({ action: 'delete_message', created: m.created, name: m.name }), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No messages.' })]));
@@ -710,9 +803,10 @@ function renderModeration(data) {
   document.getElementById('mod-threads').replaceChildren(...(threads.length ? threads.map((t) =>
     el('details', { className: 'admin-item' },
       el('summary', {}, el('strong', { textContent: t.title }),
-        ` · ${t.posts.length} post${t.posts.length === 1 ? '' : 's'} · active ${ago(now - t.active)}`),
+        ` · ${t.posts.length} post${t.posts.length === 1 ? '' : 's'} · active ${ago(now - t.active)} `,
+        t.posts.some((p) => reportedN.has(`board:${t.id}:${p.created}`)) ? AW.pill('has reported posts', 'bad') : null),
       ...t.posts.map((p, i) => el('div', { className: 'admin-subitem' },
-        el('span', {}, el('strong', { textContent: p.author }), ` · ${ago(now - p.created)}${i === 0 ? ' · opening post' : ''}`),
+        el('span', {}, el('strong', { textContent: p.author }), ` · ${ago(now - p.created)}${i === 0 ? ' · opening post' : ''} `, flag(`board:${t.id}:${p.created}`)),
         el('span', { className: 'admin-text', textContent: p.text }),
         actionButton(i === 0 ? 'Delete thread' : 'Delete post',
           del(i === 0 ? { action: 'delete_thread', id: t.id } : { action: 'delete_post', id: t.id, index: i },
@@ -932,6 +1026,7 @@ function renderUpdateProgress(p) {
 }
 
 function renderUpdate(data) {
+  drawSigning(data.signing, data.results);
   const s = data.state;
   const p = data.progress;
   const busy = data.pending > 0 || !!updWaiting || !!p;
@@ -1136,7 +1231,7 @@ function renderSecurity(data) {
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     f.id === 'sudo-nopasswd' ? sudoToggle(f, busy) : f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
+      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
     }))) : null,
     noteUnder(f.id));
   // Each where it belongs (checklist 4d, 5d; S of the menu overhaul): the real choices here, the
@@ -1189,6 +1284,9 @@ function renderSecurity(data) {
 // --- the joint report (secdoctor.joint): what several sources say about one thing, once ------------
 const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page', debsecan: 'debsecan', 'debian-cis': 'debian-cis',
   lynis: 'Lynis', openvas: 'OpenVAS', nmap: 'nmap' };
+// How old each source may be before the strip warns (days): the deep audit runs weekly, debsecan's
+// tracker data is fetched daily, the Security page scans when opened, imported scans are by hand.
+const STALE_DAYS = { doctor: 1, 'security-page': 1, debsecan: 3, 'debian-cis': 8, lynis: 8, openvas: 30, nmap: 30 };
 const srcWords = (list) => list.map((x) => SOURCE_WORDS[x] || x).join(', ');
 function renderJoint(j) {
   const box = (id) => document.getElementById(id);
@@ -1197,24 +1295,34 @@ function renderJoint(j) {
   box('joint-summary').textContent = `After merging what the sources agree on: ${a.problem} to fix, ${a.warn} to look at` +
     (j.agreed_ok ? `; ${j.agreed_ok} thing${j.agreed_ok === 1 ? '' : 's'} several sources agree are fine` : '') + '.';
   const items = (j.items || []);
-  box('joint-items').replaceChildren(...items.map((i) => el('div', { className: `git-card joint-item joint-${i.status}` },
-    el('h4', { textContent: `${MARK[i.status]} ${i.title}` }),
-    el('p', { className: 'badges' }, el('span', { className: 'badge', textContent: i.about.kind }),
-      ...i.sources.map((x) => el('span', { className: 'badge badge-mirror', textContent: SOURCE_WORDS[x] || x }))),
-    el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree.` : `Said by ${srcWords(i.sources)}.` }),
-    el('ul', { className: 'joint-titles' }, ...i.titles.slice(0, 4).map((x) => el('li', { textContent: x }))),
-    i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null)));
+  // One list, worst first (item 11 step 4): filters for to fix / to look at, the area and the sources, and a
+  // search; each entry opens to who said it, what they said, and what to do.
+  const WORD = { problem: 'to fix', warn: 'to look at', ok: 'fine' };
+  const RANK = { problem: 0, warn: 1, ok: 2 };
+  box('joint-items').replaceChildren(AW.shortList([...items].sort((x, y) => RANK[x.status] - RANK[y.status]).map((i, n) => ({
+    id: `joint-${n}`, title: `${MARK[i.status]} ${i.title}`,
+    summary: i.sources.length > 1 ? `${i.sources.length} sources agree` : `said by ${srcWords(i.sources)}`,
+    badges: [WORD[i.status] || i.status, i.about.kind, ...i.sources.map((x) => SOURCE_WORDS[x] || x)],
+    detail: () => [
+      el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree: ${srcWords(i.sources)}.` : `Said by ${srcWords(i.sources)}.` }),
+      i.detail ? el('p', { textContent: i.detail }) : null,
+      el('ul', { className: 'joint-titles' }, ...i.titles.map((x) => el('li', { textContent: x }))),
+      i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null],
+  })), { id: 'joint-list', empty: 'Nothing to fix or look at.' }));
   const alone = items.filter((i) => i.alone);
   box('joint-alone').hidden = !alone.length;
   box('joint-alone-list').replaceChildren(...alone.map((i) => el('li', { className: `check check-${i.status}` },
     el('strong', { textContent: i.title }),
     el('span', { textContent: ` — only ${srcWords(i.sources)} said so; ${srcWords(i.could_see)} could have seen it and did not.` }))));
+  // One strip at the top (item 11 step 6): each source, its age, and a warning once it is older than it
+  // should be; what it covers and what it said in the pill's title.
   const fresh = j.freshness || {};
-  box('joint-sources').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
-    const c = j.sources[src];
-    return el('tr', {}, el('td', { textContent: SOURCE_WORDS[src] || src }), el('td', { className: 'setting-desc', textContent: (j.coverage || {})[src] || '' }),
-      el('td', { textContent: fresh[src] ? new Date(fresh[src] * 1000).toISOString().slice(0, 10) : '—' }),
-      el('td', { textContent: `${c.problem || 0} / ${c.warn || 0}` }));
+  const now = Date.now() / 1000;
+  box('joint-fresh').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
+    const c = j.sources[src], at = fresh[src], old = !at || now - at > (STALE_DAYS[src] || 30) * 86400;
+    return el('span', { className: old ? 'warn-pill' : 'info-pill',
+      title: `${(j.coverage || {})[src] || ''} To fix: ${c.problem || 0}; to look at: ${c.warn || 0}.`.trim(),
+      textContent: `${SOURCE_WORDS[src] || src}: ${at ? ago(now - at) : 'never'}${old ? ', stale' : ''}` });
   }));
 }
 
@@ -1404,6 +1512,8 @@ const hl = {
   banner: document.getElementById('helper-banner'),
   bannerDetail: document.getElementById('helper-banner-detail'),
   bannerCmds: document.getElementById('helper-banner-cmds'),
+  busyLine: document.getElementById('helper-busy'),
+  busyLog: document.getElementById('helper-busy-log'),
 };
 let hlWaiting = null; // { id, fid }
 let hlNote = null; // { fid, text, ok }
@@ -1425,6 +1535,20 @@ function renderHealth(data) {
   if (h.stuck) {
     hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? ' is' : 's are'} waiting, the oldest for ${minutes(h.oldest)}.`;
     hl.bannerCmds.textContent = h.commands.join('\n');
+  }
+  // The busy spells of the last week (Tom: "log busy false alarms so that patterns can be established").
+  const bl = h.busy_log;
+  hl.busyLog.hidden = !bl;
+  if (bl) {
+    hl.busyLog.textContent = `The root helper kept requests waiting ${bl.count} time${bl.count === 1 ? '' : 's'} this week while busy `
+      + `(the longest wait ${minutes(bl.longest_wait)}); most often while running ${bl.commonest} (${bl.commonest_n}×). `
+      + `The log: ${'helper-busy.json'} in the hub's state folder.`;
+  }
+  // Busy, not stuck: an earlier job (a toolkit's download, an update) is still running; the rest wait their turn.
+  hl.busyLine.hidden = !h.busy || !h.waiting;
+  if (h.busy && h.waiting) {
+    hl.busyLine.textContent = `The root helper is busy with an earlier job (for ${minutes(h.busy)}); `
+      + `${h.waiting} request${h.waiting === 1 ? ' waits' : 's wait'} behind it and will be done in turn.`;
   }
   const p = data.progress && data.progress.action === 'repair' ? data.progress : null;
   const busy = data.pending > 0 || !!hlWaiting || !!p;
@@ -1448,7 +1572,7 @@ function renderHealth(data) {
     el('span', { textContent: ` — ${f.detail}` }),
     f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
+      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy || h.stuck, onclick: () => hlFix(f.id, a),
     }))) : null,
     noteUnder(f.id));
   hl.findings.replaceChildren(...all.filter((f) => !isClock(f)).map(item));
@@ -1630,15 +1754,9 @@ function willText(eff) {
 // Both levels the same way (Tom, 2026-10-06): radio cards, each level's description and what it
 // does shown at once.
 function rungs(box, group, names, line, levels) {
-  box.replaceChildren(...names.map((name) => {
-    const input = el('input', { type: 'radio', name: `up-${group}`, value: name });
-    input.addEventListener('change', () => upChoose({ [group]: name }, levels));
-    return el('label', { className: 'up-rung' }, input,
-      el('span', { className: 'up-rung-text' },
-        el('span', { className: 'setting-name', textContent: cap1(name) }),
-        el('span', { className: 'setting-desc', textContent: levels.describe[name] || '' }),
-        el('span', { className: 'setting-desc up-does', textContent: line(name) })));
-  }));
+  AW.choices(box, `up-${group}`, names.map((name) => ({
+    value: name, title: cap1(name), desc: levels.describe[name] || '', does: line(name),
+  })), { onChange: (name) => upChoose({ [group]: name }, levels) });
 }
 
 function buildUpChoices(levels) {
@@ -1680,7 +1798,7 @@ function showUpPreset(levels) {
   for (const [box, chosen] of [[net.eager, e], [net.forgive, f]]) {
     for (const input of box.querySelectorAll('input')) {
       input.checked = input.value === chosen;
-      input.closest('.up-rung').classList.toggle('chosen', input.checked);
+      input.closest('.choice-tile').classList.toggle('chosen', input.checked);
     }
   }
   const eff = upPreset(e, f, levels);
@@ -1770,16 +1888,18 @@ function signalWords(dbm) {
 // A link's uptime (step 34): a folded part on its card, the last 72 hours by hour and 72 days
 // by day (githubstatus.com's format, snag 5), from the watchdog's five-minute record
 // (linkhistory.py), drawn by heatmap.js.
+// Always shown, not folded (Tom, 2026-10-09: the folded heatmap closed itself on the pane's redraws, and
+// "I don't even think it needs an expander button").
 function uptimeSection(iface) {
   const u = netData && netData.uptime && netData.uptime[iface];
-  const fold = el('details', { className: 'net-uptime' });
+  const fold = el('div', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'
     : `Up ${Heatmap.percent(sm.up)} over the last 72 hours (${sm.hours_seen} hours recorded)`
       + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
       + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
-  fold.append(el('summary', {}, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: ` ${said}` })));
+  fold.append(el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: said })));
   if (!u) {
     fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
@@ -1973,7 +2093,7 @@ function renderAp(run) {
   apEl.state.textContent = run.up
     ? `On${where(p)}. ${p.text}${run.confirmed === false ? ' Your WiFi link is off: press Keep it from the hotspot, or it comes back by itself.' : ''}`
     : p ? `Off. Switched on, it would run${where(p)}. ${p.text}${p.to_try ? ' Whether it can keep a channel of its own here is still to be tried.' : ''}${p.why ? ` (${p.why})` : ''}`
-      : 'Off. The radios have not been looked at yet: Look again, above.';
+      : 'Off. The radios have not been looked at yet: Refresh, above.';
   if (run.note) say(run.note, true, apEl.note);
   const radio = apEl.radio.value;
   apFill(apEl.radio, (run.radios || []).map((r) => r.iface), (run.owner || {}).radio || radio);
@@ -2068,21 +2188,65 @@ function hsShowFields() {
 function renderHotspot(data) {
   hsData = data;
   const s = data.settings;
-  hs.modes.replaceChildren(...data.modes.map((m) => {
-    const why = data.available[m];
-    const input = el('input', { type: 'radio', name: 'hs-mode', value: m, checked: s.mode === m, disabled: !!why && s.mode !== m });
-    input.addEventListener('change', hsShowFields);
-    return el('label', { className: `hs-mode${why ? ' unavailable' : ''}` }, input,
-      el('span', {}, el('span', { className: 'setting-name', textContent: data.label[m] }),
-        el('span', { className: 'setting-desc', textContent: data.what[m] }),
-        why ? el('span', { className: 'setting-desc bad', textContent: `Not available here: ${why}.` }) : null));
-  }));
+  AW.choices(hs.modes, 'hs-mode', data.modes.map((m) => ({
+    value: m, title: data.label[m], desc: data.what[m], why: data.available[m],
+  })), { value: s.mode, onChange: hsShowFields });
   hs.second.value = s.second;
   hs.password.value = s.password || '';
   hs.wpa2.checked = !!s.allow_wpa2;
   hs.wpa2Desc.textContent = 'Let older WPA2 devices join too (WPA3 transition mode).';
   hsShowFields();
+  drawGuestNet(data.share || 'off', data.results);
 }
+
+// Guests' onward internet (root/share.py; Tom, 2026-10-08: "give options, and a sliding scale"):
+// five stops from nobody to everyone, the safest the default; held until Save. "The sheet" is the
+// page a phone is shown when it joins the hotspot (Tom, 2026-10-09: "what does after the sheet mean?"),
+// so the labels now say "welcome page" and the lines say what that is.
+const GUEST_NET = [
+  ['off', 'Off', 'Guests reach the box and nothing else.'],
+  ['users-web', 'Users, web only', 'A device signed in to an account on the hub reaches the web (ports 80 and 443).'],
+  ['sheet-web', 'After the welcome page, web only', 'A phone that joins the hotspot is shown the box\'s welcome page; any device that taps through it reaches the web.'],
+  ['sheet-all', 'After the welcome page, everything', 'Any device reaches everything once it has tapped through the welcome page.'],
+  ['open', 'Everyone, no welcome page', 'Every device on the hotspot reaches everything, straight away. The welcome page stops appearing.'],
+];
+let guestNetSaved = 'off', guestNetDraft = null, guestNetWaiting = null;
+function drawGuestNet(level, results) {
+  const box = document.getElementById('guest-net-chips');
+  if (!box) return;
+  // Asked: done when the box says the level it was asked for (or, after 40 s, said to look again).
+  if (guestNetWaiting && level === guestNetWaiting.level) {
+    guestNetWaiting = null; guestNetDraft = null;
+    say(`Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`, true, noteEl('guest-net-note'));
+  } else if (guestNetWaiting && Date.now() - guestNetWaiting.at > 40000) {
+    guestNetWaiting = null;
+    say('The box has not changed it yet: see the Security doctor, or try again.', false, noteEl('guest-net-note'));
+  } else if (guestNetWaiting) setTimeout(loadHotspot, 2000);
+  guestNetSaved = level;
+  const cur = guestNetDraft || level;
+  box.replaceChildren(...GUEST_NET.map(([v, label]) => {
+    const b = el('button', { type: 'button', className: 'chip' + (v === cur ? ' selected' : ''), textContent: label,
+      onclick: () => { guestNetDraft = v === guestNetSaved ? null : v; drawGuestNet(guestNetSaved); } });
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(v === cur));
+    return b;
+  }));
+  document.getElementById('guest-net-said').textContent = GUEST_NET.find((x) => x[0] === cur)[2]
+    + (['users-web', 'sheet-web', 'sheet-all'].includes(cur) ? ' Each device is let out for 12 hours at a time.' : '');
+  document.getElementById('guest-net-save').disabled = !guestNetDraft || !!guestNetWaiting;
+}
+document.getElementById('guest-net-save').addEventListener('click', async () => {
+  const level = guestNetDraft;
+  if (!level) return;
+  if (level !== 'off' && !confirm(`Share this box's connection with guests (${GUEST_NET.find((x) => x[0] === level)[1]})? What they do online will come from your connection.`)) return;
+  try {
+    await postJSON('/admin/hotspot', { action: 'share', level });
+    guestNetWaiting = { level, at: Date.now() };
+    say('Asked: the root helper sets it.', true, noteEl('guest-net-note'));
+    drawGuestNet(guestNetSaved);
+    setTimeout(loadHotspot, 1500);
+  } catch (err) { say(err.message, false, noteEl('guest-net-note')); }
+});
 
 async function loadHotspot() {
   try { renderHotspot(await getJSON('/admin/hotspot')); } catch (err) {
@@ -2280,15 +2444,20 @@ function seenControls(app, cur) { return [accessBlock(app, null, cur)]; }
 
 // The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
 // "as its access", shows its tile to guests too, locked, leading to sign-in.
+let lockAll = '';   // the box-wide way a seen-but-unopenable tile behaves ('' = each app's own)
 async function loadSignInOffer() {
   const box = document.getElementById('sign-in-offer-box');
   if (!box) return;
   let st;
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  lockAll = st.locked_all || '';
   box.replaceChildren(AW.settings([{ key: 'sign_in_offer', label: 'Show guests the tiles of apps for users, locked, with sign-in', kind: 'toggle',
     value: !!st.sign_in_offer, decision: 'sign-in-offer',
-    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' }],
-  { save: async (changed) => { await postJSON('/admin/settings', changed); loadAccess(); } }));
+    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' },
+  { key: 'locked_all', label: 'When seen but not opened, for every app', kind: 'choice', value: lockAll,
+    options: [['', 'Per app'], ['signin', 'Sign in'], ['signup', 'Sign up'], ['padlock', 'Padlock'], ['grey', 'Greyed']],
+    note: 'Per app (the default): each app\'s own page chooses. Any other: every app does that, over its own choice. Sign up only where accounts are open or by application.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); await loadSignInOffer(); loadAccess(); } }));
 }
 loadSignInOffer();
 
@@ -2348,6 +2517,10 @@ loadTileOrder();
 // setting is; drafts kept per app, so a poll redrawing the page doesn't lose one.
 const OPEN_CHIPS = [['public', 'guests'], ['users', 'users'], ['private', 'admin'], ['off', 'off']];
 const SEEN_CHIPS = [['guests', 'guests'], ['users', 'users'], ['admin', 'admin'], ['hidden', 'hidden']];
+// What the tile does for one who sees it but may not open it (Tom, 2026-10-08).
+const LOCK_CHIPS = [['signin', 'sign in'], ['signup', 'sign up'], ['padlock', 'padlock'], ['grey', 'greyed']];
+const LOCK_WORDS = { signin: 'it leads to the sign-in page', signup: 'it leads to sign-up, while accounts are open or by application (otherwise to sign-in)',
+  padlock: 'it shows a padlock and does nothing', grey: 'it is greyed out and does nothing' };
 // "As its access" (auto), shown as the chip it amounts to.
 const seenOf = (mode, visible) => (visible && visible !== 'auto' ? visible
   : { public: 'guests', users: 'users', private: 'admin', off: 'hidden' }[mode] || 'guests');
@@ -2365,7 +2538,8 @@ function chipRow(label, opts, cur, set, disabledOf = () => false) {
 }
 // The block: a (an app with a switch) or, for a tile with none (a folder, About), only who sees it.
 function accessBlock(id, a, seenOnly) {
-  const base = { mode: a ? a.mode : 'public', seen: a ? seenOf(a.mode, a.visible) : seenOf('public', seenOnly), order: null };
+  const base = { mode: a ? a.mode : 'public', seen: a ? seenOf(a.mode, a.visible) : seenOf('public', seenOnly), order: null,
+    lock: ((lastAccess && lastAccess.locked_as) || {})[id] || 'signin' };
   const d = accessDrafts.get(id) || { ...base };
   const redraw = () => { accessDrafts.set(id, d); fillAccessBlocks(); };
   const order = d.order || tileOrderNow();
@@ -2374,7 +2548,10 @@ function accessBlock(id, a, seenOnly) {
   const tileOf = tilesData && tilesData.tiles.find((x) => x.id === id);
   const iconNow = (tileOf && tileOf.own_icon) || '';
   if (d.icon === iconNow) delete d.icon;
-  const dirty = d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined;
+  const sizeNow = (tileOf && tileOf.size) || 'single';
+  if (d.size === sizeNow) delete d.size;
+  if (d.lock === undefined) d.lock = base.lock;
+  const dirty = d.lock !== base.lock || d.mode !== base.mode || d.seen !== base.seen || (d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined || d.size !== undefined;
   const waiting = !!(accessWaiting && accessWaiting.app === id);
   const note = accessNote && accessNote.app === id
     ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
@@ -2382,10 +2559,13 @@ function accessBlock(id, a, seenOnly) {
     const auto = a ? seenOf(d.mode, 'auto') : 'guests';
     try {
       if (d.seen !== base.seen) await postJSON('/admin/visibility', { app: id, visible: d.seen === auto ? 'auto' : d.seen });
+      if (a && d.lock !== base.lock) await postJSON('/admin/visibility', { app: id, locked: d.lock });
       const icons = { ...((tilesData && tilesData.state.icon) || {}) };
       if (d.icon !== undefined) { if (d.icon) icons[id] = d.icon; else delete icons[id]; }
-      if ((d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined) {
-        tilesData = await postJSON('/admin/tiles', { state: { order: d.order || tileOrderNow(), size: (tilesData && tilesData.state.size) || {}, icon: icons } });
+      const sizes = { ...((tilesData && tilesData.state.size) || {}) };
+      if (d.size !== undefined) { if (d.size === 'single') delete sizes[id]; else sizes[id] = d.size; }
+      if ((d.order && d.order.join() !== tileOrderNow().join()) || d.icon !== undefined || d.size !== undefined) {
+        tilesData = await postJSON('/admin/tiles', { state: { order: d.order || tileOrderNow(), size: sizes, icon: icons } });
         tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
       }
       accessDrafts.delete(id);
@@ -2401,11 +2581,16 @@ function accessBlock(id, a, seenOnly) {
       el('button', { type: 'button', className: 'action-btn', textContent: '↑ Earlier', disabled: at === 0, onclick: () => move(-1) }),
       el('button', { type: 'button', className: 'action-btn', textContent: '↓ Later', disabled: at === order.length - 1, onclick: () => move(1) }),
       el('span', { className: 'setting-desc', textContent: `${at + 1} of ${order.length}` })) : null,
+    tileOf ? el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile size' }),
+      sizeChips(d.size !== undefined ? d.size : sizeNow, (v) => { d.size = v; redraw(); })) : null,
     tileOf ? iconField(d, tileOf, iconNow, redraw) : null,
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
       : seenWords(d.seen, 'public') }),
-    el('details', { className: 'field-help' }, el('summary', { textContent: 'Seen but not opened?' }),
-      el('p', { textContent: 'A visitor who sees a tile they can\'t open gets a lock on it, and the sign-in page when they open it: they can see what is on the box (checklist 4a). Hidden, its address still works for whoever may open it.' })),
+    a ? chipRow('When seen but not opened', LOCK_CHIPS, d.lock, (v) => { d.lock = v; redraw(); },
+      (v) => waiting || !!lockAll || (v === 'signup' && d.mode !== 'users')) : null,
+    a ? el('p', { className: 'setting-desc', textContent: lockAll
+      ? `All apps are set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one: change that on All apps, under "Who can open each one".`
+      : `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
@@ -2428,7 +2613,11 @@ function iconField(d, tile, iconNow, redraw) {
   const hint = el('span', { className: 'setting-desc' + (bad ? ' bad' : ''), textContent: bad ? 'Emoji, or up to four letters and digits (no spaces).'
     : val ? 'Its own; blank goes back to the app\'s.' : `The app's own: ${tile.icon}` });
   input.addEventListener('change', () => { d.icon = input.value.trim(); redraw(); });
-  return el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
+  // A pick from the emoji picker (Tom, 2026-10-08) arrives as an input event of the page's own.
+  input.addEventListener('input', (e) => { if (!e.isTrusted) { d.icon = input.value.trim(); redraw(); } });
+  const field = el('div', { className: 'aw-field access-field' }, el('span', { className: 'aw-label', textContent: 'Tile icon' }), input, hint);
+  if (window.EMOJI) window.EMOJI.attach(input);
+  return field;
 }
 
 async function loadAccess() {
@@ -2479,7 +2668,7 @@ function renderAddons(data) {
       el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
       !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,
       a.added === null ? null : el('span', { className: 'library-buttons' }, el('button', {
-        type: 'button', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
+        type: 'button', className: 'action-btn', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
         onclick: () => addonSet(a, !a.added),
       })),
       note));
@@ -2566,8 +2755,8 @@ function renderLocal(data) {
       el('span', { className: 'library-buttons' },
         inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
         a.catalogue && a.catalogue.status === 'held'
-          ? el('button', { type: 'button', textContent: 'Accept the new version', onclick: () => localAccept(a, data) }) : null,
-        el('button', { type: 'button', textContent: 'Remove', onclick: () => localRemove(a) })),
+          ? el('button', { type: 'button', className: 'action-btn', textContent: 'Accept the new version', onclick: () => localAccept(a, data) }) : null,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Remove', onclick: () => localRemove(a) })),
       note(a.id)));
   }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
   const offered = data.catalogue.filter((c) => !c.added);
@@ -2577,7 +2766,7 @@ function renderLocal(data) {
       el('span', { className: 'setting-name', textContent: c.title }),
       el('span', { className: 'setting-desc', textContent: c.summary }),
       el('span', { className: 'setting-desc', textContent: `${capsText(c.capabilities)} From ${c.repo} at ${String(c.pin).slice(0, 7)}.` }),
-      el('span', { className: 'library-buttons' }, el('button', { type: 'button', textContent: 'Add', disabled: fetching, onclick: () => localAdd(c) })),
+      el('span', { className: 'library-buttons' }, el('button', { type: 'button', className: 'action-btn', textContent: 'Add', disabled: fetching, onclick: () => localAdd(c) })),
       note(c.id)))) : [el('p', { className: 'setting-desc', textContent: 'Everything in the catalogue is added.' })]));
   loc.errors.replaceChildren(...Object.values(data.errors || {}).map((why) => el('p', { className: 'setting-desc bad', textContent: `Left out: ${why}` })));
   clearTimeout(locPoll);
@@ -2655,10 +2844,11 @@ loadLocal();
 // until the owner finishes it, and Overview's link brings it back.
 const setupList = document.getElementById('setup-steps');
 
+// Each setup step's state, as the part of the page that knows it says; the tour draws the list.
+const SETUP_STATE = {};
 function setupStep(step, text, status) {
-  const li = setupList.querySelector(`[data-step="${step}"]`);
-  li.querySelector('span').textContent = text;
-  li.className = `step-${status}`;
+  SETUP_STATE[step] = { text, status };
+  if (window.TOUR) TOUR.drawList();
 }
 
 function applySetup(done) {
@@ -2727,13 +2917,13 @@ function renderUsb(data) {
       d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
       ...(d.zims.length ? d.zims.map((z) => el('span', { className: 'usb-book' },
         el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ` · cannot be imported: ${z.problem || 'not a ZIM file'}`}` }),
-        z.zim ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
+        z.zim ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
           onclick: () => usbRequest({ action: 'import', device: d.name, file: z.file }, `${d.name}:${z.file}`,
             `Copy ${z.file} into the library (${size(z.size)})?`) }) : null,
         noteAt(`${d.name}:${z.file}`)))
         : [el('span', { className: 'setting-desc', textContent: d.error ? '' : 'No books on this stick.' })]),
       data.books.length ? el('span', { className: 'library-buttons' }, pick,
-        el('button', { type: 'button', textContent: 'Export to this stick', disabled: busy,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Export to this stick', disabled: busy,
           onclick: () => usbRequest({ action: 'export', device: d.name, book: pick.value }, `export:${d.name}`,
             `Copy ${pick.value}.zim onto ${d.label || d.name}?`) })) : null,
       noteAt(`export:${d.name}`)));
@@ -3467,10 +3657,10 @@ async function loadKitsUsb() {
         ...((d.kits || []).length ? d.kits.map((k) => el('span', { className: 'usb-book' },
           el('span', { className: 'setting-desc', textContent: `${k.title}: ${k.packages} packages, ${size(k.bytes)}, ${k.arch}` +
             (here && k.arch !== here ? ` (for another kind of board: this one is ${here})` : '') }),
-          !here || k.arch === here ? el('button', { type: 'button', className: 'small', textContent: 'Import', disabled: busy,
+          !here || k.arch === here ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
             onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the stick? Every package is checked against Debian's signatures first.`) }) : null))
           : [el('span', { className: 'setting-desc', textContent: 'No toolkits on this stick.' })]),
-        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', textContent: 'Copy to this stick', disabled: busy,
+        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this stick', disabled: busy,
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
     p ? el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` }) : null);
@@ -3616,13 +3806,28 @@ function renderAccounts(d) {
         a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
         a.state === 'user' ? act(a.role === 'admin' ? 'user' : 'admin', a.role === 'admin' ? 'Make a user' : 'Make an admin') : null,
         a.state !== 'asked' ? act('reset', 'Reset password') : null,
+        acctCodes[a.name.toLowerCase()] ? codeBox(a.name, acctCodes[a.name.toLowerCase()]) : null,
         act('delete', a.state === 'asked' ? 'Refuse' : 'Delete')));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
 }
+// A one-time code shows beside the account it is for (Tom, 2026-10-08), in a box to copy, until the
+// page is reloaded: the hub keeps only its hash.
+const acctCodes = {};
 function showCode(name, code) {
+  acctCodes[name.toLowerCase()] = code;
   acctEl.code.hidden = false;
-  acctEl.code.replaceChildren(el('span', { textContent: `${name}'s one-time code: ` }), el('code', { textContent: code }),
-    el('span', { className: 'setting-desc', textContent: ' Give it to them now: it is not shown again.' }));
+  acctEl.code.replaceChildren(el('span', { textContent: `${name}'s one-time code is beside their name below. Give it to them now: it is not shown again.` }));
+}
+function codeBox(name, code) {
+  const box = el('input', { type: 'text', readOnly: true, value: code, className: 'code-box', size: code.length + 1 });
+  box.setAttribute('aria-label', `${name}'s one-time code`);
+  const note = el('span', { className: 'setting-desc' });
+  const copy = async () => {
+    box.select();
+    try { await navigator.clipboard.writeText(code); note.textContent = ' Copied.'; return; } catch (_) { /* plain HTTP: no clipboard API */ }
+    try { note.textContent = document.execCommand('copy') ? ' Copied.' : ' Selected: copy it.'; } catch (_) { note.textContent = ' Selected: copy it.'; }
+  };
+  return el('span', { className: 'code-copy' }, box, actionButton('Copy', copy, { className: 'small' }), note);
 }
 async function acctAct(body) {
   if (body.action === 'delete' && !confirm(`Delete ${body.name}'s account?`)) return;
@@ -3640,7 +3845,7 @@ acctEl.settings.addEventListener('submit', (e) => {
 acctEl.make.addEventListener('submit', (e) => {
   e.preventDefault();
   const f = acctEl.make.elements;
-  acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
+  acctAct({ action: 'make', name: f.name.value.trim(), role: (e.submitter && e.submitter.value) || 'user' });
   f.name.value = '';
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
@@ -3668,8 +3873,7 @@ if (paneShown('accounts')) loadAccounts();
 
 // --- the mesh (step 18: meshbridge.py, /admin/mesh) -------------------------------------------------
 const meshEl = { state: document.getElementById('mesh-admin-state'), channels: document.getElementById('mesh-channels'),
-  form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note'),
-  counts: document.getElementById('mesh-admin-counts'), packets: document.getElementById('mesh-admin-packets') };
+  form: document.getElementById('mesh-channel-form'), longfast: document.getElementById('mesh-longfast'), note: noteEl('mesh-note') };
 let meshPoll = null;
 async function loadMesh() {
   try { renderMesh(await getJSON('/admin/mesh')); } catch (_) { meshEl.state.textContent = 'Could not read the mesh.'; }
@@ -3682,12 +3886,6 @@ function renderMesh(d) {
     el('span', { className: 'setting-desc', textContent: c.public_key ? ' Meshtastic\'s public default key: anyone can read this channel.' : c.no_key ? ' No key: unencrypted.' : ' Its own key (not shown).' }),
     el('span', { className: 'library-buttons' }, actionButton('Remove', () => meshAct({ action: 'remove-channel', name: c.name })))))
     : [el('p', { className: 'setting-desc', textContent: 'None yet: every packet stays encrypted. Add a channel and its key, as your Meshtastic app shows them.' })]));
-  const names = Object.fromEntries(d.nodes.map((n) => [n.id, n.long_name || n.id]));
-  const counts = Object.entries(d.counts || {}).map(([k, n]) => `${n} ${k}`);
-  meshEl.counts.textContent = counts.length ? `Since the hub started: ${counts.join(', ')}.` : 'Nothing heard yet.';
-  meshEl.packets.replaceChildren(...d.packets.map((p) => el('li', {},
-    el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} from ${names[p.from] || p.from}${p.channel ? ` on ${p.channel}` : ''}` }),
-    p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
   clearTimeout(meshPoll);
   if (paneShown('mesh')) meshPoll = setTimeout(loadMesh, 15000);
 }
@@ -3725,7 +3923,16 @@ async function loadAppearance() {
     const now = await postJSON('/admin/settings', changed);
     document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
     return now;
-  } }));
+  } }),
+  // The emoji pickers' set (Tom, 2026-10-08): newer sets have more, but a phone older than a set's
+  // release draws its newest emoji as empty boxes. Chosen by the iPhones each reaches.
+  el('h3', { textContent: 'Emoji' }),
+  el('p', { className: 'setting-desc', textContent: 'Which emoji the pickers offer, for everyone. A newer set has more, '
+    + 'but a phone older than it shows the newest ones as empty boxes. 13.1: iOS 14.5 and Android 12 on (1,812 emoji). '
+    + '15.0: iOS 16.4, every iPhone from the 8 on, and Android 14 (1,870). 16.0: iOS 18.4, iPhone XS on, and Android 16 (1,906).' }),
+  AW.settings([{ key: 'emoji_set', label: 'Emoji set', kind: 'choice', value: st.emoji_set, note: 'what the oldest phones you expect can show',
+    options: [['13.1', 'Emoji 13.1'], ['15.0', 'Emoji 15.0'], ['16.0', 'Emoji 16.0']] }],
+  { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadAppearance();
 
@@ -3925,8 +4132,8 @@ function drawAttention() {
     return say && { id, text: say, where: AL.titleOf(id) };
   }).filter(Boolean);
   const T = window.TOUR;
-  const left = T ? T.DECISIONS.length - T.decided().size : 0;
-  if (left > 0) items.push({ id: 'welcome', text: `${left} setup decision${left === 1 ? '' : 's'} not made yet: the box runs on the defaults until then`, where: 'Setup steps' });
+  const left = T ? T.left() : 0;
+  if (left > 0) items.push({ id: 'welcome', text: `${left} setup step${left === 1 ? '' : 's'} not done yet: the box runs on the defaults until then`, where: 'Setup steps' });
   box.replaceChildren(el('h3', { textContent: 'Needs attention' }), items.length
     ? el('ul', { className: 'admin-checks attention-list' }, ...items.map((i) => el('li', { className: 'check' },
       el('a', { href: '#' + i.id, textContent: i.text }), el('span', { className: 'setting-desc', textContent: ` — ${i.where}` }))))
@@ -3941,3 +4148,78 @@ drawAttention();
 // is long, a filter. The catalogue's results have a search of their own, so the height only.
 ['store-saves', 'mod-messages', 'mod-threads', 'mod-drops', 'accounts-list', 'ci-runs'].forEach((id) => AW.bound(document.getElementById(id)));
 AW.bound(document.getElementById('catalogue-results'), { filter: false });
+
+// --- tabs (Tom, 2026-10-08: the books' sources as tabs) ------------------------------------------
+// [data-tabs]: a tablist of .view-switch-btn, each naming its panel (aria-controls). One showing;
+// arrow keys move along; the choice kept in this browser; an address inside a panel opens its tab.
+function initTabs(box) {
+  const tabs = [...box.querySelectorAll('[role="tab"]')];
+  const key = 'irate-tabs-' + box.dataset.tabs;
+  const pick = (tab, focus) => {
+    tabs.forEach((x) => {
+      const on = x === tab;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-selected', String(on));
+      x.tabIndex = on ? 0 : -1;
+      document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+    try { localStorage.setItem(key, tab.id); } catch (_) { /* not kept */ }
+  };
+  tabs.forEach((x, i) => {
+    x.addEventListener('click', () => pick(x));
+    x.addEventListener('keydown', (e) => {
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (k) { e.preventDefault(); pick(tabs[(i + k + tabs.length) % tabs.length], true); }
+    });
+  });
+  let kept = null;
+  try { kept = document.getElementById(localStorage.getItem(key)); } catch (_) { /* none */ }
+  pick(tabs.includes(kept) ? kept : tabs[0]);
+  const follow = () => {
+    const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    const panel = target && target.closest && target.closest('[role="tabpanel"]');
+    const tab = panel && tabs.find((x) => x.getAttribute('aria-controls') === panel.id);
+    if (tab) pick(tab);
+  };
+  window.addEventListener('hashchange', follow);
+  follow();
+}
+document.querySelectorAll('[data-tabs]').forEach(initTabs);
+
+// --- what an update must carry (root/signing.py; Tom, 2026-10-08: "give options in the update
+// manager for what level to choose") ------------------------------------------------------------
+// off, merged on GitHub, or signed releases with the owner's keys. The keys are root's: the page
+// gets back only their names and types, and each Save replaces the list with what is in the box.
+const sigEl = { form: document.getElementById('update-signing-form'), note: noteEl('update-signing-note'),
+  label: document.getElementById('update-signers-label'), kept: noteEl('update-signers-kept') };
+let sigWaiting = null;
+const SIG_WORDS = { off: 'from the branch, as before', github: 'merged on GitHub (signed by GitHub)', tags: 'signed releases only' };
+function sigShowKeys() { sigEl.label.hidden = sigEl.form.elements.level.value !== 'tags'; }
+function drawSigning(sig, results) {
+  if (!sigEl.form || !sig) return;
+  if (sigWaiting) {
+    const done = (results || []).find((r) => r.id === sigWaiting);
+    if (done) { sigWaiting = null; say(done.message, done.ok, sigEl.note); }
+  }
+  if (!sigEl.form.contains(document.activeElement)) sigEl.form.elements.level.value = sig.level;
+  sigShowKeys();
+  sigEl.kept.textContent = sig.level === 'tags' && sig.keys.length
+    ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ''})`).join('; ')}. Saving replaces the list with what is in the box above.`
+    : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
+}
+if (sigEl.form) {
+  sigEl.form.addEventListener('change', sigShowKeys);
+  sigEl.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const level = sigEl.form.elements.level.value;
+    const signers = sigEl.form.elements.signers.value;
+    if (level === 'tags' && !signers.trim()) { say('Signed releases need at least one key: paste it in the box.', false, sigEl.note); return; }
+    if (level === 'off' && !confirm('Install updates with no signature checked, as before?')) return;
+    try {
+      sigWaiting = (await postJSON('/admin/update', { action: 'signing', level, signers })).id;
+      say('Asked: the root helper keeps it.', true, sigEl.note);
+      setTimeout(loadUpdate, 1500);
+    } catch (err) { say(err.message, false, sigEl.note); }
+  });
+}

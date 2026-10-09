@@ -96,6 +96,16 @@ try:
     t = tile(home, "Notes")
     check("offer on: the tile shows to a guest, with a lock", st == 200 and t and "locked" in t, t)
     check("offer on: a private app still has no tile", tile(home, "Git") is None)
+    # The global override of what a seen-but-unopenable tile does (Tom, 2026-10-09).
+    st, _ = go("POST", "/admin/settings", {"locked_all": "grey"})
+    _, home = go("GET", "/")
+    t = tile(home, "Notes")
+    check("override: every locked tile greyed, over the per-app choice", st == 200 and t and "greyed" in t, t)
+    st, _ = go("POST", "/admin/settings", {"locked_all": "nonsense"})
+    check("  refused: an unknown way", st in (200, 400) and json.loads(go("GET", "/admin/settings")[1])["locked_all"] == "grey")
+    go("POST", "/admin/settings", {"locked_all": ""})
+    _, home = go("GET", "/")
+    check("  cleared: back to each app's own choice", "greyed" not in (tile(home, "Notes") or ""))
     go("POST", "/admin/settings", {"sign_in_offer": False})
     # The apps row's order (F3): kept by the hub; the rest after the ones named, as before.
     _, home = go("GET", "/")
@@ -132,10 +142,53 @@ try:
     check("admin: the admin's tile carries its pill", "admin-pill" in t and "admin-only" in t, t)
     t = tile(visit("/", jar["ada"])[0], "Notes") or ""
     check("  a tile others see too has none", t and "admin-pill" not in t, t)
+    # The box's own admin login (Tom, 2026-10-08): seen at /admin, a signed cookie; the home page then
+    # shows the admin's tiles even with no account at all.
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    c.request("GET", "/admin/", headers={"Host": f"127.0.0.1:{port}", "X-Irate-Front": SECRET})
+    r = c.getresponse(); r.read()
+    seen = (r.getheader("Set-Cookie") or "").split(";")[0]
+    check("/admin leaves the admin-seen cookie, HttpOnly, SameSite=Strict", seen.startswith("irate_admin_seen=")
+          and "HttpOnly" in (r.getheader("Set-Cookie") or "") and "SameSite=Strict" in (r.getheader("Set-Cookie") or ""), r.getheader("Set-Cookie"))
+    t = tile(visit("/", seen)[0], "Excalidraw") or ""
+    check("the admin seen at /admin: the admin's tile, with its pill, no account needed", "admin-pill" in t, t)
+    forged = "irate_admin_seen=" + seen.split("=", 1)[1].split(".")[0] + "." + "0" * 64
+    check("  a forged one: no", tile(visit("/", forged)[0], "Excalidraw") is None)
+    check("  an old one: no", tile(visit("/", "irate_admin_seen=1." + "0" * 64)[0], "Excalidraw") is None)
     go("POST", "/admin/visibility", {"app": "draw", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
     check("auto, private: no tile for a user, the tile for an admin account", tile(visit("/", jar["bea"])[0], "Git") is None
           and tile(visit("/", jar["ada"])[0], "Git") is not None)
+    # What a locked tile does (Tom, 2026-10-08): sign in, sign up, a padlock, greyed.
+    def card(page, name):
+        i = page.find(f'<span class="name">{name}</span>')
+        if i < 0:
+            return None
+        start = max(page.rfind("<a ", 0, i), page.rfind("<div ", 0, i))
+        end = min(x for x in (page.find("</a>", i), page.find("</div>", i)) if x >= 0)
+        return page[start:end]
+    go("POST", "/admin/visibility", {"app": "notes", "visible": "guests"})  # notes: for users, seen by everyone
+    t = card(visit("/")[0], "Notes") or ""
+    check("locked, sign in (the default): to the sign-in page, back to the app after", 'href="/account.html?next=' in t and "sign in to open" in t, t)
+    st, _ = go("POST", "/admin/visibility", {"app": "notes", "locked": "signup"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("sign up, with accounts open: to the sign-up form", st == 200 and "#signup" in t and "sign up to open" in t, t)
+    go("POST", "/admin/accounts", {"action": "settings", "signup": "off"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("  with no accounts to make: sign in instead", "#signup" not in t and "sign in to open" in t, t)
+    go("POST", "/admin/accounts", {"action": "settings", "signup": "open"})
+    go("POST", "/admin/visibility", {"app": "notes", "locked": "padlock"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("padlock: a padlock, and nothing to follow", t.startswith("<div ") and "padlock" in t and "href" not in t and "🔒" in t, t)
+    go("POST", "/admin/visibility", {"app": "notes", "locked": "grey"})
+    t = card(visit("/")[0], "Notes") or ""
+    check("greyed: greyed out, nothing to follow, no padlock", t.startswith("<div ") and "greyed" in t and "href" not in t and "🔒" not in t, t)
+    t = card(visit("/", jar["bea"])[0], "Notes") or ""
+    check("  a user, who may open it, gets the app as ever", t.startswith("<a ") and "greyed" not in t and "/notes" in t, t)
+    st, _ = go("POST", "/admin/visibility", {"app": "notes", "locked": "ajar"})
+    check("refused: a way not offered", st == 400, st)
+    check("/admin/access says each app's way", json.loads(go("GET", "/admin/access")[1]).get("locked_as") == {"notes": "grey"})
+    go("POST", "/admin/visibility", {"app": "notes", "locked": "signin"})
     st, body = go("GET", "/menus.json")
     check("/menus.json still answers", st == 200 and "tools-general" in json.loads(body), body[:120])
 finally:

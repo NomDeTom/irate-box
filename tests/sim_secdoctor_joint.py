@@ -99,5 +99,18 @@ rep = sd.audit()
 check("the whole audit: the new steps in it, the joint report with freshness", {"security-page", "imports"} <= {s["id"] for s in rep["steps"]}
       and "nmap" in rep["joint"]["freshness"] and rep["joint"]["after"]["problem"] >= 1, rep["joint"]["freshness"])
 check("the server sends the imports' summary and takes an import", "secimports.save(payload.get(\"report\"))" in (REPO / "irate_box/hub/server.py").read_text())
+# Together a problem (stance review 2026-10-08 §2, secdoctor_xref.COMPOUND): each named finding present
+# and not ok; a compound item in the joint report, a problem, with its own detail and fix.
+pg = lambda i, st: sd.F(f"page-{i}", i, st, "", source="security-page")  # noqa: E731
+jc = sd.joint([{"findings": [pg("sudo-nopasswd", "warn"), pg("ssh-password", "warn"), pg("group-disk", "ok")]}])
+comp = [i for i in jc["items"] if i["about"]["kind"] == "compound"]
+check("sudo-nopasswd and ssh-password both warn: one compound problem, with detail and fix",
+      [c["about"]["key"] for c in comp] == ["sudo-and-passwords"] and comp[0]["status"] == "problem" and comp[0]["detail"] and comp[0]["fix"]
+      and jc["after"]["problem"] == 1, comp)
+jc = sd.joint([{"findings": [pg("sudo-nopasswd", "warn"), pg("ssh-password", "ok")]}])
+check("  one of them fine: no compound item", not [i for i in jc["items"] if i["about"]["kind"] == "compound"])
+check("every compound rule names findings that exist", all(f'finding("{i.removeprefix("page-")}"' in page_src or (i.startswith("page-group-") and '_finding(f"group-{group}"' in page_src) for c in xref.COMPOUND for s, i in c["needs"] if s == "security-page"),
+      [i for c in xref.COMPOUND for s, i in c["needs"]])
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

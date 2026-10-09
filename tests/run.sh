@@ -18,6 +18,9 @@ run() {
 	[ "$rc" = 0 ] || failed=$((failed + 1))
 }
 run sim_uplink.py
+run sim_crashwatch.py
+run sim_pkgwatch.py
+run sim_helper_busy.py
 run sim_widths.py
 run sim_admin_apps.py
 run sim_visibility.py
@@ -36,6 +39,7 @@ run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py
 run sim_books.py
+run sim_ghpace.py
 run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py
@@ -63,7 +67,12 @@ run sim_kits_usb.py
 run sim_secdoctor_debsecan.py
 run sim_deepaudit.py
 run sim_image_step.py
+run sim_offline_step.py
+run sim_firewall.py
 run sim_secdoctor_joint.py
+run sim_signing.py
+run sim_share.py
+run sim_guest_net.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))

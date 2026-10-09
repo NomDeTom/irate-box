@@ -28,8 +28,8 @@ const TOUR = (() => {
       said: 'The box\'s own certificate authority by default: phones install it once from /certificate. Off sends passwords in the clear.' },
     { id: 'hotspot', label: 'The hotspot\'s security', section: 'network', target: '#hs-modes',
       said: 'Encrypted with no password (OWE) where the radio can: guests join freely, and nobody nearby can read what they do.' },
-    { id: 'guest-net', label: 'Guests reach the internet', section: 'network', target: '#ap-state',
-      said: 'Off: guests on the hotspot reach the box and nothing else. Sharing the box\'s connection with them isn\'t built yet.' },
+    { id: 'guest-net', label: 'Guests reach the internet', section: 'network', target: '#guest-net-box',
+      said: 'Off by default: guests on the hotspot reach the box and nothing else. Five steps up to everyone, each saying what it opens.' },
     { id: 'ssh', label: 'SSH takes passwords', section: 'security', target: finding(/SSH password/),
       said: 'Left as the box had it unless you choose here: keys only can lock out an owner who has no key.' },
     { id: 'tailscale', label: 'Remote access (Tailscale)', section: 'access', target: '#remote-section',
@@ -39,17 +39,47 @@ const TOUR = (() => {
     { id: 'terminal', label: 'Terminal (a shell in the browser)', section: 'app-access-term', fallback: 'apps', target: '#app-access-term',
       said: 'Behind the admin login by default: a root shell, which is its whole point.' },
   ];
+  // The setup's own steps, around the decisions: what the box is, first; a backup, last (Tom,
+  // 2026-10-08: "make them follow the same format throughout, and make them all part of the tour";
+  // "the final step - take a backup - has been missed entirely"). Their state comes from the
+  // parts of the page that know it (setupStep in admin.js).
+  const OWN = [
+    { id: 'password', label: 'Admin password', section: 'access', target: '#access form, #access', said: 'Set at first use. Change it here whenever you like.' },
+    { id: 'connection', label: 'How guests reach the box', section: 'network', target: '#net-devices', said: 'How phones and laptops find the hub: on the network the box is on, or its own hotspot.' },
+    { id: 'security', label: 'What the box exposes', section: 'security', target: '#security-findings', said: 'What a guest on the network can reach, and the choices that change it.' },
+    { id: 'addons', label: 'Add-ons', section: 'addons', target: '#addons-list', said: 'The hub works without any; add the ones this box is for.' },
+    { id: 'books', label: 'Books', section: 'books', target: '#books', said: 'What Kiwix serves offline, and which the librarian keeps current.' },
+  ];
+  const BACKUP = { id: 'backup', label: 'Take a backup', section: 'backup', target: '#backup a[download]',
+    said: 'Download the hub\'s state now that it is set up: settings, accounts, saved work and the library\'s sources. Keep it off the box.' };
+  const STEPS = [...OWN, ...DECISIONS, BACKUP];
+  const KIND = Object.fromEntries([...OWN.map((s) => [s.id, 'step']), ...DECISIONS.map((s) => [s.id, 'decision']), [BACKUP.id, 'step']]);
   const GUIDE = '/art/krab-controller-clipboard.webp';
   let decided = new Set();
+  let muted = new Set();   // steps the owner asked not to be reminded of (setup_muted): listed, greyed, not counted
   let at = null;        // the decision being toured, or null
   let bar = null;
   let marked = null;    // the highlighted element
 
-  const byId = (id) => DECISIONS.find((d) => d.id === id);
-  const left = () => DECISIONS.filter((d) => !decided.has(d.id));
+  const state = (id) => (window.SETUP_STATE || (typeof SETUP_STATE !== 'undefined' ? SETUP_STATE : {}))[id];
+  // Done: a decision kept or changed; a step its part of the page calls fine, or kept in the tour.
+  const isDone = (s) => decided.has(s.id) || (KIND[s.id] === 'step' && s.id !== 'backup' && (state(s.id) || {}).status === 'ok');
+  const left = () => STEPS.filter((s) => !isDone(s) && !muted.has(s.id));
+  const PILL = (s) => {
+    if (KIND[s.id] === 'decision') return decided.has(s.id) ? ['ok-pill', 'decided'] : muted.has(s.id) ? ['info-pill', 'muted'] : ['info-pill', 'default'];
+    const st = (state(s.id) || {}).status;
+    if (isDone(s)) return ['ok-pill', 'done'];
+    if (muted.has(s.id)) return ['info-pill', 'muted'];
+    return st === 'problem' ? ['bad-pill', 'to fix'] : st === 'warn' ? ['warn-pill', 'look at it'] : ['info-pill', 'to do'];
+  };
 
   async function save() {
     try { await postJSON('/admin/settings', { setup_decided: [...decided] }); } catch (_) { /* tried again with the next one */ }
+    drawList();
+  }
+  async function mute(id, on) {
+    if (on) muted.add(id); else muted.delete(id);
+    try { await postJSON('/admin/settings', { setup_muted: [...muted] }); } catch (_) { /* shown as chosen; tried again with the next change */ }
     drawList();
   }
   function decide(id) {
@@ -58,39 +88,49 @@ const TOUR = (() => {
     save();
   }
 
-  // The setup step: each decision a link, its state beside it.
+  // The setup page: every step in one numbered list, each its short name, its pill, a line of what
+  // it is now, and a link that starts the tour there.
   function drawList() {
     if (typeof drawAttention === 'function') drawAttention();  // Overview's Needs attention counts what is left (F4)
-    const li = document.querySelector('#setup-steps [data-step="decisions"]');
-    if (!li) return;
+    const list = document.getElementById('setup-steps');
+    if (!list) return;
     const n = left().length;
-    li.className = n ? 'step-todo' : 'step-done';
-    li.querySelector('span').textContent = n ? `${n} of ${DECISIONS.length} still to decide: the box uses each default until you do.` : 'All decided.';
-    const actions = li.querySelector('.tour-actions');
-    const list = li.querySelector('.tour-list') || li.insertBefore(Object.assign(document.createElement('ol'), { className: 'tour-list' }), actions);
-    list.replaceChildren(...DECISIONS.map((d, i) => {
-      const item = document.createElement('li');
-      if (decided.has(d.id)) item.className = 'done';
-      const a = document.createElement('a');
-      a.href = '#' + d.section;
-      a.dataset.tour = d.id;
-      a.textContent = d.label;
+    list.replaceChildren(...STEPS.map((s, i) => {
+      const [cls, word] = PILL(s);
+      const li = document.createElement('li');
+      li.dataset.step = s.id;
+      li.className = isDone(s) ? 'step-ok' : muted.has(s.id) ? 'step-muted' : `step-${(state(s.id) || {}).status || 'todo'}`;
+      const a = Object.assign(document.createElement('a'), { href: '#' + s.section, textContent: 'Go there' });
+      a.dataset.tour = s.id;
       a.addEventListener('click', (e) => { e.preventDefault(); go(i); });
-      item.append(a, ' ', Object.assign(document.createElement('span'), { className: decided.has(d.id) ? 'ok-pill' : 'info-pill', textContent: decided.has(d.id) ? 'decided' : 'default' }));
-      return item;
+      const text = Object.assign(document.createElement('span'), { className: 'step-text', textContent: ((state(s.id) || {}).text || s.said) + ' ' });
+      text.append(a);
+      if (!isDone(s)) {
+        const m = Object.assign(document.createElement('button'), { type: 'button', className: 'link-button mute-step',
+          textContent: muted.has(s.id) ? 'Unmute' : 'Mute', title: muted.has(s.id) ? 'Count this step again' : 'Keep it listed, but stop counting it as left to do' });
+        m.addEventListener('click', () => mute(s.id, !muted.has(s.id)));
+        text.append(' ', m);
+      }
+      li.append(Object.assign(document.createElement('strong'), { textContent: s.label }), ' ',
+        Object.assign(document.createElement('span'), { className: cls, textContent: word }), text);
+      return li;
     }));
-    let start = li.querySelector('.tour-start');
+    const said = document.getElementById('setup-left');
+    if (said) said.textContent = n ? `${n} of ${STEPS.length} still to do or decide: until then the box uses each default.` : 'All done.';
+    const actions = document.querySelector('#welcome .tour-actions');
+    if (!actions) return;
+    let start = actions.querySelector('.tour-start');
     if (!start) { start = Object.assign(document.createElement('button'), { type: 'button', className: 'action-btn primary tour-start' }); actions.prepend(start); }
-    start.textContent = !n ? 'Take tour again' : n === DECISIONS.length ? 'Start the tour' : 'Carry on the tour';
-    start.onclick = () => go(n ? DECISIONS.indexOf(left()[0]) : 0);
+    start.textContent = !n ? 'Take the tour again' : n === STEPS.length ? 'Start the tour' : 'Carry on the tour';
+    start.onclick = () => go(n ? STEPS.indexOf(left()[0]) : 0);
   }
 
   // The tour: open the decision's page, highlight its part, and the bar below.
   function go(i) {
-    if (i == null || i < 0 || i >= DECISIONS.length) { stop(); return; }
+    if (i == null || i < 0 || i >= STEPS.length) { stop(); return; }
     at = i;
     try { sessionStorage.setItem('irate-tour', String(i)); } catch (_) { /* this page's own memory only */ }
-    const d = DECISIONS[i];
+    const d = STEPS[i];
     const section = document.getElementById(d.section) ? d.section : d.fallback || d.section;
     if (location.hash === '#' + section) show(); else location.hash = '#' + section;
   }
@@ -108,10 +148,10 @@ const TOUR = (() => {
     marked.removeEventListener('change', onChange, true);
     marked = null;
   }
-  function onChange() { if (at != null) decide(DECISIONS[at].id); }
+  function onChange() { if (at != null) decide(STEPS[at].id); }
   function show() {
     if (at == null) return;
-    const d = DECISIONS[at];
+    const d = STEPS[at];
     unmark();
     let target = typeof d.target === 'function' ? d.target() : document.querySelector(d.target);
     if (target && target.closest('.settings, .aw-settings, form, .admin-checks > li')) target = target.closest('.settings, .aw-settings, form, li') || target;
@@ -133,21 +173,21 @@ const TOUR = (() => {
     const img = Object.assign(document.createElement('img'), { className: 'tour-guide', src: GUIDE, alt: '' });
     const text = document.createElement('div');
     text.className = 'tour-text';
-    text.append(Object.assign(document.createElement('strong'), { textContent: `Setup tour · ${at + 1} of ${DECISIONS.length}: ${d.label}` }), ' ',
-      Object.assign(document.createElement('span'), { className: decided.has(d.id) ? 'ok-pill' : 'warn-pill', textContent: decided.has(d.id) ? 'decided' : 'to decide' }),
+    text.append(Object.assign(document.createElement('strong'), { textContent: `Setup tour · ${at + 1} of ${STEPS.length}: ${d.label}` }), ' ',
+      Object.assign(document.createElement('span'), { className: PILL(d)[0], textContent: PILL(d)[1] }),
       Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: d.said + (here ? '' : ' (Not on this box, or not showing here: keep the default and carry on.)') }));
     const btn = (label, cls, fn) => { const b = Object.assign(document.createElement('button'), { type: 'button', className: cls, textContent: label }); b.addEventListener('click', fn); return b; };
     const back = btn('← Back', 'action-btn', () => go(at - 1));
     back.disabled = at === 0;
     const buttons = document.createElement('div');
     buttons.className = 'chip-group';
-    buttons.append(back, btn('Keep this, next →', 'action-btn primary', () => { decide(d.id); (at + 1 < DECISIONS.length ? go(at + 1) : finish()); }),
-      btn('Skip →', 'action-btn', () => (at + 1 < DECISIONS.length ? go(at + 1) : finish())), btn('Leave the tour', 'action-btn', stop));
+    buttons.append(back, btn(KIND[d.id] === 'decision' ? 'Keep this, next →' : 'Done, next →', 'action-btn primary', () => { decide(d.id); (at + 1 < STEPS.length ? go(at + 1) : finish()); }),
+      btn('Skip →', 'action-btn', () => (at + 1 < STEPS.length ? go(at + 1) : finish())), btn('Leave the tour', 'action-btn', stop));
     bar.replaceChildren(img, text, buttons);
   }
 
   async function load() {
-    try { decided = new Set((await getJSON('/admin/settings')).setup_decided || []); } catch (_) { /* the list says what it can */ }
+    try { const st = await getJSON('/admin/settings'); decided = new Set(st.setup_decided || []); muted = new Set(st.setup_muted || []); } catch (_) { /* the list says what it can */ }
     drawList();
     let saved = null;
     try { saved = sessionStorage.getItem('irate-tour'); } catch (_) { /* none */ }
@@ -156,6 +196,8 @@ const TOUR = (() => {
   window.addEventListener('hashchange', () => { if (at != null) setTimeout(show, 30); });
   AL.onBuild(() => { if (at != null) setTimeout(show, 30); drawList(); });
   load();
-  return { DECISIONS, go, stop, decided: () => new Set(decided), drawList };
+  // Downloading a backup is the backup step done.
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#backup a[download]')) decide('backup'); });
+  return { DECISIONS, STEPS, go, stop, decided: () => new Set(decided), drawList, left: () => left().length };
 })();
 if (typeof window !== 'undefined') window.TOUR = TOUR;

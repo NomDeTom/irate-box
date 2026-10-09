@@ -29,6 +29,9 @@
 #                             by irate-box-ci.service as the unprivileged hubci user
 #   irate-box-uplink.service  the uplink watchdog (uplink.py, root): keeps the box on its network
 #                             as eagerly as --uplink or /admin's Network page says
+#   irate-box-crashwatch.service  crash watch (crashwatch.py, root): snapshots to the box's storage,
+#                             a crash filed at the next boot, a failing radio pre-empted as far as
+#                             the box doctor's setting says
 #   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
 #                             hashed with daily and weekly salts held in memory, only the counts
 #                             written; runs only while counting is on (irate-box-visitors-switch.path)
@@ -698,7 +701,7 @@ CADDY_FROM_RELEASE=0
 # on cgit's about pages (scripts/cgit-about.py), ~1 MB. libjs-highlight.js: code highlighted
 # in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base nftables procps)
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base nftables procps gpgv)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -1967,6 +1970,27 @@ if [ "$RTC" = auto ] || [ -f "$ETC/rtc.json" ]; then
 		problem "looking for a clock module failed: $out"
 	fi
 fi
+# Crash watch (crashwatch.py): always running, small. Its start notes the boot (and files the last one
+# as a crash if it never shut down); its stop marks a clean shutdown.
+cat >/etc/systemd/system/irate-box-crashwatch.service <<EOF
+[Unit]
+Description=Irate-Box crash watch: what the box was doing when it stopped (crashwatch.py; /admin, Box doctor)
+After=local-fs.target systemd-journald.service
+
+[Service]
+Type=simple
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStartPre=$CODE/irate-box crashwatch boot
+ExecStart=$CODE/irate-box crashwatch run
+ExecStopPost=$CODE/irate-box crashwatch shutdown
+Restart=always
+RestartSec=10
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat >/etc/systemd/system/irate-box-uplink.service <<EOF
 [Unit]
 Description=Irate-Box uplink watchdog: keep the box on its network (uplink.py; /admin, Network)
@@ -2042,6 +2066,10 @@ PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectHome=read-only
 EOF
+# The network floor (root/firewall.py): loads /etc/hub/firewall.nft when the Security page has
+# written one, nothing otherwise; the page enables it, uninstall.sh takes it away.
+PYTHONPATH="$CODE" python3 -c "from irate_box.root import firewall; print(firewall.unit_text(\"$CODE\"), end=\"\")" >/etc/systemd/system/irate-box-firewall.service
+
 cat >/etc/systemd/system/irate-box-secdoctor.timer <<EOF
 [Unit]
 Description=Irate-Box security doctor, daily
@@ -2196,11 +2224,12 @@ done
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
 # --monitorLibrary only notices library.xml changing, not the files it points at.
 [ "$KIWIX" = 1 ] || [ "$SWEPT" = 0 ] || systemctl try-restart kiwix
-for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.
 systemctl try-restart irate-box-uplink.service || problem "irate-box-uplink did not restart: journalctl -u irate-box-uplink -n 30"
+systemctl try-restart irate-box-crashwatch.service || problem "irate-box-crashwatch did not restart: journalctl -u irate-box-crashwatch -n 30"
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled

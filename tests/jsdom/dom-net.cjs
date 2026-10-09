@@ -59,8 +59,9 @@ setTimeout(() => {
   check('its own warnings on its card (3)', own === 3, own);
   // Each labelled part a section, a hairline between them (inbox, 2026-10-06: the parts ran together).
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
-  check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
-    && secs.every((n) => n.querySelector('.net-line, .admin-checks')), secs.length);
+  // Since #117 a device's uptime bars are a section of their own, before its warnings.
+  check('the card in sections: what, now, managed by, the hotspot, its uptime, its warnings', secs.length === 6
+    && secs.every((n) => n.querySelector('.net-line, .admin-checks, .net-uptime')) && !!secs[4].querySelector('.net-uptime'), secs.length);
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
@@ -81,14 +82,14 @@ setTimeout(() => {
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
   // Staying on the network: eagerness and forgiveness both as radio cards (2026-10-06).
-  const rungs = [...d.querySelectorAll('#up-eager .up-rung')];
+  const rungs = [...d.querySelectorAll('#up-eager .choice-tile')];
   check('eagerness: five cards, off to stubborn', rungs.map((r) => r.querySelector('input').value).join(' ') === 'off patient standard persistent stubborn',
     rungs.map((r) => r.querySelector('input').value).join(' '));
-  check('every card shows its description and what it does', rungs.every((r) => r.querySelectorAll('.setting-desc').length === 2 && r.querySelector('.up-does').textContent.length > 10));
+  check('every card shows its description and what it does', rungs.every((r) => r.querySelectorAll('.setting-desc').length === 2 && r.querySelector('.choice-does').textContent.length > 10));
   check('the chosen level is marked', rungs.filter((r) => r.classList.contains('chosen')).length === 1);
-  check('stubborn\'s line says it reboots', /reboots after 30 min/.test(rungs[4].querySelector('.up-does').textContent), rungs[4].querySelector('.up-does').textContent);
-  check('off\'s line says it never acts', /never acts/.test(rungs[0].querySelector('.up-does').textContent));
-  const frungs = [...d.querySelectorAll('#up-forgive .up-rung')];
+  check('stubborn\'s line says it reboots', /reboots after 30 min/.test(rungs[4].querySelector('.choice-does').textContent), rungs[4].querySelector('.choice-does').textContent);
+  check('off\'s line says it never acts', /never acts/.test(rungs[0].querySelector('.choice-does').textContent));
+  const frungs = [...d.querySelectorAll('#up-forgive .choice-tile')];
   check('forgiveness: radio cards too, tolerant to strict', frungs.map((r) => r.querySelector('input').value).join(' ') === 'tolerant normal strict'
     && frungs.every((r) => r.querySelectorAll('.setting-desc').length === 2) && frungs.filter((r) => r.classList.contains('chosen')).length === 1);
   check('no toggle left on the page', !d.querySelector('#up-forgive button'));
@@ -99,8 +100,8 @@ setTimeout(() => {
   check('choosing stubborn marks it, and Save comes on', rungs[4].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
   check('the sentence follows: it reboots', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
   frungs[2].querySelector('input').click();
-  check('strict chosen, its card says what it does', frungs[2].classList.contains('chosen') && /Down after 2 failed checks and 15 s more/.test(frungs[2].querySelector('.up-does').textContent),
-    frungs[2].querySelector('.up-does').textContent);
+  check('strict chosen, its card says what it does', frungs[2].classList.contains('chosen') && /Down after 2 failed checks and 15 s more/.test(frungs[2].querySelector('.choice-does').textContent),
+    frungs[2].querySelector('.choice-does').textContent);
   const reboot = d.querySelector('[data-key="steps.reboot"]'); reboot.value = 'off'; reboot.dispatchEvent(new w.Event('input'));
   const chk = d.querySelector('[data-key="check"]'); chk.value = '45'; chk.dispatchEvent(new w.Event('input'));
   check('custom values change the sentence', /every 45 s/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);

@@ -19,11 +19,24 @@ XREF = {
     "ssh-root-login": {"title": "SSH: logging in as root", "security-page": ["ssh-root"], "debian-cis": ["5.2.10_disable_root_login"]},
     "ssh-password": {"title": "SSH: passwords rather than keys", "security-page": ["ssh-password"],
                      "debian-cis": ["99.5.2.1_ssh_auth_pubk_only"]},
-    "firewall": {"title": "Firewall rules", "debian-cis": ["3.5.4.1.1_net_fw_default_policy_drop"], "lynis": ["FIRE-4512"]},
+    "firewall": {"title": "Firewall rules", "doctor": ["firewall"], "security-page": ["firewall"], "debian-cis": ["3.5.4.1.1_net_fw_default_policy_drop"], "lynis": ["FIRE-4512"]},
     "security-updates": {"title": "Security updates installed", "security-page": ["security-updates"], "debian-cis": ["1.9_install_updates"]},
     "sudo-all": {"title": "sudo rules that allow everything", "doctor": ["acct-sudo"], "security-page": ["sudo-nopasswd"], "debian-cis": ["99.1.3_acc_sudoers_no_all"]},
 }
 _BY = {(src, i): key for key, e in XREF.items() for src, ids in e.items() if isinstance(ids, list) for i in ids}
+
+# Findings that are a problem together, each alone only a warning (stance review 2026-10-08 §2):
+# every named (source, id) must be present and not ok for the joint report to add the item.
+COMPOUND = [
+    {"key": "sudo-and-passwords", "title": "A passwordless sudo rule, and SSH takes passwords",
+     "needs": [("security-page", "page-sudo-nopasswd"), ("security-page", "page-ssh-password")],
+     "detail": "One guessed password on the network is root with no step in between.",
+     "fix": "Turn SSH password logins off, or take the rule out (Security)."},
+    {"key": "disk-and-passwords", "title": "An account in the disk group, and SSH takes passwords",
+     "needs": [("security-page", "page-group-disk"), ("security-page", "page-ssh-password")],
+     "detail": "One guessed password reads the raw card: the password file, the CA's key, the admin's hash.",
+     "fix": "Take the account out of the disk group, or turn SSH password logins off (Security)."},
+]
 PORT_RE = re.compile(r"^port-(tcp|udp)-(\d+)$")
 
 

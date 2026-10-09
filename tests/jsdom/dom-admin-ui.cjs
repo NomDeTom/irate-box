@@ -30,7 +30,7 @@ const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500
 const tilesData = { tiles: [{ id: 'drop', name: 'File drop', icon: '📥' }, { id: 'about', name: 'About', icon: 'ℹ️' }], state: { order: [] } };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
   { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true }], progress: null, pending: 0, results: [], log: [] };
-const update = { state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
+const update = { signing: { level: 'github', keys: [] }, state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
   changes: ['one'], changes_known: true, verified: null,
   checks: [{ name: 'Python files compile', ok: true, warn: false, detail: '' },
     { name: 'The new nginx site passes nginx -t', ok: false, warn: false, detail: 'irate-box.nginx is missing from the update' }] },
@@ -84,7 +84,7 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/tiles') return new Response(JSON.stringify(tilesData), { status: 200 });
-  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [], threads: [],
+  if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [{ created: 1790949000, name: 'Moth', text: 'buy cheap things' }, { created: 1790949500, name: 'Ant', text: 'hello' }], board: { threads: [] }, drops: [], threads: [],
     queue: [{ key: 'shoutbox:1790949000:Moth', by: 'Moth', text: 'buy cheap things', where: 'Shoutbox', count: 3, reasons: { spam: 3 } }] }), { status: 200 });
   if (u.startsWith('/admin/library')) return new Response(JSON.stringify(library), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
@@ -103,7 +103,8 @@ setTimeout(() => {
   // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box: item 6), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
   check('sidebar: Clock and Appearance under System', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Appearance') > side.indexOf('System') && side.indexOf('Clock') < hi);
@@ -124,6 +125,14 @@ setTimeout(() => {
     && chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
     && chipsOf(kiwix, 'Who sees the tile').map((c) => c.textContent).join('|') === 'guests|users|admin|hidden'
     && picked(kiwix, 'Who can open it') === 'admin' && picked(kiwix, 'Who sees the tile') === 'admin', kiwix && t('#app-access-wiki')[0]);
+  // The third row (Tom, 2026-10-08): what the tile does for one who sees it but may not open it.
+  const lockChips = chipsOf(kiwix, 'When seen but not opened');
+  check('  when seen but not opened: sign in, sign up, padlock, greyed; sign in by default; no sign-up for an app for the admin',
+    lockChips.map((c) => c.textContent).join('|') === 'sign in|sign up|padlock|greyed' && picked(kiwix, 'When seen but not opened') === 'sign in' && lockChips[1].disabled,
+    lockChips.map((c) => `${c.textContent}${c.disabled ? '(off)' : ''}`).join('|'));
+  check('  About, open to all, has no such row', !rowOf(d.getElementById('app-access-about'), 'When seen but not opened'));
+  lockChips[2].click();
+  [...d.getElementById('app-access-wiki').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
   // F3: a tile with no switch (About, the folders) has who sees it, and nothing else of access.
   check('About\'s page holds only who sees its tile', !!d.querySelector('#page-app-about #app-access-about')
@@ -151,6 +160,18 @@ setTimeout(() => {
     check('moved: Save offered, nothing sent yet', save && !save.disabled && !posted.some((p) => p[0] === '/admin/tiles'));
     save.click();
   }
+  check('moderation: a reported message is marked where all the messages are listed; an unreported one is not',
+    /reported ×3/.test(t('#mod-messages .admin-item')[0]) && !/reported/.test(t('#mod-messages .admin-item')[1]), t('#mod-messages .admin-item').join(' | '));
+  {
+    const f = d.getElementById('accounts-settings'), sb = f.querySelector('button.primary');
+    check('save buttons: unfilled while there is nothing to save', sb.classList.contains('idle'));
+    f.querySelector('.select-chips .chip:not(.selected)').click();
+    check('  a change filled it', !sb.classList.contains('idle'));
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    setTimeout(() => check('  saved: unfilled again', sb.classList.contains('idle')), 20);
+  }
+  check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
+    && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
   // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
@@ -223,7 +244,7 @@ setTimeout(() => {
     const heads = [...d.querySelectorAll('button.admin-side-group')];
     const head = (n) => heads.find((h) => h.dataset.group === n);
     const box = (n) => d.getElementById(head(n).getAttribute('aria-controls'));
-    check('fold: every group head a button, open by default', heads.length >= 6 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
+    check('fold: every group head a button, open by default', heads.length >= 5 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
     w.AL.badge('secdoctor', '3');
     head('Doctors').click();
     check('fold: a head folds its group, kept in the browser', box('Doctors').hidden && head('Doctors').getAttribute('aria-expanded') === 'false'
@@ -256,6 +277,32 @@ setTimeout(() => {
     check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
     w.AL.badge('apps', '');
   }
+  // The books' sources as tabs (Tom, 2026-10-08): Kiwix library, Other source, USB stick.
+  {
+    const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
+    const panel = (id) => d.getElementById(id);
+    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB stick'
+      && tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden && panel('books-other').hidden && panel('books-usb').hidden);
+    tabs[2].click();
+    check('  a tab opens its panel and closes the rest', !panel('books-usb').hidden && panel('books-kiwix').hidden && tabs[2].classList.contains('active'));
+    tabs[2].dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    check('  the arrow keys move along', tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden);
+    w.location.hash = '#library-add'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+    check('  an address inside a panel opens its tab', !panel('books-other').hidden && tabs[1].getAttribute('aria-selected') === 'true');
+    w.location.hash = '';
+  }
+  // What an update must carry (Tom, 2026-10-08: "give options in the update manager").
+  {
+    const f = d.getElementById('update-signing-form');
+    check('updates: the signing level as three choices, merged on GitHub chosen', f && f.querySelectorAll('input[type=radio][name=level]').length === 3
+      && f.elements.level.value === 'github' && d.getElementById('update-signers-label').hidden);
+    f.elements.level.value = 'tags'; f.dispatchEvent(new w.Event('change'));
+    check('  signed releases: the box for the keys shows', !d.getElementById('update-signers-label').hidden);
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    check('  with no key: not sent, said why', /at least one key/.test(t('#update-signing-note')[0]) && !posted.some((p) => p[1] && p[1].action === 'signing'));
+    f.elements.signers.value = 'tom@box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB tom';
+    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  }
   // The words of the old menu are gone (F1): no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
   check('mirrors: the list and its form on Git\'s own page, beside its repositories', d.querySelector('#page-app-git #mirrors #git-mirrors') && d.querySelector('#page-app-git #mirrors #git-mirror-add')
@@ -268,6 +315,7 @@ setTimeout(() => {
   check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
     && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
   [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
+  check('git: the build cache\'s three choices as radio buttons, not a dropdown (Tom)', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
   cacheForm.elements.cache.value = 'whole';
   cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const mf = d.getElementById('git-mirror-add').elements;
@@ -286,15 +334,23 @@ setTimeout(() => {
     const inp2 = rowOf(d.getElementById('app-access-about'), 'Tile icon').querySelector('input');
     inp2.value = 'INFO'; inp2.dispatchEvent(new w.Event('change'));
     check('  four letters taken, Save offered', !save().disabled);
+    // The tile's size in the same block (Tom, 2026-10-08: "tile icons can't choose their width and height now").
+    const sizes = chipsOf(d.getElementById('app-access-about'), 'Tile size');
+    check('  its size, single (the default) of single, wide, large', sizes.map((c) => c.textContent).join('|') === 'single|wide|large' && sizes[0].getAttribute('aria-pressed') === 'true');
+    sizes[1].click();
+    check('  wide chosen, waiting for Save', chipsOf(d.getElementById('app-access-about'), 'Tile size')[1].getAttribute('aria-pressed') === 'true');
     save().click();
   }
   chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
   [...[...d.querySelectorAll('#builtin-list .library-source')][0].querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   setTimeout(() => {
-    check('the icon saved with the tiles\' state', posted.some((p) => p[0] === '/admin/tiles' && p[1].state.icon && p[1].state.icon.about === 'INFO'), JSON.stringify(posted.filter((p) => p[0] === '/admin/tiles')));
+    check('the icon and the size saved with the tiles\' state', posted.some((p) => p[0] === '/admin/tiles' && p[1].state.icon && p[1].state.icon.about === 'INFO'
+      && p[1].state.size.about === 'wide'), JSON.stringify(posted.filter((p) => p[0] === '/admin/tiles')));
     check('About hidden asks the hub', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about' && p[1].visible === 'hidden'));
     check('the order saved: About, then the drop, large', JSON.stringify((posted.find((p) => p[0] === '/admin/tiles') || [])[1]) === JSON.stringify({ state: { order: ['about', 'drop'], size: { drop: 'large' }, icon: {} } }),
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
+    check('padlock saved for Kiwix', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'wiki' && p[1].locked === 'padlock'), JSON.stringify(posted.filter((p) => p[0] === '/admin/visibility')));
+    check('updates: the signing level sent with the keys', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'signing' && p[1].level === 'tags' && /ssh-ed25519/.test(p[1].signers)));
     check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));

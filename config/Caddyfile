@@ -30,6 +30,8 @@
 (irate_box_hub) {
 	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
 	request_header -X-Irate-Front
+	# A baseline Content-Security-Policy on every answer of this origin (stance review N11).
+	header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
 
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
 	# Host header passes through untouched, so server.py's probe-host check

@@ -62,6 +62,10 @@ try:
     check("the Factory's own page served at /admin/factory.html", st == 200 and b"/factory.js" in page and b"factory-form" in page, st)
     st, _ = get("/admin/factory.html", {})
     check("  refused without the front's header, as /admin is", st == 403, st)
+    st, page = get("/admin/mesh.html", {"X-Irate-Front": SECRET})
+    check("Mesh's Heard served at /admin/mesh.html (item 9)", st == 200 and b"/mesh-heard.js" in page, st)
+    st, _ = get("/admin/mesh.html", {})
+    check("  refused without the front's header, as /admin is", st == 403, st)
     check("/admin/apps: who sees it alone for About and the folders, not a switched app (F3)", seen.get("about") is True and seen.get("tools-rf") is True and seen.get("draw") is False, seen)
     sw = {x["id"]: x["switch"] for x in got}
     check("  with whether each app's access can be set (M6)", sw.get("git") is True and sw.get("wiki") is True and sw.get("meshtastic") is False and sw.get("box-factory") is False, sw)

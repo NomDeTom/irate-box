@@ -38,6 +38,7 @@
         From a terminal on the box (SSH, or Terminal if it is on):
         <pre class="admin-log" id="helper-banner-cmds"></pre>
       </div>
+      <p class="setting-desc helper-busy" id="helper-busy" role="status" hidden></p>
       <section class="admin-pane" id="overview" aria-labelledby="overview-title">
         <h2 id="overview-title">Overview</h2>
         <div class="attention" id="attention" aria-live="polite"></div>
@@ -48,12 +49,13 @@
           it takes a second or two to show here.
         </p>
         <table class="admin-table" id="service-table">
-          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th></th></tr></thead>
+          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th>Up, last 72 hours and 72 days</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
-        <!-- The services' uptime (step 35, svchistory.py): closed by default, its inside redrawn by admin.js. -->
-        <details class="svc-uptime" id="svc-uptime"><summary>Uptime, last 72 hours</summary><div id="svc-uptime-body"></div></details>
+        <!-- The services' uptime (step 35, svchistory.py): a strip per service in its own row (Tom, 2026-10-09);
+             the legend and the week in words below, redrawn by admin.js. -->
+        <div class="svc-uptime" id="svc-uptime"><div id="svc-uptime-body"></div></div>
         <div id="control-results"></div>
         <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps again</a></p>
       </section>
@@ -65,22 +67,13 @@
           and any can be skipped and come back to later: this page stays in the sidebar until you
           finish it, and Overview can bring it back.
         </p>
-        <ol class="setup-steps" id="setup-steps">
-          <li data-step="password"><strong>Admin password</strong> <span>Set.</span>
-            <a href="#access">Change it under Access</a></li>
-          <li data-step="connection"><strong>How guests reach the box</strong> <span></span></li>
-          <li data-step="security"><strong>What the box exposes</strong> <span>Not scanned yet.</span>
-            <a href="#security">Open Security</a></li>
-          <li data-step="addons"><strong>Add-ons</strong> <span></span> <a href="#addons">Choose add-ons</a></li>
-          <li data-step="books"><strong>Books</strong> <span></span> <a href="#books">Add books</a></li>
-          <li data-step="decisions"><strong>Decide what the box shows and counts</strong> <span></span>
-            <p class="setting-desc">Everything that touches the security of the box or the people on it. Each has a default
-              already; the tour takes you to each one where it lives.</p>
-            <div class="library-buttons tour-actions">
-              <button class="action-btn" type="button" id="setup-finish">Hide this setup page</button>
-            </div>
-            <p class="setting-desc">This can be reopened from the Overview page.</p></li>
-        </ol>
+        <!-- One list, every step in the same form (Tom, 2026-10-08): the setup's own steps, the
+             decisions that touch security, and a backup last; the tour walks all of it. Drawn by admin-tour.js. -->
+        <div class="library-buttons tour-actions"></div>
+        <p class="setting-desc" id="setup-left"></p>
+        <ol class="setup-steps" id="setup-steps"></ol>
+        <p class="library-buttons"><button class="action-btn" type="button" id="setup-finish">Hide this setup page</button>
+          <span class="setting-desc">It can be reopened from the Overview page.</span></p>
         <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
       </section>
 
@@ -202,7 +195,7 @@
         <p class="setting-desc">
           How wide the pages are, for everyone. The hub and this page use the first; the shoutbox
           and the forum on the hub page have their own. Text stays at reading width whatever you choose,
-          and on a phone everything fits the screen anyway.
+          and on a phone everything fits the screen anyway. Below them, which emoji the pickers offer.
         </p>
         <div id="appearance-box"></div>
       </section>
@@ -226,6 +219,7 @@
           for the hub. Which apps there are is set by the manifests in apps.d/.
         </p>
         <div id="apps-list"></div>
+        <p class="setting-desc">The Debian packages watched on their makers' channels (meshtasticd) are under Updates.</p>
         <h3>Built into the hub</h3>
         <p class="setting-desc">Part of the hub itself, so there is nothing to install or update.</p>
         <div id="builtin-list"></div>
@@ -288,62 +282,72 @@
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
-        <h3>Find books in Kiwix's catalogue</h3>
-        <p class="setting-desc">
-          Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
-          manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
-          as a source that follows its newest release; Update fetches it.
-        </p>
-        <form id="catalogue-form" class="books-tools">
-          <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
-          <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
-          <button class="action-btn primary" type="submit">Search</button>
-        </form>
-        <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
-        <div id="catalogue-results" class="admin-list"></div>
-        <p class="books-pager" id="catalogue-pager" hidden><button class="action-btn" type="button" id="catalogue-more">More</button></p>
-
-        <h3>Add a book source</h3>
-        <p class="setting-desc">
-          Quick fill:
-          <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
-          <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
-          <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
-        </p>
-        <form id="library-add" class="library-form">
-          <label>Book name <input name="name" required placeholder="mermaid-docs" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*"></label>
-          <label>Source
-            <select name="type">
-              <option value="release">GitHub releases</option>
-              <option value="actions">GitHub Actions artifacts (token)</option>
-              <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
-              <option value="url">A URL</option>
-            </select>
-          </label>
-          <p class="setting-desc" id="library-type-help"></p>
-          <label data-for="release actions nightly-link">Repository <input name="repo" placeholder="owner/repo"></label>
-          <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
-          <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
-          <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
-          <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
-          <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
-          <button class="action-btn primary" type="submit">Add source</button>
-        </form>
-        <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
-
-        <h3>From or to a USB stick</h3>
-        <p class="setting-desc">
-          Plug a stick into the box, then scan. Books on it can be copied into the library, and the
-          hub's books copied onto it to carry to another box. The stick is only mounted for the
-          scan or the copy, read-only unless something is being copied to it.
-        </p>
-        <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB sticks</button></div>
-        <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
-        <div class="admin-progress" id="usb-progress" hidden>
-          <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
-          <p class="setting-desc" id="usb-step"></p>
+        <h3>Add books</h3>
+        <!-- Where new books come from, as tabs (Tom, 2026-10-08): Kiwix's library, a source of your own, a USB stick. -->
+        <div class="tab-set" data-tabs="book-sources">
+          <div class="view-switch" role="tablist" aria-label="Where new books come from">
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-kiwix" aria-controls="books-kiwix">Kiwix library</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-other" aria-controls="books-other">Other source</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-usb" aria-controls="books-usb">USB stick</button>
+          </div>
+          <div role="tabpanel" id="books-kiwix" aria-labelledby="tab-books-kiwix">
+          <p class="setting-desc">
+            Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
+            manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
+            as a source that follows its newest release; Update fetches it.
+          </p>
+          <form id="catalogue-form" class="books-tools">
+            <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
+            <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
+            <button class="action-btn primary" type="submit">Search</button>
+          </form>
+          <p class="setting-desc action-note" id="catalogue-note" role="status" hidden></p>
+          <div id="catalogue-results" class="admin-list"></div>
+          <p class="books-pager" id="catalogue-pager" hidden><button class="action-btn" type="button" id="catalogue-more">More</button></p>
+          </div>
+          <div role="tabpanel" id="books-other" aria-labelledby="tab-books-other" hidden>
+          <p class="setting-desc">
+            Quick fill:
+            <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
+            <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
+            <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
+          </p>
+          <form id="library-add" class="library-form">
+            <label>Book name <input name="name" required placeholder="mermaid-docs" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*"></label>
+            <label>Source
+              <select name="type">
+                <option value="release">GitHub releases</option>
+                <option value="actions">GitHub Actions artifacts (token)</option>
+                <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
+                <option value="url">A URL</option>
+              </select>
+            </label>
+            <p class="setting-desc" id="library-type-help"></p>
+            <label data-for="release actions nightly-link">Repository <input name="repo" placeholder="owner/repo"></label>
+            <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
+            <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
+            <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
+            <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
+            <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
+            <button class="action-btn primary" type="submit">Add source</button>
+          </form>
+          <p class="setting-desc action-note" id="library-add-note" role="status" hidden></p>
+          </div>
+          <div role="tabpanel" id="books-usb" aria-labelledby="tab-books-usb" hidden>
+          <p class="setting-desc">
+            Plug a stick into the box, then scan. Books on it can be copied into the library, and the
+            hub's books copied onto it to carry to another box. The stick is only mounted for the
+            scan or the copy, read-only unless something is being copied to it.
+          </p>
+          <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB sticks</button></div>
+          <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
+          <div class="admin-progress" id="usb-progress" hidden>
+            <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
+            <p class="setting-desc" id="usb-step"></p>
+          </div>
+          <div id="usb-devices"></div>
+          </div>
         </div>
-        <div id="usb-devices"></div>
       </section>
 
       <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
@@ -461,15 +465,17 @@
           </label>
           <label>Check for updates
             <select name="check_every_hours">
-              <option value="0">only when asked</option><option value="6">every 6 hours</option>
-              <option value="24">daily</option><option value="168">weekly</option>
+              <option value="0" data-says="The librarian only looks when you ask.">Manual only</option>
+              <option value="6" data-says="The librarian looks every 6 hours.">6 hours</option>
+              <option value="24" data-says="The librarian looks once a day.">24 hours</option>
+              <option value="168" data-says="The librarian looks once a week.">7 days</option>
             </select>
           </label>
           <label>When a check finds something newer
             <select name="auto_install">
-              <option value="0">only note it (update from Apps or Books)</option>
-              <option value="1">download and check it, ready to update</option>
-              <option value="2">put it in use</option>
+              <option value="0" data-says="Only noted: update from Apps or Books.">Flag</option>
+              <option value="1" data-says="Downloaded and checked, ready for you to update.">Fetch</option>
+              <option value="2" data-says="Downloaded, checked and put in use.">Auto-install</option>
             </select>
           </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
@@ -492,6 +498,18 @@
             <button class="action-btn" type="button" id="library-token-clear">Clear</button>
           </div>
         </form>
+        <h4>Adapt to the rate limit</h4>
+        <p class="setting-desc">
+          GitHub lets this box make 60 requests an hour without a token (5000 with one). Adapt asks
+          GitHub what it really allows, then keeps the librarian's scheduled checks to a budget just under it:
+          when the budget for the hour is spent, they wait. If GitHub refuses requests several times in a row, the
+          budget is halved, so it asks less often; a clean run gives some back. With or without a token.
+          <span id="library-pace-state"></span>
+        </p>
+        <div class="library-buttons">
+          <button class="action-btn" type="button" id="library-adapt">Adapt to rate limit</button>
+          <button class="action-btn" type="button" id="library-adapt-off">Stop adapting</button>
+        </div>
         <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
       </section>
 
@@ -667,12 +685,12 @@
         <h3>Builds</h3>
         <p class="setting-desc" id="ci-about"></p>
         <form id="ci-cache-form" class="library-form">
-          <label>Firmware build cache (PlatformIO's packages for the newest Meshtastic release), so firmware builds here need no internet
-            <select name="cache">
-              <option value="discard">Don't keep it</option>
-              <option value="native">Keep what a headless build needs (~215 MB)</option>
-              <option value="whole">Keep all of it (~700 MB, includes the touchscreen UI)</option>
-            </select></label>
+          <fieldset class="choice-tiles">
+            <legend>Firmware build cache: PlatformIO's packages for the newest Meshtastic release, so firmware builds here need no internet</legend>
+            <label class="choice-tile"><input type="radio" name="cache" value="discard"><span class="choice-text"><span class="setting-name">Don't keep it</span><span class="setting-desc">Builds fetch what they need from the internet each time.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="cache" value="native"><span class="choice-text"><span class="setting-name">Keep what a headless build needs</span><span class="setting-desc">About 215 MB.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="cache" value="whole"><span class="choice-text"><span class="setting-name">Keep all of it</span><span class="setting-desc">About 700 MB; includes the touchscreen UI.</span></span></label>
+          </fieldset>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc" id="ci-cache-status"></p>
@@ -688,7 +706,7 @@
       </section>
 
       <section class="admin-pane" id="accounts" aria-labelledby="accounts-title">
-        <h2 id="accounts-title">Accounts</h2>
+        <h2 id="accounts-title">Accounts &amp; users</h2>
         <p class="setting-desc">
           Who may have an account on the box. A user logs in at <a href="/account.html">/account.html</a>;
           an admin account can do what this page does. Off, the box has guests and its admin only,
@@ -697,17 +715,17 @@
         <form id="accounts-settings" class="library-form">
           <label>Sign-up
             <select name="signup">
-              <option value="off">Off: no accounts</option>
-              <option value="open">Open: anyone makes one, usable at once</option>
-              <option value="apply">Apply: anyone asks; an admin accepts</option>
-              <option value="assigned">Assigned: an admin makes them</option>
+              <option value="off" data-says="No accounts: the box has guests and its admin only.">Off</option>
+              <option value="open" data-says="Anyone can make an account, usable at once.">Open</option>
+              <option value="apply" data-says="Anyone can ask for one; an admin accepts or refuses.">Application</option>
+              <option value="assigned" data-says="Only an admin makes accounts.">Admin assigned</option>
             </select>
           </label>
           <label>Over plain HTTP
             <select name="http">
-              <option value="prevented">Prevented: passwords only over HTTPS</option>
-              <option value="warning">Warning: allowed, and the page says it can be read off the air</option>
-              <option value="permitted">Permitted: allowed, nothing said</option>
+              <option value="prevented" data-says="Passwords only over HTTPS.">Prevented</option>
+              <option value="warning" data-says="Allowed, and the page says it can be read off the air.">Warning</option>
+              <option value="permitted" data-says="Allowed, nothing said.">Permitted</option>
             </select>
           </label>
           <button class="action-btn primary" type="submit">Save</button>
@@ -716,9 +734,13 @@
         <p class="setting-desc" id="accounts-counts"></p>
         <h3>Make an account</h3>
         <form id="accounts-make" class="library-form">
-          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required></label>
-          <label>Role <select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
-          <button class="action-btn primary" type="submit">Make it</button>
+          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"
+            title="3 to 32 characters: letters, digits, dots, dashes or underscores; no spaces">
+            <small class="setting-desc">3 to 32 characters: letters, digits, dots (.), dashes (-) or underscores (_); no spaces.</small></label>
+          <div class="library-buttons" role="group" aria-label="Make it as">
+            <button class="action-btn primary big" type="submit" name="role" value="user">Make user</button>
+            <button class="action-btn primary big" type="submit" name="role" value="admin">Make admin</button>
+          </div>
         </form>
         <p class="setting-desc">Each comes with a one-time code, for a day, for its person to set their password at /account.html.</p>
         <p class="acct-code" id="accounts-code" hidden></p>
@@ -751,8 +773,8 @@
         </form>
         <p class="setting-desc action-note" id="mesh-note" role="status" hidden></p>
         <h3>Heard</h3>
-        <p class="setting-desc" id="mesh-admin-counts"></p>
-        <ol class="mesh-packets" id="mesh-admin-packets"></ol>
+        <p class="setting-desc">What the box decoded, the messages too, on a page of its own for the admin.</p>
+        <p class="library-buttons"><a class="action-btn primary" href="/admin/mesh.html" id="mesh-open">Open what the mesh said →</a></p>
       </section>
 
       <section class="admin-pane" id="factory" aria-labelledby="factory-title">
@@ -795,6 +817,7 @@
           works even when this page cannot reach the root helper.
         </p>
         <p class="setting-desc" id="health-when">Not looked yet.</p>
+        <p class="setting-desc" id="helper-busy-log" hidden></p>
         <div class="library-buttons">
           <button class="action-btn" type="button" id="health-scan">Look again</button>
         </div>
@@ -822,7 +845,7 @@
         <p class="setting-desc" id="net-when">Not looked yet.</p>
         <div class="library-buttons">
           <label>Device <select id="net-device"><option value="">All</option></select></label>
-          <button class="action-btn" type="button" id="net-scan">Look again</button>
+          <button class="action-btn" type="button" id="net-scan" aria-label="Refresh the network inventory">↻ Refresh</button>
         </div>
         <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
         <details class="net-glossary" id="net-glossary">
@@ -869,7 +892,7 @@
           who can join and what is protected. The choice applies the next time the hotspot is switched on,
           above, which also says what the radios here allow. A setup decision; the tour comes here.
         </p>
-        <div class="hs-modes" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
+        <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
         <div class="net-settings" id="hs-fields">
           <label class="setting-name" for="hs-second" id="hs-second-label">The encrypted network uses</label>
           <select id="hs-second">
@@ -891,14 +914,29 @@
           <button class="action-btn" type="button" id="hs-save">Save</button>
         </div>
         <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
+        <h4>Guests reach the internet</h4>
+        <p class="setting-desc">
+          Whether guests on the hotspot can go on through this box's own connection, from nobody to
+          everyone. Their traffic then leaves as the box's: whatever they do online comes from your
+          connection. The safest is the default; each step out says what it opens. However far it goes,
+          guests are kept out of your own network and the box's Tailscale, let out by their device's
+          hardware address, and can't look names up before tapping through: each of those can be turned
+          off on <a href="#security">Security</a>, where the doctor warns while one is.
+        </p>
+        <div id="guest-net-box">
+          <div class="chip-group" role="radiogroup" aria-label="Guests reach the internet" id="guest-net-chips"></div>
+          <p class="setting-desc" id="guest-net-said"></p>
+          <p class="library-buttons"><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
+        </div>
+        <p class="setting-desc action-note" id="guest-net-note" role="status" hidden></p>
 
         <h3>Staying on the network</h3>
         <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
         <div class="net-settings">
           <span class="setting-name" id="up-eager-label">Eagerness: how hard it works to get back on</span>
-          <div class="up-ladder" id="up-eager" role="radiogroup" aria-labelledby="up-eager-label"></div>
+          <div class="choice-tiles" id="up-eager" role="radiogroup" aria-labelledby="up-eager-label"></div>
           <span class="setting-name" id="up-forgive-label">Forgiveness: how much it puts up with first</span>
-          <div class="up-ladder" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
+          <div class="choice-tiles" id="up-forgive" role="radiogroup" aria-labelledby="up-forgive-label"></div>
           <label class="setting-name" for="up-iface">Watch</label>
           <select id="up-iface"><option value="auto">The box's route to its network</option></select>
           <details id="up-custom">
@@ -1018,6 +1056,24 @@
         </p>
         <p class="setting-desc" id="update-summary">Not checked yet.</p>
         <p class="setting-desc">When an update fails, the <a href="#updoctor">Updates doctor</a> can say why.</p>
+        <h3>What an update must carry</h3>
+        <p class="setting-desc">
+          How far a new version must be vouched for before the box installs it (as root). A version
+          that is not signed as chosen here is refused, by Install anyway too.
+        </p>
+        <form id="update-signing-form" class="library-form">
+          <fieldset class="choice-tiles">
+            <legend>Updates must be</legend>
+            <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
+          </fieldset>
+          <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
+            <textarea name="signers" rows="3" spellcheck="false" placeholder="tom@box ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
+          <p class="setting-desc" id="update-signers-kept"></p>
+          <button class="action-btn primary" type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="update-signing-note" role="status" hidden></p>
         <h3>Debian's security updates</h3>
         <p class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</p>
         <ul class="admin-checks" id="updates-security"></ul>
@@ -1031,15 +1087,16 @@
         <form id="auto-form" class="library-form">
           <label>Look for updates
             <select name="hub_check_every_hours">
-              <option value="0">only when asked (the button above)</option>
-              <option value="24">daily</option><option value="168">weekly</option>
+              <option value="0" data-says="Only when you press Check for updates, below.">Manual only</option>
+              <option value="24" data-says="The librarian looks once a day, on its round.">24 hours</option>
+              <option value="168" data-says="The librarian looks once a week, on its round.">7 days</option>
             </select>
           </label>
           <label>When one is found
             <select name="hub_auto">
-              <option value="0">show it here, and do nothing else</option>
-              <option value="1">also fetch and verify it, ready to install</option>
-              <option value="2">also install it, at night, with nobody on the hub</option>
+              <option value="0" data-says="Shown here, nothing else done.">Flag</option>
+              <option value="1" data-says="Also fetched and verified, ready for you to install.">Fetch</option>
+              <option value="2" data-says="Also installed, at night, with nobody on the hub.">Auto-install</option>
             </select>
           </label>
           <label class="inline" id="auto-window">Install between
@@ -1066,6 +1123,14 @@
           <summary>Installer output</summary>
           <pre class="admin-log" id="update-log"></pre>
         </details>
+        <h3>Packages from their makers</h3>
+        <p class="setting-desc">
+          Debian packages the box watches on their makers' own channels: meshtasticd from Meshtastic's
+          repositories (beta, alpha or nightly). Each new build is kept when it is first seen, so one can be
+          installed once it has been out a while, and an update can be rolled back with no internet.
+        </p>
+        <div id="pkg-list"><p class="setting-desc">Looking…</p></div>
+        <p class="setting-desc action-note" id="pkg-note" role="status" hidden></p>
 
       </section>
 
@@ -1135,6 +1200,8 @@
         </div>
         <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
+        <!-- Each source and how fresh it is (item 11 step 6, the plan's §5.5–5.6): what it covers in its title. -->
+        <p class="fresh-strip" id="joint-fresh" aria-label="Each source, and how fresh it is"></p>
         <h3>Cures</h3>
         <p class="setting-desc">
           From the box's own scan: what has one right answer, offered here with your consent and an Undo
@@ -1143,15 +1210,10 @@
         <ul class="admin-checks" id="secdoctor-cures"></ul>
         <h3>What is what</h3>
         <p class="setting-desc" id="joint-summary"></p>
-        <div class="card-grid" id="joint-items"></div>
+        <div id="joint-items"></div>
         <details class="admin-output" id="joint-alone" hidden>
           <summary>Seen by one source only: worth a look, or a false positive</summary>
           <ul class="admin-checks" id="joint-alone-list"></ul>
-        </details>
-        <details class="admin-output" id="joint-sources-box">
-          <summary>What each source covers, and how fresh it is</summary>
-          <table class="admin-table"><thead><tr><th>Source</th><th>Covers</th><th>From</th><th>To fix / to look at</th></tr></thead>
-            <tbody id="joint-sources"></tbody></table>
         </details>
         <h3>Import a scan</h3>
         <p class="setting-desc">
@@ -1212,6 +1274,7 @@
 
   <script src="/krab-loop.js"></script>
   <script src="/heatmap.js"></script>
+  <script src="/emoji.js"></script>
   <script src="/admin-widgets.js"></script>
   <script src="/admin-layout.js"></script>
   <script src="/admin.js"></script>

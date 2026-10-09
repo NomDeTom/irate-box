@@ -28,8 +28,11 @@ try:
         return json.loads(c.getresponse().read())
     check("nothing decided to begin with", post({})["setup_decided"] == [])
     check("decisions recorded", post({"setup_decided": ["visitors", "https"]})["setup_decided"] == ["visitors", "https"])
-    for bad in (["visitors", "nonsense"], "visitors", ["https"] * 12):
+    for bad in (["visitors", "nonsense"], "visitors", ["https"] * 18):
         check(f"refused: {str(bad)[:40]}", post({"setup_decided": bad})["setup_decided"] == ["visitors", "https"])
+    check("nothing muted to begin with", post({})["setup_muted"] == [])
+    check("a step muted", post({"setup_muted": ["backup"]})["setup_muted"] == ["backup"])
+    check("refused: an unknown step", post({"setup_muted": ["backup", "nonsense"]})["setup_muted"] == ["backup"])
 finally:
     hub.terminate()
 print(f"failures: {fails}")

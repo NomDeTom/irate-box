@@ -260,6 +260,44 @@ VISIBILITY_FILE = STATE_DIR / "visibility.json"
 VISIBLE = ("auto", "guests", "users", "admin", "hidden")
 
 
+# The admin, seen at /admin (Tom, 2026-10-08: "admin-only apps are hidden when accounts are off, even
+# if I'm signed in as admin"). The box's own login is the web server's, on /admin only, so the home
+# page never sees it: /admin's page, which only the admin reaches, leaves a signed cookie that the
+# home page reads as "the admin is here". It changes which tiles show, never who may open them.
+ADMIN_SEEN_COOKIE = "irate_admin_seen"
+ADMIN_SEEN_HOURS = 12
+_admin_seen_key = []
+
+
+def admin_seen_key():
+    if not _admin_seen_key:
+        f = STATE_DIR / "admin-seen.key"
+        try:
+            key = f.read_bytes()
+        except OSError:
+            key = b""
+        if len(key) != 32:
+            key = secrets.token_bytes(32)
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                out.write(key)
+        _admin_seen_key.append(key)
+    return _admin_seen_key[0]
+
+
+def admin_seen_value(now=None):
+    until = int((now or time.time()) + ADMIN_SEEN_HOURS * 3600)
+    return f"{until}.{hmac.new(admin_seen_key(), str(until).encode(), 'sha256').hexdigest()}"
+
+
+def admin_seen_ok(value, now=None):
+    until, _, sig = (value or "").partition(".")
+    if not until.isdigit() or int(until) < (now or time.time()):
+        return False
+    return hmac.compare_digest(sig, hmac.new(admin_seen_key(), until.encode(), "sha256").hexdigest())
+
+
 def _unseen(v, signed_in):
     """Is a tile at visibility v hidden from this visitor?"""
     return v == "hidden" or (v == "users" and not signed_in) or (v == "admin" and signed_in != "admin")
@@ -278,6 +316,28 @@ def save_visibility(data):
     tmp = VISIBILITY_FILE.parent / (VISIBILITY_FILE.name + ".tmp")
     tmp.write_text(json.dumps(data))
     os.replace(tmp, VISIBILITY_FILE)
+
+
+# What a tile does for a visitor who sees it but may not open it (Tom, 2026-10-08): offer the
+# sign-in page, offer sign-up (while accounts are open or by application), a padlock that does
+# nothing, or greyed out. Per app; sign-in unless chosen.
+LOCKED_AS_FILE = STATE_DIR / "locked_as.json"
+LOCKED_AS = ("signin", "signup", "padlock", "grey")
+
+
+def locked_as():
+    try:
+        data = json.loads(LOCKED_AS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and v in LOCKED_AS} if isinstance(data, dict) else {}
+
+
+def save_locked_as(data):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = LOCKED_AS_FILE.parent / (LOCKED_AS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, LOCKED_AS_FILE)
 
 
 def _switched():
@@ -366,6 +426,9 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
         hidden = set(hidden) | set(st["hidden"])
     own_icons = {}
+    lock_ways, access_state = locked_as(), access.read(ACCESS_STATE)
+    lock_all = settings_snapshot()["locked_all"]
+    sign_up_open = accounts.settings()["signup"] in ("open", "apply")
     if row == "apps":
         st = tiles_state()
         own_icons = st["icon"]
@@ -384,24 +447,39 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
             w = WIDGET_HTML[tile["widget"]]
             out.append(w.replace('class="service-card ', f'class="service-card {size} ', 1).replace('<div ', f'<div data-size="{size}" ', 1) if size else w)
             continue
-        attrs = [f'class="service-card{" locked" if m["id"] in locked else ""}{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"']
+        # A locked tile (seen, not to be opened by this visitor): as the owner chose for it.
+        how = ((lock_all or lock_ways.get(m["id"], "signin")) if m["id"] in locked else None)
+        if how == "signup" and not (sign_up_open and access.mode_of(access_state, m["id"]) == "users"):
+            how = "signin"  # no sign-up to offer, or an app for the admin only
+        dead = how in ("padlock", "grey")
+        attrs = [(f'class="service-card{" locked" if how else ""}{" greyed" if how == "grey" else ""}{" padlock" if how == "padlock" else ""}'
+                  f'{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"')]  # one attribute, two lines
         if size:
             attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
             attrs.append(f'id="{html.escape(tile["element_id"])}"')
-        attrs.append(f'href="{html.escape(tile["href"])}"')
+        if dead:
+            attrs.append('aria-disabled="true"')
+        elif how == "signup":
+            attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}#signup"')
+        elif how == "signin" and access.mode_of(access_state, m["id"]) == "users":
+            attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}"')
+        else:
+            attrs.append(f'href="{html.escape(tile["href"])}"')
         path = m.get("status", {}).get("path")
         if path:
             attrs.append(f'data-service="{html.escape(path)}"')
-        if tile.get("new_tab"):
+        if tile.get("new_tab") and not dead:
             attrs.append('target="_blank"')
-        out.append(f'      <a {" ".join(attrs)}>\n'
+        tag = "div" if dead else "a"
+        lock = {"signin": "🔒 sign in to open", "signup": "🔒 sign up to open", "padlock": "🔒"}.get(how)
+        out.append(f'      <{tag} {" ".join(attrs)}>\n'
                    + icon_html(own_icons.get(m["id"]) or tile["icon"])
                    + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
                    f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
-                   + ('        <span class="lock">🔒 sign in to open</span>\n' if m["id"] in locked else '')
+                   + (f'        <span class="lock">{lock}</span>\n' if lock else '')
                    + ('        <span class="tile-pill admin-pill" title="Only an admin sees this tile">admin only</span>\n' if m["id"] in admin_only else '')
-                   + f'      </a>')
+                   + f'      </{tag}>')
     return "\n".join(out)
 
 
@@ -622,7 +700,7 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE):
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
@@ -790,6 +868,11 @@ DEFAULT_SETTINGS = {
     "page_width": 80,
     "shout_width": 45,
     "board_width": 45,
+    # The emoji pickers' set (Tom, 2026-10-08): Unicode's emoji up to a release the guests' phones
+    # can draw (a newer emoji shows as an empty box on an older phone). 13.1 for iOS 14.5 and
+    # Android 12; 15.0 for iOS 16.4 (every iPhone from the 8 on) and Android 14; 16.0 for iOS 18.4
+    # (iPhone XS on) and Android 16. Read by emoji.js from /layout.css.
+    "emoji_set": "13.1",
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
     # (irate_box/root/visitors.py; M11). On by default (Tom, 2026-10-08), as one of the setup's
     # decisions; off, the helper doesn't run at all.
@@ -810,17 +893,26 @@ DEFAULT_SETTINGS = {
     # The setup tour (M14): which of the decisions that touch security (5h) the owner has made,
     # by keeping the default or changing it where it lives. The box runs on the defaults until then.
     "setup_decided": [],
+    # Setup steps the owner has muted (Tom, 2026-10-09: "muted as well as hidden"): still listed, greyed,
+    # but not counted in Overview's "needs attention" or the tour's "still to do". Hiding is the whole page.
+    "setup_muted": [],
     # A tile a guest can't open (menu overhaul F3; the setup decision "sign-in-offer"): for an app
     # open to users and left at "as its access", show its tile to guests too, with a lock that leads
     # to sign-in. Off (the default) shows it only to those who may open it, as before.
     "sign_in_offer": False,
+    # What every tile does for one who sees it but may not open it, over the per-app choices (Tom,
+    # 2026-10-09: offered as a global override). "" (the default) leaves each app to its own choice.
+    "locked_all": "",
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
+EMOJI_SETS = ("13.1", "15.0", "16.0")
 # The setup decisions (M14; Tom, 2026-10-08: "anything that has an impact on user or box security"):
 # web/admin-tour.js has each one's words and where it lives.
+# With the setup's own steps and the backup: one list, one tour (Tom, 2026-10-08).
 SETUP_DECISIONS = ("visitors", "names", "signup", "sign-in-offer", "https", "hotspot", "guest-net", "ssh",
-                   "tailscale", "cockpit", "terminal")
+                   "tailscale", "cockpit", "terminal",
+                   "password", "connection", "security", "addons", "books", "backup")
 REPORT_REASONS = ("spam", "unkind", "personal details", "illegal", "other")
 _settings_lock = threading.Lock()
 
@@ -833,8 +925,12 @@ def valid_setting(key, value):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
-    if key == "setup_decided":
+    if key == "locked_all":
+        return value == "" or value in LOCKED_AS
+    if key in ("setup_decided", "setup_muted"):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
+    if key == "emoji_set":
+        return value in EMOJI_SETS
     if key == "names_to":
         return value in ("users", "admin")
     if key == "report_threshold":
@@ -1133,6 +1229,10 @@ def library_action(payload):
                                     if type(payload.get(k)) is int})
         elif action == "token":
             librarian.set_token(str(payload.get("value") or ""))
+        elif action == "adapt-rate":
+            librarian.adapt_rate()
+        elif action == "adapt-rate-off":
+            librarian.clear_pace()
         elif action == "add-apps":
             # The named apps (an app row's "Keep current"), or every default one.
             have = {s["name"] for s in librarian.load_config()["sources"]}
@@ -1358,6 +1458,37 @@ UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
+SIGNING_STATE = CONTROL_DIR / "update-signing.json"  # root's: the level, and the keys' names
+# Guests' onward internet (root/share.py): the level root keeps, and the devices this hub has asked
+# root to let out (for the captive API's answer; root's table holds the real list, each for 12 h).
+SHARE_STATE = CONTROL_DIR / "share.json"
+SHARE_LEVELS = ("off", "users-web", "sheet-web", "sheet-all", "open")
+SHARE_LET_OUT = ("users-web", "sheet-web", "sheet-all")
+SHARE_HOURS = 12
+_let_out = {}            # address -> until (time.time())
+_let_out_lock = threading.Lock()
+
+
+def share_level():
+    try:
+        level = json.loads(SHARE_STATE.read_text()).get("level")
+    except (OSError, ValueError, AttributeError):
+        return "off"
+    return level if level in SHARE_LEVELS else "off"
+
+
+def on_hotspot(addr):
+    try:
+        return ipaddress.ip_address(addr) in ipaddress.ip_network("192.168.4.0/24") and addr != "192.168.4.1"
+    except ValueError:
+        return False
+
+
+def let_out(addr):
+    with _let_out_lock:
+        return _let_out.get(addr, 0) > time.time()
+
+
 UPDATE_ACTIONS = {"check": "update-check", "fetch": "update-fetch", "install": "update-install",
                   "force-install": "update-force-install",
                   "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
@@ -1414,8 +1545,12 @@ def update_snapshot():
     policy = librarian.load_config()["policy"]
     auto = {k: policy[k] for k in ("hub_check_every_hours", "hub_auto", "hub_window_start", "hub_window_end")}
     auto["state"] = librarian._hub_update_state()
+    try:
+        sig = json.loads(SIGNING_STATE.read_text())
+    except (OSError, ValueError):
+        sig = {"level": "off", "keys": []}
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto}
+            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto, "signing": sig}
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
@@ -1502,12 +1637,97 @@ HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-
                               r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
                               r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
+HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
+# Busy spells logged (Tom, 2026-10-08: "have it log busy false alarms so that patterns can be established"):
+# one entry per job of the helper's that kept a request waiting past HELPER_STUCK_AFTER.
+HELPER_BUSY_LOG = STATE_DIR / "helper-busy.json"
+_busy_lock = threading.Lock()
+
+
+def _helper_doing():
+    """What the root helper is running now, from its child's command line (/proc is readable): e.g.
+    "apt-get install --download-only … stage-debug". None when it can't be told."""
+    try:
+        r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "MainPID"], capture_output=True, text=True, timeout=10)
+        pid = r.stdout.strip().partition("=")[2]
+        kids = Path(f"/proc/{pid}/task/{pid}/children").read_text().split() if pid.isdigit() and pid != "0" else []
+        cmd = Path(f"/proc/{kids[0]}/cmdline").read_bytes().split(b"\0") if kids else []
+    except (OSError, subprocess.SubprocessError):
+        return None
+    words = [w.decode(errors="replace") for w in cmd if w]
+    # The command and its plain words; options' values (paths) kept short.
+    return " ".join(Path(w).name if w.startswith("/") else w for w in words if not w.startswith("Dir::") and w != "-o")[:160] or None
+
+
+def _log_busy(started, busy, waited, now=None):
+    """One entry per job: when it started, how long it ran, the longest any request waited behind it,
+    what waited, and what the helper was doing. Updated as the job goes on; the last 200 kept."""
+    now = now or time.time()
+    waiting = []
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            waiting.append(str(json.loads(path.read_text()).get("action", "?"))[:40])
+        except (OSError, ValueError, AttributeError):
+            pass
+    with _busy_lock:
+        try:
+            log = json.loads(HELPER_BUSY_LOG.read_text())
+        except (OSError, ValueError):
+            log = []
+        entry = next((e for e in log if abs(e.get("job_started", 0) - started) < 10), None)
+        if entry is None:
+            entry = {"job_started": round(started), "doing": _helper_doing(), "waiting": []}
+            log.append(entry)
+        entry.update(seen=round(now), busy_for=round(busy), longest_wait=max(entry.get("longest_wait", 0), round(waited)),
+                     waiting=sorted(set(entry["waiting"]) | set(waiting)))
+        if not entry.get("doing"):
+            entry["doing"] = _helper_doing()
+        try:
+            _write_atomic(HELPER_BUSY_LOG, json.dumps(log[-200:]))
+        except OSError:
+            pass
+
+
+def helper_busy_summary(now=None):
+    """The last week's busy spells, for the Health page: how many, the longest wait, the commonest job."""
+    now = now or time.time()
+    try:
+        log = [e for e in json.loads(HELPER_BUSY_LOG.read_text()) if e.get("seen", 0) > now - 7 * 86400]
+    except (OSError, ValueError):
+        return None
+    if not log:
+        return None
+    kinds = {}
+    for e in log:
+        k = " ".join((e.get("doing") or "?").split()[:2])
+        kinds[k] = kinds.get(k, 0) + 1
+    top = max(kinds.items(), key=lambda x: x[1])
+    return {"count": len(log), "longest_wait": max(e.get("longest_wait", 0) for e in log), "commonest": top[0], "commonest_n": top[1],
+            "last": log[-1]}
+
+
+def helper_busy():
+    """Seconds the root helper has been at its current job, or None when it isn't running one. It
+    takes one request at a time, so a long job (a toolkit's download, an update) keeps the rest
+    waiting without anything being wrong (2026-10-08: the debug kit's refresh, 4 minutes, was
+    shown as "not answering"). systemctl show is the hub's to ask."""
+    try:
+        r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "ActiveState",
+                            "-p", "InactiveExitTimestampMonotonic"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    f = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
+    if f.get("ActiveState") not in ("activating", "active") or not f.get("InactiveExitTimestampMonotonic", "").isdigit():
+        return None
+    since = int(f["InactiveExitTimestampMonotonic"]) / 1e6
+    return max(0, time.monotonic() - since) if since else None
 
 
 def helper_state():
     """Is the root helper answering? The hub can see that for itself: its requests wait in a
     folder it owns. One left for more than 90 s means everything on /admin that needs root
-    goes nowhere, including the doctor, so the page says what to type instead."""
+    goes nowhere, including the doctor, so the page says what to type instead; unless the helper
+    is busy with an earlier job, which the page says instead (helper_busy)."""
     oldest = None
     for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
         try:
@@ -1516,7 +1736,12 @@ def helper_state():
             continue
         oldest = m if oldest is None or m < oldest else oldest
     age = time.time() - oldest if oldest else 0
-    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER,
+    busy = helper_busy() if age > HELPER_STUCK_AFTER else None
+    working = busy is not None and busy < HELPER_BUSY_UP_TO
+    if working:
+        _log_busy(time.time() - busy, busy, age)
+    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER and not working,
+            "busy": round(busy) if working else None, "busy_log": helper_busy_summary(),
             "commands": ["sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
                          "sudo systemctl start irate-box-control.path",
                          "sudo /opt/irate-box/irate-box health"]}
@@ -2395,9 +2620,19 @@ class Handler(BaseHTTPRequestHandler):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
 
     def _viewer(self):
-        """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account)."""
+        """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account,
+        or the admin lately at /admin: the box's own login)."""
+        if admin_seen_ok(self._cookie(ADMIN_SEEN_COOKIE)):
+            return "admin"
         me = accounts.session(self._session_token()) if self._session_token() else None
         return False if me is None else "admin" if me.get("role") == "admin" else True
+
+    def _cookie(self, name):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return ""
 
     def _session_token(self):
         for part in self.headers.get("Cookie", "").split(";"):
@@ -2715,7 +2950,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/hotspot":
-            self.send_json(200, hotspot.snapshot())
+            self.send_json(200, dict(hotspot.snapshot(), share=share_level()))
+            return
+
+        if path == "/admin/packages":
+            # Packages from their makers, watched (root/pkgwatch.py): what root published, and its answers.
+            try:
+                pkgs = json.loads((CONTROL_DIR / "pkgwatch.json").read_text())
+            except (OSError, ValueError):
+                pkgs = {}
+            self.send_json(200, {"packages": pkgs, "results": control_results(5)})
             return
 
         if path == "/admin/network":
@@ -2749,6 +2993,7 @@ class Handler(BaseHTTPRequestHandler):
                                           for a in access.apps(MANIFESTS)],
                                  "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
                                  "seen": {i: vis.get(i, "auto") for i in sorted(seen_only())},
+                                 "locked_as": locked_as(),
                                  "results": control_results()})
             return
 
@@ -2853,17 +3098,33 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        admin_page = False
         if path in ("/admin", "/admin/"):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
+            admin_page = not unclaimed()
         elif path == "/admin/factory.html":
             # The Firmware Factory's own page (menu overhaul F7): behind /admin's login, as /admin is.
             path = "/admin-factory.html"
+        elif path == "/admin/mesh.html":
+            # Mesh's Heard, the messages' texts too (item 9, as the Factory's page): behind /admin's login.
+            path = "/admin-mesh.html"
+
+        if path == "/api/guest-net":
+            # What the sheet shows a guest: whether the owner shares the connection, at what level,
+            # and whether this device is out. (root/share.py; the home page's banner, home.js.)
+            level, addr = share_level(), self._client_addr()
+            self.send_json(200, {"level": level, "here": on_hotspot(addr), "out": level == "open" or let_out(addr),
+                                 "signed_in": bool(self._signed_in()), "hours": SHARE_HOURS})
+            return
 
         if path == "/api/captive":
             # RFC 8908's captive-portal API, named by the hotspot's DHCP (option 114, RFC 8910):
             # tells a phone outright that this network has a sign-in page and where, so it need
-            # not guess from probes. captive stays true: the box never gives "internet".
-            body = json.dumps({"captive": True, "user-portal-url": HUB_URL if HUB_HOST else "/"}).encode()
+            # not guess from probes. Captive unless the owner shares the connection and this device
+            # is let out (or everyone is: "open"); root/share.py.
+            level, addr = share_level(), self._client_addr()
+            out = level == "open" or (level in SHARE_LET_OUT and let_out(addr))
+            body = json.dumps({"captive": not out, "user-portal-url": HUB_URL if HUB_HOST else "/"}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/captive+json")
             self.send_header("Cache-Control", "private, no-store")
@@ -2977,8 +3238,8 @@ class Handler(BaseHTTPRequestHandler):
             # No file of that name in web/, so both web servers hand it to the hub.
             with _settings_lock:
                 cur = dict(_settings)
-            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; }\n"
-                    % (cur["page_width"], cur["shout_width"], cur["board_width"])).encode()
+            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"])).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
             self.send_header("Content-Length", len(body))
@@ -3065,6 +3326,9 @@ class Handler(BaseHTTPRequestHandler):
             body = file_path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", MIME.get(file_path.suffix, "application/octet-stream"))
+            if admin_page:  # only the admin reaches /admin: the home page may show them the admin's tiles
+                self.send_header("Set-Cookie", f"{ADMIN_SEEN_COOKIE}={admin_seen_value()}; Path=/; Max-Age={ADMIN_SEEN_HOURS * 3600}; "
+                                 "HttpOnly; SameSite=Strict" + ("; Secure" if self._https() else ""))
             self.send_header("Content-Length", len(body))
             self.end_headers()
             self.wfile.write(body)
@@ -3205,6 +3469,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/moderation":
             self.send_json(*moderation_action(payload))
+            return
+
+        if path == "/admin/update" and payload.get("action") == "signing":
+            # How far an update must be vouched for (root/signing.py): root checks and keeps it.
+            level, signers = payload.get("level"), payload.get("signers", "")
+            if level not in ("off", "github", "tags") or not isinstance(signers, str) or len(signers) > 20000:
+                self.send_json(400, {"error": "level is off, github or tags; signers, allowed_signers lines"})
+                return
+            self.send_json(202, {"id": control_request({"action": "update-signing", "level": level, "signers": signers})})
             return
 
         if path == "/admin/update":
@@ -3420,6 +3693,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, folders_snapshot())
             return
 
+        if path == "/admin/visibility" and "locked" in payload:
+            # What its tile does for one who sees it but may not open it (Tom, 2026-10-08).
+            app, how = str(payload.get("app", "")), payload.get("locked")
+            if app not in _switched() or how not in LOCKED_AS:
+                self.send_json(400, {"error": "app must name an app with a switch, and locked be signin, signup, padlock or grey"})
+                return
+            data = locked_as()
+            if how == "signin":
+                data.pop(app, None)
+            else:
+                data[app] = how
+            save_locked_as(data)
+            self.send_json(200, {"locked_as": data})
+            return
+
         if path == "/admin/visibility":
             # Who sees an app's tile (M5): the hub's own, at once; no root, no web server change.
             app, v = str(payload.get("app", "")), payload.get("visible")
@@ -3486,6 +3774,36 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "action must be scan, settings, hold or profile"})
             return
 
+        if path == "/admin/packages":
+            # Root checks each of these again (pkgwatch.py); here only their shapes.
+            act, pkg = payload.get("action"), payload.get("package")
+            if not isinstance(pkg, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", pkg) and not (act == "check" and pkg == ""):
+                self.send_json(400, {"error": "package: a watched package's name"})
+                return
+            if act == "check":
+                req = {"action": "pkg-check", **({"package": pkg} if pkg else {})}
+            elif act == "install" and isinstance(payload.get("version"), str) and re.fullmatch(r"[A-Za-z0-9.+~:-]{1,100}", payload["version"]):
+                req = {"action": "pkg-install", "package": pkg, "version": payload["version"]}
+            elif act == "rollback":
+                req = {"action": "pkg-rollback", "package": pkg}
+            elif act == "settings" and payload.get("channel") in ("beta", "alpha", "daily") and payload.get("mode") in ("watch", "auto", "aged") \
+                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool):
+                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"]}
+            else:
+                self.send_json(400, {"error": "action: check, install (with version), rollback, or settings (channel, mode, days)"})
+                return
+            self.send_json(202, {"id": control_request(req)})
+            return
+
+        if path == "/admin/hotspot" and payload.get("action") == "share":
+            # The owner's level (root/share.py), on Network → The hotspot.
+            level = payload.get("level")
+            if level not in SHARE_LEVELS:
+                self.send_json(400, {"error": f"level is one of {', '.join(SHARE_LEVELS)}"})
+                return
+            self.send_json(202, {"id": control_request({"action": "share-set", "level": level})})
+            return
+
         if path == "/admin/hotspot" and payload.get("action") in ("on", "off", "try", "confirm"):
             # The hotspot itself (root/ap.py through the root helper): on with the owner's choices,
             # off, the try of a channel of its own beside the WiFi link, or keeping one that took it.
@@ -3532,6 +3850,29 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/messages":
             self._post_message(payload)
+            return
+
+        if path == "/api/guest-net":
+            # A guest taps through the sheet (or, at users-web, is signed in): root lets the device out.
+            level, addr = share_level(), self._client_addr()
+            if level not in SHARE_LET_OUT:
+                self.send_json(409, {"error": "this box does not let devices out one by one now"})
+                return
+            if not on_hotspot(addr):
+                self.send_json(400, {"error": "only a device on the box's hotspot is let out"})
+                return
+            if level == "users-web" and not self._signed_in():
+                self.send_json(403, {"error": "sign in first: the owner shares the connection with users only"})
+                return
+            if payload.get("agree") is not True:
+                self.send_json(400, {"error": "agree: true, after reading what sharing means"})
+                return
+            with _let_out_lock:
+                if _let_out.get(addr, 0) > time.time() + SHARE_HOURS * 3600 - 60:
+                    self.send_json(200, {"out": True})   # asked a moment ago
+                    return
+                _let_out[addr] = time.time() + SHARE_HOURS * 3600
+            self.send_json(202, {"id": control_request({"action": "share-allow", "ip": addr}), "out": True})
             return
 
         if path == "/api/report":

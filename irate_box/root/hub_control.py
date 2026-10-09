@@ -34,6 +34,19 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
+  {"id": ..., "action": "share-set", "level": "off"|"users-web"|"sheet-web"|"sheet-all"|"open"}
+      Guests' onward internet (share.py): the one ruleset with the floor (firewall.apply_all), IPv4
+      forwarding and the guests' resolver made to agree; off takes it all back. The level and the
+      containment in control/share.json.
+  {"id": ..., "action": "pkg-check", "package": "meshtasticd"?} | "pkg-install" (+ "version") | "pkg-rollback"
+      | "pkg-settings" (+ "channel", "mode": watch|auto|aged, "days")
+      Packages from their makers' channels (pkgwatch.py): checked, cached, installed, rolled back; the
+      owner's channel and mode (on an image with its own tool, mpwrd-menu, its channel written its way).
+  {"id": ..., "action": "share-allow", "ip": "192.168.4.x"}
+      Let one device out, at a level that lets devices out one by one (the hub asks).
+  {"id": ..., "action": "update-signing", "level": "off"|"github"|"tags", "signers": "<allowed_signers>"}
+      How far an update must be vouched for (signing.py): kept in /etc/hub/update-signing.json,
+      root's; what /admin may show (the level, each key's name and type) in control/.
   {"id": ..., "action": "addon", "addon": "<an apps.d add-on>", "on": true|false}
       Rerun install.sh from a copy of the installed code with that add-on's --with-* option
       added, or taken out with --remove; output and progress as for update-install.
@@ -109,12 +122,13 @@ from pathlib import Path
 
 from irate_box.hub import access
 from irate_box.root import health
+from irate_box.root import signing
 from irate_box.hub import manifests
 from irate_box.hub import netinv
 from irate_box.root import secdoctor
 from irate_box.root import security
 from irate_box.hub import uplink
-from irate_box.root import ap, kits, safeio, usbstick
+from irate_box.root import ap, kits, safeio, share, usbstick
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -158,6 +172,7 @@ UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 UPDATE_STATE = CONTROL / "update.json"
 UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
+SIGNING_PUBLIC = CONTROL / "update-signing.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
 SECURITY_STATE = CONTROL / "security.json"
 AUDIT_STATE = CONTROL / "security-audit.json"
@@ -944,7 +959,38 @@ def prefetch(src, opts, progress=None):
     return checks
 
 
-def verify_update(src, installed, opts, progress=None):
+SIGNED_CHECK = "Signed as this box requires"
+
+
+def _signature_check(src, installed, tag=None):
+    """The level chosen on /admin's Updates (signing.py): nothing more at off; GitHub's signature
+    on every new commit; or the release tag signed by one of the owner's keys."""
+    sig = signing.load(ETC)
+    if sig["level"] == "off":
+        return []
+    if sig["level"] == "github":
+        known = bool(installed) and run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
+        span = f"{installed}..HEAD" if known else "-1"
+        revs = [r for r in run("git", "-C", str(src), "rev-list", span).stdout.split() if r] if known else \
+            [run("git", "-C", str(src), "rev-parse", "HEAD").stdout.strip()]
+        ok, detail = signing.check_commits(src, revs, CODE / signing.GITHUB_KEY)
+    else:
+        # The tag the check fetched; failing that, the newest release tag on what is checked out.
+        tag = tag or next(iter(run("git", "-C", str(src), "tag", "--points-at", "HEAD", "-l", signing.TAG_GLOB,
+                                   "--sort=-v:refname").stdout.split()), "")
+        ok, detail = signing.check_tag(src, tag, sig["signers"]) if tag else (False, "what was fetched is not a release tag")
+    return [_check(SIGNED_CHECK, ok, detail)]
+
+
+def update_signing(req):
+    data = signing.save(ETC, str(req.get("level", "")), str(req.get("signers", "")), lambda path, text: safeio.write(path, text, mode=0o600))
+    safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
+    words = {"off": "any version from the branch (as before)", "github": "only commits merged on GitHub (signed by GitHub)",
+             "tags": f"only release tags signed by one of {len(data['signers'])} key{'s' if len(data['signers']) != 1 else ''}"}
+    return f"updates now take {words[data['level']]}; the next check uses it"
+
+
+def verify_update(src, installed, opts, progress=None, tag=None):
     """Checks on a fetched tree; any failure not marked warn blocks the install."""
     checks = []
     if installed:
@@ -960,6 +1006,7 @@ def verify_update(src, installed, opts, progress=None):
                              "Install anyway (Health → Updates doctor) if they are yours." if known else
                              f"{installed} is not in the fetched history: the box was installed from elsewhere. "
                              "Read the changes before installing.", warn=not known))
+    checks += _signature_check(src, installed, tag)
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
@@ -1086,6 +1133,21 @@ def _check_for_update(progress):
             subprocess.run(["rm", "-rf", src], check=True)
         UPDATE_SRC.parent.mkdir(parents=True, exist_ok=True)
         _git("clone", "--depth", "200", "--branch", branch, repo, src)
+    sig = signing.load(ETC)
+    tag = None
+    if sig["level"] == "tags":
+        # Signed releases (signing.py): the newest v* tag, not the branch's tip.
+        got = run("git", "-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
+        if got.returncode != 0:
+            # git says nothing when no tag matches: tell that apart from a fetch that failed.
+            remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
+            if remote.returncode == 0 and not remote.stdout.strip():
+                raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+            raise ValueError("git fetch of the release tags: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1])
+        tag = signing.newest_tag(src)
+        if not tag:
+            raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+        _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
     progress.step("Reading the changes")
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
     full = _git("-C", src, "rev-parse", "HEAD")
@@ -1100,6 +1162,7 @@ def _check_for_update(progress):
         "installed": installed, "up_to_date": up_to_date,
         "changes": changes[:50], "changes_known": known, "fetched": time.time(),
         "verified": None, "verified_sha": None, "checks": [],
+        "signing": sig["level"], "tag": tag,
     }
     # The same commit fetched before: its checks and downloads still stand. Matched on the
     # whole hash (F21): a commit sharing the first 7 digits must not inherit "verified".
@@ -1143,7 +1206,7 @@ def update_fetch(req):
             _write_update_state(state)
             return f"irate-box is up to date ({state['available']} on {state['branch']})"
         progress.step("Checking the new version")
-        checks = verify_update(UPDATE_SRC, state["installed"], opts, progress)
+        checks = verify_update(UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag"))
     head = state["available"]
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
@@ -1217,6 +1280,10 @@ def update_force_install(req):
     if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
         raise ValueError("the fetched install.sh does not parse, so not even a forced install can run it")
     failed = [c["name"] for c in state["checks"] if not c["ok"] and not c["warn"]]
+    if SIGNED_CHECK in failed:
+        # The point of a signing level (signing.py): not even Install anyway passes it.
+        raise ValueError("the fetched version is not signed as this box requires: Install anyway cannot pass that; "
+                         "change what an update must carry on Updates if this is meant")
     done = _install_fetched(state)
     return f"{done} (installed anyway, past: {'; '.join(failed)})" if failed else done
 
@@ -2051,6 +2118,141 @@ def _ap_failed(exc):
     return ValueError(note)
 
 
+# --- guests' onward internet (share.py) ------------------------------------------------------------
+
+
+def _forward(on, rec):
+    """IPv4 forwarding: on while sharing (a file in sysctl.d, so a reboot keeps it), and back to
+    what the box had before when it stops."""
+    rec = dict(rec)
+    if on:
+        if rec.get("forward_was") is None:
+            try:
+                rec["forward_was"] = Path("/proc/sys/net/ipv4/ip_forward").read_text().strip()
+            except OSError:
+                rec["forward_was"] = "0"
+        share.SYSCTL.parent.mkdir(parents=True, exist_ok=True)
+        safeio.write(share.SYSCTL, "# Written by irate-box (root/share.py) while guests share the box's connection.\n"
+                     "net.ipv4.ip_forward = 1\n")
+        run("sysctl", "-q", "-w", "net.ipv4.ip_forward=1")
+    else:
+        share.SYSCTL.unlink(missing_ok=True)
+        was = rec.get("forward_was")
+        if was in ("0", "1"):
+            run("sysctl", "-q", "-w", f"net.ipv4.ip_forward={was}")
+        rec["forward_was"] = None
+    return rec
+
+
+def _guest_dns(on, iface=None):
+    """The guests' resolver (share.py's dns_hold): its unit written and running while sharing, gone after."""
+    unit = share.UNIT_DIR / share.GUEST_DNS_UNIT
+    if on:
+        text = share.guest_dns_unit(iface)
+        if not unit.exists() or unit.read_text() != text:
+            safeio.write(unit, text)
+            run("systemctl", "daemon-reload")
+        run("systemctl", "enable", share.GUEST_DNS_UNIT)
+        run("systemctl", "restart", share.GUEST_DNS_UNIT)
+    else:
+        run("systemctl", "disable", "--now", share.GUEST_DNS_UNIT)
+        unit.unlink(missing_ok=True)
+
+
+def share_apply(rec):
+    """Guests' internet as rec says (share.load()'s shape), with the floor as it is: one ruleset
+    (firewall.apply_all). Turning on: the rules first, then forwarding, then the guests' resolver;
+    off: forwarding first, then the rest, so at no moment does anything pass unfiltered."""
+    from irate_box.root import firewall, security
+    floor = security.load_record().get("firewall")
+    floor = dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None
+    iface = firewall.hotspot_iface()
+    if share.on(rec):
+        firewall.apply_all(floor, rec, iface)
+        rec = _forward(True, rec)
+        _guest_dns(True, iface)
+    else:
+        rec = _forward(False, rec)
+        _guest_dns(False)
+        firewall.apply_all(floor, rec, iface)
+    share.save(rec)
+    return rec
+
+
+def share_set(req):
+    """{"level": one of share.LEVELS}: the rules, forwarding and the guests' resolver made to agree
+    with it; off takes all of it back. The containment stays as the owner set it (Security page)."""
+    level = str(req.get("level", ""))
+    if level not in share.LEVELS:
+        raise ValueError(f"level is one of {', '.join(share.LEVELS)}")
+    rec = share.load()
+    rec["level"] = level
+    share_apply(rec)
+    return f"guests' internet: {share.WORDS[level]}"
+
+
+def share_allow(req):
+    """{"ip": a guest's address}: let that device out (by its hardware address, while by_mac is on),
+    at a level that lets devices out one by one. The hub asks when a guest taps through the sheet (or
+    signs in, at users-web)."""
+    rec = share.load()
+    if rec["level"] not in share.LET_OUT:
+        raise ValueError(f"devices are not let out one by one at level {rec['level']}")
+    addr = share.guest_address(req.get("ip"))
+    if not addr:
+        raise ValueError("not an address on the hotspot")
+    key = addr
+    if rec["contain"]["by_mac"]:
+        r = run("ip", "neigh", "show", addr)
+        key = share.mac_of(addr, r.stdout if r.returncode == 0 else "")
+        if not key:
+            raise ValueError(f"no hardware address known for {addr}: is it still on the hotspot?")
+    r = run(*share.allow_command(key))
+    if r.returncode != 0:
+        raise ValueError("could not let it out: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+    return f"{addr} ({key}) let out for {share.OUT_HOURS} h" if key != addr else f"{addr} let out for {share.OUT_HOURS} h"
+
+
+def _guest_policy_follows():
+    """After the hotspot comes up (its interface may be ap0 or a radio of its own): the floor and
+    guests' internet rewritten for it, when either is on. Said, not raised: the hotspot is up."""
+    from irate_box.root import security
+    if not security.load_record().get("firewall") and not share.on():
+        return ""
+    try:
+        share_apply(share.load())
+        return ""
+    except (ValueError, OSError) as exc:
+        return f" The guests' rules were not rewritten for it: {exc}"
+
+
+# --- packages from their makers, watched (pkgwatch.py) ----------------------------------------------
+
+def pkg_check(req):
+    """{"package": a watched package, or none for every one on the box}: the channel read, a new build
+    cached, installed if the owner's mode says so."""
+    from irate_box.root import pkgwatch
+    ids = [str(req["package"])] if req.get("package") else pkgwatch.watched()
+    return "; ".join(pkgwatch.check(i, log=lambda *a: None) for i in ids) or "no watched package is on this box"
+
+
+def pkg_install(req):
+    from irate_box.root import pkgwatch
+    return pkgwatch.install(str(req.get("package", "")), str(req.get("version", "")), log=lambda *a: None)
+
+
+def pkg_rollback(req):
+    from irate_box.root import pkgwatch
+    return pkgwatch.rollback(str(req.get("package", "")), log=lambda *a: None)
+
+
+def pkg_settings(req):
+    from irate_box.root import pkgwatch
+    days = req.get("days")
+    return pkgwatch.set_settings(str(req.get("package", "")), str(req.get("channel", "")), str(req.get("mode", "")),
+                                 days if isinstance(days, int) and not isinstance(days, bool) else -1)
+
+
 def ap_on(req):
     try:
         plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
@@ -2062,6 +2264,7 @@ def ap_on(req):
     note = f"up on {ap.ap_iface(plan)}, channel {plan['channel']}: {plan['text']}"
     if plan.get("drops_uplink"):
         note += f" Your WiFi link is off: open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm, or it comes back by itself."
+    note += _guest_policy_follows()
     _ap_record_status(plan, note)
     return note
 
@@ -2082,6 +2285,7 @@ def ap_try(req):
     else:
         note = ("it holds a channel of its own beside your WiFi: guests won't notice your WiFi roam" if worked
                 else "it can't hold a channel of its own here, so it follows your WiFi's channel")
+        note += _guest_policy_follows()
     _ap_record_status(plan, note)
     return note
 
@@ -2173,12 +2377,13 @@ def _kit_req(fn):
 ACTIONS = {"service": service, "password": password,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-force-install": update_force_install,
-           "update-doctor": update_doctor, "update-clear-cache": update_clear_cache,
+           "update-doctor": update_doctor, "update-clear-cache": update_clear_cache, "update-signing": update_signing,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
            "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
+           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
+           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

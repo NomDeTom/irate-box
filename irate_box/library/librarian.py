@@ -704,6 +704,8 @@ class _NotModified(Exception):
 
 
 def _open(url, auth=None, method="GET", timeout=60, extra=None):
+    if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
+        _pace_hit()
     try:
         return urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)
     except urllib.error.HTTPError as exc:
@@ -713,7 +715,8 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
             _note_rate(exc.headers)
         if exc.code == 401:
             raise LibrarianError(f"{url}: 401, a GitHub token is needed (or a valid one)")
-        if exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0":
+        if exc.code == 429 or (exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0"):
+            _pace_fail()
             raise LibrarianError("GitHub API rate limit reached (60/hour without a token)")
         raise LibrarianError(f"{url}: HTTP {exc.code}")
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -734,6 +737,84 @@ RESERVE = 10
 MEMO_SECONDS = 600  # the same address asked twice within this: answered from memory
 _memo = {}          # path -> (when, body)
 _rate = {}
+
+
+# Adapting to the rate limit (Tom, 2026-10-09: "Adapt to rate limit": try the 60 an hour, and after
+# several failures back off). The owner presses Adapt: GitHub is asked what it really allows (the
+# /rate_limit call is free), and an hourly budget set just under it (the allowance less RESERVE: 50 of
+# 60 without a token). Every API request is then counted over a rolling hour, and a scheduled run stops
+# asking when the budget is spent. A rate-limit refusal counts as a failure; PACE_FAILS of them in a row
+# halve the budget (never below PACE_FLOOR), so it asks less often; a run that goes through clean
+# gives back a tenth of what was taken, up to what GitHub allows. Without Adapt nothing here acts.
+PACE_FILE = LIB_DIR / "github-pace.json"   # {budget, limit, failures, hits: [times], adapted, backed_off}
+PACE_FAILS = 3
+PACE_FLOOR = 5
+_pace_failed_run = False
+
+
+def pace():
+    return _read_json(PACE_FILE, {})
+
+
+def _pace_hit():
+    p = pace()
+    if not p.get("budget"):
+        return
+    now = time.time()
+    p["hits"] = [t for t in p.get("hits", []) if now - t < 3600] + [int(now)]
+    _write_json(PACE_FILE, p)
+
+
+def pace_left():
+    """Requests left of this hour's budget, or None when the owner has not adapted."""
+    p = pace()
+    if not p.get("budget"):
+        return None
+    now = time.time()
+    return max(0, p["budget"] - len([t for t in p.get("hits", []) if now - t < 3600]))
+
+
+def _pace_fail():
+    global _pace_failed_run
+    _pace_failed_run = True
+    p = pace()
+    if not p.get("budget"):
+        return
+    p["failures"] = p.get("failures", 0) + 1
+    if p["failures"] >= PACE_FAILS:
+        p["budget"] = max(PACE_FLOOR, p["budget"] // 2)
+        p["failures"] = 0
+        p["backed_off"] = int(time.time())
+    _write_json(PACE_FILE, p)
+
+
+def _pace_clean_run():
+    p = pace()
+    if not p.get("budget") or not p.get("limit"):
+        return
+    top = max(PACE_FLOOR, p["limit"] - RESERVE)
+    p["failures"] = 0
+    if p["budget"] < top:
+        p["budget"] = min(top, p["budget"] + max(1, p["budget"] // 10))
+    _write_json(PACE_FILE, p)
+
+
+def adapt_rate():
+    """Ask GitHub what it allows this address (a free call) and set the hourly budget under it."""
+    try:
+        with _open(f"{API}/rate_limit", token(), timeout=20) as resp:
+            core = json.load(resp)["resources"]["core"]
+    except (ValueError, KeyError, TypeError):
+        raise LibrarianError("GitHub's rate limit could not be read")
+    limit = int(core["limit"])
+    p = {k: v for k, v in pace().items() if k == "hits"}
+    p.update(budget=max(PACE_FLOOR, limit - RESERVE), limit=limit, failures=0, adapted=int(time.time()))
+    _write_json(PACE_FILE, p)
+    return p
+
+
+def clear_pace():
+    PACE_FILE.unlink(missing_ok=True)
 
 
 def _note_rate(headers):
@@ -1347,6 +1428,8 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     mode = mode or (("check", "fetch", "update")[policy["auto_install"]] if scheduled else "update" if download else "check")
     results = {}
     _memo.clear()  # a run asks afresh (ETags keep that cheap), then once per address
+    global _pace_failed_run
+    _pace_failed_run = False
     with Lock():
         status = load_status()
         # A scheduled run takes the most overdue first, and stops asking GitHub while a few of
@@ -1366,6 +1449,11 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                     and left["remaining"] < RESERVE and left.get("reset", 0) > time.time():
                 entry["deferred"] = now_iso()
                 results[name] = f"waiting: {left['remaining']} of GitHub's {left.get('limit')} requests left this hour"
+                continue
+            budget_left = pace_left()
+            if scheduled and src.get("type") in ("release", "actions", "nightly-link") and budget_left == 0:
+                entry["deferred"] = now_iso()
+                results[name] = "waiting: this hour's budget of GitHub requests is spent (Adapt to rate limit)"
                 continue
             entry.pop("deferred", None)
             entry["last_check"] = now_iso()
@@ -1392,6 +1480,8 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             log(f"{name}: {outcome}")
             save_status(status)
         save_status(status)  # the deferrals too
+        if scheduled and not _pace_failed_run:
+            _pace_clean_run()
         if _rate:
             _write_json(RATE_FILE, _rate)
         # The firmware mirror (firmware.py), on the same schedule and under the same lock.
@@ -1425,6 +1515,19 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if line:
                 results["toolkits"] = line
                 log(f"toolkits: {line}")
+        # Packages from their makers (root/pkgwatch.py: meshtasticd on its channel): root asked to check
+        # twice a day, so "after N days" counts from when a build first appeared.
+        if scheduled and not names:
+            pw = LIB_DIR / "pkgwatch-state.json"
+            try:
+                last = json.loads(pw.read_text()).get("queued", 0)
+            except (OSError, ValueError):
+                last = 0
+            if time.time() - last >= 12 * 3600:
+                rid = _queue_root({"action": "pkg-check"})
+                pw.write_text(json.dumps({"queued": time.time(), "id": rid}))
+                results["packages"] = f"check queued ({rid})"
+                log(f"packages: check queued ({rid})")
         # The hub's own updates (selfupdate.py): one step per run of the timer.
         if scheduled and not names:
             from irate_box.library import selfupdate
@@ -1488,6 +1591,7 @@ def snapshot():
     return {"policy": cfg["policy"], "sources": cfg["sources"], "status": load_status(),
             "token_set": bool(token()), "running": is_running(), "types": list(TYPES),
             "progress": progress(), "apps": apps_snapshot(), "hub_update": _hub_update_state(), "github": rate(),
+            "pace": {k: v for k, v in pace().items() if k != "hits"} | {"left": pace_left()},
             "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
 
 

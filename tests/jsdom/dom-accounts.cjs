@@ -114,10 +114,17 @@ function page(file, url, fetcher, scripts) {
   [...rows[0].querySelectorAll('button')][0].click(); await wait();
   check('  Accept asks the hub', aposted.some((b) => b.action === 'accept' && b.name === 'bob'));
   const mf = d.getElementById('accounts-make');
-  mf.elements.name.value = 'dave'; mf.elements.role.value = 'user';
-  mf.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();
-  check('  Make: the code shown, once', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /dave's one-time code: ABCD-EFGH-JKLM-NPQR/.test(t(d.getElementById('accounts-code'))));
+  mf.elements.name.value = 'dave';
+  check('  Role: two bigger buttons, Make user and Make admin, no second button', [...mf.querySelectorAll('button')].map((b) => t(b)).join() === 'Make user,Make admin');
+  mf.querySelector('button[value="user"]').click(); await wait();
+  // The code beside the account it is for, in a box to copy (Tom, 2026-10-08); a line by the form says so.
+  const daveRow = [...d.querySelectorAll('#accounts-list .admin-item')].find((r) => / dave /.test(` ${t(r)} `));
+  check('  Make: the code shown, once, beside the account', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /dave's one-time code is beside their name/.test(t(d.getElementById('accounts-code')))
+    && (!daveRow || (daveRow.querySelector('.code-box') || {}).value === 'ABCD-EFGH-JKLM-NPQR'));
+  check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('no spaces'));
   const sform = d.getElementById('accounts-settings');
+  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Application/Admin assigned | Prevented/Warning/Permitted'
+    && [...sform.querySelectorAll('.chip-says')].length === 2);
   sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
   sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();
   check('  Save: both levels sent', aposted.some((b) => b.action === 'settings' && b.signup === 'assigned' && b.http === 'prevented'));

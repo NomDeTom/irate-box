@@ -43,7 +43,7 @@ check("  sections in the benchmark's order, then the shared ones", [k for k in f
 acc = [f for f in fs.values() if f["accepted"]]
 check("the box's design accepted, not counted: one partition, the web server, no firewall yet",
       {f["accepted"] for f in acc} == {"one partition: the box runs from an SD card, with no separate /var, /tmp or /home",
-                                        "the box is a web server: nginx (or Caddy) is the hub's front", "no firewall rules yet, until the network floor is built"}
+                                        "the box is a web server: nginx (or Caddy) is the hub's front", "the box filters the hotspot alone (the floor, Security page): its other interfaces are the owner's network, left as found"}
       and all(f["status"] == "ok" for f in acc) and not any(k in fs for k in ("cis-1.1", "cis-2.2", "cis-3.5")), [f["detail"] for f in acc])
 check("the passes counted, and the time", "2 of 9 checks pass (22.22 %); 3.0 min." == fs["cis-summary"]["detail"], fs["cis-summary"]["detail"])
 
@@ -60,7 +60,7 @@ check("Lynis's report read", rep["index"] == "64" and rep["warnings"][1] == ("SS
 lf = {f["id"]: f for f in da.lynis_findings(rep, 281)}
 check("a Lynis warning: a finding of its own, about its test", lf["lynis-SSH-7408"]["status"] == "warn" and lf["lynis-SSH-7408"]["source"] == "lynis"
       and lf["lynis-SSH-7408"]["about"] == {"kind": "setting", "key": "lynis-SSH-7408"})
-check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"].startswith("no firewall rules"))
+check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"].startswith("the box filters the hotspot alone"))
 check("suggestions listed, not counted; the hardening index said", lf["lynis-summary"]["status"] == "ok" and "Hardening index 64" in lf["lynis-summary"]["detail"]
       and "2 suggestions (listed, not counted); 4.7 min" in lf["lynis-summary"]["detail"], lf["lynis-summary"]["detail"])
 

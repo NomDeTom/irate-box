@@ -36,6 +36,12 @@ check("  each origin's port by scheme: http to its own, https to its twin", maps
       "irate_box_notes_port": ("8491", "8091"), "irate_box_wiki_port": ("8492", "8092"), "irate_box_git_port": ("8493", "8093")}, maps)
 check("  no redirect between origins with a fixed port", not re.search(r"\$scheme://\$host:\d", text), re.findall(r"\$scheme://\$host:\d+", text))
 caddy = (REPO / "config" / "Caddyfile").read_text()
+# N11 (stance review 2026-10-08): a baseline CSP on the hub's origin, server-wide and wherever a location sets its own headers.
+csp_line = "add_header Content-Security-Policy $irate_box_csp always;"
+check("a baseline CSP on the hub's origin: server-wide, and beside every Cache-Control the hub block sets",
+      "set $irate_box_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\";" in hub
+      and hub.count(csp_line) == hub.count("add_header Cache-Control") + 1, (hub.count(csp_line), hub.count("add_header Cache-Control")))
+check("  and on Caddy", "header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\"" in caddy)
 check("  /admin over HTTPS only: its include first in /admin/, before the login", re.search(r"location /admin/ \{\s*(#[^\n]*\n\s*)*include @TLS@/nginx-admin\.conf\*;\s*set \$irate_box_admin_auth", hub) is not None)
 directives = lambda t: "\n".join(l for l in t.splitlines() if not l.lstrip().startswith("#"))  # noqa: E731
 check("  never HSTS (port 80 must keep working for the captive portal)", "Strict-Transport-Security" not in directives(text)

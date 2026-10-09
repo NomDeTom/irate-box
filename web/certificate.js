@@ -6,14 +6,22 @@
 // on a real device (checked: true); until then, the general step. Never a "click through the
 // warning" path: it teaches people to ignore certificate warnings.
 const PLATFORMS = [
-  { id: 'ios', title: 'iPhone and iPad', checked: false, steps: [
-    'Download the certificate in Safari, and allow the profile to be downloaded.',
-    'Settings → Profile Downloaded → Install.',
-    'Then turn on full trust: Settings → General → About → Certificate Trust Settings, and switch on the Irate-Box CA.'] },
-  { id: 'android', title: 'Android', checked: false, steps: [
-    'Download the certificate.',
-    'Settings → Security → Encryption and credentials → Install a certificate → CA certificate, and pick the file.',
-    'Chrome trusts it; most apps don\'t. Firefox needs its own setting (Settings → About Firefox, tap the logo five times, then Use third-party CA certificates).'] },
+  // Tried on real phones (Tom, 2026-10-08: "painful on android because its an untrusted source, but
+  // it's doable. It needs a help tutorial"): every screen in the order a phone shows it.
+  { id: 'ios', title: 'iPhone and iPad', checked: true, steps: [
+    'Open this page in Safari (not another browser: only Safari hands the file to Settings), and tap Download the certificate. Allow the download when asked: "This website is trying to download a configuration profile".',
+    'Open Settings: "Profile Downloaded" is near the top. Tap it, then Install (top right), enter your passcode, and Install again through the warning.',
+    'Turn on full trust, or Safari still warns: Settings → General → About → Certificate Trust Settings (at the very bottom), and switch on the Irate-Box CA. Continue through the warning.',
+    'To remove it later: Settings → General → VPN & Device Management → the profile → Remove Profile.'] },
+  { id: 'android', title: 'Android', checked: true, steps: [
+    'Tap Download the certificate. If the browser asks whether to keep the file, keep it. Tapping the downloaded file does nothing useful: since Android 11 a CA certificate can only be installed from Settings, and the phone says so ("Can\'t install CA certificates… must be installed in Settings"). That is expected.',
+    'Open Settings and search for "CA certificate" (the quickest way: every maker hides it somewhere else). Without search: Settings → Security and privacy → More security settings → Encryption and credentials → Install a certificate → CA certificate. On Samsung: Settings → Security and privacy → More security settings → Install from device storage → CA certificate.',
+    'The phone warns that your data won\'t be private: this is the "untrusted source" step. Tap Install anyway. The certificate can vouch only for this box\'s names and addresses (above), not for other sites.',
+    'Unlock with your PIN, pattern or fingerprint when asked. Android insists on a screen lock for this; if you have none, it asks you to set one.',
+    'Pick irate-box-ca.crt from Downloads (in the file picker\'s ☰ menu if it opens somewhere else). "CA certificate installed" confirms it.',
+    'Check it: Encryption and credentials → Trusted credentials → the User tab shows the Irate-Box CA. Tap it to compare its SHA-256 fingerprint with the one above.',
+    'Android then shows "Network may be monitored" (in the notifications or Quick Settings) for as long as it is installed: that is the phone being honest about a certificate you added, not something wrong. To remove it, tap it under Trusted credentials → User → Remove.',
+    'Chrome and the system browser trust it; most other apps don\'t, and Firefox needs its own setting (Settings → About Firefox, tap the logo five times, then Settings → Secret settings → Use third-party CA certificates).'] },
   { id: 'windows', title: 'Windows', checked: false, steps: [
     'Download the certificate and open it.',
     'Install Certificate → Current User → Place all certificates in the following store → Trusted Root Certification Authorities.',
@@ -76,9 +84,12 @@ async function start() {
       fold.append(ol);
       steps.append(fold);
     });
-  } else {
-    steps.append(make('p', 'Download it, open it, and install it as a trusted certificate authority in your device\'s settings. '
-      + 'Step-by-step guides for each kind of phone and computer follow once they have been tried on real devices.'));
+  }
+  // The rest: the general step until their guides have been tried on a real device.
+  const rest = PLATFORMS.filter((p) => !p.checked).map((p) => p.title);
+  if (rest.length) {
+    steps.append(make('p', `${shown.length ? `On other devices (${rest.join(', ')}): d` : 'D'}ownload it, open it, and install it as a trusted certificate authority in the device's settings. `
+      + 'Step-by-step guides for them follow once they have been tried on real devices.'));
   }
   if (location.protocol === 'https:') {
     $('cert-check').textContent = '✓ You are on HTTPS now: this device trusts the box.';

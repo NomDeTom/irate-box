@@ -50,11 +50,21 @@ say "Stopping and disabling services"
 for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room \
 	irate-box-git.socket irate-box-git.service irate-box-ci.path irate-box-ci.service \
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
-	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service \
-	irate-box-control.path irate-box-control.service irate-box-uplink.service \
+	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service irate-box-firewall.service \
+	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service \
 	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
+# Guests' onward internet (root/share.py): its rules went with irate-box-firewall.service above (one
+# table with the floor); the guests' resolver goes; forwarding goes back to what the box had before
+# sharing, and its sysctl file goes.
+systemctl disable --now irate-box-guest-dns.service 2>/dev/null || true
+rm -f /etc/systemd/system/irate-box-guest-dns.service
+if [ -f /etc/sysctl.d/90-irate-box-share.conf ]; then
+	rm -f /etc/sysctl.d/90-irate-box-share.conf
+	was="$(python3 -c 'import json; print(json.load(open("/etc/hub/share.json")).get("forward_was") or "")' 2>/dev/null || true)"
+	if [ "$was" = 0 ]; then sysctl -q -w net.ipv4.ip_forward=0 || true; fi
+fi
 # install.sh enables mosquitto only for --with-mqtt; with its config gone it would come
 # back up as a bare broker on :1883, so it is stopped here and purged or left disabled.
 systemctl disable --now mosquitto >/dev/null 2>&1 || true
@@ -90,15 +100,19 @@ if [ -f "$ETC/uplink-changes.json" ] && [ -f "$CODE/irate_box/hub/uplink.py" ]; 
 fi
 
 # A clock module set up by rtc.py: its units go, and a kernel-declared module is released.
+# Crash watch's hang settings: the kernel's panic restart and the watchdog, taken away.
+if [ -f "$CODE/irate_box/root/crashwatch.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" crashwatch undo-all | sed 's/^/    /' || true
+fi
 if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/irate_box/root/rtc.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" rtc remove | sed 's/^/    /' || true
 fi
 
 say "Removing unit files and drop-ins"
-rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink}.service \
+rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
-	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-control.{path,service} \
+	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} \
 	"$UNITDIR"/irate-box-visitors.service "$UNITDIR"/irate-box-visitors-switch.{path,service} \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
 	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf" "$UNITDIR/ngircd.service.d/irate-box.conf"

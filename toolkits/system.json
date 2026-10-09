@@ -1,0 +1,57 @@
+{
+ "id": "system",
+ "title": "System",
+ "summary": "Debian's own base a minimal image can lack: kernel defaults, the clock tool, the firewall, security updates, small network checks, any USB stick's filesystem and the manual pages. Kept installed; the alternative network and time tools cached beside it.",
+ "packages": [
+  "linux-sysctl-defaults",
+  "util-linux-extra",
+  "nftables",
+  "unattended-upgrades",
+  "apt-listchanges",
+  "needrestart",
+  "wtmpdb",
+  "libpam-wtmpdb",
+  "bind9-dnsutils",
+  "bind9-host",
+  "traceroute",
+  "mtr-tiny",
+  "netcat-openbsd",
+  "iotop",
+  "exfatprogs",
+  "ntfs-3g",
+  "manpages",
+  "pciutils",
+  "smartmontools",
+  "apparmor",
+  "apparmor-utils",
+  "dmidecode"
+ ],
+ "needs_64bit": [
+  "dmidecode"
+ ],
+ "only_where": {
+  "linux-sysctl-defaults": "no-sysctl-defaults",
+  "pciutils": "pci",
+  "smartmontools": "smart-disk",
+  "apparmor": "apparmor",
+  "apparmor-utils": "apparmor"
+ },
+ "alternatives": [
+  "ifupdown",
+  "dhcpcd-base",
+  "systemd-timesyncd"
+ ],
+ "consent": "These are Debian's own packages, the ones a full Debian install has and a minimal board image leaves out. Installing them changes the box in two ways you should know about: unattended-upgrades turns on Debian's daily security updates, installed by themselves whenever the box has internet (needrestart then lists what still runs old code); and the kernel defaults switch on Debian's link protections and the rest of its settings at the next boot. The kit is kept installed: it is never removed after a while, as the others are.",
+ "notes": [
+  "Each package only where it fits: Debian's kernel defaults only where the image lacks them (newer Armbian board packages ship their own), pciutils only with PCI, smartmontools only with a disk that reports SMART, AppArmor only on a kernel with it, dmidecode only on 64-bit boards.",
+  "The alternatives (ifupdown, dhcpcd-base, systemd-timesyncd) are cached, never installed with the kit: on an offline box they can't be fetched once the image's own network or time manager has failed, so they wait here for the owner's choice.",
+  "USB sticks: exFAT and NTFS as well as FAT and ISO 9660, through exfatprogs and ntfs-3g.",
+  "wtmpdb keeps the login and boot record (last, last reboot), which trixie moved out of util-linux."
+ ],
+ "remove_after_hours": null,
+ "services": [
+  "wtmpdb-update-boot.service",
+  "wtmpdb-rotate.timer",
+  "apparmor.service"
+ ]
+}

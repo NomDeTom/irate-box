@@ -558,14 +558,26 @@ form .emoji-toggle.standalone, #thread-form .emoji-toggle.standalone, #reply-for
   position: absolute;
   z-index: 10;
   width: min(340px, calc(100vw - 16px));
-  max-height: 300px;
-  overflow-y: auto;
+  height: min(340px, calc(100vh - 16px));
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.5rem;
   box-shadow: 0 8px 24px var(--shadow);
 }
+.emoji-panel[hidden] { display: none; }
+.emoji-top { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.emoji-search { flex: 1 1 8rem; min-width: 0; padding: 0.3rem 0.45rem; font: inherit; font-size: 0.85rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+.emoji-tones, .emoji-tabs { display: flex; flex-wrap: wrap; gap: 0.1rem; }
+.emoji-tabs { margin-top: 0.35rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+.emoji-tones button, .emoji-tabs button { background: none; border: 1px solid transparent; border-radius: 6px; font-size: 1.05rem;
+  line-height: 1; padding: 0.2rem 0.25rem; cursor: pointer; }
+.emoji-tones button { font-size: 0.95rem; padding: 0.15rem; }
+.emoji-tones button.on, .emoji-tabs button.on { border-color: var(--accent); background: var(--bg); }
+.emoji-tones button:hover, .emoji-tabs button:hover { background: var(--border); }
 .emoji-group {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -573,7 +585,7 @@ form .emoji-toggle.standalone, #thread-form .emoji-toggle.standalone, #reply-for
   color: var(--muted);
   padding: 0.4rem 0.25rem 0.2rem;
 }
-.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
 .emoji-grid button {
   background: none;
   border: 0;
@@ -661,9 +673,11 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .app-bar .theme-picker button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }
 
 /* Library (admin): sources, the add form and the policy. */
-#library-sources, #apps-list, #addons-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
+#library-sources, #apps-list, #builtin-list, #addons-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .library-source { cursor: default; }
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.action-btn.big { padding: 0.55rem 1.2rem; font-size: 1rem; }
+.chip-says { margin: 0.25rem 0 0; }
 .library-form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 34rem; }
 .library-form label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
 .library-form label.inline { flex-direction: row; align-items: center; gap: 0.5rem; }
@@ -796,9 +810,16 @@ body[data-art] > header { z-index: 2; }
 .hm-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.75rem; color: var(--muted); }
 .hm-key { display: inline-flex; align-items: center; gap: 0.3rem; }
 .hm-key .hm-cell { width: 0.7rem; min-height: 0.7rem; }
-.net-uptime summary, .svc-uptime summary { cursor: pointer; }
+/* The services' strips: one thin row of cells in the service's own table row, hours over days. */
 .svc-uptime { margin: 0.75rem 0; }
-.svc-uptime .hm-row { grid-template-columns: 9rem repeat(var(--hm-cols), minmax(0.45rem, 1fr)); }
+.hm-bare { margin: 0; }
+.hm-bare .hm-row { grid-template-columns: repeat(var(--hm-cols), minmax(0.2rem, 1fr)); gap: 1px; }
+.hm-bare .hm-cell { aspect-ratio: auto; height: 0.5rem; min-height: 0; border-radius: 1px; }
+.svc-strips { display: flex; flex-direction: column; gap: 3px; min-width: 14rem; }
+#service-table td { padding-top: 0.3rem; padding-bottom: 0.3rem; vertical-align: middle; }
+/* Name and what it is (the unit) on one line. */
+#service-table .svc-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.5rem; }
+#service-table .svc-name .setting-desc { display: inline; }
 .admin-pane > h2 {
   margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;
   text-transform: none; color: var(--text);
@@ -845,13 +866,6 @@ details.admin-item summary { cursor: pointer; }
 .admin-thumb { width: 72px; height: 54px; object-fit: contain; background: var(--bg); border-radius: 4px; flex: none; }
 .admin-meter { height: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin: 0.4rem 0 0.75rem; }
 .admin-meter > div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
-body.admin section button {
-  padding: 0.3rem 0.8rem; font: inherit; font-size: 0.85rem; color: inherit;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
-}
-body.admin section button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
-body.admin section button:hover:not(:disabled) { border-color: var(--accent); }
-body.admin section button:disabled { opacity: 0.5; cursor: default; }
 
 /* Quick help: the 🛟 in the top left of a page header (opposite the theme picker), the help
    page itself, and the short note the hub bar's 🛟 opens. */
@@ -926,12 +940,11 @@ progress.admin-bar:indeterminate::-moz-progress-bar { background: transparent; }
 .action-note { display: block; margin-top: 0.4rem; }
 /* The setup steps on /admin: one line per step, marked by its state. */
 .setup-steps { margin: 1rem 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.7rem; font-size: 0.92rem; }
-.setup-steps li span { color: var(--muted); }
+.setup-steps li .step-text { display: block; color: var(--muted); font-size: 0.86rem; margin-top: 0.15rem; }
 .setup-steps li a { margin-left: 0.4rem; color: var(--accent); white-space: nowrap; }
 .setup-steps li.step-ok::marker { color: var(--ok); }
 .setup-steps li.step-warn::marker { color: var(--warn); }
 .setup-steps li.step-problem::marker { color: #e5484d; }
-.setup-steps li.step-ok strong::after { content: " ✓"; color: var(--ok); }
 .action-note.busy { color: var(--warn); }
 
 .admin-output { margin: 0.75rem 0; }
@@ -1024,15 +1037,19 @@ body.drop > section + section { margin-top: 2.5rem; }
 .net-glossary dd { margin: 0; color: var(--muted); }
 @media (max-width: 560px) { .net-glossary dl { grid-template-columns: 1fr; } .net-glossary dd { margin-bottom: 0.3rem; } }
 
-/* Staying on the network: eagerness as a ladder of cards, each with what it means and does. */
-.up-ladder { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
-.up-rung { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
+/* Choice tiles (AW.choices; the canonical "one of a few, each needing a sentence"): a bordered card per
+   choice with its radio, the chosen one in the accent colour, an unavailable one greyed. */
+.choice-tiles { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.4rem 0 0.6rem; border: 0; padding: 0; min-width: 0; max-width: 34rem; }
+.choice-tiles > legend { padding: 0; margin-bottom: 0.35rem; font-size: 0.85rem; color: var(--muted); }
+.choice-tile { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.75rem; cursor: pointer;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.up-rung:hover { border-color: var(--accent); }
-.up-rung.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.up-rung input { margin-top: 0.25rem; accent-color: var(--accent); }
-.up-rung-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.up-does { font-style: italic; }
+.choice-tile:hover { border-color: var(--accent); }
+.choice-tile.chosen, .choice-tile:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.choice-tile.unavailable { opacity: 0.6; }
+.choice-tile.unavailable:not(.chosen) { cursor: not-allowed; }
+.choice-tile input { margin-top: 0.25rem; accent-color: var(--accent); flex: none; }
+.choice-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.choice-does { font-style: italic; }
 .up-will { margin: 0.6rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent); background: var(--surface); }
 .net-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem 1rem; margin-top: 0.5rem; }
 .net-fields label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.9em; }
@@ -1051,11 +1068,6 @@ body.drop > section + section { margin-top: 2.5rem; }
 #health-findings .setting-desc code, #health-findings code { overflow-wrap: anywhere; }
 
 /* Security: the hotspot's own WiFi, one card per mode */
-.hs-modes { display: grid; gap: 0.5rem; margin: 0.5rem 0; }
-.hs-mode { display: flex; gap: 0.6rem; align-items: flex-start; border: 1px solid var(--border, #8884); border-radius: 8px; padding: 0.6rem 0.75rem; }
-.hs-mode.unavailable { opacity: 0.6; }
-.hs-mode input { margin-top: 0.25rem; }
-.hs-mode .setting-desc { display: block; }
 
 /* Locks on this device: the key's QR code */
 .locks-qr svg { width: 12rem; height: 12rem; background: #fff; border-radius: 6px; margin: 0.5rem 0; }
@@ -1130,8 +1142,6 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .kit-flag { color: var(--warn); font-weight: 600; }
 
 /* The security doctor's joint report: an item per thing, which sources agree. */
-.joint-item.joint-problem { border-color: #e5484d; }
-.joint-item.joint-warn { border-color: var(--warn); }
 .joint-titles { margin: 0.2rem 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--muted); }
 
 /* Builds: a run's own view, and the templates. */
@@ -1157,6 +1167,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .books-table td.bad { color: #e5484d; }
 .book-card td { background: var(--surface); }
 .books-pager { display: flex; gap: 0.6rem; align-items: center; }
+.books-pager[hidden] { display: none; }  /* display: flex outranks the hidden attribute */
 .scroll-x { overflow-x: auto; }
 /* The mesh (step 18): the traffic a line each; a message set apart. */
 .mesh-packets { padding-left: 1.4rem; font-size: 0.9rem; }
@@ -1175,8 +1186,8 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .verified { color: var(--accent); font-weight: 700; margin: 0 0.25em 0 0.15em; }
 
 /* ---- The control vocabulary (menu overhaul M1; rule 6): the microsite's calculator-template
-   controls in the hub's colours. Each class doubled so it outranks the place-based
-   body.admin section button rule above until every pane uses these (step M4). ---- */
+   controls in the hub's colours. Each class doubled so it outranks the per-form `button` rules (the
+   shoutbox's and the board's), which paint a submit button in the accent colour. ---- */
 :root { --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface)); --bad: #e5484d; }
 .action-btn.action-btn {
   display: inline-block; border: 1px solid var(--border); background: var(--surface); color: var(--text);
@@ -1185,8 +1196,12 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .action-btn.action-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .action-btn.action-btn:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.7; }
 .action-btn.primary.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.setup-steps li.step-muted { opacity: 0.6; }
+.action-btn.primary.primary.idle { background: transparent; color: var(--accent); }
 .action-btn.primary.primary:hover:not(:disabled) { color: var(--accent-ink); filter: brightness(1.1); }
 .chip-group, .filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip-group[hidden], .select-chips[hidden] { display: none; }
+label > .select-chips { margin-top: 0.25rem; }
 .chip.chip { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 0.3rem 0.7rem;
   border-radius: 999px; font: inherit; font-size: 0.85rem; cursor: pointer; }
 .chip.chip:hover { border-color: var(--accent); color: var(--accent); }
@@ -1203,6 +1218,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .ok-pill, .warn-pill, .bad-pill, .info-pill { display: inline-block; font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
   border: 1px solid; padding: 0.05rem 0.35rem; border-radius: 3px; white-space: nowrap; font-weight: 600; }
 .ok-pill { color: var(--ok); } .warn-pill { color: var(--warn); } .bad-pill { color: var(--bad); } .info-pill { color: var(--muted); }
+.fresh-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0 0.8rem; }
 .field-help { border: 1px solid var(--border); background: var(--accent-soft); padding: 0.35rem 0.55rem; color: var(--muted); font-size: 0.84rem; border-radius: 4px; }
 .field-help summary { cursor: pointer; color: var(--text); }
 .output-value { display: inline-block; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg); font-variant-numeric: tabular-nums; }
@@ -1245,6 +1261,8 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .aw-foot[hidden] { display: none; }
 .aw-foot .note { font-size: 0.78rem; color: var(--muted); margin-right: auto; }
 .aw-settings { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.3rem 0.8rem; }
+/* Appearance: the cards (page widths, emoji set) clear the text above them. */
+#appearance-box .aw-settings { margin-top: 0.75rem; }
 .aw-field { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; padding: 0.45rem 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
 .aw-field:first-child { border-top: 0; }
 .aw-label { min-width: 10rem; color: var(--muted); }
@@ -1352,3 +1370,15 @@ html:has(> body.admin) { background: var(--bg); }
 .action-btn.action-btn.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
 /* An older list bounded (F8; checklist 3e): a limited height, a scroll. */
 .aw-bounded { max-height: 26rem; overflow-y: auto; padding-right: 0.25rem; }
+/* A one-time code beside its account, to copy. */
+.code-copy { display: inline-flex; align-items: center; gap: 0.3rem; }
+.code-box { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.2rem 0.4rem; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--text); border-radius: 4px; }
+/* A locked tile as its owner chose (Tom, 2026-10-08): a padlock that does nothing, or greyed out. */
+.service-card.padlock { cursor: not-allowed; }
+.service-card.greyed { opacity: 0.4; filter: grayscale(1); cursor: default; }
+/* A set of tabs over its panels (the books' sources): the strip above, one panel below. */
+.tab-set > .view-switch { margin-bottom: 0.8rem; }
+.tab-set > [role="tabpanel"] { padding-top: 0.2rem; }
+/* The sign-in sheet's offer of the internet (guest-net.js). */
+.guest-net { margin: 0 auto 1rem; padding: 0.7rem 1rem; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
+.guest-net p { margin: 0 0 0.5rem; }
