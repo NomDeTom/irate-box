@@ -220,10 +220,10 @@ function sourceRow(src, st, busy) {
       st.last_check ? el('span', { className: 'setting-desc', textContent: `Checked ${st.last_check}: ${st.outcome || ''}` }) : null,
       st.error ? el('span', { className: 'setting-desc bad', textContent: st.error }) : null,
       el('span', { className: 'library-buttons' },
-        button('Check', { action: 'check', names: [src.name] }),
+        button('Check now', { action: 'check', names: [src.name] }),
         button('Fetch', { action: 'fetch', names: [src.name] }, null, {
           off: !newer || fetched, title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '' }),
-        button('Update', { action: 'update', names: [src.name] }),
+        button('Install', { action: 'update', names: [src.name] }),
         archive.length ? button('Roll back', { action: 'rollback', name: src.name },
           `Put ${archive[0]} back as ${src.name}.zim? The current version is archived.`) : null,
         button('Remove', { action: 'remove', name: src.name },
@@ -270,11 +270,11 @@ function renderApps(snap, busy) {
       withAccess ? accessSlot(name) : null,
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Check', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
         el('button', { type: 'button', className: 'action-btn', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
           title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Install', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
         inst && inst.has_previous ? el('button', { type: 'button', className: 'action-btn', textContent: 'Roll back', disabled: busy,
           onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null,
         a.pin ? el('button', { type: 'button', className: 'action-btn', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
@@ -334,7 +334,7 @@ document.getElementById('library-adapt-off').addEventListener('click', async () 
   const at = noteEl('library-token-note');
   try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
 });
-document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
+document.querySelectorAll('[data-all], [data-mirrors-all]').forEach((b) => { b.disabled = busy; });
   document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
@@ -344,6 +344,8 @@ document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
     const field = lib.policy.elements[k];
     if (field && document.activeElement !== field) field.value = String(v);
   }
+  lastPolicy = snap.policy;
+  fillSurfaces(snap.policy);
   // GitHub's hourly allowance, as the last check saw it (librarian.py: rate): low, the scheduled
   // checks wait for the next hour rather than fail.
   const gh = snap.github || {};
@@ -398,7 +400,7 @@ lib.add.addEventListener('submit', async (e) => {
   }
   try {
     renderLibrary(await libPost({ action: 'add', source }));
-    say(`Added ${source.name}. Use Check or Update to fetch it.`, true, noteEl('library-add-note'));
+    say(`Added ${source.name}. Use Check now, then Fetch or Install.`, true, noteEl('library-add-note'));
     lib.add.reset();
     showTypeFields();
   } catch (err) { say(`Could not add the source: ${err.message}`, false, noteEl('library-add-note')); }
@@ -410,6 +412,26 @@ lib.policy.addEventListener('submit', async (e) => {
   const at = noteEl('library-policy-note');
   try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
+// Item 36: the mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
+const surfaceForms = [...document.querySelectorAll('form.surface-policy')];
+function fillSurfaces(policy) {
+  for (const f of surfaceForms) {
+    if (f.contains(document.activeElement) || f.dataset.dirty) continue;
+    f.querySelectorAll('select[name]').forEach((s) => { if (policy[s.name] != null) s.value = String(policy[s.name]); });
+  }
+}
+for (const f of surfaceForms) {
+  f.addEventListener('change', () => { f.dataset.dirty = '1'; });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { action: 'policy' };
+    f.querySelectorAll('select[name]').forEach((s) => { if (s.name in (lastPolicy || {})) body[s.name] = Number(s.value); });
+    const at = f.nextElementSibling;
+    try { delete f.dataset.dirty; renderLibrary(await libPost(body)); say('Saved. The librarian follows it from its next round (hourly).', true, at); } catch (err) { say(err.message, false, at); }
+  });
+}
+let lastPolicy = null;
+document.querySelectorAll('[data-mirrors-all]').forEach((b) => b.addEventListener('click', () => libAct('all', { action: b.dataset.mirrorsAll, names: ['mirrors'] })));
 lib.token.addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
@@ -570,7 +592,6 @@ loadLibrary();
 // --- packages from their makers (root/pkgwatch.py: meshtasticd on its channel) ------------------------
 // Tom, 2026-10-08: "automatically update against beta, alpha or nightly, or alpha/nightly after a certain
 // period of time"; on mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
-const PKG_MODES = [['watch', 'Watch'], ['auto', 'Automatic'], ['aged', 'After a while']];
 let pkgWaiting = null;
 async function loadPackages() {
   const box = document.getElementById('pkg-list');
@@ -585,7 +606,7 @@ async function loadPackages() {
   const pkgs = Object.entries(d.packages || {});
   box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => pkgCard(id, p))
     : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
-      el('p', { className: 'library-buttons' }, actionButton('Check', () => pkgAct({ action: 'check', package: '' })))]));
+      el('p', { className: 'library-buttons' }, actionButton('Check now', () => pkgAct({ action: 'check', package: '' })))]));
 }
 async function pkgAct(body, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
@@ -607,29 +628,40 @@ function pkgCard(id, p) {
       : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
         : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
     newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}.` : 'Not checked yet.',
-    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (watching only: press Update to install it).' : ', at the next check.')
+    p.due ? `Due: ${p.due}` + (s.mode === 'watch' ? ' (Flag only: press Install to install it).' : ', at the next check.')
       : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
-        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Update installs it anyway.' : null,
+        + (s.mode === 'watch' ? '' : 'nothing installs by itself until that channel passes it; ') + 'Install installs it anyway.' : null,
     s.mode === 'aged' ? `apt upgrade leaves it alone while it waits (${p.held ? 'held' : 'not held yet'}).` : null,
     p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
   ];
   const kept = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
     el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
+  // Item 36's pattern: how often to look, and Flag or Install (each build is kept when first seen, so
+  // fetching is part of every look), Install with a wait (Tom, 2026-10-08: "alpha/nightly after a certain
+  // period of time"): at once is the old Automatic, a wait the old After a while.
+  const act = s.mode === 'watch' ? 0 : 2, wait = s.mode === 'aged' ? s.days : 0;
+  const pat = (list) => list.filter(([v]) => v !== '1').map(([v, t]) => [Number(v), t]);
   const settings = AW.settings([
     { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
-    { key: 'mode', label: 'Updates', kind: 'choice', value: s.mode, options: PKG_MODES,
-      note: 'Watch says what is newer; Automatic installs each new build; After a while installs a build once it has been out the days below' },
-    { key: 'days', label: 'After', kind: 'choice', value: s.days, options: (p.days || [1, 3, 7, 14, 30]).map((n) => [n, `${n} day${n === 1 ? '' : 's'}`]) },
-  ], { save: (v) => pkgAct({ action: 'settings', package: id, channel: v.channel, mode: v.mode, days: v.days },
-    v.mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(v.channel)} by itself${v.mode === 'aged' ? ` once they have been out ${v.days} day${v.days === 1 ? '' : 's'}` : ''}? `
-      + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null) });
+    { key: 'every', label: 'How often to look', kind: 'choice', value: s.every ?? 24, options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]) },
+    { key: 'act', label: 'When something newer is found', kind: 'choice', value: act, options: pat(AW.UPDATE_ACT),
+      note: 'Each new build is downloaded and kept when first seen (so Roll back works offline): Flag says so, Install also installs it' },
+    { key: 'wait', label: 'Install', kind: 'choice', value: wait, options: [[0, 'at once']].concat((p.days || [1, 3, 7, 14, 30]).map((n) => [n, `after ${n} day${n === 1 ? '' : 's'}`])),
+      note: 'With Install: a build waits until it has been out this long (alpha and nightly builds are untested)' },
+  ], { save: (v) => {
+    const all = { channel: s.channel, every: s.every ?? 24, act, wait, ...v };
+    const mode = all.act === 0 ? 'watch' : all.wait ? 'aged' : 'auto', days = all.wait || s.days;
+    return pkgAct({ action: 'settings', package: id, channel: all.channel, mode, days, every: all.every },
+      mode !== 'watch' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
+        + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
+  } });
   return el('div', { className: 'setting library-source' }, el('span', {},
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
     kept, settings,
     el('span', { className: 'library-buttons' },
-      actionButton('Check', () => pkgAct({ action: 'check', package: id })),
-      newest && newest.version !== p.installed ? actionButton(`Update to ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
+      actionButton('Check now', () => pkgAct({ action: 'check', package: id })),
+      newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
       p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));
 }
@@ -1319,9 +1351,11 @@ function renderSecurity(data) {
   // Lists of unknown age say nothing either way, unless updates are waiting.
   const updBadge = (f) => (f.id !== 'security-updates' || (f.lists_age_days == null && f.status === 'ok') ? null
     : AW.updatePill(Date.now() / 1000 - (f.lists_age_days || 0) * 86400, f.status !== 'ok'));
+  // The choice and the three buttons are the update pattern's (item 36), under the two lines.
   noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix,
-    controls: scanButtons(f, busy), badge: updBadge(f) }))
+    controls: f.id === 'security-updates' ? [] : scanButtons(f, busy), badge: updBadge(f) }))
     : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
+  drawDebianPattern(lines, busy);
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
@@ -1604,6 +1638,39 @@ async function secRequest(body, fid) {
     loadSecurity();
   } catch (err) { secNote = { fid, text: err.message, ok: false }; loadSecurity(); }
 }
+
+// Debian's security updates as the update pattern (item 36): how often apt looks, what it does with what
+// it finds (apt's periodic work, unattended-upgrades to install), and Check now / Fetch / Install by hand.
+const deb = { form: document.getElementById('debian-pattern'), note: noteEl('debian-pattern-note'), box: document.getElementById('debian-buttons') };
+deb.buttons = AW.updateButtons({
+  check: { onclick: () => secFix('security-updates', { choice: 'security-check' }) },
+  fetch: { onclick: () => secFix('security-updates', { choice: 'security-fetch' }) },
+  install: { onclick: () => secFix('security-updates', { choice: 'security-updates',
+    confirm: 'Install the waiting security updates now? It can take several minutes on this board.' }) },
+});
+deb.box.replaceChildren(deb.buttons);
+function drawDebianPattern(lines, busy) {
+  const u = lines.find((f) => f.id === 'unattended'), w = lines.find((f) => f.id === 'security-updates');
+  const pat = u && u.pattern;
+  if (pat && !deb.form.contains(document.activeElement) && !deb.form.dataset.dirty) {
+    deb.form.elements.often.value = String(pat.often);
+    deb.form.elements.act.value = String(pat.act);
+  }
+  const waiting = w ? w.waiting || 0 : 0, fetched = w ? w.fetched || 0 : 0;
+  deb.buttons.update({
+    check: { disabled: busy, why: busy ? 'busy' : '' },
+    fetch: { disabled: busy || !waiting || fetched >= waiting,
+      why: busy ? 'busy' : !waiting ? 'nothing newer is known; check first.' : fetched >= waiting ? 'downloaded already.' : '' },
+    install: { disabled: busy || !waiting, why: busy ? 'busy' : !waiting ? 'nothing waiting.' : '' },
+  });
+}
+deb.form.addEventListener('input', () => { deb.form.dataset.dirty = '1'; });
+deb.form.addEventListener('change', () => { deb.form.dataset.dirty = '1'; });
+deb.form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  delete deb.form.dataset.dirty;
+  secRequest({ action: 'fix', choice: `autoupdate-set:${deb.form.elements.often.value}-${deb.form.elements.act.value}` }, 'unattended');
+});
 
 function secFix(fid, action) {
   if (action.confirm && !confirm(action.confirm)) return;
@@ -3465,8 +3532,8 @@ function renderMirrors(data) {
         relNote ? el('span', { className: `setting-desc${st.releases_cached ? ' warn' : ''}`, textContent: relNote }) : null,
         el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state })),
       el('span', { className: 'library-buttons' },
-        actionButton('Check', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
-        actionButton('Update', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton('Check now', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
+        actionButton('Fetch', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Fetching is a mirror\'s update' }),
         actionButton(m.submodules ? 'Without submodules' : 'With submodules', act({ action: 'mirror-change',
           mirror: Object.assign({}, m, { status: undefined, submodules: !m.submodules }) }), { className: 'small' }),
         relGroups.length ? actionButton(skipping ? 'Keep revoked' : 'Leave revoked out', act({ action: 'mirror-change',

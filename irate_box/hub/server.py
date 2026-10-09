@@ -3842,8 +3842,10 @@ class Handler(BaseHTTPRequestHandler):
             elif act == "rollback":
                 req = {"action": "pkg-rollback", "package": pkg}
             elif act == "settings" and payload.get("channel") in ("beta", "alpha", "daily") and payload.get("mode") in ("watch", "auto", "aged") \
-                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool):
-                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"]}
+                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool) \
+                    and payload.get("every", 24) in (0, 6, 24, 168) and not isinstance(payload.get("every"), bool):
+                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"],
+                       "every": payload.get("every", 24)}
             else:
                 self.send_json(400, {"error": "action: check, install (with version), rollback, or settings (channel, mode, days)"})
                 return

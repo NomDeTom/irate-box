@@ -1458,3 +1458,9 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .ladder-table table { border-collapse: collapse; margin-top: 0.3rem; }
 .ladder-table th, .ladder-table td { text-align: left; padding: 0.15rem 0.6rem 0.15rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .ladder-table td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* One pattern for every update (item 36): the two choices, then Check now / Fetch / Install. */
+.update-pattern { display: grid; gap: 0.5rem; }
+.update-pattern .update-choice { display: grid; gap: 0.25rem; }
+.update-actions { margin: 0.5rem 0; }
+.update-why { margin-top: 0.25rem; }
