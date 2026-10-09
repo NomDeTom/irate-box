@@ -413,5 +413,62 @@ check("  written as the slot closes: the uplink's full state, the others' link (
       and saved["ifaces"]["eth0"]["s"] == "d" and saved["ifaces"]["eth0"]["kind"] == "link", saved)
 check("  the watched link's letter from its state", [U.history_state(x, l) for x, l in (("up", True), ("checking", True), ("down", True), ("down", False), ("off", False))]
       == ["u", "g", "g", "d", "o"])
+
+# Roaming (item 35; uplink-roaming-options-plan; Tom, 2026-10-09: R1 "add a checkbox to ignore them as an option",
+# R2 "20s is sensible", R3 "there are 3 APs and it should roam naturally").
+check("roaming: roam naturally by default, no scans or a lock as choices; a lock needs a BSSID, kept only with lock", U.ROAMING == ("roam", "no-scan", "lock")
+      and U.validate({})["roaming"] == "roam" and U.validate({"roaming": "lock", "lock_bssid": "AA:BB:CC:00:00:01"})["lock_bssid"] == "aa:bb:cc:00:00:01"
+      and U.validate({"roaming": "roam", "lock_bssid": "aa:bb:cc:00:00:01"})["lock_bssid"] is None)
+check("  ignoring short roams a checkbox apart, off by default; the first names read as these", U.validate({})["ignore_roams"] is False
+      and (U.validate({"roaming": "ignore"})["roaming"], U.validate({"roaming": "ignore"})["ignore_roams"]) == ("roam", True)
+      and (U.validate({"roaming": "count"})["roaming"], U.validate({"roaming": "count"})["ignore_roams"]) == ("roam", False)
+      and U.validate({"roaming": "lock", "lock_bssid": "aa:bb:cc:00:00:01", "ignore_roams": True})["ignore_roams"] is True)
+for bad in ({"roaming": "never"}, {"roaming": "lock"}, {"roaming": "lock", "lock_bssid": "aa:bb"}, {"overrides": {"blip": 300}}, {"ignore_roams": "yes"}):
+    try:
+        U.validate(bad); check(f"  {bad} refused", False)
+    except ValueError:
+        check(f"  {bad} refused", True)
+check("  the blip 20 s unless set (R2 proposed), and said in the settings' words", U.effective(C("gentle/reboot"))["blip"] == 20
+      and "roams not counted" in U.words(U.validate({"ignore_roams": True})) and "locked to aa:bb:cc:00:00:01" in U.words(U.validate({"roaming": "lock", "lock_bssid": "aa:bb:cc:00:00:01"})))
+# The drop watcher keeps when the link came back; a drop still down and younger than the blip waits.
+dw = U.DropWatcher.__new__(U.DropWatcher)
+import threading
+dw.lock, dw.drops = threading.Lock(), [[100.0, 104.0], [150.0, None], [190.0, None]]
+got = dw.take(now=200, blip=20)
+check("drops taken: the one back, and the one down past the blip; the young one waits", got == [(100.0, 104.0), (150.0, None)] and dw.drops == [[190.0, None]], got)
+eff_i, eff_c = U.effective(C("gentle/reboot", ignore_roams=True)), U.effective(C("gentle/reboot"))
+pairs = [(100.0, 104.0), (300.0, 360.0), (500.0, None)]
+check("sorted: back within 20 s on the same network is a roam; ignored, it is no miss; counted, it is", U.sort_drops(pairs, eff_i, True) == ([300.0, 500.0], [(100.0, 104.0)])
+      and U.sort_drops(pairs, eff_c, True) == ([100.0, 300.0, 500.0], [(100.0, 104.0)]))
+check("  back on another network: not a roam, a miss", U.sort_drops(pairs, eff_i, False)[0] == [100.0, 300.0, 500.0])
+def roaming_night(ignore, every=300, hours=3, gw_fail_at=()):
+    """A roam every `every` s (a 4 s blip), gentle pace, sensitivity 3; the gateway failing at the given checks."""
+    eff = U.effective(C("gentle/reboot", ignore_roams=ignore))
+    w = U.Watch(eff)
+    acts = []
+    for t in range(0, hours * 3600, 120):
+        pairs = [(float(b), b + 4.0) for b in range(t - 120 + 7, t, every) if b > 0 and (b - 7) % every == 0]
+        drops, _ = U.sort_drops(pairs, eff, True)
+        acts += [(t, a) for a in w.tick(1000 + t, {"link": True, "gateway": t not in gw_fail_at, "drops": [1000 + d for d in drops], "can": ALL})]
+    return acts, w
+a, w = roaming_night(True)
+check("roams ignored: a roam every 5 min, gentle pace, sensitivity 3: never on the ladder", a == [] and w.outage is None and not w.misses, a[:3])
+a, w = roaming_night(False)
+check("roams counted (as since #175, the default): the same roams put it on the ladder as flapping, a reconnect locked to the strongest", any(x == "pin" or x == "reconnect" for _, x in a)
+      and any(e["kind"] == "down" and "flaps" in e["text"] for e in w.events), a[:3])
+a, w = roaming_night(True, gw_fail_at=(1200, 1320, 1440))
+check("  ignore still counts failed gateway checks: three in the window, on the ladder", any(e["kind"] == "down" and "gateway" in e["text"] for e in w.events),
+      [e["text"] for e in w.events])
+eff = U.effective(C("gentle/reboot", ignore_roams=True))
+check("  and a 2-minute loss is a miss whatever the choice", U.sort_drops([(100.0, 220.0)], eff, True) == ([100.0], []))
+# Roams made visible: a short drop and back, or a new access point between checks.
+r = U.Roams()
+r.see(1000, {"bssid": "aa:00:00:00:00:01", "channel": 6}, [])
+rows = r.see(1300, {"bssid": "aa:00:00:00:00:02", "channel": 11}, [(1290.0, 1294.0)])
+check("roams noted: one row per roam, with where it went", rows == [{"at": 1294.0, "k": "roam", "d": 4.0, "b": "aa:00:00:00:00:02", "c": 11}], rows)
+rows = r.see(1600, {"bssid": "aa:00:00:00:00:01", "channel": 6}, [])
+check("  a new access point with no drop seen is a roam too", rows == [{"at": 1600, "k": "roam", "d": 0, "b": "aa:00:00:00:00:01", "c": 6}] and r.hour() == 2, rows)
+r.see(5300, {"bssid": "aa:00:00:00:00:01", "channel": 6}, [])
+check("  the last hour's count forgets older ones", r.hour() == 0)
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

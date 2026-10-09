@@ -966,6 +966,11 @@
                   <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
                   <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
                   <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
+                  <span class="setting-name" id="up-roaming-label">Roaming between access points that share your network's name</span>
+                  <div class="choice-tiles" id="up-roaming" role="radiogroup" aria-labelledby="up-roaming-label"></div>
+                  <div class="net-lock-aps" id="up-lock-aps" role="radiogroup" aria-label="The access point to lock to" hidden></div>
+                  <label class="inline"><input type="checkbox" id="up-ignore-roams"> Don't count short roams as missed checks: a drop that is
+                    back within 20 s on the same network is drawn on the chart, never counted (failed gateway checks still count)</label>
                   <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
                   <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
                     <span class="setting-desc" id="up-sens-says"></span></span>

@@ -1840,6 +1840,7 @@ def network_snapshot():
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
+                       "roaming": list(uplink.ROAMING),
                        "describe": uplink.DESCRIBE, "default": uplink.DEFAULT,
                        "presets": {"pace": uplink.PACE, "common": uplink.COMMON},
                        "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}

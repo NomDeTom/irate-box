@@ -128,12 +128,24 @@ SENSITIVITY = (1, 20)
 # The old forgiveness, as a sensitivity: settings saved with it still load.
 FORGIVENESS_WAS = {"tolerant": 5, "normal": 3, "strict": 2}
 COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
-          "relapse": 900}
+          "relapse": 900, "blip": 20}
+# Roaming between access points that share a name (item 35; uplink-roaming-options-plan; Tom, 2026-10-09,
+# R3: "in my house there are 3 APs and it should roam naturally"): from the least change to the owner's
+# system to the most. roam: as the WiFi stack does (the default); no-scan: wpa_supplicant's background
+# scans off while the hotspot shares the radio (roaming.py, by consent); lock: the WiFi profile held to one
+# access point (its BSSID), by consent and undone the same way.
+# Apart from that, whether a roam counts as a missed check (R1: "add a checkbox to ignore them as an
+# option"): ignore_roams, off by default (each is a miss, as since #175); on, a drop of the link that is
+# back within `blip` seconds (R2: 20 s) on the same network is a roam, not a miss.
+ROAMING = ("roam", "no-scan", "lock")
+ROAMING_WAS = {"count": ("roam", False), "ignore": ("roam", True)}   # the branch's first four, read as these
+BSSID_RE = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
 # The default reach is the highest (Tom, 2026-10-09: "the default for reach should be the highest
 # level"); guests stay protected, and a reboot keeps its guards (the daily cap, the gap, not while
 # a build or an update runs, not soon after boot).
 DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "sensitivity": 3, "iface": "auto",
-           "overrides": {}, "hold_until": 0, "on_wedge": "ladder"}
+           "overrides": {}, "hold_until": 0, "on_wedge": "ladder", "roaming": "roam", "lock_bssid": None,
+           "ignore_roams": False}
 # When the evidence says the radio's driver has wedged (wedge_evidence): keep to the ladder as set,
 # or go straight to a radio reset if the reach allows it (Tom, 2026-10-09: a setting per box, off).
 ON_WEDGE = ("ladder", "radio")
@@ -156,6 +168,7 @@ DESCRIBE = {
 FIELDS = {
     "check": (10, 600), "window": (60, 86400), "repeat": (0, 86400), "backoff": (1.0, 4.0),
     "max_repeat": (60, 86400), "relapse": (60, 86400), "reboots_per_day": (0, 10), "reboot_gap": (600, 86400),
+    "blip": (5, 120),
     "steps": {s: (0, 86400) for s in STEPS},
 }
 # Custom fields there were before sensitivity: dropped when settings load, not refused.
@@ -173,6 +186,8 @@ def effective(chosen):
     eff["steps"] = {s: v for s, v in pace["steps"].items() if s in allowed}
     eff["guests"] = chosen.get("guests", "protect")
     eff["on_wedge"] = chosen.get("on_wedge", "ladder")
+    eff["roaming"] = chosen.get("roaming", "roam")
+    eff["ignore_roams"] = bool(chosen.get("ignore_roams"))
     for k, v in chosen.get("overrides", {}).items():
         if k == "steps":
             for s, t in v.items():
@@ -242,7 +257,19 @@ def validate(raw):
     w = raw.get("on_wedge", "ladder")
     if w not in ON_WEDGE:
         raise ValueError(f"on_wedge must be one of {', '.join(ON_WEDGE)}")
-    out.update(pace=pace, reach=reach, guests=guests, sensitivity=sens, iface=iface, overrides={}, on_wedge=w)
+    roaming, ignore = raw.get("roaming", "roam"), raw.get("ignore_roams", False)
+    if roaming in ROAMING_WAS:
+        roaming, ignore = ROAMING_WAS[roaming][0], ignore or ROAMING_WAS[roaming][1]
+    if not isinstance(ignore, bool):
+        raise ValueError("ignore_roams is true or false")
+    if roaming not in ROAMING:
+        raise ValueError(f"roaming must be one of {', '.join(ROAMING)}")
+    lock = raw.get("lock_bssid")
+    lock = lock.lower() if isinstance(lock, str) else None
+    if roaming == "lock" and not (lock and BSSID_RE.match(lock)):
+        raise ValueError("a lock needs the access point's BSSID (aa:bb:cc:dd:ee:ff)")
+    out.update(pace=pace, reach=reach, guests=guests, sensitivity=sens, iface=iface, overrides={}, on_wedge=w,
+               roaming=roaming, lock_bssid=lock if roaming == "lock" else None, ignore_roams=ignore)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
         raise ValueError("overrides must be an object")
@@ -675,7 +702,10 @@ def words(chosen):
     n = chosen.get("sensitivity", DEFAULT["sensitivity"])
     return f"{chosen['pace']} pace, reach {chosen['reach']}, sensitivity {n} missed check{'s' if n != 1 else ''}" + (
         ", guests or not" if chosen.get("guests") == "ignore" else "") + (
-        ", a wedged radio reset at once" if chosen.get("on_wedge") == "radio" else "")
+        ", a wedged radio reset at once" if chosen.get("on_wedge") == "radio" else "") + {
+        "no-scan": ", no background scans while the hotspot shares the radio",
+        "lock": f", locked to {chosen.get('lock_bssid')}"}.get(chosen.get("roaming"), "") + (
+        ", roams not counted" if chosen.get("ignore_roams") else "")
 
 
 def busy():
@@ -889,13 +919,17 @@ class DropWatcher(threading.Thread):
         self.iface = None
         self.wake = wake
         self.lock = threading.Lock()
-        self.drops = []
+        self.drops = []   # [lost, back or None]
         self.up = {}
 
-    def take(self):
+    def take(self, now=None, blip=0):
+        """The drops since the last take, as (lost, back): back None while the link is still down. One
+        still down and younger than `blip` waits for the next take, to be told whether it was a roam."""
+        now = now or time.time()
         with self.lock:
-            d, self.drops = self.drops, []
-        return d
+            ready = [d for d in self.drops if d[1] is not None or now - d[0] > blip]
+            self.drops = [d for d in self.drops if d not in ready]
+        return [tuple(d) for d in ready]
 
     def run(self):
         while True:
@@ -913,8 +947,14 @@ class DropWatcher(threading.Thread):
                 self.up[name] = lower
                 if name == self.iface and was and not lower:
                     with self.lock:
-                        self.drops.append(time.time())
+                        self.drops.append([time.time(), None])
                     self.wake.set()
+                elif name == self.iface and was is False and lower:
+                    with self.lock:
+                        for d in reversed(self.drops):
+                            if d[1] is None:
+                                d[1] = time.time()
+                                break
             proc.wait()
             time.sleep(5)
 
@@ -1034,6 +1074,44 @@ class Ladder:
         safeio.write(self.path, json.dumps(self.rows, separators=(",", ":")))
 
 
+def sort_drops(pairs, eff, same_network):
+    """The drops a take() gave, as (misses, roams): a drop back within `blip` seconds on the same network is a
+    roam; with ignore_roams it is not a miss (item 35, option A; Tom's checkbox); otherwise every drop is one (#175)."""
+    roams = [d for d in pairs if d[1] is not None and d[1] - d[0] <= eff.get("blip", 20) and same_network]
+    misses = [d[0] for d in pairs if not (eff.get("ignore_roams") and d in roams)]
+    return misses, roams
+
+
+class Roams:
+    """Roaming made visible (item 35, stage 2): each roam (a short drop and back, or a new access point
+    between two checks) noted, the last hour's counted for the page, and each one a row of the ladder's
+    record ({at, k: "roam", i, b: bssid, c: channel}) for the chart's marks."""
+
+    def __init__(self):
+        self.times = deque()
+        self.last = None   # {bssid, channel, at}
+
+    def see(self, now, link, blips):
+        """link: iw's for the check (bssid, channel); blips: the roams the drops held. Returns the rows to keep."""
+        rows = []
+        moved = link.get("bssid") and self.last and link["bssid"] != self.last["bssid"]
+        for lost, back in blips:
+            rows.append({"at": round(back, 1), "k": "roam", "d": round(back - lost, 1)})
+        if moved and not blips:
+            rows.append({"at": round(now, 1), "k": "roam", "d": 0})
+        if rows and link.get("bssid"):
+            rows[-1].update(b=link["bssid"], c=link.get("channel"))
+        if link.get("bssid"):
+            self.last = {"bssid": link["bssid"], "channel": link.get("channel"), "at": now}
+        self.times.extend(r["at"] for r in rows)
+        while self.times and self.times[0] < now - 3600:
+            self.times.popleft()
+        return rows
+
+    def hour(self):
+        return len(self.times)
+
+
 def history_state(state, link):
     """The watched link's letter for linkhistory, from the status's state."""
     return {"off": "o", "up": "u", "checking": "g"}.get(state, "g" if link else "d")
@@ -1132,6 +1210,7 @@ def serve(dry=False):
     pinned = None
     history = History()
     ladder = Ladder()
+    roams = Roams()
     tls_at = 0  # HTTPS (step 15): the certificate renewed when due, looked at every six hours
 
     def stop(*_):
@@ -1173,7 +1252,13 @@ def serve(dry=False):
         up = link_up(iface)
         gw = gateway_of(iface) if up else None
         answers = gateway_answers(iface, gw) if gw else (False if up else None)
-        obs = {"link": up, "gateway": answers, "drops": watcher.take(), "guests": guests(), "busy": busy(),
+        link = netinv.parse_link(netinv.run("iw", "dev", iface, "link")[1]) if up and (SYS_NET / iface / "phy80211").exists() else {}
+        same = bool(link.get("ssid")) and link.get("ssid") == (roams.last or {}).get("ssid", link.get("ssid"))
+        drops, blips = sort_drops(watcher.take(now, w.eff.get("blip", 20)), w.eff, same)
+        roam_rows = roams.see(now, link, blips)
+        if roams.last:
+            roams.last["ssid"] = link.get("ssid") or roams.last.get("ssid")
+        obs = {"link": up, "gateway": answers, "drops": drops, "guests": guests(), "busy": busy(),
                "uptime": uptime(), "can": can, "hold_until": chosen.get("hold_until", 0),
                "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface),
                "shared_radio": shared_radio(iface)}
@@ -1189,6 +1274,11 @@ def serve(dry=False):
                                            (SYS_NET / iface).exists(), (SYS_NET / iface / "phy80211").exists())
         elif backend and backend != "none":
             known_backend = backend
+        if chosen.get("roaming") == "no-scan" and up and not dry:
+            from irate_box.hub import roaming
+            said = roaming.clear_scan(iface)
+            if said:
+                w.log(now, "info", f"Roaming: {said} (NetworkManager had set them again).")
         actions = w.tick(now, obs)
         asked = take_request(now) if NOW.exists() else None
         if asked:
@@ -1218,12 +1308,14 @@ def serve(dry=False):
                 w.log(now, "info", f"HTTPS certificate renewal failed: {exc}")
         if not dry:
             try:
-                ladder.add(w.ladder, iface, now)
+                ladder.add(w.ladder, iface, now, [dict(r, i=iface) for r in roam_rows])
                 ladder.misses(now, w.misses, w.eff["sensitivity"], iface)
             except OSError as exc:
                 w.log(now, "info", f"The escalation record was not written: {exc}")
         w.ladder = []
         report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
+        report["roams_hour"] = roams.hour()
+        report["roam_last"] = roams.last
         history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]))
         write_status(report)
         # While a check or an outage is under way, look again sooner than the steady pace.
@@ -1244,7 +1336,12 @@ def _status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, d
             "episode": ({k: w.episode[k] for k in ("since", "outages", "failed", "tried")} if w.episode else None),
             "next": w.next_step(now), "stall": stall, "paused_until": max(w.pause_until, chosen.get("hold_until") or 0) or None,
             "pinned": pinned, "events": list(w.events), "reboots": w.reboots[-10:], "chosen": chosen,
-            "settings": w.eff, "profile_change": profile_record(), "dry_run": dry}
+            "settings": w.eff, "profile_change": profile_record(), "roaming_change": _roaming_record(), "dry_run": dry}
+
+
+def _roaming_record():
+    from irate_box.hub import roaming
+    return roaming.record() or None
 
 
 # --- the owner's profile, by consent ---------------------------------------------------------
@@ -1347,8 +1444,13 @@ def main(argv):
             k, _, v = a.partition("=")
             if k == "forgiveness" and v in FORGIVENESS_WAS:   # the old name, still read
                 k, v = "sensitivity", FORGIVENESS_WAS[v]
-            if k not in ("pace", "reach", "sensitivity", "guests", "on_wedge"):
-                sys.exit(f"uplink.py set: {k} is not one of pace, reach, sensitivity, guests, on_wedge")
+            if k not in ("pace", "reach", "sensitivity", "guests", "on_wedge", "ignore_roams"):
+                # Not roaming's lock or no-scan: they change the owner's WiFi, so they are asked on /admin.
+                sys.exit(f"uplink.py set: {k} is not one of pace, reach, sensitivity, guests, on_wedge, ignore_roams")
+            if k == "ignore_roams":
+                if v.lower() not in ("yes", "no", "true", "false", "on", "off"):
+                    sys.exit("uplink.py set: ignore_roams is yes or no")
+                v = v.lower() in ("yes", "true", "on")
             s[k] = v
         try:
             s = save_settings(s)
@@ -1371,6 +1473,12 @@ def main(argv):
             print(profile(False))
         except ValueError as exc:
             print(f"profile: {exc}")
+        from irate_box.hub import roaming
+        try:
+            for line in roaming.undo_all(pick_iface(load_settings()["iface"], None)):
+                print(line)
+        except ValueError as exc:
+            print(f"roaming: {exc}")
     else:
         sys.exit("usage: uplink.py run [--dry-run] | check | presets | set KEY=VALUE... | hold MINUTES "
                  "| profile on|off | undo-all")

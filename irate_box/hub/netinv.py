@@ -229,6 +229,58 @@ def freq_channel(f):
     return None
 
 
+# --- roaming (item 35; Tom, 2026-10-09: "if necessary, add that capability to the hardware scan") ---------
+# Which access points share the uplink's network name, the background scan that makes it roam, and which
+# of the owner's choices can work here: roaming as the WiFi stack does, always (and ignoring short roams, the
+# watchdog's own); no background scans where wpa_supplicant takes them live (its control socket; proven on
+# the Lyra, uplink-roaming-options-plan stage 5); a lock to one access point wherever NetworkManager runs it.
+ROAMING = ("roam", "no-scan", "lock")
+
+
+def parse_wifi_list(text, ssid):
+    """`nmcli -t -f BSSID,CHAN,FREQ,SIGNAL,SSID dev wifi list` → the access points named ssid, strongest first."""
+    aps = []
+    for f in nm_fields(text):
+        if len(f) >= 5 and f[4] == ssid and re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", f[0]):
+            freq = int(re.match(r"\d+", f[2]).group()) if re.match(r"\d+", f[2]) else None
+            aps.append({"bssid": f[0].lower(), "channel": int(f[1]) if f[1].isdigit() else None, "freq": freq,
+                        "signal": int(f[3]) if f[3].isdigit() else None})
+    return sorted(aps, key=lambda a: -(a["signal"] or 0))
+
+
+def wpa_bgscan(iface, run_=None):
+    """The background scan wpa_supplicant runs for the network in use, and whether it can be changed live:
+    (value or None, writable)."""
+    run_ = run_ or run
+    if not shutil.which("wpa_cli"):
+        return None, False
+    code, out = run_("wpa_cli", "-i", iface, "status")
+    m = re.search(r"^id=(\d+)$", out, re.M) if code == 0 else None
+    if not m:
+        return None, False
+    code, out = run_("wpa_cli", "-i", iface, "get_network", m.group(1), "bgscan")
+    if code != 0 or out.strip().startswith("FAIL"):
+        return None, True
+    return out.strip().strip('"'), True
+
+
+def roaming_facts(r, nm, run_=None):
+    """For a client radio: the access points sharing its network, the background scan, and the choices that work."""
+    run_ = run_ or run
+    ssid = (r.get("link") or {}).get("ssid")
+    aps = parse_wifi_list(run_("nmcli", "-t", "-f", "BSSID,CHAN,FREQ,SIGNAL,SSID", "dev", "wifi", "list", "ifname", r["iface"],
+                               "--rescan", "no")[1], ssid) if ssid and r.get("owner") == "networkmanager" else []
+    bgscan, live = wpa_bgscan(r["iface"], run_) if r.get("owner") in ("networkmanager", "wpa_supplicant") else (None, False)
+    why = {}
+    if r.get("owner") != "networkmanager":
+        why["lock"] = "NetworkManager does not run this link"
+    if not live:
+        why["no-scan"] = "wpa_supplicant's control socket is not there to change the background scan"
+    return {"ssid": ssid, "aps": aps, "channels": sorted({a["channel"] for a in aps if a["channel"]}),
+            "bgscan": bgscan, "nm_version": (nm or {}).get("version"),
+            "choices": [c for c in ROAMING if c not in why], "why": why}
+
+
 def device_facts(iface):
     """Driver, bus and USB identity of a network interface, from sysfs."""
     dev = SYS_NET / iface / "device"
@@ -563,9 +615,15 @@ def scan(focus=None):
             if owner == "networkmanager":
                 conn = nm["devices"].get(iface, {}).get("connection")
                 r["profile"] = next((p for p in nm["wifi_profiles"] if p["name"] == conn), None) if conn else None
+            if r["link"]:
+                r["roaming"] = roaming_facts(r, nm)
         elif info.get("type") == "AP":
             r["stations"] = ap_stations(iface)
         radios.append(r)
+    # The hotspot on the same radio as a roaming link moves with it (uplink-roaming-options-plan §1).
+    for r in radios:
+        if r.get("roaming") is not None:
+            r["roaming"]["hotspot_shares"] = any(a.get("type") == "AP" and a.get("phy") == r.get("phy") for a in radios)
 
     inv = {"at": time.time(), "host": read("/etc/hostname"), "os": _os_name(), "root": os.geteuid() == 0,
            "focus": focus, "iw": iw_ok, "stacks": stacks, "radios": radios, "wired": wired(),

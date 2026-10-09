@@ -22,6 +22,7 @@ run sim_crashwatch.py
 run sim_pkgwatch.py
 run sim_update_pattern.py
 run sim_wifijoin.py
+run sim_roaming.py
 run sim_helper_busy.py
 run sim_widths.py
 run sim_admin_apps.py

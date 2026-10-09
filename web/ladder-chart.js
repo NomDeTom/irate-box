@@ -29,6 +29,8 @@ const LadderChart = (() => {
 
   // The line and the bands: the level at each moment, from the start of the record (so the window
   // opens at the level it was at), the heaviest rung an outage reached held until it ended.
+  // Rows that are not events: the symptoms (m) and the roams between access points (item 35's marks).
+  const isEvent = (r) => r.k !== 'm' && r.k !== 'roam';
   function model(rows, from, to) {
     const pts = [], bands = [], marks = [];
     let lv = 0, open = null;
@@ -36,7 +38,7 @@ const LadderChart = (() => {
     at(from, 0);
     for (const r of rows) {
       if (r.at > to) break;
-      if (r.k === 'm') continue;
+      if (!isEvent(r)) continue;
       if (r.k === 'down') { lv = Math.max(lv, 1); open = r.at; at(r.at, lv); }
       else if (r.k === 'up') { if (open != null) bands.push([open, r.at]); open = null; lv = 0; at(r.at, 0); }
       else if (r.k === 'repair' && r.s) { if (open != null) { lv = Math.max(lv, level(r.s)); at(r.at, lv); } }
@@ -48,7 +50,7 @@ const LadderChart = (() => {
   }
 
   function summary(rows, from) {
-    const seen = rows.filter((r) => r.at >= from && r.k !== 'm');
+    const seen = rows.filter((r) => r.at >= from && isEvent(r));
     const outages = seen.filter((r) => r.k === 'down').length;
     const steps = {};
     for (const r of seen) if (r.k === 'repair' && r.s) steps[r.s] = (steps[r.s] || 0) + 1;
@@ -91,7 +93,10 @@ const LadderChart = (() => {
       svg.append(make('path', { d, class: 'ladder-th' }));
       svg.append(make('text', { x: W - R, y: ys(th) - 4, class: 'ladder-axis', 'text-anchor': 'end' }, `sensitivity ${th}`));
     }
-    return { most: Math.max(0, ...sym.map((r) => r.n)), over: sym.filter((r) => r.th && r.n >= r.th).length };
+    // A roam between access points (item 35): a short tick on the baseline, muted, one each.
+    const roams = rows.filter((r) => r.k === 'roam' && r.at >= from && r.at <= now);
+    if (roams.length) svg.append(make('path', { d: roams.map((r) => `M${x(r.at)},${ys(0)}v-7`).join(''), class: 'ladder-roam' }));
+    return { most: Math.max(0, ...sym.map((r) => r.n)), over: sym.filter((r) => r.th && r.n >= r.th).length, roams: roams.length };
   }
 
   function draw(box, rows, span, now) {
@@ -104,7 +109,8 @@ const LadderChart = (() => {
     const sy = symptoms(svg, rows, from, now, x);
     const symSaid = rows.some((r) => r.k === 'm') ? ` At most ${sy.most} missed check${sy.most === 1 ? '' : 's'} within the pace's window;`
       + ` at or over the line in ${sy.over} five-minute spell${sy.over === 1 ? '' : 's'}.` : '';
-    svg.setAttribute('aria-label', svg.getAttribute('aria-label') + symSaid);
+    const roamSaid = sy.roams ? ` ${sy.roams} roam${sy.roams === 1 ? '' : 's'} between access points (the ticks on the baseline).` : '';
+    svg.setAttribute('aria-label', svg.getAttribute('aria-label') + symSaid + roamSaid);
     LEVELS.forEach((name, i) => {
       svg.append(make('line', { x1: L, x2: W - R, y1: y(i), y2: y(i), class: 'ladder-grid' }));
       svg.append(make('text', { x: L - 8, y: y(i) + 4, class: 'ladder-axis', 'text-anchor': 'end' }, NAMES[name]));
@@ -126,7 +132,7 @@ const LadderChart = (() => {
       else svg.append(make('circle', { cx, cy, r: 4.5, class: cls }));
     }
     // Hover and keys: a crosshair that snaps to the nearest event, its words in the tooltip.
-    const seen = rows.filter((r) => r.at >= from && r.at <= now && r.k !== 'm');
+    const seen = rows.filter((r) => r.at >= from && r.at <= now && isEvent(r));
     const cross = make('line', { y1: T, y2: H - B, class: 'ladder-cross', visibility: 'hidden' });
     svg.append(cross);
     // The readout: a line of its own above the plot (its room kept), so it never covers a mark.
@@ -167,7 +173,7 @@ const LadderChart = (() => {
     }
     const frame = make('div', { class: 'ladder-frame' });
     frame.append(tip, svg);
-    box.replaceChildren(frame, make('p', { class: 'setting-desc ladder-sum' }, `Over this time: ${summary(rows, from)}${symSaid}`),
+    box.replaceChildren(frame, make('p', { class: 'setting-desc ladder-sum' }, `Over this time: ${summary(rows, from)}${symSaid}${roamSaid}`),
       make('p', { class: 'setting-desc ladder-key' }, 'Above: missed checks within the pace\'s window, each five minutes; at or over the sensitivity\'s line'
         + ' (in colour) the link goes on the ladder. Below: the furthest each outage went; shaded, the outages. '
         + '● a step the watchdog took, ◆ one asked for on /admin, ▲ a flapping link\'s repair; hollow, one held (guests on the hotspot, say) or a stall.'),
