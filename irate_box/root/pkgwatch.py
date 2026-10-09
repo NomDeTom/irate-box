@@ -360,8 +360,16 @@ def publish(pid, now=None):
     got = seen(pid)
     pub = _json(PUBLIC, {})
     rec = _record(pid)
+    have = installed(d["package"])
+    # The newest seen on the channel, when newer than what is installed: an update is available,
+    # whether or not the owner's mode would install it yet (due, below).
+    top = None
+    for v, e in got.items():
+        if e.get("channel") == s["channel"] and newer(v, top):
+            top = v
     pub[pid] = {"title": d["title"], "package": d["package"], "channels": list(d["channels"]), "settings": s,
-                "installed": installed(d["package"]), "previous": rec.get("previous"),
+                "installed": have, "previous": rec.get("previous"),
+                "newer": top if top and newer(top, have) else None,
                 "builds": [{"version": v, "channel": e["channel"], "first_seen": e["first_seen"], "size": e.get("size")}
                            for v, e in sorted(got.items(), key=lambda x: x[1]["first_seen"])],
                 "due": due(pid, now), "checked": now or pub.get(pid, {}).get("checked"), "history": rec.get("history", [])[-5:],

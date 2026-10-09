@@ -429,6 +429,7 @@ def update_findings():
                                    "confirm": "Install the waiting security updates now? It can take several minutes on this board."}, look]))
     else:
         findings.append(_finding("security-updates", "Security updates", "ok", f"None waiting. {fresh}", "", [look]))
+    findings[-1]["lists_age_days"] = age  # the page's badge: how recently "none waiting" was looked for
     findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age))
     return findings, pkgs
 
