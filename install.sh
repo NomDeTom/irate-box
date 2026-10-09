@@ -177,7 +177,7 @@ while [ $# -gt 0 ]; do
 		fi
 		shift 2 ;;
 	--remove)
-   	case "$2" in notes | sync | mqtt | irc | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term or collab" ;; esac
+		case "$2" in notes | sync | mqtt | irc | term | collab) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term or collab" ;; esac
 		shift 2 ;;
 	--download-cache) DL_CACHE="$2"; shift 2 ;;
 	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
@@ -1760,8 +1760,7 @@ if [ "$WITH_IRC" = 1 ]; then
 	AdminInfo2 = Chat for whoever is on this network
 	MotdFile = /etc/ngircd/irate-box.motd
 	PidFile = /run/ngircd/ngircd.pid
-	# Every interface until the installer sets up the access point; then this should
-	# become the AP address only (Listen = ...).
+	# Every interface: on the hotspot, the floor (Security) decides whether guests reach it.
 	Ports = 6667
 	ServerUID = irc
 	ServerGID = irc

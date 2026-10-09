@@ -38,6 +38,7 @@ UNIT = "irate-box-firewall.service"
 TABLE = "inet irate_box"
 DEFAULT_IFACE = "ap0"
 MOSQUITTO = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
+NGIRCD = Path(os.environ.get("HUB_NGIRCD_DIR", "/etc/ngircd"))
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 # Where a package's unit may be, besides: only on a real box (a test's HUB_UNIT_DIR stands alone).
 UNIT_DIRS = (UNIT_DIR,) if "HUB_UNIT_DIR" in os.environ else (UNIT_DIR, Path("/lib/systemd/system"), Path("/usr/lib/systemd/system"))
@@ -60,6 +61,7 @@ DNS_MARK = "0x00000153"       # a guest's DNS sent to share.GUEST_DNS_PORT: the 
 SERVICES = {
     "mqtt": ((1883,), ()),             # mosquitto, for Meshtastic nodes and the phone app's proxy
     "sync": ((22000,), (22000, 21027)),  # Syncthing's protocol and local discovery
+    "irc": ((6667,), ()),              # ngIRCd, chat in any IRC app
     "ssh": ((22,), ()),
 }
 
@@ -171,12 +173,14 @@ def ruleset(iface, floor=None, sharing=None):
 
 def services_here(wanted):
     """The services to open, of those the owner wants, that are on the box at all: MQTT only with
-    the broker's config, Syncthing only with its unit; SSH as wanted."""
+    the broker's config, Syncthing only with its unit, IRC only with its config; SSH as wanted."""
     have = []
     if "mqtt" in wanted and (MOSQUITTO / "conf.d" / "irate-box.conf").exists():
         have.append("mqtt")
     if "sync" in wanted and any((d / "syncthing@.service").exists() for d in UNIT_DIRS):
         have.append("sync")
+    if "irc" in wanted and (NGIRCD / "irate-box.conf").exists():
+        have.append("irc")
     if "ssh" in wanted:
         have.append("ssh")
     return have

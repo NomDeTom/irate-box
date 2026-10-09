@@ -24,6 +24,18 @@ check("nothing lost: every finding not fine is in an item (before #164 most of t
 merged = {k: sorted(i["sources"]) for k, i in items.items() if len(i["sources"]) > 1}
 check("what the doctor and the Security page both say is one item each", all(merged.get(k) == ["doctor", "security-page"] for k in
       ("setting:firewall", "service:tcp/1883", "setting:kernel-info", "setting:sudo-all", "setting:apt-trust")), merged)
+import copy  # noqa: E402
+steps = copy.deepcopy(fx["steps"])
+for s in steps:
+    for f in list(s["findings"]):
+        if f["id"] in ("addon-mqtt", "page-port-tcp-1883", "port-tcp-1883"):
+            g = json.loads(json.dumps(f).replace("mqtt", "irc").replace("1883", "6667"))
+            s["findings"].append(g)
+ji = {i["key"]: i for i in sd.joint(steps)["items"]}
+irc = ji.get("service:tcp/6667", {})
+check("IRC: the doctor's add-on finding and the page's port 6667 as one item, pointing at Add-ons",
+      sorted(irc.get("sources", [])) == ["doctor", "security-page"] and (irc.get("do") or {}).get("go") == "addons"
+      and "IRC" in (irc.get("do") or {}).get("say", ""), {k: v.get("sources") for k, v in ji.items() if "6667" in k or "irc" in k})
 check("  CIS 1.9 with the page's security updates: one item, a suggestion (the page found none waiting)",
       merged.get("setting:security-updates") == ["debian-cis", "security-page"] and items["setting:security-updates"]["tier"] == "suggest")
 check("  the page's automatic updates as the table names them (it was an item of its own)", "setting:unattended" in items

@@ -74,7 +74,7 @@ def _lynis_section(check):
         return "3.2" if SYSCTL_REDIRECTS.match(setting) else "3.3"
     return None
 # A doctor finding about a port the Security page lists: the same thing.
-SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883"}
+SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883", ("doctor", "addon-irc"): "tcp/6667"}
 
 # Findings that are a problem together, each alone only a warning (stance review 2026-10-08 §2):
 # every named (source, id) must be present and not ok for the joint report to add the item.
@@ -224,6 +224,8 @@ DO = [
                                  "say": "Tailscale came with the OS, and its unit's sandbox is its makers'. If you don't use it to reach the box from afar, switch it off."}),
     ("*", r"^addon-mqtt$|^(page-)?port-tcp-1883$", {"go": "addons", "where": "Add-ons",
                                            "say": "Meshtastic nodes on your network publish to it, so it answers the network on purpose, with no login (topics limited to msh/#). If no node of yours uses it, remove the MQTT add-on; if they do, accept it as it is."}),
+    ("*", r"^addon-irc$|^(page-)?port-tcp-6667$", {"go": "addons", "where": "Add-ons",
+                                           "say": "The IRC chat answers anyone on the box's networks on purpose, with no accounts and nothing encrypted. If nobody uses it, remove the IRC add-on; if they do, accept it as it is. The floor (Security) decides whether hotspot guests reach it."}),
     ("*", r"^addon-term$", {"hub": HUB_SANDBOX, "go": "addons", "where": "Add-ons (the terminal can be removed if you don't use it)"}),
     ("*", r"^units-|^cmdlines-", {"hub": HUB_SANDBOX}),
     ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)", {"hub": HUB_SETUP, "repair": "rerun-install"}),
