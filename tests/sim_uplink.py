@@ -98,6 +98,25 @@ w.tick(700, {"link": True, "gateway": True, "drops": [], "can": ALL})
 check("recovery logged with what was tried", w.events[-1]["kind"] == "up" and "restart" in w.events[-1]["text"], w.events[-1])
 check("outage cleared", w.outage is None and w.misses == 0)
 
+# 7b. The night of 2026-10-09 on the Lyra (uplink-ladder-plan, stage 1), replayed: the link lost at 0–2,
+# 3.5–5 and 11–22 min with NetworkManager there; then NM's restart left no backend (only a radio reset
+# or a reboot possible) and the link stayed down for 5 hours.
+def night(e="standard", f="normal", over=None, step=30, hours=5):
+    w = U.Watch(U.effective({"eagerness": e, "forgiveness": f, "overrides": over or {}}))
+    acts, down = [], [(0, 120), (210, 300), (660, 1320)]
+    for t in range(0, 1320 + hours * 3600, step):
+        lost = t >= 1320 or any(a <= t < b for a, b in down)
+        can = ALL if t < 1320 else {"radio", "reboot"}
+        for a in w.tick(t, {"link": not lost, "gateway": True if not lost else None, "drops": [], "can": can}):
+            acts.append((t, a))
+    return acts, w
+a, w = night()
+# Today's behaviour, kept as found so each later stage changes it on purpose:
+check("night, as it was: a reconnect at 1.0, 4.5 and 12.0 min, one per outage, the ladder starting afresh",
+      [t for t, x in a if x == "reconnect"][:3] == [60, 270, 720], a[:5])
+check("  and after NM's restart nothing more for 5 hours, while the page said 'next: reconnect'",
+      not [x for t, x in a if t >= 1320] and (w.next_step(1320 + 5 * 3600) or {}).get("step") == "reconnect", (a[-3:], w.next_step(1320 + 5 * 3600)))
+
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"overrides": {"check": 5}}, {"overrides": {"rm": 1}}, {"iface": "a;b"},
             {"overrides": {"steps": {"nuke": 1}}}, {"overrides": {"flap_action": "x"}}]:
