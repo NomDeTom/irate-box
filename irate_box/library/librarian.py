@@ -105,8 +105,22 @@ DEFAULT_POLICY = {
     "hub_auto": 0,
     "hub_window_start": 2,
     "hub_window_end": 5,
+    # Item 36: every surface its own pair, how often (hours, 0 only by hand) and what to do. Where fetching
+    # is the update (the git mirrors, the firmware mirror) 0 only notes what is newer, 1 fetches it; the
+    # toolkits' cache is looked at by fetching it, so it has the first only. Saved before item 36: as
+    # apps and books were (SURFACES, below).
+    "mirrors_every_hours": 24,
+    "mirrors_auto": 1,
+    "firmware_every_hours": 24,
+    "firmware_auto": 1,
+    "kits_every_hours": 24,
 }
-POLICY_MAX = {"auto_install": 2, "hub_auto": 2, "hub_window_start": 23, "hub_window_end": 23, "books_budget_mb": 10 ** 7}
+POLICY_MAX = {"auto_install": 2, "hub_auto": 2, "hub_window_start": 23, "hub_window_end": 23, "books_budget_mb": 10 ** 7,
+              "mirrors_auto": 1, "firmware_auto": 1}
+# A surface's pair, when the saved policy has none yet: (its key, the key it followed, a cap on the value).
+SURFACES = {"mirrors_every_hours": ("check_every_hours", None), "mirrors_auto": ("auto_install", 1),
+            "firmware_every_hours": ("check_every_hours", None), "firmware_auto": ("auto_install", 1),
+            "kits_every_hours": ("check_every_hours", None)}
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 API = "https://api.github.com"
@@ -142,9 +156,13 @@ def _write_json(path, data):
 def load_config():
     cfg = _read_json(SOURCES_FILE, {})
     policy = dict(DEFAULT_POLICY)
-    for key, value in (cfg.get("policy") or {}).items():
+    saved = cfg.get("policy") or {}
+    for key, value in saved.items():
         if key in DEFAULT_POLICY and isinstance(value, int) and 0 <= value <= POLICY_MAX.get(key, value):
             policy[key] = value
+    for key, (was, cap) in SURFACES.items():
+        if key not in saved and was in saved:
+            policy[key] = policy[was] if cap is None else min(policy[was], cap)
     sources = [s for s in cfg.get("sources", []) if isinstance(s, dict) and s.get("name")]
     return {"policy": policy, "sources": sources}
 
@@ -1488,9 +1506,9 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         if not names or "firmware" in names:
             from irate_box.library import firmware
             fw = firmware.settings()
-            if (fw["enabled"] or fw["configs"]) and (not scheduled or firmware.due(policy["check_every_hours"])):
+            if (fw["enabled"] or fw["configs"]) and (not scheduled or firmware.due(policy["firmware_every_hours"])):
                 try:
-                    results["firmware"] = firmware.sync(check_only=(mode == "check"), log=log)
+                    results["firmware"] = firmware.sync(check_only=(not policy["firmware_auto"]) if scheduled else (mode == "check"), log=log)
                 except (LibrarianError, OSError) as exc:
                     results["firmware"] = f"error: {exc}"
                 log(f"firmware: {results['firmware']}")
@@ -1500,8 +1518,8 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if mirrors.load():
                 # One stage failing doesn't stop the ones after it (the hub's own update among them).
                 try:
-                    results["mirrors"] = mirrors.sync_all(check_only=(mode == "check"), scheduled=scheduled,
-                                                          hours=policy["check_every_hours"], log=log)
+                    results["mirrors"] = mirrors.sync_all(check_only=(not policy["mirrors_auto"]) if scheduled else (mode == "check"),
+                                                          scheduled=scheduled, hours=policy["mirrors_every_hours"], log=log)
                 except (LibrarianError, OSError) as exc:
                     results["mirrors"] = f"error: {exc}"
                     log(f"mirrors: error: {exc}")
@@ -1515,25 +1533,46 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if line:
                 results["toolkits"] = line
                 log(f"toolkits: {line}")
-        # Packages from their makers (root/pkgwatch.py: meshtasticd on its channel): root asked to check
-        # twice a day, so "after N days" counts from when a build first appeared.
+        # Packages from their makers (root/pkgwatch.py: meshtasticd on its channel): root asked to check each
+        # as often as its owner chose (item 36: 6 hours, a day, a week, or only by hand), so "after N days"
+        # counts from when a build first appeared.
         if scheduled and not names:
-            pw = LIB_DIR / "pkgwatch-state.json"
-            try:
-                last = json.loads(pw.read_text()).get("queued", 0)
-            except (OSError, ValueError):
-                last = 0
-            if time.time() - last >= 12 * 3600:
-                rid = _queue_root({"action": "pkg-check"})
-                pw.write_text(json.dumps({"queued": time.time(), "id": rid}))
-                results["packages"] = f"check queued ({rid})"
-                log(f"packages: check queued ({rid})")
+            line = packages_step()
+            if line:
+                results["packages"] = line
+                log(f"packages: {line}")
         # The hub's own updates (selfupdate.py): one step per run of the timer.
         if scheduled and not names:
             from irate_box.library import selfupdate
             results["hub"] = selfupdate.step(policy, log=log)
             log(f"hub: {results['hub']}")
     return results
+
+
+PKGWATCH_STATE = LIB_DIR / "pkgwatch-state.json"
+PKGWATCH_PUBLIC = STATE_DIR / "control" / "pkgwatch.json"   # root/pkgwatch.py publishes it
+
+
+def packages_step(now=None):
+    """Each watched package whose check is due (its own how-often; 24 h when root has not said), queued
+    for the root helper. Returns a line, or None when none is due."""
+    now = now or time.time()
+    pub = _read_json(PKGWATCH_PUBLIC, {})
+    state = _read_json(PKGWATCH_STATE, {})
+    if "queued" in state and not isinstance(state.get("each"), dict):   # before item 36: one clock for all
+        state = {"each": {pid: state["queued"] for pid in pub}}
+    each = state.setdefault("each", {})
+    queued = []
+    for pid, p in sorted(pub.items()):
+        every = ((p or {}).get("settings") or {}).get("every", 24)
+        if not isinstance(every, int) or every <= 0 or now - each.get(pid, 0) < every * 3600 - 300:
+            continue
+        each[pid] = now
+        queued.append(f"{pid} ({_queue_root({'action': 'pkg-check', 'package': pid})})")
+    if not queued:
+        return None
+    _write_json(PKGWATCH_STATE, state)
+    return "check queued: " + ", ".join(queued)
 
 
 LAST_RUN = LIB_DIR / "last-run.json"
@@ -1702,7 +1741,8 @@ def main(argv=None):
     pol.add_argument("--keep-old", type=int)
     pol.add_argument("--check-every-hours", type=int)
     pol.add_argument("--min-free-mb", type=int)
-    for k in ("auto-install", "hub-check-every-hours", "hub-auto", "hub-window-start", "hub-window-end"):
+    for k in ("auto-install", "hub-check-every-hours", "hub-auto", "hub-window-start", "hub-window-end",
+              "mirrors-every-hours", "mirrors-auto", "firmware-every-hours", "firmware-auto", "kits-every-hours"):
         pol.add_argument(f"--{k}", type=int)
     sub.add_parser("hub-update")
     t = sub.add_parser("token")

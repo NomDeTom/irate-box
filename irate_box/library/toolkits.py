@@ -215,7 +215,10 @@ def step(policy, now=None, log=print):
     for kid, k in definitions().items():
         if not cfg["kits"][kid]["keep_current"]:
             continue
-        every = k.get("refresh_hours") or policy["check_every_hours"]
+        chosen = policy.get("kits_every_hours", policy["check_every_hours"])
+        if not chosen:   # Manual (item 36): refreshed only when asked
+            continue
+        every = k.get("refresh_hours") or chosen
         cached = ((st.get("kits") or {}).get(kid) or {}).get("cached") or {}
         last = max(cached.get("fetched") or 0, asked.get(kid, 0))
         if now - last >= every * 3600:

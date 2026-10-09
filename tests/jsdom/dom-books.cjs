@@ -98,7 +98,7 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
     JSON.stringify(posted.filter((b) => b.action === 'remove')));
   rows()[0].querySelector('.link-button').click(); await wait(50);
   const card = d.querySelector('#books-table tr.book-card');
-  check('a kept book\'s card opens under its row, with its buttons', card && /book-001\.zim/.test(t(card)) && [...card.querySelectorAll('button')].some((b) => t(b) === 'Update'));
+  check('a kept book\'s card opens under its row, with its buttons', card && /book-001\.zim/.test(t(card)) && [...card.querySelectorAll('button')].some((b) => t(b) === 'Install'));
   const hand = rows().find((r) => /book-050/.test(t(r)));
   hand.querySelector('.link-button').click(); await wait(50);
   check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB stick: the librarian leaves it alone/.test(t(d.querySelector('#books-table tr.book-card'))));

@@ -57,6 +57,8 @@ OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
 IMAGE_ROOT = Path(os.environ.get("HUB_IMAGE_ROOT", "/"))   # where an image's own files are (tests move it)
 MODES = ("watch", "auto", "aged")
 DAYS = (1, 3, 7, 14, 30)
+# How often the librarian asks for a check (item 36's pattern: hours, 0 only when Check now is pressed).
+EVERY = (0, 6, 24, 168)
 KEEP = 8                     # builds kept in the cache, besides the installed and the previous
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9.+~:-]{1,100}$")
@@ -155,7 +157,7 @@ def settings(pid=None):
     ch = (s.get("channel") if s.get("channel") in d["channels"] else listed[0] if len(listed) == 1 else
           channel_of(d, installed(d["package"])) or d.get("default_channel") or next(iter(d["channels"])))
     return {"channel": ch, "mode": s.get("mode") if s.get("mode") in MODES else "watch",
-            "days": s.get("days") if s.get("days") in DAYS else 7}
+            "days": s.get("days") if s.get("days") in DAYS else 7, "every": s.get("every") if s.get("every") in EVERY else 24}
 
 
 def _dir(pid):
@@ -300,14 +302,16 @@ def pref_path(d):
     return PREFS / f"irate-box-{d['id']}.pref"
 
 
-def set_settings(pid, channel, mode, days):
+def set_settings(pid, channel, mode, days, every=None):
     """The owner's choice. auto and aged hold the package away from the box's own apt (preferences);
-    watch lets it be."""
+    watch lets it be. every: how often the librarian asks for a check (hours; kept as it was if None)."""
     d = _def(pid)
-    if channel not in d["channels"] or mode not in MODES or days not in DAYS:
-        raise ValueError(f"channel one of {', '.join(d['channels'])}; mode one of {', '.join(MODES)}; days one of {', '.join(map(str, DAYS))}")
+    every = settings(pid)["every"] if every is None else every
+    if channel not in d["channels"] or mode not in MODES or days not in DAYS or every not in EVERY:
+        raise ValueError(f"channel one of {', '.join(d['channels'])}; mode one of {', '.join(MODES)}; days one of {', '.join(map(str, DAYS))}; "
+                         f"every one of {', '.join(map(str, EVERY))} hours")
     raw = settings()
-    raw[pid] = {"channel": channel, "mode": mode, "days": days}
+    raw[pid] = {"channel": channel, "mode": mode, "days": days, "every": every}
     _write(SETTINGS, raw, 0o644)
     host = re.match(r"https://([^/]+)/", next(iter(d["channels"].values()))).group(1)
     switched = _switch_image_channel(d, channel) if has_image_tool(d) else ""
@@ -373,7 +377,7 @@ def publish(pid, now=None):
                 "builds": [{"version": v, "channel": e["channel"], "first_seen": e["first_seen"], "size": e.get("size")}
                            for v, e in sorted(got.items(), key=lambda x: x[1]["first_seen"])],
                 "due": due(pid, now), "checked": now or pub.get(pid, {}).get("checked"), "history": rec.get("history", [])[-5:],
-                "held": pref_path(d).exists(), "modes": list(MODES), "days": list(DAYS),
+                "held": pref_path(d).exists(), "modes": list(MODES), "days": list(DAYS), "every": list(EVERY),
                 "labels": d.get("labels", {}), "image": {"name": d["image"]["name"], "channels": image_channels(d)} if has_image_tool(d) else None}
     _write(PUBLIC, pub)
     return pub[pid]

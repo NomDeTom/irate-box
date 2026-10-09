@@ -39,7 +39,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       forwarding and the guests' resolver made to agree; off takes it all back. The level and the
       containment in control/share.json.
   {"id": ..., "action": "pkg-check", "package": "meshtasticd"?} | "pkg-install" (+ "version") | "pkg-rollback"
-      | "pkg-settings" (+ "channel", "mode": watch|auto|aged, "days")
+      | "pkg-settings" (+ "channel", "mode": watch|auto|aged, "days", "every": 0|6|24|168 hours)
       Packages from their makers' channels (pkgwatch.py): checked, cached, installed, rolled back; the
       owner's channel and mode (on an image with its own tool, mpwrd-menu, its channel written its way).
   {"id": ..., "action": "share-allow", "ip": "192.168.4.x"}
@@ -1664,9 +1664,13 @@ def security_fix(req):
                    for a in f.get("actions", [])}
     except (OSError, ValueError, KeyError, TypeError):
         offered = set()
-    if choice not in offered:
+    # The update pattern's chips and buttons (item 36) are a closed set of their own, always there on Updates.
+    pattern = choice in ("security-check", "security-fetch", "security-updates") or choice.startswith("autoupdate-set:")
+    if pattern and choice.startswith("autoupdate-set:"):
+        security.parse_pattern(choice.split(":", 1)[1])
+    if choice not in offered and not pattern:
         raise ValueError("the Security page did not offer that: scan again, then choose from what it shows")
-    if choice == "security-updates":
+    if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
         msg = security.fix(choice, SECURITY_LOG)
@@ -2253,9 +2257,10 @@ def pkg_rollback(req):
 
 def pkg_settings(req):
     from irate_box.root import pkgwatch
-    days = req.get("days")
+    days, every = req.get("days"), req.get("every")
+    num = lambda v, bad: v if isinstance(v, int) and not isinstance(v, bool) else bad  # noqa: E731
     return pkgwatch.set_settings(str(req.get("package", "")), str(req.get("channel", "")), str(req.get("mode", "")),
-                                 days if isinstance(days, int) and not isinstance(days, bool) else -1)
+                                 num(days, -1), None if every is None else num(every, -1))
 
 
 def ap_on(req):

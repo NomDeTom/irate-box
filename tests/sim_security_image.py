@@ -175,45 +175,92 @@ import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
       ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "root-lock", "firstrun-off", "firstrun-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
-# Automatic security updates: the owner's choice on the Updates page, off, download or install (Tom,
-# 2026-10-09: "the toolkit is independent of the system update itself"), judged by what would run (I3:
-# Armbian ships APT::Periodic::Enable "0", so the binary being there means nothing).
+# Automatic security updates: the owner's choice on the Updates page (Tom, 2026-10-09: "the toolkit is
+# independent of the system update itself"), as item 36's pattern: how often to look (Manual, 6 h, 24 h,
+# weekly) and what to do with what is found (Flag, Fetch, Install); judged by what would run (I3: Armbian
+# ships APT::Periodic::Enable "0", so the binary being there means nothing).
 uf = security.unattended_finding
 nf = uf(False, {}, None)
-check("not chosen: a warning offering the three choices, no toolkit in sight", nf["status"] == "warn"
-      and [a["choice"] for a in nf["actions"]] == ["autoupdate-off", "autoupdate-download", "autoupdate-install"]
-      and "oolkit" not in nf["detail"] + nf["fix"], nf)
+check("not chosen: a warning saying the choices, no buttons (the chips are on Updates), no toolkit in sight", nf["status"] == "warn"
+      and nf["actions"] == [] and "every 6 hours" in nf["detail"] and "oolkit" not in nf["detail"] + nf["fix"], nf)
 on_by_image = uf(True, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, 2)
 check("  not chosen here but already running (Debian's own package can switch it on): said so, fine",
       on_by_image["status"] == "ok" and "not chosen here" in on_by_image["detail"], on_by_image)
-check("off, chosen: fine, its other choices and an Undo offered", uf(False, {}, None, "off")["status"] == "ok"
-      and [a["choice"] for a in uf(False, {}, None, "off")["actions"]] == ["autoupdate-download", "autoupdate-install", "autoupdate-undo"])
-check("download, chosen and apt's periodic work on: fine; off again (another file wins): a warning",
-      uf(False, {"APT::Periodic::Enable": "1"}, None, "download")["status"] == "ok"
-      and uf(False, {"APT::Periodic::Enable": "0"}, None, "download")["status"] == "warn")
+check("manual, chosen: fine, an Undo offered", uf(False, {}, None, (0, 0))["status"] == "ok"
+      and [a["choice"] for a in uf(False, {}, None, (0, 0))["actions"]] == ["autoupdate-undo"] and "Check now" in uf(False, {}, None, (0, 1))["detail"])
+check("daily fetch, chosen and apt's periodic work on: fine; off again (another file wins): a warning",
+      uf(False, {"APT::Periodic::Enable": "1"}, None, (24, 1))["status"] == "ok"
+      and uf(False, {"APT::Periodic::Enable": "0"}, None, (24, 1))["status"] == "warn")
 check("install, chosen: a warning while it would not run (not installed, or the image's Enable 0)",
-      uf(False, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, None, "install")["status"] == "warn"
-      and uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "1"}, None, "install")["status"] == "warn")
-check("  running: fine; not run in a fortnight: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2, "install")["status"] == "ok"
-      and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, "install")["status"] == "warn")
+      uf(False, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, None, (24, 2))["status"] == "warn"
+      and uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "1"}, None, (6, 2))["status"] == "warn")
+check("  running: fine; not run in a fortnight: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2, (24, 2))["status"] == "ok"
+      and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, (24, 2))["status"] == "warn")
+check("#176's three choices read as the pattern's", security.chosen_pattern({"autoupdate": {"level": "download"}}) == (24, 1)
+      and security.chosen_pattern({"autoupdate": {"level": "off"}}) == (0, 0) and security.chosen_pattern({}) is None)
+for bad in ("12-1", "24-3", "x", "24"):
+    try:
+        security.parse_pattern(bad); check(f"  {bad!r} refused", False)
+    except ValueError:
+        pass
+check("  anything outside the grid refused", True)
+check("apt's lines: weekly flag looks every 7 days, downloads nothing; 6 h install leaves the timing to the timers",
+      security.periodic_conf(168, 0) == 'APT::Periodic::Enable "1";\nAPT::Periodic::Update-Package-Lists "7";\n'
+      'APT::Periodic::Download-Upgradeable-Packages "0";\nAPT::Periodic::Unattended-Upgrade "0";\n'
+      and 'Unattended-Upgrade "always"' in security.periodic_conf(6, 2) and security.periodic_conf(0, 2) == 'APT::Periodic::Enable "0";\n')
 conf = T / "apt.conf.d" / "52irate-box-autoupdate"
+security.TIMER_DROPIN = T / "systemd"
+six = T / "systemd" / "apt-daily.timer.d" / "52irate-box.conf"
 (T / "systemctl-log").unlink(missing_ok=True); (T / "apt-log").unlink(missing_ok=True)
-msg = security.fix("autoupdate-install", None)
-check("install chosen: unattended-upgrades installed, apt's periodic work on in our own file, the daily timers on",
-      "unattended-upgrades installed" in msg and 'APT::Periodic::Enable "1";' in conf.read_text() and 'APT::Periodic::Unattended-Upgrade "1";' in conf.read_text()
-      and "install -y unattended-upgrades" in (T / "apt-log").read_text() and "enable --now apt-daily-upgrade.timer" in (T / "systemctl-log").read_text(), msg)
+msg = security.fix("autoupdate-set:6-2", None)
+check("every 6 hours, install: unattended-upgrades installed, apt's periodic work on in our own file, the timers every 6 h",
+      "unattended-upgrades installed" in msg and 'APT::Periodic::Enable "1";' in conf.read_text() and 'APT::Periodic::Unattended-Upgrade "always";' in conf.read_text()
+      and "install -y unattended-upgrades" in (T / "apt-log").read_text() and "enable --now apt-daily-upgrade.timer" in (T / "systemctl-log").read_text()
+      and "OnCalendar=*-*-* 00/6:00" in six.read_text() and (T / "systemd" / "apt-daily-upgrade.timer.d" / "52irate-box.conf").exists(), msg)
+msg = security.fix("autoupdate-set:24-1", None)
+rec = security.load_record()["autoupdate"]
+check("  every day, fetch: downloads only; the 6-hour drop-ins gone", 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text()
+      and 'APT::Periodic::Unattended-Upgrade "0";' in conf.read_text() and (rec["often"], rec["act"]) == (24, 1) and not six.exists(), msg)
 msg = security.fix("autoupdate-download", None)
-check("  download chosen: downloads only", 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text()
-      and 'APT::Periodic::Unattended-Upgrade "0";' in conf.read_text() and security.load_record()["autoupdate"]["level"] == "download", msg)
+check("  #176's choice names still understood", (security.load_record()["autoupdate"]["often"], security.load_record()["autoupdate"]["act"]) == (24, 1), msg)
+security.fix("autoupdate-set:6-0", None)
 msg = security.fix("autoupdate-undo", None)
-check("  undo: our file gone, the timers as they were (off here: disabled again), the package removed as it was installed here",
-      not conf.exists() and "disable --now apt-daily.timer" in (T / "systemctl-log").read_text()
+check("  undo: our file and drop-ins gone, the timers as they were (off here: disabled again), the package removed as it was installed here",
+      not conf.exists() and not six.exists() and "disable --now apt-daily.timer" in (T / "systemctl-log").read_text()
       and "remove -y unattended-upgrades" in (T / "apt-log").read_text() and "autoupdate" not in security.load_record(), msg)
 try:
     security.fix("autoupdate-undo", None); check("  undo twice: refused", False)
 except ValueError:
     check("  undo twice: refused", True)
 check("  undo_all knows it", "autoupdate-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1])
+# Check now, Fetch and Install by hand: one log; with Fetch chosen, a check downloads what it finds.
+security.fix("autoupdate-set:0-1", None)
+sim = "Inst libssl3 [3.0.1] (3.0.2+deb13u1 Debian:13.7/stable [arm64])\nInst vim [1] (2 Other:1 [arm64])\n"
+calls = []
+real_run, real_sub = security.run, security.subprocess.run
+security.run = lambda *c, **k: calls.append(c) or __import__("types").SimpleNamespace(stdout=sim if "-s" in c else "", returncode=0, stderr="")
+security.subprocess.run = lambda argv, **k: calls.append(tuple(argv)) or __import__("types").SimpleNamespace(returncode=0)
+log = T / "control-log"
+msg = security.fix("security-check", log)
+check("Check now, manual with Fetch: the lists afresh, then the one security update downloaded, not vim",
+      msg == "the package lists are fresh; downloaded 1 security update, ready to install"
+      and ("apt-get", "install", "-y", "--only-upgrade", "--download-only", "libssl3") in calls and "$ apt-get update" in log.read_text(), msg)
+calls.clear()
+check("  Fetch by hand", security.fix("security-fetch", log) == "downloaded 1 security update, ready to install")
+check("  Install by hand", security.fix("security-updates", log) == "installed 1 security update"
+      and any("--force-confold" in " ".join(c) for c in calls if isinstance(c, tuple)))
+security.fix("autoupdate-set:24-0", None)
+check("  Check now with Flag: only says what waits", security.fix("security-check", log) == "the package lists are fresh; 1 security update waiting")
+apt_arch = T / "archives"; apt_arch.mkdir()
+security.APT_ARCHIVES = apt_arch
+check("  fetched counted from apt's archives", security.fetched_debs(sim) == 0)
+(apt_arch / "libssl3_3.0.2+deb13u1_arm64.deb").write_bytes(b"")
+check("  … one downloaded", security.fetched_debs(sim) == 1)
+security.run, security.subprocess.run = real_run, real_sub
+security.fix("autoupdate-undo", None)
+hc = (REPO / "irate_box/root/hub_control.py").read_text()
+check("the root helper takes the pattern's choices without a scan offering them, and only the grid's",
+      'choice.startswith("autoupdate-set:")' in hc and "security.parse_pattern" in hc)
 
 # I6 (stance review 2026-10-08): SSH forwarding, found from sshd -T's words and offered off.
 sf = lambda s, rec={}: {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec)}  # noqa: E731

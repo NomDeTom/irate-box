@@ -276,9 +276,9 @@
         <p class="books-pager"><button class="action-btn" type="button" id="books-prev">Previous</button> <span id="books-page"></span> <button class="action-btn" type="button" id="books-next">Next</button></p>
         <div id="library-sources" hidden></div>
         <div class="library-actions">
-          <button class="action-btn" type="button" data-all="check">Check all</button>
+          <button class="action-btn" type="button" data-all="check">Check all now</button>
           <button class="action-btn" type="button" data-all="fetch">Fetch all</button>
-          <button class="action-btn" type="button" data-all="update">Update all</button>
+          <button class="action-btn" type="button" data-all="update">Install all</button>
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
@@ -355,7 +355,7 @@
         <p class="setting-desc">
           Meshtastic's release files kept on the box for the web flasher, so a radio can be flashed
           with no internet. Only the boards you tick are kept (a few MB each, per release); "all
-          boards" is about 600 MB a release. Checked on the library's schedule, whenever the box has
+          boards" is about 600 MB a release. Looked for as often as chosen below, whenever the box has
           internet. The firmware's source code is a mirror like any other repository (Git → Mirrors);
           the build cache is with the builds (Git → Builds). To build your own from the mirror, for
           boards a release doesn't cover or from a fork: the <a href="#factory">Firmware Factory</a>.
@@ -373,9 +373,16 @@
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="fw-note" role="status" hidden></p>
-        <p class="library-buttons">
-          <button class="action-btn" type="button" id="fw-check">Check now</button>
-          <button class="action-btn" type="button" id="fw-update">Update now</button>
+        <form id="fw-policy" class="library-form surface-policy">
+          <div data-update-pattern data-often="firmware_every_hours" data-act="firmware_auto" data-acts="0,1"
+            data-says-1="Also downloaded, for the web flasher."
+            data-why="Fetching the release files is their update: nothing on the box itself is installed."></div>
+          <button class="action-btn primary" type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" role="status" hidden></p>
+        <p class="library-buttons update-buttons">
+          <button class="action-btn" type="button" id="fw-check" data-update="check">Check now</button>
+          <button class="action-btn" type="button" id="fw-update" data-update="fetch">Fetch</button>
         </p>
         <h3>Kept</h3>
         <div id="fw-kept" class="admin-list"></div>
@@ -389,6 +396,18 @@
           its schedule (Schedule and token). Each is read-only on the box, and shows on the Git page
           as a card of its own. New mirrors are public (anyone on the network can browse and clone
           them, as on the internet); choose Private to keep one behind the admin login.
+        </p>
+        <form id="mirrors-policy" class="library-form surface-policy">
+          <div data-update-pattern data-often="mirrors_every_hours" data-act="mirrors_auto" data-acts="0,1"
+            data-says-0="Said on each mirror; press Fetch to bring it up to date."
+            data-says-1="Also fetched: the mirror brought up to date."
+            data-why="Fetching is a mirror's update: there is nothing to install."></div>
+          <button class="action-btn primary" type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" role="status" hidden></p>
+        <p class="library-buttons update-buttons">
+          <button class="action-btn" type="button" data-update="check" data-mirrors-all="check">Check all now</button>
+          <button class="action-btn" type="button" data-update="fetch" data-mirrors-all="fetch">Fetch all</button>
         </p>
         <div id="git-mirrors" class="admin-list"></div>
         <h3>Add a mirror</h3>
@@ -415,13 +434,20 @@
           internet and installed from there with none: for debugging, building, capturing traffic
           and checking its security. Each installs only when you ask, with its services left
           stopped, and is removed again after the time you choose (a day, unless you change it).
-          The library keeps each one current on its schedule (Schedule and token).
+          The library keeps each one current as often as chosen here.
         </p>
+        <form id="kits-policy" class="library-form surface-policy">
+          <div data-update-pattern data-often="kits_every_hours" data-act="kits_act" data-acts="1"
+            data-says-1="The kits kept current are fetched again; nothing is installed until you ask."
+            data-why="A cache is looked at by fetching it, so Fetch is its only answer."></div>
+          <button class="action-btn primary" type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" role="status" hidden></p>
         <p class="setting-desc" id="kits-summary"></p>
         <form id="kits-budget" class="library-form inline-form">
           <label>The cache's budget, MB <input name="budget" type="number" min="10" max="65536" step="10"></label>
           <button class="action-btn primary" type="submit">Save</button>
-          <button class="action-btn" type="button" id="kits-refresh-all">Refresh all now</button>
+          <button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Fetch all now</button>
         </form>
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
@@ -463,21 +489,9 @@
           <label>Keep old versions
             <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
           </label>
-          <label>Check for updates
-            <select name="check_every_hours">
-              <option value="0" data-says="The librarian only looks when you ask.">Manual only</option>
-              <option value="6" data-says="The librarian looks every 6 hours.">6 hours</option>
-              <option value="24" data-says="The librarian looks once a day.">24 hours</option>
-              <option value="168" data-says="The librarian looks once a week.">7 days</option>
-            </select>
-          </label>
-          <label>When a check finds something newer
-            <select name="auto_install">
-              <option value="0" data-says="Only noted: update from Apps or Books.">Flag</option>
-              <option value="1" data-says="Downloaded and checked, ready for you to update.">Fetch</option>
-              <option value="2" data-says="Downloaded, checked and put in use.">Auto-install</option>
-            </select>
-          </label>
+          <div data-update-pattern data-often="check_every_hours" data-act="auto_install"
+            data-says-0="Said on Apps and Books, and on the badge; update from there."
+            data-says-2="Also put in use."></div>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
           <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256"></label>
           <button class="action-btn primary" type="submit">Save</button>
@@ -1106,6 +1120,16 @@
         <h3 id="updates-debian">Debian's security updates</h3>
         <p class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</p>
         <div class="findings" id="updates-security"></div>
+        <form id="debian-pattern" class="library-form">
+          <div data-update-pattern data-often="often" data-act="act"
+            data-says-0="Said here and on the badge; you fetch or install them."
+            data-says-1="Also downloaded (apt's cache), ready for you to install."
+            data-says-2="Also installed (unattended-upgrades, from Debian's security archive)."
+            data-often-says-0="Only when you press Check now; what it finds is taken as far as chosen below."></div>
+          <button class="action-btn primary" type="submit">Save</button>
+        </form>
+        <p class="setting-desc action-note" id="debian-pattern-note" role="status" hidden></p>
+        <div id="debian-buttons"></div>
         <h3>Automatic updates</h3>
         <p class="setting-desc">
           The librarian can look for updates by itself, on its hourly round, and take them as far
@@ -1114,20 +1138,8 @@
           part-way through. A version that fails verification waits for you here.
         </p>
         <form id="auto-form" class="library-form">
-          <label>Look for updates
-            <select name="hub_check_every_hours">
-              <option value="0" data-says="Only when you press Check for updates, below.">Manual only</option>
-              <option value="24" data-says="The librarian looks once a day, on its round.">24 hours</option>
-              <option value="168" data-says="The librarian looks once a week, on its round.">7 days</option>
-            </select>
-          </label>
-          <label>When one is found
-            <select name="hub_auto">
-              <option value="0" data-says="Shown here, nothing else done.">Flag</option>
-              <option value="1" data-says="Also fetched and verified, ready for you to install.">Fetch</option>
-              <option value="2" data-says="Also installed, at night, with nobody on the hub.">Auto-install</option>
-            </select>
-          </label>
+          <div data-update-pattern data-often="hub_check_every_hours" data-act="hub_auto"
+            data-says-2="Also installed, inside the hours below, with nobody on the hub (it restarts)."></div>
           <label class="inline" id="auto-window">Install between
             <select name="hub_window_start"></select> and <select name="hub_window_end"></select>
             <span class="setting-desc">(the box's own clock)</span>
@@ -1137,9 +1149,9 @@
         <p class="setting-desc action-note" id="auto-note" role="status" hidden></p>
         <p class="setting-desc" id="auto-state"></p>
         <div class="library-buttons">
-          <button class="action-btn" type="button" id="update-check">Check for updates</button>
-          <button class="action-btn" type="button" id="update-fetch" disabled>Fetch update</button>
-          <button class="action-btn" type="button" id="update-install" disabled>Install update</button>
+          <button class="action-btn" type="button" id="update-check" data-update="check">Check now</button>
+          <button class="action-btn" type="button" id="update-fetch" data-update="fetch" disabled>Fetch</button>
+          <button class="action-btn primary" type="button" id="update-install" data-update="install" disabled>Install</button>
         </div>
         <div class="admin-progress" id="update-progress" hidden>
           <progress class="admin-bar" id="update-bar" max="1" value="0"></progress>

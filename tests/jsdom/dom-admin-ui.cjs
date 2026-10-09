@@ -176,7 +176,7 @@ setTimeout(() => {
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
   check('  its own updates: the librarian\'s row, with Check and Update, without a second access switch', /Installed: abc1234/.test(t('#app-updates-draw')[0])
-    && [...d.querySelectorAll('#app-updates-draw button')].some((b) => b.textContent === 'Update') && !d.querySelector('#app-updates-draw .access'));
+    && [...d.querySelectorAll('#app-updates-draw button')].some((b) => b.textContent === 'Install') && !d.querySelector('#app-updates-draw .access'));
   check('  and the Apps list still has the row, with its access', /Installed: abc1234/.test(t('#apps-list')[0]) && !!d.querySelector('#apps-list .access'));
   check('the shoutbox\'s page ends with what was reported there', [...d.querySelectorAll('#page-app-shoutbox > .admin-pane')].pop().id === 'app-flagged-shoutbox');
   check('  the shoutbox\'s reported post on its page; none on the board\'s', d.querySelectorAll('#app-flagged-shoutbox .aw-row').length === 1
@@ -233,7 +233,7 @@ setTimeout(() => {
     && d.querySelector('#git-mirrors .setting-desc.warn'), t('#git-mirrors')[0]);
   w.confirm = () => true;
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Fetch').click();
   // The repository cards are dom-git.cjs's (step 24); the mirrors' list is now Library → Mirrors.
   // A section headed with its page's title doesn't repeat it; a page of one section keeps it (F1).
   check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
