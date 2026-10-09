@@ -103,7 +103,8 @@ setTimeout(() => {
   // The app-first menu (M4): Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box: item 6), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Overview|Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
   check('sidebar: Clock and Appearance under System', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Appearance') > side.indexOf('System') && side.indexOf('Clock') < hi);
@@ -231,7 +232,7 @@ setTimeout(() => {
     const heads = [...d.querySelectorAll('button.admin-side-group')];
     const head = (n) => heads.find((h) => h.dataset.group === n);
     const box = (n) => d.getElementById(head(n).getAttribute('aria-controls'));
-    check('fold: every group head a button, open by default', heads.length >= 6 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
+    check('fold: every group head a button, open by default', heads.length >= 5 && heads.every((h) => h.getAttribute('aria-expanded') === 'true' && !box(h.dataset.group).hidden));
     w.AL.badge('secdoctor', '3');
     head('Doctors').click();
     check('fold: a head folds its group, kept in the browser', box('Doctors').hidden && head('Doctors').getAttribute('aria-expanded') === 'false'
