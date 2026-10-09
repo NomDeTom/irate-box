@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Builds made easier to follow (next-work plan step 33, git-ci-plan §3), offline: Build now and
+"""Builds made easier to follow, offline: Build now and
 its refusals; keep and delete through the queue (the runs are the builder's), never a run in
 progress; pruning that spares kept runs and follows the setting; a run's view read from an offset
 with its steps and artifacts; the templates using only what a build is given.
@@ -94,7 +94,7 @@ check("the snapshot says the limits, the runs' size, what is offline, and the te
       and snap["runs_bytes"] >= 4321, sorted(snap))
 check("no wheelhouse yet: not offered", snap["wheelhouse"] is False)
 
-# The Building kit's wheelhouse (toolkits-plan §5): once cached, a build gets PIP_NO_INDEX and
+# The Building kit's wheelhouse: once cached, a build gets PIP_NO_INDEX and
 # PIP_FIND_LINKS, with no change to the template (pip reads them from its environment).
 kits_root = T / "kits"; (kits_root / "wheelhouse").mkdir(parents=True)
 (kits_root / "wheelhouse" / "platformio-6.1.0-py3-none-any.whl").write_bytes(b"x" * 10)
@@ -110,7 +110,7 @@ commit = subprocess.run(["git", "rev-parse", "main"], cwd=w, capture_output=True
 ci.build({"repo": str(wh_bare), "branch": "main", "commit": commit, "queued": time.time()})
 env_out = (ci.RUNS / "wh" / "1" / "artifacts" / "env.txt").read_text()
 check("a build gets PIP_NO_INDEX and PIP_FIND_LINKS from the wheelhouse", env_out == f"1 {kits_root / 'wheelhouse'}", env_out)
-# The firmware template seeds PlatformIO from the build cache (step 33c): only what is missing, the
+# The firmware template seeds PlatformIO from the build cache: only what is missing, the
 # download cache without usage.db, the libraries of either layout; and builds the cache's release.
 script = ci.TEMPLATES["meshtasticd"]["script"]
 check("the template builds the cache's release, or develop", 'FW_REF=${CI_PIO_DEPS_TAG:-develop}' in script)
@@ -133,17 +133,17 @@ for layout in ("native", "whole"):
     check(f"seeding ({layout} cache): the platform's archive in, usage.db not, what was there kept", r.returncode == 0
           and (pio / ".cache/downloads/eb76").read_text() == "new" and not (pio / ".cache/downloads/usage.db").exists()
           and (pio / "packages/framework-portduino/package.json").read_text() == "kept", r.stderr)
-    check(f"  the touchscreen build's libraries left out (the Lyra's offline build failed on them)", not (fwd / ".pio/libdeps/native/lvgl").exists()
+    check(f"  the touchscreen build's libraries left out (an offline build fails on them)", not (fwd / ".pio/libdeps/native/lvgl").exists()
           and not (fwd / ".pio/libdeps/native/meshtastic-device-ui").exists())
     check(f"  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
           and (fwd / ".pio/libdeps/native/Crypto/library.json").read_text() == "kept", sorted(p.name for p in (fwd / ".pio/libdeps/native").iterdir()))
-# Another family (a Firmware Factory build, step 36): the download cache, not native's packages or libraries.
+# Another family (a Firmware Factory build): the download cache, not native's packages or libraries.
 home, fwd = T / "home-esp", T / "fw-esp"; fwd.mkdir()
 r = subprocess.run(["bash", "-euc", seed], cwd=fwd, env=dict(os.environ, HOME=str(home), CI_PIO_DEPS=str(T / "cache-native"), CI_PIO_DEPS_TAG="v2.8.1.8e6a88d",
                    PIO_ENV="heltec-v3", PIO_ENV_FAMILY="esp32s3"), capture_output=True, text=True)
 check("seeding another family: the download cache only", r.returncode == 0 and (home / ".platformio/.cache/downloads/eb76").exists()
       and not (home / ".platformio/packages").exists() and not (fwd / ".pio").exists(), r.stderr)
-# Which PlatformIO (step 33c): Debian's by default; the wheelhouse's in a venv that sees Debian's
+# Which PlatformIO: Debian's by default; the wheelhouse's in a venv that sees Debian's
 # protobuf when Debian's has none, is asked for, or stops before compiling; never a second build
 # after one that compiled and failed.
 pio_part = (script[script.index("PIO_FROM=${PIO:-auto}"):script.index("venv_pio() {")]

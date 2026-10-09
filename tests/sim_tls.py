@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""HTTPS for the box (next-work plan step 15, certificates-plan stage 1), offline with the real
+"""HTTPS for the box, offline with the real
 openssl: the CA and its name constraints (a certificate it signs for any other name or address
 fails openssl verify), the server certificate, renewal at two-thirds of its life and when the box
 gets a new address, an address outside the CA's subnet said, the keys private.
@@ -69,7 +69,7 @@ check("moved to another subnet: said (a new CA is needed), not re-made under a C
 pub = json.loads((tls.PUBLIC / "status.json").read_text())
 check("the hub's copy: the status and the CA's public certificate, never a key", pub["set_up"] and (tls.PUBLIC / "ca.crt").read_text() == tls.CA_CERT.read_text()
       and not any("PRIVATE KEY" in f.read_text() for f in tls.PUBLIC.iterdir()))
-# The front (certificates-plan stage 2): making the CA turned HTTPS on; each server block's TLS
+# The front: making the CA turned HTTPS on; each server block's TLS
 # twin written, nginx checked and reloaded; off takes them away; a refused config is undone.
 names = sorted(p.name for p in tls.FRONT.glob("*.conf"))
 check("making the CA turned HTTPS on: each origin's twin written, nginx reloaded", names == ["nginx-addons.conf", "nginx-git.conf", "nginx-main.conf",
@@ -125,7 +125,7 @@ os.environ["HUB_WEB_SERVER"] = "nginx"
 from irate_box.hub import access  # noqa: E402
 csp = access.addon_csp({"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}})
 check("an add-on's ws:// also as wss:// (the MQTT explorer over HTTPS)", "connect-src 'self' ws://$host/mqtt wss://$host/mqtt https://api.github.com;" in csp, csp)
-# The hub's public routes (stage 3): /certificate.json says only public facts, /certificate/ca.crt is
+# The hub's public routes: /certificate.json says only public facts, /certificate/ca.crt is
 # the CA's certificate as a download, never a key.
 import socket, urllib.request, urllib.error  # noqa: E402
 tls.front(True)
@@ -153,7 +153,7 @@ try:
     check("/certificate: to its page", code in (200, 302))
 finally:
     hub.terminate(); hub.wait()
-# The security doctor (stage 6).
+# The security doctor.
 from irate_box.root import secdoctor  # noqa: E402
 answers = {"https": (200, {"Content-Type": "text/html"}), "http": (200, {})}
 secdoctor._local_headers = lambda url: answers["https" if url.startswith("https") else "http"]
@@ -176,7 +176,7 @@ os.chmod(tls.CA_KEY, 0o644)
 check("  a readable CA key: a problem", {x["id"]: x for x in secdoctor.step_tls({})}["tls-keys"]["status"] == "problem")
 os.chmod(tls.CA_KEY, 0o600)
 check("  in the doctor's steps", any(st[0] == "tls" for st in secdoctor.STEPS))
-# Bring your own (stage 4): a stand-in public CA, an intermediate, a leaf for box.example.org.
+# Bring your own: a stand-in public CA, an intermediate, a leaf for box.example.org.
 ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0/24"}
 P = T / "public"; P.mkdir()
 def o(*a):
@@ -229,7 +229,7 @@ check("back to the box's own: its CA's certificate again", not tls.status()["cer
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the helper reads the staged files without following a link, and removes them", 'safeio.read_request(staged / "chain.pem"' in hc
       and '(staged / f).unlink(missing_ok=True)' in hc and '"tls-import": tls_import' in hc)
-# /admin over HTTPS only (stage 5).
+# /admin over HTTPS only.
 tls.front(True); reloads.clear()
 print(tls.admin_only(True))
 adm = (tls.FRONT / "nginx-admin.conf").read_text()

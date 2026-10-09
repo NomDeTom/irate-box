@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """One radio reset, for the uplink watchdog (uplink.py's `radio` step) and crash watch (its
-pre-emption) both, so the two never disagree on how (uplink-ladder-plan, stage 4).
+pre-emption) both, so the two never disagree on how.
 
-What worked on the Lyra (2026-10-09 09:37, its AIC8800 firmware wedged with "cmd queue crashed"):
-NetworkManager stopped, the USB device de-authorised and authorised again, NetworkManager started,
+What brings back an AIC8800 whose firmware has wedged ("cmd queue crashed"): NetworkManager stopped, the USB device de-authorised and authorised again, NetworkManager started,
 then the hotspot started again. Unloading the driver was refused (modprobe -r: rc 1). So, with
 NetworkManager stopped around it, each of these until the interface is back:
 
@@ -69,7 +68,7 @@ def hotspot_up():
 
 def restore_hotspot(run=_run):
     """After a radio reset or a restart of the network service, which take the hotspot down with
-    them (the Lyra, 2026-10-09): start it again the way a boot does, if it was up."""
+    them: start it again the way a boot does, if it was up."""
     if not hotspot_up():
         return ""
     code, out = run("systemctl", "start", AP_UNIT, timeout=120)

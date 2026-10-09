@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Meshtastic's MQTT packets, decoded on the box (next-work plan step 18, the decoder bridge).
+"""Meshtastic's MQTT packets, decoded on the box (for the decoder bridge).
 
 A node or a phone's MQTT proxy publishes each packet it hears as a ServiceEnvelope protobuf to
 msh/<region>/2/e/<channel>/<gateway>. The packet inside is usually encrypted: AES-CTR with the
@@ -12,7 +12,7 @@ Stdlib only, on purpose: the protobuf wire format is read by hand for the few me
 matter here (field numbers from meshtastic/protobufs, mesh.proto, mqtt.proto, telemetry.proto),
 and AES (FIPS-197, the encrypting direction, which is all CTR needs) is written out below, checked
 against the standard's test vectors. A box needs no python3-protobuf, generated code, or
-python3-cryptography for it; a few packets a second is nothing for it even on the Lyra.
+python3-cryptography for it; a few packets a second is nothing for it even on a small board.
 
 Keys are the owner's to give (/admin): a channel's name and its key, as Meshtastic shows it
 (base64; "AQ==" means Meshtastic's public default key, LongFast's, which anyone can read).

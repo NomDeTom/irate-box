@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor's checks of the hub's own accounts (item 6 of plans/current-and-next-actions,
-accounts-plan stage 2's "still to do"): a weak or hand-edited hash, users mode left over plain HTTP
+"""The security doctor's checks of the hub's own accounts: a weak or hand-edited hash, users mode left over plain HTTP
 with no HTTPS, and an app in users mode whose gate isn't actually wired. python3 tests/sim_secdoctor_accounts.py"""
 import json, os, sys, tempfile
 from pathlib import Path
@@ -32,19 +31,19 @@ check("no accounts.json: ok, nothing else", out["accounts-hash"]["status"] == "o
 
 # A real account (hashed the way accounts.py does) is never flagged.
 good_hash = accmod.hash_password("a password, long enough")
-(T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"tom": {"name": "Tom", "hash": good_hash, "state": "user", "role": "user"}},
+(T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"alice": {"name": "Alice", "hash": good_hash, "state": "user", "role": "user"}},
                                                         "settings": {"signup": "off"}}))
 out = by_id(sd.step_accounts_hub(ctx))
 check("a real scrypt hash: ok", out["accounts-hash"]["status"] == "ok")
 
 # A hand-edited or weak hash is a problem.
-(T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"tom": {"name": "Tom", "hash": "md5$deadbeef", "state": "user", "role": "user"}},
+(T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"alice": {"name": "Alice", "hash": "md5$deadbeef", "state": "user", "role": "user"}},
                                                         "settings": {"signup": "off"}}))
 out = by_id(sd.step_accounts_hub(ctx))
-check("a hash that isn't scrypt: a problem, naming the account", out["accounts-hash"]["status"] == "problem" and "tom" in out["accounts-hash"]["detail"])
+check("a hash that isn't scrypt: a problem, naming the account", out["accounts-hash"]["status"] == "problem" and "alice" in out["accounts-hash"]["detail"])
 
 # An account still waiting for its one-time code (hash "") is not a weak hash.
-(T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"tom": {"name": "Tom", "hash": "", "state": "user", "role": "user"}},
+(T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"alice": {"name": "Alice", "hash": "", "state": "user", "role": "user"}},
                                                         "settings": {"signup": "off"}}))
 out = by_id(sd.step_accounts_hub(ctx))
 check("an account waiting for its code: not flagged", out["accounts-hash"]["status"] == "ok")

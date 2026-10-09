@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The admin's shared widgets (menu overhaul, step M1; checklist 3): one way to show a short
+// The admin's shared widgets: one way to show a short
 // list, a list of records, a grid of cards, a block of settings and a list of findings, so every
 // pane behaves the same. Plain script, no build step: it defines AW for admin.js and the sections.
 //
-// The rules they keep (snaglist-checklist-2026-10-07, checklist 3, as Tom settled them on the
-// menu mock):
+// The rules they keep:
 //   3a a card's drawer opens inside the card, which widens to the row
 //   3b the title folds it again (a card's head, an entry's ▸/▾ line); no separate collapse button
 //   3c an opened card has a ✕ (Esc does the same)
@@ -33,14 +32,14 @@ const AW = (() => {
   }
   const btn = (label, props = {}) => h('button', { type: 'button', class: 'action-btn', ...props }, label);
 
-  // A state, one meaning each (rule 6c): ok, warn, bad or info, from the word unless told.
+  // A state, one meaning each: ok, warn, bad or info, from the word unless told.
   const BAD = /red|fail|down|stopped|invalid|reported|problem/i, WARN = /amber|update|behind|flagged|queued|planned|working|ready|warn|^not /i,
     OK = /^ok$|built|installed|cached|stable|running|kept|on$/i;
   function pill(text, tone) {
     const t = tone || (BAD.test(text) ? 'bad' : WARN.test(text) ? 'warn' : OK.test(text) ? 'ok' : 'info');
     return h('span', { class: t + '-pill', text });
   }
-  // What a check for updates found, as one badge wherever updates are checked (Tom, 2026-10-09):
+  // What a check for updates found, as one badge wherever updates are checked:
   // "update available" when one is; "up to date" only when that was found within RECENT_DAYS; an
   // older look says how old it is, as nothing newer it found then still holds.
   // checked: when it last looked, epoch seconds or an ISO string; available: whether it found one;
@@ -55,9 +54,7 @@ const AW = (() => {
     return days < RECENT_DAYS ? h('span', { class: 'ok-pill update-pill', text: 'up to date', title: 'Checked within the last week; nothing newer found' })
       : h('span', { class: 'info-pill update-pill', text: `checked ${days} days ago`, title: 'Nothing newer then; check again to be sure' });
   }
-  // ---- One pattern for every update (item 36; Tom, 2026-10-09: "I'd like the updates frequency to be
-  // off/6 hours/24 hours/weekly, and then a choice of flag/fetch/auto-update"; "perhaps the off becomes
-  // manual?"; "and then we would need buttons for check/fetch/install as well"). The same two choices, the
+  // ---- One pattern for every update: how often to look, and how far to take what it finds. The same two choices, the
   // same words and the same three buttons wherever something is updated: Debian's security updates, the
   // hub's own, apps and books, packages, the toolkits' cache, the mirrors. Values are the librarian's:
   // hours (0 Manual) and 0 Flag / 1 Fetch / 2 Install. Selects underneath, so forms read them and
@@ -317,7 +314,7 @@ const AW = (() => {
     ] })), { id: opts.id });
   }
 
-  // An older list, drawn by its pane's own code (F8): a limited height with a scroll (3e) and, past
+  // An older list, drawn by its pane's own code: a limited height with a scroll (3e) and, past
   // FILTER_AT entries, a filter box over it (3f). It follows the list through every redraw, so the
   // pane's code stays as it is. opts.filter false: the height only (a list with a search of its own).
   function bound(list, opts = {}) {
@@ -340,8 +337,7 @@ const AW = (() => {
     new MutationObserver(apply).observe(list, { childList: true });
     apply();
   }
-  // ---- Choice tiles: one of a few, each needing a sentence (Tom, 2026-10-08: the Network page had two
-  // ways of drawing these, and the Updates and Builds pages a third). The canonical pair: chips when each
+  // ---- Choice tiles: one of a few, each needing a sentence. The canonical pair: chips when each
   // choice is a word or two (settings' 'choice', and short drop-downs, below), tiles when each needs saying.
   // A tile: a real radio (so a form, or code reading input[name=…]:checked, sees it), its title, what it
   // means, what it does (optional), and why it can't be chosen here (greyed, unless it is the current one).
@@ -372,8 +368,7 @@ const AW = (() => {
     return box;
   }
 
-  // ---- A drop-down of a few, as chips (Tom, 2026-10-08: "I don't like the drop-down boxes in the admin
-  // menu, especially where there are only 2 or 3 choices"): every <select> of up to CHIPS_AT choices is
+  // ---- A drop-down of a few, as chips: every <select> of up to CHIPS_AT choices is
   // shown as a row of chips, one selected (a radio group to a screen reader). The <select> stays, hidden,
   // as the source of truth: forms, .value and its change handlers work as they did, and the chips follow
   // whatever sets it. A longer list (languages, channels, hours) stays a drop-down; one whose choices are
@@ -388,8 +383,7 @@ const AW = (() => {
     const label = sel.closest('label');
     const name = sel.getAttribute('aria-label') || (label ? [...label.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').trim() : '');
     if (name) group.setAttribute('aria-label', name);
-    // Short chip labels, one line saying what the chosen one means (Tom, 2026-10-09: "no essays
-    // here"): an option's data-says text, shown under the chips and changing with them.
+    // Short chip labels, one line saying what the chosen one means: an option's data-says text, shown under the chips and changing with them.
     const says = [...sel.options].some((o) => o.dataset.says) ? h('p', { class: 'setting-desc chip-says' }) : null;
     if (says) group.after(says);
     const draw = () => {
@@ -429,7 +423,7 @@ const AW = (() => {
     (root || document).querySelectorAll('select').forEach(chipSelect);
   }
   // A Save button in a form stays unfilled (outlined) until something in the form has been changed by
-  // its user (Tom, 2026-10-09: "stay unfilled colour until they have something to save"). Events from
+  // its user. Events from
   // people only: a form the page fills from the hub raises none, so it starts quiet; a submit, or a
   // reset, quiets it again. The button is never disabled here: it still works.
   const isSave = (b) => b.classList.contains('primary') && b.type === 'submit' && /^Save/.test(b.textContent.trim());

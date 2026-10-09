@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Networks the box may join, added on the Network page's access tab (item 37; root/wifijoin.py): checked,
+"""Networks the box may join, added on the Network page's access tab (root/wifijoin.py): checked,
 written as a root-only keyfile (the password never on a command line), loaded into NetworkManager below the
 owner's own profiles; joined at once only when asked, and back on the network it was on when that fails;
 forgotten only when added here; kept, and said, at uninstall. python3 tests/sim_wifijoin.py"""

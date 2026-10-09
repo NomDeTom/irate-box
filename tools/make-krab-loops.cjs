@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Makes the lit krab desks as seamless WebM loops (menu overhaul M3), so pages play them rather
+// Makes the lit krab desks as seamless WebM loops, so pages play them rather
 // than working the lights out: web/art/krab-controller-loop.webm and krab-factory-loop.webm.
 //
 // Step 1, this script: 12 s at 12 fps of PNG frames with alpha, drawn with web/krab-desk.js's
@@ -11,7 +11,7 @@
 // Step 2, encode each with ffmpeg (Debian's; crf 50 is plenty for art shown at 16-22% opacity):
 //   ffmpeg -framerate 12 -i /tmp/frames/controller/f%04d.png -c:v libvpx-vp9 -pix_fmt yuva420p \
 //     -crf 50 -b:v 0 -row-mt 1 web/art/krab-controller-loop.webm        (and the same for factory)
-// Measured 2026-10-08: 92 KB and 70 KB, against 86 KB and 58 KB for the stills, lit layer, mask
+// Measured: 92 KB and 70 KB, against 86 KB and 58 KB for the stills, lit layer, mask
 // and krab that krab-desk.js worked over in ~36 canvases a page; VP8 373/198 KB; animated WebP
 // 4.0/0.85 MB (the glows change too many pixels each frame).
 'use strict';

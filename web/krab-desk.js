@@ -7,8 +7,7 @@
 // groups (or each is a group of its own), and each group shows the lit picture through its blobs,
 // plus a soft edge grown from them, with a blink pattern of its own. The scene is the one the
 // page's data-art names (on .admin-art's parent), followed as it changes; each is built the
-// first time it is shown, and kept. Built by make-krab-scene.cjs (Tom's notes,
-// irate-box/2026-10-02-ui-improvements) from the layered pictures; the first half of this file
+// first time it is shown, and kept. Built by make-krab-scene.cjs from the layered pictures; the first half of this file
 // is its krab-desk-lib.js.
 // Krab desk v2: turns the colour-mask layer into per-group light masks. Plain JS, DOM only in the
 // blink/glow/flutter animations, so the preview page and the hub's web/krab-desk.js inline it and

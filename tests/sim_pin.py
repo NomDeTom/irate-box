@@ -98,7 +98,7 @@ try:
 except L.LibrarianError:
     check("a source without a pin cannot follow pinned", True)
 
-# Queuing for the root helper as the box lays it out (2026-10-06): control/ is root's and the hub
+# Queuing for the root helper as the box lays it out: control/ is root's and the hub
 # can't write in it; only control/requests/ is the hub's. The request must still arrive whole.
 import json, stat  # noqa: E402
 C = T / "control"

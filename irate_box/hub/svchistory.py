@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The services' uptime, for the folded grid under /admin → Overview's services (next-work plan
-step 35, new-feature-input). The hub samples every service's state every five minutes (one
+"""The services' uptime, for the folded grid under /admin → Overview's services.
+The hub samples every service's state every five minutes (one
 `systemctl show`, no root) and keeps hourly buckets for 72 days.
 
 Per unit, one three-character group per hour, from the hour numbered `first` (Unix time // 3600):

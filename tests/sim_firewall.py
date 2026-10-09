@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The network floor (root/firewall.py; stance review §4 item 3): the ruleset's text (the hotspot's
+"""The network floor (root/firewall.py): the ruleset's text (the hotspot's
 interface alone, the hub's doors, the owner's services, drop last, no forwarding), checked by nft
 where nft is installed; the hotspot's interface found from the record or the dnsmasq config; the
 Security page's finding and its switches against a stand-in nft and systemctl; the unit's text.

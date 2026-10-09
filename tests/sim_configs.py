@@ -63,7 +63,7 @@ try:
 except librarian.LibrarianError as exc:
     check(f"a broken package: refused ({exc})", "not a zip" in str(exc))
 
-# From a mirror of meshtastic/firmware on the box (step 23): read with git at the tag, no network,
+# From a mirror of meshtastic/firmware on the box: read with git at the tag, no network,
 # tried before everything else.
 import subprocess
 from unittest import mock
@@ -155,7 +155,7 @@ gone = firmware._drop_flash_files()
 check("flash files off: those held go, the build cache stays", gone > 0 and (firmware.ROOT / FV / "pio-deps" / "x").exists()
       and sorted(p.name for p in (firmware.ROOT / FV).iterdir()) == ["pio-deps"], sorted(p.name for p in (firmware.ROOT / FV).iterdir()))
 
-# A download cut off part way resumes with a range request (librarian._download, step 33b).
+# A download cut off part way resumes with a range request (librarian._download).
 class Resp(io.BytesIO):
     def __init__(self, data, status):
         super().__init__(data); self.status = status; self.headers = {"Content-Length": str(len(data))}

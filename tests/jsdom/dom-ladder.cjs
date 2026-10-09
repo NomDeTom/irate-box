@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The box doctor's escalation chart (ladder-chart.js; Tom, 2026-10-09) in jsdom, static: the period
+// The box doctor's escalation chart (ladder-chart.js) in jsdom, static: the period
 // chips, the step line holding each outage's furthest rung, the outages as bands, a marker per step
 // shaped by who took it, held and stalls hollow, the summary and key in words, the table view, the
 // tooltip from the keyboard, and the empty record. Usage: [JSDOM=…/jsdom] node dom-ladder.cjs
@@ -61,7 +61,7 @@ chips[0].click();
 check('24 h: only the last outage and the reset by hand', box.querySelectorAll('rect.ladder-band').length === 1
   && /1 outage; steps taken: 1 reconnect, 1 radio reset/.test(box.querySelector('.ladder-sum').textContent), box.querySelector('.ladder-sum').textContent);
 check('  the choice kept for the next draw', box.dataset.span === '86400');
-// The symptoms above the ladder (Tom, 2026-10-09): missed checks within the window, the sensitivity's line.
+// The symptoms above the ladder: missed checks within the window, the sensitivity's line.
 const withSym = rows.concat([
   { at: now - 30 * h - 300, k: 'm', n: 2, th: 3, i: 'wlan0' }, { at: now - 30 * h, k: 'm', n: 5, th: 3, i: 'wlan0' },
   { at: now - 2 * h, k: 'm', n: 1, th: 3, i: 'wlan0' }, { at: now - 1 * h, k: 'm', n: 3, th: 3, i: 'wlan0' }]);
@@ -75,7 +75,7 @@ check('  the sensitivity\'s line, labelled', !!ssvg.querySelector('path.ladder-t
 check('  said in words: the most misses, the spells at or over the line', /At most 5 missed checks within the pace's window; at or over the line in 2 five-minute spells/.test(sb.querySelector('.ladder-sum').textContent),
   sb.querySelector('.ladder-sum').textContent);
 check('  not events: the readout and the table leave them out', /The 11 events as a table/.test(sb.querySelector('.ladder-table summary').textContent));
-// Roams between access points (item 35): a tick each on the symptoms' baseline, said in words, not events.
+// Roams between access points: a tick each on the symptoms' baseline, said in words, not events.
 const withRoams = rows.concat([{ at: now - 3 * h, k: 'roam', d: 4, b: 'aa:bb:cc:00:00:01', c: 11, i: 'wlan0' }, { at: now - 2 * h, k: 'roam', d: 0, i: 'wlan0' }]);
 const rb = d.createElement('div'); d.body.append(rb);
 LC.render(rb, withRoams, now);

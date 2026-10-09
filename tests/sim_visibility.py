@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Who sees an app's tile, apart from who opens it (menu overhaul M5; checklist 4a), against a hub
+"""Who sees an app's tile, apart from who opens it, against a hub
 it starts: auto follows access; a users-only or private app shown to everyone carries a lock; off
 is never shown; hidden takes the tile away; only real apps and values taken; /admin/access says
 what was chosen. python3 tests/sim_visibility.py"""
@@ -57,7 +57,7 @@ try:
     _, body = go("GET", "/admin/access")
     vis = {a["id"]: a["visible"] for a in json.loads(body)["apps"]}
     check("/admin/access says what was chosen", vis.get("notes") == "guests" and vis.get("draw") == "hidden" and vis.get("mermaid") == "auto", vis)
-    # The shoutbox and the board (M9): drawn on the hub page; who sees each tab is theirs too.
+    # The shoutbox and the board: drawn on the hub page; who sees each tab is theirs too.
     _, home = go("GET", "/")
     check("both tabs on the page by default", 'data-tab="shout"' in home and 'data-tab="board"' in home and "data-off" not in home)
     go("POST", "/admin/visibility", {"app": "shoutbox", "visible": "hidden"})
@@ -96,7 +96,7 @@ try:
     t = tile(home, "Notes")
     check("offer on: the tile shows to a guest, with a lock", st == 200 and t and "locked" in t, t)
     check("offer on: a private app still has no tile", tile(home, "Git") is None)
-    # The global override of what a seen-but-unopenable tile does (Tom, 2026-10-09).
+    # The global override of what a seen-but-unopenable tile does.
     st, _ = go("POST", "/admin/settings", {"locked_all": "grey"})
     _, home = go("GET", "/")
     t = tile(home, "Notes")
@@ -107,7 +107,7 @@ try:
     _, home = go("GET", "/")
     check("  cleared: back to each app's own choice", "greyed" not in (tile(home, "Notes") or ""))
     go("POST", "/admin/settings", {"sign_in_offer": False})
-    # The apps row's order (F3): kept by the hub; the rest after the ones named, as before.
+    # The apps row's order: kept by the hub; the rest after the ones named, as before.
     _, home = go("GET", "/")
     check("before: Excalidraw ahead of About", 0 <= home.find(">Excalidraw<") < home.find(">About<"))
     st, body = go("POST", "/admin/tiles", {"state": {"order": ["about", "draw"]}})
@@ -116,7 +116,7 @@ try:
     check("/admin/tiles says it", json.loads(go("GET", "/admin/tiles")[1])["state"]["order"] == ["about", "draw"])
     st, _ = go("POST", "/admin/tiles", {"state": {"order": ["about", "nonsense"]}})
     check("refused: an order naming no tile", st == 400, st)
-    # The admin level (Tom, 2026-10-08: the mock's four chips): a tile only an admin account sees.
+    # The admin level: a tile only an admin account sees.
     def visit(path, cookie="", body=None, account=False):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         h = {"Host": f"127.0.0.1:{port}", "Content-Type": "application/json", "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
@@ -142,7 +142,7 @@ try:
     check("admin: the admin's tile carries its pill", "admin-pill" in t and "admin-only" in t, t)
     t = tile(visit("/", jar["ada"])[0], "Notes") or ""
     check("  a tile others see too has none", t and "admin-pill" not in t, t)
-    # The box's own admin login (Tom, 2026-10-08): seen at /admin, a signed cookie; the home page then
+    # The box's own admin login: seen at /admin, a signed cookie; the home page then
     # shows the admin's tiles even with no account at all.
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     c.request("GET", "/admin/", headers={"Host": f"127.0.0.1:{port}", "X-Irate-Front": SECRET})
@@ -159,7 +159,7 @@ try:
     go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
     check("auto, private: no tile for a user, the tile for an admin account", tile(visit("/", jar["bea"])[0], "Git") is None
           and tile(visit("/", jar["ada"])[0], "Git") is not None)
-    # What a locked tile does (Tom, 2026-10-08): sign in, sign up, a padlock, greyed.
+    # What a locked tile does: sign in, sign up, a padlock, greyed.
     def card(page, name):
         i = page.find(f'<span class="name">{name}</span>')
         if i < 0:

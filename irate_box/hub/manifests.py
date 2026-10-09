@@ -53,13 +53,13 @@ on it. Every part but "id" and "order" is optional:
     "core": true                      kept current by default ("Keep all apps current")
     "admin":   {"sections": ["books", …], "title", "icon", "page": bool, "width": "shout_width"}
                                       the /admin sections this app owns, by their id in admin.html:
-                                      the app's own page in /admin's Apps group (menu overhaul M4)
+                                      the app's own page in /admin's Apps group
                                       holds them; title and icon name the page when the tile does not;
                                       page: drawn on the hub page itself, not as a tile (the shoutbox,
                                       the board: M9), its width the setting named
   }
 
-Local add-ons (plans/no-root-addons-plan): a static web app the owner adds from /admin, with
+Local add-ons: a static web app the owner adds from /admin, with
 no root and no change to this code. Its manifest lives in $HUB_STATE_DIR/apps.d/ (the hub's to
 write), says much less than one here, and is turned into the full shape by local():
 
@@ -99,7 +99,7 @@ CATALOGUE = Path(os.environ.get("HUB_ADDON_CATALOGUE", CHECKOUT / "addons"))  # 
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 SECTION_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
-UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")  # no leading "-" (F14)
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")  # no leading "-"
 DIR_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
@@ -389,7 +389,7 @@ def catalogue():
 
 
 def admin_apps(manifests):
-    """/admin's Apps and Folders groups (menu overhaul M4): one entry per app or list page, in the
+    """/admin's Apps and Folders groups: one entry per app or list page, in the
     hub's order, with the /admin sections it owns. Box widgets without an admin part are left out."""
     out = []
     for m in sorted(manifests, key=lambda x: x["order"]):

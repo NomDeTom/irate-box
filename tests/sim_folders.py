@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Folders of apps (menu overhaul M7; checklist 5e), against a hub it starts: /admin/folders lists
+"""Folders of apps, against a hub it starts: /admin/folders lists
 each list page's entries; hiding one takes it off that folder's page only; an entry put in another
 folder shows there too; a folder's own order is followed; a folder with nothing shown loses its
 tile; only real folders and entries are taken. python3 tests/sim_folders.py"""

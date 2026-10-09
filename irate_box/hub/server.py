@@ -250,19 +250,18 @@ WIDGET_HTML = {
 }
 
 
-# Who sees an app's tile, apart from who may open it (menu overhaul M5; checklist 4a: "access and
-# visibility are not the same"). The hub's own choice, not root's: it changes which tiles the hub
+# Who sees an app's tile, apart from who may open it (access and visibility are not the same).
+# The hub's own choice, not root's: it changes which tiles the hub
 # draws, not the web server's gates. auto: as its access (public: everyone; users: those logged
 # in; private or off: nobody). An app that is off is never shown, whatever is chosen here.
 VISIBILITY_FILE = STATE_DIR / "visibility.json"
-# admin: only to an admin account signed in on the hub (the mock's four levels, guests, users,
-# admin and hidden; Tom, 2026-10-08: "a consistent set of 4 chips"). signed_in, in what follows,
+# admin: only to an admin account signed in on the hub (four levels as a consistent set of
+# chips: guests, users, admin and hidden). signed_in, in what follows,
 # is the visitor's level: False (a guest), True (an account) or "admin" (an admin account).
 VISIBLE = ("auto", "guests", "users", "admin", "hidden")
 
 
-# The admin, seen at /admin (Tom, 2026-10-08: "admin-only apps are hidden when accounts are off, even
-# if I'm signed in as admin"). The box's own login is the web server's, on /admin only, so the home
+# The admin, seen at /admin, so admin-only apps show even with accounts off. The box's own login is the web server's, on /admin only, so the home
 # page never sees it: /admin's page, which only the admin reaches, leaves a signed cookie that the
 # home page reads as "the admin is here". It changes which tiles show, never who may open them.
 ADMIN_SEEN_COOKIE = "irate_admin_seen"
@@ -319,7 +318,7 @@ def save_visibility(data):
     os.replace(tmp, VISIBILITY_FILE)
 
 
-# What a tile does for a visitor who sees it but may not open it (Tom, 2026-10-08): offer the
+# What a tile does for a visitor who sees it but may not open it: offer the
 # sign-in page, offer sign-up (while accounts are open or by application), a padlock that does
 # nothing, or greyed out. Per app; sign-in unless chosen.
 LOCKED_AS_FILE = STATE_DIR / "locked_as.json"
@@ -346,7 +345,7 @@ def _switched():
     return set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
 
 
-# The apps drawn on the hub page itself, not as tiles (the shoutbox and the board, M9): who sees
+# The apps drawn on the hub page itself, not as tiles (the shoutbox and the board): who sees
 # them is a visibility of their own (guests, users or hidden; auto is guests); who may post is
 # their shout_who / board_who. id -> the tab they are in index.html.
 PAGE_APPS = {"shoutbox": "shout", "board": "board"}
@@ -375,7 +374,7 @@ def hidden_apps(signed_in=False):
 
 
 def seen_only():
-    """The tiles with no switch of their own (menu overhaul F3): the folders, About. Who opens them
+    """The tiles with no switch of their own: the folders, About. Who opens them
     is no one's to set (their pages are the hub's, open to all), but who sees the tile is."""
     sw = _switched()
     return {m["id"] for m in MANIFESTS if m["id"] not in sw and m["id"] not in PAGE_APPS
@@ -417,8 +416,8 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
     list page left with nothing on it. factory_tile: the owner's choice to show the factory's.
-    locked: apps shown to this visitor that ask for a login at their door (M5). admin_only: tiles
-    only an admin sees, marked so (Tom, 2026-10-08: "obvious as special to the admin user")."""
+    locked: apps shown to this visitor that ask for a login at their door. admin_only: tiles
+    only an admin sees, marked so as special to the admin."""
     out = []
     ms = MANIFESTS
     st = status_tiles_state() if row == "box" else None
@@ -484,7 +483,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
     return "\n".join(out)
 
 
-# --- folders (menu overhaul M7; checklist 5e, accepted by Tom 2026-10-07) ----------------------
+# --- folders -----------------------------------------------------------------------------------
 # A list page (a manifest with a "menu": Meshtastic, the calculators, ELIZA) is a folder of
 # entries: pages, downloads, or one page with starting switches. The owner may hide an entry from
 # a folder, put a folder's entries in an order of their own, and put an entry from one folder in
@@ -586,15 +585,15 @@ def valid_folders(data):
     return out
 
 
-# --- status tiles (menu overhaul M8; Tom, 2026-10-07/08) ---------------------------------------
+# --- status tiles ------------------------------------------------------------------------------
 # The row of readouts under the apps (the box row: people, the join QR, memory and disk, the
 # Firmware Factory, services) is one folder of tiles the owner arranges: which show, in what order,
 # and which take two cells to say more. The hub's own (state/status_tiles.json).
 STATUS_TILES_FILE = STATE_DIR / "status_tiles.json"
 
 
-# A tile's size (menu overhaul F5; Tom, 2026-10-08: "All tiles"): one cell, wide (two across) or
-# large (two across and two down). M8's "double" list reads as wide.
+# A tile's size: one cell, wide (two across) or large (two across and two down). An older "double"
+# list reads as wide.
 SIZES = ("wide", "large")
 
 
@@ -632,12 +631,11 @@ def status_tiles_snapshot():
             "state": st}
 
 
-# The apps row's order (menu overhaul F3, on /admin's "All apps"): the hub's own, like the box row's.
+# The apps row's order (on /admin's "All apps"): the hub's own, like the box row's.
 TILES_FILE = STATE_DIR / "tiles.json"
 
 
-# A tile's own icon (Tom, 2026-10-08: "change the emoji(s) that are used on the tile, and swap them
-# with up to 4 alphanumerics"): emoji, or up to four letters and digits drawn as text.
+# A tile's own icon: emoji, or up to four letters and digits drawn as text.
 ICON_TEXT = re.compile(r"^[A-Za-z0-9]{1,4}$")
 
 
@@ -685,8 +683,7 @@ _home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
 def _account_nav(signed_in):
-    """The header's account buttons. One login for everyone (Tom, 2026-10-09: "get rid of the
-    admin-specific login, and have them log in through the standard user login"): "Sign in" for a guest
+    """The header's account buttons. One login for everyone, admins included: "Sign in" for a guest
     (admins sign in there too, so it shows with sign-up off), "My account" for anyone in; "Admin" for an
     admin, and for everyone while no admin account can sign in yet (the box's own login, or its first use)."""
     signup = accounts.settings()["signup"]
@@ -721,7 +718,7 @@ def home_page(signed_in=False):
         hidden = hidden_tiles(signed_in)
         locked = locked_apps(signed_in)
         admin_only = admin_only_tiles() if signed_in == "admin" else set()
-        # A tab its visitor isn't to see (M9): its link and its pane left out of the page.
+        # A tab its visitor isn't to see: its link and its pane left out of the page.
         for app, tab in PAGE_APPS.items():
             if page_app_hidden(app, signed_in):
                 text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
@@ -813,7 +810,7 @@ _seen = {}
 _seen_lock = threading.Lock()
 
 
-_online_names = {}   # account name -> when last seen (ticks), in memory only (M12)
+_online_names = {}   # account name -> when last seen (ticks), in memory only
 
 
 def note_account(name):
@@ -860,63 +857,62 @@ DEFAULT_SETTINGS = {
     # (a real boot, not the hub restarting for an update; see clear_on_new_boot).
     "shout_reset_on_boot": False,
     "board_reset_on_boot": False,
-    # The Firmware Factory's tile on the front page (step 36): its queue for anyone to follow, and
+    # The Firmware Factory's tile on the front page: its queue for anyone to follow, and
     # what it built to download. Off until the owner shows it.
     "factory_tile": False,
-    # The shoutbox and the forum (accounts step 16, Tom's answer 6): who may post, guests (and
+    # The shoutbox and the forum: who may post, guests (and
     # users), users only, or off; and whether a user's name carries a check mark.
     "shout_who": "guests",
     "shout_marks": True,
     "board_who": "guests",
     "board_marks": True,
-    # Page widths in rem (menu overhaul M2; Tom, 2026-10-08: 80rem, with the owner's choice of
-    # 45, 60, 80, 90 or 100; the shoutbox and the forum their own, 45 as they always were).
+    # Page widths in rem (80 by default, with the owner's choice of 45, 60, 80, 90 or 100; the shoutbox and the forum their own, 45 as they always were).
     # Every page reads them from /layout.css.
     "page_width": 80,
     "shout_width": 45,
     "board_width": 45,
-    # The emoji pickers' set (Tom, 2026-10-08): Unicode's emoji up to a release the guests' phones
+    # The emoji pickers' set: Unicode's emoji up to a release the guests' phones
     # can draw (a newer emoji shows as an empty box on an older phone). 13.1 for iOS 14.5 and
     # Android 12; 15.0 for iOS 16.4 (every iPhone from the 8 on) and Android 14; 16.0 for iOS 18.4
     # (iPhone XS on) and Android 16. Read by emoji.js from /layout.css.
     "emoji_set": "13.1",
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
-    # (irate_box/root/visitors.py; M11). On by default (Tom, 2026-10-08), as one of the setup's
+    # (irate_box/root/visitors.py). On by default, as one of the setup's
     # decisions; off, the helper doesn't run at all.
     "visitor_counts": True,
-    # Reports (M10; Tom, 2026-10-08: "anyone can report a post - admin decides what counts"): the
+    # Reports (anyone can report a post; the admin decides what counts): the
     # reasons offered, how many reports put a post in the queue, and whether it is hidden from
     # everyone else until looked at.
     "report_reasons": ["spam", "unkind", "personal details", "other"],
     "report_threshold": 1,
     "report_hide": False,
     # A save tied to its account, so its person may open and change it from another device once
-    # logged in (accounts-plan stage 6, item 6 of current-and-next-actions): off by default (the
+    # logged in: off by default (the
     # admin's choice), a guest's saves stay exactly as they are either way.
     "saves_cross_device": False,
-    # Who sees the names of those signed in and around (M12): users, or the admin only. Guests
+    # Who sees the names of those signed in and around: users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
-    # The setup tour (M14): which of the decisions that touch security (5h) the owner has made,
+    # The setup tour: which of the decisions that touch security the owner has made,
     # by keeping the default or changing it where it lives. The box runs on the defaults until then.
     "setup_decided": [],
-    # Setup steps the owner has muted (Tom, 2026-10-09: "muted as well as hidden"): still listed, greyed,
+    # Setup steps the owner has muted: still listed, greyed,
     # but not counted in Overview's "needs attention" or the tour's "still to do". Hiding is the whole page.
     "setup_muted": [],
-    # A tile a guest can't open (menu overhaul F3; the setup decision "sign-in-offer"): for an app
+    # A tile a guest can't open (the setup decision "sign-in-offer"): for an app
     # open to users and left at "as its access", show its tile to guests too, with a lock that leads
     # to sign-in. Off (the default) shows it only to those who may open it, as before.
     "sign_in_offer": False,
-    # What every tile does for one who sees it but may not open it, over the per-app choices (Tom,
-    # 2026-10-09: offered as a global override). "" (the default) leaves each app to its own choice.
+    # What every tile does for one who sees it but may not open it, over the per-app choices (a
+    # global override). "" (the default) leaves each app to its own choice.
     "locked_all": "",
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
 EMOJI_SETS = ("13.1", "15.0", "16.0")
-# The setup decisions (M14; Tom, 2026-10-08: "anything that has an impact on user or box security"):
+# The setup decisions (anything that has an impact on user or box security):
 # web/admin-tour.js has each one's words and where it lives.
-# With the setup's own steps and the backup: one list, one tour (Tom, 2026-10-08).
+# With the setup's own steps and the backup: one list, one tour.
 SETUP_DECISIONS = ("visitors", "names", "signup", "sign-in-offer", "https", "hotspot", "guest-net", "ssh",
                    "tailscale", "cockpit", "terminal",
                    "password", "connection", "security", "addons", "books", "backup")
@@ -1014,7 +1010,7 @@ def port_listening(port):
 
 
 def socket_listening(path):
-    """A service on a UNIX socket (SilverBullet's: no TCP port at all, F31; ttyd's, F9)."""
+    """A service on a UNIX socket (SilverBullet's: no TCP port at all; ttyd's)."""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
@@ -1118,7 +1114,7 @@ def service_status(proxied):
     return out
 
 
-# --- unique visitors (M11) ----------------------------------------------------------
+# --- unique visitors ----------------------------------------------------------------
 # The hub can't start or stop the counting helper (it runs as root, to read the leases): it records
 # the owner's choice in VISITORS_WANT, and a root path unit (irate-box-visitors-switch.path) applies
 # it (scripts/visitors-apply.sh). The helper leaves only two numbers in VISITORS_COUNTS.
@@ -1361,8 +1357,8 @@ SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
 # The front's word that a request came through its /admin route, where it asked for the
 # login: a secret it adds there and nowhere else (install.sh makes it, root-only, and hands it
 # to the web server and to this unit). Without it, anything that can send a request to the
-# hub's loopback port is the admin: a build (F8), a proxy like SilverBullet's (F31), a path
-# the front did not normalise (F27). Unset, as when the hub runs bare in development, /admin
+# hub's loopback port is the admin: a build, a proxy like SilverBullet's, a path
+# the front did not normalise. Unset, as when the hub runs bare in development, /admin
 # is as open as it always was.
 FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
 FRONT_HEADER = "X-Irate-Front"
@@ -1395,7 +1391,7 @@ def setup_status(rid):
     if rid:
         out["result"] = next((r for r in control_results(20) if r.get("id") == rid), None)
     return out
-# What a backup holds is hub/backup.py's (item 34): settings only, or settings and data; never what is
+# What a backup holds is hub/backup.py's: settings only, or settings and data; never what is
 # fetched again (books, mirrors, builds, caches), nor the GitHub token. Syncthing's identity (its private
 # keys and config.xml: restored, the box keeps its device ID, but whoever holds the file can pose as the box
 # to its peers) only when asked for with ?syncthing=1, which the page labels as such.
@@ -1438,7 +1434,7 @@ def control_request(req):
     CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
     rid = secrets.token_hex(8)
     # Written in the hub's own folder, renamed in: never read half-written. Not in control/,
-    # which is root's (F3), nor in requests/, whose path unit would start the helper for it.
+    # which is root's, nor in requests/, whose path unit would start the helper for it.
     tmp = STATE_DIR / f".request-{rid}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
@@ -1581,7 +1577,7 @@ SECURITY_STATE = CONTROL_DIR / "security.json"
 def setup_blocked():
     """Why "Finish setup" is refused: the Security page's last scan says a passwordless sudo rule
     names an account sshd lets in by password, the one state an image leaves that makes a guessed
-    password root (stance review 2026-10-08, I1). None when it does not, or no scan has run."""
+    password root. None when it does not, or no scan has run."""
     try:
         scan = json.loads(SECURITY_STATE.read_text())
     except (OSError, ValueError):
@@ -1601,8 +1597,8 @@ ACCEPT_KEY_RE = re.compile(r"^(setting|service|finding|compound|kit|package|hub)
 
 
 def security_accepted():
-    """{item key: {at, title}}: what the owner has looked at and accepted as it is (item 11; Tom,
-    2026-10-09). The page lists them apart and leaves them out of its counts; Undo takes one back."""
+    """{item key: {at, title}}: what the owner has looked at and accepted as it is.
+    The page lists them apart and leaves them out of its counts; Undo takes one back."""
     try:
         data = json.loads(SECURITY_ACCEPTED.read_text())
         return data if isinstance(data, dict) else {}
@@ -1635,8 +1631,7 @@ def _tls_status():
 
 def security_snapshot():
     """What the Security page shows: the hub's own lines (which only the hub knows), then the
-    root helper's last scan of the box. The lines follow HTTPS as it is (until 2026-10-09 they
-    said "no certificate" with HTTPS on)."""
+    root helper's last scan of the box. The lines follow HTTPS as it is."""
     tls = _tls_status()
     https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
     to_https = {"go": "security-https", "where": "Security → HTTPS"}
@@ -1667,7 +1662,7 @@ def security_snapshot():
                   "and the hub's other apps still run on /admin's, so a hostile page among them could act with your login "
                   "while you are logged in.",
         "fix": "Log out (close the browser) after admin work. Giving the editors an address of their own is on irate-box's plan.",
-        "do": {"hub": "The hub's own work (its plan, item 27): nothing to set here. Accept it if logging out after admin work suits you."},
+        "do": {"hub": "The hub's own work: nothing to set here. Accept it if logging out after admin work suits you."},
     }]
     for f in hub:
         f.setdefault("actions", [])
@@ -1712,7 +1707,7 @@ HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-
                               r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
-# Busy spells logged (Tom, 2026-10-08: "have it log busy false alarms so that patterns can be established"):
+# Busy spells logged, so that patterns in false alarms can be seen:
 # one entry per job of the helper's that kept a request waiting past HELPER_STUCK_AFTER.
 HELPER_BUSY_LOG = STATE_DIR / "helper-busy.json"
 _busy_lock = threading.Lock()
@@ -1783,8 +1778,8 @@ def helper_busy_summary(now=None):
 def helper_busy():
     """Seconds the root helper has been at its current job, or None when it isn't running one. It
     takes one request at a time, so a long job (a toolkit's download, an update) keeps the rest
-    waiting without anything being wrong (2026-10-08: the debug kit's refresh, 4 minutes, was
-    shown as "not answering"). systemctl show is the hub's to ask."""
+    waiting without anything being wrong (a kit's refresh of minutes is not "not answering").
+    systemctl show is the hub's to ask."""
     try:
         r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "ActiveState",
                             "-p", "InactiveExitTimestampMonotonic"], capture_output=True, text=True, timeout=10)
@@ -1856,10 +1851,10 @@ def network_snapshot():
     if status:
         # A report the watchdog stopped writing is old news: say so rather than show it as live.
         status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
-    # Each link's uptime (step 34): hours for a week, days for 35, summed here from the watchdog's
+    # Each link's uptime: hours for a week, days for 35, summed here from the watchdog's
     # five-minute slots, so the page gets a few KB rather than the slots.
     return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
-            "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab (item 37)
+            "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
@@ -1900,7 +1895,7 @@ def addons_snapshot():
             "pending": _pending_actions("addon"), "results": control_results(5)}
 
 
-# --- local add-ons (plans/no-root-addons-plan) ---------------------------------
+# --- local add-ons --------------------------------------------------------------
 # Added, kept current and removed by the hub itself: their manifests in manifests.LOCAL_D, their
 # files in manifests.ADDONS (the librarian's), served by the web server's add-on origin. The
 # owner's agreement to each is kept in CONSENTS. Switching one on is the access switch (root's).
@@ -1947,7 +1942,7 @@ def _agreed_changes(old, new):
 
 def catalogue_sync():
     """Bring each add-on added from the catalogue up to the catalogue's entry, as far as the owner's
-    consent allows (next-work-plan step 19). The added copy (manifests.LOCAL_D) is what the owner
+    consent allows. The added copy (manifests.LOCAL_D) is what the owner
     agreed to; a newer catalogue entry with the same agreed part (manifests.agreed_part: consent
     text, what it connects to, browser storage, where it comes from) replaces it: the tile, its
     list, a moved pin. One that changes the agreed part waits for the owner to accept it (/admin);
@@ -2044,7 +2039,7 @@ def _local_add(m, how):
     _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
     refresh_manifests()
     # Off until the owner switches it on, whatever was chosen for that name before (a removed
-    # add-on, or the built-in ELIZA of 2026-10-05): root's, which also puts it in the web
+    # add-on, or a former built-in such as ELIZA): root's, which also puts it in the web
     # server's add-on maps.
     rid = control_request({"action": "access", "app": i, "mode": "off"})
     librarian.add_source(librarian.default_app_source(i))
@@ -2218,14 +2213,14 @@ def moderation_action(payload):
     return (200 if ok else 404), moderation_snapshot()
 
 
-# --- who sees what a person posts (M13) --------------------------------------------------------
+# --- who sees what a person posts --------------------------------------------------------------
 # Each signed-in person chooses, per app, whether what they post is seen by everyone here,
 # signed-in people, or only them (their account page; accounts.py "posts"). Never wider than the
 # app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
 store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
-# Saves tied to accounts (accounts-plan stage 6, item 6): the admin's setting, off by default.
+# Saves tied to accounts: the admin's setting, off by default.
 store.CROSS_DEVICE = lambda: settings_snapshot()["saves_cross_device"]
 
 
@@ -2237,7 +2232,7 @@ def seen_by_of(account, app):
     return seen if seen in ("users", "me") else None
 
 
-# --- reports (M10) ---------------------------------------------------------------------------
+# --- reports ---------------------------------------------------------------------------------
 # Anyone may report a shoutbox message or a forum post, for one of the reasons the owner offers;
 # the owner decides how many reports put it in the queue on /admin → Moderation, and whether it is
 # hidden from everyone else until they have looked. A post is known by where it is and when it was
@@ -2365,7 +2360,7 @@ def store_action(payload):
 
 def system_status():
     """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
-    cache Kiwix leans on counts as available, and is the first thing to go (plan §2)."""
+    cache Kiwix leans on counts as available, and is the first thing to go."""
     out = {}
     try:
         with open("/proc/meminfo") as fh:
@@ -2415,16 +2410,16 @@ MIME = {
 
 class HubServer(ThreadingHTTPServer):
     # socketserver listens with a queue of 5. A burst of new connections -- a page load from
-    # several guests, or a proxy that does not reuse them -- overflowed it on the Lyra and
-    # waited out SYN retries: p99 over 2 s (notes: 2026-10-02-caddy-vs-nginx-benchmark).
+    # several guests, or a proxy that does not reuse them -- overflows it on a small board and
+    # waits out SYN retries: p99 over 2 s.
     request_queue_size = 64
 
 
-# F2: whatever part of a request's body a route leaves unread is read away (or the connection
+# Whatever part of a request's body a route leaves unread is read away (or the connection
 # closed) after it answers, so the web server's kept-alive connection never carries it into the
-# next request. The doctor's F2 check looks for this marker.
+# next request. The security doctor looks for this marker.
 DRAINS_REQUEST_BODIES = True
-MAX_JSON = 256 * 1024  # the largest JSON body the hub reads (F15); the store and drop have their own
+MAX_JSON = 256 * 1024  # the largest JSON body the hub reads; the store and drop have their own
 # More unread than this, and the connection is closed rather than read. Closing early is the
 # rougher choice (a client still sending sees a reset, and may lose the answer), so it is kept
 # for bodies far over any the hub takes (the drop's are up to 25 MB by default).
@@ -2606,7 +2601,7 @@ class Handler(BaseHTTPRequestHandler):
     def _discard_body(self):
         """Read away what is left unread of this request's body when it is small, or close the
         connection. Left in the stream, the web server's kept-alive connection would carry it
-        into the next request (F2's mechanism: the next request fails, or is another). Runs
+        into the next request (the next request fails, or is another). Runs
         after every request (handle_one_request), and before a refusal that reads nothing."""
         headers = getattr(self, "headers", None)
         if headers is None:
@@ -2637,7 +2632,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(403, {"error": "/admin only through the web server in front"})
         return True
 
-    # --- accounts (accounts.py, step 16): the session cookie, and whether the request came over HTTPS
+    # --- accounts (accounts.py): the session cookie, and whether the request came over HTTPS
 
     def _https(self):
         """Over HTTPS: the web server says so (X-Forwarded-Proto, which it always sets, replacing a
@@ -2677,7 +2672,7 @@ class Handler(BaseHTTPRequestHandler):
             # Syncthing and private apps behind the same gate must not open (nginx says which page).
             # nginx sends the request's URI as typed but routes on the normalised one, so
             # "/admin/../term/" reaches the shell's location: judged here as the browser and
-            # nginx see it, after unquoting and normalising (stance review 2026-10-08, N4).
+            # nginx see it, after unquoting and normalising.
             import posixpath
             uri = posixpath.normpath(unquote(self.headers.get("X-Original-URI", "").partition("?")[0]) or "/")
             ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith("/admin/")))
@@ -2732,14 +2727,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _hue(self, payload, poster):
         """The colour a post is written in: the page's choice, or for someone logged in with none, their
-        account's own (M12)."""
+        account's own."""
         hue = payload.get("hue")
         if hue is None and poster and poster[1]:
             hue = accounts.prefs(poster[0])["hue"]
         return hue
 
     def _note_account(self):
-        """A signed-in visitor's name, as around now (M12): in memory only."""
+        """A signed-in visitor's name, as around now: in memory only."""
         token = self._session_token()
         if token:
             me = accounts.session(token)
@@ -2783,7 +2778,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._admin_gate_follow(before)
                 self.send_json(200, {"name": name})
             elif action == "prefs":
-                # A person's own settings (M12): theirs alone, through their own session.
+                # A person's own settings: theirs alone, through their own session.
                 self.send_json(200, {"prefs": accounts.set_prefs(self._session_token(), payload.get("prefs"))})
             else:
                 self.send_json(400, {"error": "action is signup, login, logout, password, code or prefs"})
@@ -2799,7 +2794,7 @@ class Handler(BaseHTTPRequestHandler):
             control_request({"action": "admin-gate"})
 
     def _forged(self, path):
-        """An /admin POST a page elsewhere could have made (S3): it must carry X-Irate-Admin,
+        """An /admin POST a page elsewhere could have made: it must carry X-Irate-Admin,
         which a cross-site form cannot send and a cross-site fetch cannot without a preflight
         the hub never answers; and when the browser says where it came from (Origin,
         Sec-Fetch-Site), that must be this host. Browsers send a cached login with a forged
@@ -2966,8 +2961,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/apps":
-            # The Apps and Folders groups of /admin (menu overhaul M4): which sections each app owns.
-            # switch: whether its access can be set (its page then starts with it, M6).
+            # The Apps and Folders groups of /admin: which sections each app owns.
+            # switch: whether its access can be set (its page then starts with it).
             seen = seen_only()
             self.send_json(200, {"apps": [dict(a, switch=a["id"] in access.ROUTED or a["local"], seen=a["id"] in seen)
                                           for a in manifests.admin_apps(MANIFESTS)]})
@@ -3107,8 +3102,8 @@ class Handler(BaseHTTPRequestHandler):
             from irate_box.library import toolkits
             snap = toolkits.snapshot()
             snap["results"] = [r for r in control_results(20)]
-            # What the security doctor flags about a kit's cache, shown before an install (Tom,
-            # 2026-10-06: upgrades are fine "unless it's a flagged issue").
+            # What the security doctor flags about a kit's cache, shown before an install
+            # (an upgrade is fine unless it is a flagged issue).
             try:
                 audit = json.loads((CONTROL_DIR / "security-audit.json").read_text())
                 snap["flags"] = {i["about"]["key"]: i["titles"] for i in (audit.get("joint") or {}).get("items", [])
@@ -3131,14 +3126,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/mesh":
-            # The decoder bridge (step 18): everything it heard, the messages too, and the channels
+            # The decoder bridge: everything it heard, the messages too, and the channels
             # by name (never their keys).
             self.send_json(200, dict(MESH.heard.view(texts=True), state=MESH.state, error=MESH.error,
                                      channels=meshbridge.channels_view()))
             return
 
         if path == "/admin/tls":
-            # HTTPS (step 15): the root helper's copy of what it made (root/tls.py status).
+            # HTTPS: the root helper's copy of what it made (root/tls.py status).
             try:
                 st = json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
             except (OSError, ValueError):
@@ -3197,10 +3192,10 @@ class Handler(BaseHTTPRequestHandler):
             path = "/admin-setup.html" if unclaimed() else "/admin.html"
             admin_page = not unclaimed()
         elif path == "/admin/factory.html":
-            # The Firmware Factory's own page (menu overhaul F7): behind /admin's login, as /admin is.
+            # The Firmware Factory's own page: behind /admin's login, as /admin is.
             path = "/admin-factory.html"
         elif path == "/admin/mesh.html":
-            # Mesh's Heard, the messages' texts too (item 9, as the Factory's page): behind /admin's login.
+            # Mesh's Heard, the messages' texts too (as the Factory's page): behind /admin's login.
             path = "/admin-mesh.html"
 
         if path == "/api/guest-net":
@@ -3269,7 +3264,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/certificate", "/certificate.json", "/certificate/ca.crt"):
-            # HTTPS (step 15): the box's CA for guests to install, and what the page says of it.
+            # HTTPS: the box's CA for guests to install, and what the page says of it.
             # Public: only the CA's public certificate and facts about it, never a key.
             if path == "/certificate":
                 self.send_response(302)
@@ -3328,7 +3323,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/layout.css":
-            # The owner's page widths for every page (M2): public, tiny, read after style.css.
+            # The owner's page widths for every page: public, tiny, read after style.css.
             # No file of that name in web/, so both web servers hand it to the hub.
             with _settings_lock:
                 cur = dict(_settings)
@@ -3359,11 +3354,11 @@ class Handler(BaseHTTPRequestHandler):
             joined = joined_count()
             if joined is not None:
                 payload["joined"] = joined
-            # Different devices today and this week (M11): the numbers only, while counting is on.
+            # Different devices today and this week: the numbers only, while counting is on.
             counted = visitor_counts()
             if counted is not None:
                 payload["visitors"] = counted
-            # Signed in and around (M12): the count for everyone; the names only to whom the owner
+            # Signed in and around: the count for everyone; the names only to whom the owner
             # allows, and only of those who said yes on their own account page.
             around = online_names(now)
             payload["signed_in"] = len(around)
@@ -3430,7 +3425,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(404)
 
     def _read_payload(self):
-        """The request's JSON, or None. Larger than MAX_JSON is not read at all (F15): the
+        """The request's JSON, or None. Larger than MAX_JSON is not read at all: the
         caller answers 413 and the drain reads it away or closes the connection."""
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -3466,7 +3461,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._too_large = False
         payload = self._read_payload()
-        if not isinstance(payload, dict):  # None, or a JSON array or string (F26)
+        if not isinstance(payload, dict):  # None, or a JSON array or string
             if self._too_large:
                 self.send_json(413, {"error": f"a request to the hub is at most {MAX_JSON >> 10} KB"})
                 return
@@ -3514,7 +3509,7 @@ class Handler(BaseHTTPRequestHandler):
                 # A script's first use (no name): the box's own login, as before.
                 self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
             else:
-                # The owner's first use (Tom, 2026-10-09: one login): their admin account, signed in at once.
+                # The owner's first use: their admin account, signed in at once.
                 # The box's own login gets a random password, root's alone (/etc/hub/admin-password), for
                 # scripts and the console: it shares no secret with the account.
                 try:
@@ -3766,7 +3761,7 @@ class Handler(BaseHTTPRequestHandler):
             if payload.get("action") == "make" and (type(books) is bool or _str_list(books)) and _str_list(payload.get("kits", []))  \
                     and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data") \
                     and (budget is None or (type(budget) is int and budget > 0)):
-                # A new box's kit with what the owner chose (item 34); root checks each again (kit_choices).
+                # A new box's kit with what the owner chose; root checks each again (kit_choices).
                 self.send_json(202, {"id": control_request({"action": "offline-kit" if payload.get("hub", True) is not False else "content-export",
                                                             "books": books, "kits": payload.get("kits", []),
                                                             "repos": payload.get("repos", []), "state": payload.get("state", "none"),
@@ -3777,7 +3772,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/tiles":
-            # The apps row's order (F3): a list of its tiles' ids, the rest after them as before.
+            # The apps row's order: a list of its tiles' ids, the rest after them as before.
             data, ids = payload.get("state"), {i for i, _, _ in app_tiles()}
             size = data.get("size", {}) if isinstance(data, dict) else None
             icon = data.get("icon", {}) if isinstance(data, dict) else None
@@ -3795,7 +3790,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/status-tiles":
-            # The box row's arrangement (M8): its tiles only, each part a list of their ids.
+            # The box row's arrangement: its tiles only, each part a list of their ids.
             data, ids = payload.get("state"), {i for i, _ in box_tiles()}
             size = data.get("size", {}) if isinstance(data, dict) else None
             if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
@@ -3813,7 +3808,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/folders":
-            # The folders' arrangement (M7): the whole of folders.json, checked, at once.
+            # The folders' arrangement: the whole of folders.json, checked, at once.
             data = valid_folders(payload.get("state"))
             if data is None:
                 self.send_json(400, {"error": "state: per folder, hidden, order and extra: entries some folder lists"})
@@ -3823,7 +3818,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/visibility" and "locked" in payload:
-            # What its tile does for one who sees it but may not open it (Tom, 2026-10-08).
+            # What its tile does for one who sees it but may not open it.
             app, how = str(payload.get("app", "")), payload.get("locked")
             if app not in _switched() or how not in LOCKED_AS:
                 self.send_json(400, {"error": "app must name an app with a switch, and locked be signin, signup, padlock or grey"})
@@ -3838,7 +3833,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/visibility":
-            # Who sees an app's tile (M5): the hub's own, at once; no root, no web server change.
+            # Who sees an app's tile: the hub's own, at once; no root, no web server change.
             app, v = str(payload.get("app", "")), payload.get("visible")
             if (app not in _switched() and app not in PAGE_APPS and app not in seen_only()) or v not in VISIBLE:
                 self.send_json(400, {"error": "app must name an app on /admin, and visible be auto, guests, users or hidden"})
@@ -3903,7 +3898,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
             elif act == "join" and isinstance(payload.get("ssid"), str) and payload.get("security") in ("wpa-psk", "sae", "open") \
                     and isinstance(payload.get("psk", ""), str) and type(payload.get("hidden", False)) is bool and type(payload.get("now", False)) is bool:
-                # A network for the box to join (item 37): checked again by root (wifijoin.validate); the password
+                # A network for the box to join: checked again by root (wifijoin.validate); the password
                 # goes only into the request file (0600, the hub's) and NetworkManager's keyfile (root's).
                 self.send_json(202, {"id": control_request({"action": "wifi-join", "ssid": payload["ssid"], "security": payload["security"],
                                                             "psk": payload.get("psk", ""), "hidden": payload.get("hidden", False),
@@ -4069,8 +4064,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_empty(404)
 
     def _cross_site(self):
-        """A change a page on another site made (stance review 2026-10-08, N10; S3 for /admin
-        is _forged): when the browser says where the request came from (Sec-Fetch-Site, or
+        """A change a page on another site made (for /admin,
+        see _forged): when the browser says where the request came from (Sec-Fetch-Site, or
         Origin), it must be this host; a sibling port (same-site) does not count. A client that
         sends neither (curl, the box's own scripts) carries no cached login of a browser's."""
         site = self.headers.get("Sec-Fetch-Site")
@@ -4252,9 +4247,9 @@ if __name__ == "__main__":
     for what in clear_on_new_boot():
         print(f"New boot: cleared the {what}, as set on /admin")
     CLOCK.start()
-    # The mesh heard through the box's MQTT broker (step 18): decoded with the owner's channel keys.
+    # The mesh heard through the box's MQTT broker: decoded with the owner's channel keys.
     MESH.start()
-    # The services' uptime (step 35): every unit's state every five minutes, for /admin's grid.
+    # The services' uptime: every unit's state every five minutes, for /admin's grid.
     svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.

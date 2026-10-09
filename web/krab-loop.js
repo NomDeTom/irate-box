@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The krab desks lit (menu overhaul M3; Tom, 2026-10-08: static pages, the art as WebM). The
+// The krab desks lit, the art as WebM. The
 // controller's desk and the Firmware Factory's line are seamless 12 s loops, VP9 with alpha,
 // made once by tools/make-krab-loops.cjs from art/krab-*-lit.webp and -mask.webp: the page plays
 // them and works nothing out (krab-desk.js read the art's pixels and built ~36 canvases on every

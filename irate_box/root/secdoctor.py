@@ -9,9 +9,8 @@ from the owner's earlier setup, and reports it. It changes NOTHING: it reads fil
 `systemctl show`/`list-units`, and walks /proc; it never starts, stops, writes or chowns
 anything on the system. Its one write is its own report (control/security-audit.json).
 
-It is the checkable half of notes/irate-box/2026-10-02-security-review. Each step covers
-findings of that review (the "ref" on every line, F1 to F30, or S1 to S14 for the known
-ones) that the state of the box can show. Findings the box cannot show (a race inside one
+Each step covers findings of the hub's security review (the "ref" on every line, F1 to F31, or
+S1 to S14 for the known ones) that the state of the box can show. Findings the box cannot show (a race inside one
 function, a missing checksum) are listed as "not covered" in the report rather than skipped
 silently. Run it before the fixes and again after: the lines that were problems must clear.
 
@@ -124,10 +123,10 @@ def _list(names, limit=MAX_LISTED):
 
 
 def F(fid, title, status, detail, fix="", ref="", source="doctor", about=None):
-    """One finding, in the shape every source shares (security-doctor-plan §4): which source said
+    """One finding, in the shape every source shares: which source said
     it, what it is about ({kind: package | service | setting | file | kit, key}), so the joint
     report can merge what several sources say about one thing; accepted is the reason when the
-    box's design accepts it (stage 2)."""
+    box's design accepts it."""
     return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": ref,
             "source": source, "about": about, "accepted": None}
 
@@ -554,7 +553,7 @@ def _addon_ask(path):
 
 
 def step_web_addons(ctx):
-    """The local add-ons (plans/no-root-addons-plan): their folder holds only plain files and
+    """The local add-ons: their folder holds only plain files and
     folders (the hub writes it; nginx follows no links there, Caddy would), each one switched on
     was agreed to, and the add-on origin serves nothing of the hub's and sends each its CSP."""
     from irate_box.hub import access as acc, manifests as man
@@ -690,7 +689,7 @@ def step_front(ctx):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
             out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
                          f"The route exists in the front with no auth_basic/auth_request.", "Put it behind the admin login.", "S1"))
-    # N11 (stance review 2026-10-08): a baseline CSP on the hub's own origin, where /admin lives.
+    # A baseline CSP on the hub's own origin, where /admin lives.
     csp = [d for s, d in directives if d.startswith("add_header Content-Security-Policy") and s and s[0] == "server"]
     out.append(F("front-csp", "A Content-Security-Policy on the hub's origin", "ok" if csp else "warn",
                  "Set server-wide (no plugins, no <base> hijack, framed by this origin alone)." if csp else
@@ -840,8 +839,8 @@ def step_folders(ctx):
         found, cut = _walk_links(w, depth)
         links += found
         truncated = truncated or cut
-    # A relative link to its own folder or below (a git checkout's .dockerignore → .gitignore, found in
-    # ci/home on the Lyra, 2026-10-09) can't send root anywhere else: counted, not listed.
+    # A relative link to its own folder or below (a git checkout's .dockerignore → .gitignore, in
+    # ci/home) can't send root anywhere else: counted, not listed.
     inside = [(p, t) for p, t in links if not t.startswith("/") and ".." not in Path(t).parts]
     links = [x for x in links if x not in inside]
     # Folders root recreates itself at every install are the interesting ones.
@@ -859,7 +858,7 @@ def step_folders(ctx):
                      "None in control/, zim/, library/, firmware/, git/, ci/ or notes/ (top levels) that leads out of its folder"
                      + (f" ({len(inside)} that stay{'s' if len(inside) == 1 else ''} inside {'it' if len(inside) == 1 else 'theirs'}, "
                         "as a git checkout's do)." if inside else "."), ref="F3/F4/F5"))
-    # The quarantine is the hub's own since F4's fix: health.py moves a book there as the hub, so a
+    # The quarantine is the hub's own: health.py moves a book there as the hub, so a
     # link there leads only where the hub could write anyway. Still worth a look if it is one.
     q = _lstat(STATE / "zim" / "quarantine")
     if q is not None and stat.S_ISLNK(q.st_mode):
@@ -965,8 +964,8 @@ def step_units(ctx):
             ("ProtectSystem=strict", strict), ("NoNewPrivileges", p.get("NoNewPrivileges") == "yes"),
             ("PrivateTmp", p.get("PrivateTmp") == "yes"), ("ProtectHome", p.get("ProtectHome") not in ("no", "", None)),
             ("ProtectProc=invisible", p.get("ProtectProc") in ("invisible", "noaccess"))) if not ok]
-        # A root unit is reported for any line it lacks (stance review 2026-10-08 §2): a flaw in one
-        # is root, so each missing line counts. A guest-reachable unit as before: most of them gone.
+        # A root unit is reported for any line it lacks: a flaw in one is root, so each missing line
+        # counts. A guest-reachable unit when most of them are gone.
         if is_root and weak:
             root_weak.append(f"{u[:-8]} (missing {', '.join(weak)})")
         elif not is_root and len(weak) >= 4:
@@ -1396,7 +1395,7 @@ def _git_cfg(cfg, section, key):
 
 
 def step_git(ctx):
-    """F17, F18 and the push presets (next-work plan step 10): what pushed content can do."""
+    """F17, F18 and the push presets: what pushed content can do."""
     root = STATE / "git"
     if _lstat(root / "cgitrc-public") is None and _lstat(root / "cgitrc-private") is None:
         return [F("git", "Git servers", "ok", "Not set up.", ref="F17/F18")]
@@ -1484,7 +1483,7 @@ def step_accounts(ctx):
         other = [(f, s) for f, s in nopass if (f, s) not in service]
         if other:
             temp = [f for f, _ in other if "temp" in f]
-            # Together a problem (stance review 2026-10-08, I1): a passwordless-sudo account that
+            # Together a problem: a passwordless-sudo account that
             # sshd lets in by password is root for whoever guesses one password over the WiFi.
             guessable = _sshd_passwords()
             out.append(F("acct-sudo", "Passwordless sudo rules" + (", and SSH accepts passwords" if guessable else ""), "problem" if guessable else "warn",
@@ -1531,7 +1530,7 @@ def step_accounts(ctx):
 
 
 def step_accounts_hub(ctx):
-    """The hub's own accounts (step 16, plans/accounts-plan stage 2): no account with a hash that
+    """The hub's own accounts: no account with a hash that
     isn't scrypt at today's strength, users mode never left loosely over plain HTTP, and every app
     in users mode has its gate actually wired in the web server's config."""
     from irate_box.hub import access as acc, accounts as accmod
@@ -1657,7 +1656,7 @@ def step_kernel(ctx):
     return out
 
 
-# Which apps run on an origin of their own (next-work plan step 11; S4): what an app's pages run
+# Which apps run on an origin of their own (S4): what an app's pages run
 # can act with the owner's login only where it shares the hub's origin.
 OWN_ORIGIN = (("notes", "Notes (SilverBullet)", r"proxy_pass\s+http://unix:/run/silverbullet/"),
               ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8081"),
@@ -1699,13 +1698,13 @@ def step_origins(ctx):
         if ports == hub_ports:
             out.append(F(f"origin-{key}", f"{name}: the hub's own origin", "warn",
                          f"Served on port {', '.join(hub_ports)} with /admin, so what its pages run could act with the owner's login.",
-                         "Its own origin (next-work plan step 11).", "S4"))
+                         "Its own origin.", "S4"))
         else:
             out.append(F(f"origin-{key}", f"{name}: an origin of its own", "ok", f"Port {', '.join(ports)}; the hub is on {', '.join(hub_ports)}.", ref="S4"))
     return out
 
 
-# --- debsecan: Debian's packages against Debian's security tracker (step 29) -----------------
+# --- debsecan: Debian's packages against Debian's security tracker ---------------------------
 # Run from the security kit: installed if it is, otherwise unpacked from its cache (debsecan and
 # python3-apt's apt_pkg, a module over libapt-pkg, which every Debian has), with the tracker's
 # data the librarian keeps (library/debsecan/). Nothing is installed for it, nothing fetched.
@@ -1751,8 +1750,8 @@ def _debsecan_command(work):
 
 def _debsecan(cmd, env, suite, status=None, timeout=900):
     """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary. Fifteen
-    minutes: on the Lyra with a firmware build and the deep audit running (load 25 on four cores,
-    2026-10-07) five were not enough, and a busy box is not a failed check."""
+    minutes: with a firmware build and the deep audit running (load 25 on four cores) five are not
+    enough, and a busy box is not a failed check."""
     args = [*cmd, "--suite", suite, "--source", f"file://{DEBSECAN_FEED}/", "--format", "summary"]
     if status:
         args += ["--status", str(status)]
@@ -1786,7 +1785,7 @@ def _sources():
 
 def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
     """Findings from debsecan's two runs. A fix Debian has released but the box hasn't installed:
-    a problem when remotely exploitable or high urgency (Tom, 2026-10-06), else a warning; one
+    a problem when remotely exploitable or high urgency, else a warning; one
     finding per package. Unfixed ones are listed, not counted. A kit's cache holding a version
     with a released fix: a warning on that kit (refresh it while online)."""
     out = []
@@ -1893,8 +1892,7 @@ def _dress_cis(f):
     """A CIS section's finding ("CIS 4.1: 22 checks not met") as what it is about, in plain words, and
     how it stands on a box like this (secdoctor_xref.CIS): a suggestion, or not for this board, and why."""
     # A check split out of its section because another source asks the same (cis-5.2.10_disable_root_login):
-    # a suggestion as its section is, so beside a fine Security page line it is not a real item (the
-    # Lyra, 2026-10-09: root login, forwarding and the rest counted as "to look at").
+    # a suggestion as its section is, so beside a fine Security page line it is not a real item.
     one = re.match(r"^cis-(\d+\.\d+)[\d.]*_\w", f.get("id", ""))
     if one and f.get("source") == "debian-cis" and f["status"] != "ok" and not f.get("tier"):
         f["tier"] = (secdoctor_xref.cis(one.group(1)) or (None, "suggest"))[1]
@@ -1998,7 +1996,7 @@ KIND_SOURCES = {"service": ("security-page", "nmap", "openvas")}
 
 
 def freshness():
-    """Each source's date and its data's date (§5.6)."""
+    """Each source's date and its data's date."""
     out = {"doctor": time.time()}
     try:
         out["security-page"] = json.loads(_read(CONTROL / "security.json") or "{}").get("at")
@@ -2025,10 +2023,9 @@ def freshness():
 
 
 def joint(steps, freshness=None):
-    """The joint report (security-doctor-plan §5): every finding that is not fine, once. Findings about
+    """The joint report: every finding that is not fine, once. Findings about
     the same thing (a setting, a port, Debian's security updates) are merged into one item saying which
-    sources agree, the worst status, and what each source said; the rest stand as items of their own
-    (until 2026-10-09 they were only counted, so most of the doctor's own findings never showed). Each
+    sources agree, the worst status, and what each source said; the rest stand as items of their own. Each
     item carries where it is put right (secdoctor_xref.DO) and, for the deep audit's CIS sections, a
     tier: "suggest" or "not-here", counted apart from what is to fix or look at. Also: items only one
     source saw where others could have (worth a look, or a false positive); each source's counts, what
@@ -2121,7 +2118,7 @@ def joint(steps, freshness=None):
 def _local_headers(url):
     """A local request's status and headers (the box's own front), or None. Certificates unchecked:
     this asks what the front sends, not whether it is trusted. A GET whose body is never read: the
-    hub answers HEAD with 501 (found on the Lyra, 2026-10-07), which is not "not answering"."""
+    hub answers HEAD with 501, which is not "not answering"."""
     import ssl
     import urllib.error
     import urllib.request
@@ -2137,7 +2134,7 @@ def _local_headers(url):
 
 
 def step_tls(ctx):
-    """HTTPS (next-work plan step 15, certificates-plan stage 6): the certificate's expiry, that it
+    """HTTPS: the certificate's expiry, that it
     covers the box's addresses, the CA's name constraints, the keys private, and, while HTTPS is
     on, no HSTS and port 80 still answering (the captive portal needs it)."""
     from irate_box.root import tls
@@ -2196,7 +2193,7 @@ MOSQUITTO = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
 
 
 def step_mqtt(ctx):
-    """The MQTT broker and the decoder bridge (next-work plan step 18's rules): never bridged to a
+    """The MQTT broker and the decoder bridge: never bridged to a
     broker outside the box (mqtt.meshtastic.org above all: the mesh's traffic would leave the box,
     and its downlink would come in); anonymous clients limited to msh/#; the bridge's channel keys
     private to the hub."""
@@ -2228,7 +2225,7 @@ def step_mqtt(ctx):
     return out
 
 
-# --- the image underneath (stance review 2026-10-08, §2: I4, I5, I9, I10) ---------------------------
+# --- the image underneath ------------------------------------------------------------------------
 # What Armbian and mPWRD-OS ship that the hub inherited and nothing else here looks at. Sudo
 # rules, root's groups, apt's periodic switch and SSH's defaults have steps and offers of their
 # own (accounts, the Security page).
@@ -2330,7 +2327,7 @@ def _age_days(path):
 
 
 def step_offline(ctx):
-    """Offline readiness (stance review 2026-10-08 §4 item 5): the box is meant to work with no
+    """Offline readiness: the box is meant to work with no
     internet, so how stale what it carries is: the package lists, Debian's security tracker data,
     the kits' cache, the offline bundle against the installed version, the hub's own update state."""
     out = []
@@ -2376,7 +2373,7 @@ def step_offline(ctx):
     return out
 
 
-# --- reached from the internet (Tom, 2026-10-08) --------------------------------------------------
+# --- reached from the internet --------------------------------------------------------------------
 # The box is for its own networks. Its web pages are seen from the hub's own note of public visitors
 # (hub/reach.py; the web servers keep no access logs), SSH from sshd's log, and IPv6 from the box's
 # own addresses: a global one is reachable wherever the router's IPv6 firewall lets traffic in.
@@ -2463,7 +2460,7 @@ def step_internet(ctx):
                      f"No request from a public address in the last {REACH_DAYS} days (as the hub sees them: "
                      "the pages it serves, not static files alone)."))
     ssh = _ssh_public()
-    # How far back the evidence goes (stance review 2026-10-08, I7): Armbian keeps the journal
+    # How far back the evidence goes: Armbian keeps the journal
     # in RAM and trims it, so "the last 7 days" may be since the last boot.
     since = _ssh_log_since()
     span = f" sshd's log here goes back to {since}." if since else ""
@@ -2489,7 +2486,7 @@ def step_internet(ctx):
 
 
 def step_firewall(ctx):
-    """The network floor (stance review §4 item 3): the hotspot's traffic goes through a
+    """The network floor: the hotspot's traffic goes through a
     default-drop chain, or it does not."""
     from irate_box.root import firewall
     about = {"kind": "setting", "key": "firewall"}
@@ -2542,7 +2539,7 @@ STEPS = [
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
 NOT_COVERED = [
     "F7 app-install check/extract/delete race, F10 firmware cache paths, F12 kiwix-manage as root, F14 forged-request reach, "
-    "F16 gallery ownership (device locks exist since 2026-10-02; unlocked saves stay open to every guest), F21 verified flag, F23, F25 app.html framing, F26, F28, F29: flaws inside code paths, not settings "
+    "F16 gallery ownership (device locks exist; unlocked saves stay open to every guest), F21 verified flag, F23, F25 app.html framing, F26, F28, F29: flaws inside code paths, not settings "
     "(code review and tests).",
     "F11 app bundle source pinning, F22 plain-text transports, F30 checksums and the packaging guard: need the code or the network.",
     "S2 password in clear, S5 SSH, S6 updates and which ports answer (S9): the Security page's scan above. S12 npm audits: not run (they need the network).",
@@ -2564,7 +2561,7 @@ def make_context():
     src = {n: _hub_source(n) for n in ("server.py", "health.py", "store.py")}
     server = src["server.py"]
     # F2 and F15 are asked of the running hub (probe_drains, probe_json_cap): a marker in the
-    # code only said the line was there (stance review 2026-10-08 §2). The code's word stands
+    # code only says the line is there. The code's word stands
     # in when the hub does not answer.
     drains = probe_drains()
     caps = probe_json_cap()
@@ -2626,7 +2623,7 @@ def _previous():
 def new_since(previous, findings):
     """Ids of findings that are a problem or a warning now and were fine, or not there, in the
     last report: what changed, for a box nobody audits by hand every day (the doctor runs daily
-    from irate-box-secdoctor.timer; stance review 2026-10-08 §2)."""
+    from irate-box-secdoctor.timer)."""
     if not previous:
         return []
     was = {f.get("id"): f.get("status", "ok") for s in previous["steps"] for f in s.get("findings", []) if isinstance(f, dict)}

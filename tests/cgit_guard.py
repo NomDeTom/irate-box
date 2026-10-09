@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""cgit's README and code views stay inert (next-work plan step 7): whatever a pushed README
+"""cgit's README and code views stay inert: whatever a pushed README
 holds, the filter puts out no markup it did not ask for in Markdown, and both web servers
 send cgit's pages a CSP that allows no script but the box's own; and cgit.css's fixed colours
-are all restated from the palette (step 22). Runs with or without
+are all restated from the palette. Runs with or without
 Python-Markdown and Pygments installed (without them, the filters show text).
 python3 tests/cgit_guard.py"""
 import re, subprocess, sys
@@ -41,7 +41,7 @@ check("about README.md: HTML comments are dropped, not shown", "SPDX" not in md,
 inst = (REPO / "install.sh").read_text()
 rc = inst[inst.index("css=/git-static/cgit.css"):]
 rc = rc[:rc.index("\nEOF")]
-check("cgitrc: no source-filter (code is highlighted in the browser: Pygments took 2-5 s a page on the Lyra)",
+check("cgitrc: no source-filter (code is highlighted in the browser: Pygments takes seconds a page on a small board)",
       "source-filter" not in rc)
 for key in ("head-include=$CODE/config/cgit-head.html",
             "about-filter=$CODE/scripts/cgit-about.py", "readme=:README.md", "js=/git-static/cgit.js"):
@@ -66,10 +66,9 @@ for front, text in (("nginx", nginx), ("Caddy", caddy)):
               "script-src 'self'" in block and "object-src 'none'" in block and "nosniff" in block, block[-400:])
 check("style.css takes its colours from palette.css", (REPO / "web" / "style.css").read_text().split("\n")[2].startswith('@import url("palette.css")'))
 
-# --- cgit's colours in every theme (step 22) -------------------------------------------------
+# --- cgit's colours in every theme -------------------------------------------------
 # cgit-hub.css is loaded after cgit's own cgit.css; any cgit.css rule with a fixed colour it does
-# not restate shows light-mode colours in a dark theme (white rows, black links: the inbox item of
-# 2026-10-06). Every (selector, kind) below, from Debian's cgit.css, must be restated in
+# not restate shows light-mode colours in a dark theme (white rows, black links). Every (selector, kind) below, from Debian's cgit.css, must be restated in
 # cgit-hub.css with the same selector. Where cgit is installed, its own cgit.css is read instead,
 # so a Debian update that adds rules fails here until they are covered.
 COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\b(white|black|red|green|blue|gray|grey|yellow|orange|navy|maroon|purple|silver|teal|olive|lime|aqua|fuchsia)\b")

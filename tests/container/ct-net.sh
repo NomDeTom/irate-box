@@ -21,7 +21,7 @@ echo "== watchdog"
 for _ in $(seq 20); do [ -s /var/lib/hub/control/uplink.json ] && break; sleep 1; done
 s="$(get)"
 echo "$s" | j '(d["uplink"]["state"], d["uplink"]["iface"], d["uplink"]["backend"], d["uplink"]["chosen"]["pace"], d["uplink"]["chosen"]["reach"], d["uplink"]["chosen"]["sensitivity"], d["uplink"]["stale"])' | sed 's/^/    /'
-# The old single level still read: standard is the steady pace, reach reboot; strict, 2 missed checks (2026-10-09).
+# The old single level still read: standard is the steady pace, reach reboot; strict, 2 missed checks.
 [ "$(echo "$s" | j 'd["uplink"]["chosen"]["pace"]+","+d["uplink"]["chosen"]["reach"]+","+str(d["uplink"]["chosen"]["sensitivity"])')" = "steady,reboot,2" ] && ok "--uplink standard,strict taken as steady, reboot, sensitivity 2" || bad "settings not taken"
 [ "$(echo "$s" | j 'd["inventory"]["uplink"]["iface"]')" = eth0 ] && ok "inventory written at install" || bad "no inventory"
 [ "$(echo "$s" | j 'd["levels"]["pace"]==["gentle","steady","prompt","urgent"] and d["levels"]["reach"]==["watch","reconnect","restart","radio","reboot"]')" = True ] && ok "both dials offered" || bad "levels"
@@ -62,7 +62,7 @@ id="$(post '{"action":"profile","on":true}' | idof)"; r="$(result "$id")"; echo 
 [[ "$r" == ERR*NetworkManager* ]] && ok "refused cleanly" || bad "profile: $r"
 [ ! -f /etc/hub/uplink-changes.json ] && ok "nothing recorded" || bad "record written"
 
-echo "== a network to join (item 37; no NetworkManager here)"
+echo "== a network to join (no NetworkManager here)"
 c="$(post '{"action":"join","ssid":"Cafe","security":"wep","psk":"x"}' | tail -1)"; [ "$c" = 400 ] && ok "an unknown security refused by the hub" || bad "join wep -> $c"
 id="$(post '{"action":"join","ssid":"Cafe","security":"wpa-psk","psk":"not-a-real-one","hidden":false,"now":false}' | idof)"; r="$(result "$id")"; echo "    $r"
 [[ "$r" == ERR*NetworkManager* ]] && ok "refused cleanly" || bad "join: $r"

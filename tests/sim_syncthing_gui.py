@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Syncthing's GUI password from the root helper (hub_control.syncthing_gui_password) against a
 stand-in Syncthing that isn't listening yet, as just after install.sh's `gui user set` restarts its
-GUI (the Lyra, 2026-10-07: /sync/ kept its old password). python3 tests/sim_syncthing_gui.py"""
+GUI (otherwise /sync/ keeps its old password). python3 tests/sim_syncthing_gui.py"""
 import json, os, socket, sys, tempfile, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path

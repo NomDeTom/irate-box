@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Mirrored repositories (next-work plan step 12), offline: a local "upstream" with tags and
+"""Mirrored repositories, offline: a local "upstream" with tags and
 branches, a mirror kept to its policy (tag groups by version, GitHub's release/prerelease flag
 from a stand-in list, a pin), pruning when the upstream moves on, shallow against full history,
 the budget, and the mirror read-only on the box. python3 tests/sim_mirrors.py"""
@@ -217,8 +217,8 @@ check("keep is bounded", bad(groups=[{"kind": "tags", "pattern": "v*", "keep": 9
 ok = mirrors.validate(dict(base, upstream="https://github.com/meshtastic/firmware",
                            groups=[{"kind": "release", "keep": 2}, {"kind": "prerelease", "keep": 2}]))
 check("Meshtastic's firmware, release 2 and prerelease 2, is a valid mirror", ok["groups"][1] == {"name": "prerelease", "kind": "prerelease", "pattern": "*", "keep": 2, "skip_revoked": True}, ok)
-# The scheduled librarian (2026-10-06): its unit lacked hub.env, so the git root fell back to the
-# read-only code folder and write_urls() raised, ending the whole run before the hub's own update.
+# A mirror list that cannot be written (the git root on the read-only code folder) must not end the
+# whole run before the hub's own update.
 ro = T / "ro"; ro.mkdir(); ro.chmod(0o555)
 with mock.patch.object(mirrors, "URLS", ro / "sub" / "mirror-urls.json"), mock.patch.object(mirrors, "load", return_value=[m]):
     try:
@@ -231,14 +231,13 @@ unit = (REPO / "install.sh").read_text()
 unit = unit[unit.index("irate-box-librarian.service <<EOF"):]
 unit = unit[:unit.index("\nEOF")]
 check("the librarian's unit reads hub.env (the git and firmware roots)", "EnvironmentFile=$ETC/hub.env" in unit, unit)
-# librarian main() on update()'s results, the mirrors' a dict of lines (it crashed on that from
-# step 12 until 2026-10-06, failing the timer's unit after doing the work).
+# librarian main() on update()'s results, the mirrors' a dict of lines.
 out = list(librarian.outcomes({"books": "up to date", "mirrors": {"fw": "error: x", "y": "up to date"}, "hub": None}))
 check("every stage's outcome is read, a dict's too", out == ["up to date", "error: x", "up to date", "None"], out)
 with mock.patch.object(librarian, "update", return_value={"mirrors": {"fw": "error: refused"}, "books": "up to date"}):
     rc_hand, rc_timer = librarian.main(["update"]), librarian.main(["update", "--scheduled"])
 check("main(): a mirror's error fails a run by hand, never the timer's unit", rc_hand == 1 and rc_timer == 0, (rc_hand, rc_timer))
-# Monitoring the librarian's runs (2026-10-06: every scheduled run failed for hours unseen).
+# Monitoring the librarian's runs, so a failing scheduled run is seen.
 import time as _t  # noqa: E402
 def crash():
     raise AttributeError("'dict' object has no attribute 'startswith'")

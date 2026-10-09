@@ -8,7 +8,7 @@ shown as JSON, text or hex. It only listens and never publishes. Nothing is kept
 closes.
 
 Meshtastic encrypts most packets (topics with `/e/`), so for those it shows the traffic, not
-what was said. Decoding them is the decoder bridge's job (next-work plan step 18).
+what was said. Decoding them is the decoder bridge's job.
 
 It is offered in **/admin → Add-ons → Web add-ons** (`addons/mqtt-explorer.json`). The librarian
 fetches the hub's own repository at the commit the manifest pins, and

@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Backups and a new box as offers with sizes (item 34; Tom, 2026-10-09: "backup is just a hyperlink. It
-should be an offer on the level of backup to make - settings only, settings and data, full image. An
-estimated size of export is needed"; "make a new box needs a similar offer list about what to include …
-books, toolkits, git repos … a size budget is critical"; "a third option … simply an export of the library
-or the toolkits for updating an offline box").
+"""Backups and a new box as offers with sizes: a backup at a chosen level (settings only, settings and
+data, full image), a new box with a choice of what to include (books, toolkits, git repositories) against a
+size budget, and an export of the library or the toolkits for updating an offline box, each with an
+estimated size.
 
 The hub's half: what each level of backup holds, the sizes of everything on offer, and the filter the
 download is made with. The kit and the stick (a new box, an offline box, a full image) are root's
@@ -17,8 +16,7 @@ The hub's state ($STATE) is sorted into three:
              reports, the mesh's heard nodes, the box's own git repositories
   refetched  never in a backup: books (their own choice), the firmware and git mirrors, builds and their
              caches, crash evidence, the library's archive and caches, the toolkits' cache, transient files.
-             Before item 34 a backup held all of these but books (on the Lyra, 2026-10-09: 13.7 GB of builds
-             and 0.7 GB of firmware, against a few MB the owner had made)."""
+             These can be many GB against the few MB the owner made."""
 
 import json
 import os
@@ -66,7 +64,7 @@ def git_mirrors(state, mirrors=None):
             mirrors = json.loads((state / "library" / "mirrors.json").read_text()).get("mirrors", [])
         except (OSError, ValueError, AttributeError):
             mirrors = []
-    # A mirror's submodules are mirrors too, beside it as NAME--SUB.git (on the Lyra: meshtastic-firmware--protobufs).
+    # A mirror's submodules are mirrors too, beside it as NAME--SUB.git (e.g. meshtastic-firmware--protobufs).
     return tuple(p for m in mirrors if isinstance(m, dict) and m.get("name")
                  for p in (f"git/{m.get('area', 'public')}/{m['name']}.git", f"git/{m.get('area', 'public')}/{m['name']}--"))
 

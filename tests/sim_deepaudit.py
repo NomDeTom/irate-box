@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor's deep audit (next-work plan step 30, security-doctor-plan §3, §7.3–4),
-offline: debian-cis's --batch output and Lynis's report (recorded on the Lyra, 2026-10-06) turned
+"""The security doctor's deep audit, offline: debian-cis's --batch output and Lynis's report
+(recorded on a real box) turned
 into findings, failed CIS checks grouped by section, the accepted-by-design list applied to both;
 debian-cis exported from a stand-in mirror and run with its paths in the environment; the report
 kept and shown by every regular audit; the weekly schedule. python3 tests/sim_deepaudit.py"""
@@ -160,9 +160,9 @@ subprocess.run(["git", "clone", "-q", "--bare", str(w), str(bare)], check=True)
 subprocess.run(["git", "--git-dir", str(bare), "config", "irate-box.mirror", "https://github.com/ovh/debian-cis"], check=True)
 pinned = subprocess.run(["git", "--git-dir", str(bare), "rev-parse", "master"], capture_output=True, text=True).stdout.strip()
 work = T / "work"; work.mkdir()
-check("N2: no pin from the kit, or a pin the mirror lacks: not run", da.run_cis(work, pin="")[0]["id"] in ("cis-unpinned", "cis-pin-missing")
+check("no pin from the kit, or a pin the mirror lacks: not run", da.run_cis(work, pin="")[0]["id"] in ("cis-unpinned", "cis-pin-missing")
       and da.run_cis(work, pin="0" * 40)[0]["id"] == "cis-pin-missing")
-check("N2: the shipped security kit pins a commit of debian-cis", re.fullmatch(r"[0-9a-f]{40}", da.cis_pin() or ""), da.cis_pin())
+check("the shipped security kit pins a commit of debian-cis", re.fullmatch(r"[0-9a-f]{40}", da.cis_pin() or ""), da.cis_pin())
 got = {f["id"]: f for f in da.run_cis(work, pin=pinned)}
 check("from the mirror: exported, run with its paths, read", "cis-5.2.10_disable_root_login" in got and "1 of 2 checks pass (50.00 %)" in got["cis-summary"]["detail"], got)
 

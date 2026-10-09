@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Toolkits (next-work plan step 26, toolkits-plan §1–3, §8), offline: apt, dpkg and systemctl
+"""Toolkits, offline: apt, dpkg and systemctl
 stood in by a small archive with dependencies. The fetch (resolved as if no kit were installed),
 the pool and its index, current and previous versions and pruning, the budget, a tampered file,
 the install with only the local repository and services kept stopped, what it added and the
 removal of only that (a package two kits share stays), expiry, the hub's half and the doctor.
-The real thing was tried on the Lyra (next-work-plan, step 26). python3 tests/sim_toolkits.py"""
+python3 tests/sim_toolkits.py"""
 import json, os, re, shutil, sys, tempfile, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
@@ -39,7 +39,7 @@ ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.1
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
 BOARD = {"arch": "armhf"}
-# The build kit's wheelhouse (toolkits-plan §5), stood in: what `pip download platformio` fetches.
+# The build kit's wheelhouse, stood in: what `pip download platformio` fetches.
 WHEELS = {"platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)],
           "protobuf": [], "grpcio-tools": []}  # nanopb's, in the build kit too; none here, so the sums below are platformio's
 (T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
@@ -140,11 +140,11 @@ kits.run = fake
 
 defs = kits.definitions()
 check("the shipped kits load: debug, build, capture, security", {"debug", "build", "capture", "security"} <= set(defs), sorted(defs))
-check("  and the off-grid ones (stance review, resources): recovery, network, gpstime (kept, gpsd running), radio",
+check("  and the off-grid ones: recovery, network, gpstime (kept, gpsd running), radio",
       {"recovery", "network", "gpstime", "radio"} <= set(defs) and defs["gpstime"].get("remove_after_hours") is None and defs["gpstime"].get("services") == ["gpsd.socket"], sorted(defs))
 check("a kit naming an option, or a broken file, is left out", "bad" not in defs and "notjson" not in defs)
 check("every shipped kit has a consent text and a summary", all(defs[k].get("consent") and defs[k].get("summary") for k in ("debug", "build", "capture", "security")))
-check("the debug kit has valgrind and perf in it (Tom)", {"valgrind", "linux-perf"} <= set(defs["debug"]["packages"]))
+check("the debug kit has valgrind and perf in it", {"valgrind", "linux-perf"} <= set(defs["debug"]["packages"]))
 check("the build kit stays until removed by default", defs["build"]["remove_after_hours"] is None and defs["debug"]["remove_after_hours"] == 24)
 
 # Fetch.
@@ -335,7 +335,7 @@ queued.clear()
 check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removing the kits whose time is up")
       and not any(q["action"] == "kit-fetch" for q in queued), queued)
 
-# Roll back (step 28): the previous set becomes current; an installed kit's packages go back.
+# Roll back: the previous set becomes current; an installed kit's packages go back.
 s_ = kits.installed_state(); s_.pop("debug", None); kits._write(kits.INSTALLED, s_)
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
 cur_gdb = {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"}
@@ -352,7 +352,7 @@ try:
     kits.rollback("cap"); check("no previous set: said", False)
 except ValueError as exc:
     check("no previous set: said", "no previous version" in str(exc))
-# Step 27, the security kit: debian-cis as a mirror, debsecan's data as a feed, the cached packages
+# The security kit: debian-cis as a mirror, debsecan's data as a feed, the cached packages
 # in dpkg's status format, and how fresh they are.
 sec = toolkits.definitions()["security"]
 check("the security kit: Lynis, debsecan, fail2ban, nmap and the rest; debian-cis from git; debsecan's feed; daily",
@@ -419,7 +419,7 @@ man_at(40)
 f = [x for x in hub_control.kits_findings() if x["check"] == "Security tools' freshness"]
 check("  over a month, a problem", any(x["status"] == "problem" and "security kit's cache is 40 days" in x["detail"] for x in f), f)
 hub_control.STATE = real_state
-# 64-bit only (Tom, 2026-10-06): bpftrace, bcc and bpftool are left out on a 32-bit board.
+# 64-bit only: bpftrace, bcc and bpftool are left out on a 32-bit board.
 check("the debug kit marks bpftrace, bcc and bpftool 64-bit only", set(kits.definitions()["debug"]["needs_64bit"]) == {"bpftrace", "bpfcc-tools", "bpftool"})
 from irate_box.hub import kitdefs  # noqa: E402
 dbg = kits.definitions()["debug"]
@@ -444,10 +444,10 @@ kits.fetch("small", budget_mb=10, log=lambda *a: None)
 (T / "defs" / "odd.json").write_text(json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]}))
 check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
 (T / "defs" / "odd.json").unlink()
-# The System kit (os-image-plan §2): each package only where it fits, the alternatives cached, never installed.
+# The System kit: each package only where it fits, the alternatives cached, never installed.
 sysk = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "system.json").read_text())
 check("the System kit loads, kept installed", kitdefs._ok(sysk, "system") and sysk["remove_after_hours"] is None)
-check("  with the archive tools (Tom, 2026-10-09: \"the lack of zip and unzip has caught some packages out\")",
+check("  with the archive tools (zip and unzip among them)",
       {"zip", "unzip", "xz-utils", "zstd", "bzip2"} <= set(sysk["packages"]))
 board = T / "board"
 real_paths = kitdefs.SYSFS, kitdefs.ROOTFS
@@ -487,7 +487,7 @@ kits.remove("lend", log=lambda *a: None)
 check("  with neither left, both go", not {"platformio", "python3-click"} & installed, installed)
 for kid in ("lend", "keepr"):
     (T / "defs" / f"{kid}.json").unlink()
-# Step 38: the owner's own kits, and extra tools in a shipped kit.
+# The owner's own kits, and extra tools in a shipped kit.
 line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "scanner", "title": "Scanner tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
                                                   "remove_after_hours": 4}})
 own = kits.definitions().get("scanner")
@@ -534,7 +534,7 @@ check("the page's define: an id from the name (my- when it would clash), package
 toolkits.action({"action": "extra", "kit": "capture", "packages": ["gdb"]})
 check("  and extra", queued[-1] == {"action": "kit-extra", "kit": "capture", "packages": ["gdb"]})
 
-# The wheelhouse (toolkits-plan §5): the build kit names Python packages too, fetched with pip
+# The wheelhouse: the build kit names Python packages too, fetched with pip
 # into a folder of its own, so a build's `pip install platformio` needs no internet.
 check("the build kit names platformio, and nanopb's protobuf and grpcio-tools, for its wheelhouse", kits.definitions()["build"]["pip"] == ["platformio", "protobuf", "grpcio-tools"])
 line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
@@ -561,7 +561,7 @@ kits.fetch("build", budget_mb=50, log=lambda *a: None)
 check("pruning drops a wheel no manifest names any more", not (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
       and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists() and (kits.WHEELHOUSE / "platformio-6.3.0-py3-none-any.whl").exists())
 check("kits.status() counts the wheels and the wheelhouse's bytes", kits.status()["kits"]["build"]["cached"]["wheels"] == 2 and kits.wheelhouse_bytes() > 0)
-# Debug symbols (step 37, toolkits-plan §6): a kit from Debian's debug archive alone, its index kept
+# Debug symbols: a kit from Debian's debug archive alone, its index kept
 # apart, and only the symbols of what is installed here (a -dbgsym depends on its exact version).
 ARCHIVE.update({"nginx": ("1.26.3-3", []), "nginx-dbgsym": ("1.26.3-3", ["nginx"]), "mosquitto-dbgsym": ("2.0.21-1", ["mosquitto"]),
                 "mosquitto": ("2.0.21-1", [])})

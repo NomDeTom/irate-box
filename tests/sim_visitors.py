@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Unique visitors (menu overhaul M11; checklist 5g), offline: the helper counts each device once
+"""Unique visitors, offline: the helper counts each device once
 a day and a week, from the leases and the neighbour table; a new day starts again with a new salt;
 nothing but the numbers reaches its file (no address, no hash); and the hub, against a hub it starts,
 writes the owner's switch for the root path unit and reads the counts only while counting is on.
@@ -65,7 +65,7 @@ try:
                   "X-Irate-Admin": "1", "Content-Type": "application/json", "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"})
         r = c.getresponse(); return r.status, json.loads(r.read())
     st, cur = post({})
-    check("counting is on by default (Tom)", cur.get("visitor_counts") is True, cur)
+    check("counting is on by default", cur.get("visitor_counts") is True, cur)
     want = state / "visitors.want"
     check("  and the hub has said so for the path unit", want.exists() and want.read_text().strip() == "on", want.exists() and want.read_text())
     post({"visitor_counts": False})

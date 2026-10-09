@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Mesh's Heard on its own page, /admin/mesh.html (item 9, as the Factory's page, #129): the packets the
+// Mesh's Heard on its own page, /admin/mesh.html, as the Factory's page: the packets the
 // box decoded, the messages' texts too, which only the admin may read. Behind the same login as /admin
 // and asking the same /admin/mesh; /admin's Mesh page keeps the channels and their keys.
 (function () {

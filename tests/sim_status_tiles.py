@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Status tiles (menu overhaul M8), against a hub it starts: the box row arranged by the owner
+"""Status tiles, against a hub it starts: the box row arranged by the owner
 (hidden, ordered, two cells wide), the arrangement checked, and /status carrying the different
 devices seen today and this week only while counting is on. python3 tests/sim_status_tiles.py"""
 import http.client, json, os, subprocess, sys, tempfile, time
@@ -50,7 +50,7 @@ try:
     _, home = go("GET", "/")
     i = home.find('<span class="name">Excalidraw</span>')
     check("an app's tile large", st == 200 and 'class="service-card large" data-size="large"' in home[home.rfind("<a ", 0, i):i], home[home.rfind("<a ", 0, i):i])
-    # A tile's own icon (Tom, 2026-10-08): emoji, or up to four letters and digits drawn as text.
+    # A tile's own icon: emoji, or up to four letters and digits drawn as text.
     st, body = go("POST", "/admin/tiles", {"state": {"order": [], "size": {}, "icon": {"draw": "DRAW", "about": "🦀"}}})
     _, home = go("GET", "/")
     i = home.find('<span class="name">Excalidraw</span>')

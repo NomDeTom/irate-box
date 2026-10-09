@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Books page at hundreds (next-work plan step 14) in jsdom, static: a stand-in hub pages through
+// The Books page at hundreds in jsdom, static: a stand-in hub pages through
 // 300 books as /admin/books does. The summary, a page of the table, the language list, search and
 // filters asking the hub (not filtering here), paging, selecting a page or every matching book,
 // bulk Check and Stop tracking, and a book's card opening from its row.

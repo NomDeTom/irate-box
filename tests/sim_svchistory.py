@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The services' uptime (next-work plan step 35, svchistory.py), offline: five-minute samples into
+"""The services' uptime (svchistory.py), offline: five-minute samples into
 hourly buckets (up of taken, starts by a new InvocationID), gaps as no data, the clock going back,
 72 days kept; the last 72 hours by hour and 72 days by day the page draws (githubstatus.com's
 format); the sampler writing only while the clock is trusted. python3 tests/sim_svchistory.py"""

@@ -43,7 +43,7 @@ def _clean_hue(value):
         return None
     try:
         return int(value) % 360
-    except (TypeError, ValueError, OverflowError):  # 1e999 is a float too large for int (F26)
+    except (TypeError, ValueError, OverflowError):  # 1e999 is a float too large for int
         return None
 
 
@@ -54,7 +54,7 @@ def _clean(value, limit):
 def _post(author, text, now, hue, account=None, seen_by=None):
     post = {"author": author, "text": text, "created": now}
     if account and seen_by in ("users", "me"):
-        post["seen_by"] = seen_by  # its author's choice (M13): signed-in people, or only them
+        post["seen_by"] = seen_by  # its author's choice: signed-in people, or only them
     if hue is not None:
         post["hue"] = hue
     if account:

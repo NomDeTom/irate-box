@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// HTTPS (next-work plan step 15) in jsdom, static: /admin → Security's HTTPS section (not set up,
+// HTTPS in jsdom, static: /admin → Security's HTTPS section (not set up,
 // on, a box moved to another subnet; make, switch, a new CA only after a confirm) and the public
 // /certificate page (the fingerprint, what it may vouch for, the general step while no platform's
 // steps have been tried on a device, the self-check saying whether this device trusts the box).

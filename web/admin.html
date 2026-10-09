@@ -53,7 +53,7 @@
           <tbody></tbody>
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
-        <!-- The services' uptime (step 35, svchistory.py): a strip per service in its own row (Tom, 2026-10-09);
+        <!-- The services' uptime (svchistory.py): a strip per service in its own row;
              the legend and the week in words below, redrawn by admin.js. -->
         <div class="svc-uptime" id="svc-uptime"><div id="svc-uptime-body"></div></div>
         <div id="control-results"></div>
@@ -67,7 +67,7 @@
           and any can be skipped and come back to later: this page stays in the sidebar until you
           finish it, and Overview can bring it back.
         </p>
-        <!-- One list, every step in the same form (Tom, 2026-10-08): the setup's own steps, the
+        <!-- One list, every step in the same form: the setup's own steps, the
              decisions that touch security, and a backup last; the tour walks all of it. Drawn by admin-tour.js. -->
         <div class="library-buttons tour-actions"></div>
         <p class="setting-desc" id="setup-left"></p>
@@ -249,7 +249,7 @@
           hand, or by <code>install.sh --zim</code>, are left alone unless a source here has the same
           name.
         </p>
-        <!-- The books, a page at a time (step 14: /admin/books); a book's card opens from its row. -->
+        <!-- The books, a page at a time (/admin/books); a book's card opens from its row. -->
         <p class="setting-desc" id="books-summary"></p>
         <div class="books-tools">
           <label>Show <input type="search" id="books-q" placeholder="title or name" aria-label="Show books containing"></label>
@@ -283,7 +283,7 @@
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
 
         <h3>Add books</h3>
-        <!-- Where new books come from, as tabs (Tom, 2026-10-08): Kiwix's library, a source of your own, a USB stick. -->
+        <!-- Where new books come from, as tabs: Kiwix's library, a source of your own, a USB stick. -->
         <div class="tab-set" data-tabs="book-sources">
           <div class="view-switch" role="tablist" aria-label="Where new books come from">
             <button type="button" class="view-switch-btn" role="tab" id="tab-books-kiwix" aria-controls="books-kiwix">Kiwix library</button>
@@ -461,7 +461,7 @@
         <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Look for USB sticks</button></p>
         <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
         <div id="kits-usb"></div>
-        <!-- The form for a toolkit of your own: opened in the "+ Custom toolkit" card (item 8), kept here
+        <!-- The form for a toolkit of your own: opened in the "+ Custom toolkit" card, kept here
              while that card is closed. -->
         <div id="kits-custom" hidden>
         <h4 id="kits-form-title">Add a toolkit of your own</h4>
@@ -596,9 +596,8 @@
         <div id="names-to-box"></div>
       </section>
 
-      <!-- The shoutbox and the board: apps drawn on the hub page itself, not as tiles (Tom,
-           2026-10-07), each with its own page in /admin's Apps group (apps.d/93-shoutbox.json,
-           94-board.json; menu overhaul M9). -->
+      <!-- The shoutbox and the board: apps drawn on the hub page itself, not as tiles,
+           each with its own page in /admin's Apps group (apps.d/93-shoutbox.json, 94-board.json). -->
       <section class="admin-pane" id="shoutbox-settings" aria-labelledby="shoutbox-settings-title">
         <h2 id="shoutbox-settings-title">Posting</h2>
         <div class="seen-block" data-app="shoutbox"></div>
@@ -813,8 +812,7 @@
         <h3>The Factory itself</h3>
         <p class="setting-desc">
           Choosing what to build, the queue and what was built are inside the app, on a page of its
-          own (checklist 5b; Tom: "all of the decisions about building and scheduling builds should
-          be inside it"). Its builds come from the box's own copies of the firmware's source: a
+          own, with all of the decisions about building and scheduling builds. Its builds come from the box's own copies of the firmware's source: a
           mirror under <a href="#mirrors">Git → Mirrors</a>, or a private repository on Git's page.
         </p>
         <p class="library-buttons"><a class="action-btn primary" href="/admin/factory.html" id="factory-open">Open the Firmware Factory →</a></p>
@@ -867,8 +865,7 @@
           What the box has for networking, how it reaches your network, and its own hotspot for guests.
           Nothing about your own connection changes unless you press its button.
         </p>
-        <!-- Tabs by role, the same on every box, cards per device or connection inside (item 37; Tom, 2026-10-09:
-             "tabs by role is the way to do it, with cards per device/connection type within there"). Each tab has
+        <!-- Tabs by role, the same on every box, cards per device or connection inside. Each tab has
              an address of its own (#network/access …), so a doctor's or the chart's link lands on the setting. -->
         <div class="tab-set" data-tabs="network">
           <div class="view-switch" role="tablist" aria-label="Network">
@@ -1082,7 +1079,7 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <p class="sec-counts" id="security-counts"></p>
-        <!-- Each line: what it is, what it means, and one thing to do (item 11; Tom, 2026-10-09). -->
+        <!-- Each line: what it is, what it means, and one thing to do. -->
         <h3>Waiting for your choice</h3>
         <div class="findings" id="security-findings"></div>
         <h3>What the hub itself can and can't protect</h3>
@@ -1234,7 +1231,7 @@
                   <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
                 </fieldset>
                 <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
-                  <textarea name="signers" rows="3" spellcheck="false" placeholder="tom@box ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
+                  <textarea name="signers" rows="3" spellcheck="false" placeholder="owner@laptop ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
                 <p class="setting-desc" id="update-signers-kept"></p>
                 <button class="action-btn primary" type="submit">Save</button>
               </form>
@@ -1273,8 +1270,7 @@
 
       <section class="admin-pane" id="backup" aria-labelledby="backup-title">
         <h2 id="backup-title">Backup and a new box</h2>
-        <!-- Offers with sizes (item 34; Tom, 2026-10-09: "backup is just a hyperlink. It should be an offer on the level
-             of backup to make - settings only, settings and data, full image. An estimated size of export is needed"). -->
+        <!-- Offers with sizes: settings only, settings and data, or a full image, each with an estimated size. -->
         <h3 id="backup-levels">Back up this box</h3>
         <p class="setting-desc">Three levels, from the smallest. Books, the firmware and git mirrors, builds and caches are
           never in a backup: they are fetched again from their sources.</p>
@@ -1376,7 +1372,7 @@
         </div>
         <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
-        <!-- Each source and how fresh it is (item 11 step 6, the plan's §5.5–5.6): what it covers in its title. -->
+        <!-- Each source and how fresh it is: what it covers in its title. -->
         <p class="fresh-strip" id="joint-fresh" aria-label="Each source, and how fresh it is"></p>
         <div class="sec-counts" id="joint-summary" role="group" aria-label="Show"></div>
         <input type="search" class="sec-search" id="joint-search" placeholder="Search the findings…" aria-label="Search the findings">

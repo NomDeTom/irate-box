@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Toolkits, root's half (toolkits-plan §1–3, §8): Debian packages kept in a local repository so
+"""Toolkits, root's half: Debian packages kept in a local repository so
 they can be installed and removed with no internet, and taken out again after a while.
 
 A toolkit is toolkits/<id>.json in the hub's code (root-owned): a title, a summary, the package
@@ -42,7 +42,7 @@ ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 DPKG_STATUS = Path(os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status"))
 POLICY_RC = Path(os.environ.get("HUB_POLICY_RC", "/usr/sbin/policy-rc.d"))
 POOL = ROOT / "pool"
-# The build kit's wheelhouse (toolkits-plan §5): PlatformIO and what it needs, as wheels, so a
+# The build kit's wheelhouse: PlatformIO and what it needs, as wheels, so a
 # build's `pip install` needs no internet (ci.py sets PIP_NO_INDEX and PIP_FIND_LINKS to this).
 WHEELHOUSE = ROOT / "wheelhouse"
 MANIFESTS = ROOT / "manifests"
@@ -63,7 +63,7 @@ def run(cmd, timeout=1800, check=True, env=None):
     if check and out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
         # apt's reason is in its E: and "Depends:" lines; its last line is often only the solver's
-        # "[no choices]" (the symbols kit on the Lyra, 2026-10-07).
+        # "[no choices]".
         why = [l.strip() for l in lines if l.startswith("E: ") or "Depends:" in l][:3] or lines[-1:]
         verb = next((a for a in cmd[1:] if not a.startswith("-") and "=" not in a and "::" not in a), "")
         raise ValueError(f"{Path(cmd[0]).name} {verb}: {'; '.join(why)[:400] if why else 'failed'}")
@@ -105,7 +105,7 @@ def _packages(kit, fetching=False):
     return pkgs, left
 
 
-# Debian's debug archives (toolkits-plan §6): the -dbgsym packages, signed with the same keys as the
+# Debian's debug archives: the -dbgsym packages, signed with the same keys as the
 # rest of Debian. A kit that asks for it is fetched from it alone, its index kept apart from the
 # box's own lists (so the box's apt never sees it), and that index vouches for it on a USB stick.
 DEBUG_LISTS = ROOT / "lists-debug"
@@ -128,7 +128,7 @@ def _debug_apt():
     (DEBUG_LISTS / "partial").mkdir(exist_ok=True)
     src = ROOT / "debug.list"
     # Where Debian publishes symbols: the release's, the proposed updates', and the security
-    # updates' (their own archive). A box with security updates (nginx +deb13u9 on the Lyra) finds
+    # updates' (their own archive). A box with security updates (nginx +deb13u9, say) finds
     # its versions' symbols only in the last.
     c, signed = _codename(), f"[signed-by={DEBIAN_KEYRING}]"
     src.write_text(f"deb {signed} http://deb.debian.org/debian-debug {c}-debug main\n"
@@ -346,7 +346,7 @@ def write_index():
         stanzas.append(f"{control}\nFilename: ./{f}\nSize: {p['size']}\nSHA256: {p['sha256']}\n")
     (POOL / "Packages").write_text("\n".join(stanzas))
     # Every cached package as dpkg's status file would list it, so debsecan --status can say
-    # which of them have known vulnerabilities before any is installed (security-doctor-plan §2).
+    # which of them have known vulnerabilities before any is installed.
     # With Source: as dpkg writes it, since debsecan matches vulnerabilities by source package
     # (libpython3.13's are python3.13's).
     rows = sorted({(p["name"], p["version"], p["arch"], p.get("source", "")) for p in _referenced().values()})
@@ -416,7 +416,7 @@ def install(kit_id, hours=24, log=print):
     after = _installed_versions()
     added = sorted(set(after) - set(before))
     # A package the box had, brought up to the cached version because a new one needs exactly
-    # that (libc6 for libc6-dev: Debian's security updates, on the Lyra on 2026-10-06). Said, and
+    # that (libc6 for libc6-dev, after Debian's security updates). Said, and
     # recorded: removing the kit does not take it back down.
     upgraded = sorted(f"{p} {before[p]} → {after[p]}" for p in before if p in after and after[p] != before[p])
     # A service the kit is for (the debug kit's core dumps: systemd-coredump.socket) runs; every
@@ -512,7 +512,7 @@ def remove(kit_id, log=print):
     return f"{kit_id}: removed {len(go)} packages" + (f"; kept {len(kept)} another kit uses" if kept else "")
 
 
-# --- the owner's own kits, and extra tools in a shipped kit (step 38) -----------------------
+# --- the owner's own kits, and extra tools in a shipped kit ----------------------------------
 
 MAX_OWN = 40
 
@@ -624,7 +624,7 @@ def rollback(kit_id, log=print):
     return f"{kit['title']}: the cache is back to the set fetched {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}"
 
 
-# --- by USB stick (step 32, toolkits-plan §4.3) ---------------------------------------------------
+# --- by USB stick --------------------------------------------------------------------------------
 # A stick's .debs are trusted only as far as Debian's own signatures vouch for them, as apt does
 # online: the export carries the signed indexes (InRelease, and each Packages file that lists the
 # kit's packages) from /var/lib/apt/lists; the import checks each InRelease's signature with this
@@ -746,8 +746,8 @@ def _release_date(text, field):
 
 def _not_stale(text, name):
     """A signed release from a stick must be within its Valid-Until and no older than the same
-    release this box already holds: a stick could otherwise replay an old, signed, since-fixed set
-    (stance review 2026-10-08, N12). ValueError if not."""
+    release this box already holds: a stick could otherwise replay an old, signed, since-fixed set.
+    ValueError if not."""
     until = _release_date(text, "Valid-Until")
     if until is not None and until < time.time():
         raise ValueError(f"{name}: the stick's signed release expired on {time.strftime('%Y-%m-%d', time.gmtime(until))}: "
@@ -866,7 +866,7 @@ def status():
 
 
 def import_dir(root, budget_mb=None):
-    """Every kit in a folder of the stick layout (an offline kit's kits/, item 34), into the pool. Lines."""
+    """Every kit in a folder of the stick layout (an offline kit's kits/), into the pool. Lines."""
     if budget_mb is None:
         try:
             budget_mb = int(json.loads((Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "library" / "toolkits.json")

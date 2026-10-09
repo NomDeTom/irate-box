@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Crash watch: what the box was doing when it stopped, and acting before a failing radio takes it
-down (Tom, 2026-10-08, after the Lyra hung twice that day: "set a watchdog on it to spot next time it
-happens and try to capture something to flash"; "Crash watch needs to go into the doctors, and I want
-it to have a pre-emption mode for when e.g. the WiFi cuts out unexpectedly, indicating a hardware
-failure that might need a restart").
+down.
 
 irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: small, one process.
 
@@ -91,9 +88,9 @@ ERR_BURST = 5             # driver errors within two looks that make a failure
 RADIO_ERR = re.compile(r"USB disconnect|tx timeout|cmd (?:tx )?time ?out|firmware (?:crash|error|fail)|fw (?:crash|error)"
                        r"|failed to (?:send|transmit|xmit)|error -(?:71|110|19)\b|descriptor read.*error|reset (?:high|full)-speed USB",
                        re.I)
-# The AIC8800 driver's own words when its firmware wedges, which name no interface or driver (the
-# Lyra, 2026-10-09 04:00: a burst of "check cmdqueue empty", "cmd_mgr_queue cmd timed-out", then
-# "cmd queue crashed"; none of them seen in normal running). Counted for a radio with an aic driver.
+# The AIC8800 driver's own words when its firmware wedges, which name no interface or driver (a
+# burst of "check cmdqueue empty", "cmd_mgr_queue cmd timed-out", then "cmd queue crashed"; none of
+# them seen in normal running). Counted for a radio with an aic driver.
 AIC_ERR = re.compile(r"cmd queue crashed|cmd_mgr_queue cmd timed-out|check cmdqueue empty", re.I)
 HANG_SYSCTL = {"kernel.panic": "10", "kernel.panic_on_oops": "1", "kernel.softlockup_panic": "1"}
 
@@ -311,8 +308,8 @@ def snapshots_tail(nbytes=200_000, since=None):
 
 def file_radio(now, iface, text, kernel):
     """A radio's failure, filed when it happens with what led to it (the last ten minutes'
-    snapshots and this look's kernel lines), for the box doctor: on 2026-10-09 the Lyra's radio
-    wedged and the box ran on, so nothing was filed at all."""
+    snapshots and this look's kernel lines), for the box doctor: a radio can wedge while the box
+    runs on, so no crash is ever filed for it."""
     stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(now))
     d = CRASHES / f"{stamp}-radio-{re.sub(r'[^A-Za-z0-9_.-]', '_', iface)}"
     d.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The Firmware Factory (next-work plan step 36, git-ci-plan §4b), offline: a source's targets read
+"""The Firmware Factory, offline: a source's targets read
 from platformio.ini and the files its extra_configs globs name (a fixture laid out like
 meshtastic/firmware: families from variants/, through extends, display names); sources only the
 owner's mirrors and private repositories; the queue (per-request limits, family order, moved up,
@@ -168,7 +168,7 @@ ci.build, ci.build_firmware = real_build, real_fw
 n = len(factory.runs(200))
 ci.build_firmware({"kind": "firmware", "repo": str(guest), "commit": "a" * 40, "env": "native", "family": "native", "ref": "main"})
 check("a public repository that is not a mirror is never built", len(factory.runs(200)) == n)
-# Fetch tools (git-ci-plan §4b item 7): one target of the family, nothing compiled.
+# Fetch tools: one target of the family, nothing compiled.
 for f in ci.QUEUE.glob("*.json"):
     f.unlink()
 out = factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "esp32s3")
@@ -296,7 +296,7 @@ for i in range(5):
 before, after = ci.prune_build_cache(limit=3500)
 check("  pruned past its limit, oldest first", after <= 3500 and not (cache / "old-0").exists() and before > after, (before, after, sorted(p.name for p in cache.iterdir())))
 
-# The web flasher (§4b item 5): a passed build published, as a release built on this box.
+# The web flasher: a passed build published, as a release built on this box.
 for f in ci.QUEUE.glob("*.json"):
     f.unlink()
 ci.FIRMWARE_SCRIPT = r"""set -eu
@@ -428,7 +428,7 @@ try:
           and get(port, f"/factory/file?run={run_heltec}&name=firmware-heltec-v3.uf2")[0] == 404)
 finally:
     hub.terminate(); hub.wait()
-# The doctor (health.py, step 36): builds waiting over a day, a family that always fails, the disk.
+# The doctor (health.py): builds waiting over a day, a family that always fails, the disk.
 from irate_box.root import health  # noqa: E402
 health.STATE = T  # its ci/ is the builder's here
 for p in ci.QUEUE.glob("*.json"):

@@ -21,7 +21,6 @@ What happens when one is added:
 5. The Library pane's Apps keeps it current: at the pin, unless the owner chooses
    "Follow the newest".
 
-The design and the reasons: `plans/no-root-addons-plan` in the project notes.
 
 ## The manifest
 

@@ -6,9 +6,8 @@
 Caddy streams a push to the backend as it arrives, with no length (git sends large pushes
 chunked). When it cuts one off at request_body's max_size, git http-backend reading a body of
 unknown length meets the early end and spins at 100% CPU for good, with receive-pack and
-unpack-objects waiting under it on the pack so far (found 2026-10-02: 66 MB held on the Lyra,
-a whole core per refused push in a container, and each one holds one of fcgiwrap's two
-workers). nginx reads the whole body before it calls the backend, so it never needs this.
+unpack-objects waiting under it on the pack so far (a whole core per refused push, and each
+one holds one of fcgiwrap's two workers). nginx reads the whole body before it calls the backend, so it never needs this.
 
 Here a POST's body goes to a temporary file beside the repositories (on the card: /tmp may be
 RAM), and only once it is complete does git http-backend run, on that file, with

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Public repositories' pre-receive hook (security review F18; next-work plan step 9), with real
+"""Public repositories' pre-receive hook, with real
 pushes: a guest may push but not force-push or delete; the owner (REMOTE_USER set, as the web
 server does after the admin login) may; nobody may push past the size cap.
 python3 tests/sim_git_public.py"""

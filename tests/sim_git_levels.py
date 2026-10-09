@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Each repository's push preset (next-work plan step 10): the hub's decision table for nginx's
+"""Each repository's push preset: the hub's decision table for nginx's
 auth_request (gitrepos.decide: a fetch or push × each level × the git app's switch), the presets
 an area takes, and http.receivepack following the level. python3 tests/sim_git_levels.py"""
 import os, subprocess, sys, tempfile
@@ -56,7 +56,7 @@ cases = [
 for uri, mode, want in cases:
     check(f"decide {uri or '(empty)'} with git {mode}: {'no login' if want else 'login'}", D(uri, "GET", mode) is want)
 
-# With an account's credentials (accounts step 16: accounts.check_basic gives {name, role}).
+# With an account's credentials (accounts.check_basic gives {name, role}).
 check("public-users-write", act(action="preset", area="public", name="ro", preset="public-users-write")[0] == 200
       and cfg("public", "ro", "irate-box.write") == "users" and cfg("public", "ro", "http.receivepack") == "true")
 check("a private repository cannot be public-users-write", act(action="preset", area="private", name="secret", preset="public-users-write")[0] == 400)
@@ -116,7 +116,7 @@ check("publish to itself: refused", act(action="publish", **{"from": {"area": "p
       to={"area": "public", "name": "admins"}, refs=["main"])[0] == 400)
 check("a ref name that is an option: refused", act(action="publish", **{"from": {"area": "public", "name": "admins"}},
       to={"area": "public", "name": "ro"}, refs=["--upload-pack=x"])[0] == 400)
-# Build on push, per repository (step 24): on by default where offered, a switch, and ci.py honouring it.
+# Build on push, per repository: on by default where offered, a switch, and ci.py honouring it.
 info = {(r["area"], r["name"]): r for r in gitrepos.snapshot()["repos"]}
 check("a private, admin-pushed repository is offered builds, on by default", info[("private", "secret")]["can_build"]
       and info[("private", "secret")]["build"] is True and info[("private", "secret")]["has_script"] is False)

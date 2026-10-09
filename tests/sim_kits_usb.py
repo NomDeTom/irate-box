@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Toolkits by USB stick (next-work plan step 32, toolkits-plan §4.3), offline: the export carries
+"""Toolkits by USB stick, offline: the export carries
 the kit's .debs and the signed indexes that list them; the import accepts a .deb only when a signed
 InRelease (its signature checked with the box's keys), the Packages file it lists, and the .deb's
-own hash all agree. gpgv and dpkg-deb are stood in (the real chain, with Debian's keys, was tried
-on the Lyra: next-work-plan, step 32). python3 tests/sim_kits_usb.py"""
+own hash all agree. gpgv and dpkg-deb are stood in. python3 tests/sim_kits_usb.py"""
 import hashlib, json, os, shutil, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
@@ -92,7 +91,7 @@ def resign(k):
     p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
     p.write_text(p.read_text().replace("SIGNED BY: good key", "SIGNED BY: someone else"))
 refused(resign, "an index signed by a key the box doesn't trust")
-# N12 (stance review 2026-10-08): a stick cannot replay an old signed set.
+# A stick cannot replay an old signed set.
 def expired(k):
     p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
     p.write_text(p.read_text().replace("Origin: Debian\n", "Origin: Debian\nValid-Until: Thu, 01 Jan 2026 00:00:00 UTC\n"))

@@ -117,7 +117,7 @@ def install_state():
 def check_install():
     st = install_state()
     if not st:
-        return [_f("install", "Last install", "warn", "No record of an install (installs before 2026-10-02 kept none).",
+        return [_f("install", "Last install", "warn", "No record of an install (older installs kept none).",
                    "The next run of install.sh records one.")]
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.get("started", 0)))
     if st.get("running") and _pid_alive(st.get("pid")):
@@ -226,7 +226,7 @@ def check_units():
         else:
             out.append(_f(f"unit:{unit}", title, "ok", f"Running{', restarted ' + p['NRestarts'] + ' times' if p.get('NRestarts', '0') not in ('0', '') else ''}."))
     # A timer's service: the timer stays "running" while every run of it fails, and a one-shot
-    # service's failure shows only in its result (the librarian's did, unseen, 2026-10-06).
+    # service's failure shows only in its result.
     for unit, why in expected_units():
         if not unit.endswith(".timer"):
             continue
@@ -254,7 +254,7 @@ def check_units():
     unit_text = (UNIT_DIR / "irate-box-control.service").read_text() if (UNIT_DIR / "irate-box-control.service").exists() else ""
     if unit_text and "StartLimitIntervalSec=0" not in unit_text:
         out.append(_f("helper-limit", "Root helper start limit", "warn",
-                      "Installed before 2026-10-02: a burst of /admin clicks can trip systemd's start limit and leave "
+                      "Installed by an older version: a burst of /admin clicks can trip systemd's start limit and leave "
                       "the root helper stopped until a reboot.", "Run the installer again (or update): it writes the fixed unit.",
                       [RERUN]))
     # Anything else that failed on the box: not ours to restart, but worth knowing when troubleshooting.
@@ -281,7 +281,7 @@ def zim_header_problem(path):
 
 
 def kiwix_reads(path):
-    # As the hub, not root (F12): the books are the hub's, and may be anyone's download.
+    # As the hub, not root: the books are the hub's, and may be anyone's download.
     return zimcheck.kiwix_problem(path, timeout=120, user=HUB_USER)
 
 
@@ -392,7 +392,7 @@ def kiwix_rebuild():
     if not new.exists():
         return "kiwix-manage made no library; the old one stays."
     # Already the hub's (kiwix-manage made it as the hub): no chown, which would follow a link
-    # swapped in for it (F3). The rename replaces a link, never follows one.
+    # swapped in for it. The rename replaces a link, never follows one.
     os.replace(new, LIBRARY)
     msg = f"Library rebuilt: {len(books) - len(skipped)} books" + (f" (skipped {', '.join(skipped)})" if skipped else "")
     if (UNIT_DIR / "kiwix.service").exists():
@@ -425,7 +425,7 @@ def check_uplink():
     except (ValueError, TypeError, KeyError):
         said = "settings not readable"
     out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, {said}.")]
-    # Stalled: down, with nothing left the level allows that could help (uplink-ladder-plan, stage 2).
+    # Stalled: down, with nothing left the level allows that could help.
     stall = st.get("stall") if st.get("state") == "stalled" else None
     if stall:
         down = int((st.get("at", 0) - ((st.get("outage") or {}).get("since") or st.get("at", 0))) // 60)
@@ -438,7 +438,7 @@ def check_uplink():
     return out
 
 
-ROAMS_AN_HOUR = 6   # more than this, with the hotspot on the same radio, is worth a look (item 35, stage 7)
+ROAMS_AN_HOUR = 6   # more than this, with the hotspot on the same radio, is worth a look
 
 
 def _json_or(path, default=None):
@@ -449,7 +449,7 @@ def _json_or(path, default=None):
 
 
 def roaming_findings(st, inv):
-    """Roaming often while the hotspot shares the radio (item 35, stage 7): each roam moves the guests'
+    """Roaming often while the hotspot shares the radio: each roam moves the guests'
     channel too, and is a re-association on the radio. Said with the choices, never done for the owner."""
     radio = next((r for r in (inv or {}).get("radios", []) if r.get("iface") == st.get("iface") and r.get("roaming")), None)
     f = (radio or {}).get("roaming") or {}
@@ -608,8 +608,8 @@ def check_builds(now=None):
 # --- the clock ---------------------------------------------------------------------------------
 # These boards have no clock that keeps time while they are off (the Lyra has no RTC at all),
 # and the hub is meant to run offline. fake-hwclock restores the last time it saved, so a box
-# that was off for two days boots two days behind; on the Lyra on 2026-09-30 that was 45.7 h,
-# put right by chrony 18 s after boot only because the box was online. The hub's own expiry
+# that was off for two days boots two days behind, put right by chrony only when the box is
+# online. The hub's own expiry
 # (hubclock.py) never reads the wall clock; logs, git commit dates, file times and certificate
 # checks do. So: what keeps the time, what happened at this boot, is the time certainly wrong,
 # and, offline, set it from the owner's browser.
@@ -673,7 +673,7 @@ def latest_known_time():
     for key in ("at", "started"):
         if isinstance(st.get(key), (int, float)):
             marks.append((st[key], "the last install"))
-    # Root's own files only (F14): the hub could touch its clock.json, or plant files of its own.
+    # Root's own files only: the hub could touch its clock.json, or plant files of its own.
     for path, what in ((CODE / "VERSION", "the installed code"), (CONTROL / "health.json", "the last health check"),
                        (CONTROL / "uplink.json", "the watchdog's report")):
         m = rtc.root_mtime(path)
@@ -822,7 +822,7 @@ def set_clock(epoch):
         raise ValueError(f"that time is before {what} was written, so this device's clock looks wrong; nothing changed")
     if epoch > now + 10 * 365 * 86400 or epoch < 1735689600:  # 2025-01-01
         raise ValueError("that time is not plausible; nothing changed")
-    # Not years past anything the box has seen (F14): a forged request could otherwise move the
+    # Not years past anything the box has seen: a forged request could otherwise move the
     # clock far forward, after which it is trusted, saved to the module, and hard to bring back.
     if epoch > max(newest or 0, now) + 2 * 365 * 86400:
         raise ValueError("that is more than two years past the newest time this box has seen; nothing changed")
@@ -981,7 +981,7 @@ def fix(choice):
         src = ZIM / arg
         if not arg.endswith(".zim") or "/" in arg or not src.is_file():
             raise ValueError(f"{arg} is not a book in {ZIM}")
-        # As the hub (F4): both folders are the hub's, so root has no business there. Done as
+        # As the hub: both folders are the hub's, so root has no business there. Done as
         # root, a quarantine/ the hub had made a link was chowned to it, wherever it led.
         hub = ("runuser", "-u", HUB_USER, "--") if os.geteuid() == 0 else ()
         r = run(*hub, "mkdir", "-p", "--", str(QUARANTINE))

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The decoder bridge (next-work plan step 18), offline: AES against FIPS-197 and NIST SP 800-38A's
+"""The decoder bridge, offline: AES against FIPS-197 and NIST SP 800-38A's
 CTR vectors; Meshtastic's keys ("AQ==" and its variants, 16 and 32 bytes) and channel hashes;
 packets built here as the firmware builds them (a Data message, AES-CTR with the packet's id and
 sender as nonce, in a MeshPacket in a ServiceEnvelope) decoded back: text, position, node info,
@@ -136,7 +136,7 @@ check("MQTT: CONNECT as 3.1.1, SUBSCRIBE to msh/#, a PUBLISH decoded", got["conn
 srv.close()
 src = (REPO / "irate_box/hub/meshbridge.py").read_text()
 check("it never publishes", "0x30" not in src.split("class Bridge")[1])
-# The security doctor's rules (step 18): never bridged out, anonymous limited to msh/#, keys private.
+# The security doctor's rules: never bridged out, anonymous limited to msh/#, keys private.
 from irate_box.root import secdoctor as SD  # noqa: E402
 MQ = T / "mosquitto"; (MQ / "conf.d").mkdir(parents=True)
 SD.MOSQUITTO = MQ; SD.STATE = T

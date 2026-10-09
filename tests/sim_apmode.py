@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The hotspot's plan (apmode.py, item 2): the ladder over whatever radios a box has, the channel an
-access point may use, and the address the box's CA allows. The Lyra's own radio from its `iw list`
-(tests/fixtures/iw-list-aic8800dc.txt, captured 2026-10-07); the rest are boxes it isn't: Ethernet
+"""The hotspot's plan (apmode.py): the ladder over whatever radios a box has, the channel an
+access point may use, and the address the box's CA allows. An AIC8800DC radio from its `iw list`
+(tests/fixtures/iw-list-aic8800dc.txt); the rest are boxes it isn't: Ethernet
 only, a USB dongle beside the WiFi link, a one-channel radio, a radio that can't share, none at all.
 python3 tests/sim_apmode.py"""
 import copy
@@ -24,7 +24,7 @@ def check(name, cond, info=""):
 
 phys = netinv.parse_phys((REPO / "tests" / "fixtures" / "iw-list-aic8800dc.txt").read_text())
 lyra = phys["phy0"]
-check("the Lyra's radio: an AP beside the client, up to 3 channels, 2.4 GHz, channels 1-14 listed",
+check("the AIC8800DC radio: an AP beside the client, up to 3 channels, 2.4 GHz, channels 1-14 listed",
       lyra["ap"] and lyra["ap_beside_client"] and lyra["channels_at_once"] == 3 and lyra["bands"] == ["2.4 GHz"]
       and [c["channel"] for c in lyra["channels"]] == list(range(1, 15)), {k: lyra[k] for k in ("ap", "ap_beside_client", "channels_at_once", "bands")})
 check("  channels for an AP: 1-13 in GB (the driver's 14 isn't allowed there), 1-11 in the US",
@@ -49,7 +49,7 @@ def box(radios, uplink=None, country="GB"):
 wifi_up = {"iface": "wlan0", "kind": "wifi"}
 inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up)
 p = apmode.plan(inv, v)
-check("the Lyra on its home WiFi: rung 2, beside the link on a channel of its own, starting on the link's (11), to be tried",
+check("the AIC8800DC on a home WiFi: rung 2, beside the link on a channel of its own, starting on the link's (11), to be tried",
       (p["rung"], p["kind"], p["channel"], p["to_try"], p["follows_uplink"], p["address"]) == (2, "own-channel", 11, True, False, "192.168.4.1"), p)
 p = apmode.plan(inv, v, tried={"phy0": False})
 check("  the try failed: rung 3, following the link's channel", (p["rung"], p["kind"], p["channel"], p["follows_uplink"]) == (3, "follow", 11, True), p)
@@ -154,7 +154,7 @@ check("start: the files written (the keyfile 600), the unit installed, the hook 
       (T / "kf").stat().st_mode & 0o777 == 0o600 and (ap.UNITS / ap.DNSMASQ_UNIT).exists() and os.access(ap.DISPATCHER, os.X_OK)
       and ["nmcli", "connection", "up", "irate-box-ap"] in calls and rec["up"] and rec["confirmed"] and rec["plan"]["channel"] == 11, rec)
 link = ap.LINKS / ap.LINK_FILE
-check("  udev told to keep ap0's name (a USB radio's ap0 became wlx… on the Lyra), before ap0 is made",
+check("  udev told to keep ap0's name (a USB radio's ap0 can become wlx…), before ap0 is made",
       link.exists() and "OriginalName=ap0" in link.read_text() and "Name=ap0" in link.read_text()
       and calls.index(["udevadm", "control", "--reload"]) < calls.index(["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"]))
 calls.clear()

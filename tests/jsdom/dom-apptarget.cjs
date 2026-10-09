@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// app.html frames only a path on the hub's own origin (security review F25): web/app.js's
+// app.html frames only a path on the hub's own origin: web/app.js's
 // target(), run against hashes a browser's URL parser reads as another site. Plain node.
 // Usage: node dom-apptarget.cjs
 const fs = require('fs');

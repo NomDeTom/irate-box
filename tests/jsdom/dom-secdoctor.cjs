@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Security doctor page's joint report and scan imports (next-work plan step 31) in jsdom: nmap
+// The Security doctor page's joint report and scan imports in jsdom: nmap
 // XML, OpenVAS XML and OpenVAS CSV read in the browser into only what they found; an import posts
 // that and nothing else; the joint report's items, what only one source saw, each source's
 // coverage and freshness; the badge counting merged items. Static: no hub needed.
@@ -25,7 +25,7 @@ const OPENVAS = `<report id="r1"><report id="r1"><scan_start>2026-10-05T10:00:00
 const CSV = 'IP,Hostname,Port,Port Protocol,CVSS,Severity,QoD,Solution Type,NVT Name,Summary,Specific Result,NVT OID,CVEs,Task ID,Task Name,Timestamp,Result ID,Impact,Solution\n' +
   '192.168.4.1,,80,tcp,7.5,High,80,VendorFix,"nginx < 1.27, ""old""",An old nginx.,,1.3.6,"CVE-2026-1111,CVE-2026-2222",t,task,2026-10-05T10:00:00Z,r,,Update nginx.\n' +
   '192.168.4.1,,,tcp,0.0,Log,80,,OS detection,,,1,,t,task,2026-10-05T10:00:00Z,r2,,\n';
-// The box's scan, one of each kind (S of the menu overhaul): a cure, two choices, a toggle, an update.
+// The box's scan, one of each kind: a cure, two choices, a toggle, an update.
 const F = (id, title, status, actions) => ({ id, title, status, detail: 'd', fix: '', actions });
 const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn', detail: 'No certificate in use.', fix: 'Make the box\'s certificate.',
     actions: [], do: { go: 'security-https', where: 'Security → HTTPS' } }], accepted: {}, scan: { at: now, listeners: [], findings: [
@@ -90,7 +90,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   try { w.eval('parseScanReport')('Name,Value\na,b\n', 'x.csv'); threw = ''; } catch (e) { threw = e.message; }
   check('a CSV that is not OpenVAS: refused, and says why', /Not an OpenVAS CSV report/.test(threw), threw);
 
-  // The joint report on the page: one list, each item ending in what to do (item 11, 2026-10-09).
+  // The joint report on the page: one list, each item ending in what to do.
   const rows = () => [...d.querySelectorAll('#joint-items .finding')];
   check('the counters: after merging, less what is not for this box', /^3 all\s*1 to fix\s*2 to look at$/.test(t(d.getElementById('joint-summary'))), t(d.getElementById('joint-summary')));
   check('one list, worst first: what it is about, the sources that agree', rows().length === 3 && /^To fix/.test(t(rows()[0])) && /Kernel link protections/.test(t(rows()[0]))
@@ -145,7 +145,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
-  // S: each line of the scan where it belongs (checklist 4d, 5d), in the same shape.
+  // Each line of the scan where it belongs, in the same shape.
   const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
   check('Security: what waits for a choice, worst first', ids('#security-findings') === 'Passwordless sudo|Cockpit|SSH password login', ids('#security-findings'));
   check('  the cure is not there (it is the doctor\'s)', !/Kernel link/.test(t(d.getElementById('security-findings'))));

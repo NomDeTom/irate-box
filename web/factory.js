@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Firmware Factory's own page, /admin/factory.html (menu overhaul F7; checklist 5b, snag 7: "all of
-// the decisions about building and scheduling builds should be inside it"). Moved whole from
-// admin.js, which keeps only the Factory's settings outside the app (its tile, where builds come
+// The Firmware Factory's own page, /admin/factory.html: every decision about building and scheduling
+// builds is here; admin.js keeps only the Factory's settings outside the app (its tile, where builds come
 // from). Behind the same login as /admin, and asking the same /admin/factory API.
 (function () {
   'use strict';
@@ -10,7 +9,7 @@
   const noteEl = (id) => document.getElementById(id);
   function say(text, ok, at) { at.textContent = text; at.classList.toggle('bad', !ok); at.hidden = !text; }
   const el = (tag, props = {}, ...kids) => {
-    // A button with no class of its own is an action button (rule 6a: the control vocabulary).
+    // A button with no class of its own is an action button (the control vocabulary).
   if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
   const node = Object.assign(document.createElement(tag), props);
     node.append(...kids.filter((k) => k !== null && k !== undefined));

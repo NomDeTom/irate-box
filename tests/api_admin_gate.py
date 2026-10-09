@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The hub's own guard on /admin, against a hub it starts with a front secret: /admin refused
-without the front's header (F27, F31: anything on loopback), /admin changes refused without the
-/admin page's header or from another origin (S3), and a refused request's body never left on a
-kept-alive connection to poison the next one (F2), refused or not. python3 tests/api_admin_gate.py"""
+without the front's header (anything on loopback), /admin changes refused without the
+/admin page's header or from another origin, and a refused request's body never left on a
+kept-alive connection to poison the next one, refused or not. python3 tests/api_admin_gate.py"""
 import http.client, os, subprocess, sys, tempfile, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
@@ -41,7 +41,7 @@ try:
     check("after a refused POST, the next request on the connection is itself", go("GET", "/admin/settings", front) == 200)
     go("POST", "/admin/settings", {"Content-Type": "application/json"}, b'{"x": 1}')
     check("after a refused POST (no secret), likewise", go("POST", "/admin/settings", page, b"{}") == 200)
-    # Every route that answers without reading the body (F2 properly): the body is read away
+    # Every route that answers without reading the body: the body is read away
     # after the answer, so the next request on the connection is still itself.
     for method, path in (("PUT", "/nothing-here"), ("DELETE", "/nothing-here"), ("PATCH", "/nothing-here"),
                          ("GET", "/status"), ("OPTIONS", "/nothing-here"), ("POST", "/store/" + "x" * 300)):
@@ -56,7 +56,7 @@ try:
     r = c.getresponse(); r.read()
     check("a chunked unread body closes the connection", r.will_close, r.getheaders())
     check("and the next request, on a new one, is itself", go("GET", "/admin/settings", front) == 200)
-    # N10 (stance review 2026-10-08): a guest-level change from another site, or from a sibling port
+    # A guest-level change from another site, or from a sibling port
     # (same-site), is refused; one that says nothing of where it came from is not a browser's.
     msg = {"Content-Type": "application/json"}
     check("POST /messages from a cross-site page: 403", go("POST", "/messages", {**msg, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403)
@@ -68,7 +68,7 @@ try:
           and go("POST", "/messages", msg, b"{}") != 403)
     check("and the connection is still itself after each", go("GET", "/admin/settings", front) == 200)
 
-    # The setup gate (stance review 2026-10-08, I1): "Finish setup" refused while the Security page's last scan
+    # The setup gate: "Finish setup" refused while the Security page's last scan
     # says a passwordless sudo rule names an account sshd lets in by password.
     import json as _json
     ctl = Path(state) / "control"; ctl.mkdir(exist_ok=True)
@@ -80,21 +80,21 @@ try:
     (ctl / "security.json").unlink()
     check("  no scan at all: finished", go("POST", "/admin/settings", same, b'{"setup_done": false}') == 200)
 
-    # The security doctor asks the same of the running hub (stance review §2: probes, not code markers).
+    # The security doctor asks the same of the running hub (probes, not code markers).
     sys.path.insert(0, str(REPO))
     from irate_box.root import secdoctor
     secdoctor._hub_port = lambda: port
-    check("the doctor's F2 probe: this hub drains an unread body", secdoctor.probe_drains() is True)
-    check("the doctor's F15 probe: this hub refuses a 300 KB JSON body and stays usable", secdoctor.probe_json_cap() is True)
-    # F15: the hub reads no JSON over 256 KB; the connection stays usable after.
+    check("the doctor's drain probe: this hub drains an unread body", secdoctor.probe_drains() is True)
+    check("the doctor's JSON-size probe: this hub refuses a 300 KB JSON body and stays usable", secdoctor.probe_json_cap() is True)
+    # The hub reads no JSON over 256 KB; the connection stays usable after.
     big = b'{"x": "' + b"y" * (300 * 1024) + b'"}'
     check("a JSON body over 256 KB: 413", go("POST", "/messages", {"Content-Type": "application/json"}, big) == 413)
     check("and the next request is itself", go("GET", "/admin/settings", front) == 200)
-    # F20: the store answers without CORS headers.
+    # The store answers without CORS headers.
     c.request("GET", "/api/saves", headers={"Host": f"127.0.0.1:{port}", "Origin": "http://evil.example"})
     r = c.getresponse(); r.read()
     check("the store sends no Access-Control-Allow-Origin", r.getheader("Access-Control-Allow-Origin") is None, r.getheaders())
-    # F26: malformed input is a 400, not a crashed handler; the connection stays usable.
+    # Malformed input is a 400, not a crashed handler; the connection stays usable.
     check("a JSON array body: 400", go("POST", "/messages", {"Content-Type": "application/json"}, b"[1, 2]") == 400)
     check("Content-Length that is not a number: 400", go("POST", "/messages", {"Content-Type": "application/json", "Content-Length": "abc"}, None) in (400, 411))
     check("and the hub still answers", go("GET", "/status") == 200)

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The Security page's offers for the inherited image (next-work plan step 8): the kernel's link
+"""The Security page's offers for the inherited image: the kernel's link
 protections and its addresses and log, and login accounts in the docker and disk groups. Each is
 found, fixed and undone against a fake /proc/sys, /etc/group and /etc/passwd, with a stand-in
 gpasswd; uninstall's undo_all puts everything back. python3 tests/sim_security_image.py"""
@@ -52,7 +52,7 @@ for name, body in {
 (T / "root-pw").write_text("P")
 (T / "firstrun").write_text("armbian first login pending\n")
 os.environ.update(HUB_ARMBIAN_FIRSTRUN=str(T / "firstrun"))
-# The gates (stance review 2026-10-08): sudoers, apt, ramlog and journald files of the fixture's own.
+# The gates: sudoers, apt, ramlog and journald files of the fixture's own.
 (T / "sudoers.d").mkdir(); (T / "sudoers.d" / "claude-temp").write_text("lyra ALL=(ALL) NOPASSWD: ALL\n")
 (T / "sudoers").write_text("root ALL=(ALL:ALL) ALL\n%sudo ALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n")
 (T / "apt" / "sources.list.d").mkdir(parents=True); (T / "apt" / "trusted.gpg.d").mkdir(); (T / "keyrings").mkdir()
@@ -175,9 +175,9 @@ import re
 rx = re.compile(re.search(r'SECURITY_CHOICE_RE = re.compile\(r"(.*?)"\)', srv).group(1))
 check("the hub passes these choices to the helper", all(rx.match(c) for c in
       ("kernel-links-on", "kernel-links-debian", "kernel-info-undo", "root-lock", "firstrun-off", "firstrun-undo", "group-drop:lyra@docker", "group-undo:lyra@disk")))
-# Automatic security updates: the owner's choice on the Updates page (Tom, 2026-10-09: "the toolkit is
-# independent of the system update itself"), as item 36's pattern: how often to look (Manual, 6 h, 24 h,
-# weekly) and what to do with what is found (Flag, Fetch, Install); judged by what would run (I3: Armbian
+# Automatic security updates: the owner's choice on the Updates page, independent of the toolkit, as the
+# update pattern: how often to look (Manual, 6 h, 24 h, weekly) and what to do with what is found (Flag,
+# Fetch, Install); judged by what would run (Armbian
 # ships APT::Periodic::Enable "0", so the binary being there means nothing).
 uf = security.unattended_finding
 nf = uf(False, {}, None)
@@ -196,7 +196,7 @@ check("install, chosen: a warning while it would not run (not installed, or the 
       and uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "1"}, None, (6, 2))["status"] == "warn")
 check("  running: fine; not run in a fortnight: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2, (24, 2))["status"] == "ok"
       and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, (24, 2))["status"] == "warn")
-check("#176's three choices read as the pattern's", security.chosen_pattern({"autoupdate": {"level": "download"}}) == (24, 1)
+check("the old three choices read as the pattern's", security.chosen_pattern({"autoupdate": {"level": "download"}}) == (24, 1)
       and security.chosen_pattern({"autoupdate": {"level": "off"}}) == (0, 0) and security.chosen_pattern({}) is None)
 for bad in ("12-1", "24-3", "x", "24"):
     try:
@@ -222,7 +222,7 @@ rec = security.load_record()["autoupdate"]
 check("  every day, fetch: downloads only; the 6-hour drop-ins gone", 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text()
       and 'APT::Periodic::Unattended-Upgrade "0";' in conf.read_text() and (rec["often"], rec["act"]) == (24, 1) and not six.exists(), msg)
 msg = security.fix("autoupdate-download", None)
-check("  #176's choice names still understood", (security.load_record()["autoupdate"]["often"], security.load_record()["autoupdate"]["act"]) == (24, 1), msg)
+check("  the old choice names still understood", (security.load_record()["autoupdate"]["often"], security.load_record()["autoupdate"]["act"]) == (24, 1), msg)
 security.fix("autoupdate-set:6-0", None)
 msg = security.fix("autoupdate-undo", None)
 check("  undo: our file and drop-ins gone, the timers as they were (off here: disabled again), the package removed as it was installed here",
@@ -262,7 +262,7 @@ hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the root helper takes the pattern's choices without a scan offering them, and only the grid's",
       'choice.startswith("autoupdate-set:")' in hc and "security.parse_pattern" in hc)
 
-# I6 (stance review 2026-10-08): SSH forwarding, found from sshd -T's words and offered off.
+# SSH forwarding, found from sshd -T's words and offered off.
 sf = lambda s, rec={}: {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec)}  # noqa: E731
 on = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "yes", "allowagentforwarding": "no", "x11forwarding": "yes"})
 check("ssh forwarding on (the image's default): a warning naming which, with the offer",
@@ -273,7 +273,7 @@ check("  off by this page: ok, with Undo", off["ssh-forwarding"]["status"] == "o
 check("  undo_all knows it, fix() takes it", "ssh-forwarding-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
       and '"ssh-forwarding-off", "ssh-forwarding-undo"' in (REPO / "irate_box/root/security.py").read_text())
 
-# The gates (stance review 2026-10-08, item 4): a NOPASSWD rule for an account sshd lets in by
+# The gates: a NOPASSWD rule for an account sshd lets in by
 # password, a repository key trusted for everything, logs in RAM; each found, fixed, undone.
 (T / "home" / "lyra" / ".ssh").mkdir(parents=True)
 (T / "passwd").write_text("root:x:0:0::/root:/bin/bash\nlyra:x:1000:1000::" + str(T / "home" / "lyra") + ":/bin/bash\nsvc:x:1001:1001::/srv:/usr/sbin/nologin\n")
@@ -327,7 +327,7 @@ check("undo_all puts the three back", (T / "sudoers.d" / "claude-temp").exists()
 
 
 
-# Security updates (2026-10-09): Debian's stable fixes count, as the security archive's do; others' don't.
+# Security updates: Debian's stable fixes count, as the security archive's do; others' don't.
 SIM = """Inst base-files [26.05.0-trunk-13.8+deb13u6-trixie] (26.8.3-13.8+deb13u6-trixie Armbian:trixie [armhf])
 Inst bash [5.2.37-2+b9] (5.2.37-2+b10 Debian:13.7/stable [armhf])
 Inst gzip [1.13-1] (1.13-1+deb13u1 Debian:13.7/stable [armhf])

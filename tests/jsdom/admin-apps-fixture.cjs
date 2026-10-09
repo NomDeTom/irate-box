@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // /admin/apps as the hub answers it (irate_box/hub/manifests.py admin_apps), from apps.d/, for
-// the jsdom tests of the admin page (menu overhaul M4).
+// the jsdom tests of the admin page.
 const fs = require('fs'), path = require('path');
 const APPS = path.resolve(__dirname, '../../apps.d');
 // The apps whose access can be set: access.py's ROUTED, read from the source so they never drift.
@@ -17,7 +17,7 @@ module.exports = function adminApps() {
       if (!name || (tile.widget && !m.admin)) return [];
       return [{ id: m.id, name, icon: adm.icon || tile.icon || '', sections: adm.sections || [], folder: !!menu, art: (menu || {}).art || null, local: false,
         page: !!adm.page, width: adm.width || null, updates: !!m.source, switch: ROUTED.includes(m.id),
-        // server.seen_only: a tile or folder with no switch, not drawn on the hub page (F3)
+        // server.seen_only: a tile or folder with no switch, not drawn on the hub page
         seen: !ROUTED.includes(m.id) && !adm.page && (tile.row || 'apps') === 'apps' && !tile.widget && !!(m.tile || menu) }];
     });
 };

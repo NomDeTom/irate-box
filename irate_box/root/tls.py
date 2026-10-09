@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""HTTPS for the box (next-work plan step 15, plans/certificates-plan): a small certificate
-authority made on the box, and the server certificate it signs. Root's; openssl does the work.
+"""HTTPS for the box: a small certificate authority made on the box, and the server certificate it signs. Root's; openssl does the work.
 
 The CA (EC P-256, 10 years) is name-constrained: it can vouch only for the box's own names
 (irate.home.arpa and names under it, <hostname>.local) and addresses (the hotspot's 192.168.4.1
@@ -134,7 +133,7 @@ def make_ca(nets=None):
     rec = {"ca": {"made": int(time.time()), "names": names, "networks": ips, "fingerprint": fingerprint(CA_CERT)}}
     _write(RECORD, json.dumps(rec), 0o644)
     make_cert()
-    front(True)  # making the box's CA is the owner's choice to have HTTPS (certificates-plan, question 2)
+    front(True)  # making the box's CA is the owner's choice to have HTTPS
     return _record()
 
 
@@ -248,7 +247,7 @@ def front(on):
 
 
 def admin_only(on):
-    """/admin over HTTPS only (certificates-plan stage 5): plain requests for it are sent to the
+    """/admin over HTTPS only: plain requests for it are sent to the
     HTTPS twin, so the admin password never crosses the network in clear. Only while HTTPS is on;
     the hub lets the owner turn it on only from an admin page opened over HTTPS (proof that their
     device trusts the box, so they can't lock themselves out)."""
@@ -310,7 +309,7 @@ def renew():
     return f"certificate re-made ({why})"
 
 
-# --- bring your own (certificates-plan stage 4) -----------------------------------------------------
+# --- bring your own ------------------------------------------------------------------------------
 # A certificate for a domain the owner holds, minted elsewhere (DNS-01: the box has no public
 # address) and pasted in on /admin. The only route with no warning anywhere and nothing to install,
 # and what passkeys and the https:// captive-portal API need. Checked before it is used: the key

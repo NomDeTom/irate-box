@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Firmware Factory's tile on the front page (next-work plan step 36, hub.js) in jsdom, static:
+// The Firmware Factory's tile on the front page (hub.js) in jsdom, static:
 // what is building and how far along, what is waiting, each build's files as downloads labelled by
 // kind. Usage: [JSDOM=…/jsdom] node dom-factory-tile.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');

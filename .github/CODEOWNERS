@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Every change needs NomDeTom's review: the ruleset ("da rules") requires a code owner's
-# approval, so collaborators cannot approve each other's pull requests in. Since 2026-10-06.
+# approval, so collaborators cannot approve each other's pull requests in.
 * @NomDeTom

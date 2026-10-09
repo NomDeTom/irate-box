@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The security doctor's deep audit (security-doctor-plan §3, §7.3–4): debian-cis's checks of the
-CIS benchmark (--audit-all, never its fixes) and Lynis, each a few minutes on a small board (on
-the Lyra, 2026-10-06: debian-cis 3 min for 241 checks, Lynis 4 min 40 s). Weekly by default and on
+"""The security doctor's deep audit: debian-cis's checks of the CIS benchmark (--audit-all, never
+its fixes) and Lynis, each a few minutes on a small board (debian-cis about 3 min for 241 checks,
+Lynis about 5 min). Weekly by default and on
 demand; its findings are kept in control/security-deep.json until the next one, and every regular
 audit shows them as steps of their own (secdoctor.py), so they reach the joint report.
 
@@ -35,7 +35,7 @@ KITS_ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 CIS_UPSTREAM = "https://github.com/ovh/debian-cis"
 TIMEOUT = 40 * 60
 
-# What the box does on purpose (security-doctor-plan §5.3), by source and check id (a pattern).
+# What the box does on purpose, by source and check id (a pattern).
 # debian-cis's by the check's name whatever its number (the benchmark renumbers them).
 FLOOR = "the box filters the hotspot alone (the floor, Security page): its other interfaces are the owner's network, left as found"
 ACCEPTED = [
@@ -214,7 +214,7 @@ def cis_findings(checks, summary, took=None, info=None):
 def cis_pin():
     """The commit of debian-cis the shipped security kit pins (toolkits/security.json, root-owned
     code), or None. The mirror is fetched and tagged by the hub user, so root runs nothing from it
-    but this commit (security stance review 2026-10-08, N2)."""
+    but this commit."""
     from irate_box.hub import kitdefs
     for g in (kitdefs.shipped().get("security") or {}).get("git", []):
         if g.get("upstream", "").rstrip("/").lower() == CIS_UPSTREAM and re.fullmatch(r"[0-9a-f]{40}", str(g.get("pin", ""))):

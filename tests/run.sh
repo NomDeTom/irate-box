@@ -89,5 +89,9 @@ trap 'kill $pid 2>/dev/null; rm -rf "$state"' EXIT
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$port/status" && break; sleep 0.1; done
 PORT=$port run api_locks.py
 
+# A warning, not a failure: names, plan references and dated comments in the code (history_guard.py --strict fails).
+echo "== history_guard.py"
+python3 "$here/history_guard.py" | tail -1
+
 [ "$failed" = 0 ] && echo "all passed" || echo "$failed suite(s) failed"
 exit $((failed > 0))

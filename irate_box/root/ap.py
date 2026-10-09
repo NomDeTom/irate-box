@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The hotspot, applied (item 2 of the current and next actions): what the root helper writes and
-runs for a plan from hub/apmode.py. As the prototype on the Lyra did it (2026-10-01, plan
-archive): a second interface `ap0` when the hotspot shares the radio with the box's WiFi link
+"""The hotspot, applied: what the root helper writes and runs for a plan from hub/apmode.py: a
+second interface `ap0` when the hotspot shares the radio with the box's WiFi link
 (`iw dev <link> interface add ap0 type __ap`), the radio's own interface when it has one to itself;
 a NetworkManager connection on it with the address 192.168.4.1/24 (which the box's certificate
 authority permits); and the box's own dnsmasq bound to that interface alone, handing out
@@ -185,8 +184,7 @@ BOOT_UNIT = "irate-box-ap.service"
 
 def link_file():
     """udev keeps ap0's name. Without it a USB radio's second interface is renamed by its address
-    (wlx…) as soon as it appears, and the hotspot's profile, made for ap0, finds no device (the Lyra,
-    2026-10-07)."""
+    (wlx…) as soon as it appears, and the hotspot's profile, made for ap0, finds no device."""
     return "\n".join([
         "# Written by irate-box (root/ap.py): the hotspot's interface keeps the name it was given.",
         "[Match]", f"OriginalName={SHARED_IFACE}", "", "[Link]", "NamePolicy=", f"Name={SHARED_IFACE}", ""])

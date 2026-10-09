@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Every service unit install.sh writes meets the sandbox baseline (next-work plan step 17, the
-prevention plan: "a sandbox baseline for every service unit, with a test that fails on a missing
-line"). A unit that runs as root, or one that can't take a line, says why below; nothing else is
+"""Every service unit install.sh writes meets the sandbox baseline. A unit that runs as root, or one that can't take a line, says why below; nothing else is
 let off. $HUB_SANDBOX is expanded as install.sh expands it. python3 tests/unit_guard.py"""
 import re
 import sys
@@ -45,8 +43,7 @@ EXEMPT = {
                              "ProtectKernelModules=yes": "", "ProtectControlGroups=yes": ""},
 }
 # The builder's exemptions marked "" are not reasons: they are the lines it is still to get, once
-# tried on the Lyra with a build (the builder was busy with one on 2026-10-07). Listed so the test
-# names them; remove each as it is added.
+# tried with a build. Listed so the test names them; remove each as it is added.
 
 text = (REPO / "install.sh").read_text()
 sandbox = re.search(r'^HUB_SANDBOX="(.*?)"$', text, re.S | re.M).group(1)

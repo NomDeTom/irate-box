@@ -1,19 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Which checks of each source ask the same question (security-doctor-plan §5.2): the doctor's own
+"""Which checks of each source ask the same question: the doctor's own
 findings, the Security page's scan, debian-cis's checks and Lynis's tests. A finding listed here is
 "about" the shared key, so the joint report merges what several sources say about one setting into
 one item. Unlisted checks stand alone; the table grows as they are met. tests/sim_secdoctor_joint.py
 checks every id here still exists where it can (the doctor's and the Security page's).
 
-Also here (Tom, 2026-10-09: "lists of emoji checks or warnings with vague information is totally
-unactionable"): what each CIS section means on a box like this (CIS), and where each finding is put
+Also here: what each CIS section means on a box like this (CIS), and where each finding is put
 right (DO), so every item on the page ends in one thing to do."""
 import re
 
 # key: {title, ref (the security review's finding), and each source's ids}. debian-cis's by the check's
-# name without its number (the benchmark renumbers: 1.9_install_updates was 1.9.1_install_updates on the
-# Lyra, so numbered ids never matched). Lynis's by its test, or for the two tests that report each setting
+# name without its number (the benchmark renumbers: 1.9_install_updates is 1.9.1_install_updates in
+# some versions, so numbered ids never match). Lynis's by its test, or for the two tests that report each setting
 # apart (KRNL-6000: a sysctl key; SSH-7408: an sshd option) by "test:setting", from its report's details[].
 XREF = {
     "kernel-links": {"title": "Kernel link protections (protected_symlinks, protected_hardlinks)", "ref": "F3",
@@ -76,7 +75,7 @@ def _lynis_section(check):
 # A doctor finding about a port the Security page lists: the same thing.
 SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883"}   # and each declared service's add-on finding: _declared_about
 
-# Findings that are a problem together, each alone only a warning (stance review 2026-10-08 §2):
+# Findings that are a problem together, each alone only a warning:
 # every named (source, id) must be present and not ok for the joint report to add the item.
 COMPOUND = [
     {"key": "sudo-and-passwords", "title": "A passwordless sudo rule, and SSH takes passwords",
@@ -114,7 +113,7 @@ def title(key):
     return XREF.get(key, {}).get("title", key)
 
 
-# What each source covers and cannot see (§5.5), said once on the report.
+# What each source covers and cannot see, said once on the report.
 COVERAGE = {
     "doctor": "The box's own design, as its security review found it: not general hardening.",
     "security-page": "What listens, SSH, pending security updates, the kernel's settings, root's groups.",
@@ -192,7 +191,7 @@ def cis(section):
 # a command ({cmd}; a finding may carry its own exact one), the owner's words for it ({say}), the deep audit again ({act: "deep"}), the box doctor's repair ({repair: its choice},
 # "Run the installer again"), or the hub's own work ({hub: why}): what an update of irate-box fixes. Matched by source and a pattern on the finding's id; the
 # first match wins; anything unmatched shows its fix text as it is.
-HUB_SANDBOX = "The hub's own units: hardening them is irate-box's work (its plan, item 27), done one unit at a time with a reboot each. Keep the hub updated."
+HUB_SANDBOX = "The hub's own units: hardening them is irate-box's work, done one unit at a time with a reboot each. Keep the hub updated."
 HUB_SETUP = ("The hub's own setup is not as its installer leaves it. Running the installer again (this box's version, "
              "with its recorded options) puts it back; if it comes back after that, something on the box is changing it.")
 DO = [
@@ -211,8 +210,8 @@ DO = [
     ("*", r"^image-apt-daily$", {"go": "pkg-makers", "where": "Updates → Packages from their makers"}),
     ("*", r"^reach-ssh$", {"go": "sec-ssh-password", "where": "Security → SSH password login"}),
     ("*", r"^reach-web$", {"go": "network", "where": "Network (Tailscale, to reach the box from afar instead)"}),
-    # ASLR and core dumps, from whichever source said so (the Lyra's deep audit, 2026-10-09: the CIS
-    # checks' own scripts state no plain setting for core dumps' limits line).
+    # ASLR and core dumps, from whichever source said so (the CIS checks' own scripts state no plain
+    # setting for core dumps' limits line).
     ("*", r"_enable_randomized_vm_placement$|^lynis-KRNL-6000-kernel\.randomize_va_space$",
      {"cmd": "echo kernel.randomize_va_space=2 | sudo tee /etc/sysctl.d/61-aslr.conf && sudo sysctl --system"}),
     ("*", r"_restrict_core_dumps$|^lynis-KRNL-5820|^lynis-KRNL-6000-(fs|kernel)\.suid_dumpable$",

@@ -15,7 +15,7 @@ set -eu
 WANT=${HUB_STATE_DIR:-/var/lib/hub}/tailscale.want
 HUB_USER=${HUB_USER:-hub}
 # The file is the hub's, in the hub's folder: root writes it only as the hub, so a link the hub
-# put there leads nowhere the hub could not write already (F13).
+# put there leads nowhere the hub could not write already.
 want_off="runuser -u $HUB_USER -- sh -c 'printf \"off\\n\" >\"\$1\"' sh $WANT"
 OFF_TIMER=irate-box-tailscale-off
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Git page as cards (next-work plan step 24, git-ci-plan §1–2) in jsdom, against a fixture of
+// The Git page as cards in jsdom, against a fixture of
 // every kind: own public, anyone-pushes, private and building, private read-only, a mirror, and
 // its submodule's mirror (no card). The filters and counts, the badges in words, Manage as a
 // drawer and as a side panel, each part asking the hub. Static: no hub needed.
@@ -157,7 +157,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   check('switching builds off asks the hub', posted.some(([, b]) => b.action === 'build' && b.name === 'fw-ci' && b.on === false));
 
-  // Manage opens under its card only (checklist 3a, F7): no side panel, nothing beside the grid.
+  // Manage opens under its card only: no side panel, nothing beside the grid.
   check('no side panel, nor its choice', !d.getElementById('git-side') && !d.getElementById('git-manage-as'));
   [...d.querySelectorAll('.git-drawer button')].find((b) => t(b) === 'Close').click();
   check('Close folds the drawer', !d.querySelector('#git-grid .git-drawer'));
@@ -172,7 +172,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   check('creating asks the hub', posted.some(([, b]) => b.action === 'create' && b.name === 'notes' && b.area === 'private'));
 
-  // Builds (step 33): the limits, what is offline, a run's own view, Build now and the templates.
+  // Builds: the limits, what is offline, a run's own view, Build now and the templates.
   await wait(100);
   check('builds: the limits said', /Each build: up to 12 hours, memory capped at 300\.0 MB, the lowest CPU priority\. The runs use 4\.8 MB; the newest 5 per repository are kept/.test(t(d.getElementById('ci-limits'))),
     t(d.getElementById('ci-limits')));

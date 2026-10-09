@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Root's writers never follow a link the hub planted (security review F3, F4, F5, F13; next-work
-plan step 5). Each writer is run against a state folder with a symlink, a hardlink or a FIFO
+"""Root's writers never follow a link the hub planted. Each writer is run against a state folder with a symlink, a hardlink or a FIFO
 waiting where it writes or reads, and the file the link leads to must be untouched. Runs as
 any user: following a link is the same mistake whoever does it. python3 tests/sim_root_links.py"""
 import json, os, re, shutil, subprocess, sys, tempfile, threading
@@ -81,7 +80,7 @@ except OSError:
     made = False
 check("safeio.create where a link is: refused, the target untouched", not made and untouched(v))
 
-# --- each of root's writers in control/ (F3, F13) ------------------------------------------
+# --- each of root's writers in control/ ------------------------------------------
 writers = {
     "answer() results/<id>.json": (hub_control.RESULTS / "0123456789abcdef.json", lambda: hub_control.answer("0123456789abcdef", True, "done")),
     "update.json": (hub_control.UPDATE_STATE, lambda: hub_control._write_update_state({"x": 1})),
@@ -91,7 +90,7 @@ writers = {
     "access.json": (hub_control.ACCESS_STATE, lambda: hub_control._access_record({"drop": "public"})),
     "security-audit.json": (hub_control.AUDIT_STATE, lambda: hub_control.secdoctor.write_report({"counts": {}}, hub_control.AUDIT_STATE)),
     "uplink.json (the watchdog, F13)": (uplink.STATUS, lambda: uplink.write_status({"ok": True})),
-    "netinv.json (F13)": (STATE / "control" / "netinv.json", lambda: netinv.write({"radios": []}, STATE / "control" / "netinv.json")),
+    "netinv.json": (STATE / "control" / "netinv.json", lambda: netinv.write({"radios": []}, STATE / "control" / "netinv.json")),
 }
 for name, (path, run) in writers.items():
     for kind in ("symlink", "hardlink"):
@@ -113,7 +112,7 @@ check("a request that is a link is refused, not carried out", ans["ok"] is False
 
 
 # A request that is not an object, or one whose handler has a bug, is answered and gone: never
-# found again by the next helper (stance review 2026-10-08, N6).
+# found again by the next helper.
 poison = {"0000000000000001": "[]", "0000000000000002": '"x"', "0000000000000003": json.dumps({"action": "uplink-set", "settings": [1]})}
 for rid, body in poison.items():
     (hub_control.REQUESTS / f"{rid}.json").write_text(body)
@@ -122,7 +121,7 @@ try:
 except Exception as exc:  # noqa: BLE001
     crashed = exc
 answers = {rid: json.loads((hub_control.RESULTS / f"{rid}.json").read_text()) for rid in poison if (hub_control.RESULTS / f"{rid}.json").exists()}
-check("N6: a non-object request and a handler's own error are answered, not left to loop the helper",
+check("a non-object request and a handler's own error are answered, not left to loop the helper",
       crashed is None and set(answers) == set(poison) and all(a["ok"] is False for a in answers.values())
       and not list(hub_control.REQUESTS.glob("*.json")), (crashed, answers))
 
@@ -133,7 +132,7 @@ src = {p: (REPO / p).read_text() for p in ("irate_box/root/hub_control.py", "ira
 check("hub_control chowns nothing to the hub by path", "_for_hub" not in src["irate_box/root/hub_control.py"])
 check("rtc's control/ files go through safeio", src["irate_box/root/rtc.py"].count("safeio.write(") >= 2
       and not re.search(r"(FOUND|STATUS)\.write_text", src["irate_box/root/rtc.py"]))
-check("F4: the quarantine is never chowned by root", "chown(QUARANTINE" not in src["irate_box/root/health.py"]
+check("the quarantine is never chowned by root", "chown(QUARANTINE" not in src["irate_box/root/health.py"]
       and '"mv", "-n", "-T"' in src["irate_box/root/health.py"])
 check("kiwix_rebuild does not chown the hub's new library by path", "shutil.chown(new" not in src["irate_box/root/health.py"])
 check("the security updates log is opened through safeio", "safeio.open_new(log_path)" in src["irate_box/root/security.py"])
@@ -149,7 +148,7 @@ bad = [l.strip() for l in inst.splitlines() if re.search(r'install -d .*"\$STATE
 check("install.sh makes no $STATE folder with install -d (state_dir walks without links)", not bad, bad)
 check("install.sh chowns nothing in control/", "control/netinv.json" not in inst.split("netinv --write")[1].split("\n")[1] if "netinv --write" in inst else True)
 
-# --- app-install (F7): one read of the staged bundle, into root's own copy ------------------
+# --- app-install: one read of the staged bundle, into root's own copy ------------------
 import zipfile  # noqa: E402
 staging = hub_control.APP_STAGING; staging.mkdir(parents=True, exist_ok=True)
 def bundle(path, app="draw", extra=None):
@@ -160,14 +159,14 @@ def bundle(path, app="draw", extra=None):
             zf.writestr(k, v)
 good = staging / "draw-1.zip"; bundle(good)
 msg = hub_control.install_app("draw", str(good))
-check("F7: a staged bundle installs", "installed abc1234" in msg and (T / "share/apps/draw/index.html").exists(), msg)
-check("F7: the staged zip is removed, and root's copy too", not good.exists() and not any((T / "taken").iterdir()))
+check("a staged bundle installs", "installed abc1234" in msg and (T / "share/apps/draw/index.html").exists(), msg)
+check("the staged zip is removed, and root's copy too", not good.exists() and not any((T / "taken").iterdir()))
 v = victim(); link = staging / "draw-2.zip"; os.symlink(v, link)
 try:
     hub_control.install_app("draw", str(link)); refused = False
 except ValueError:
     refused = True
-check("F7: a staged 'bundle' that is a link: refused, its target untouched", refused and untouched(v) and link.is_symlink())
+check("a staged 'bundle' that is a link: refused, its target untouched", refused and untouched(v) and link.is_symlink())
 link.unlink()
 # The folder swapped for a link (to a folder of root's holding a real bundle): nothing read or removed.
 elsewhere = T / "roots-folder"; elsewhere.mkdir(); bundle(elsewhere / "draw-3.zip")
@@ -176,22 +175,22 @@ try:
     hub_control.install_app("draw", str(real / "draw-3.zip")); refused = False
 except (ValueError, OSError):
     refused = True
-check("F7: the staging folder swapped for a link: refused, nothing removed there", refused and (elsewhere / "draw-3.zip").exists())
+check("the staging folder swapped for a link: refused, nothing removed there", refused and (elsewhere / "draw-3.zip").exists())
 os.unlink(real); os.rename(T / "apps.real", real)
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
-check("F7: the check and the extraction read root's copy only", "_install_taken(app, taken, zip_path)" in src_ and "Path(zip_path).unlink" not in src_)
+check("the check and the extraction read root's copy only", "_install_taken(app, taken, zip_path)" in src_ and "Path(zip_path).unlink" not in src_)
 
-# --- the offline kit: kits/ as a link the hub planted (stance review 2026-10-08, N1) -------------
+# --- the offline kit: kits/ as a link the hub planted ---------------------------------------------
 target = T / "kit-target"; target.mkdir(); target.chmod(0o700)
 (STATE / "kits").symlink_to(target)
 try:
     hub_control.offline_kit({"books": False}); refused = False
 except (ValueError, OSError):
     refused = True
-check("N1: kits/ as a link: refused, its target untouched", refused and (target.stat().st_mode & 0o777) == 0o700 and not any(target.iterdir()))
+check("kits/ as a link: refused, its target untouched", refused and (target.stat().st_mode & 0o777) == 0o700 and not any(target.iterdir()))
 (STATE / "kits").unlink()
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
-check("N1: the kit is built in root's own work folder and moved into kits/ through its fd, with no chown or chmod by path",
+check("the kit is built in root's own work folder and moved into kits/ through its fd, with no chown or chmod by path",
       "dst_dir_fd=self.fd" in src_ and "KIT_WORK" in src_ and "os.chown(KITS" not in src_ and "os.chmod(KITS" not in src_)
 
 # --- install.sh's state_dir, for real --------------------------------------------------------

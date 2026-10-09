@@ -151,7 +151,7 @@ while [ $# -gt 0 ]; do
 	--with-sync) WITH_SYNC=1; shift ;;
 	--zim) ZIMS+=("$2"); shift 2 ;;
 	--with-term) WITH_TERM=1; shift ;;
-	# ELIZA was an option here (2026-10-05); it is an add-on from /admin's catalogue now. Still
+	# ELIZA was an option here; it is an add-on from /admin's catalogue now. Still
 	# accepted, so an older install record replays.
 	--with-eliza) shift ;;
 	--with-mqtt) WITH_MQTT=1; shift ;;
@@ -186,7 +186,7 @@ while [ $# -gt 0 ]; do
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
-# Books from the network over HTTPS only (F22): a book swapped on the way has its pages served
+# Books from the network over HTTPS only: a book swapped on the way has its pages served
 # on the hub's own origin.
 for z in ${ZIMS[@]+"${ZIMS[@]}"}; do
 	case "$z" in http://*) echo "install.sh: --zim $z: use https:// (a book fetched over plain HTTP can be swapped on the way)" >&2; exit 2 ;; esac
@@ -205,14 +205,14 @@ STATE=/var/lib/hub
 APPS=/usr/share/hub/apps
 SB_SOCKET=/run/silverbullet/silverbullet.sock  # --with-notes: SilverBullet listens here
 TTYD_SOCKET=/run/ttyd/ttyd.sock  # --with-term: ttyd listens here
-# The local add-ons (plans/no-root-addons-plan): their own origin, this port of the web server,
+# The local add-ons: their own origin, this port of the web server,
 # serving $STATE/addons/<id>/; their manifests in $STATE/apps.d/. Both the hub's, so adding one
 # from /admin needs no root.
 ADDON_PORT=8090
-GIT_PORT=8093  # cgit's web view, its own origin (step 11); clones and pushes stay on the hub's port
-WIKI_PORT=8092  # Kiwix's own origin (step 11); /wiki/ on the hub's port redirects there
-NOTES_PORT=8091  # SilverBullet's own origin (next-work plan step 11); /notes/ on the hub's port redirects there
-# HTTPS (next-work plan step 15): each origin's TLS twin, listening only once the box has a
+GIT_PORT=8093  # cgit's web view, its own origin; clones and pushes stay on the hub's port
+WIKI_PORT=8092  # Kiwix's own origin; /wiki/ on the hub's port redirects there
+NOTES_PORT=8091  # SilverBullet's own origin; /notes/ on the hub's port redirects there
+# HTTPS: each origin's TLS twin, listening only once the box has a
 # certificate (/admin → Security, HTTPS; root/tls.py writes the includes in $ETC/tls/front).
 TLS_PORT=443
 ADDON_TLS_PORT=8490
@@ -222,8 +222,8 @@ GIT_TLS_PORT=8493
 ROOM=/usr/share/hub/room
 ETC=/etc/hub
 SB_VERSION=2.11.1
-# SilverBullet's release zips, as GitHub records them (the release's asset digests; F30: there
-# was no check at all). A new SB_VERSION needs these from: gh api repos/silverbulletmd/silverbullet/releases/tags/VERSION
+# SilverBullet's release zips, as GitHub records them (the release's asset digests).
+# A new SB_VERSION needs these from: gh api repos/silverbulletmd/silverbullet/releases/tags/VERSION
 SB_SHA256_x86_64=82af0d5d008c377cdb4b49dbd21db0d21f8d14619efa40b0fdeae1dce778d018
 SB_SHA256_aarch64=4ca826b88431fcbe8d4c8f4d7d3f8cc3b076d42f724a40b6dc4d45a676d9dd87
 SB_SHA256_armv7=fb27b0cf7af3d95d03ccfbeb25c4260ce5228d6b8402d531f84535bafbe25855
@@ -286,13 +286,13 @@ problem() {
 }
 fail=0
 
-# Folders under $STATE (F5): the hub owns $STATE, so any folder in it may have been swapped for a
+# Folders under $STATE: the hub owns $STATE, so any folder in it may have been swapped for a
 # link, and `install -d -o/-m` (chown, chmod) would change wherever the link leads. Each path is
 # walked from $STATE one folder at a time with O_NOFOLLOW, made where missing, and owned and
 # moded through its own fd: a link anywhere below $STATE stops the install instead.
 #   state_dir OWNER GROUP MODE PATH...     (each PATH under $STATE)
 # control/ and control/results/ are root's, readable by the hub's group; only requests/ is the
-# hub's (F3). A box from before kept them the hub's, and may hold links the hub left there: they
+# hub's. A box from before kept them the hub's, and may hold links the hub left there: they
 # go (root's writers never follow one, but nothing of root's should sit in a folder with them).
 control_dirs() {
 	state_dir root "$HUB_USER" 750 "$STATE/control" "$STATE/control/results"
@@ -543,7 +543,7 @@ make_bundle() {
 	set -- --src "$here/irate-box" --apps "$here/apps" --download-cache "$here/downloads" "$@"
 	for z in "$here"/zim/*.zim; do [ -f "$z" ] && set -- "$@" --zim "$z"; done
 	bash "$here/irate-box/install.sh" "$@" || exit $?
-	# What the kit's maker chose to bring (item 34): the old box's state, git repositories, toolkits.
+	# What the kit's maker chose to bring: the old box's state, git repositories, toolkits.
 	if [ -f "$here/state-backup.tar.gz" ]; then
 		echo "==> The state of the box this kit was made on"
 		runuser -u hub -- tar -xzf "$here/state-backup.tar.gz" -C /var/lib/hub --strip-components=1 \
@@ -621,7 +621,7 @@ all_installed() {
 }
 
 # --- the web server --------------------------------------------------------------
-# nginx is the front: measured on the Lyra (2026-10-02) at ~40 MB less RAM than Caddy and a
+# nginx is the front: measured on a Luckfox Lyra at ~40 MB less RAM than Caddy and a
 # fraction of the CPU per request. Caddy is the fallback, with the same routes. The choice is
 # recorded in install-options, so an update keeps it; otherwise, in order: a box irate-box
 # already serves through Caddy stays on it (switching is offered, not imposed), an owner's
@@ -707,7 +707,7 @@ say "Installing packages"
 export DEBIAN_FRONTEND=noninteractive
 CADDY_LIST=/etc/apt/sources.list.d/caddy-stable.list
 CADDY_KEY=/usr/share/keyrings/caddy-stable-archive-keyring.gpg
-# Caddy's apt repository is the preferred source. But on 2026-10-01 its index was signed
+# Caddy's apt repository is the preferred source. But its index has been signed
 # with a subkey that expired in 2024: GnuPG warns and accepts, while Debian trixie's sqv
 # rejects it and fails the whole `apt-get update`. If that happens, the repository is
 # dropped and Caddy comes from its GitHub release instead (install_caddy_release), and
@@ -922,7 +922,7 @@ fi
 rec_repo="$REPO" rec_branch="$BRANCH"
 if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 	rec_repo="$(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$REPO")"
-	# A token in the remote's URL is not recorded (install-options is world-readable: F30).
+	# A token in the remote's URL is not recorded (install-options is world-readable).
 	rec_repo="$(printf '%s' "$rec_repo" | sed -E 's#^([a-z+]+://)[^/@]*@#\1#')"
 	rec_branch="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH")"
 	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
@@ -959,7 +959,7 @@ if [ -n "$APPS_SRC" ]; then
 		chown -R root:root "$APPS/$app"
 	done
 fi
-# ELIZA was a built-in add-on here (--with-eliza, 2026-10-05). It is a local add-on now, from
+# ELIZA was a built-in add-on here (--with-eliza). It is a local add-on now, from
 # /admin's catalogue (addons/eliza.json), installed in $STATE/addons/ with no root. The old copy
 # goes, and so does its librarian source unless the local add-on has taken the name.
 if [ -d "$APPS/eliza" ] || [ -d "$APPS/.eliza.prev" ]; then
@@ -1130,7 +1130,7 @@ fi
 #
 # Logins: SHA-512-crypt, checked by the system's crypt(3). Not the bcrypt Caddy gets: nginx
 # checks the hash on every request and keeps no cache, and bcrypt at cost 14 takes ~5.8 s of
-# CPU per check on the Lyra, against 38 ms for this. The file is read on every request too,
+# CPU per check on a Luckfox Lyra, against 38 ms for this. The file is read on every request too,
 # so a new password needs no reload.
 NGINX_DEFAULT=/etc/nginx/sites-enabled/default
 # The package's default site, enabled and untouched: it holds :80, so it is switched off
@@ -1207,7 +1207,7 @@ fi
 # --- the web server: Caddy (the fallback) ----------------------------------------------
 if [ "$WEB" = caddy ]; then
 	say "Configuring Caddy"
-	HASH="$(printf '%s\n' "$ADMIN_PW" | caddy hash-password)"  # on stdin, not in /proc (F9)
+	HASH="$(printf '%s\n' "$ADMIN_PW" | caddy hash-password)"  # on stdin, not in /proc
 	CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
 	CADDY_SITE=/etc/caddy/irate-box.caddy
 	IMPORT_LINE="import $CADDY_SITE"
@@ -1314,7 +1314,7 @@ fi
 
 
 # --- hub service -----------------------------------------------------------------
-# The sandbox for every unit that runs as the hub user, guest-facing as they are (F19): the
+# The sandbox for every unit that runs as the hub user, guest-facing as they are: the
 # whole system read-only but what each names in ReadWritePaths, no privilege gained through a
 # setuid program, a /tmp of its own, no home folders, other users' processes out of sight, no
 # devices, kernel settings or modules, no namespaces.
@@ -1336,7 +1336,7 @@ LockPersonality=yes
 SystemCallArchitectures=native
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK"
-# The baseline every unprivileged unit carries (next-work plan step 17; tests/unit_guard.py fails on
+# The baseline every unprivileged unit carries (tests/unit_guard.py fails on
 # a missing line). AF_NETLINK: glibc's name lookup asks the kernel's addresses through it.
 cat >/etc/systemd/system/irate-box.service <<EOF
 [Unit]
@@ -1375,7 +1375,7 @@ for area in public private; do
 		desc="Private repositories, behind the admin login."
 		url=/git-private/
 	fi
-	# Written as the hub (F5): the folder is the hub's, which can change the file anyway; root
+	# Written as the hub: the folder is the hub's, which can change the file anyway; root
 	# writing there by name would follow a link put in its place.
 	runuser -u "$HUB_USER" -- sh -c 'umask 022 && cat >"$1.new" && mv -T "$1.new" "$1"' sh "$STATE/git/cgitrc-$area" <<EOF
 # Generated by irate-box install.sh. Edits are overwritten on reinstall.
@@ -1447,7 +1447,7 @@ EOF
 say "Setting up builds on push"
 id -u hubci >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE/ci/home" --shell /usr/sbin/nologin hubci
-# ci/ itself is root's (F5): hubci owns only what is inside, so it cannot swap those for links.
+# ci/ itself is root's: hubci owns only what is inside, so it cannot swap those for links.
 state_dir root root 755 "$STATE/ci"
 state_dir hubci hubci 755 "$STATE/ci/runs" "$STATE/ci/work" "$STATE/ci/home"
 # Written by the hub (the hook), read and emptied by hubci: shared through the group.
@@ -1456,8 +1456,8 @@ for repo in "$STATE"/git/private/*.git; do
 	[ -d "$repo" ] && runuser -u "$HUB_USER" -- git -C "$repo" config core.hooksPath "$CODE/scripts/git-hooks"
 done
 # Public repositories: guests may not rewrite or delete branches, nobody may push past the
-# size cap, and every object is checked as it arrives (F18; git-hooks-public/pre-receive).
-# Each repository's push level (next-work plan step 10; gitrepos.py): a repository from before
+# size cap, and every object is checked as it arrives (git-hooks-public/pre-receive).
+# Each repository's push level (gitrepos.py): a repository from before
 # gets the one that keeps its behaviour, public-everything where guest push was on, the
 # area's default otherwise. Then the old one-switch flag file goes. http.receivepack follows.
 git_level() {  # REPO DEFAULT
@@ -1511,8 +1511,9 @@ IOSchedulingClass=idle
 MemoryHigh=50%
 MemoryMax=65%
 # Only the namespaces an offline build needs (ci.py OFFLINE: a user namespace, and a network one
-# with only loopback). Not IPAccounting nor IPAddressDeny: the Lyra's vendor kernel can't attach
-# systemd's cgroup programs (bpf-firewall, error 524), so they count nothing and block nothing.
+# with only loopback). Not IPAccounting nor IPAddressDeny: vendor kernels such as the Luckfox
+# Lyra's can't attach systemd's cgroup programs (bpf-firewall, error 524), so they count nothing
+# and block nothing.
 RestrictNamespaces=user net
 ProtectSystem=strict
 ProtectHome=yes
@@ -1554,10 +1555,10 @@ User=$HUB_USER
 Group=$HUB_USER
 # silverbullet.env (the owner's: SB_USER, SB_READ_ONLY) cannot undo what is set on the command
 # line below, as it could an Environment= line here (an EnvironmentFile wins over those):
-#   - SB_SHELL_BACKEND=off: no shell commands at /notes/.shell (F1);
+#   - SB_SHELL_BACKEND=off: no shell commands at /notes/.shell;
 #   - a socket, not a port: with no IP networking at all (RestrictAddressFamilies), its HTTP
 #     proxy (/notes/.proxy) cannot reach the hub's loopback API, which trusts the web server
-#     in front to have asked for the login (F31). The web server also refuses /notes/.shell,
+#     in front to have asked for the login. The web server also refuses /notes/.shell,
 #     .proxy and .runtime outright.
 #   - the prefix must match the web server's route, which passes /notes through unstripped.
 EnvironmentFile=-$ETC/silverbullet.env
@@ -1620,7 +1621,7 @@ if [ ${#ZIMS[@]} -gt 0 ]; then
 			f="$STATE/zim/$(basename "${z%%\?*}")"
 			if [ ! -s "$f" ]; then
 				# -C - resumes a .part left by an earlier, interrupted run. As the hub, in the
-				# hub's folder (F3: as root, a link at $f.part would be written through).
+				# hub's folder (as root, a link at $f.part would be written through).
 				runuser -u "$HUB_USER" -- curl -fL --retry 5 -C - -o "$f.part" "$z"
 				runuser -u "$HUB_USER" -- mv -T "$f.part" "$f"
 			fi
@@ -1628,7 +1629,7 @@ if [ ${#ZIMS[@]} -gt 0 ]; then
 		*)
 			[ -f "$z" ] || die "--zim: no such file: $z"
 			f="$STATE/zim/$(basename "$z")"
-			# Root reads the owner's file; the hub writes the copy in its own folder (F3).
+			# Root reads the owner's file; the hub writes the copy in its own folder.
 			if [ "$(realpath "$z")" != "$f" ]; then
 				runuser -u "$HUB_USER" -- sh -c 'cat >"$1.part" && mv -T "$1.part" "$1"' sh "$f" <"$z" ||
 					die "--zim: could not copy $z to $f"
@@ -1652,14 +1653,14 @@ User=$HUB_USER
 Group=$HUB_USER
 # --urlRootLocation must match the web server's route, which passes /wiki through unstripped.
 # --monitorLibrary picks up books added later with kiwix-manage, without a restart.
-# Memory: libzim keeps decompressed clusters per worker thread. Measured on the Lyra
-# (2026-09-30, top-mini Wikipedia): defaults grow to ~104 MB anon after searching;
+# Memory: libzim keeps decompressed clusters per worker thread. Measured on a Luckfox Lyra
+# (top-mini Wikipedia): defaults grow to ~104 MB anon after searching;
 # 2 threads + 4 cached clusters hold ~22 MB with no loss in search latency.
 # ZIM_CLUSTERCACHE is a cluster *count*, not bytes - a large value OOMs the box.
 Environment=ZIM_CLUSTERCACHE=4
 ExecStart=/usr/bin/kiwix-serve --threads 2 --library --monitorLibrary --blockexternal --nodatealiases --address 127.0.0.1 --port 8081 --urlRootLocation /wiki $STATE/zim/library.xml
 Restart=on-failure
-# It reads the books and writes nothing (step 17: tried on the Lyra, 2026-10-07).
+# It reads the books and writes nothing.
 $HUB_SANDBOX
 
 [Install]
@@ -1810,7 +1811,7 @@ fi
 # excalidraw-room is a socket.io relay: no database, rooms in memory, and scenes and
 # pasted files persisted through store.py like everything else. Built on a desktop
 # (dist/ plus production node_modules/, all plain JS) and copied in; nothing compiles
-# here. Measured on the Lyra: ~8 MB anon idle, ~19 MB with twelve busy clients.
+# here. Measured on a Luckfox Lyra: ~8 MB anon idle, ~19 MB with twelve busy clients.
 if [ "$WITH_COLLAB" = 1 ]; then
 	if [ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ]; then
 		say "Installing the collaboration relay from $APPS_SRC/room"
@@ -1853,7 +1854,7 @@ if ! /usr/local/bin/ttyd --version 2>/dev/null | grep -q "$TTYD_VERSION"; then
 	install -m 755 "$tmp/ttyd.$TTYD_ARCH" /usr/local/bin/ttyd
 	rm -rf "$tmp"
 fi
-# No credential of its own (F9: ttyd's was the admin password, on its command line, readable
+# No credential of its own (ttyd's was the admin password, on its command line, readable
 # in /proc by every process for as long as it ran). It listens on a socket only the web
 # server's group can open, so the web server's admin login is the gate, and a stray start is
 # not a root shell on loopback. The terminal itself is /bin/login: a real account is needed.
@@ -2040,7 +2041,7 @@ User=$HUB_USER
 Group=$HUB_USER
 # The hub's own settings (hub.env): the git, firmware and other roots it keeps. Without them the
 # mirrors' repositories resolved under $CODE (read-only), and every scheduled run stopped there,
-# before the books' and the hub's own updates (2026-10-06).
+# before the books' and the hub's own updates.
 EnvironmentFile=$ETC/hub.env
 Environment=HUB_STATE_DIR=$STATE
 ExecStart=$CODE/irate-box librarian update --scheduled
@@ -2063,7 +2064,7 @@ RandomizedDelaySec=5min
 WantedBy=timers.target
 EOF
 
-# The security doctor, daily (stance review 2026-10-08 §2): a read-only audit as root, its report
+# The security doctor, daily: a read-only audit as root, its report
 # where /admin reads it, so a new listener, sudo rule or port forward is seen without anyone
 # pressing the button; the page says what is new since the last run.
 cat >/etc/systemd/system/irate-box-secdoctor.service <<EOF
@@ -2099,7 +2100,7 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-# --- Unique visitors (menu overhaul M11) -------------------------------------------
+# --- Unique visitors ---------------------------------------------------------------
 # A helper of its own reads the leases and the neighbour table every minute, hashes each address
 # with a salt made for the day (and one for the week) that it holds only in memory, and writes two
 # numbers for the hub. It runs only while counting is on: the hub records the owner's choice in
@@ -2142,7 +2143,7 @@ Unit=irate-box-visitors-switch.service
 WantedBy=multi-user.target
 EOF
 if [ ! -f "$STATE/visitors.want" ]; then
-	# Written as the hub, in its folder (F13): on, as the setting's default.
+	# Written as the hub, in its folder: on, as the setting's default.
 	echo on | runuser -u "$HUB_USER" -- sh -c 'cat >"$1"' sh "$STATE/visitors.want"
 fi
 systemctl daemon-reload
@@ -2159,7 +2160,7 @@ if systemctl cat tailscaled.service >/dev/null 2>&1; then
 	WITH_TAILSCALE=1
 	say "Putting Tailscale under the remote-access switch on /admin"
 	if [ ! -f "$STATE/tailscale.want" ]; then
-		# Written as the hub, in its folder (F13).
+		# Written as the hub, in its folder.
 		if systemctl is-active --quiet tailscaled; then echo on; else echo off; fi |
 			runuser -u "$HUB_USER" -- sh -c 'cat >"$1"' sh "$STATE/tailscale.want"
 	fi
@@ -2266,7 +2267,7 @@ if [ "$WITH_SYNC" = 1 ]; then
 	st config options raw-max-folder-concurrency set 1
 	# Same credentials as the web server's gate, so the one Basic-auth prompt satisfies both.
 	st config gui user set admin
-	# Through Syncthing's REST API, the password on stdin: never on a command line (F9).
+	# Through Syncthing's REST API, the password on stdin: never on a command line.
 	printf '%s\n' "$ADMIN_PW" | HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" hub_control syncthing-gui-password ||
 		problem "could not set Syncthing's GUI password (/sync/ keeps its old one)"
 	if [ "$WITH_NOTES" = 1 ] && ! st config folders list | grep -qx hub-notes; then

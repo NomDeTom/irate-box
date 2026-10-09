@@ -9,13 +9,12 @@
 # that level (the map variable, the upstream) carry an irate_box_ prefix so they cannot meet
 # an owner's own config.
 #
-# Rules from §5 "Two listeners", as for Caddy:
+# Two listeners, as for Caddy:
 #   - one plain-HTTP port, never a redirect to HTTPS, never HSTS. Captive-portal probes are
 #     plain HTTP on :80.
 #   - every service binds to 127.0.0.1; nginx is the sole listener on the AP interface.
 #
-# Measured against Caddy on the Lyra (notes: 2026-10-02-caddy-vs-nginx-benchmark): ~40 MB less
-# RAM and 5-10x less CPU per request.
+# Against Caddy, measured on a Luckfox Lyra: ~40 MB less RAM and 5-10x less CPU per request.
 
 # WebSocket upgrades pass through; a plain request sends no Connection header, so the
 # keep-alive pool to the hub is reused.
@@ -24,7 +23,7 @@ map $http_upgrade $irate_box_connection {
 	''      "";
 }
 
-# HTTPS (next-work plan step 15): each origin's port for the scheme a request came in on, so a
+# HTTPS: each origin's port for the scheme a request came in on, so a
 # redirect from a page on HTTPS goes to that origin's TLS twin. The twins listen only once the box
 # has a certificate (root/tls.py writes the includes in each server block below); without one,
 # nothing here changes what is served.
@@ -34,8 +33,8 @@ map $scheme $irate_box_notes_port { https @NOTES_TLS_PORT@; default @NOTES_PORT@
 map $scheme $irate_box_wiki_port  { https @WIKI_TLS_PORT@;  default @WIKI_PORT@; }
 map $scheme $irate_box_git_port   { https @GIT_TLS_PORT@;   default @GIT_PORT@; }
 # The hub's session cookie is the hub's: an app on a sibling port (notes, books, cgit, Syncthing)
-# gets the rest of the Cookie header without it, so a page there cannot act as the owner
-# (security stance review 2026-10-08, N5). The gates (auth_request) still see the whole header.
+# gets the rest of the Cookie header without it, so a page there cannot act as the owner.
+# The gates (auth_request) still see the whole header.
 map $http_cookie $irate_box_app_cookie {
 	default $http_cookie;
 	"~^(?<pre>.*?)irate_session=[^;]*;?\s*(?<post>.*)$" "$pre$post";
@@ -65,10 +64,10 @@ server {
 	# and $irate_box_off_<id> (non-empty when the app is switched off). Set here, at server
 	# level, so every location below can read them.
 	include @ACCESS@;
-	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# Users mode (access.py): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# for one). Setting a header drops all the server's, so every one is set again
 	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
 	# keeps for the next request (upstream keepalive), which fails.
 	location = /_irate_user {
@@ -104,7 +103,7 @@ server {
 	# Caddy logged warnings only and compressed nothing on the fly; the same here. Request
 	# bodies: 1 MB, nginx's own default, except where a route needs more and says so (the
 	# drawing store and gallery 50 MB, the file drop 25 MB, git pushes 64 MB, notes 50 MB). nginx
-	# buffers a body to the card before passing it on, so "unlimited" let one guest fill it (F15).
+	# buffers a body to the card before passing it on, so "unlimited" let one guest fill it.
 	access_log off;
 	gzip off;
 	client_max_body_size 1m;
@@ -115,7 +114,7 @@ server {
 	# the lot, so the ones that differ (/sync) repeat them in full.
 	proxy_http_version 1.1;
 	proxy_set_header Host $http_host;
-	# The guest's own address only (F24): $proxy_add_x_forwarded_for would keep whatever the
+	# The guest's own address only: $proxy_add_x_forwarded_for would keep whatever the
 	# guest sent first, and the hub reads the first entry.
 	proxy_set_header X-Forwarded-For $remote_addr;
 	proxy_set_header X-Forwarded-Proto $scheme;
@@ -130,7 +129,7 @@ server {
 	# (captive.apple.com, connectivitycheck.gstatic.com, ...) still fires. / and /index.html
 	# go to the hub, which fills in the tiles; other files under web/ come off disk.
 	root @STATIC@;
-	# A baseline Content-Security-Policy on every answer of this origin (stance review N11): no plugins,
+	# A baseline Content-Security-Policy on every answer of this origin: no plugins,
 	# no <base> hijack, framed by this origin alone. add_header is per location (a location with one
 	# of its own loses the server's), so the line is repeated wherever Cache-Control is set.
 	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'";
@@ -186,7 +185,7 @@ server {
 
 	# --- /wiki -> Kiwix, on an origin of its own (the server block at the end, port @WIKI_PORT@):
 	# a book's pages run whatever script the book carries, from a download, a stick or a URL,
-	# so on the hub's origin a book could act with the owner's login (next-work plan step 11).
+	# so on the hub's origin a book could act with the owner's login.
 	location = /wiki { return 302 $scheme://$host:$irate_box_wiki_port/wiki/; }
 	location /wiki/ {
 		if ($irate_box_off_wiki) { return 404; }
@@ -274,11 +273,11 @@ server {
 
 	# --- /notes -> SilverBullet (add-on), path passed through (SB_URL_PREFIX=/notes) --
 	# On its socket (silverbullet.service). Its capability endpoints are refused here whatever
-	# the unit says: the shell (F1), the HTTP proxy, which can reach the hub's loopback API
-	# past the /admin login (F31), and the runtime API. Notes themselves stay open.
+	# the unit says: the shell, the HTTP proxy, which can reach the hub's loopback API
+	# past the /admin login, and the runtime API. Notes themselves stay open.
 	# Notes live on an origin of their own (the server block at the end, port @NOTES_PORT@):
 	# a note is written by anyone with notes access, and its pages run script, so on the hub's
-	# origin a note could act with the owner's login (S4; next-work plan step 11).
+	# origin a note could act with the owner's login.
 	location = /notes { return 302 $scheme://$host:$irate_box_notes_port/notes/; }
 	location ~* ^/notes/\.(shell|proxy|runtime) { return 403; }
 	location /notes/ {
@@ -412,7 +411,7 @@ server {
 	}
 	# The hub says whether this request needs no login (a fetch, or a push to a repository
 	# anyone may push to, while the git app is public), or whether its own credentials are an
-	# account's that may (accounts step 16); if not, the box's own login is the other way in
+	# account's that may; if not, the box's own login is the other way in
 	# (satisfy any), which the hub never sees. Every header set again, as setting one drops the
 	# server's (Connection above all: see /_irate_user).
 	location = /_irate_git_access {
@@ -475,14 +474,14 @@ server {
 	# set-the-password page. hub_control.py deletes the file when the password is set.
 	location = /admin { return 301 /admin/; }
 	location /admin/ {
-		# The owner's "admin over HTTPS only" (step 15, root/tls.py): plain requests sent to the
+		# "Admin over HTTPS only" (root/tls.py): plain requests sent to the
 		# HTTPS twin, before any login is asked. Present only while that switch is on.
 		include @TLS@/nginx-admin.conf*;
 		set $irate_box_admin_auth "Irate-Box";
 		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
 		auth_basic $irate_box_admin_auth;
 		auth_basic_user_file @HTPASSWD@;
-		# Or an admin account's session (accounts step 16): gate-admin.conf, from the root helper.
+		# Or an admin account's session: gate-admin.conf, from the root helper.
 		include @ACCESS@.d/gate-admin.conf*;
 		# The secret that tells the hub this came through here (server.py FRONT_SECRET), from
 		# a root-only file. Setting a header here drops the server-level ones, so all again.
@@ -497,7 +496,7 @@ server {
 	}
 
 	# --- /term -> ttyd (the escape hatch), path passed through (--base-path /term) ----
-	# Gated here only: ttyd has no credential (F9), and listens on a socket only this web
+	# Gated here only: ttyd has no credential, and listens on a socket only this web
 	# server's group can open, so a stray unit start is not an open root shell.
 	location = /term { return 301 /term/; }
 	location /term/ {
@@ -509,10 +508,10 @@ server {
 		proxy_pass http://unix:/run/ttyd/ttyd.sock;
 	}
 
-	# Nothing here sets Strict-Transport-Security. Keep it that way (§5).
+	# Nothing here sets Strict-Transport-Security. Keep it that way.
 }
 
-# --- the add-on origin: the local add-ons (plans/no-root-addons-plan) ------------------
+# --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's
 # login, read the hub's storage, or script its pages. Their files are the hub user's
 # (/var/lib/hub/addons/<id>/, from the librarian, no root); nothing here runs anything or
@@ -532,7 +531,7 @@ server {
 	add_header X-Content-Type-Options nosniff always;
 	add_header Referrer-Policy no-referrer always;
 	add_header Cache-Control "no-cache" always;
-	# Users mode for a local add-on (access.py, item 6): no per-id location exists ahead of
+	# Users mode for a local add-on (access.py): no per-id location exists ahead of
 	# time (ids aren't known at template time, unlike the built-ins' own locations), so the
 	# root helper writes one here per add-on in users mode (access.addon_gates), matched before
 	# the shared location below; a public or off add-on never pays for the extra round trip.
@@ -567,7 +566,7 @@ server {
 	location / { return 404; }
 }
 
-# --- the notes origin: SilverBullet (--with-notes), next-work plan step 11 -------------------
+# --- the notes origin: SilverBullet (--with-notes) -----------------------------------------
 # Its own port, so what a note runs is on an origin with no /admin and none of the hub's
 # storage. The same login switch as before (/admin, Apps: public, private or off), the same
 # refusals, the same socket.
@@ -582,10 +581,10 @@ server {
 	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
-	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# Users mode (access.py): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# for one). Setting a header drops all the server's, so every one is set again
 	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
 	# keeps for the next request (upstream keepalive), which fails.
 	location = /_irate_user {
@@ -640,7 +639,7 @@ server {
 	location / { return 404; }
 }
 
-# --- the books' origin: Kiwix, next-work plan step 11 ---------------------------------------
+# --- the books' origin: Kiwix ---------------------------------------------------------------
 # kiwix-serve on 127.0.0.1:8081, path passed through (--urlRootLocation /wiki), with the same
 # login switch as before (/admin, Apps).
 server {
@@ -654,10 +653,10 @@ server {
 	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
-	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# Users mode (access.py): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# for one). Setting a header drops all the server's, so every one is set again
 	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
 	# keeps for the next request (upstream keepalive), which fails.
 	location = /_irate_user {
@@ -718,7 +717,7 @@ server {
 	location / { return 404; }
 }
 
-# --- cgit's origin: the git servers' web view, next-work plan step 11 -------------------------
+# --- cgit's origin: the git servers' web view -----------------------------------------------
 # What a repository holds is written by whoever may push, so its pages are served away from
 # /admin. Its CSP (scripts only the box's own) lets the hub's app bar frame it. Clones and
 # pushes are the hub's port's (a smart-HTTP request here is sent there).
@@ -733,10 +732,10 @@ server {
 	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
-	# Users mode (access.py, accounts step 16): the session check an app's gate asks
+	# Users mode (access.py): the session check an app's gate asks
 	# (@ACCESS@.d/gate-<id>.conf, only for an app in users mode), and where anyone without one goes.
 	# Always a GET with no body (a POST's Content-Length without its body would leave the hub waiting
-	# for one: found on the Lyra). Setting a header drops all the server's, so every one is set again
+	# for one). Setting a header drops all the server's, so every one is set again
 	# (as /admin/ does): Connection above all, or nginx asks the hub to close a connection it then
 	# keeps for the next request (upstream keepalive), which fails.
 	location = /_irate_user {

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Books at hundreds (next-work plan step 14), offline. Kiwix's catalogue: a full rebuild in batches,
+"""Books at hundreds, offline. Kiwix's catalogue: a full rebuild in batches,
 an unreadable book found by halving and left out, and one new, replaced or removed book changing
 only its own entry, counted in kiwix-manage runs. kiwix-manage is stood in by a script that
-behaves as the real one did on the Lyra (2026-10-07): entries keyed by the ZIM's UUID, paths
+behaves as the real one does: entries keyed by the ZIM's UUID, paths
 relative to the library, and one unreadable file in an `add` writing nothing at all. The books
 are real small ZIMs (tests/zimgen.py). python3 tests/sim_books.py"""
 import json, os, struct, sys, tempfile
@@ -124,7 +124,7 @@ check("sort: size (largest first), date (newest first)", L.books_page(sort="size
 check("pages: the last one, past the end clamped", len(L.books_page(page=6)["books"]) == 2 and L.books_page(page=99)["page"] == 6)
 check("every matching name, for a bulk action on all of them", L.books_page(kept="yes", names_only=True)["matching"] == 41
       and len(L.books_page(kept="yes", names_only=True)["names"]) == 41)
-# Checks that fit GitHub's limits (step 14, part c): one request per address per run, ETags sent
+# Checks that fit GitHub's limits: one request per address per run, ETags sent
 # back (a 304 answered from what was kept), the allowance recorded, the most overdue checked first
 # and the rest left for the next run once a few requests are left.
 import io, time, urllib.error, urllib.request  # noqa: E402
@@ -173,9 +173,9 @@ checked.clear()
 L.update(names=["gh-0"], log=lambda *a: None)
 check("asked for by name: checked whatever is left", checked == ["gh-0"])
 L.resolve = real_resolve
-# Kiwix's catalogue (step 14, part d): a search, a book kept current by its catalogue name, the
+# Kiwix's catalogue: a search, a book kept current by its catalogue name, the
 # books' budget, and a book never taken over plain HTTP. The catalogue stood in, shaped as
-# opds.library.kiwix.org answered on 2026-10-07.
+# opds.library.kiwix.org answers.
 def entry(name, date, size, flavour=""):
     return f"""<entry><id>urn:uuid:x</id><title>{name} title</title><updated>{date}T00:00:00Z</updated><summary>About {name}</summary>
 <language>eng</language><name>{name}</name><flavour>{flavour}</flavour><category>stack_exchange</category><articleCount>77213</articleCount>
@@ -222,9 +222,9 @@ L._open = lambda *a, **k: Redirected(b"abc")
 try:
     L._download("https://lb.download.kiwix.org/y.zim", T / "y.part"); check("a redirect to plain HTTP: not taken", False)
 except L.LibrarianError as exc:
-    check("a redirect to plain HTTP: not taken (F22)", "plain HTTP" in str(exc), str(exc))
+    check("a redirect to plain HTTP: not taken, and said", "plain HTTP" in str(exc), str(exc))
 L._open = real_open
-# N7, N8 (stance review 2026-10-08): a book checked against its metalink's sha256, a nightly.link
+# A book checked against its metalink's sha256, a nightly.link
 # bundle against GitHub's artifact digest.
 META4 = '<?xml version="1.0"?><metalink xmlns="urn:ietf:params:xml:ns:metalink"><file name="y.zim"><size>3</size><hash type="sha-256">' + \
     "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad</hash><url>https://x/y.zim</url></file></metalink>"

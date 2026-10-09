@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Reports (menu overhaul M10; Tom, 2026-10-08: "anyone can report a post - admin decides what
-counts"), against a hub it starts: anyone may report a shoutbox message or a forum post, once per
+"""Reports (anyone can report a post, the admin decides what counts), against a hub it starts: anyone may report a shoutbox message or a forum post, once per
 visitor; only the owner's reasons are taken; what counts (how many reports) reaches the queue on
 /admin; hidden meanwhile if the owner chose; kept, it leaves the queue and shows again; deleted,
 its report goes; a flood of reports from one visitor is stopped. python3 tests/sim_reports.py"""

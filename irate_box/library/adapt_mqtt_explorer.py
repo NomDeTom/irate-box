@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Adapt a clone of the hub's own repository into the MQTT explorer add-on (addons/mqtt-explorer.json,
-next-work plan step 13). Run by the librarian on what it fetched, at the commit the manifest pins.
+"""Adapt a clone of the hub's own repository into the MQTT explorer add-on (addons/mqtt-explorer.json).
+Run by the librarian on what it fetched, at the commit the manifest pins.
 
     adapt_mqtt_explorer.py TREE [HUB_STATIC_DIR]
 

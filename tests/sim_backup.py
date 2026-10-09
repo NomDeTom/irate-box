@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Backups and a new box as offers with sizes (item 34; hub/backup.py, root's kit, stick and image), offline:
-the state sorted into settings, data and what is fetched again (the Lyra's own layout, 2026-10-09, in small);
+"""Backups and a new box as offers with sizes (hub/backup.py, root's kit, stick and image), offline:
+the state sorted into settings, data and what is fetched again (a real box's layout, in small);
 each level's download holding just its part; the sizes on offer; the kit's choices checked and refused over
 budget; the full image written to a "stick" in parts and readable back. python3 tests/sim_backup.py"""
 import gzip, io, json, os, sys, tarfile, tempfile
@@ -20,7 +20,7 @@ def put(rel, n=10):
     p = S / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(b"x" * n)
-# The Lyra's state, in small (its sizes, 2026-10-09: ci 13.7 GB, firmware 0.7 GB, zim 0.36 GB, a few MB made).
+# A box's state, in small (at full size: ci 13.7 GB, firmware 0.7 GB, zim 0.36 GB, a few MB made).
 for rel in ("settings.json", "accounts.json", "tiles.json", "install-options", "tailscale.want", "admin-seen.key",
             "apps.d/x.json", "addons/eliza/conf.json", "factory-targets/a.json", "library/sources.json", "library/mirrors.json",
             "mesh/channels.json", "git/cgitrc-public", "git/mirror-urls.json"):
@@ -63,7 +63,7 @@ def members(level, keys=False):
 m, n = members("settings")
 check("settings only: just the settings (14 files), none of what was made", len(m) == 14 and "settings.json" in m and "notes/index.md" not in m, sorted(m))
 m, n = members("data")
-check("settings and data: both (25 files), nothing fetched again, no keys; small (the Lyra's would have been 14 GB)",
+check("settings and data: both (25 files), nothing fetched again, no keys; small (a real box's would be 14 GB)",
       len(m) == 25 and "git/public/mine.git/HEAD" in m and not any(x.startswith(("ci/", "firmware/", "zim/", "git/public/firmware.git", "crashwatch/")) for x in m)
       and ".local/state/syncthing/key.pem" not in m and n < 5000, (len(m), n))
 m, _ = members("data", keys=True)

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Toolkits, the hub's half (toolkits-plan §1–3): the owner's settings, what the page shows, and
+"""Toolkits, the hub's half: the owner's settings, what the page shows, and
 the librarian's part, which keeps each kit's cache current and has each install removed when
 its time is up. Root does the work (root/kits.py, through hub_control's kit-* actions); the hub
 only asks, naming a shipped kit.
@@ -216,7 +216,7 @@ def step(policy, now=None, log=print):
         if not cfg["kits"][kid]["keep_current"]:
             continue
         chosen = policy.get("kits_every_hours", policy["check_every_hours"])
-        if not chosen:   # Manual (item 36): refreshed only when asked
+        if not chosen:   # Manual: refreshed only when asked
             continue
         every = k.get("refresh_hours") or chosen
         cached = ((st.get("kits") or {}).get(kid) or {}).get("cached") or {}
@@ -227,7 +227,7 @@ def step(policy, now=None, log=print):
             librarian._write_json(STATE, asked)
             out.append(f"fetching {kid}")
             break
-    # The security doctor's deep audit (debian-cis and Lynis), weekly by default (Tom), when the
+    # The security doctor's deep audit (debian-cis and Lynis), weekly by default, when the
     # security kit is kept current: its tools come from its cache.
     days = cfg.get("deep_audit_days", 7)
     if days and cfg["kits"].get("security", {}).get("keep_current"):

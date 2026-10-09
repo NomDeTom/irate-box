@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Scan reports imported on /admin → Security doctor (security-doctor-plan §1, §3, §7.5): an
+"""Scan reports imported on /admin → Security doctor: an
 OpenVAS / Greenbone report (XML or CSV) or an nmap XML, run from a PC against the box.
 
 The page reads the file in the owner's browser and sends only what it found: each result's port,

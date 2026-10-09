@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""One login (Tom, 2026-10-09: "get rid of the admin-specific login, and have them log in through the standard
-user login"): admin accounts sign in on the standard page even with sign-up off; the box's first use makes the
+"""One login, through the standard user login: admin accounts sign in on the standard page even with sign-up off; the box's first use makes the
 owner's admin account and signs them in, the box's own login given a random password of root's; once an admin
 account can sign in, the admin's routes send a browser to that sign-in, never the box's own login prompt (a
 script's login still passes); the header shows one account button, and Admin where it is useful.
@@ -25,13 +24,13 @@ def refused(fn, *a, says=""):
     except A.AccountError as exc:
         return says in str(exc)
 check("sign-up off by default, and no admin ready on a new box", A.settings()["signup"] == "off" and not A.admin_ready())
-tok, me = A.claim_admin("tom", "password-one", "10.0.0.1")
-check("first use: the owner's admin account made and signed in", me["role"] == "admin" and A.session(tok)["name"] == "tom" and A.admin_ready())
-check("  admins sign in with sign-up off", A.login("tom", "password-one")[1]["name"] == "tom")
+tok, me = A.claim_admin("alice", "password-one", "10.0.0.1")
+check("first use: the owner's admin account made and signed in", me["role"] == "admin" and A.session(tok)["name"] == "alice" and A.admin_ready())
+check("  admins sign in with sign-up off", A.login("alice", "password-one")[1]["name"] == "alice")
 A.make("ann", "user")
 data = A._load(); data["accounts"]["ann"]["hash"] = A.hash_password("password-two"); A._save(data)
 check("  a user's account does not, with sign-up off", refused(A.login, "ann", "password-two", says="no accounts"))
-check("  a wrong admin password is refused, as always", refused(A.login, "tom", "wrong-one", says="don't match"))
+check("  a wrong admin password is refused, as always", refused(A.login, "alice", "wrong-one", says="don't match"))
 tok2, me2 = A.claim_admin("Ann", "password-three")
 check("the console's reset and first use again: an existing name made admin with the new password", me2["role"] == "admin"
       and A.login("ann", "password-three")[1]["role"] == "admin")
