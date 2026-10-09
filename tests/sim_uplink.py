@@ -281,6 +281,26 @@ for bad in [{"pace": "fast"}, {"reach": "nuke"}, {"guests": "maybe"}]:
 check("the settings in words", U.words(U.validate({"pace": "steady", "reach": "radio", "guests": "ignore", "on_wedge": "radio"}))
       == "steady pace, reach radio, normal, guests or not, a wedged radio reset at once")
 
+# 7f. The escalation record (the box doctor's chart): each outage, step, hold and stall, with who took it.
+a, w = night("gentle/reboot")
+lad = [(e["kind"], e.get("step"), e.get("by")) for e in w.ladder]
+check("the ladder's events carry their step and who took it", ("repair", "reconnect", "auto") in lad and ("repair", "radio", "auto") in lad
+      and ("skip", "restart", None) in lad and lad[0] == ("down", None, None) and ("up", None, None) in lad, lad[:8])
+check("  the log's other events are not on it", all(k in U.LADDER_KINDS for k, _, _ in lad) and not any(e["kind"] == "info" for e in w.ladder))
+w.by_hand(99999, {"link": False, "can": ALL, "guests": 0}, "radio")
+check("  a step asked on /admin says so", w.ladder[-1]["step"] == "radio" and w.ladder[-1]["by"] == "hand")
+import tempfile as _tf2  # noqa: E402
+import irate_box.root.safeio as _sio  # noqa: E402
+_sio.write = lambda path, text, mode=0o644: Path(path).write_text(text)
+L = U.Ladder(Path(_tf2.mkdtemp()) / "uplink-ladder.json")
+L.add(w.ladder, "wlan0", 100000)
+rows = __import__("json").loads(L.path.read_text())
+check("the record: compact rows, the interface, the text kept short", rows[0] == {"at": 0, "k": "down", "i": "wlan0", "t": "Link lost."}
+      and any(r.get("s") == "radio" and r.get("b") == "auto" for r in rows), rows[:3])
+L.add([{"at": 100000 + 73 * 86400, "kind": "down", "text": "Link lost."}], "wlan0", 100000 + 73 * 86400)
+check("  72 days kept, older ones dropped", [r["at"] for r in __import__("json").loads(L.path.read_text())] == [100000 + 73 * 86400])
+check("  nothing to add: nothing written", L.add([], "wlan0", 0) is None)
+
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"overrides": {"check": 5}}, {"overrides": {"rm": 1}}, {"iface": "a;b"},
             {"overrides": {"steps": {"nuke": 1}}}, {"overrides": {"flap_action": "x"}}]:

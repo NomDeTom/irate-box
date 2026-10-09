@@ -1700,6 +1700,13 @@ function installText(st) {
 
 function renderHealth(data) {
   const h = data.helper || {};
+  // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
+  const lad = document.getElementById('health-ladder');
+  const ladKey = JSON.stringify((data.ladder || []).slice(-1)) + (data.ladder || []).length;
+  if (lad && typeof LadderChart !== 'undefined' && lad.dataset.key !== ladKey) {
+    lad.dataset.key = ladKey;
+    LadderChart.render(lad, data.ladder || []);
+  }
   hl.banner.hidden = !h.stuck;
   if (h.stuck) {
     hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? ' is' : 's are'} waiting, the oldest for ${minutes(h.oldest)}.`;

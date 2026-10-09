@@ -92,6 +92,11 @@ RECORD = ETC / "uplink-changes.json"
 NOW = ETC / "uplink-now.json"
 STATUS = STATE / "control" / "uplink.json"
 HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
+LADDER = STATE / "control" / "uplink-ladder.json"     # what the watchdog did, for the box doctor's chart
+# The events that make the escalation chart (Tom, 2026-10-09: "a line chart showing the escalation
+# steps over the last x period would show if more patience or more aggression is required").
+LADDER_KINDS = ("down", "up", "repair", "held", "skip", "stalled", "wedged", "flap")
+LADDER_KEEP = 72 * 86400
 SYS_NET = Path("/sys/class/net")
 # Running any of these, the box is busy with something a reboot would spoil.
 BUSY_UNITS = {"irate-box-ci.service": "a build", "irate-box-librarian.service": "a library update",
@@ -296,12 +301,23 @@ class Watch:
         self.pause_until = 0.0
         self.owner_off = False
         self.can = set()  # the repairs possible at the last look, for next_step() and stall()
+        self.ladder = []  # the ladder's events since serve() last took them (Ladder.add)
         # Outages close together are one episode (uplink-ladder-plan, stage 3): {since, outages,
         # failed: steps that "worked" and were followed by a relapse, tried, last_end, last_done}.
         self.episode = None
 
-    def log(self, now, kind, text):
-        self.events.append({"at": now, "kind": kind, "text": text})
+    def log(self, now, kind, text, step=None, by=None):
+        """An event for the page's log; those on the ladder (an outage, a step taken, held,
+        skipped or a stall) carry their step and who took it (auto, hand, flap), and are kept
+        for the box doctor's escalation chart too (Ladder)."""
+        e = {"at": now, "kind": kind, "text": text}
+        if step:
+            e["step"] = step
+        if by:
+            e["by"] = by
+        self.events.append(e)
+        if kind in LADDER_KINDS:
+            self.ladder.append(e)
 
     def tick(self, now, obs):
         """obs: link (bool), gateway (True/False/None: not known), drops ([times]), guests (int),
@@ -398,7 +414,7 @@ class Watch:
             if act == "note":
                 self.log(now, "flap", f"Dropped {n} times in {w}; noted{extra}.")
             elif act == "pin":
-                self.log(now, "flap", f"Dropped {n} times in {w}: locking to the strongest access point.")
+                self.log(now, "flap", f"Dropped {n} times in {w}: locking to the strongest access point.", "pin", "flap")
                 actions.append("pin")
             else:
                 # A fault, repaired as an episode's outage is: it climbs past what did not hold. A
@@ -412,7 +428,7 @@ class Watch:
                 if why:
                     self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, but {why}.")
                 else:
-                    self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, {STEP_LABEL[step]}.")
+                    self.log(now, "flap", f"Dropped {n} times in {w}: treated as a fault, {STEP_LABEL[step]}.", step, "flap")
                     actions.append(step)
                     ep["last_end"] = ep["end_was"] = now
                     ep["last_done"] = [step]
@@ -445,11 +461,12 @@ class Watch:
                 if not why:
                     o["done"].append("radio")
                     o["next_reconnect"] = None
-                    self.log(now, "repair", f"Reset the radio ({human(now - o['since'])} down): reconnecting or restarting can't mend a wedged driver.")
+                    self.log(now, "repair", f"Reset the radio ({human(now - o['since'])} down): reconnecting or restarting can't mend a wedged driver.",
+                             "radio", "auto")
                     return ["radio"]
                 if "radio" not in o["held"]:
                     o["held"].append("radio")
-                    self.log(now, "held", f"Would reset the radio, but {why}.")
+                    self.log(now, "held", f"Would reset the radio, but {why}.", "radio")
         # Each step's time counts from the episode's start, so relapses climb as one long outage
         # would; a step that did not hold earlier in it is passed over (_passed).
         t = now - (self.episode or o)["since"] - eff["grace"]
@@ -458,13 +475,13 @@ class Watch:
             if step not in can:
                 o["done"].append(step)
                 o["skipped"].append(step)  # done with, but never tried: the page and the log say so
-                self.log(now, "skip", f"Cannot {STEP_LABEL[step]} here; skipped.")
+                self.log(now, "skip", f"Cannot {STEP_LABEL[step]} here; skipped.", step)
                 continue
             why = self._held(now, obs, step)
             if why:
                 if step not in o["held"]:
                     o["held"].append(step)
-                    self.log(now, "held", f"Would {STEP_LABEL[step]}, but {why}.")
+                    self.log(now, "held", f"Would {STEP_LABEL[step]}, but {why}.", step)
                 continue
             o["done"].append(step)
             # Lighter steps that came due at the same time are passed over: this one covers them.
@@ -474,18 +491,18 @@ class Watch:
             if step == "reboot":
                 self.reboots.append(now)
             o["next_reconnect"] = now + max(o["gap"], 30) if eff["repeat"] else None
-            self.log(now, "repair", f"{STEP_LABEL[step].capitalize()} ({human(now - o['since'])} down).")
+            self.log(now, "repair", f"{STEP_LABEL[step].capitalize()} ({human(now - o['since'])} down).", step, "auto")
             return [step]
         if ("reconnect" in o["done"] and eff["repeat"] and "reconnect" in can and o["next_reconnect"]
                 and now >= o["next_reconnect"] and not (o.get("wedged") and eff["on_wedge"] == "radio")):
             o["gap"] = min(o["gap"] * eff["backoff"], eff["max_repeat"])
             o["next_reconnect"] = now + o["gap"]
-            self.log(now, "repair", f"Reconnect again ({human(now - o['since'])} down; next in {human(o['gap'])}).")
+            self.log(now, "repair", f"Reconnect again ({human(now - o['since'])} down; next in {human(o['gap'])}).", "reconnect", "auto")
             return ["reconnect"]
         st = self.stall(now)
         if st and not o.get("stalled"):
             o["stalled"] = True
-            self.log(now, "stalled", st["text"])
+            self.log(now, "stalled", st["text"], st["needs"])
         return []
 
     def _held(self, now, obs, step):
@@ -549,17 +566,17 @@ class Watch:
         if step not in STEPS:
             return [], f"{step} is not a step"
         if step not in obs.get("can", ()):
-            self.log(now, "skip", f"Asked on /admin to {STEP_LABEL[step]}, but it cannot be done here.")
+            self.log(now, "skip", f"Asked on /admin to {STEP_LABEL[step]}, but it cannot be done here.", step, "hand")
             return [], f"cannot {STEP_LABEL[step]} here"
         why = self._held(now, obs, step)
         if why:
-            self.log(now, "held", f"Asked on /admin to {STEP_LABEL[step]}, but {why}.")
+            self.log(now, "held", f"Asked on /admin to {STEP_LABEL[step]}, but {why}.", step, "hand")
             return [], why
         if step == "reboot":
             self.reboots.append(now)
         if self.outage and step not in self.outage["done"]:
             self.outage["done"].append(step)
-        self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}, asked on /admin.")
+        self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}, asked on /admin.", step, "hand")
         return [step], None
 
 
@@ -946,6 +963,36 @@ class History:
         return out
 
 
+class Ladder:
+    """The ladder's events kept for 72 days (at most 20 000): {at, k: kind, s: step, b: by, t: text},
+    for the box doctor's escalation chart. Written when something happened, which is rare."""
+
+    def __init__(self, path=None):
+        self.path = path or LADDER
+        try:
+            self.rows = json.loads(self.path.read_text())
+            if not isinstance(self.rows, list):
+                raise ValueError
+        except (OSError, ValueError):
+            self.rows = []
+
+    def add(self, events, iface, now):
+        if not events:
+            return
+        for e in events:
+            row = {"at": round(e["at"], 1), "k": e["kind"], "i": iface}
+            if e.get("step"):
+                row["s"] = e["step"]
+            if e.get("by"):
+                row["b"] = e["by"]
+            row["t"] = e["text"][:200]
+            self.rows.append(row)
+        self.rows = [r for r in self.rows if r.get("at", 0) > now - LADDER_KEEP][-20000:]
+        from irate_box.root import safeio
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        safeio.write(self.path, json.dumps(self.rows, separators=(",", ":")))
+
+
 def history_state(state, link):
     """The watched link's letter for linkhistory, from the status's state."""
     return {"off": "o", "up": "u", "checking": "g"}.get(state, "g" if link else "d")
@@ -1043,6 +1090,7 @@ def serve(dry=False):
     known_backend = None  # the last real backend seen, so its going away can be told
     pinned = None
     history = History()
+    ladder = Ladder()
     tls_at = 0  # HTTPS (step 15): the certificate renewed when due, looked at every six hours
 
     def stop(*_):
@@ -1127,6 +1175,12 @@ def serve(dry=False):
                     tls.renew()
             except Exception as exc:  # noqa: BLE001 - the watchdog goes on whatever happens here
                 w.log(now, "info", f"HTTPS certificate renewal failed: {exc}")
+        if w.ladder and not dry:
+            try:
+                ladder.add(w.ladder, iface, now)
+            except OSError as exc:
+                w.log(now, "info", f"The escalation record was not written: {exc}")
+        w.ladder = []
         report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
         history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]))
         write_status(report)
