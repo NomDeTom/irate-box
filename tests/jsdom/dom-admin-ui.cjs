@@ -170,6 +170,8 @@ setTimeout(() => {
     f.dispatchEvent(new w.Event('submit', { cancelable: true }));
     setTimeout(() => check('  saved: unfilled again', sb.classList.contains('idle')), 20);
   }
+  check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
+    && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
   // F6: each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its access, its own updates, then Saved work', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-draw app-updates-draw saved',
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));

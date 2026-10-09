@@ -39,6 +39,7 @@ run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py
 run sim_books.py
+run sim_ghpace.py
 run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py

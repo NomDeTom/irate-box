@@ -1229,6 +1229,10 @@ def library_action(payload):
                                     if type(payload.get(k)) is int})
         elif action == "token":
             librarian.set_token(str(payload.get("value") or ""))
+        elif action == "adapt-rate":
+            librarian.adapt_rate()
+        elif action == "adapt-rate-off":
+            librarian.clear_pace()
         elif action == "add-apps":
             # The named apps (an app row's "Keep current"), or every default one.
             have = {s["name"] for s in librarian.load_config()["sources"]}

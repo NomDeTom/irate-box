@@ -325,7 +325,15 @@ function renderLibrary(snap) {
   if (libWasBusy && !busy) loadBooks();
   libWasBusy = busy;
   libBusy = busy;
-  document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
+  document.getElementById('library-adapt').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted: GitHub was asked what it allows.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.getElementById('library-adapt-off').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.querySelectorAll('[data-all]').forEach((b) => { b.disabled = busy; });
   document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
@@ -342,6 +350,13 @@ function renderLibrary(snap) {
   lib.tokenState.textContent = (snap.token_set ? 'A token is set.' : 'No token is set.')
     + (gh.limit && gh.reset * 1000 > Date.now() ? ` GitHub: ${gh.remaining} of ${gh.limit} requests left this hour (until ${resets})`
       + (gh.remaining < 10 ? '; scheduled checks wait for the next hour.' : '.') : '');
+
+  const pc = snap.pace || {};
+  const paceEl = document.getElementById('library-pace-state');
+  if (paceEl) paceEl.textContent = pc.budget
+    ? `Adapted: a budget of ${pc.budget} requests an hour (GitHub allows ${pc.limit}), ${pc.left} left this hour${pc.backed_off ? '; it has backed off after refusals' : ''}.`
+    : 'Not adapted: the librarian asks as it likes, and stops only when GitHub says it is nearly out.';
+  document.getElementById('library-adapt-off').hidden = !pc.budget;
 
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.

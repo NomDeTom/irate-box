@@ -498,6 +498,18 @@
             <button class="action-btn" type="button" id="library-token-clear">Clear</button>
           </div>
         </form>
+        <h4>Adapt to the rate limit</h4>
+        <p class="setting-desc">
+          GitHub lets this box make 60 requests an hour without a token (5000 with one). Adapt asks
+          GitHub what it really allows, then keeps the librarian's scheduled checks to a budget just under it:
+          when the budget for the hour is spent, they wait. If GitHub refuses requests several times in a row, the
+          budget is halved, so it asks less often; a clean run gives some back. With or without a token.
+          <span id="library-pace-state"></span>
+        </p>
+        <div class="library-buttons">
+          <button class="action-btn" type="button" id="library-adapt">Adapt to rate limit</button>
+          <button class="action-btn" type="button" id="library-adapt-off">Stop adapting</button>
+        </div>
         <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
       </section>
 
