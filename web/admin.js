@@ -1793,10 +1793,25 @@ function splitCmd(text) {
   const before = text.slice(0, start).trim().replace(/\bor$/, '').trim().replace(/[.:;,]$/, '').trim();
   return { cmd, before, after };
 }
+// A setting's choices (actions with a group): one row of chips each, the current one selected, shown
+// whatever the finding's state, since a setting is worth seeing when all is well too.
+function healthChips(f, busy) {
+  const groups = new Map();
+  (f.actions || []).filter((a) => a.group).forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
+  return [...groups].map(([label, choices]) => el('div', { className: 'aw-field' },
+    el('span', { className: 'aw-label', textContent: label }),
+    el('div', { className: 'chip-group', role: 'group', 'aria-label': label }, ...choices.map((a) => {
+      const b = el('button', { type: 'button', className: 'chip' + (a.on ? ' selected' : ''), textContent: a.label, disabled: busy,
+        onclick: () => { if (!a.on) hlFix(f.id, a); } });
+      b.setAttribute('aria-pressed', String(!!a.on));
+      return b;
+    }))));
+}
 function healthDo(f, busy) {
-  if (f.status === 'ok') return { how: '', controls: [] };
-  const controls = (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
-    onclick: () => hlFix(f.id, a) }));
+  const chips = healthChips(f, busy);
+  if (f.status === 'ok') return { how: '', controls: chips };
+  const controls = [...chips, ...(f.actions || []).filter((a) => !a.group).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
+    onclick: () => hlFix(f.id, a) }))];
   let how = f.fix || '';
   const c = splitCmd(how);
   if (c) {
