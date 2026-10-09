@@ -386,8 +386,10 @@ def step_notes(ctx):
                      "Rerun install.sh.", "F31"))
     if not login and not read_only:
         out.append(F("notes-login", "Notes: no login", "warn",
-                     "Guests can edit notes, and notes can carry scripts (Space Lua, widgets) that run on the hub's origin, "
-                     "next to /admin.", "SB_USER, read-only mode, or /notes/ behind the admin login.", "F1/S4"))
+                     "Anyone who can open the hub can read and change the notes, and notes can carry scripts (Space Lua, widgets) "
+                     "that run in each reader's browser (on the notes' own address, apart from /admin).",
+                     "Choose who may open Notes (Apps): users with an account, or you alone; or leave it open if the notes are "
+                     "meant for everyone.", "F1/S4"))
     confined = sh.get("ProtectSystem") == "strict" and all(
         p.startswith(str(STATE / "notes")) for p in sh.get("ReadWritePaths", "").split()) and sh.get("ReadWritePaths")
     if sh.get("DynamicUser") != "yes" and sh.get("User") in (HUB_USER, "", "root") and not confined:
@@ -838,6 +840,10 @@ def step_folders(ctx):
         found, cut = _walk_links(w, depth)
         links += found
         truncated = truncated or cut
+    # A relative link to its own folder or below (a git checkout's .dockerignore → .gitignore, found in
+    # ci/home on the Lyra, 2026-10-09) can't send root anywhere else: counted, not listed.
+    inside = [(p, t) for p, t in links if not t.startswith("/") and ".." not in Path(t).parts]
+    links = [x for x in links if x not in inside]
     # Folders root recreates itself at every install are the interesting ones.
     risky = [p for p, _ in links if Path(p).parent.name in ("control", "results", "zim", "library", "firmware", "ci", "queue", "runs", "work", "home", "kits")
              or Path(p).name == "quarantine"]
@@ -850,7 +856,9 @@ def step_folders(ctx):
                      "Inspect each (ls -l), remove any not made by you, and find out how it got there.", "F3/F4/F5"))
     else:
         out.append(F("folders-links", "Links inside the hub's folders", "ok",
-                     "None in control/, zim/, library/, firmware/, git/, ci/ or notes/ (top levels).", ref="F3/F4/F5"))
+                     "None in control/, zim/, library/, firmware/, git/, ci/ or notes/ (top levels) that leads out of its folder"
+                     + (f" ({len(inside)} that stay{'s' if len(inside) == 1 else ''} inside {'it' if len(inside) == 1 else 'theirs'}, "
+                        "as a git checkout's do)." if inside else "."), ref="F3/F4/F5"))
     # The quarantine is the hub's own since F4's fix: health.py moves a book there as the hub, so a
     # link there leads only where the hub could write anyway. Still worth a look if it is one.
     q = _lstat(STATE / "zim" / "quarantine")
@@ -1343,7 +1351,8 @@ def step_secrets(ctx):
         bad = [n for n in readable if n in ("admin-password", "ttyd.env")]
         out.append(F("secrets-files", "Secret-looking files readable by other users", "problem" if bad else "warn",
                      f"{_list(readable)} in {ETC} can be read by group or others.",
-                     f"chmod 600 {ETC}/<file> (or 640 root:hub where the hub must read it).", "S13"))
+                     "Make each readable by root alone (or 640 root:hub where the hub must read it).", "S13"))
+        out[-1]["cmd"] = "sudo chmod 600 " + " ".join(shlex.quote(f"{ETC}/{n}") for n in readable)
     else:
         out.append(F("secrets-files", "Secret-looking files in /etc/hub", "ok", "None is readable by group or others.", ref="S13"))
     if est and est.st_mode & 0o022:
@@ -2016,13 +2025,14 @@ def joint(steps, freshness=None):
             else:
                 label = f["title"]
             it = items.setdefault(key, {"key": key, "about": a, "title": label, "sources": [], "status": "ok", "titles": [], "lines": [],
-                                        "detail": "", "fix": "", "do": None, "area": st.get("title", ""), "tiers": []})
+                                        "detail": "", "fix": "", "cmd": "", "do": None, "area": st.get("title", ""), "tiers": []})
             if src not in it["sources"]:
                 it["sources"].append(src)
             it["titles"].append(f"{src}: {f['title']}")
             it["lines"].append({"source": src, "id": f["id"], "title": f["title"], "status": f["status"], "detail": f["detail"], "fix": f["fix"]})
             if f["status"] != "ok":
                 it["tiers"].append(f.get("tier") or "")
+                it["cmd"] = it["cmd"] or f.get("cmd", "")
                 it["do"] = it["do"] or secdoctor_xref.do_for(src, f["id"])
             if rank[f["status"]] > rank[it["status"]] or (f["fix"] and not it["fix"] and f["status"] == it["status"]):
                 if rank[f["status"]] > rank[it["status"]]:
@@ -2250,7 +2260,7 @@ def step_image(ctx):
     else:
         out.append(F("image-bluetooth", "Bluetooth", "ok", "Not running."))
     # Access-point profiles the image left in NetworkManager, beside irate-box's own.
-    aps = []
+    aps, names = [], []
     for f in sorted(NM_DIR.glob("*.nmconnection")) if NM_DIR.is_dir() else []:
         text = _read(f, 65536) or ""
         if re.search(r"(?m)^mode=ap\s*$", text) and "irate-box" not in text:
@@ -2258,10 +2268,12 @@ def step_image(ctx):
             open_ = "[wifi-security]" not in text
             auto = not re.search(r"(?m)^autoconnect=false\s*$", text)
             aps.append(f"{name} ({'open' if open_ else 'encrypted'}{', brought up on its own' if auto else ''})")
+            names.append(name)
     if aps:
         out.append(F("image-ap-profiles", "Access-point profiles not the hub's", "warn",
                      f"{_list(aps)} in NetworkManager's connections: an access point the image set up, which could come up beside "
-                     "or instead of the hub's.", "nmcli connection delete <name>, if it is not yours."))
+                     "or instead of the hub's.", "Delete each that is not yours (the hub's hotspot is not among them)."))
+        out[-1]["cmd"] = "; ".join(f"sudo nmcli connection delete {shlex.quote(n)}" for n in names)
     else:
         out.append(F("image-ap-profiles", "Access-point profiles", "ok", "None but the hub's own."))
     return out

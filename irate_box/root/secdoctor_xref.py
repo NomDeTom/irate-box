@@ -146,7 +146,7 @@ def cis(section):
 # --- where each finding is put right ------------------------------------------------------------
 # One answer per finding, so the page ends every item in one thing to do: the Security page's own
 # buttons (found through the shared key at the time), else a place on /admin ({go: element id, where}),
-# a command ({cmd}), the deep audit again ({act: "deep"}), the box doctor's repair ({repair: its choice},
+# a command ({cmd}; a finding may carry its own exact one), the owner's words for it ({say}), the deep audit again ({act: "deep"}), the box doctor's repair ({repair: its choice},
 # "Run the installer again"), or the hub's own work ({hub: why}): what an update of irate-box fixes. Matched by source and a pattern on the finding's id; the
 # first match wins; anything unmatched shows its fix text as it is.
 HUB_SANDBOX = "The hub's own units: hardening them is irate-box's work (its plan, item 27), done one unit at a time with a reboot each. Keep the hub updated."
@@ -170,11 +170,15 @@ DO = [
     ("*", r"^kernel-ptrace$", {"cmd": "echo kernel.yama.ptrace_scope=1 | sudo tee /etc/sysctl.d/61-ptrace.conf && sudo sysctl --system"}),
     ("*", r"^kernel-regular$", {"cmd": "printf 'fs.protected_regular=2\\nfs.protected_fifos=2\\n' | sudo tee /etc/sysctl.d/61-regular.conf && sudo sysctl --system"}),
     ("*", r"^image-bluetooth$", {"cmd": "sudo systemctl disable --now bluetooth.service"}),
-    ("*", r"^image-ap-profiles$", {"cmd": "nmcli connection show   # then, for each not yours: sudo nmcli connection delete '<name>'"}),
-    ("*", r"^secrets-files$", {"cmd": "sudo chmod 600 /etc/hub/<file>   # the file named above"}),
     ("*", r"^image-kernel$", {"cmd": "apt list --upgradable 2>/dev/null | grep linux-image"}),
     ("*", r"^(debian-cis|lynis)-old$", {"act": "deep", "where": "Run the deep audit again"}),
-    ("*", r"^units-|^cmdlines-|^addon-(term|tailscale)$", {"hub": HUB_SANDBOX}),
+    ("*", r"^notes-login$", {"go": "apps", "where": "Apps (Notes: who may open it)"}),
+    ("*", r"^addon-tailscale$", {"go": "access", "where": "Access → Remote access",
+                                 "say": "Tailscale came with the OS, and its unit's sandbox is its makers'. If you don't use it to reach the box from afar, switch it off."}),
+    ("*", r"^addon-mqtt$|^(page-)?port-tcp-1883$", {"go": "addons", "where": "Add-ons",
+                                           "say": "Meshtastic nodes on your network publish to it, so it answers the network on purpose, with no login (topics limited to msh/#). If no node of yours uses it, remove the MQTT add-on; if they do, accept it as it is."}),
+    ("*", r"^addon-term$", {"hub": HUB_SANDBOX, "go": "addons", "where": "Add-ons (the terminal can be removed if you don't use it)"}),
+    ("*", r"^units-|^cmdlines-", {"hub": HUB_SANDBOX}),
     ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)", {"hub": HUB_SETUP, "repair": "rerun-install"}),
     ("*", r"^(hub-body|admin-csrf)$", {"hub": "A flaw in the hub itself: an update of irate-box fixes it.", "go": "updates", "where": "Updates"}),
 ]

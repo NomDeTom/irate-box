@@ -1382,3 +1382,47 @@ html:has(> body.admin) { background: var(--bg); }
 /* The sign-in sheet's offer of the internet (guest-net.js). */
 .guest-net { margin: 0 auto 1rem; padding: 0.7rem 1rem; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
 .guest-net p { margin: 0 0 0.5rem; }
+/* Findings (the Security page and the Security doctor, item 11): one shape everywhere. A status word
+   on the left edge's colour, the title, what it means, and one thing to do; no emoji to decode. */
+.findings { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0 1rem; }
+.finding { --f: var(--muted); background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--f);
+  border-radius: 6px; padding: 0.55rem 0.8rem 0.6rem; font-size: 0.88rem; }
+.finding-problem { --f: var(--bad); } .finding-warn { --f: var(--warn); } .finding-ok, .finding-fixed { --f: var(--ok); }
+.finding-suggest { --f: var(--accent); } .finding-not-here, .finding-accepted { --f: var(--border); }
+.finding.landed { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow 0.3s; }
+.fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; }
+.ftitle { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.fmeta { margin-left: auto; color: var(--muted); font-size: 0.75rem; }
+.fdetail { margin: 0.3rem 0 0; }
+.fdo { margin-top: 0.4rem; }
+.fhow { margin: 0; }
+.fdo-label { font-weight: 600; }
+.fdo-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+.fdo-cmd { display: inline-flex; align-items: center; gap: 0.4rem; max-width: 100%; }
+.fdo-cmd code { padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg);
+  font-size: 0.78rem; overflow-x: auto; white-space: nowrap; max-width: min(60ch, 70vw); }
+a.action-btn.go-btn { text-decoration: none; display: inline-block; }
+.fsaid { margin-top: 0.35rem; font-size: 0.8rem; }
+.fsaid summary { cursor: pointer; color: var(--muted); }
+.fsaid ul { margin: 0.3rem 0 0; padding-left: 1rem; }
+.fsaid li { margin: 0.2rem 0; }
+.faccept { display: flex; justify-content: flex-end; margin-top: 0.2rem; font-size: 0.8rem; }
+.findings.compact .finding { padding: 0.35rem 0.7rem; }
+.findings.compact .fdetail { color: var(--muted); }
+.fstate { display: inline-block; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 0.05rem 0.4rem; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.fstate-problem { color: var(--bad); } .fstate-warn { color: var(--warn); } .fstate-ok, .fstate-fixed { color: var(--ok); }
+.fstate-suggest { color: var(--accent); }
+.sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.5rem 0; }
+.sec-head > p { margin: 0; flex: 1 1 18rem; }
+.sec-counts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.6rem 0; }
+.sec-count.sec-count { display: inline-flex; align-items: baseline; gap: 0.3rem; padding: 0.35rem 0.8rem; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 0.85rem; text-decoration: none; cursor: pointer; }
+.sec-count strong { font-size: 1.15rem; }
+.sec-count-problem strong { color: var(--bad); } .sec-count-warn strong { color: var(--warn); } .sec-count-ok strong { color: var(--ok); }
+.sec-count.active { border-color: var(--accent); background: var(--accent-soft); }
+.sec-search { width: 100%; max-width: 28rem; margin: 0.2rem 0 0.4rem; }
+.sec-fold { margin: 0.6rem 0; }
+.sec-fold > summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; }
+.raw-lines { list-style: none; padding: 0 0 0 0.5rem; margin: 0.4rem 0; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.3rem; }
+#security-listeners td:last-child { font-size: 0.82rem; }

@@ -1170,7 +1170,11 @@ const sec = {
   when: document.getElementById('security-when'),
   scan: document.getElementById('security-scan'),
   note: document.getElementById('security-note'),
+  counts: document.getElementById('security-counts'),
   findings: document.getElementById('security-findings'),
+  hub: document.getElementById('security-hub'),
+  set: document.getElementById('security-set'),
+  setCount: document.getElementById('security-set-count'),
   listeners: document.querySelector('#security-listeners tbody'),
   output: document.getElementById('security-output'),
   log: document.getElementById('security-log'),
@@ -1188,6 +1192,7 @@ let secWaiting = null; // { id, fid }: a request, and the line its answer goes u
 let secNote = null; // { fid, text, ok }
 let secPoll = null;
 let secAsked = false;
+let secData = null; // the last /admin/security, for redraws (accepting, filtering)
 
 // Which page a line of the box's scan belongs on (S1, done in the page: the root helper and its
 // allow-list are untouched). A cure has one right answer (5d): the kernel's protections, root's own
@@ -1197,22 +1202,82 @@ const CURE_ID = /^(kernel-|root-password|root-firstrun|ssh-root|llmnr)/;
 const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
 function secKind(f) {
   if (f.id === 'security-updates' || f.id === 'unattended') return 'update';
+  if (/^port-/.test(f.id)) return 'port';
   if (CURE_ID.test(f.id) || (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))) return 'cure';
   return 'choice';
 }
 // Passwordless sudo as a toggle (Tom, 2026-10-08: "I like the idea of a toggle"): On while a
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
 function sudoToggle(f, busy) {
-  return el('span', { className: 'library-buttons' }, ...f.actions.map((a) => {
+  return f.actions.map((a) => {
     const on = /^sudo-drop:/.test(a.choice), file = a.choice.split(':')[1];
     const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : ''), disabled: busy,
       textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secFix(f.id, a) });
     b.setAttribute('aria-pressed', String(on));
     return b;
-  }));
+  });
+}
+// A line of the box's scan: its buttons, each acting through the root helper (only what its last scan offered).
+function scanButtons(f, busy) {
+  if (f.id === 'sudo-nopasswd') return sudoToggle(f, busy);
+  return (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
+    onclick: () => secFix(f.id, a) }));
+}
+
+// --- one finding, the same shape on every page (item 11; Tom, 2026-10-09: "lists of emoji checks or
+// warnings with vague information is totally unactionable") -------------------------------------------
+// A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
+// link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
+const STATE_WORD = { problem: 'To fix', warn: 'To look at', ok: 'Fine', suggest: 'Suggestion', 'not-here': 'Not for this box',
+  accepted: 'Accepted', fixed: 'Put right' };
+function copyBox(cmd) {
+  const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
+  b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(cmd); b.textContent = 'Copied'; } catch (_) { b.textContent = 'Select it and copy'; }
+    setTimeout(() => { b.textContent = 'Copy'; }, 2000);
+  });
+  return el('span', { className: 'fdo-cmd' }, el('code', { textContent: cmd }), b);
+}
+// r: {id, state, title, detail, how, controls[], meta, said[], accept: {key, title, on} | null, note}
+function findingRow(r) {
+  const state = r.state || 'warn';
+  return el('article', { className: `finding finding-${state}`, id: r.id || '' },
+    el('div', { className: 'fhead' },
+      el('span', { className: `fstate fstate-${state}`, textContent: STATE_WORD[state] || state }),
+      el('h4', { className: 'ftitle', textContent: r.title }),
+      r.meta ? el('span', { className: 'fmeta', textContent: r.meta }) : null),
+    r.detail ? el('p', { className: 'fdetail', textContent: r.detail }) : null,
+    (r.how || (r.controls || []).length) ? el('div', { className: 'fdo' },
+      r.how ? el('p', { className: 'fhow' }, el('span', { className: 'fdo-label', textContent: state === 'ok' || state === 'fixed' ? 'Undo: ' : 'What to do: ' }), r.how) : null,
+      (r.controls || []).length ? el('div', { className: 'fdo-controls' }, ...r.controls) : null) : null,
+    r.note || null,
+    (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `What each source said (${r.said.length})` }),
+      el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
+        el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
+        l.fix ? el('span', { className: 'setting-desc', textContent: ` To do: ${l.fix}` }) : null)))) : null,
+    r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'link-button',
+      textContent: r.accept.on ? 'Take back: list it again' : 'Accept as it is',
+      title: r.accept.on ? 'Back among what is to fix or look at' : 'You have looked at it and are happy to leave it: it moves to "Accepted by you" and stops counting',
+      onclick: () => secAccept(r.accept.key, r.accept.title, !r.accept.on) })) : null);
+}
+const noteUnder = (fid) => (secNote && secNote.fid === fid
+  ? el('p', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
+async function secAccept(key, title, yes) {
+  try {
+    const r = await postJSON('/admin/security', { action: yes ? 'accept' : 'unaccept', key, title });
+    if (secData) { secData.accepted = r.accepted; renderSecurity(secData); }
+  } catch (err) { say(err.message, false, sec.auditNote); }
+}
+async function healthRepair(choice, label, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try {
+    await postJSON('/admin/health', { action: 'fix', choice });
+    say(`${label}: asked; the Box doctor shows its progress and answer.`, true, sec.auditNote);
+  } catch (err) { say(err.message, false, sec.auditNote); }
 }
 
 function renderSecurity(data) {
+  secData = data;
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
   if (secWaiting) {
@@ -1223,29 +1288,28 @@ function renderSecurity(data) {
       return renderSecurity(data);
     }
   }
-  const all = [...data.hub, ...(scan ? scan.findings : [])].sort((a, b) => RANK[a.status] - RANK[b.status]);
-  const shown = new Set(all.map((f) => f.id));
-  const noteUnder = (fid) => (secNote && secNote.fid === fid
-    ? el('span', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
-  const line = (f) => el('li', { className: `check check-${f.status}` },
-    el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
-    el('span', { textContent: ` — ${f.detail}` }),
-    f.fix ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
-    f.id === 'sudo-nopasswd' ? sudoToggle(f, busy) : f.actions.length ? el('span', { className: 'library-buttons' }, ...f.actions.map((a) => el('button', {
-      type: 'button', className: 'action-btn', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a),
-    }))) : null,
-    noteUnder(f.id));
-  // Each where it belongs (checklist 4d, 5d; S of the menu overhaul): the real choices here, the
-  // cures beside the doctor's findings, Debian's security updates on Updates. The same scan and the
-  // same fix request everywhere, so root's rule (only what its last scan offered) is unchanged.
-  const by = (k) => all.filter((f) => secKind(f) === k);
-  sec.findings.replaceChildren(...by('choice').map(line));
-  noteEl('secdoctor-cures').replaceChildren(...(by('cure').length ? by('cure').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to cure.' : 'Not scanned yet.' })]));
-  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map(line) : [el('li', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
+  const lines = scan ? scan.findings : [];
+  const shown = new Set(lines.map((f) => f.id));
+  const by = (k) => lines.filter((f) => secKind(f) === k).sort((a, b) => RANK[a.status] - RANK[b.status]);
+  const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
+    how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Nothing to press: it is said so you know.'),
+    controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
+  // The real choices: what waits for one first, what is set (with its Undo) in a fold.
+  const waiting = by('choice').filter((f) => f.status !== 'ok'), set = by('choice').filter((f) => f.status === 'ok');
+  sec.findings.replaceChildren(...(waiting.length ? waiting.map((f) => row(f))
+    : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing: every choice here is made.' : 'Not scanned yet.' })]));
+  sec.set.replaceChildren(...set.map((f) => row(f, { how: f.actions.length ? 'Each change made here can be put back as it was.' : '' })));
+  sec.setCount.textContent = `(${set.length})`;
+  // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
+  sec.hub.replaceChildren(...data.hub.map((f) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
+    how: (f.do && f.do.hub) || f.fix || '', controls: f.do && f.do.go ? [el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })] : [] })));
+  // Debian's security updates, on Updates.
+  noteEl('updates-security').replaceChildren(...(by('update').length ? by('update').map((f) => row(f, { how: f.status === 'ok' ? '' : f.fix }))
+    : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing to say yet.' : 'Not scanned yet.' })]));
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose = secNote && (secNote.fid === 'scan' || !shown.has(secNote.fid)) && secNote.fid !== 'audit' ? secNote : null;
   say(loose ? loose.text : '', loose ? loose.ok : true, sec.note);
-  // The security doctor is its own pane (Health), with its answer under its button.
+  // The security doctor is its own pane (Health), with its answer under its buttons.
   const auditSaid = secNote && secNote.fid === 'audit' ? secNote : null;
   say(auditSaid ? auditSaid.text : '', auditSaid ? auditSaid.ok : true, sec.auditNote);
 
@@ -1259,16 +1323,31 @@ function renderSecurity(data) {
     ? `Deep audit running: ${deep.progress.step} (${deep.progress.n} of ${deep.progress.total})…`
     : (deep.at ? `Last deep audit ${new Date(deep.at * 1000).toLocaleString()}, ${Math.round((deep.took || 0) / 60)} min. ` : 'No deep audit yet. ')
       + 'It runs debian-cis\'s CIS benchmark checks and Lynis (about 8 minutes on a small board), weekly while the Security kit is kept current.';
-  renderAudit(data.audit, busy);
+  renderAudit(data.audit, busy, data);
   renderImports(data.imports);
-  sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => el('tr', {},
-    el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
-    el('td', {}, el('span', { className: 'setting-name', textContent: l.name }),
-      el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
-    el('td', { textContent: l.addr }))));
+  // Each port with the scan's word on it and, where there is one, its button: no separate list of ports.
+  const portLine = new Map(by('port').map((f) => [f.id, f]));
+  sec.listeners.replaceChildren(...((scan && scan.listeners) || []).map((l) => {
+    const f = portLine.get(`port-${l.proto}-${l.port}`);
+    return el('tr', { id: f ? `sec-${f.id}` : '' },
+      el('td', { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
+      el('td', {}, el('span', { className: 'setting-name', textContent: f ? f.title : l.name }),
+        el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
+      el('td', { textContent: l.addr }),
+      el('td', {}, f ? el('span', { className: `fstate fstate-${f.status}`, textContent: f.status === 'ok' ? 'Yes' : STATE_WORD[f.status] }) : null,
+        f ? el('span', { className: 'setting-desc', textContent: ` ${f.detail.replace(/^[^.]*\)\.\s*/, '')}` }) : null,
+        f && f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: ` ${f.fix}` }) : null,
+        f && f.actions.length ? el('span', { className: 'library-buttons' }, ...scanButtons(f, busy)) : null, f ? noteUnder(f.id) : null));
+  }));
   sec.output.hidden = !data.log.length;
   sec.log.textContent = data.log.join('\n');
-  const problems = by('choice').filter((f) => f.status === 'problem').length;
+  const problems = waiting.filter((f) => f.status === 'problem').length;
+  const ports = by('port').filter((f) => f.status !== 'ok').length;
+  sec.counts.replaceChildren(...[
+    [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
+    [ports, `port${ports === 1 ? '' : 's'} worth a look`, ports ? 'warn' : 'ok', 'security-ports'],
+    [set.length, 'set', 'ok', 'security-set-fold']].map(([n, word, st, to]) =>
+    el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
   badge('security', problems ? String(problems) : '');
   const updProblems = by('update').filter((f) => f.status === 'problem').length;
   badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention (F4) words it
@@ -1280,8 +1359,6 @@ function renderSecurity(data) {
   if (busy) secPoll = setTimeout(loadSecurity, 2000);
 }
 
-// The security doctor's report (secdoctor.py): one block per step, the steps with something to
-// look at open. Read-only, so a line has no buttons, only what to do by hand.
 // --- the joint report (secdoctor.joint): what several sources say about one thing, once ------------
 const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page', debsecan: 'debsecan', 'debian-cis': 'debian-cis',
   lynis: 'Lynis', openvas: 'OpenVAS', nmap: 'nmap' };
@@ -1289,42 +1366,101 @@ const SOURCE_WORDS = { doctor: 'the doctor', 'security-page': 'the Security page
 // tracker data is fetched daily, the Security page scans when opened, imported scans are by hand.
 const STALE_DAYS = { doctor: 1, 'security-page': 1, debsecan: 3, 'debian-cis': 8, lynis: 8, openvas: 30, nmap: 30 };
 const srcWords = (list) => list.map((x) => SOURCE_WORDS[x] || x).join(', ');
-function renderJoint(j) {
+let jointShow = 'all'; // the counters double as the list's filter: all, problem, warn
+const jointSearch = document.getElementById('joint-search');
+jointSearch.addEventListener('input', () => secData && renderJoint(secData.audit && secData.audit.joint, secData));
+
+// What to do about one item: the Security page's buttons for its lines (from its scan now), the box
+// doctor's repair, the deep audit, a link to where it is chosen, a command; and the words for it.
+function jointDo(i, data, busy) {
+  const scanBy = new Map(((data.scan || {}).findings || []).map((f) => [f.id, f]));
+  const page = (i.page || []).map((id) => scanBy.get(id)).filter(Boolean);
+  const seen = new Set(), controls = [];
+  for (const f of page) {
+    if (f.id === 'sudo-nopasswd') { controls.push(...sudoToggle(f, busy)); continue; }
+    for (const a of f.actions || []) {
+      if (seen.has(a.choice)) continue;
+      seen.add(a.choice);
+      controls.push(el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy, onclick: () => secFix(f.id, a) }));
+    }
+  }
+  const d = i.do || {};
+  if (d.repair === 'rerun-install') {
+    controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the installer again', disabled: busy,
+      onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run install.sh again with this box\'s recorded options? Services restart once; nothing else changes.') }));
+  }
+  if (d.act === 'deep') controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the deep audit', disabled: busy, onclick: () => sec.auditDeep.click() }));
+  if (d.go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${d.go}`, textContent: `Go to ${d.where} →` }));
+  if (d.cmd || i.cmd) controls.push(copyBox(d.cmd || i.cmd));
+  // The words: the hub's own work said as such; else the Security page's (it goes with its buttons); else the item's.
+  const pageFix = page.map((f) => f.fix).find(Boolean);
+  const how = d.hub || d.say || (page.length && page.some((f) => (f.actions || []).length) ? pageFix || '' : '') || i.fix
+    || (controls.length ? '' : 'Nothing to press: it is said so you know.');
+  // Put right since the doctor ran: every Security page line in it is fine now.
+  const fixed = page.length > 0 && page.length === (i.page || []).length && page.every((f) => f.status === 'ok');
+  return { controls, how, fixed, page };
+}
+
+function jointRow(i, data, busy, accepted) {
+  const { controls, how, fixed } = jointDo(i, data, busy);
+  const isNew = ((data.audit || {}).new || []).some((id) => i.lines.some((l) => l.id === id));
+  const meta = [i.area, i.sources.length > 1 ? `${i.sources.length} sources agree` : `from ${srcWords(i.sources)}`,
+    i.alone ? `${srcWords(i.could_see)} could have seen it and did not` : '', isNew ? 'new since the last run' : ''].filter(Boolean).join(' · ');
+  const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].detail !== i.detail) ? i.lines : [];
+  return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
+    title: i.title, detail: i.detail, how: fixed ? 'Put right here since the doctor last ran; it drops off at its next run.' : how,
+    controls, meta, said, note: (i.page || []).map(noteUnder).find(Boolean) || null,
+    accept: { key: i.key, title: i.title, on: !!accepted } });
+}
+
+function renderJoint(j, data) {
   const box = (id) => document.getElementById(id);
-  if (!j) { box('joint-summary').textContent = 'Run the doctor to see it.'; box('joint-items').replaceChildren(); return; }
-  const a = j.after || { problem: 0, warn: 0 };
-  box('joint-summary').textContent = `After merging what the sources agree on: ${a.problem} to fix, ${a.warn} to look at` +
-    (j.agreed_ok ? `; ${j.agreed_ok} thing${j.agreed_ok === 1 ? '' : 's'} several sources agree are fine` : '') + '.';
-  const items = (j.items || []);
-  // One list, worst first (item 11 step 4): filters for to fix / to look at, the area and the sources, and a
-  // search; each entry opens to who said it, what they said, and what to do.
-  const WORD = { problem: 'to fix', warn: 'to look at', ok: 'fine' };
-  const RANK = { problem: 0, warn: 1, ok: 2 };
-  box('joint-items').replaceChildren(AW.shortList([...items].sort((x, y) => RANK[x.status] - RANK[y.status]).map((i, n) => ({
-    id: `joint-${n}`, title: `${MARK[i.status]} ${i.title}`,
-    summary: i.sources.length > 1 ? `${i.sources.length} sources agree` : `said by ${srcWords(i.sources)}`,
-    badges: [WORD[i.status] || i.status, i.about.kind, ...i.sources.map((x) => SOURCE_WORDS[x] || x)],
-    detail: () => [
-      el('p', { className: 'setting-desc', textContent: i.sources.length > 1 ? `${i.sources.length} sources agree: ${srcWords(i.sources)}.` : `Said by ${srcWords(i.sources)}.` }),
-      i.detail ? el('p', { textContent: i.detail }) : null,
-      el('ul', { className: 'joint-titles' }, ...i.titles.map((x) => el('li', { textContent: x }))),
-      i.fix ? el('p', { className: 'setting-desc', textContent: `To do: ${i.fix}` }) : null],
-  })), { id: 'joint-list', empty: 'Nothing to fix or look at.' }));
-  const alone = items.filter((i) => i.alone);
-  box('joint-alone').hidden = !alone.length;
-  box('joint-alone-list').replaceChildren(...alone.map((i) => el('li', { className: `check check-${i.status}` },
-    el('strong', { textContent: i.title }),
-    el('span', { textContent: ` — only ${srcWords(i.sources)} said so; ${srcWords(i.could_see)} could have seen it and did not.` }))));
+  const busy = data.pending > 0 || !!secWaiting;
+  const accepted = data.accepted || {};
+  const all = j ? (j.items || []) : [];
+  const ok = (i) => !accepted[i.key];
+  const fixedNow = (i) => jointDo(i, data, busy).fixed;
+  const real = all.filter((i) => !i.tier && ok(i));
+  const counts = { problem: real.filter((i) => i.status === 'problem' && !fixedNow(i)).length, warn: real.filter((i) => i.status === 'warn' && !fixedNow(i)).length };
+  const needle = jointSearch.value.trim().toLowerCase();
+  const match = (i) => !needle || [i.title, i.detail, i.fix, i.area, ...i.lines.map((l) => `${l.title} ${l.detail}`)].join(' ').toLowerCase().includes(needle);
+  const pick = (i) => match(i) && (jointShow === 'all' || (i.status === jointShow && !fixedNow(i)));
+  box('joint-summary').replaceChildren(...(!j ? [el('p', { className: 'setting-desc', textContent: 'Run the doctor to see it.' })] : [
+    ['all', `${counts.problem + counts.warn}`, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
+    ['problem', `${counts.problem}`, 'to fix', counts.problem ? 'problem' : 'ok'],
+    ['warn', `${counts.warn}`, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${jointShow === key ? ' active' : ''}`,
+      onclick: () => { jointShow = key; renderJoint(j, data); } }, el('strong', { textContent: n }), ` ${word}`);
+    b.setAttribute('aria-pressed', String(jointShow === key));
+    return b;
+  })));
+  const list = real.filter(pick);
+  box('joint-items').replaceChildren(...list.map((i) => jointRow(i, data, busy, null)));
+  box('joint-empty').hidden = !j || list.length > 0;
+  box('joint-empty').textContent = real.length ? 'Nothing matches.' : 'Nothing to fix or look at.';
+  const fold = (id, items, row) => {
+    box(`${id}-fold`).hidden = !items.length;
+    box(`${id}-count`).textContent = `(${items.length})`;
+    box(id).replaceChildren(...items.map(row));
+  };
+  fold('joint-suggest', all.filter((i) => i.tier === 'suggest' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
+  fold('joint-nothere', all.filter((i) => i.tier === 'not-here' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
+  fold('joint-accepted', all.filter((i) => !ok(i)), (i) => jointRow(i, data, busy, accepted[i.key]));
+  // What the box's own scan has put right with a cure (one right answer, 5d), each with its Undo.
+  const cured = ((data.scan || {}).findings || []).filter((f) => secKind(f) === 'cure' && f.status === 'ok' && (f.actions || []).length);
+  fold('joint-cured', cured, (f) => findingRow({ id: `sec-cure-${f.id}`, state: 'ok', title: f.title, detail: f.detail,
+    how: 'Done from here; put it back as it was if you need to.', controls: scanButtons(f, busy), note: noteUnder(f.id) }));
   // One strip at the top (item 11 step 6): each source, its age, and a warning once it is older than it
   // should be; what it covers and what it said in the pill's title.
-  const fresh = j.freshness || {};
+  const fresh = (j && j.freshness) || {};
   const now = Date.now() / 1000;
-  box('joint-fresh').replaceChildren(...Object.keys(j.sources || {}).map((src) => {
+  box('joint-fresh').replaceChildren(...Object.keys((j && j.sources) || {}).map((src) => {
     const c = j.sources[src], at = fresh[src], old = !at || now - at > (STALE_DAYS[src] || 30) * 86400;
     return el('span', { className: old ? 'warn-pill' : 'info-pill',
       title: `${(j.coverage || {})[src] || ''} To fix: ${c.problem || 0}; to look at: ${c.warn || 0}.`.trim(),
       textContent: `${SOURCE_WORDS[src] || src}: ${at ? ago(now - at) : 'never'}${old ? ', stale' : ''}` });
   }));
+  return counts;
 }
 
 // Scan reports, read here in the browser: only what they found goes to the box (secimports.py).
@@ -1405,34 +1541,31 @@ function parseScanReport(text, name) {
   return { ...report, name: name || '' };
 }
 
-function renderAudit(audit, busy) {
-  // The cures are lines of the box's scan, which the joint report already counts (its "security-page"
-  // source): the badge stays the merged count.
-  badge('secdoctor', audit ? String((audit.joint && audit.joint.after ? audit.joint.after.problem : audit.counts.problem) || '') : '');
-  renderJoint(audit && audit.joint);
+function renderAudit(audit, busy, data) {
+  // The badge counts what is to fix after merging, less what is accepted or put right since.
+  const counts = renderJoint(audit && audit.joint, data);
+  badge('secdoctor', audit ? String((audit.joint ? counts.problem : audit.counts.problem) || '') : '');
   if (!audit) {
     sec.auditWhen.textContent = busy ? 'Running…' : 'Not run yet.';
     sec.auditSteps.replaceChildren();
     sec.auditScope.hidden = true;
     return;
   }
-  const c = audit.counts;
-  sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}: ${c.problem} to fix, ${c.warn} to look at, ${c.ok} fine`
+  sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}`
     + ((audit.new || []).length ? `; ${audit.new.length} new since ${new Date(audit.previous_at * 1000).toLocaleDateString()}` : '')
     + (audit.root ? '.' : ' (not run as root: some checks could not read what they need).') + (busy ? ' Running…' : '');
+  // The raw report: every step's checks as the doctor wrote them, the fine ones too, all folded.
   sec.auditSteps.replaceChildren(...audit.steps.map((st) => {
     const worst = st.findings.some((f) => f.status === 'problem') ? 'problem' : st.findings.some((f) => f.status === 'warn') ? 'warn' : 'ok';
     const lines = [...st.findings].sort((a, b) => RANK[a.status] - RANK[b.status]);
-    const det = el('details', { className: 'admin-output' },
-      el('summary', { textContent: `${MARK[worst]} ${st.title}${st.ref ? ` (${st.ref})` : ''}` }),
-      el('ul', { className: 'admin-checks' }, ...lines.map((f) => el('li', { className: `check check-${f.status}` },
-        el('span', { textContent: `${MARK[f.status]} ` }), el('strong', { textContent: f.title }),
+    return el('details', { className: 'admin-output' },
+      el('summary', {}, el('span', { className: `fstate fstate-${worst}`, textContent: STATE_WORD[worst] }), ` ${st.title}${st.ref ? ` (${st.ref})` : ''}`),
+      el('ul', { className: 'raw-lines' }, ...lines.map((f) => el('li', {},
+        el('span', { className: `fstate fstate-${f.status}`, textContent: STATE_WORD[f.status] }), ' ', el('strong', { textContent: f.title }),
         (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
         el('span', { textContent: ` — ${f.detail}` }),
-        f.fix ? el('span', { className: 'setting-desc', textContent: `To do: ${f.fix}` }) : null))));
-    det.open = worst !== 'ok';
-    return det;
+        f.fix ? el('span', { className: 'setting-desc', textContent: ` To do: ${f.fix}` }) : null))));
   }));
   sec.auditScope.hidden = !(audit.not_covered || []).length;
   sec.auditNot.replaceChildren(...(audit.not_covered || []).map((t) => el('li', { textContent: t })));
@@ -1488,6 +1621,21 @@ function renderImports(imports) {
     }, { className: 'small' }))));
 }
 loadSecurity();
+
+// A "Go to …" link (the doctor's, the Security page's) names the very line or section: open the folds
+// around it, bring it into view and mark it for a moment, so the owner lands on the thing to change.
+function landOn() {
+  const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+  if (!target || target.classList.contains('admin-pane') || target.classList.contains('admin-page')) return;
+  for (let d = target.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+  if (target.tagName === 'DETAILS') target.open = true;
+  setTimeout(() => {
+    if (target.scrollIntoView) target.scrollIntoView({ block: 'center' });
+    target.classList.add('landed');
+    setTimeout(() => target.classList.remove('landed'), 2500);
+  }, 50);
+}
+window.addEventListener('hashchange', landOn);
 
 // --- health ----------------------------------------------------------------------------
 // The box doctor (health.py, through the root helper): findings with what to do and the safe
