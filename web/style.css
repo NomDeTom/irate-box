@@ -680,6 +680,10 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .update-cards, #pkg-list { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.6rem; }
 .update-card-body { display: flex; flex-direction: column; gap: 0.35rem; width: 100%; min-width: 0; }
 .update-card-body > .library-form, .update-card-body > .library-buttons { margin-top: 0.3rem; }
+/* A package card's settings drawn as the other cards' pattern: each label above its chips, no box of its own. */
+.update-card .aw-settings { background: none; border: 0; padding: 0; gap: 0.5rem; }
+.update-card .aw-field { display: grid; gap: 0.25rem; padding: 0; border-top: 0; font-size: 0.85rem; }
+.update-card .aw-label { min-width: 0; color: inherit; }
 /* Centred, not stretched: a button beside something taller (a label over its chips) keeps its own
    height (Tom, 2026-10-09: Network's Refresh was twice the height of the device chips beside it). */
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
