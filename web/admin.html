@@ -707,17 +707,17 @@
         <form id="accounts-settings" class="library-form">
           <label>Sign-up
             <select name="signup">
-              <option value="off">Off: no accounts</option>
-              <option value="open">Open: anyone makes one, usable at once</option>
-              <option value="apply">Apply: anyone asks; an admin accepts</option>
-              <option value="assigned">Assigned: an admin makes them</option>
+              <option value="off" data-says="No accounts: the box has guests and its admin only.">Off</option>
+              <option value="open" data-says="Anyone can make an account, usable at once.">Open</option>
+              <option value="apply" data-says="Anyone can ask for one; an admin accepts or refuses.">Application</option>
+              <option value="assigned" data-says="Only an admin makes accounts.">Admin assigned</option>
             </select>
           </label>
           <label>Over plain HTTP
             <select name="http">
-              <option value="prevented">Prevented: passwords only over HTTPS</option>
-              <option value="warning">Warning: allowed, and the page says it can be read off the air</option>
-              <option value="permitted">Permitted: allowed, nothing said</option>
+              <option value="prevented" data-says="Passwords only over HTTPS.">Prevented</option>
+              <option value="warning" data-says="Allowed, and the page says it can be read off the air.">Warning</option>
+              <option value="permitted" data-says="Allowed, nothing said.">Permitted</option>
             </select>
           </label>
           <button class="action-btn primary" type="submit">Save</button>
@@ -729,8 +729,10 @@
           <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"
             title="3 to 32 characters: letters, digits, dots, dashes or underscores; no spaces">
             <small class="setting-desc">3 to 32 characters: letters, digits, dots (.), dashes (-) or underscores (_); no spaces.</small></label>
-          <label>Role <select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
-          <button class="action-btn primary" type="submit">Make it</button>
+          <div class="library-buttons" role="group" aria-label="Make it as">
+            <button class="action-btn primary big" type="submit" name="role" value="user">Make user</button>
+            <button class="action-btn primary big" type="submit" name="role" value="admin">Make admin</button>
+          </div>
         </form>
         <p class="setting-desc">Each comes with a one-time code, for a day, for its person to set their password at /account.html.</p>
         <p class="acct-code" id="accounts-code" hidden></p>

@@ -304,11 +304,16 @@ const AW = (() => {
     const label = sel.closest('label');
     const name = sel.getAttribute('aria-label') || (label ? [...label.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').trim() : '');
     if (name) group.setAttribute('aria-label', name);
+    // Short chip labels, one line saying what the chosen one means (Tom, 2026-10-09: "no essays
+    // here"): an option's data-says text, shown under the chips and changing with them.
+    const says = [...sel.options].some((o) => o.dataset.says) ? h('p', { class: 'setting-desc chip-says' }) : null;
+    if (says) group.after(says);
     const draw = () => {
       const opts = [...sel.options];
       const few = opts.length > 0 && opts.length <= CHIPS_AT;
       sel.hidden = few;
       group.hidden = !few;
+      if (says) { const o = sel.selectedOptions[0]; says.textContent = (o && o.dataset.says) || ''; says.hidden = !few; }
       if (!few) return;
       group.replaceChildren(...opts.map((o) => h('button', {
         type: 'button', class: 'chip' + (o.selected ? ' selected' : ''), role: 'radio', 'aria-checked': String(o.selected),

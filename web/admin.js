@@ -3813,7 +3813,7 @@ acctEl.settings.addEventListener('submit', (e) => {
 acctEl.make.addEventListener('submit', (e) => {
   e.preventDefault();
   const f = acctEl.make.elements;
-  acctAct({ action: 'make', name: f.name.value.trim(), role: f.role.value });
+  acctAct({ action: 'make', name: f.name.value.trim(), role: (e.submitter && e.submitter.value) || 'user' });
   f.name.value = '';
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
