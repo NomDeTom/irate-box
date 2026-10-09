@@ -427,6 +427,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         hidden = set(hidden) | set(st["hidden"])
     own_icons = {}
     lock_ways, access_state = locked_as(), access.read(ACCESS_STATE)
+    lock_all = settings_snapshot()["locked_all"]
     sign_up_open = accounts.settings()["signup"] in ("open", "apply")
     if row == "apps":
         st = tiles_state()
@@ -447,7 +448,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
             out.append(w.replace('class="service-card ', f'class="service-card {size} ', 1).replace('<div ', f'<div data-size="{size}" ', 1) if size else w)
             continue
         # A locked tile (seen, not to be opened by this visitor): as the owner chose for it.
-        how = (lock_ways.get(m["id"], "signin") if m["id"] in locked else None)
+        how = ((lock_all or lock_ways.get(m["id"], "signin")) if m["id"] in locked else None)
         if how == "signup" and not (sign_up_open and access.mode_of(access_state, m["id"]) == "users"):
             how = "signin"  # no sign-up to offer, or an app for the admin only
         dead = how in ("padlock", "grey")
@@ -899,6 +900,9 @@ DEFAULT_SETTINGS = {
     # open to users and left at "as its access", show its tile to guests too, with a lock that leads
     # to sign-in. Off (the default) shows it only to those who may open it, as before.
     "sign_in_offer": False,
+    # What every tile does for one who sees it but may not open it, over the per-app choices (Tom,
+    # 2026-10-09: offered as a global override). "" (the default) leaves each app to its own choice.
+    "locked_all": "",
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -921,6 +925,8 @@ def valid_setting(key, value):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
+    if key == "locked_all":
+        return value == "" or value in LOCKED_AS
     if key in ("setup_decided", "setup_muted"):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "emoji_set":

@@ -2429,15 +2429,20 @@ function seenControls(app, cur) { return [accessBlock(app, null, cur)]; }
 
 // The box-wide sign-in offer (F3; the setup decision "sign-in-offer"): an app for users, left at
 // "as its access", shows its tile to guests too, locked, leading to sign-in.
+let lockAll = '';   // the box-wide way a seen-but-unopenable tile behaves ('' = each app's own)
 async function loadSignInOffer() {
   const box = document.getElementById('sign-in-offer-box');
   if (!box) return;
   let st;
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
+  lockAll = st.locked_all || '';
   box.replaceChildren(AW.settings([{ key: 'sign_in_offer', label: 'Show guests the tiles of apps for users, locked, with sign-in', kind: 'toggle',
     value: !!st.sign_in_offer, decision: 'sign-in-offer',
-    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' }],
-  { save: async (changed) => { await postJSON('/admin/settings', changed); loadAccess(); } }));
+    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' },
+  { key: 'locked_all', label: 'When seen but not opened, for every app', kind: 'choice', value: lockAll,
+    options: [['', 'Per app'], ['signin', 'Sign in'], ['signup', 'Sign up'], ['padlock', 'Padlock'], ['grey', 'Greyed']],
+    note: 'Per app (the default): each app\'s own page chooses. Any other: every app does that, over its own choice. Sign up only where accounts are open or by application.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); await loadSignInOffer(); loadAccess(); } }));
 }
 loadSignInOffer();
 
@@ -2567,8 +2572,10 @@ function accessBlock(id, a, seenOnly) {
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : a ? accessDesc({ ...a, mode: d.mode }) + ' ' + seenWords(d.seen, d.mode)
       : seenWords(d.seen, 'public') }),
     a ? chipRow('When seen but not opened', LOCK_CHIPS, d.lock, (v) => { d.lock = v; redraw(); },
-      (v) => waiting || (v === 'signup' && d.mode !== 'users')) : null,
-    a ? el('p', { className: 'setting-desc', textContent: `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
+      (v) => waiting || !!lockAll || (v === 'signup' && d.mode !== 'users')) : null,
+    a ? el('p', { className: 'setting-desc', textContent: lockAll
+      ? `All apps are set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one: change that on All apps, under "Who can open each one".`
+      : `Seen but not opened (checklist 4a): ${LOCK_WORDS[d.lock]}. Hidden, its address still works for whoever may open it.` }) : null,
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting || (d.icon !== undefined && d.icon !== '' && !ICON_OK(d.icon)), onclick: save })),
