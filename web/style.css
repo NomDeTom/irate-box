@@ -678,6 +678,8 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 /* Centred, not stretched: a button beside something taller (a label over its chips) keeps its own
    height (Tom, 2026-10-09: Network's Refresh was twice the height of the device chips beside it). */
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+/* display: flex outranks the browser's own [hidden] rule: without this, a hidden row stays on screen. */
+.library-buttons[hidden], .library-actions[hidden] { display: none; }
 .action-btn.big { padding: 0.55rem 1.2rem; font-size: 1rem; }
 .chip-says { margin: 0.25rem 0 0; }
 .library-form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 34rem; }

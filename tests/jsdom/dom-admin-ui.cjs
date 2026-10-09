@@ -238,6 +238,7 @@ setTimeout(() => {
   check('  settings only: the address follows', d.getElementById('backup-go').getAttribute('href') === '/admin/backup?level=settings');
   lv[2].querySelector('input').click();
   check('  the full image: no download, a stick to choose instead', d.getElementById('backup-go-box').hidden && !d.getElementById('backup-image-box').hidden);
+  check('  the full image: the download keeps the last real level, never a size of nothing', /about 0\.1 MB|about 117/.test(t('#backup-go')[0]) && !/0 MB\)|unknown/.test(t('#backup-go')[0].replace(/0\.1 MB/, '')), t('#backup-go')[0]);
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
   check('new box: books, toolkits and repositories offered with their sizes, mirrors marked', kb.querySelectorAll('input').length === 2 && /wikipedia_en \(2\.6 GB\)/.test(kb.textContent)
     && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);
