@@ -47,6 +47,7 @@ def kind_of(rel, git_mirrors=()):
     under git/). A top-level file is settings, a file in a folder is the folder's (settings folders named in
     SETTINGS_DIRS, the rest data), unless named in DATA or REFETCHED: something new is kept, not lost."""
     if not rel or _under(rel, REFETCHED) or _under(rel, git_mirrors) or rel.endswith((".tmp", ".part")) \
+            or any(rel.startswith(m) for m in git_mirrors if m.endswith("--")) \
             or _under(rel, ("git/.incoming",)):
         return "refetched"
     if rel.startswith(("git/cgitrc-", "git/mirror-urls.json")):
@@ -65,7 +66,9 @@ def git_mirrors(state, mirrors=None):
             mirrors = json.loads((state / "library" / "mirrors.json").read_text()).get("mirrors", [])
         except (OSError, ValueError, AttributeError):
             mirrors = []
-    return tuple(f"git/{m.get('area', 'public')}/{m['name']}.git" for m in mirrors if isinstance(m, dict) and m.get("name"))
+    # A mirror's submodules are mirrors too, beside it as NAME--SUB.git (on the Lyra: meshtastic-firmware--protobufs).
+    return tuple(p for m in mirrors if isinstance(m, dict) and m.get("name")
+                 for p in (f"git/{m.get('area', 'public')}/{m['name']}.git", f"git/{m.get('area', 'public')}/{m['name']}--"))
 
 
 def walk(state, git_mirrors_=None):
@@ -162,7 +165,7 @@ def plan(state, zim_dir, kits_status=None, mirrors=None, apps_dir=None, kit_titl
     for area in ("public", "private"):
         for p in sorted((state / "git" / area).glob("*.git")) if (state / "git" / area).is_dir() else []:
             rel = f"git/{area}/{p.name}"
-            repos.append({"name": p.name[:-4], "area": area, "mirror": rel in gm, "size": du(p)})
+            repos.append({"name": p.name[:-4], "area": area, "mirror": kind_of(rel, gm) == "refetched", "size": du(p)})
     code = du(Path(apps_dir)) if apps_dir and Path(apps_dir).is_dir() else 0
     return {"levels": {"settings": sums["settings"], "data": sums["settings"] + sums["data"]},
             "syncthing": sums["syncthing"], "left_out": {"books": sums["books"], "firmware": sums["firmware"]},

@@ -62,5 +62,13 @@ f = netinv.roaming_facts(dict(r, owner="wpa_supplicant"), None, fake)
 check("  wpa_supplicant alone: no lock (NetworkManager's), said why", "lock" not in f["choices"] and "NetworkManager" in f["why"]["lock"] and f["aps"] == [], f)
 f = netinv.roaming_facts(r, {}, lambda *c, **_: (1, ""))
 check("  no control socket: no background-scan choice, said why", "no-scan" not in f["choices"] and "control socket" in f["why"]["no-scan"], f)
+# iw dev on the Lyra (2026-10-09): a P2P device between the hotspot and the link, with no interface of its own.
+IW = ("phy#3\n\tInterface ap0\n\t\tifindex 9\n\t\taddr b2:00:00:00:00:01\n\t\tssid Irate-Box\n\t\ttype AP\n"
+      "\t\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz\n\tUnnamed/non-netdev interface\n\t\twdev 0x300000002\n"
+      "\t\taddr be:00:00:00:00:02\n\t\ttype P2P-device\n\tInterface wlan0\n\t\tifindex 8\n\t\taddr b8:00:00:00:00:03\n"
+      "\t\tssid HomeNet\n\t\ttype managed\n\t\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz\n")
+dev = netinv.parse_iw_dev(IW)
+check("iw dev: the hotspot stays AP with its own address, the P2P device's lines go nowhere", dev["ap0"]["type"] == "AP"
+      and dev["ap0"]["addr"] == "b2:00:00:00:00:01" and dev["wlan0"]["type"] == "managed" and set(dev) == {"ap0", "wlan0"}, dev)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
