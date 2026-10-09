@@ -190,6 +190,11 @@ def parse_iw_dev(text):
         if m:
             cur = out.setdefault(m.group(1), {"phy": phy})
             continue
+        if s.startswith("Unnamed/non-netdev interface"):
+            # A P2P device (wpa_supplicant's p2p-dev-wlan0): not an interface, and its own type and address are
+            # not the one above's (on the Lyra, 2026-10-09, ap0 read as "P2P-device" and the hotspot went unseen).
+            cur = None
+            continue
         if cur is None:
             continue
         for key, pat in (("type", r"^type (\S+)"), ("ssid", r"^ssid (.+)"), ("addr", r"^addr (\S+)")):

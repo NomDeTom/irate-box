@@ -30,13 +30,14 @@ for rel in ("notes/index.md", "store/saves/a.json", "drop/f.data", "board.json",
     put(rel, 1000)
 for rel in ("ci/home/big", "ci/runs/r", "firmware/2.8/fw.bin", "zim/book.zim", "crashwatch/snap.log", "control/x.json",
             "kits/kit.json", "source/irate-box-source.tar.gz", "library/archive/old.zim", "library/api-cache/x", "library/github-token",
-            "library/tmp/part", "git/public/firmware.git/HEAD", "git/.incoming/x", "helper-busy.json", "notes/x.tmp"):
+            "library/tmp/part", "git/public/firmware.git/HEAD", "git/public/firmware--protobufs.git/HEAD", "git/.incoming/x", "helper-busy.json", "notes/x.tmp"):
     put(rel, 100000)
 put(".local/state/syncthing/key.pem", 50)
 (S / "library" / "mirrors.json").write_text(json.dumps({"mirrors": [{"name": "firmware", "area": "public"}]}))
 SET = 1300 + (S / "library" / "mirrors.json").stat().st_size   # 13 settings files of 100 bytes, and the mirrors' settings
 gm = B.git_mirrors(S)
-check("the git mirrors read from the mirrors' settings", gm == ("git/public/firmware.git",), gm)
+check("the git mirrors read from the mirrors' settings, their submodules with them", gm == ("git/public/firmware.git", "git/public/firmware--"), gm)
+check("  a submodule mirror is fetched again, not backed up", B.kind_of("git/public/firmware--protobufs.git/HEAD", gm) == "refetched")
 k = lambda rel: B.kind_of(rel, gm)  # noqa: E731
 check("settings: the hub's own files, the apps' and add-ons', the sources, the mesh's channels, cgit's",
       all(k(r) == "settings" for r in ("settings.json", "install-options", "tailscale.want", "apps.d/x.json", "addons/eliza/conf.json",
@@ -73,7 +74,7 @@ p = B.plan(S, S / "zim", {"kits": {"build": {"cached": {"bytes": 25 << 20}}, "de
 check("the plan: each level's size, books with theirs, a cached toolkit (not one never fetched), repositories with mirrors marked",
       p["levels"] == {"settings": SET, "data": SET + 11000} and p["books"] == [{"name": "book", "size": 100000}]
       and p["kits"] == [{"id": "build", "title": "Building", "size": 25 << 20}]
-      and {(r["name"], r["mirror"]) for r in p["repos"]} == {("mine", False), ("firmware", True), ("secret", False)}
+      and {(r["name"], r["mirror"]) for r in p["repos"]} == {("mine", False), ("firmware", True), ("firmware--protobufs", True), ("secret", False)}
       and p["left_out"] == {"books": 100000, "firmware": 100000} and "used" in p["image"], p)
 srv = (REPO / "irate_box/hub/server.py").read_text()
 check("the hub: the level from the address, the plan at /admin/backup/plan, no list of its own left", "level=settings" in srv
