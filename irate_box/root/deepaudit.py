@@ -140,6 +140,8 @@ def cis_check_info(src, check):
     conf = f"60-cis-{name.replace('_', '-')}.conf"
     lines = lambda pairs, sep: " ".join(q(k + sep + val) for k, _, val in (p.partition("=") for p in pairs))  # noqa: E731
     sysctl = v.get("SYSCTL_PARAMS", "").split()
+    if not sysctl and v.get("SYSCTL_PARAM") and v.get("SYSCTL_EXP_RESULT"):   # the one-key form (ASLR, core dumps)
+        sysctl = [f"{v['SYSCTL_PARAM']}={v['SYSCTL_EXP_RESULT']}"]
     opts = v.get("OPTIONS", "").split()
     pkgs = (v.get("PACKAGE", "") + " " + v.get("PACKAGES", "")).split()
     if sysctl and all("=" in p for p in sysctl):

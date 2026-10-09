@@ -208,6 +208,12 @@ DO = [
     ("*", r"^image-apt-daily$", {"go": "pkg-makers", "where": "Updates → Packages from their makers"}),
     ("*", r"^reach-ssh$", {"go": "sec-ssh-password", "where": "Security → SSH password login"}),
     ("*", r"^reach-web$", {"go": "network", "where": "Network (Tailscale, to reach the box from afar instead)"}),
+    # ASLR and core dumps, from whichever source said so (the Lyra's deep audit, 2026-10-09: the CIS
+    # checks' own scripts state no plain setting for core dumps' limits line).
+    ("*", r"_enable_randomized_vm_placement$|^lynis-KRNL-6000-kernel\.randomize_va_space$",
+     {"cmd": "echo kernel.randomize_va_space=2 | sudo tee /etc/sysctl.d/61-aslr.conf && sudo sysctl --system"}),
+    ("*", r"_restrict_core_dumps$|^lynis-KRNL-5820|^lynis-KRNL-6000-(fs|kernel)\.suid_dumpable$",
+     {"cmd": "echo '* hard core 0' | sudo tee /etc/security/limits.d/60-no-core.conf && echo fs.suid_dumpable=0 | sudo tee /etc/sysctl.d/61-no-core.conf && sudo sysctl --system"}),
     ("*", r"^kernel-ptrace$", {"cmd": "echo kernel.yama.ptrace_scope=1 | sudo tee /etc/sysctl.d/61-ptrace.conf && sudo sysctl --system"}),
     ("*", r"^kernel-regular$", {"cmd": "printf 'fs.protected_regular=2\\nfs.protected_fifos=2\\n' | sudo tee /etc/sysctl.d/61-regular.conf && sudo sysctl --system"}),
     ("*", r"^image-bluetooth$", {"cmd": "sudo systemctl disable --now bluetooth.service"}),
