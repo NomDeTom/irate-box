@@ -892,6 +892,9 @@ DEFAULT_SETTINGS = {
     # The setup tour (M14): which of the decisions that touch security (5h) the owner has made,
     # by keeping the default or changing it where it lives. The box runs on the defaults until then.
     "setup_decided": [],
+    # Setup steps the owner has muted (Tom, 2026-10-09: "muted as well as hidden"): still listed, greyed,
+    # but not counted in Overview's "needs attention" or the tour's "still to do". Hiding is the whole page.
+    "setup_muted": [],
     # A tile a guest can't open (menu overhaul F3; the setup decision "sign-in-offer"): for an app
     # open to users and left at "as its access", show its tile to guests too, with a lock that leads
     # to sign-in. Off (the default) shows it only to those who may open it, as before.
@@ -918,7 +921,7 @@ def valid_setting(key, value):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
-    if key == "setup_decided":
+    if key in ("setup_decided", "setup_muted"):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "emoji_set":
         return value in EMOJI_SETS

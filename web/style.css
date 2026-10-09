@@ -1189,6 +1189,7 @@ button.danger { border-color: #e5484d; color: #e5484d; }
 .action-btn.action-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .action-btn.action-btn:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.7; }
 .action-btn.primary.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.setup-steps li.step-muted { opacity: 0.6; }
 .action-btn.primary.primary.idle { background: transparent; color: var(--accent); }
 .action-btn.primary.primary:hover:not(:disabled) { color: var(--accent-ink); filter: brightness(1.1); }
 .chip-group, .filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }

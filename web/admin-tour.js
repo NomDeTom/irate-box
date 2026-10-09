@@ -56,6 +56,7 @@ const TOUR = (() => {
   const KIND = Object.fromEntries([...OWN.map((s) => [s.id, 'step']), ...DECISIONS.map((s) => [s.id, 'decision']), [BACKUP.id, 'step']]);
   const GUIDE = '/art/krab-controller-clipboard.webp';
   let decided = new Set();
+  let muted = new Set();   // steps the owner asked not to be reminded of (setup_muted): listed, greyed, not counted
   let at = null;        // the decision being toured, or null
   let bar = null;
   let marked = null;    // the highlighted element
@@ -63,16 +64,22 @@ const TOUR = (() => {
   const state = (id) => (window.SETUP_STATE || (typeof SETUP_STATE !== 'undefined' ? SETUP_STATE : {}))[id];
   // Done: a decision kept or changed; a step its part of the page calls fine, or kept in the tour.
   const isDone = (s) => decided.has(s.id) || (KIND[s.id] === 'step' && s.id !== 'backup' && (state(s.id) || {}).status === 'ok');
-  const left = () => STEPS.filter((s) => !isDone(s));
+  const left = () => STEPS.filter((s) => !isDone(s) && !muted.has(s.id));
   const PILL = (s) => {
-    if (KIND[s.id] === 'decision') return decided.has(s.id) ? ['ok-pill', 'decided'] : ['info-pill', 'default'];
+    if (KIND[s.id] === 'decision') return decided.has(s.id) ? ['ok-pill', 'decided'] : muted.has(s.id) ? ['info-pill', 'muted'] : ['info-pill', 'default'];
     const st = (state(s.id) || {}).status;
     if (isDone(s)) return ['ok-pill', 'done'];
+    if (muted.has(s.id)) return ['info-pill', 'muted'];
     return st === 'problem' ? ['bad-pill', 'to fix'] : st === 'warn' ? ['warn-pill', 'look at it'] : ['info-pill', 'to do'];
   };
 
   async function save() {
     try { await postJSON('/admin/settings', { setup_decided: [...decided] }); } catch (_) { /* tried again with the next one */ }
+    drawList();
+  }
+  async function mute(id, on) {
+    if (on) muted.add(id); else muted.delete(id);
+    try { await postJSON('/admin/settings', { setup_muted: [...muted] }); } catch (_) { /* shown as chosen; tried again with the next change */ }
     drawList();
   }
   function decide(id) {
@@ -92,12 +99,18 @@ const TOUR = (() => {
       const [cls, word] = PILL(s);
       const li = document.createElement('li');
       li.dataset.step = s.id;
-      li.className = isDone(s) ? 'step-ok' : `step-${(state(s.id) || {}).status || 'todo'}`;
+      li.className = isDone(s) ? 'step-ok' : muted.has(s.id) ? 'step-muted' : `step-${(state(s.id) || {}).status || 'todo'}`;
       const a = Object.assign(document.createElement('a'), { href: '#' + s.section, textContent: 'Go there' });
       a.dataset.tour = s.id;
       a.addEventListener('click', (e) => { e.preventDefault(); go(i); });
       const text = Object.assign(document.createElement('span'), { className: 'step-text', textContent: ((state(s.id) || {}).text || s.said) + ' ' });
       text.append(a);
+      if (!isDone(s)) {
+        const m = Object.assign(document.createElement('button'), { type: 'button', className: 'link-button mute-step',
+          textContent: muted.has(s.id) ? 'Unmute' : 'Mute', title: muted.has(s.id) ? 'Count this step again' : 'Keep it listed, but stop counting it as left to do' });
+        m.addEventListener('click', () => mute(s.id, !muted.has(s.id)));
+        text.append(' ', m);
+      }
       li.append(Object.assign(document.createElement('strong'), { textContent: s.label }), ' ',
         Object.assign(document.createElement('span'), { className: cls, textContent: word }), text);
       return li;
@@ -174,7 +187,7 @@ const TOUR = (() => {
   }
 
   async function load() {
-    try { decided = new Set((await getJSON('/admin/settings')).setup_decided || []); } catch (_) { /* the list says what it can */ }
+    try { const st = await getJSON('/admin/settings'); decided = new Set(st.setup_decided || []); muted = new Set(st.setup_muted || []); } catch (_) { /* the list says what it can */ }
     drawList();
     let saved = null;
     try { saved = sessionStorage.getItem('irate-tour'); } catch (_) { /* none */ }
