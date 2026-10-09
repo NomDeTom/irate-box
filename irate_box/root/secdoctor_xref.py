@@ -146,12 +146,12 @@ def cis(section):
 # --- where each finding is put right ------------------------------------------------------------
 # One answer per finding, so the page ends every item in one thing to do: the Security page's own
 # buttons (found through the shared key at the time), else a place on /admin ({go: element id, where}),
-# a command ({cmd}), the deep audit again ({act: "deep"}), or the hub's own work ({hub: why}): what an
-# update of irate-box fixes, not the owner's. Matched by source and a pattern on the finding's id; the
+# a command ({cmd}), the deep audit again ({act: "deep"}), the box doctor's repair ({repair: its choice},
+# "Run the installer again"), or the hub's own work ({hub: why}): what an update of irate-box fixes. Matched by source and a pattern on the finding's id; the
 # first match wins; anything unmatched shows its fix text as it is.
 HUB_SANDBOX = "The hub's own units: hardening them is irate-box's work (its plan, item 27), done one unit at a time with a reboot each. Keep the hub updated."
-HUB_SETUP = ("The hub's own setup is not as its installer leaves it. The next update of irate-box installs it again "
-             "and puts it back; if it comes back after that, something on the box is changing it.")
+HUB_SETUP = ("The hub's own setup is not as its installer leaves it. Running the installer again (this box's version, "
+             "with its recorded options) puts it back; if it comes back after that, something on the box is changing it.")
 DO = [
     ("*", r"^(page-)?firewall$", {"go": "sec-firewall", "where": "Security → What a guest on the hotspot can reach"}),
     ("*", r"^tls|^accounts-http$", {"go": "security-https", "where": "Security → HTTPS"}),
@@ -175,7 +175,7 @@ DO = [
     ("*", r"^image-kernel$", {"cmd": "apt list --upgradable 2>/dev/null | grep linux-image"}),
     ("*", r"^(debian-cis|lynis)-old$", {"act": "deep", "where": "Run the deep audit again"}),
     ("*", r"^units-|^cmdlines-|^addon-(term|tailscale)$", {"hub": HUB_SANDBOX}),
-    ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)", {"hub": HUB_SETUP, "go": "updates", "where": "Updates"}),
+    ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)", {"hub": HUB_SETUP, "repair": "rerun-install"}),
     ("*", r"^(hub-body|admin-csrf)$", {"hub": "A flaw in the hub itself: an update of irate-box fixes it.", "go": "updates", "where": "Updates"}),
 ]
 _DO = [(src, re.compile(pat), do) for src, pat, do in DO]

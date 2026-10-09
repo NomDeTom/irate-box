@@ -1574,27 +1574,78 @@ IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
 SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?$")
 
 
+SECURITY_ACCEPTED = STATE_DIR / "security-accepted.json"
+ACCEPT_KEY_RE = re.compile(r"^(setting|service|finding|compound|kit|package|hub):[A-Za-z0-9:/._@+-]{1,180}$")
+
+
+def security_accepted():
+    """{item key: {at, title}}: what the owner has looked at and accepted as it is (item 11; Tom,
+    2026-10-09). The page lists them apart and leaves them out of its counts; Undo takes one back."""
+    try:
+        data = json.loads(SECURITY_ACCEPTED.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def security_accept(key, title, yes):
+    if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
+        raise ValueError("key: an item's key from the report")
+    data = security_accepted()
+    if yes:
+        if len(data) >= 500 and key not in data:
+            raise ValueError("500 accepted already: take some back first")
+        data[key] = {"at": time.time(), "title": str(title or "")[:200]}
+    else:
+        data.pop(key, None)
+    tmp = SECURITY_ACCEPTED.parent / (SECURITY_ACCEPTED.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, SECURITY_ACCEPTED)
+    return data
+
+
+def _tls_status():
+    try:
+        return json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
 def security_snapshot():
     """What the Security page shows: the hub's own lines (which only the hub knows), then the
-    root helper's last scan of the box."""
-    hub = [{
-        "id": "admin-password", "title": "Admin password",
-        **({"status": "problem", "detail": "Not chosen yet: anyone on the network can open /admin and choose it.",
-            "fix": "Choose it now, on this page's Access section."} if unclaimed() else
-           {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening "
-            "can read it the first time a browser sends it.",
-            "fix": "Log in to /admin from the LAN or over Tailscale rather than over the hotspot; a safer login is planned."}),
-    }, {
-        "id": "plain-http", "title": "Plain HTTP", "status": "warn",
-        "detail": "The hub has no certificate, so everything a browser and the box say to each other — pages, "
-                  "messages, uploads — can be read by anyone on the same open network, and changed by anyone "
-                  "who sets out to.",
-        "fix": "That is the price of working offline with no setup. Keep secrets off the hub.",
+    root helper's last scan of the box. The lines follow HTTPS as it is (until 2026-10-09 they
+    said "no certificate" with HTTPS on)."""
+    tls = _tls_status()
+    https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
+    to_https = {"go": "security-https", "where": "Security → HTTPS"}
+    if unclaimed():
+        pw = {"status": "problem", "detail": "Not chosen yet: anyone on the network can open /admin and choose it.",
+              "fix": "Choose it now, on the Access page.", "do": {"go": "access", "where": "Access"}}
+    elif https and admin_only:
+        pw = {"status": "ok", "detail": "Set, and /admin answers over HTTPS only, so the password never crosses the network in clear."}
+    elif https:
+        pw = {"status": "warn", "detail": "Set. HTTPS is on, but /admin still answers on plain HTTP too: a browser that opens "
+              "it as http:// sends the password in clear, readable by anyone listening on an open hotspot.",
+              "fix": "Make /admin HTTPS only (once this device trusts the box's certificate).", "do": to_https}
+    else:
+        pw = {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening can read it "
+              "the first time a browser sends it.",
+              "fix": "Turn HTTPS on and install the box's certificate on your devices; until then, log in from the LAN or over Tailscale.",
+              "do": to_https}
+    hub = [{"id": "admin-password", "title": "Admin password", **pw}, {
+        "id": "plain-http", "title": "HTTPS" if https else "Plain HTTP only",
+        **({"status": "ok", "detail": "On: devices that installed the box's certificate (from /certificate) talk to it privately. "
+            "Plain HTTP still answers, for the hotspot's sign-in sheet and devices without the certificate."} if https else
+           {"status": "warn", "detail": "The box has no certificate in use, so everything a browser and the box say to each other "
+            "(pages, messages, uploads) can be read by anyone on the same open network, and changed by anyone who sets out to.",
+            "fix": "Make the box's certificate, then install it on your own devices from /certificate.", "do": to_https}),
     }, {
         "id": "one-origin", "title": "Apps share the admin page's address", "status": "warn",
-        "detail": "Kiwix books, the calculators and the drawing apps run on the same origin as /admin, so a "
-                  "hostile page among them could act with your login while you are logged in.",
-        "fix": "Log out (close the browser) after admin work; giving /admin an address of its own is planned.",
+        "detail": "Notes, the books, git and the add-ons have addresses of their own; the drawing editors (Excalidraw, Mermaid) "
+                  "and the hub's other apps still run on /admin's, so a hostile page among them could act with your login "
+                  "while you are logged in.",
+        "fix": "Log out (close the browser) after admin work. Giving the editors an address of their own is on irate-box's plan.",
+        "do": {"hub": "The hub's own work (its plan, item 27): nothing to set here. Accept it if logging out after admin work suits you."},
     }]
     for f in hub:
         f.setdefault("actions", [])
@@ -1628,7 +1679,7 @@ def security_snapshot():
         except (OSError, ValueError):
             pass
     return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "imports": imports, "log": log, "pending": _pending_actions("security-"),
-            "results": control_results(5)}
+            "results": control_results(5), "accepted": security_accepted()}
 
 
 HEALTH_STATE = CONTROL_DIR / "health.json"
@@ -3842,10 +3893,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": str(exc)})
                     return
                 self.send_json(202, {"id": control_request({"action": "security-audit"}), "message": msg})
+            elif payload.get("action") in ("accept", "unaccept"):
+                # The owner's own: looked at, and accepted as it is (or taken back). The hub's file; no root.
+                try:
+                    data = security_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(200, {"accepted": data, "message": "Accepted as it is." if payload["action"] == "accept" else "Taken back."})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, audit, or fix with a choice"})
+                self.send_json(400, {"error": "action must be scan, audit, deep, import, accept, unaccept, or fix with a choice"})
             return
 
         if path == "/messages":
