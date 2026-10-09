@@ -245,6 +245,13 @@ setTimeout(() => {
   check('  the full image: no download, a stick to choose instead', d.getElementById('backup-go-box').hidden && !d.getElementById('backup-image-box').hidden);
   check('  the full image: the download keeps the last real level, never a size of nothing', /about 0\.1 MB|about 117/.test(t('#backup-go')[0]) && !/0 MB\)|unknown/.test(t('#backup-go')[0].replace(/0\.1 MB/, '')), t('#backup-go')[0]);
   const pk = d.querySelector('#pkg-list .library-source');
+  const cards = [...d.querySelectorAll('#updates .update-card')];
+  const shape = (c) => [c.querySelector('.setting-name') ? 'title' : '-', c.querySelector('.update-pattern, .chip-group') ? 'chips' : '-',
+    [...c.querySelectorAll('button')].some((b) => /^Check now$/.test(b.textContent)) ? 'check' : '-'].join(' ');
+  check('Updates: a card each for the hub, Debian and every package, the same shape (title, chips, Check now)', cards.length === 3
+    && cards.map((c) => c.id || 'pkg').join(' ') === 'update-hub-card updates-debian pkg' && cards.every((c) => shape(c) === 'title chips check'), cards.map(shape));
+  check('  the hub card holds what an update must carry, folded; the doctors\' places still there', !!d.querySelector('#update-hub-card details #update-signing-form')
+    && !!d.getElementById('pkg-makers') && d.getElementById('updates-debian').classList.contains('update-card'));
   const pkChips = pk ? [...pk.querySelectorAll('.chip')].map((c) => c.textContent + (c.classList.contains('selected') || c.getAttribute('aria-pressed') === 'true' ? '*' : '')) : [];
   check('packages: Flag, Fetch and Install offered, Flag chosen', ['Flag*', 'Fetch', 'Install'].every((x) => pkChips.includes(x)), pkChips);
   check('  the flagged build said as not downloaded; Fetch and Install offered for it', pk && /2\.8\.1\.9, first seen .*not downloaded/.test(pk.textContent)

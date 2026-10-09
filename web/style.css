@@ -675,6 +675,11 @@ body.app-frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 /* Library (admin): sources, the add form and the policy. */
 #library-sources, #apps-list, #builtin-list, #addons-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .library-source { cursor: default; }
+/* Updates: a card per thing updated, in one column, each in the same order: what it is and where it stands,
+   the pattern's chips, the buttons, then what is folded. */
+.update-cards, #pkg-list { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.6rem; }
+.update-card-body { display: flex; flex-direction: column; gap: 0.35rem; width: 100%; min-width: 0; }
+.update-card-body > .library-form, .update-card-body > .library-buttons { margin-top: 0.3rem; }
 /* Centred, not stretched: a button beside something taller (a label over its chips) keeps its own
    height (Tom, 2026-10-09: Network's Refresh was twice the height of the device chips beside it). */
 .library-buttons, .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
