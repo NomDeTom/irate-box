@@ -1074,15 +1074,16 @@
         <form id="auto-form" class="library-form">
           <label>Look for updates
             <select name="hub_check_every_hours">
-              <option value="0">only when asked (the button above)</option>
-              <option value="24">daily</option><option value="168">weekly</option>
+              <option value="0" data-says="Only when you press Check for updates, below.">Manual only</option>
+              <option value="24" data-says="The librarian looks once a day, on its round.">24 hours</option>
+              <option value="168" data-says="The librarian looks once a week, on its round.">7 days</option>
             </select>
           </label>
           <label>When one is found
             <select name="hub_auto">
-              <option value="0">show it here, and do nothing else</option>
-              <option value="1">also fetch and verify it, ready to install</option>
-              <option value="2">also install it, at night, with nobody on the hub</option>
+              <option value="0" data-says="Shown here, nothing else done.">Flag</option>
+              <option value="1" data-says="Also fetched and verified, ready for you to install.">Fetch</option>
+              <option value="2" data-says="Also installed, at night, with nobody on the hub.">Auto-install</option>
             </select>
           </label>
           <label class="inline" id="auto-window">Install between
