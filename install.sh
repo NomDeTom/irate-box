@@ -536,7 +536,24 @@ make_bundle() {
 	here="$(cd "$(dirname "$0")" && pwd)"
 	set -- --src "$here/irate-box" --apps "$here/apps" --download-cache "$here/downloads" "$@"
 	for z in "$here"/zim/*.zim; do [ -f "$z" ] && set -- "$@" --zim "$z"; done
-	exec bash "$here/irate-box/install.sh" "$@"
+	bash "$here/irate-box/install.sh" "$@" || exit $?
+	# What the kit's maker chose to bring (item 34): the old box's state, git repositories, toolkits.
+	if [ -f "$here/state-backup.tar.gz" ]; then
+		echo "==> The state of the box this kit was made on"
+		runuser -u hub -- tar -xzf "$here/state-backup.tar.gz" -C /var/lib/hub --strip-components=1 \
+			--exclude=irate-box-state/BACKUP-CONTENTS.txt && systemctl restart irate-box 2>/dev/null
+		echo "    restored into /var/lib/hub"
+	fi
+	for repo in "$here"/git/public/*.git "$here"/git/private/*.git; do
+		[ -d "$repo" ] || continue
+		dest="/var/lib/hub/git/$(basename "$(dirname "$repo")")/$(basename "$repo")"
+		if [ -e "$dest" ]; then echo "    $dest is there already: left as it is"; continue; fi
+		cp -a "$repo" "$dest" && chown -R hub:hub "$dest" && echo "    git: $dest"
+	done
+	if [ -d "$here/kits" ]; then
+		echo "==> Toolkits (each package checked against Debian's signatures)"
+		/opt/irate-box/irate-box kits import-dir "$here/kits" | sed 's/^/    /'
+	fi
 	SETUP
 	chmod 755 "$kit/setup.sh"
 	(cd "$kit" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)

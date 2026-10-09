@@ -91,6 +91,13 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
     progress: null, pending: 0, books: { count: 2, bytes: 3000000000 }, results: [] }), { status: 200 });
   if (u === '/admin/addons') return new Response(JSON.stringify(addons), { status: 200 });
+  // Item 34's offers with their sizes (hub/backup.py plan), and one stick plugged in.
+  if (u === '/admin/backup/plan') return new Response(JSON.stringify({ levels: { settings: 120000, data: 4200000 }, syncthing: 9000,
+    left_out: { books: 3000000000, firmware: 700000000 }, image: { card: 32e9, used: 6.5e9 }, hub: 95000000,
+    books: [{ name: 'wikipedia_en', size: 2800000000 }, { name: 'gutenberg', size: 200000000 }], kits: [{ id: 'build', title: 'Building', size: 25000000 }],
+    repos: [{ name: 'firmware', area: 'public', mirror: true, size: 27000000 }, { name: 'notes', area: 'private', mirror: false, size: 30000 }] }), { status: 200 });
+  if (u === '/admin/usb') return new Response(JSON.stringify({ scan: { devices: [{ name: 'sda1', label: 'STICK', fstype: 'vfat', size: '16000000000', zims: [] }] },
+    progress: null, pending: 0, results: [], books: [] }), { status: 200 });
   return new Response('{}', { status: 404 });
 };
 w.confirm = () => true;
@@ -221,7 +228,24 @@ setTimeout(() => {
   check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
-  check('  the books offered with their size', /2, 2\.8 GB|2, 3\.0 GB|2, 2794/.test(t('#kit-books')[0]) || /Include the books \(2,/.test(t('#kit-books')[0]), t('#kit-books'));
+  // Item 34 (Tom, 2026-10-09: "an offer on the level of backup to make - settings only, settings and data, full image. An estimated size").
+  const lv = [...d.querySelectorAll('#backup-level .choice-tile')];
+  check('backup: three levels, each with its size; settings and data chosen', lv.map((x) => x.querySelector('input').value).join(' ') === 'settings data image'
+    && /About 117\.2 KB|About 0\.1 MB/.test(lv[0].textContent) && /About 6\.1 GB|6\.5/.test(lv[2].textContent) && lv[1].classList.contains('chosen'), lv.map((x) => x.textContent.slice(-40)));
+  check('  the download at that level, its size on the button; what is left out said with sizes', d.getElementById('backup-go').getAttribute('href') === '/admin/backup?level=data'
+    && /about 4\.0 MB/.test(t('#backup-go')[0]) && /books \(2\.8 GB\)/.test(t('#backup-left-out')[0]), t('#backup-go')[0]);
+  lv[0].querySelector('input').click();
+  check('  settings only: the address follows', d.getElementById('backup-go').getAttribute('href') === '/admin/backup?level=settings');
+  lv[2].querySelector('input').click();
+  check('  the full image: no download, a stick to choose instead', d.getElementById('backup-go-box').hidden && !d.getElementById('backup-image-box').hidden);
+  const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
+  check('new box: books, toolkits and repositories offered with their sizes, mirrors marked', kb.querySelectorAll('input').length === 2 && /wikipedia_en \(2\.6 GB\)/.test(kb.textContent)
+    && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);
+  kb.querySelector('input').click(); kf.elements.budget.value = '1000'; kf.dispatchEvent(new w.Event('input'));
+  check('  a book chosen over a 1000 MB budget: said, in red, and Make refused', /over it/.test(t('#kit-total')[0]) && d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
+  kb.querySelector('input').click(); d.querySelector('#kit-repos input').click(); kf.elements.state.value = 'settings'; kf.dispatchEvent(new w.Event('change'));
+  check('  the mirror and settings instead: within it', /About 116\.5 MB of a/.test(t('#kit-total')[0]) && !d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
+  kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const force = d.getElementById('update-force');
   check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);
@@ -357,6 +381,9 @@ setTimeout(() => {
     const keepRev = posted.find((p) => p[1].action === 'mirror-change');
     check('git: Keep revoked switches it off on the release groups only', keepRev && keepRev[1].mirror.groups.every((g) => g.skip_revoked === false)
       && keepRev[1].mirror.status === undefined, JSON.stringify(keepRev));
+    const kitMade = posted.find((p) => p[0] === '/admin/kit');
+    check('new box: Make sends the choices (the mirror, settings, the budget; no books)', kitMade && JSON.stringify(kitMade[1]) === JSON.stringify({ action: 'make', books: [],
+      kits: [], repos: ['public/firmware'], state: 'settings', budget_mb: 1000 }), JSON.stringify(kitMade));
     const fwm = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'meshtastic-firmware');
     check('firmware: Mirror the source adds meshtastic/firmware with its submodules', fwm && fwm[1].mirror.submodules === true
       && fwm[1].mirror.upstream === 'https://github.com/meshtastic/firmware' && fwm[1].mirror.groups.length === 2, JSON.stringify(fwm));
@@ -370,7 +397,7 @@ setTimeout(() => {
     // 2026-10-06): no text node on the page may be just that.
     const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
     const stray = [];
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.tagName);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.id || n.parentNode.tagName);
     check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
     [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
     setTimeout(() => {

@@ -1157,9 +1157,6 @@ upd.doctor.addEventListener('click', () => requestUpdate('doctor'));
 upd.clear.addEventListener('click', () => {
   if (confirm('Remove the cached copy and downloads? The next check starts afresh.')) requestUpdate('clear-cache');
 });
-document.getElementById('backup-with-keys').addEventListener('click', (e) => {
-  if (!confirm("This backup includes Syncthing's private keys. Anyone with the file can pose as this box to its Syncthing peers. Download it?")) e.preventDefault();
-});
 upd.install.addEventListener('click', () => requestUpdate('install'));
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
@@ -2796,13 +2793,161 @@ hs.save.addEventListener('click', async () => {
 });
 loadHotspot();
 
-// --- an offline kit (Backup) -------------------------------------------------------------
-// The root helper makes it (hub_control.py offline_kit); the hub streams the download.
+// --- Backup and a new box (item 34): offers with sizes ----------------------------------------
+// Tom, 2026-10-09: a backup "should be an offer on the level of backup to make - settings only, settings and data,
+// full image. An estimated size of export is needed"; a new box "a similar offer list … books, toolkits, git repos
+// … a size budget is critical"; and "an export of the library or the toolkits for updating an offline box".
+// The sizes are the hub's (/admin/backup/plan); the kit, the image and the stick are the root helper's.
+const bku = { level: document.getElementById('backup-level'), keys: document.getElementById('backup-syncthing'),
+  keysLabel: document.getElementById('backup-keys-label'), leftOut: document.getElementById('backup-left-out'),
+  goBox: document.getElementById('backup-go-box'), go: document.getElementById('backup-go'),
+  imageBox: document.getElementById('backup-image-box'), stick: document.getElementById('backup-image-stick'),
+  imageGo: document.getElementById('backup-image-go'), note: noteEl('backup-note'),
+  progress: document.getElementById('backup-progress'), bar: document.getElementById('backup-bar'), step: document.getElementById('backup-step') };
+let bkPlan = null, bkLevel = 'data', bkWaiting = null, bkPoll = null, usbSticks = [];
+const BK_WORDS = {
+  settings: ['Settings only', 'What was chosen: the hub\'s settings, accounts, the apps\' and add-ons\' settings, the library\'s and mirrors\' sources. Nothing that was made on the box.'],
+  data: ['Settings and data', 'Also what was made on the box: notes, saved work, the board, the shoutbox, dropped files, the box\'s own git repositories.'],
+  image: ['Full image', 'The whole card, onto a USB stick: the system, the hub, books and all. Taken while the box runs, so as after a power cut; written back with any image writer.'],
+};
+function drawBackup() {
+  const p = bkPlan;
+  if (!p) return;
+  const img = p.image || {};
+  AW.choices(bku.level, 'backup-level', ['settings', 'data', 'image'].map((v) => ({ value: v, title: BK_WORDS[v][0], desc: BK_WORDS[v][1],
+    does: v === 'image' ? `About ${size(img.used)} (what the card holds)${img.card ? `, at most ${size(img.card)} (the card)` : ''}, compressed.`
+      : `About ${size(p.levels[v] + (bku.keys.checked ? p.syncthing : 0))}.` })), { value: bkLevel, onChange: (v) => { bkLevel = v; drawBackupGo(); } });
+  const lo = p.left_out || {};
+  bku.leftOut.textContent = `Left out of every download: books (${size(lo.books)}), the firmware mirror (${size(lo.firmware)}), `
+    + 'the git mirrors, builds and their caches, crash evidence and the library\'s archive: all fetched again.';
+  drawBackupGo();
+}
+function drawBackupGo() {
+  const image = bkLevel === 'image';
+  bku.goBox.hidden = image;
+  bku.keysLabel.hidden = image;
+  bku.imageBox.hidden = !image;
+  if (!bkPlan) return;
+  const q = `level=${bkLevel}${bku.keys.checked ? '&syncthing=1' : ''}`;
+  bku.go.href = `/admin/backup?${q}`;
+  bku.go.textContent = `Download the backup (about ${size(bkPlan.levels[bkLevel] + (bku.keys.checked ? bkPlan.syncthing : 0))})`;
+  bku.stick.replaceChildren(...(usbSticks.length ? usbSticks.map((d) => el('option', { value: d.name, textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }))
+    : [el('option', { value: '', textContent: 'No stick found yet' })]));
+  bku.imageGo.disabled = !usbSticks.length || !!bkWaiting;
+  for (const s of [document.getElementById('offline-stick')]) {
+    const keep = s.value;
+    s.replaceChildren(...bku.stick.cloneNode(true).children);
+    if ([...s.options].some((o) => o.value === keep)) s.value = keep;
+  }
+  drawOfflineTotal();
+}
+bku.keys.addEventListener('change', (e) => {
+  if (bku.keys.checked && !confirm("Include Syncthing's private keys? Anyone with the file can pose as this box to its Syncthing peers.")) { bku.keys.checked = false; return; }
+  drawBackup();
+});
+// The kit's and the offline stick's offers: a checkbox per book, toolkit and repository, with its size.
+const pickList = (box, items, name, label) => {
+  const keep = new Set([...box.querySelectorAll('input:checked')].map((i) => i.value));
+  box.replaceChildren(...(items.length ? items.map((it) => el('label', { className: 'inline' },
+    el('input', { type: 'checkbox', name, value: it.value, checked: keep.has(it.value) }), ` ${label(it)}`))
+    : [el('span', { className: 'setting-desc', textContent: 'None on this box.' })]));
+};
+const picked = (box) => [...box.querySelectorAll('input:checked')].map((i) => i.value);
 const kitEl = { form: document.getElementById('kit-form'), make: document.getElementById('kit-make'),
-  books: document.getElementById('kit-books'), progress: document.getElementById('kit-progress'),
+  books: document.getElementById('kit-books'), kits: document.getElementById('kit-kits'), repos: document.getElementById('kit-repos'),
+  total: document.getElementById('kit-total'), progress: document.getElementById('kit-progress'),
   bar: document.getElementById('kit-bar'), step: document.getElementById('kit-step'), note: noteEl('kit-note'),
   state: document.getElementById('kit-state'), details: document.getElementById('kit-details'),
   contents: document.getElementById('kit-contents') };
+const offEl = { form: document.getElementById('offline-form'), books: document.getElementById('offline-books'), kits: document.getElementById('offline-kits'),
+  total: document.getElementById('offline-total'), stick: document.getElementById('offline-stick'), go: document.getElementById('offline-go'), note: noteEl('offline-note') };
+function drawPicks() {
+  const p = bkPlan;
+  const book = (b) => `${b.name} (${size(b.size)})`, kit = (k) => `${k.title} (${size(k.size)})`;
+  pickList(kitEl.books, p.books.map((b) => ({ ...b, value: b.name })), 'book', book);
+  pickList(kitEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
+  pickList(kitEl.repos, p.repos.map((r) => ({ ...r, value: `${r.area}/${r.name}` })), 'repo',
+    (r) => `${r.name}${r.area === 'private' ? ' (private)' : ''}${r.mirror ? ', a mirror' : ''} (${size(r.size)})`);
+  pickList(offEl.books, p.books.map((b) => ({ ...b, value: b.name })), 'book', book);
+  pickList(offEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
+  drawKitTotal();
+  drawOfflineTotal();
+}
+function kitBytes() {
+  const p = bkPlan, f = kitEl.form.elements;
+  const sum = (box, list, key) => picked(box).reduce((n, v) => n + ((list.find((x) => x[key] === v) || {}).size || 0), 0);
+  return p.hub + sum(kitEl.books, p.books, 'name') + sum(kitEl.kits, p.kits, 'id')
+    + picked(kitEl.repos).reduce((n, v) => n + ((p.repos.find((r) => `${r.area}/${r.name}` === v) || {}).size || 0), 0)
+    + (f.state.value === 'none' ? 0 : p.levels[f.state.value]);
+}
+function drawKitTotal() {
+  if (!bkPlan) return;
+  const total = kitBytes(), budget = Number(kitEl.form.elements.budget.value) || 0;
+  const over = budget && total > budget * 2 ** 20;
+  kitEl.total.textContent = `About ${size(total)}` + (budget ? ` of a ${size(budget * 2 ** 20)} budget${over ? ': over it, so leave something out.' : '.'}` : ' (no budget set).')
+    + ' The code, the apps and their release files are always in it.';
+  kitEl.total.classList.toggle('bad', !!over);
+  kitEl.make.dataset.over = over ? '1' : '';
+}
+function drawOfflineTotal() {
+  if (!bkPlan) return;
+  const p = bkPlan;
+  const total = picked(offEl.books).reduce((n, v) => n + ((p.books.find((b) => b.name === v) || {}).size || 0), 0)
+    + picked(offEl.kits).reduce((n, v) => n + ((p.kits.find((k) => k.id === v) || {}).size || 0), 0);
+  offEl.total.textContent = total ? `About ${size(total)} onto the stick.` : 'Choose books or toolkits.';
+  offEl.go.disabled = !total || !usbSticks.length || !!bkWaiting;
+}
+kitEl.form.addEventListener('change', drawKitTotal);
+kitEl.form.addEventListener('input', drawKitTotal);
+offEl.form.addEventListener('change', drawOfflineTotal);
+async function loadBackupPlan() {
+  try { bkPlan = await getJSON('/admin/backup/plan'); drawBackup(); drawPicks(); } catch (err) { console.error('backup plan:', err); }
+}
+// The sticks, the image and the offline copy: the root helper, through /admin/usb, as the Books page's exports.
+async function bkSticks(scan) {
+  try {
+    if (scan) { bkWaiting = { id: (await postJSON('/admin/usb', { action: 'scan' })).id, note: bku.note }; }
+    const d = await getJSON('/admin/usb');
+    usbSticks = (d.scan && d.scan.devices) || [];
+    if (bkWaiting) {
+      const done = (d.results || []).find((r) => r.id === bkWaiting.id);
+      if (done) { say(done.message, done.ok, bkWaiting.note); bkWaiting = null; }
+    }
+    const p = d.progress;
+    bku.progress.hidden = !p;
+    if (p) {
+      bku.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
+      bku.step.textContent = `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
+    }
+    drawBackupGo();
+    clearTimeout(bkPoll);
+    if (bkWaiting || p || d.pending > 0) bkPoll = setTimeout(() => bkSticks(false), 1500);
+  } catch (err) { say(err.message, false, bku.note); }
+}
+document.getElementById('backup-image-scan').addEventListener('click', () => bkSticks(true));
+document.getElementById('offline-scan').addEventListener('click', () => bkSticks(true));
+bku.imageGo.addEventListener('click', async () => {
+  const d = usbSticks.find((x) => x.name === bku.stick.value);
+  if (!d || !confirm(`Write an image of the whole card onto ${d.label || d.name}? About ${size((bkPlan.image || {}).used)} or more, `
+    + 'an hour or more on this board; the box stays in use meanwhile.')) return;
+  try {
+    bkWaiting = { id: (await postJSON('/admin/usb', { action: 'image', device: d.name })).id, note: bku.note };
+    say('Writing the image: its progress shows here.', true, bku.note);
+    bkSticks(false);
+  } catch (err) { say(err.message, false, bku.note); }
+});
+offEl.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const books = picked(offEl.books), kits = picked(offEl.kits), d = usbSticks.find((x) => x.name === offEl.stick.value);
+  if (!d || !confirm(`Copy ${books.length} book${books.length === 1 ? '' : 's'} and ${kits.length} toolkit${kits.length === 1 ? '' : 's'} onto ${d.label || d.name}?`)) return;
+  try {
+    bkWaiting = { id: (await postJSON('/admin/usb', { action: 'export-many', device: d.name, books, kits })).id, note: offEl.note };
+    say('Copying: its progress shows above, under Back up this box.', true, offEl.note);
+    bkSticks(false);
+  } catch (err) { say(err.message, false, offEl.note); }
+});
+
+// The kit: the root helper makes it (hub_control.py offline_kit); the hub streams the download.
 let kitWaiting = null;
 let kitPoll = null;
 function renderKit(d) {
@@ -2811,9 +2956,6 @@ function renderKit(d) {
     if (done) { say(done.message, done.ok, kitEl.note); kitWaiting = null; }
   }
   const busy = !!kitWaiting || d.pending > 0 || !!d.progress;
-  kitEl.books.textContent = d.books.count
-    ? `Include the books (${d.books.count}, ${size(d.books.bytes)})` : 'Include the books (this box has none)';
-  kitEl.form.elements.books.disabled = !d.books.count;
   kitEl.make.disabled = busy;
   kitEl.progress.hidden = !d.progress;
   if (d.progress) {
@@ -2822,10 +2964,11 @@ function renderKit(d) {
     kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${p.label}` : ''}.`;
   }
   const k = d.kit;
+  const held = k ? [k.books.length && `${k.books.length} book${k.books.length === 1 ? '' : 's'}`, (k.kits || []).length && `${k.kits.length} toolkit${k.kits.length === 1 ? '' : 's'}`,
+    (k.repos || []).length && `${k.repos.length} repositor${k.repos.length === 1 ? 'y' : 'ies'}`, k.state && k.state !== 'none' && (k.state === 'data' ? 'settings and data' : 'settings')].filter(Boolean) : [];
   kitEl.state.replaceChildren(...(k ? [
     el('a', { href: '/admin/kit/download', download: k.name, textContent: `Download ${k.name}` }),
-    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}` +
-      (k.books.length ? `, with ${k.books.length} book${k.books.length === 1 ? '' : 's'}` : ', without books') + '.'),
+    document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}, with ${held.length ? held.join(', ') : 'the hub alone'}.`),
   ] : [document.createTextNode(busy ? 'Making the kit…' : 'No kit made yet.')]));
   kitEl.details.hidden = !(k && k.contents && k.contents.length);
   if (k) kitEl.contents.replaceChildren(...(k.contents || []).map((t) => el('li', { textContent: t })));
@@ -2837,14 +2980,18 @@ async function loadKit() {
 }
 kitEl.form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (kitEl.make.dataset.over) { say('Over the budget: leave something out, or raise the budget.', false, kitEl.note); return; }
+  const f = kitEl.form.elements, budget = Number(f.budget.value) || null;
   try {
-    kitWaiting = (await postJSON('/admin/kit', { action: 'make', books: kitEl.form.elements.books.checked })).id;
+    kitWaiting = (await postJSON('/admin/kit', { action: 'make', books: picked(kitEl.books), kits: picked(kitEl.kits),
+      repos: picked(kitEl.repos), state: f.state.value, budget_mb: budget })).id;
     say('Making the kit: a minute or two, longer with books.', true, kitEl.note);
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
-window.addEventListener('hashchange', () => { if (paneShown('backup')) loadKit(); });
+window.addEventListener('hashchange', () => { if (paneShown('backup')) { loadKit(); loadBackupPlan(); bkSticks(false); } });
 loadKit();
+loadBackupPlan();
 
 // --- who can open each app --------------------------------------------------------------
 // Public, private or off (access.py): a three-way switch on each app (Apps), each add-on
@@ -4178,7 +4325,8 @@ async function loadKitsUsb() {
         cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this stick', disabled: busy,
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
-    p ? el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` }) : null);
+    // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).
+    ...(p ? [el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` })] : []));
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
 async function kitsUsbAsk(body, confirmText) {

@@ -387,17 +387,62 @@ def _du(*paths):
     return total
 
 
+REPO_RE = re.compile(r"^(public|private)/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def kit_choices(req):
+    """What a new box's kit is to hold (item 34; Tom, 2026-10-09: "an offer list about what to include …
+    books, toolkits, git repos … a size budget is critical"): books (true for all, or names), toolkits (ids),
+    git repositories (area/name), this box's state (none, settings, data), and a budget in MB (or none).
+    Checked here, whatever the hub sent."""
+    books = req.get("books", False)
+    if books is True:
+        zims = sorted(ZIM_DIR.glob("*.zim"))
+    elif isinstance(books, list) and all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+        zims = [ZIM_DIR / f"{b}.zim" for b in books]
+        missing = [z.stem for z in zims if not z.is_file() or z.is_symlink()]
+        if missing:
+            raise ValueError(f"no such book on the box: {', '.join(missing[:3])}")
+    elif books is False or books is None:
+        zims = []
+    else:
+        raise ValueError("books: true, false, or a list of book names")
+    kit_ids = req.get("kits") or []
+    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+        raise ValueError("kits: a list of toolkit ids")
+    repos = req.get("repos") or []
+    if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.match(r) for r in repos):
+        raise ValueError("repos: a list of area/name")
+    repo_dirs = [STATE / "git" / f"{r}.git" for r in repos]
+    gone = [r for r, d in zip(repos, repo_dirs) if not d.is_dir() or d.is_symlink()]
+    if gone:
+        raise ValueError(f"no such repository on the box: {', '.join(gone[:3])}")
+    state = req.get("state", "none")
+    if state not in ("none", "settings", "data"):
+        raise ValueError("state: none, settings or data")
+    budget = req.get("budget_mb")
+    if budget is not None and (type(budget) is not int or budget <= 0):
+        raise ValueError("budget_mb: a number of MB, or none")
+    return zims, kit_ids, repo_dirs, state, budget
+
+
 def offline_kit(req):
     """A kit that sets up another box with no internet, from what this one has: its code (the
     installer's --make-offline-bundle, run from the installed copy), its apps, its download
-    cache (anything missing fetched if there is internet), and, if asked, its books. One .tar in
-    $STATE/kits, which replaces the last; the hub offers it as a download."""
-    books = req.get("books") is True
-    zims = sorted(ZIM_DIR.glob("*.zim")) if books else []
+    cache (anything missing fetched if there is internet), and what the owner chose (kit_choices):
+    books, toolkits (in the stick layout the new box's Toolkits import reads), git repositories,
+    and this box's settings, or settings and data. One .tar in $STATE/kits, which replaces the
+    last; the hub offers it as a download. Refused over the budget, before anything is made."""
+    zims, kit_ids, repo_dirs, state, budget = kit_choices(req)
     apps = Path("/usr/share/hub/apps")
     arch = platform.machine()
     base = _du(apps, Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
-    need = 2 * base + sum(z.stat().st_size for z in zims) + (64 << 20)
+    chosen = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs)
+              + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
+              + (_state_size(state) if state != "none" else 0))
+    if budget is not None and base + chosen > budget << 20:
+        raise ValueError(f"the kit would be about {(base + chosen) >> 20} MB, over the budget of {budget} MB: leave something out")
+    need = 2 * base + chosen + (64 << 20)
     # The hub owns $STATE, so kits/ is made root's through its own fd (never a link the hub
     # planted), and every path below goes through that fd: a kits/ renamed away and replaced by
     # a link while this runs changes nothing, and HOME for the installer is a root-only folder
@@ -407,17 +452,23 @@ def offline_kit(req):
     try:
         if os.fstat(kits_fd).st_uid != 0:
             raise ValueError(f"{KITS} is not root's: refused")
-        return _offline_kit(Path(f"/proc/self/fd/{kits_fd}"), zims, apps, arch, need)
+        return _offline_kit(Path(f"/proc/self/fd/{kits_fd}"), zims, apps, arch, need, kit_ids, repo_dirs, state)
     finally:
         os.close(kits_fd)
 
 
-def _offline_kit(kdir, zims, apps, arch, need):
+def _state_size(level):
+    from irate_box.hub import backup
+    sums = backup.walk(STATE)
+    return sums["settings"] + (sums["data"] if level == "data" else 0)
+
+
+def _offline_kit(kdir, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="none"):
     free = shutil.disk_usage(kdir).free
     if free - need < _min_free():
         raise ValueError(f"not enough space: the kit needs about {need >> 20} MB and {free >> 20} MB is free "
                          f"(keeping {_min_free() >> 20} MB spare)" + (" — try without the books" if zims else ""))
-    with Progress("kit", 3, path=KIT_PROGRESS) as progress:
+    with Progress("kit", 3 + bool(kit_ids) + bool(repo_dirs) + (state != "none"), path=KIT_PROGRESS) as progress:
         work = Path(tempfile.mkdtemp(prefix=".kit-", dir=kdir))
         try:
             progress.step("Gathering the code, the apps and the downloads")
@@ -430,6 +481,25 @@ def _offline_kit(kdir, zims, apps, arch, need):
             if out.returncode != 0:
                 raise ValueError("the kit could not be made: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
             report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
+            if kit_ids:
+                # The toolkits in the stick layout (kits.export_usb) beside the kit: unpacked on a stick,
+                # the new box's setup.sh imports them, each .deb checked against Debian's signatures.
+                progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
+                for k in kit_ids:
+                    report.append(kits.export_usb(k, kit / "kits", progress.bytes))
+            if repo_dirs:
+                progress.step(f"Copying {len(repo_dirs)} git repositor{'ies' if len(repo_dirs) != 1 else 'y'}")
+                for d in repo_dirs:
+                    dest = kit / "git" / d.parent.name / d.name
+                    shutil.copytree(d, dest, symlinks=True)
+                    report.append(f"git: {d.parent.name}/{d.name}")
+            if state != "none":
+                from irate_box.hub import backup
+                import tarfile
+                progress.step("Adding this box's settings" + (" and data" if state == "data" else ""))
+                with tarfile.open(kit / "state-backup.tar.gz", "w:gz") as tar:
+                    tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
+                report.append(f"this box's {'settings' if state == 'settings' else 'settings and data'} (restored by setup.sh)")
             if zims:
                 progress.step(f"Checksumming {len(zims)} book{'s' if len(zims) != 1 else ''}")
                 with open(kit / "SHA256SUMS", "a") as fh:
@@ -460,7 +530,8 @@ def _offline_kit(kdir, zims, apps, arch, need):
             final = kdir / name
             os.replace(part, final)
             meta = {"name": name, "size": final.stat().st_size, "at": time.time(), "arch": arch,
-                    "books": [z.name for z in zims], "contents": report[:40]}
+                    "books": [z.name for z in zims], "kits": list(kit_ids), "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
+                    "state": state, "contents": report[:60]}
             safeio.write(kdir / "kit.json", json.dumps(meta, indent=2))
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -1809,6 +1880,46 @@ def usb_kit_export(req):
         _kits_status()
 
 
+def usb_export_many(req):
+    """Books and toolkits onto a stick for updating an offline box (item 34; Tom: "simply an export of the
+    library or the toolkits for updating an offline box"), in the layout that box's own USB imports read:
+    the existing exports, one after another."""
+    device = str(req.get("device", ""))
+    books, kit_ids = req.get("books") or [], req.get("kits") or []
+    if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+        raise ValueError("books: a list of book names")
+    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+        raise ValueError("kits: a list of toolkit ids")
+    if not books and not kit_ids:
+        raise ValueError("choose a book or a toolkit")
+    said = []
+    try:
+        with Progress("usb-export", len(books) + len(kit_ids), path=USB_PROGRESS) as progress:
+            for b in books:
+                progress.step(f"Copying {b} to the stick")
+                said.append(usbstick.export_zim(device, b, ZIM_DIR, progress.bytes))
+            for k in kit_ids:
+                progress.step(f"Copying the {k} kit to the stick")
+                said.append(usbstick.export_kit(device, k, progress.bytes))
+    finally:
+        _kits_status()
+        try:
+            _write_usb(usbstick.scan())
+        except (ValueError, OSError):
+            pass
+    return f"{len(books)} book{'s' if len(books) != 1 else ''} and {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''} on the stick; it is safe to unplug"
+
+
+def backup_image(req):
+    """A full image of the box's card onto a stick (item 34: "full image"), compressed, in 3.9 GB parts
+    on a FAT stick. Taken while the box runs, so as after a power cut: what was being written may be
+    half-written. Restored by writing it back with any image writer (gunzip, then dd or Etcher)."""
+    device = str(req.get("device", ""))
+    with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
+        progress.step("Writing the card's image to the stick")
+        return usbstick.export_image(device, progress.bytes)
+
+
 def usb_kit_import(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
     if not kits.ID_RE.match(kit):
@@ -2434,7 +2545,7 @@ ACTIONS = {"service": service, "password": password,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache, "update-signing": update_signing,
            "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
            "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
-           "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export,
+           "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
            "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget,
