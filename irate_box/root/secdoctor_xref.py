@@ -74,7 +74,7 @@ def _lynis_section(check):
         return "3.2" if SYSCTL_REDIRECTS.match(setting) else "3.3"
     return None
 # A doctor finding about a port the Security page lists: the same thing.
-SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883", ("doctor", "addon-irc"): "tcp/6667"}
+SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883"}   # and each declared service's add-on finding: _declared_about
 
 # Findings that are a problem together, each alone only a warning (stance review 2026-10-08 §2):
 # every named (source, id) must be present and not ok for the joint report to add the item.
@@ -101,6 +101,9 @@ def about(source, check):
         return {"kind": "setting", "key": f"cis-{_lynis_section(check)}"}
     if (source, check) in SERVICE_OF:
         return {"kind": "service", "key": SERVICE_OF[(source, check)]}
+    decl = _declared_about(source, check)
+    if decl:
+        return {"kind": "service", "key": "{}/{}".format(*decl["listen"][0])}
     m = PORT_RE.match(check or "")
     if m:
         return {"kind": "service", "key": f"{m.group(1)}/{m.group(2)}"}
@@ -224,8 +227,6 @@ DO = [
                                  "say": "Tailscale came with the OS, and its unit's sandbox is its makers'. If you don't use it to reach the box from afar, switch it off."}),
     ("*", r"^addon-mqtt$|^(page-)?port-tcp-1883$", {"go": "addons", "where": "Add-ons",
                                            "say": "Meshtastic nodes on your network publish to it, so it answers the network on purpose, with no login (topics limited to msh/#). If no node of yours uses it, remove the MQTT add-on; if they do, accept it as it is."}),
-    ("*", r"^addon-irc$|^(page-)?port-tcp-6667$", {"go": "addons", "where": "Add-ons",
-                                           "say": "The IRC chat answers anyone on the box's networks on purpose, with no accounts and nothing encrypted. If nobody uses it, remove the IRC add-on; if they do, accept it as it is. The floor (Security) decides whether hotspot guests reach it."}),
     ("*", r"^addon-term$", {"hub": HUB_SANDBOX, "go": "addons", "where": "Add-ons (the terminal can be removed if you don't use it)"}),
     ("*", r"^units-|^cmdlines-", {"hub": HUB_SANDBOX}),
     ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)", {"hub": HUB_SETUP, "repair": "rerun-install"}),
@@ -234,6 +235,22 @@ DO = [
 _DO = [(src, re.compile(pat), do) for src, pat, do in DO]
 
 
+def _declared_about(source, fid):
+    """The declared service (an add-on's manifest network block) a finding is about: the doctor's addon-<id>,
+    or a listener finding on one of its ports. None otherwise."""
+    from irate_box.hub import services
+    m = re.match(r"^addon-([a-z0-9-]+)$", fid or "")
+    if m and source == "doctor":
+        return services.by_id(m.group(1))
+    m = re.match(r"^(?:page-)?port-(tcp|udp)-(\d+)$", fid or "")
+    return services.by_port(m.group(1), int(m.group(2))) if m else None
+
+
 def do_for(source, fid):
-    """Where a finding is put right (DO), or None."""
+    """Where a finding is put right (DO), or None. A declared service's: its own words, on Add-ons."""
+    decl = _declared_about(source, fid)
+    if decl and decl["risk"] != "ok":
+        return {"go": "addons", "where": "Add-ons",
+                "say": f"{decl['says']} If nobody uses it, remove the add-on; if they do, accept it as it is. "
+                       "Whether hotspot guests reach it is a switch on the floor (Security)."}
     return next((do for src, pat, do in _DO if src in ("*", source) and pat.search(fid or "")), None)

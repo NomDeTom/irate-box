@@ -152,6 +152,10 @@ The Python is one package, `irate_box/`, in three parts by who runs it. `hub/` i
 | `scripts/git-http-guard.py` | `git http-backend` behind Caddy: takes a push's body in full (to a file beside the repositories) before git runs, as nginx does. Caddy streams bodies, and a push it cut off at the 64 MB cap left `git http-backend` spinning at 100% CPU with the pack held in memory. Stdlib only. |
 | `scripts/git-hooks/` | `post-receive`, the hooks path of every private repository: queues a build for `ci.py`. |
 
+**Adding a service of your own** (a chat, a map server, a broker): **[SERVICES.md](SERVICES.md)** says where it
+should sit, who should reach it, what its manifest and installer section need, and what the firewall and the
+doctors then do by themselves.
+
 ## How it hangs together
 
 ```
@@ -218,7 +222,7 @@ names its licence in its first lines (an SPDX identifier); the full texts are in
 | [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub: `server.py`, `hub_control.py`, the doctors (`health.py`, `secdoctor.py`, `security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
 | [GPL-3.0-or-later](LICENSES/GPL-3.0-or-later.txt) | `ci.py`, `gitrepos.py`, `usbstick.py` |
 | [MIT](LICENSES/MIT.txt) | small, self-contained pieces: `netinv.py`, `rtc.py`, `hubclock.py`, `zimcheck.py`, `git-http-guard.py`, `adapt_tools.py`, `tailscale-apply.sh`, the git hook, the device locks (`web/lock.js`, also copied into the Excalidraw and Mermaid forks), small page scripts, the web-server and unit configs, and the `apps.d` manifests; `web/qrcode.js` is third-party (Kazuhiko Arase) |
-| [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt) | the documentation: this README, `BUILDING.md`, `web/help.html`, `web/about.html` |
+| [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt) | the documentation: this README, `BUILDING.md`, `SERVICES.md`, `web/help.html`, `web/about.html` |
 
 **The source on the box.** The AGPL gives everyone who uses the hub over the network the right
 to its source, and an offline box has to offer that itself. `install.sh` publishes the installed

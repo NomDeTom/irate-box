@@ -34,7 +34,7 @@ for b in (BIN / "nft", BIN / "systemctl"):
 os.environ.update(HUB_ETC_DIR=str(ETC), HUB_AP_DNSMASQ=str(T / "ap-dnsmasq.conf"), PATH=f"{BIN}:{os.environ['PATH']}",
                   HUB_PROC_SYS=str(T / "proc"), HUB_GROUP_FILE=str(T / "group"), HUB_PASSWD_FILE=str(T / "passwd"),
                   HUB_SUDOERS=str(T / "sudoers"), HUB_SUDOERS_DIR=str(T / "sudoers.d"), HUB_APT_DIR=str(T / "apt"),
-                  HUB_MOSQUITTO_DIR=str(T / "mosquitto"), HUB_NGIRCD_DIR=str(T / "ngircd"), HUB_UNIT_DIR=str(T / "units"))
+                  HUB_MOSQUITTO_DIR=str(T / "mosquitto"), HUB_PRESENT_ROOT=str(T / "present"), HUB_UNIT_DIR=str(T / "units"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import firewall as fw, security  # noqa: E402
 fails = 0
@@ -108,42 +108,41 @@ check("hub only: the apps' ports closed, said, the switch back to hub and apps",
       and security.load_record()["firewall"]["level"] == "hub" and f["detail"].startswith("Hub only") and f["actions"][0]["choice"] == "firewall-apps", f)
 print(security.fix("firewall-apps", None))
 check("  and back", "8090" in (ETC / "firewall.nft").read_text() and security.load_record()["firewall"]["level"] == "apps")
-# IRC: no switch while it isn't installed; added after the floor, closed until the floor is written again.
-check("no IRC on the box: no IRC switch, 6667 not opened", "firewall-irc-on" not in [x["choice"] for x in finding()["actions"]]
+# A declared service (IRC's manifest: network block): no switch while it isn't installed; added after the
+# floor, closed until the floor is written again; opened and closed by its own switch.
+check("no IRC on the box: no switch for it, 6667 not opened", not any("irc" in x["choice"] for x in finding()["actions"])
       and "6667" not in (ETC / "firewall.nft").read_text())
-(T / "ngircd").mkdir(); (T / "ngircd" / "irate-box.conf").write_text("[Global]\n")
+(T / "present/etc/ngircd").mkdir(parents=True); (T / "present/etc/ngircd/irate-box.conf").write_text("[Global]\n")
 f = finding()
 check("  IRC added later: said closed, its rules unchanged, the switch opens it", "6667" not in (ETC / "firewall.nft").read_text()
-      and "IRC chat closed" in f["detail"] and "firewall-irc-on" in [x["choice"] for x in f["actions"]], f)
-print(security.fix("firewall-irc-on", None))
+      and "IRC server (ngIRCd) closed to guests" in f["detail"] and "firewall-svc-on:irc" in [x["choice"] for x in f["actions"]], f)
+print(security.fix("firewall-svc-on:irc", None))
 f = finding()
 check("  opened: 6667 in the ruleset, said open, the switch now closes it", "6667" in (ETC / "firewall.nft").read_text()
-      and "IRC chat open" in f["detail"] and "firewall-irc-off" in [x["choice"] for x in f["actions"]], f)
-print(security.fix("firewall-irc-off", None))
-check("  closed by choice: out of the ruleset and the record, said so", "6667" not in (ETC / "firewall.nft").read_text()
-      and "irc" not in security.load_record()["firewall"]["services"] and "closed to guests, by your choice" in finding()["detail"])
-print(security.fix("firewall-irc-on", None))
-(T / "loaded").unlink()
-check("on but not loaded: a problem", finding()["status"] == "problem")
-print(security.fix("firewall-on", None))
-print(security.fix("firewall-off", None))
-check("off: the file gone, the table gone, the unit disabled, the warning back", not (ETC / "firewall.nft").exists() and not (T / "loaded").exists()
-      and "disable irate-box-firewall.service" in (T / "systemctl-log").read_text()
-      and finding()["status"] == "warn" and "firewall" not in security.load_record())
-security.fix("firewall-on", None)
-done = security.undo_all()
-check("undo_all takes the floor away", not (ETC / "firewall.nft").exists() and "firewall" not in security.load_record(), done)
-bad = Path(BIN / "nft"); bad.write_text("#!/bin/sh\nexit 1\n")
-try:
-    security.fix("firewall-on", None); check("nft refusing the file: nothing changed, said", False)
-except ValueError as exc:
-    check("nft refusing the file: nothing changed, said", "nothing changed" in str(exc) and not (ETC / "firewall.nft").exists(), str(exc))
-
-# The unit.
-u = fw.unit_text("/opt/irate-box")
-check("the unit loads the file only when it is there, deletes the table on stop, runs before the network",
-      f"if [ -f {fw.RULES} ]; then nft -f {fw.RULES}; fi" in u and "nft delete table inet irate_box" in u
-      and "Before=network-pre.target" in u and "RemainAfterExit=yes" in u)
+      and "IRC server (ngIRCd) open to guests" in f["detail"] and "firewall-svc-off:irc" in [x["choice"] for x in f["actions"]], f)
+print(security.fix("firewall-svc-off:irc", None))
+check("  closed by choice: out of the ruleset and the record", "6667" not in (ETC / "firewall.nft").read_text()
+      and "irc" not in security.load_record()["firewall"]["services"])
+for bad in ("firewall-svc-on:nosuch", "firewall-port-on:tcp/0", "firewall-port-on:sctp/80", "firewall-port-on:tcp/99999", "firewall-sideways"):
+    try:
+        security.fix(bad, None); check(f"{bad}: refused", False)
+    except ValueError:
+        check(f"{bad}: refused", True)
+# A service nobody declared (the owner's own): kept for the box's network by the floor, or opened to guests by choice.
+own = [{"proto": "tcp", "port": 8123, "addr": "0.0.0.0", "unit": "homeassistant.service", "pid": 9, "process": "python3", "name": "python3"}]
+lf = security.listener_findings(own, security.load_record())[0]
+check("an owner's service: a warning saying the floor keeps hotspot guests off, with stop and open-to-guests", lf["status"] == "warn"
+      and "the floor keeps hotspot guests off it" in lf["detail"]
+      and [a["choice"] for a in lf["actions"]] == ["unit-off:homeassistant.service", "firewall-port-on:tcp/8123"], lf)
+print(security.fix("firewall-port-on:tcp/8123", None))
+lf = security.listener_findings(own, security.load_record())[0]
+check("  opened to guests: in the ruleset, said by your choice, the switch closes it", "8123" in (ETC / "firewall.nft").read_text()
+      and "hotspot guests reach it too, by your choice" in lf["detail"] and lf["actions"][-1]["choice"] == "firewall-port-off:tcp/8123"
+      and "TCP 8123 open to guests, by your choice" in finding()["detail"], lf)
+print(security.fix("firewall-port-off:tcp/8123", None))
+check("  closed again", "8123" not in (ETC / "firewall.nft").read_text())
+check("a service the floor kept whose manifest is gone opens nothing", fw.service_ports("gone-addon") == ((), ()))
+print(security.fix("firewall-svc-on:irc", None))
 lf = security.listener_findings([{"proto": "tcp", "port": 6667, "addr": "0.0.0.0", "unit": "ngircd.service", "pid": 1,
                                   "process": "ngircd", "name": "IRC server (ngIRCd)"}], {})[0]
 check("the Security page: IRC's port a warning, saying anyone on the network can join, unencrypted", lf["status"] == "warn"

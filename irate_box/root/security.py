@@ -21,6 +21,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.hub import services
 from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -40,24 +41,25 @@ UPDATES_LOG_NAME = "security-updates.log"
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
 KNOWN_PORTS = {
     ("tcp", 22): "SSH", ("tcp", 80): "the hub (web server)", ("tcp", 9090): "Cockpit",
-    ("tcp", 1883): "MQTT broker (mosquitto)", ("tcp", 6667): "IRC server (ngIRCd)",
+    ("tcp", 1883): "MQTT broker (mosquitto)",
     ("tcp", 22000): "Syncthing", ("udp", 22000): "Syncthing",
     ("udp", 21027): "Syncthing discovery", ("udp", 5353): "mDNS (Avahi or resolved)",
     ("tcp", 5355): "LLMNR (systemd-resolved)", ("udp", 5355): "LLMNR (systemd-resolved)",
     ("udp", 41641): "Tailscale", ("udp", 53): "DNS", ("tcp", 53): "DNS", ("udp", 67): "DHCP",
 }
 # The hub's own listeners, there on purpose: reported, not offered for closing here.
-OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 6667), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
+OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
 # Units of the hub and its add-ons: whatever they listen on is theirs (Syncthing, for one,
 # also opens random UDP ports for its connections).
-OUR_UNITS = re.compile(r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|ngircd|excalidraw-room|syncthing@.*)\.service$")
+OUR_UNITS = re.compile(r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$")
 # The hub's front door: nginx, or Caddy, the fallback (install.sh --web).
 WEB_UNITS = {"nginx.service": "nginx", "caddy.service": "Caddy"}
 # The box's own network clients: they answer only the network's DHCP server.
 CLIENT_PORTS = {("udp", 68): "DHCP client", ("udp", 546): "DHCPv6 client"}
 # Units the page never offers to stop: the box would be unreachable or the hub would break.
 PROTECTED = re.compile(r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|nginx|caddy|"
-                       r"irate-box.*|tailscaled|mosquitto|ngircd|syncthing@.*|kiwix|init)\.(service|socket)$")
+                       r"irate-box.*|tailscaled|mosquitto|syncthing@.*|kiwix|init)\.(service|socket)$")
+# Services the add-ons declare (manifests' network block) are the hub's too: services.py.
 
 
 def run(*cmd, timeout=60):
@@ -155,6 +157,11 @@ def parse_ss(text):
 
 
 def listeners():
+    from irate_box.hub import manifests, services
+    try:
+        found_manifests = manifests.load()
+    except (manifests.ManifestError, OSError):
+        found_manifests = []
     out = run("ss", "-H", "-ltnup")
     found = parse_ss(out.stdout)
     sockets = None
@@ -164,7 +171,8 @@ def listeners():
             sockets = sockets if sockets is not None else _socket_units()
             unit = sockets.get(f["port"], unit)
         f["unit"] = unit if unit and unit != "init.scope" else None
-        f["name"] = KNOWN_PORTS.get((f["proto"], f["port"])) or f["process"] or "unknown"
+        decl = services.by_port(f["proto"], f["port"], found_manifests) or services.by_unit(f["unit"], found_manifests)
+        f["name"] = KNOWN_PORTS.get((f["proto"], f["port"])) or (decl or {}).get("name") or f["process"] or "unknown"
     return found
 
 
@@ -181,14 +189,16 @@ def listener_findings(found, rec):
         elif key in CLIENT_PORTS:
             out.append(_finding(fid, CLIENT_PORTS[key], "ok",
                                 f"{where}. The box asking the network for its address; it only answers the network's DHCP server."))
+        elif decl := (services.by_port(f["proto"], f["port"]) or services.by_unit(f["unit"])):
+            out.append(_finding(fid, decl["name"], decl["risk"], f"{where}. {decl['says']}",
+                                "An add-on: remove it on Add-ons if nobody uses it. Whether hotspot guests reach it is a "
+                                "switch on the floor, below." if decl["risk"] != "ok" else ""))
         elif key not in OURS and f["unit"] and OUR_UNITS.match(f["unit"]):
             out.append(_finding(fid, f["name"], "ok", f"{where}. Part of the hub's {f['unit'].split('.')[0].split('@')[0]}."))
         elif key in OURS:
             note = {("tcp", 1883): "Meshtastic nodes publish here; anyone on the network can too (anonymous, "
-                                   "limited to msh/#).",
-                    ("tcp", 6667): "The IRC chat: anyone on the network can join, with no accounts and nothing "
-                                   "encrypted (limited to 5 connections an address)."}.get(key, "The hub's own; it is meant to be reachable.")
-            out.append(_finding(fid, f["name"], "warn" if key in (("tcp", 1883), ("tcp", 6667)) else "ok", f"{where}. {note}"))
+                                   "limited to msh/#)."}.get(key, "The hub's own; it is meant to be reachable.")
+            out.append(_finding(fid, f["name"], "warn" if key == ("tcp", 1883) else "ok", f"{where}. {note}"))
         elif f["port"] == 9090 and f["unit"] and f["unit"].startswith("cockpit"):
             out.append(_finding(fid, "Cockpit", "problem",
                                 f"{where}. The image's full Linux web console: a root-capable login page that "
@@ -209,14 +219,29 @@ def listener_findings(found, rec):
         elif f["port"] in (41641,) or (f["unit"] or "").startswith("tailscaled"):
             out.append(_finding(fid, "Tailscale", "ok", f"{where}. Encrypted (WireGuard); switched on and off under Access."))
         else:
+            # Not the hub's and not declared: the owner's own, or the image's. A scale, from the most closed:
+            # stop it; keep it for the box's own networks (the floor keeps hotspot guests off: the default);
+            # or open its port to hotspot guests too.
             unit = f["unit"]
             stoppable = bool(unit) and not PROTECTED.match(unit)
+            floor = rec.get("firewall")
+            opened = bool(floor) and f"port:{f['proto']}/{f['port']}" in floor.get("services", [])
+            loopback = f["addr"] in ("127.0.0.1", "::1", "[::1]", "localhost")
+            acts = ([{"choice": f"unit-off:{unit}", "label": f"Stop and disable {unit}",
+                      "confirm": f"Stop {unit} and keep it from starting at boot? Undo starts it again."}] if stoppable else [])
+            if floor and not loopback:
+                acts.append({"choice": f"firewall-port-{'off' if opened else 'on'}:{f['proto']}/{f['port']}",
+                             "label": f"{'Close it to' if opened else 'Open it to'} hotspot guests",
+                             "confirm": None if opened else f"Let guests on the hotspot reach {f['name']} ({f['proto'].upper()} {f['port']})? "
+                                                            "The hub knows nothing about what it does or who may use it."})
+            reach = ("hotspot guests reach it too, by your choice" if opened else
+                     "the floor keeps hotspot guests off it; your own network reaches it" if floor else
+                     "with no floor, hotspot guests reach it too")
             out.append(_finding(fid, f["name"], "warn",
-                                f"{where}. Not part of the hub. If nothing on the box needs it, it is one more thing a guest can try.",
-                                "" if stoppable else "Stop it from a shell if it is not needed.",
-                                [{"choice": f"unit-off:{unit}", "label": f"Stop and disable {unit}",
-                                  "confirm": f"Stop {unit} and keep it from starting at boot? Undo starts it again."}]
-                                if stoppable else []))
+                                f"{where}. Not part of the hub: {reach}. If nothing on the box needs it, it is one more thing someone can try.",
+                                ("Stop it, keep it (Accept), or choose whether hotspot guests reach it." if stoppable else
+                                 "Stop it from a shell if it is not needed, or keep it (Accept)."),
+                                acts))
     for unit, change in rec.get("units", {}).items():
         out.append(_finding(f"unit-{unit}", unit, "ok",
                             f"Switched off {change.get('reason', 'from this page')} ({change.get('at', '')}).",
@@ -1115,8 +1140,16 @@ def _logs(rec, on):
 # --- the network floor (stance review §4 item 3): what a guest on the hotspot can reach -----------
 
 FLOOR_WORDS = {"hub": "the hub's pages, DNS and DHCP", "apps": "the hub, its apps, DNS and DHCP"}
-# What a new floor opens to guests besides the hub, where each is installed (firewall.services_here).
-FLOOR_DEFAULT = ("mqtt", "sync", "irc")
+# What a new floor opens to guests besides the hub, where each is installed (firewall.services_here):
+# MQTT and Syncthing, and every declared service whose manifest says hotspot "open".
+def floor_default():
+    from irate_box.hub import services
+    return ["mqtt", "sync"] + [s["id"] for s in services.declared() if s["hotspot"] == "open"]
+
+
+def _open_in_rules(tcp, udp, rules):
+    """Are these ports in the loaded floor's accept lines (a service added after the floor was written is not)."""
+    return all(re.search(rf"\b{p}\b", rules) for p in (*tcp, *udp)) if (tcp or udp) else False
 
 
 def _floor_apply(floor):
@@ -1135,12 +1168,14 @@ def firewall_findings(rec):
         return [_finding("firewall", "What a guest on the hotspot can reach", "warn",
                          "nftables is not installed, so nothing limits what a guest on the hotspot can reach: every listener on the box.",
                          "Update the box (install.sh installs nftables), then switch the floor on here.")]
+    from irate_box.hub import services
     wanted = sorted(ours.get("services", [])) if ours else []
     level = (ours or {}).get("level", "apps")
     if not ours or not loaded:
-        tcp, udp = firewall.ports(firewall.services_here(list(FLOOR_DEFAULT)))
+        tcp, udp = firewall.ports(firewall.services_here(floor_default()))
+        extra = ", ".join(["MQTT", "Syncthing"] + [s["name"] for s in services.declared() if s["hotspot"] == "open" and services.installed(s)])
         on = lambda lv: {"choice": f"firewall-{lv}", "label": "Hub and apps" if lv == "apps" else "Hub only",  # noqa: E731
-                         "confirm": f"Limit what a guest on the hotspot ({iface}) can reach to {FLOOR_WORDS[lv]}, and MQTT, Syncthing and IRC "
+                         "confirm": f"Limit what a guest on the hotspot ({iface}) can reach to {FLOOR_WORDS[lv]}, and {extra} "
                                     "where installed? SSH from the hotspot is closed until you open it here. Your own network is not affected."}
         return [_finding("firewall", "What a guest on the hotspot can reach", "warn" if not ours else "problem",
                          ("Everything that listens on the box, SSH and the rest: there is no floor." if not ours else
@@ -1148,59 +1183,76 @@ def firewall_findings(rec):
                          + f" The floor would allow, on {iface} alone: TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; "
                          "and drop the rest. The box's other networks are not touched.",
                          "A default-drop ruleset on the hotspot's interface, loaded at boot, at one of two levels: the hub and its "
-                         "apps, or the hub alone (its apps' ports closed to guests). MQTT, Syncthing and IRC open to guests where installed, "
-                         "SSH only if you say so. Undo here.",
+                         f"apps, or the hub alone (its apps' ports closed to guests). {extra} open to guests where installed, "
+                         "SSH only if you say so; any other service of the box's, each with a switch of its own. Undo here.",
                          [on("apps"), on("hub")])]
     tcp, udp = firewall.ports(firewall.services_here(wanted), level)
     ssh = "ssh" in wanted
-    # IRC as the loaded rules have it: added after the floor was set, it stays closed until the floor is written again.
     try:
         rules = firewall.RULES.read_text()
     except OSError:
         rules = ""
-    irc_here = bool(firewall.services_here(["irc"]))
-    irc = irc_here and "irc" in wanted and re.search(r"\b6667\b", rules) is not None
+    said, switches = [], []
+    for s in services.declared():
+        if not services.installed(s):
+            continue
+        is_open = s["id"] in wanted and _open_in_rules(*firewall.service_ports(s["id"]), rules)
+        said.append(f"{s['name']} {'open to guests' if is_open else 'closed to guests'}")
+        ports = ", ".join(f"{pr.upper()} {p}" for pr, p in s["listen"])
+        switches.append({"choice": f"firewall-svc-{'off' if is_open else 'on'}:{s['id']}",
+                         "label": f"{'Close' if is_open else 'Open'} {s['name']} to the hotspot",
+                         "confirm": None if is_open else f"Let guests on the hotspot reach {s['name']} ({ports})? {s['says']}"})
+    for w in wanted:
+        if firewall.PORT_SERVICE.match(w):
+            said.append(f"{w[5:].replace('/', ' ').upper()} open to guests, by your choice")
+            switches.append({"choice": f"firewall-port-off:{w[5:]}", "label": f"Close {w[5:].replace('/', ' ').upper()} to the hotspot", "confirm": None})
     other = "hub" if level == "apps" else "apps"
     return [_finding("firewall", "What a guest on the hotspot can reach", "ok",
                      f"{'Hub and apps' if level == 'apps' else 'Hub only'}: on {iface}, TCP {', '.join(map(str, tcp))}; UDP {', '.join(map(str, udp))}; the rest dropped"
                      + (" (SSH from the hotspot open, by your choice)." if ssh else "; SSH from the hotspot closed.")
-                     + ((" IRC chat open to guests." if irc else " IRC chat closed to guests, by your choice.") if irc_here else ""),
+                     + ("".join(f" {x}." for x in said)),
                      "",
                      [{"choice": f"firewall-{other}", "label": "Hub only: close the apps' ports" if other == "hub" else "Hub and apps: open the apps' ports",
                        "confirm": None},
                       {"choice": "firewall-ssh-off" if ssh else "firewall-ssh-on",
                        "label": "Close SSH from the hotspot" if ssh else "Open SSH from the hotspot",
                        "confirm": None if ssh else "Let guests on the hotspot reach SSH (port 22)? Keys-only logins are strongly advised first (above)."},
-                      *([{"choice": "firewall-irc-off" if irc else "firewall-irc-on",
-                          "label": "Close IRC chat to the hotspot" if irc else "Open IRC chat to the hotspot",
-                          "confirm": None if irc else "Let guests on the hotspot reach the IRC server (port 6667)? No accounts, nothing encrypted."}]
-                        if irc_here else []),
+                      *switches,
                       {"choice": "firewall-off", "label": "Switch the floor off", "confirm": "Take the floor away? Every listener on the box is then reachable from the hotspot again."}])]
 
 
 def _firewall(rec, what):
+    """what: on, apps, hub, off; ssh-on/off; svc-on/off:<declared service id>; port-on/off:<tcp|udp>/<port>."""
+    from irate_box.root import firewall
+    from irate_box.hub import services as declared_services
     if what == "off":
         if "firewall" not in rec:
             raise ValueError("the floor is not on from this page")
         _floor_apply(None)
         rec.pop("firewall")
         return "the floor is off: every listener is reachable from the hotspot again"
-    cur = rec.get("firewall") or {"services": list(FLOOR_DEFAULT), "level": "apps"}
+    act, _, arg = what.partition(":")
+    if act in ("svc-on", "svc-off") and not declared_services.by_id(arg):
+        raise ValueError(f"{arg} is not a service an add-on declares")
+    if act in ("port-on", "port-off") and not (firewall.PORT_SERVICE.match(f"port:{arg}") and 0 < int(arg.split("/")[1]) < 65536):
+        raise ValueError("a port is tcp/N or udp/N, N from 1 to 65535")
+    if act not in ("on", "apps", "hub", "ssh-on", "ssh-off", "svc-on", "svc-off", "port-on", "port-off"):
+        raise ValueError(f"{what} is not a floor switch")
+    cur = rec.get("firewall") or {"services": floor_default(), "level": "apps"}
     services = set(cur.get("services", []))
-    level = {"on": "apps", "apps": "apps", "hub": "hub"}.get(what, cur.get("level", "apps"))
-    if what == "ssh-on":
-        services.add("ssh")
-    elif what == "ssh-off":
-        services.discard("ssh")
-    elif what in ("irc-on", "irc-off"):
-        (services.add if what == "irc-on" else services.discard)("irc")
+    level = {"on": "apps", "apps": "apps", "hub": "hub"}.get(act, cur.get("level", "apps"))
+    name = {"svc-on": arg, "svc-off": arg, "port-on": f"port:{arg}", "port-off": f"port:{arg}", "ssh-on": "ssh", "ssh-off": "ssh"}.get(act)
+    if name:
+        (services.add if act.endswith("-on") else services.discard)(name)
     floor = {"services": sorted(services), "level": level, "date": time.strftime("%Y-%m-%d")}
     _floor_apply(floor)
     rec["firewall"] = floor
-    return {"on": f"the floor is on: guests on the hotspot reach {FLOOR_WORDS[level]}" + (", MQTT, Syncthing and IRC where installed" if services - {"ssh"} else ""),
+    label = (declared_services.by_id(arg) or {}).get("name", arg) if act.startswith("svc") else arg.replace("/", " ").upper()
+    return {"on": f"the floor is on: guests on the hotspot reach {FLOOR_WORDS[level]}" + (", and the services opened with it where installed" if services - {"ssh"} else ""),
             "apps": f"the floor: guests on the hotspot reach {FLOOR_WORDS['apps']}", "hub": f"the floor: guests on the hotspot reach {FLOOR_WORDS['hub']} only",
             "ssh-on": "SSH open from the hotspot", "ssh-off": "SSH closed from the hotspot",
-            "irc-on": "IRC chat open to the hotspot", "irc-off": "IRC chat closed to the hotspot"}[what]
+            "svc-on": f"{label} open to the hotspot", "svc-off": f"{label} closed to the hotspot",
+            "port-on": f"{label} open to the hotspot", "port-off": f"{label} closed to the hotspot"}[act]
 
 
 def share_findings():
@@ -1487,9 +1539,8 @@ def fix(choice, updates_log):
         msg = _apt(rec, choice.split(":", 1)[1], choice.startswith("apt-signedby:"))
     elif choice in ("logs-card", "logs-undo"):
         msg = _logs(rec, choice == "logs-card")
-    elif choice in ("firewall-on", "firewall-apps", "firewall-hub", "firewall-off", "firewall-ssh-on", "firewall-ssh-off",
-                    "firewall-irc-on", "firewall-irc-off"):
-        msg = _firewall(rec, choice[len("firewall-"):])
+    elif choice.startswith("firewall-"):
+        msg = _firewall(rec, choice[len("firewall-"):])   # each switch checked there
     elif choice.startswith("share-contain-"):
         return _share_contain(choice[len("share-contain-"):])
     elif choice.startswith("autoupdate-set:"):

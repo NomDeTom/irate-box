@@ -57,7 +57,7 @@ SHADOW = Path(os.environ.get("HUB_SHADOW", "/etc/shadow"))
 REPORT = CONTROL / "security-audit.json"
 
 OUR_UNIT_PATTERNS = ("irate-box*", "silverbullet.service", "kiwix.service", "ttyd.service",
-                     "mosquitto.service", "ngircd.service", "excalidraw-room.service", "nginx.service")
+                     "mosquitto.service", "excalidraw-room.service", "nginx.service")   # and the declared services' units
 MAX_LISTED = 8          # names shown in a line before "…"
 MAX_ENTRIES = 4000      # directory entries looked at per folder, so a hub-made flood cannot stall the audit
 
@@ -936,8 +936,9 @@ def step_code(ctx):
 
 # Units the audit looks at for sandboxing: the hub's own and the add-ons'.
 def _our_units():
+    from irate_box.hub import services
     names = set()
-    for pat in OUR_UNIT_PATTERNS:
+    for pat in (*OUR_UNIT_PATTERNS, *(s["unit"] for s in services.declared() if s["unit"])):
         for line in _sc("list-unit-files", pat, "--no-legend").splitlines():
             n = line.split()[0] if line.split() else ""
             if n.endswith(".service") and n != "nginx.service":
