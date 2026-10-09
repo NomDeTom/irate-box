@@ -2130,7 +2130,7 @@ def kit_snapshot():
     except (OSError, ValueError, KeyError, TypeError):
         progress = None
     books = sorted((STATE_DIR / "zim").glob("*.zim")) if (STATE_DIR / "zim").is_dir() else []
-    return {"kit": kit, "progress": progress, "pending": _pending_actions("offline-kit"),
+    return {"kit": kit, "progress": progress, "pending": _pending_actions("offline-kit") + _pending_actions("content-export"),
             "books": {"count": len(books), "bytes": sum(b.stat().st_size for b in books)},
             "results": control_results(5)}
 
@@ -2848,7 +2848,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             kit = json.loads((KITS_DIR / "kit.json").read_text())
             name = kit["name"]
-            if not re.fullmatch(r"irate-box-kit-[A-Za-z0-9._-]{1,120}\.tar", name):
+            if not re.fullmatch(r"irate-box-(kit|content)-[A-Za-z0-9._-]{1,120}\.tar", name):
                 raise ValueError(name)
             fh = open(KITS_DIR / name, "rb")
         except (OSError, ValueError, KeyError, TypeError):
@@ -3747,10 +3747,12 @@ class Handler(BaseHTTPRequestHandler):
                                                             "book": payload["book"][:64]})})
             elif action in ("kit-import", "kit-export") and USB_DEVICE_RE.match(device) and isinstance(payload.get("kit"), str):
                 self.send_json(202, {"id": control_request({"action": f"usb-{action}", "device": device, "kit": payload["kit"][:32]})})
-            elif action == "export-many" and USB_DEVICE_RE.match(device) and _str_list(payload.get("books")) and _str_list(payload.get("kits")):
-                # Updating an offline box (item 34): books and toolkits in the layout its USB imports read.
+            elif action == "export-many" and USB_DEVICE_RE.match(device) and _str_list(payload.get("books")) and _str_list(payload.get("kits")) \
+                    and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data"):
+                # A content export without the hub program: the layout the other box's USB imports read.
                 self.send_json(202, {"id": control_request({"action": "usb-export-many", "device": device,
-                                                            "books": payload["books"][:200], "kits": payload["kits"][:50]})})
+                                                            "books": payload["books"][:200], "kits": payload["kits"][:50],
+                                                            "repos": payload.get("repos", [])[:200], "state": payload.get("state", "none")})})
             elif action == "image" and USB_DEVICE_RE.match(device):
                 self.send_json(202, {"id": control_request({"action": "backup-image", "device": device})})
             else:
@@ -3764,7 +3766,8 @@ class Handler(BaseHTTPRequestHandler):
                     and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data") \
                     and (budget is None or (type(budget) is int and budget > 0)):
                 # A new box's kit with what the owner chose (item 34); root checks each again (kit_choices).
-                self.send_json(202, {"id": control_request({"action": "offline-kit", "books": books, "kits": payload.get("kits", []),
+                self.send_json(202, {"id": control_request({"action": "offline-kit" if payload.get("hub", True) is not False else "content-export",
+                                                            "books": books, "kits": payload.get("kits", []),
                                                             "repos": payload.get("repos", []), "state": payload.get("state", "none"),
                                                             "budget_mb": budget})})
             else:

@@ -457,6 +457,109 @@ def offline_kit(req):
         os.close(kits_fd)
 
 
+CONTENT_IMPORT = Path(__file__).with_name("content-import.sh")
+
+
+def content_extras(top, repo_dirs, state):
+    """Git repositories (git/<area>/<name>.git) and this box's state (state-backup.tar.gz) into `top`, an
+    export's irate-box/ folder, with import.sh to bring them in on a box that has the hub. Folders and
+    files made new, never through a link; a repository already there is replaced whole."""
+    said = []
+    if not repo_dirs and state == "none":
+        return said
+    for d in repo_dirs:
+        area = top / "git" / d.parent.name
+        safeio.mkdir(top / "git", mode=0o755)
+        safeio.mkdir(area, mode=0o755)
+        part, dest = area / f".{d.name}.part", area / d.name
+        for old in (part, dest):
+            if old.is_symlink():
+                old.unlink()
+            elif old.exists():
+                shutil.rmtree(old)
+        shutil.copytree(d, part, symlinks=True)
+        os.replace(part, dest)
+        said.append(f"git: {d.parent.name}/{d.name}")
+    if state != "none":
+        from irate_box.hub import backup
+        import tarfile
+        name = top / "state-backup.tar.gz"
+        name.unlink(missing_ok=True)
+        with tarfile.open(fileobj=safeio.create(name, 0o644), mode="w:gz") as tar:
+            tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
+        said.append(f"this box's {'settings' if state == 'settings' else 'settings and data'}")
+    script = top / "import.sh"
+    script.unlink(missing_ok=True)
+    with safeio.create(script, 0o755) as fh:
+        fh.write(CONTENT_IMPORT.read_bytes())
+    return said
+
+
+def content_export(req):
+    """A content export as one download, without the hub program: the stick layout (books at the top of
+    irate-box/, toolkits in kits/, repositories and state with import.sh), packed as a .tar in $STATE/kits,
+    which replaces the last kit or export. Unpacked onto a stick, the other box reads it as a stick."""
+    zims, kit_ids, repo_dirs, state, budget = kit_choices(req)
+    size = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs) + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
+            + (_state_size(state) if state != "none" else 0))
+    if not size:
+        raise ValueError("choose something to export")
+    if budget is not None and size > budget << 20:
+        raise ValueError(f"the export would be about {size >> 20} MB, over the budget of {budget} MB: leave something out")
+    safeio.mkdir(KITS, 0, 0, 0o755)
+    kits_fd = safeio._dir_fd(KITS)
+    try:
+        if os.fstat(kits_fd).st_uid != 0:
+            raise ValueError(f"{KITS} is not root's: refused")
+        kdir = Path(f"/proc/self/fd/{kits_fd}")
+        books = sum(z.stat().st_size for z in zims)
+        need = 2 * (size - books) + books + (16 << 20)   # the work folder (no books), then the tar (all)
+        free = shutil.disk_usage(kdir).free
+        if free - need < _min_free():
+            raise ValueError(f"not enough space: the export needs about {need >> 20} MB and {free >> 20} MB is free "
+                             f"(keeping {_min_free() >> 20} MB spare)")
+        with Progress("kit", 2 + bool(kit_ids), path=KIT_PROGRESS) as progress:
+            work = Path(tempfile.mkdtemp(prefix=".export-", dir=kdir))
+            try:
+                top = work / "irate-box"
+                top.mkdir()
+                report = []
+                if kit_ids:
+                    progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
+                    (top / "kits").mkdir()
+                    for k in kit_ids:
+                        report.append(kits.export_usb(k, top / "kits", progress.bytes))
+                progress.step("Adding the repositories and this box's state")
+                report += content_extras(top, repo_dirs, state)
+                progress.step("Packing it into one file")
+                ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
+                name = f"irate-box-content-{ver}.tar"
+                part = kdir / f".{name}.part"
+                part.unlink(missing_ok=True)
+                safeio.create(part, 0o644).close()
+                tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box", timeout=3600)
+                if tar.returncode == 0 and zims:
+                    tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box/,",
+                              *[z.name for z in zims], timeout=7200)
+                if tar.returncode != 0:
+                    part.unlink(missing_ok=True)
+                    raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+                part.chmod(0o644)
+                for old in [*kdir.glob("irate-box-kit-*.tar"), *kdir.glob("irate-box-content-*.tar")]:
+                    old.unlink()
+                final = kdir / name
+                os.replace(part, final)
+                meta = {"name": name, "kind": "content", "size": final.stat().st_size, "at": time.time(), "arch": platform.machine(),
+                        "books": [z.name for z in zims], "kits": list(kit_ids), "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
+                        "state": state, "contents": ([f"book: {z.stem}" for z in zims] + report)[:60]}
+                safeio.write(kdir / "kit.json", json.dumps(meta, indent=2))
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+    finally:
+        os.close(kits_fd)
+    return f"content export ready: {name} ({meta['size'] >> 20} MB)"
+
+
 def _state_size(level):
     from irate_box.hub import backup
     sums = backup.walk(STATE)
@@ -525,7 +628,7 @@ def _offline_kit(kdir, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
                 part.unlink(missing_ok=True)
                 raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
             part.chmod(0o644)
-            for old in kdir.glob("irate-box-kit-*.tar"):
+            for old in [*kdir.glob("irate-box-kit-*.tar"), *kdir.glob("irate-box-content-*.tar")]:
                 old.unlink()
             final = kdir / name
             os.replace(part, final)
@@ -1910,33 +2013,40 @@ def usb_kit_export(req):
 
 
 def usb_export_many(req):
-    """Books and toolkits onto a stick for updating an offline box (item 34; Tom: "simply an export of the
-    library or the toolkits for updating an offline box"), in the layout that box's own USB imports read:
-    the existing exports, one after another."""
+    """A content export onto a stick, without the hub program: books and toolkits in the layout the other
+    box's own USB imports read (the existing exports, one after another), and git repositories and this
+    box's state beside them with import.sh, which brings those two in on a box that has the hub."""
     device = str(req.get("device", ""))
     books, kit_ids = req.get("books") or [], req.get("kits") or []
     if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
         raise ValueError("books: a list of book names")
     if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
         raise ValueError("kits: a list of toolkit ids")
-    if not books and not kit_ids:
-        raise ValueError("choose a book or a toolkit")
+    _, _, repo_dirs, state, _ = kit_choices({"repos": req.get("repos") or [], "state": req.get("state", "none")})
+    if not books and not kit_ids and not repo_dirs and state == "none":
+        raise ValueError("choose something to export")
     said = []
     try:
-        with Progress("usb-export", len(books) + len(kit_ids), path=USB_PROGRESS) as progress:
+        extras = bool(repo_dirs) or state != "none"
+        with Progress("usb-export", len(books) + len(kit_ids) + extras, path=USB_PROGRESS) as progress:
             for b in books:
                 progress.step(f"Copying {b} to the stick")
                 said.append(usbstick.export_zim(device, b, ZIM_DIR, progress.bytes))
             for k in kit_ids:
                 progress.step(f"Copying the {k} kit to the stick")
                 said.append(usbstick.export_kit(device, k, progress.bytes))
+            if extras:
+                progress.step("Copying the repositories and this box's state to the stick")
+                usbstick.export_with(device, lambda top: said.extend(content_extras(top, repo_dirs, state)))
     finally:
         _kits_status()
         try:
             _write_usb(usbstick.scan())
         except (ValueError, OSError):
             pass
-    return f"{len(books)} book{'s' if len(books) != 1 else ''} and {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''} on the stick; it is safe to unplug"
+    return (f"{len(books)} book{'s' if len(books) != 1 else ''}, {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}"
+            + (f", {len(repo_dirs)} repositor{'ies' if len(repo_dirs) != 1 else 'y'}" if repo_dirs else "")
+            + (" and this box's state" if state != "none" else "") + " on the stick; it is safe to unplug")
 
 
 def backup_image(req):
@@ -2577,7 +2687,7 @@ ACTIONS = {"service": service, "password": password,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
+           "pkg-check": pkg_check, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
