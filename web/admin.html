@@ -1442,8 +1442,15 @@
           <button class="action-btn" type="button" id="update-clear">Clear the update cache</button>
         </div>
         <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
-        <p class="setting-desc" id="doctor-when" hidden></p>
-        <ul class="admin-checks" id="doctor-findings" hidden></ul>
+        <p class="setting-desc" id="doctor-when">Not run yet: it runs when you press the button, or by itself when a check
+          for updates fails.</p>
+        <div class="sec-counts" id="updoctor-summary" role="group" aria-label="Show"></div>
+        <div class="findings" id="doctor-findings"></div>
+        <p class="setting-desc" id="updoctor-empty" hidden></p>
+        <details class="sec-fold" id="updoctor-fine-fold" hidden>
+          <summary>Fine <span id="updoctor-fine-count"></span>: what the doctor looked at and found as it should be</summary>
+          <div class="findings compact" id="updoctor-fine"></div>
+        </details>
 
         <h3>Install anyway</h3>
         <p class="setting-desc">
@@ -1453,7 +1460,7 @@
           the checks that failed are skipped. Only for a version you trust: the one fetched from
           the repository this box was installed from.
         </p>
-        <ul class="admin-checks" id="force-failed" hidden></ul>
+        <div class="findings" id="force-failed" hidden></div>
         <div class="library-buttons">
           <button class="action-btn" type="button" id="update-force" disabled>Install the fetched version anyway</button>
         </div>
