@@ -2399,7 +2399,38 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  return { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides };
+  return { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides, steps_off: readUpSteps() };
+}
+
+// The steps the watchdog may take, a row of ticks per connection (the box's WiFi and wired links, and any
+// connection steps were switched off for before): all ticked unless switched off (uplink.py steps_off).
+const UP_STEP_NAMES = { reconnect: 'Reconnect', restart: 'Restart the network service', radio: 'Reset the radio', reboot: 'Reboot the box' };
+function renderUpSteps(inv, chosen) {
+  const box = document.getElementById('up-steps');
+  if (!box) return;
+  const off = (chosen && chosen.steps_off) || {};
+  const links = inv ? [...inv.radios.filter((r) => r.type !== 'AP').map((r) => [r.iface, 'WiFi']), ...inv.wired.map((w) => [w.iface, 'wired'])] : [];
+  for (const name of Object.keys(off)) if (!links.some(([i]) => i === name)) links.push([name, 'not here now']);
+  if (!links.length) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No connections found yet.' })); return; }
+  box.replaceChildren(...links.map(([iface, kind]) => {
+    const row = el('fieldset', { className: 'up-steps-row' }, el('legend', { textContent: `${iface} (${kind})` }),
+      ...Object.entries(UP_STEP_NAMES).map(([step, label]) => {
+        const input = el('input', { type: 'checkbox', checked: !(off[iface] || []).includes(step) });
+        input.dataset.step = step;
+        input.addEventListener('change', () => { upDirty = true; showUpSave(); });
+        return el('label', { className: 'inline' }, input, ` ${label}`);
+      }));
+    row.dataset.iface = iface;
+    return row;
+  }));
+}
+function readUpSteps() {
+  const out = {};
+  for (const row of document.querySelectorAll('#up-steps .up-steps-row')) {
+    const off = [...row.querySelectorAll('input[data-step]')].filter((i) => !i.checked).map((i) => i.dataset.step);
+    if (off.length) out[row.dataset.iface] = off;
+  }
+  return out;
 }
 
 const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2663,7 +2694,10 @@ function renderNetwork(data) {
 
   // Staying on the network
   buildUpFields(levels);
-  if (!upDirty) fillUpForm((u && u.chosen) || levels.default, levels);
+  if (!upDirty) {
+    fillUpForm((u && u.chosen) || levels.default, levels);
+    renderUpSteps(data.inventory, (u && u.chosen) || {});
+  }
   net.status.textContent = upStatusText(u);
   // Stalled: the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.

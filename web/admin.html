@@ -1000,6 +1000,12 @@
                     <span class="setting-desc" id="up-sens-says"></span></span>
                   <label class="setting-name" for="up-iface">Watch</label>
                   <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+                  <!-- The steps the watchdog may take, per connection: unticked, it never takes that one there
+                       (admin.js renderUpSteps; uplink.py steps_off). -->
+                  <span class="setting-name" id="up-steps-label">Steps it may take, for each connection</span>
+                  <p class="setting-desc">Untick a step to leave it out on that connection: a radio a network restart unsettles can go
+                    straight from a reconnect to a radio reset. The reach above still caps how far it goes.</p>
+                  <div class="up-steps" id="up-steps" role="group" aria-labelledby="up-steps-label"></div>
                   <details id="up-custom">
                     <summary>Custom values (blank: the pace's own)</summary>
                     <div class="net-fields" id="up-fields"></div>

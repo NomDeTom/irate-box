@@ -1551,3 +1551,8 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
   border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
 .first-use-note h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
 .first-use-note p { margin: 0.3rem 0; }
+
+/* The watchdog's steps per connection (admin.js renderUpSteps): a row of ticks for each link. */
+.up-steps { display: grid; gap: 0.4rem; margin: 0.3rem 0 0.8rem; }
+.up-steps-row { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; margin: 0; padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; }
+.up-steps-row legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--muted); }
