@@ -119,5 +119,22 @@ inv["at"] = _time.time() - 2 * 86400
 f = health.check_inventory()
 check("  an old look: its age said, and a finding to look again", "48 h ago" in f[0]["detail"] and f[-1]["id"] == "netinv", f)
 
+# The networks NetworkManager has seen, one per name, for picking one to join.
+scan_out = "\n".join([
+    "SKYTB1H1:04\\:95\\:E6\\:72\\:B6\\:D1:11:2462 MHz:100:WPA1 WPA2",
+    "SKYTB1H1:50\\:0F\\:F5\\:AD\\:15\\:D9:36:5180 MHz:82:WPA2",
+    "Cafe\\: Free:aa\\:bb\\:cc\\:dd\\:ee\\:01:6:2437 MHz:40:",
+    ":aa\\:bb\\:cc\\:dd\\:ee\\:02:1:2412 MHz:70:WPA2",
+    "Office:aa\\:bb\\:cc\\:dd\\:ee\\:03:44:5220 MHz:60:WPA2 802.1X",
+    "Neu:aa\\:bb\\:cc\\:dd\\:ee\\:04:149:5745 MHz:55:WPA3"])
+nets = netinv.visible_networks(lambda *a, **k: (0, scan_out), known={"SKYTB1H1"})
+by = {x["ssid"]: x for x in nets}
+check("visible: one entry per name, strongest first, a hidden one left out", [x["ssid"] for x in nets] == ["SKYTB1H1", "Office", "Neu", "Cafe: Free"], [x["ssid"] for x in nets])
+check("  two access points on two bands, known already", by["SKYTB1H1"]["aps"] == 2 and by["SKYTB1H1"]["bands"] == ["2.4 GHz", "5 GHz"]
+      and by["SKYTB1H1"]["channels"] == [11, 36] and by["SKYTB1H1"]["known"] and by["SKYTB1H1"]["kind"] == "wpa-psk", by["SKYTB1H1"])
+check("  security as the form asks it: open, WPA3 only, and 802.1X not joinable by password",
+      by["Cafe: Free"]["kind"] == "open" and by["Neu"]["kind"] == "sae" and by["Office"]["kind"] is None)
+check("  nmcli failing: nothing", netinv.visible_networks(lambda *a, **k: (8, "")) == [])
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
