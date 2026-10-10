@@ -1448,8 +1448,14 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
    recessive grid and axes, the outages as a neutral wash. */
 .ladder-periods { margin: 0.4rem 0 0.5rem; }
 .ladder-frame { position: relative; }
-.ladder-svg { display: block; width: 100%; height: auto; max-width: 900px; outline-offset: 2px; }
+.ladder-svg { display: block; width: 100%; height: auto; max-width: 900px; outline-offset: 2px; touch-action: pan-y; cursor: zoom-in; user-select: none; }
 .ladder-band { fill: var(--muted); opacity: 0.14; }
+/* No record (the watchdog not running): hatched, so it never reads as up or as an outage. */
+.ladder-hole { stroke: none; }
+.ladder-hatch { stroke: var(--muted); stroke-width: 1.5; opacity: 0.45; }
+.ladder-sel { fill: var(--accent); opacity: 0.15; stroke: var(--accent); stroke-width: 1; }
+.ladder-zoom { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; min-height: 0; margin: 0 0 0.3rem; }
+.ladder-zoom:empty { display: none; }
 .ladder-grid { stroke: var(--border); stroke-width: 1; }
 .ladder-axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .ladder-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }

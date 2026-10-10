@@ -80,6 +80,35 @@ def _bucket(states):
             "off": "o" in seen}
 
 
+def gaps(hist, now=None):
+    """The spans no link was recorded in (the watchdog not running: a freeze, a reboot, a stop), as
+    [[start, end], ...] in Unix time, oldest first; the slots after the last recorded one count once
+    they are more than two slots old. For the escalation chart, which draws them as no record."""
+    now = time.time() if now is None else now
+    ifaces = [e for e in (hist or {}).get("ifaces", {}).values()
+              if isinstance(e, dict) and isinstance(e.get("s"), str) and isinstance(e.get("first"), int) and e["s"]]
+    if not ifaces:
+        return []
+    lo = min(e["first"] for e in ifaces)
+    hi = max(e["first"] + len(e["s"]) for e in ifaces)
+    hi_end = max(hi, int(now // SLOT)) if now // SLOT - hi >= 2 else hi
+    seen = bytearray(hi_end - lo)
+    for e in ifaces:
+        for i, c in enumerate(e["s"]):
+            if c != ".":
+                seen[e["first"] - lo + i] = 1
+    out, start = [], None
+    for i, v in enumerate(seen):
+        if not v and start is None:
+            start = i
+        elif v and start is not None:
+            out.append([(lo + start) * SLOT, (lo + i) * SLOT])
+            start = None
+    if start is not None and hi_end > hi:
+        out.append([(lo + start) * SLOT, now])
+    return out
+
+
 def _midnight(t):
     lt = time.localtime(t)
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))

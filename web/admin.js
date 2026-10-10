@@ -1956,10 +1956,10 @@ function renderHealth(data) {
   const h = data.helper || {};
   // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
   const lad = document.getElementById('health-ladder');
-  const ladKey = JSON.stringify((data.ladder || []).slice(-1)) + (data.ladder || []).length;
+  const ladKey = JSON.stringify((data.ladder || []).slice(-1)) + (data.ladder || []).length + JSON.stringify(data.ladder_gaps || []);
   if (lad && typeof LadderChart !== 'undefined' && lad.dataset.key !== ladKey) {
     lad.dataset.key = ladKey;
-    LadderChart.render(lad, data.ladder || []);
+    LadderChart.render(lad, data.ladder || [], { gaps: data.ladder_gaps });
   }
   hl.banner.hidden = !h.stuck;
   if (h.stuck) {
@@ -2537,9 +2537,10 @@ function drawNetTabs(data, inv, u) {
     el('h4', {}, el('span', { textContent: d.iface }), el('span', { className: 'state', textContent: 'carrier' in d ? 'Wired' : 'WiFi' }),
       up && up.iface === d.iface ? el('span', { className: 'info-pill', textContent: 'the box\'s link' }) : null),
     netLine('Now', linkNow(inv, d)), uptimeSection(d.iface))));
-  if (typeof LadderChart !== 'undefined' && netTabs.ladder.dataset.key !== String((data.ladder || []).length)) {
-    netTabs.ladder.dataset.key = String((data.ladder || []).length);
-    LadderChart.render(netTabs.ladder, data.ladder || []);
+  const netLadKey = String((data.ladder || []).length) + JSON.stringify(data.ladder_gaps || []);
+  if (typeof LadderChart !== 'undefined' && netTabs.ladder.dataset.key !== netLadKey) {
+    netTabs.ladder.dataset.key = netLadKey;
+    LadderChart.render(netTabs.ladder, data.ladder || [], { gaps: data.ladder_gaps });
   }
   // The box's access: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
   const wifi = inv ? inv.radios.filter((r) => r.type === 'managed') : [];

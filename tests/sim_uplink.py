@@ -469,5 +469,24 @@ rows = r.see(1600, {"bssid": "aa:00:00:00:00:01", "channel": 6}, [])
 check("  a new access point with no drop seen is a roam too", rows == [{"at": 1600, "k": "roam", "d": 0, "b": "aa:00:00:00:00:01", "c": 6}] and r.hour() == 2, rows)
 r.see(5300, {"bssid": "aa:00:00:00:00:01", "channel": 6}, [])
 check("  the last hour's count forgets older ones", r.hour() == 0)
+
+# The watchdog's start on the ladder: its last check before it stopped, so the chart can end an outage
+# a freeze or a reboot left open, and draw the time between as no record.
+L3 = U.Ladder(Path(_tf2.mkdtemp()) / "uplink-ladder.json")
+L3.started(10000, 8000.04, 120)
+L3.started(20000, None, 5000)
+L3.started(30000, 31000, 5000)
+rows3 = __import__("json").loads(L3.path.read_text())
+check("a start: its last check, and whether the box had just started", rows3[0] == {"at": 10000, "k": "start", "t": "Watching again after the box started.", "last": 8000.0}, rows3[0])
+check("  the watchdog restarted alone; no last check known, none said", rows3[1] == {"at": 20000, "k": "start", "t": "Watching again (the watchdog restarted)."}, rows3[1])
+check("  a last check after the start (the clock stepped) left out", "last" not in rows3[2], rows3[2])
+H = __import__("irate_box.hub.linkhistory", fromlist=["gaps"])
+S = 300
+hist = {"slot": S, "ifaces": {"wlan0": {"first": 100, "s": "uuu....uug", "kind": "uplink"}, "ap0": {"first": 102, "s": "dd", "kind": "link"}}}
+check("no record: the slots no link was recorded in", H.gaps(hist, 110 * S) == [[104 * S, 107 * S]], H.gaps(hist, 110 * S))
+check("  the slots after the last: not while it may still be writing", H.gaps(hist, 111 * S) == [[104 * S, 107 * S]])
+check("  but once two slots have passed, up to now", H.gaps(hist, 113 * S + 7) == [[104 * S, 107 * S], [110 * S, 113 * S + 7]], H.gaps(hist, 113 * S + 7))
+check("  nothing recorded: no gaps", H.gaps({}, 1000) == [] and H.gaps(None, 1000) == [])
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
