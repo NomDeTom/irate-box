@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/git-and-builds.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git, builds and firmware · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 Git, builds and firmware</h1>
+    <p class="subtitle">Repositories, mirrors, the Firmware Factory and the web flasher.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <h2>Git</h2>
+  <p class="help-note">The box keeps git repositories (<code>/git/</code> public, <code>/git-private/</code> behind the login): browse them, clone them, push to them as each one allows (Apps → Git). A repository can build on each push, its runs shown on the page.</p>
+  <p class="help-note"><strong>Mirrors</strong> keep a copy of a repository from elsewhere (Meshtastic's firmware, say), the branches and release tags you choose, so builds work with no internet. Each mirror also holds all of its upstream's tags, without their files, and says if one moves.</p>
+  <h2>The Firmware Factory</h2>
+  <p class="help-note">Builds Meshtastic firmware on the box (Apps → Firmware Factory → Open the Firmware Factory): choose the source and the release, pick the boards, queue them. One build at a time; the queue can be paused. A finished build can be offered on the hub's front page, and <strong>Publish to the web flasher</strong>.</p>
+  <h2>The web flasher</h2>
+  <p class="help-note">At <code>/flasher/</code>: puts a published build on an ESP32 radio from the browser, over USB. It needs Chrome or Edge on a computer, and the page over HTTPS (the box's certificate installed). nRF52 and RP2040 radios take a UF2 file dragged onto the drive they show when plugged in: those are among the Factory's downloads.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>

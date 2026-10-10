@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/accounts.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accounts · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 Accounts</h1>
+    <p class="subtitle">Who can sign in, and how. On the admin pages: System → Accounts &amp; users.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <p class="help-note">The box works without accounts: guests use the apps as they are, and the admin signs in. Accounts are for people who should have more: apps only users can open, their own settings, files they can lock.</p>
+  <h2>Sign-up</h2>
+  <ul><li><strong>Off</strong> (the default): no accounts but the admins'.</li><li><strong>Open</strong>: anyone can make one, usable at once (at most five an hour from one address).</li><li><strong>Application</strong>: anyone can ask; you accept or refuse.</li><li><strong>Admin assigned</strong>: only you make them.</li></ul>
+  <p class="help-note">To make one yourself: <strong>Make user</strong> or <strong>Make admin</strong>. The box gives a one-time code (good for a day); the person sets their own password with it on the account page (<strong>Set your password with a code</strong>). <strong>Reset password</strong> on an account gives a new code.</p>
+  <h2>Passwords over plain HTTP</h2>
+  <p class="help-note"><strong>Prevented</strong> (passwords only over HTTPS), <strong>Warning</strong> (the default: allowed, and the page says it can be read off the air) or <strong>Permitted</strong>. An admin's password changes only over HTTPS, or at the console, whatever this says.</p>
+  <h2>The account page</h2>
+  <p class="help-note">Everyone's, at <code>/account.html</code>: change your password; whether others see your name in "here now"; your name's colour; whether your files in the drop are locked by default; who sees what you post; log out.</p>
+  <h2>The box's own login, for scripts</h2>
+  <p class="help-note">A separate login (user <code>admin</code>) for scripts that call the admin pages, made only when you ask, at the console: <code>sudo /opt/irate-box/irate-box hub_control script-login</code>. Its password is kept in <code>/etc/hub/admin-password</code>, readable only by root. <code>--off</code> removes it.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>

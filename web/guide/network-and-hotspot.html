@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/network-and-hotspot.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network and the hotspot · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 Network and the hotspot</h1>
+    <p class="subtitle">How the box stays online, and its own WiFi for guests. On the admin pages: System → Network.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <h2>The box's access</h2>
+  <p class="help-note"><strong>The box's access</strong> shows its WiFi (the networks it knows; <strong>Add a network for the box to join</strong>) and its wired port.</p>
+  <h2>Staying on the network</h2>
+  <p class="help-note">A watchdog checks the router every minute or two. If the link drops, it climbs a ladder of repairs, each only if the one before didn't help:</p>
+  <ol><li><strong>Reconnect</strong> to the WiFi.</li><li><strong>Restart the network service.</strong></li><li><strong>Reset the radio</strong> (reload its driver: a fresh start for the WiFi chip).</li><li><strong>Reboot the box</strong> (at most three times a day, never during an update or a build).</li></ol>
+  <p class="help-note">You choose the <strong>pace</strong> (how soon it acts), the <strong>reach</strong> (how far up the ladder it may go), how many missed checks put it on the ladder, and, with guests on the hotspot, whether to protect them from a restart. <strong>Steps it may take, for each connection</strong> lets you untick a step for one link: a radio that a restart unsettles can go from a reconnect straight to a radio reset. The Box doctor says when a step isn't helping on a link that drops often, with a button to leave it out.</p>
+  <p class="help-note">The <strong>Status</strong> tab shows the link now and the last 72 hours; the Box doctor's chart shows how far the watchdog went.</p>
+  <h2>The hotspot</h2>
+  <p class="help-note">The box's own WiFi, for people with no other network (name <strong>Irate-Box</strong> to start). Every web address on it leads to the hub. It's off until you switch it on (Network → Hotspot); the page fits it to the box's radios.</p>
+  <ul><li><strong>Security</strong>: <strong>Open</strong> (no password), <strong>Enhanced Open</strong> (no password, but encrypted), <strong>WPA3</strong> with a password you publish, or two networks, one open and one encrypted.</li><li><strong>What guests reach on the box</strong>: everything, the hub and its apps, or the hub only (Security page).</li><li><strong>Guests reach the internet</strong>: <strong>Off</strong> (the default), signed-in users for the web only, everyone after a welcome page (the web, or everything), or everyone with no welcome page. A device is let out for 12 hours at a time.</li></ul>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>

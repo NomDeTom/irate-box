@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/troubleshooting.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When something goes wrong · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 When something goes wrong</h1>
+    <p class="subtitle">The doctors, the logs and the console.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <h2>The doctors</h2>
+  <p class="help-note">On the admin pages, under Doctors:</p>
+  <ul><li><strong>Box doctor</strong>: is everything the installer set up still there and working: the services, the web server's configuration, the clock, the space, the network watchdog, crashes. Each problem says what to do; the safe repairs are buttons. <strong>Look again</strong> runs it now.</li><li><strong>Security doctor</strong>: see <a href="security.html">Security</a>.</li><li><strong>Updates doctor</strong>: why an update didn't verify or install, and <strong>Install anyway</strong> for a version that fetched but failed its checks (never one that isn't signed as you required).</li></ul>
+  <p class="help-note">The same Box doctor from the console, even when the admin pages can't be reached:</p>
+  <pre class="help-code"><code>sudo /opt/irate-box/irate-box health summary</code></pre>
+  <h2>The console</h2>
+  <p class="help-note">Over SSH, on the box:</p>
+  <ul><li><code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>: make an admin, or set a lost password.</li><li><code>sudo /opt/irate-box/irate-box hub_control script-login</code>: a login for scripts (<code>--off</code> removes it).</li><li><code>sudo /opt/irate-box/irate-box hub_control reset-password</code>: back to the first use (the admin pages free until an admin is made again).</li><li>Running the installer again (<code>sudo ./install.sh</code>) is safe: it repairs and upgrades, keeping your settings and add-ons.</li><li><code>sudo ./uninstall.sh</code> removes it; your data goes too unless you add <code>--keep-state</code>, so take a backup first.</li></ul>
+  <h2>Logs</h2>
+  <ul><li>The installer: <code>/var/log/irate-box/install.log</code></li><li>A service: <code>journalctl -u irate-box -n 50</code> (the hub), <code>journalctl -u irate-box-uplink -n 50</code> (the network watchdog)</li></ul>
+  <h2>If the box stops answering</h2>
+  <p class="help-note">Its crash watch keeps notes on the card, and the Box doctor says after a restart when the box stopped without shutting down, with its last record.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>

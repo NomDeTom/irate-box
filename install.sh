@@ -1768,6 +1768,17 @@ WantedBy=multi-user.target
 EOF
 fi
 
+# This box's guide as a book, where Kiwix is chosen (irate_box/library/guide.py, from docs/guide): made again
+# each run, so it describes the code installed; taken out with Kiwix.
+GUIDE_ZIM="$STATE/zim/irate-box-guide.zim"
+if [ "$KIWIX" = 1 ] && [[ " ${REMOVE[*]} " != *" kiwix "* ]]; then
+	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/zim"
+	runuser -u "$HUB_USER" -- "$CODE/irate-box" guide zim "$GUIDE_ZIM" "$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null)" >/dev/null ||
+		problem "the guide was not made as a book: $CODE/irate-box guide zim says why"
+else
+	rm -f "$GUIDE_ZIM"
+fi
+
 # The sweep: library.xml is rebuilt from the .zim files actually in $STATE/zim, every
 # run. kiwix-manage keys books by the ZIM's UUID, so editing the old library in place
 # leaves a stale entry beside every rebuilt file, and keeps entries for deleted ones.
@@ -2406,7 +2417,8 @@ fi
 for r in "${REMOVE[@]}"; do
 	case "$r" in
 	kiwix)
-		say "Removing Kiwix; the books in $STATE/zim stay"
+		say "Removing Kiwix; the books in $STATE/zim stay (but its own guide, made for Kiwix)"
+		rm -f "$STATE/zim/irate-box-guide.zim"
 		systemctl disable --now kiwix >/dev/null 2>&1 || true
 		rm -f /etc/systemd/system/kiwix.service
 		install -d -m 755 "$ETC" && touch "$ETC/kiwix-removed" ;;

@@ -937,6 +937,10 @@ details.admin-item summary { cursor: pointer; }
 /* The guide's pages (web/guide/): steps, so closer together, and commands to copy. */
 .guide .help-note { margin-bottom: 0.8rem; color: var(--text); }
 .guide h2 { margin-top: 1.8rem; }
+.guide ul, .guide ol { margin: 0 0 0.8rem; padding-left: 1.4rem; line-height: 1.55; font-size: 0.92rem; }
+.guide li { margin: 0.2rem 0; }
+.guide table { border-collapse: collapse; margin: 0 0 0.8rem; font-size: 0.9rem; }
+.guide th, .guide td { text-align: left; padding: 0.25rem 0.8rem 0.25rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .help-code { margin: 0 0 0.8rem; padding: 0.6rem 0.8rem; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px;
   background: var(--surface); font-size: 0.85rem; }
 .app-help { border: 0; background: none; padding: 0 0.3rem; font-size: 0.78rem; color: var(--muted); line-height: 1; cursor: pointer; white-space: nowrap; }

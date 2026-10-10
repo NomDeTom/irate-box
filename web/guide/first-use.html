@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/first-use.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -22,42 +23,22 @@
   <p class="help-note">On the board, logged in over SSH:</p>
   <pre class="help-code"><code>git clone https://github.com/NomDeTom/irate-box &amp;&amp; cd irate-box
 sudo ./install.sh</code></pre>
-  <p class="help-note">That's all it needs. Extras (notes, file sync, the offline library, chat…) can be added now with
-    <code>--with-…</code> options, or later from the admin pages. When it finishes it prints the box's address.</p>
-
+  <p class="help-note">That's all it needs. Extras (notes, file sync, the offline library, chat…) can be added now with <code>--with-…</code> options, or later from the admin pages: see <a href="addons-and-books.html">Add-ons and books</a>. When it finishes it prints the box's address.</p>
   <h2>2. Make yourself the admin, straight away</h2>
-  <p class="help-note">Until you do, <strong>anyone on the same network can use the box's admin pages</strong>. The hub's
-    front page says so, with a <strong>Set up this box</strong> button.</p>
+  <p class="help-note">Until you do, <strong>anyone on the same network can use the box's admin pages</strong>. The hub's front page says so, with a <strong>Set up this box</strong> button.</p>
   <p class="help-note">Your admin password should never cross the network where others can read it. Pick one way:</p>
   <p class="help-note"><strong>A. Over SSH (quickest).</strong> You're already logged in to install, so run:</p>
   <pre class="help-code"><code>sudo /opt/irate-box/irate-box hub_control set-admin yourname</code></pre>
   <p class="help-note">It asks for the password twice. Done.</p>
   <p class="help-note"><strong>B. In the browser, over HTTPS.</strong></p>
-  <ol class="help-note">
-    <li>Open <a href="/admin/#security">Admin → Security</a>, and under <strong>HTTPS</strong> press <strong>Switch HTTPS on</strong>.</li>
-    <li>Open <a href="/certificate">the box's certificate page</a> on your phone or computer, and install the certificate as it shows you.</li>
-    <li>Open the set-up page over HTTPS (<code>https://</code> and the box's address, then <code>/admin/setup</code>), and choose a name and a password.</li>
-  </ol>
-  <p class="help-note"><strong>C. In the browser, over plain HTTP.</strong> <a href="/admin/setup">The set-up page</a> lets you,
-    but only if you tick that you understand the password can be read on the network. Fine on a network only you use; not on a
-    shared one. This is allowed only this first time.</p>
-
+  <ol><li>Open the box's admin pages (<code>/admin/</code>) → <strong>Security</strong> → <strong>HTTPS</strong>, and switch HTTPS on (making the box's certificate if it asks).</li><li>Open the box's certificate page (<code>/certificate</code>) on your phone or computer, and install the certificate as it shows you.</li><li>Open the set-up page over HTTPS (<code>https://</code>, the box's address, then <code>/admin/setup</code>), and choose a name and a password.</li></ol>
+  <p class="help-note"><strong>C. In the browser, over plain HTTP.</strong> The set-up page lets you, but only if you tick that you understand the password can be read on the network. Fine on a network only you use; not on a shared one. This is allowed only this first time.</p>
   <h2>3. Sign in</h2>
-  <p class="help-note">From now on, sign in where everyone does: <strong>👤 Sign in</strong> at the top of the hub. Once you're
-    signed in as the admin, a <strong>⚙️ Admin</strong> button appears beside it. Guests never see it.</p>
-
+  <p class="help-note">From now on, sign in where everyone does: <strong>👤 Sign in</strong> at the top of the hub. Once you're signed in as the admin, a <strong>⚙️ Admin</strong> button appears beside it. Guests never see it.</p>
   <h2>4. The rest, when you like</h2>
-  <p class="help-note">The admin pages open with a short list of <strong>setup steps</strong>: how guests reach the box, what it
-    shows them, add-ons and books. Each can be skipped and done later.</p>
-
+  <p class="help-note">The admin pages open with a short list of <strong>setup steps</strong>: how guests reach the box, what it shows them, add-ons and books, then a few decisions (visitor counts, new accounts, HTTPS, the hotspot, remote access) and a backup. Each can be skipped and done later.</p>
   <h2>If something goes wrong</h2>
-  <ul class="help-note">
-    <li><strong>Forgot the password?</strong> Over SSH: <code>sudo /opt/irate-box/irate-box hub_control set-admin yourname</code> sets a new one.</li>
-    <li><strong>Want to change it?</strong> Over HTTPS (your account page), or over SSH as above. The box refuses an admin password change over plain HTTP.</li>
-    <li><strong>Scripts that call the admin pages</strong> (<code>curl -u admin:…</code>) need a login of their own, made only when you ask:
-      <code>sudo /opt/irate-box/irate-box hub_control script-login</code> (and <code>--off</code> to remove it).</li>
-    <li><strong>Installer problems:</strong> the log is in <code>/var/log/irate-box/install.log</code>; running the installer again is safe.</li>
-  </ul>
+  <ul><li><strong>Forgot the password?</strong> Over SSH: <code>sudo /opt/irate-box/irate-box hub_control set-admin yourname</code> sets a new one.</li><li><strong>Want to change it?</strong> Over HTTPS (your account page), or over SSH as above. The box refuses an admin password change over plain HTTP.</li><li><strong>Scripts that call the admin pages</strong> (<code>curl -u admin:…</code>) need a login of their own, made only when you ask: <code>sudo /opt/irate-box/irate-box hub_control script-login</code> (and <code>--off</code> to remove it).</li><li><strong>Installer problems:</strong> the log is in <code>/var/log/irate-box/install.log</code>; running the installer again is safe. More in <a href="troubleshooting.html">When something goes wrong</a>.</li></ul>
 
   <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
   <script src="/hub.js"></script>

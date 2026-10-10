@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/security.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 Security</h1>
+    <p class="subtitle">What is and isn't protected, and the choices. On the admin pages: System → Security, and the Security doctor.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <p class="help-note">The <strong>Security</strong> page says plainly what's protected and what isn't, and asks for the choices that are yours. Nothing that opens the box further is done without your yes.</p>
+  <ul><li><strong>HTTPS</strong>: the box makes its own certificate; install it on your devices from <code>/certificate</code> and the padlock appears. Or use a certificate of your own. Without HTTPS, anything typed into a page can be read by anyone on the same WiFi.</li><li><strong>What the box keeps about visitors</strong>: whether it counts unique visitors (by a salted fingerprint, never kept as is).</li><li><strong>Listening on the network</strong>: every port the box answers on, what it is, and whether it should.</li><li><strong>The hotspot's floor</strong>: what guests on the hotspot reach (see <a href="network-and-hotspot.html">Network and the hotspot</a>).</li></ul>
+  <p class="help-note">The <strong>Security doctor</strong> runs Debian's and others' checks (debian-cis, Lynis, the packages' known issues) and sorts what they find: <strong>put right here</strong>, <strong>hardening suggestions</strong>, <strong>not for this box</strong>, and what <strong>you've accepted</strong>. You can import a scan made elsewhere (OpenVAS, nmap).</p>
+  <p class="help-note">The admin password: see <a href="first-use.html">Setting up a new box</a> and <a href="accounts.html">Accounts</a>. It's set over HTTPS or at the console, never over plain HTTP after the first time.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>

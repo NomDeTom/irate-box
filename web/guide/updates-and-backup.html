@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/updates-and-backup.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Updates and backup · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 Updates and backup</h1>
+    <p class="subtitle">Keeping the box current, and a copy of what's on it. On the admin pages: System → Updates and backup.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <h2>The box's own updates</h2>
+  <p class="help-note">The <strong>This hub</strong> card checks for a newer version, fetches it, checks it, and installs it. For each, you choose:</p>
+  <ul><li><strong>How often to look</strong>: by hand, every 6 or 24 hours, or weekly.</li><li><strong>When something newer is found</strong>: <strong>Flag</strong> it (said on the page and its badge), also <strong>Fetch</strong> it (downloaded and checked, ready for you), or also <strong>Install</strong> it, only between the hours you set and with nobody on the hub (it restarts).</li></ul>
+  <p class="help-note">Each update downloads only what changed. <strong>What an update must carry</strong> sets how much it must prove: <strong>From the branch</strong> (as it comes, its checks passed), <strong>Merged on GitHub</strong> (every new commit signed by GitHub), or <strong>Signed releases only</strong> (the newest release tag, signed with one of your own SSH keys). A version that fails is never installed; the Updates doctor says why.</p>
+  <h2>Debian's security updates</h2>
+  <p class="help-note">The same choices for the operating system's security fixes: list them, also download them, or also install them (from Debian's security archive only).</p>
+  <h2>Packages from their makers</h2>
+  <p class="help-note">Programs the box watches for its makers' updates (meshtasticd, for one), with <strong>Roll back</strong> to the version before.</p>
+  <h2>Backup</h2>
+  <p class="help-note"><strong>Back up this box</strong> makes a file to download:</p>
+  <ul><li><strong>Settings only</strong>: the hub's settings, accounts, the apps' and add-ons' settings, the library's and mirrors' sources, mesh channels.</li><li><strong>Settings and data</strong>: also notes, saved work, the board and shoutbox, dropped files, the box's own git repositories.</li><li><strong>Full image</strong>: the whole card, written to a USB stick in parts.</li></ul>
+  <p class="help-note">Books, firmware, mirrors, builds and caches are never in a backup: they're fetched again. Syncthing's private keys go in only if you tick it; whoever holds that file can pose as the box, so keep it like a password.</p>
+  <p class="help-note"><strong>Content export</strong> makes a set for another box (books, toolkits, repositories, and this box's settings if you want), to download or write to a USB stick: to bring a box level, or start a new one.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>
