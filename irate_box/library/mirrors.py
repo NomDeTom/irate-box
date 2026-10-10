@@ -53,6 +53,10 @@ KINDS = ("tags", "release", "prerelease")
 MAX_KEEP = 20
 REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
 FETCH_TIMEOUT = 3 * 3600
+# Every upstream tag of each mirror, held apart from the mirror: the tag objects (with their signatures)
+# and the commits they name, no files (a partial repository, --filter=tree:0, never served). A signed
+# tag can be checked from here, and a tag moved upstream noticed, for a few KB a tag.
+TAGS_DIR = librarian.LIB_DIR / "tags"
 
 
 def _git(*args, cwd=None, timeout=600):
@@ -153,6 +157,38 @@ def repo_path(m):
     return gitrepos.ROOT / m["area"] / f"{m['name']}.git"
 
 
+def tags_path(m):
+    return confine.under(TAGS_DIR, f"{m['name']}.git")
+
+
+def _sync_tags(m, refs):
+    """Every tag the upstream has, into the mirror's tags repository: {count, signed, moved: [names whose commit
+    or tag object changed upstream since the last look]}. Tags gone upstream go here too (pruned)."""
+    path = tags_path(m)
+    if not (path / "HEAD").exists():
+        path.mkdir(parents=True, exist_ok=True)
+        _git("init", "--quiet", "--bare", str(path))
+        _git("config", "remote.origin.promisor", "true", cwd=path)
+        _git("config", "remote.origin.partialclonefilter", "tree:0", cwd=path)
+    _git("config", "remote.origin.url", m["upstream"], cwd=path)
+    before = {r: sha for r, sha in _local_refs(path).items() if r.startswith("refs/tags/")}
+    upstream = {r: sha for r, sha in refs.items() if r.startswith("refs/tags/")}
+    moved = sorted(r[len("refs/tags/"):] for r, sha in before.items() if r in upstream and upstream[r] != sha)
+    if upstream:
+        out = _git("fetch", "--quiet", "--prune", "--no-write-fetch-head", "--filter=tree:0", "--depth", "1",
+                   "origin", "+refs/tags/*:refs/tags/*", cwd=path, timeout=FETCH_TIMEOUT)
+        if out.returncode != 0:
+            raise LibrarianError(f"the tags: {(out.stderr.strip().splitlines() or ['git fetch failed'])[-1][:200]}")
+    else:
+        for r in before:
+            _git("update-ref", "-d", r, cwd=path)
+    listed = _git("for-each-ref", "refs/tags", "--format=%(objecttype)\t%(contents:signature)", cwd=path).stdout
+    rows = listed.splitlines()  # a signature runs on over lines of its own, which start with neither word
+    count = sum(1 for l in rows if l.startswith(("tag\t", "commit\t")))
+    signed = sum(1 for l in rows if l.startswith("tag\t-----BEGIN"))
+    return {"count": count, "signed": signed, "moved": moved}
+
+
 def add(m):
     m = validate(m)
     mirrors = load()
@@ -186,7 +222,7 @@ def remove(name, delete_repo=True):
     subs = (st.pop(name, None) or {}).get("submodules", {})
     _write(STATUS, st)
     if delete_repo:
-        for p in [repo_path(m)] + [gitrepos.ROOT / m["area"] / f"{s['repo']}.git" for s in subs.values()]:
+        for p in [repo_path(m), tags_path(m)] + [gitrepos.ROOT / m["area"] / f"{s['repo']}.git" for s in subs.values()]:
             if p.is_dir():
                 shutil.rmtree(p)
     write_urls()
@@ -398,6 +434,15 @@ def sync(m, check_only=False, log=print):
                 _git("gc", "--quiet", "--prune=now", cwd=path, timeout=FETCH_TIMEOUT)
             entry.update(missing=[], extra=[], updated=time.time())
             line = f"{len(missing)} fetched, {len(extra)} dropped" if missing or extra else "up to date"
+            try:
+                tags = _sync_tags(m, refs)
+                was = entry.get("tags", {}).get("moved", [])
+                entry["tags"] = dict(tags, moved=sorted(set(was) | set(tags["moved"])), checked=time.time())
+                if tags["moved"]:
+                    line += f"; moved upstream since the last look: {', '.join(tags['moved'][:5])}"
+                entry.pop("tags_error", None)
+            except (LibrarianError, OSError, subprocess.SubprocessError) as exc:
+                entry["tags_error"] = str(exc)
             if m.get("submodules"):
                 entry["submodules"] = _sync_submodules(m, path, sorted(keep), log)
                 line += f"; {len(entry['submodules'])} submodule{'s' if len(entry['submodules']) != 1 else ''} mirrored"
