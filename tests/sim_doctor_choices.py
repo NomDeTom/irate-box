@@ -23,11 +23,12 @@ offered = ([f"crashwatch-preempt:{lv}" for lv in crashwatch.PREEMPT]
            + [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog") for v in ("on", "off")]
            + ["unit-restart:meshtasticd.service", "unit-enable:irate-box-uplink.service", "kiwix-quarantine:book",
               "other-restart:armbian-led-state.service", "kiwix-rebuild", "kiwix-off", "clock-set:1791580000",
-              "rtc-find", "rtc-save", "rtc-remove", "rtc-setup:ds3231:1:0x68"])
+              "rtc-find", "rtc-save", "rtc-remove", "rtc-setup:ds3231:1:0x68", "uplink-skip:wlan0:restart", "uplink-skip:eth0:radio"])
 for c in offered:
     check(f"{c}: the doctor does it, and the hub lets it through",
           bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)))
-for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;reboot", "unit-restart:a b"):
+for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;reboot", "unit-restart:a b",
+            "uplink-skip:wlan0:nap", "uplink-skip:-x:radio", "uplink-skip:wlan0"):
     check(f"{bad}: refused by the hub", not server.HEALTH_CHOICE_RE.match(bad))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
