@@ -833,6 +833,7 @@ function renderBox(data) {
     tile('Guests', `${data.online} on the page${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ''}`),
   );
   renderOverviewNet(data.net_uptime);
+  document.getElementById('first-use').hidden = !data.first_use;
   renderOverviewMesh(data.meshtasticd, data.service_uptime);
   document.getElementById('hub-version').textContent = data.version;
 

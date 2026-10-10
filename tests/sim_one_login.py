@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""One login, through the standard user login: admin accounts sign in on the standard page even with sign-up off; the box's first use makes the
-owner's admin account and signs them in, the box's own login given a random password of root's; once an admin
-account can sign in, the admin's routes send a browser to that sign-in, never the box's own login prompt (a
-script's login still passes); the header shows one account button, and Admin where it is useful.
+"""One login, through the standard user login: admin accounts sign in on the standard page even with sign-up off. The box's first
+use: its admin pages free to anyone on the network, the home page saying so, until the owner makes the admin account
+(over HTTPS, or over HTTP only by choice), which signs them in and turns the box's own login off (no password made for
+scripts); after it, an admin's password changes only over HTTPS. Once an admin account can sign in, the admin's routes
+send a browser to that sign-in (a script's login still passes); the header shows Admin only to a signed-in admin.
 python3 tests/sim_one_login.py"""
 import json, os, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
 from pathlib import Path
@@ -35,6 +36,12 @@ tok2, me2 = A.claim_admin("Ann", "password-three")
 check("the console's reset and first use again: an existing name made admin with the new password", me2["role"] == "admin"
       and A.login("ann", "password-three")[1]["role"] == "admin")
 check("  the name rules hold ('admin' is kept for the box's own login)", refused(A.claim_admin, "admin", "password-four", says="kept"))
+code = A.make("bob", "admin")
+check("an admin's one-time code over plain HTTP: refused, and the code kept", refused(A.use_code, code, "password-five", "", False, says="HTTPS"))
+check("  over HTTPS: the password set with it", A.use_code(code, "password-five", "", True) == "bob" and A.login("bob", "password-five")[1]["role"] == "admin")
+A.set_admin("dave", "password-seven", by="the console")
+check("the console's set-admin: an admin account, no session made", A._load()["accounts"]["dave"]["role"] == "admin"
+      and A._load()["accounts"]["dave"]["by"] == "the console" and not any(v.get("name") == "dave" for v in A._load()["sessions"].values()))
 gate = lambda **k: access.nginx_gates({}, **k)["gate-admin.conf"]  # noqa: E731
 check("nginx: no admin ready, the box's own login prompt; ready, a browser sent to sign in; off, the same",
       "error_page" not in gate(admin_login=True) and "error_page 401 = @irate_box_login" in gate(admin_login=True, accounts_ready=True)
@@ -70,22 +77,45 @@ def req(path, body=None, headers=None, raw=False):
     except urllib.error.HTTPError as e:
         data = e.read()
         return e.code, (data.decode() if raw else json.loads(data or b"{}")), e.headers
+HTTPS = {"X-Forwarded-Proto": "https"}
+def queued():
+    return [json.loads(p.read_text()) for p in st.rglob("requests/*.json")]
 try:
     code, page, _ = req("/", raw=True)
-    check("the header: Sign in for a guest, and Admin while no admin account can sign in (its first use)", code == 200
-          and "👤</span> Sign in" in page and 'href="/admin/"' in page, page[:300])
-    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner"})
+    check("the first use, on the home page: Sign in, no Admin button; a note that the box is not set up, to /admin/setup", code == 200
+          and "👤</span> Sign in" in page and "⚙️</span> Admin" not in page and 'class="first-use-note"' in page
+          and 'href="/admin/setup"' in page and "set-admin NAME" in page, page[:600])
+    code, page, _ = req("/admin/", raw=True)
+    check("  the admin pages themselves, free, with their banner", code == 200 and 'id="first-use"' in page and "admin-main" in page, code)
+    code, page, _ = req("/admin/setup", raw=True)
+    check("  the set-up page at /admin/setup, its HTTP warning and the console's way", code == 200 and 'id="setup-http"' in page
+          and "set-admin NAME" in page, code)
+    code, d, _ = req("/admin/password", {"password": "pw-for-scripts"})
+    check("  the box's own login not set from the free pages", code == 403 and "first use" in d.get("error", ""), (code, d))
+    code, d, _ = req("/admin/accounts", {"action": "make", "name": "mallory", "role": "admin"})
+    check("  nor an admin made on Accounts (the first admin is the set-up page's)", code == 403, (code, d))
+    code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner"})
+    check("the first password over plain HTTP, not chosen: refused, said why", code == 403 and d.get("https") is False and "HTTP" in d.get("error", ""), (code, d))
+    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner", "over_http": True})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
-    reqs = [json.loads(p.read_text()) for p in (st / "control" / "requests").glob("*.json")] if (st / "control" / "requests").is_dir() else \
-           [json.loads(p.read_text()) for p in st.rglob("requests/*.json")]
-    pw_req = [r for r in reqs if r.get("action") == "password"]
-    check("first use over the page: the admin account made, signed in, the box's own login a random password, the gates asked to follow",
-          code == 202 and cookie.startswith("irate_session=") and pw_req and pw_req[0]["setup"] is True and pw_req[0]["password"] != "pw-of-the-owner"
-          and len(pw_req[0]["password"]) >= 24 and any(r.get("action") == "admin-gate" for r in reqs), (code, d, [r.get("action") for r in reqs]))
+    reqs = queued()
+    check("  chosen: the admin account made, signed in; the first use ended with no password made for scripts; the gates follow",
+          code == 202 and cookie.startswith("irate_session=") and any(r.get("action") == "claim" for r in reqs)
+          and not any(r.get("action") == "password" for r in reqs) and any(r.get("action") == "admin-gate" for r in reqs),
+          (code, d, [r.get("action") for r in reqs]))
+    (st / "unclaimed").unlink()  # what the root helper's claim does
+    acct = {"X-Irate-Account": "1", "Cookie": cookie}
+    code, d, _ = req("/api/account", {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"}, headers=acct)
+    check("after it, an admin's password over plain HTTP: refused", code == 400 and "HTTPS" in d.get("error", ""), (code, d))
+    code, d, _ = req("/api/account", {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"}, headers=dict(acct, **HTTPS))
+    check("  over HTTPS: changed", code == 200 and d.get("changed") is True, (code, d))
+    code, d, _ = req("/admin/password", {"password": "pw-for-scripts"}, headers={"Cookie": cookie})
+    check("  the box's own login over plain HTTP: refused (the console's script-login, or HTTPS)", code == 403 and d.get("https") is False, (code, d))
     code, page, _ = req("/", raw=True, headers={"Cookie": cookie})
     check("  the header for the admin: My account and Admin", "My account" in page and 'href="/admin/"' in page)
     code, page, _ = req("/", raw=True)
-    check("  for a guest now: Sign in, and no Admin (admins sign in where everyone does)", "👤</span> Sign in" in page and 'href="/admin/"' not in page)
+    check("  for a guest now: Sign in, no Admin, no first-use note", "👤</span> Sign in" in page and 'href="/admin/"' not in page
+          and "first-use-note" not in page)
     code, _, _ = req("/_irate/admin?redirect=1&basic=1", headers={"Authorization": "Basic YWRtaW46eA=="}, raw=True)
     check("Caddy's question: a request carrying a login of its own passes on to basic_auth (which checks it)", code == 204, code)
     code, _, h = req("/_irate/admin?redirect=1&basic=1", headers={"X-Forwarded-Uri": "/admin/"}, raw=True)

@@ -10,8 +10,8 @@
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
 </head>
-<!-- Served at /admin/ while no admin password has been chosen (server.py, unclaimed()).
-     Nothing else under /admin answers until one is. -->
+<!-- Served at /admin/setup while the box is in its first use (server.py, unclaimed()): its admin pages
+     are free to anyone on the network until this account is made. -->
 <body class="admin">
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
@@ -25,10 +25,22 @@
       <p><strong>This box has no admin yet.</strong> Whoever makes the admin account here owns the box:
         it opens the admin page, the terminal at /term and Syncthing at /sync. Sign in with it later
         where everyone signs in (👤 Sign in, at the top of the hub).</p>
-      <p>Anyone on this network can open this page until the account is made, so make it now.
+      <p>Until the account is made, anyone on this network can use the box's admin pages, so make it now.
         If you are a guest, not the owner, please leave this alone.</p>
       <p>After this, the admin page takes you through the rest: how guests reach the box, what
         it exposes, add-ons and books. Each of those can be skipped and done later.</p>
+    </div>
+    <!-- Over plain HTTP: the safer ways first, and the form only when chosen (setup-http). -->
+    <div class="settings-note admin-note bad" id="setup-http" hidden>
+      <p><strong>This page is open over plain HTTP:</strong> a password typed here crosses the network where
+        anyone on it can read it. Set it a safer way:</p>
+      <ul>
+        <li>over HTTPS, if this box has it on: <a id="setup-https-link" href="#">the same page over HTTPS</a>;</li>
+        <li>or at the box's console, over SSH: <code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>.</li>
+      </ul>
+      <label><input type="checkbox" id="setup-http-ok"> Set it over plain HTTP anyway: I understand it can be
+        read on this network. (Only this first time: after it, an admin's password changes only over HTTPS or
+        at the console.)</label>
     </div>
     <p class="settings-note admin-note" id="setup-note" hidden></p>
     <form id="setup-form" class="library-form">
@@ -38,8 +50,8 @@
       <button type="submit" class="action-btn primary">Make the admin account</button>
     </form>
     <p class="setting-desc">
-      Lost the password later? From the box's own console: <code>sudo /opt/irate-box/irate-box hub_control reset-password</code>
-      brings this page back; making the account again with the same name sets its new password.
+      Lost the password later? At the box's own console, over SSH: <code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>
+      sets a new one (the same name, or a new admin).
     </p>
   </section>
 
@@ -49,8 +61,18 @@
     const form = document.getElementById('setup-form');
     const note = document.getElementById('setup-note');
     const say = (text, ok) => { note.textContent = text; note.classList.toggle('bad', !ok); note.hidden = false; };
-    // The root helper takes a second or two. Once it has set the password the box is no longer
-    // unclaimed and the web server asks for the login, so a 401 here also means "done".
+    // Over plain HTTP the form waits for the owner's choice; over HTTPS it is ready.
+    const plain = location.protocol !== 'https:';
+    const httpOk = document.getElementById('setup-http-ok');
+    if (plain) {
+      document.getElementById('setup-http').hidden = false;
+      document.getElementById('setup-https-link').href = `https://${location.hostname}/admin/setup`;
+      const lock = () => { for (const el of form.elements) el.disabled = !httpOk.checked; };
+      httpOk.addEventListener('change', lock);
+      lock();
+    }
+    // The root helper takes a second or two. Once the first use has ended, the web server asks for a
+    // sign-in, so a 401 here also means "done".
     async function wait(id, tries) {
       try {
         const r = await fetch(`/admin/setup?id=${encodeURIComponent(id)}`);
@@ -78,7 +100,7 @@
       form.querySelector('button').disabled = true;
       try {
         const r = await fetch('/admin/setup', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' }, body: JSON.stringify({ name, password: pw }),
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' }, body: JSON.stringify({ name, password: pw, over_http: plain && httpOk.checked }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);

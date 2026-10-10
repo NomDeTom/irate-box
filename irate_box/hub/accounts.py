@@ -391,10 +391,15 @@ def logout(token):
             _save(data)
 
 
-def change_password(token, old, new, addr=""):
+ADMIN_OVER_HTTP = "an admin's password changes only over HTTPS, or at the box's console over SSH"
+
+
+def change_password(token, old, new, addr="", https=True):
     acc = session(token)
     if not acc:
         raise AccountError("log in first")
+    if acc.get("role") == "admin" and not https:
+        raise AccountError(ADMIN_OVER_HTTP)
     _valid_password(new)
     now = time.time()
     with _lock:
@@ -412,15 +417,19 @@ def change_password(token, old, new, addr=""):
         _save(data)
 
 
-def use_code(code, password, addr=""):
-    """Set an account's password with a one-time code (an admin's new account, or a reset).
-    Returns the account's name."""
+def use_code(code, password, addr="", https=True):
+    """Set an account's password with a one-time code (an admin's new account, or a reset); an admin
+    account's only over HTTPS (the code is kept for that). Returns the account's name."""
     _valid_password(password)
     now = time.time()
     with _lock:
         _limited("", addr, now)
         data = _load()
-        c = data["codes"].pop(_digest(_normal(code).upper()) if isinstance(code, str) else "", None)
+        key = _digest(_normal(code).upper()) if isinstance(code, str) else ""
+        held = data["codes"].get(key)
+        if not https and held and data["accounts"].get(held.get("name"), {}).get("role") == "admin":
+            raise AccountError(ADMIN_OVER_HTTP)
+        c = data["codes"].pop(key, None)
         if not c or c.get("expires", 0) <= now or c.get("name") not in data["accounts"]:
             _failed("", addr, now)
             raise AccountError("that code is not one this box gave, or it has been used or has expired")
@@ -474,19 +483,24 @@ def admin_ready(data=None):
     return bool(_admins(data or _load()))
 
 
-def claim_admin(name, password, addr=""):
-    """The box's first use (or after reset-password at the console): its owner's admin account, made or,
-    when the name is an account already, made an admin with this password (the console's say-so). Then
-    signed in: (cookie value, account)."""
+def set_admin(name, password, by="the box's first use"):
+    """An admin account with this password: made, or, when the name is an account already, made an
+    admin with this password (the console's or the first use's say-so); its sessions end."""
     key = _valid_name(name)
     _valid_password(password)
     with _lock:
         data = _load()
-        acc = data["accounts"].get(key) or {"name": name, "created": round(time.time()), "seen": None, "by": "the box's first use"}
+        acc = data["accounts"].get(key) or {"name": name, "created": round(time.time()), "seen": None, "by": by}
         acc.update(hash=hash_password(password), state="user", role="admin")
         data["accounts"][key] = acc
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != key}
         _save(data)
+
+
+def claim_admin(name, password, addr=""):
+    """The box's first use (or after reset-password at the console): its owner's admin account, then
+    signed in: (cookie value, account)."""
+    set_admin(name, password)
     return login(name, password, addr)
 
 
@@ -532,3 +546,22 @@ def change(name, action, keep_admin=False):
         if action in ("disable", "delete"):
             data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != key}
         _save(data)
+
+
+def main(argv):
+    """The console's way to an admin account (hub_control set-admin runs this as the hub's user):
+    `accounts set-admin NAME`, the password on stdin."""
+    import sys
+    if len(argv) == 2 and argv[0] == "set-admin":
+        try:
+            set_admin(argv[1], sys.stdin.readline().rstrip("\n"), by="the console")
+        except AccountError as exc:
+            sys.exit(f"accounts: {exc}")
+        print(f"admin account {argv[1]}: password set")
+        return
+    sys.exit("usage: accounts set-admin NAME   (the password on stdin)")
+
+
+if __name__ == "__main__":
+    import sys
+    main(sys.argv[1:])

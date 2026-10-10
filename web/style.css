@@ -1539,3 +1539,10 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .action-btn.action-btn[hidden], .books-bulk[hidden], #library-sources[hidden], .git-manage[hidden], .aw-filter[hidden],
 .admin-checks[hidden], .net-settings[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden],
 .findings[hidden] { display: none; }
+
+/* The first use (server.py unclaimed()): the admin pages' banner above every pane, and the home page's note. */
+.first-use-banner { position: relative; z-index: 2; margin: 0 0 1rem; }
+.first-use-note { margin: 0 auto 1.5rem; max-width: 60rem; padding: 0.8rem 1rem; border: 1px solid var(--warn);
+  border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+.first-use-note h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
+.first-use-note p { margin: 0.3rem 0; }
