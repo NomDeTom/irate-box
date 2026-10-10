@@ -1031,6 +1031,9 @@ const upd = {
   doctorNote: document.getElementById('doctor-note'),
   doctorWhen: document.getElementById('doctor-when'),
   findings: document.getElementById('doctor-findings'),
+  udSummary: document.getElementById('updoctor-summary'), udEmpty: document.getElementById('updoctor-empty'),
+  udFineFold: document.getElementById('updoctor-fine-fold'), udFineCount: document.getElementById('updoctor-fine-count'),
+  udFine: document.getElementById('updoctor-fine'),
   force: document.getElementById('update-force'),
   forceFailed: document.getElementById('force-failed'),
   forceNote: document.getElementById('force-note'),
@@ -1064,6 +1067,36 @@ function renderUpdateProgress(p) {
     (p.label ? ` — ${p.label}${bytes}` : '') + '.';
 }
 
+// The update doctor, in the other doctors' shape: the counters (which double as the filter), one row per
+// finding with what to do (a command to copy, the place it is changed), and what was fine folded away.
+let udShow = 'all';
+function renderUpdoctor(d) {
+  const all = d ? [...d.findings].sort((a, b) => RANK[a.status] - RANK[b.status]) : [];
+  const counts = { problem: all.filter((f) => f.status === 'problem').length, warn: all.filter((f) => f.status === 'warn').length };
+  upd.doctorWhen.textContent = d ? `Looked ${new Date(d.at * 1000).toLocaleString()}.`
+    : 'Not run yet: it runs when you press the button, or by itself when a check for updates fails.';
+  upd.udSummary.replaceChildren(...(!d ? [] : [
+    ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
+    ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
+    ['warn', counts.warn, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${udShow === key ? ' active' : ''}`,
+      onclick: () => { udShow = key; renderUpdoctor(d); } }, el('strong', { textContent: String(n) }), ` ${word}`);
+    b.setAttribute('aria-pressed', String(udShow === key));
+    return b;
+  })));
+  const item = (f, i) => {
+    const x = healthDo(f, false);
+    return findingRow({ id: `ud-${i}`, state: f.status, title: f.check, detail: f.detail, how: x.how, controls: x.controls });
+  };
+  const open = all.filter((f) => f.status !== 'ok' && (udShow === 'all' || f.status === udShow));
+  upd.findings.replaceChildren(...open.map(item));
+  upd.udEmpty.hidden = !d || open.length > 0;
+  upd.udEmpty.textContent = counts.problem + counts.warn ? 'Nothing of that kind.' : 'Nothing to fix or look at: updates have what they need.';
+  const fine = all.filter((f) => f.status === 'ok');
+  upd.udFineFold.hidden = !fine.length;
+  upd.udFineCount.textContent = `(${fine.length})`;
+  upd.udFine.replaceChildren(...fine.map((f, i) => item(f, `fine-${i}`)));
+}
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
   const s = data.state;
@@ -1087,18 +1120,12 @@ function renderUpdate(data) {
   const checks = (fetched && s.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
   upd.forceFailed.hidden = !failedChecks.length;
-  upd.forceFailed.replaceChildren(...failedChecks.map((c) => checkItem('problem', c.name, c.detail)));
+  upd.forceFailed.replaceChildren(...failedChecks.map((c) => findingRow({ state: 'problem', title: c.name, detail: c.detail })));
   upd.checks.hidden = !checks.length;
   upd.checks.replaceChildren(...checks.map((c) =>
     checkItem(c.ok ? 'ok' : c.warn ? 'warn' : 'problem', c.name, c.detail)));
   const d = data.doctor;
-  upd.doctorWhen.hidden = upd.findings.hidden = !d;
-  if (d) {
-    const n = d.findings.filter((f) => f.status === 'problem').length;
-    upd.doctorWhen.textContent = `Last run ${new Date(d.at * 1000).toLocaleString()}: ` +
-      (n ? `${n} problem${n === 1 ? '' : 's'}.` : 'no problems found.');
-    upd.findings.replaceChildren(...d.findings.map((f) => checkItem(f.status, f.check, f.detail, f.status === 'ok' ? '' : f.fix)));
-  }
+  renderUpdoctor(d);
   const doctorProblems = d ? d.findings.filter((f) => f.status === 'problem').length : 0;
   badge('updoctor', doctorProblems ? String(doctorProblems) : failedChecks.length ? '!' : '');
   upd.changes.replaceChildren(...((found && s.changes) || []).slice(0, 20)

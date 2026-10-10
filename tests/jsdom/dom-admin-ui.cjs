@@ -279,7 +279,7 @@ setTimeout(() => {
   check('  the mirror and settings instead: within it', /About 116\.5 MB of a/.test(t('#kit-total')[0]) && !d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
   kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
   const force = d.getElementById('update-force');
-  check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed li').length === 1, t('#force-failed li'));
+  check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed .finding').length === 1, t('#force-failed .finding'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
   check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
