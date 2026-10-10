@@ -1165,7 +1165,7 @@ def _floor_apply(floor):
     firewall.apply_all(fl, share.load())
 
 
-REACH = "What a guest on the hotspot can reach"
+REACH = "Guests reach"
 
 
 def firewall_findings(rec):
