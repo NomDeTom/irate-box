@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/admin.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The admin pages · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 The admin pages</h1>
+    <p class="subtitle">For the owner: where everything is, at <code>/admin/</code>.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <p class="help-note">Sign in as the admin and press <strong>⚙️ Admin</strong>. The sidebar has these groups (each folds; on a phone it's a menu at the top):</p>
+  <ul><li><strong>Overview</strong>: what needs your attention, the box's memory, card and uptime, the network's last 72 hours, and the services with Start, Stop and Restart. <strong>Setup steps</strong> sits beside it until you hide it.</li><li><strong>Apps</strong>: a page for each app on the box (Excalidraw, the file drop, Kiwix, Git, Notes, the shoutbox and board, the Firmware Factory and the rest). Each says who can open it and who sees its tile, and where it has them, its own updates and settings. <strong>All apps, in order</strong> arranges the tiles.</li><li><strong>Folders</strong>: the hub's folders of tiles (Meshtastic, RF &amp; LoRa, Calculators, Electronics) and the status tiles: who sees each, what's in it.</li><li><strong>Moderation</strong>: what people reported, and everything people made, to look through or remove.</li><li><strong>System</strong>: Accounts &amp; users, Network, Security, the librarian (the schedule for books and apps, and a GitHub token), Toolkits, Clock, Appearance (page widths), Updates and backup.</li><li><strong>Doctors</strong>: the Box doctor, the Security doctor and the Updates doctor. Each looks at its part of the box, says what's wrong in plain words, and offers the fix as a button where there is one.</li></ul>
+  <p class="help-note">A choice is never made for you: where there's more than one sensible answer, the page shows them from the safest to the most open, the safest already chosen.</p>
+  <p class="help-note">Changes that need the box's own powers (starting services, installing, updates) go to a small helper on the box that does one job at a time. The Box doctor shows its queue.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>

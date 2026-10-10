@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/guide/addons-and-books.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add-ons and books · Guide · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 Add-ons and books</h1>
+    <p class="subtitle">What more the box can do, and its offline library. On the admin pages: All apps → Add-ons, and Kiwix → Books.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <h2>Add-ons</h2>
+  <p class="help-note">Each is added or removed on its own, from the admin pages (the same installer runs; the hub restarts part-way) or with the installer's options:</p>
+  <ul><li><strong>Kiwix</strong> (<code>--with-kiwix</code>): the offline library at <code>/wiki/</code>.</li><li><strong>Notes</strong> (<code>--with-notes</code>): a shared notebook at <code>/notes/</code>.</li><li><strong>Syncthing</strong> (<code>--with-sync</code>): file sync, behind the admin login.</li><li><strong>MQTT broker</strong> (<code>--with-mqtt</code>): for Meshtastic nodes and phones.</li><li><strong>IRC</strong> (<code>--with-irc</code>): a small chat server for any IRC app.</li><li><strong>Terminal</strong> (<code>--with-term</code>): a shell in the browser, behind the admin login.</li><li><strong>Live collaboration</strong> (<code>--with-collab</code>): drawing together in Excalidraw.</li></ul>
+  <p class="help-note">Removing one (<code>--remove NAME</code>, or <strong>Remove</strong>) stops it and takes its settings away; its data stays.</p>
+  <p class="help-note"><strong>Web add-ons</strong> are small pages added from a catalogue with no installer (ELIZA, an MQTT explorer), served apart from the hub.</p>
+  <h2>Books</h2>
+  <p class="help-note">Kiwix reads books in the ZIM format: Wikipedia, medical references, guides. Where Kiwix is added, this guide is one of them.</p>
+  <p class="help-note">Add books from <strong>Suggested for an offline box</strong>, a search of Kiwix's catalogue, another source (a URL, GitHub), or a USB stick (<strong>Scan for USB sticks</strong>). Each book's updates follow the same pattern as the box's: how often to look, and whether to flag, fetch or install what's newer.</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>
