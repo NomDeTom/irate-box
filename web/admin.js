@@ -2770,6 +2770,7 @@ function renderNetwork(data) {
 
   renderDefaults(inv, busy);
   renderHandover(inv, busy);
+  renderVisible(inv, busy);
   const change = u && u.profile_change;
   const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
@@ -2884,6 +2885,32 @@ net.defaultsSave.addEventListener('click', () => {
   defaultsDirty = {};
   netRequest({ action: 'defaults', changes, ...(defaultsScope ? { iface: defaultsScope } : {}) }, 'defaults');
 });
+
+// The networks NetworkManager has seen, to pick one rather than type its name: the form filled with its
+// name and security, the password left to type. A fresh scan on a radio the hotspot shares can move it.
+function renderVisible(inv, busy) {
+  const box = document.getElementById('net-visible');
+  const nm = inv && inv.stacks && inv.stacks.networkmanager;
+  const nets = (nm && nm.visible) || [];
+  const shared = inv && inv.radios.some((r) => r.type === 'AP' && inv.radios.some((m) => m.type === 'managed' && m.phy === r.phy));
+  const scanAgain = actionButton('Scan again', () => {
+    if (shared && !confirm('Scan for networks now? The hotspot shares this radio, so guests may lose it for a moment.')) return;
+    netRequest({ action: 'scan', rescan: true }, 'scan');
+  }, { disabled: busy, className: 'small' });
+  const f = joinForm.elements;
+  box.replaceChildren(
+    el('p', { className: 'setting-desc' }, nets.length ? `Networks the box can see (from ${inv ? new Date(inv.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'its last look'}): pick one, then give its password. ` : 'No networks seen in the last look. ', scanAgain),
+    ...(nets.length ? [el('ul', { className: 'net-visible-list' }, ...nets.slice(0, 25).map((n) => el('li', {},
+      el('strong', { textContent: n.ssid }), ' ',
+      el('span', { className: 'setting-desc', textContent: `${n.signal}%, ${n.bands.join(' and ')}${n.channels.length ? ` (channel ${n.channels.join(', ')})` : ''}`
+        + `${n.aps > 1 ? `, ${n.aps} access points` : ''}, ${n.security || 'open'}` }),
+      n.known ? el('span', { className: 'info-pill', textContent: 'known' }) : null,
+      n.kind ? actionButton('Use this one', () => {
+        f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
+        (n.kind === 'open' ? f.ssid : f.psk).focus();
+      }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
+        : el('span', { className: 'setting-desc', textContent: ' needs a login (802.1X) or a kind of security the box cannot join by password' }))))] : []));
+}
 
 // One connection's own settings: each with its value now and the choices, the risky side said; a change
 // goes to that connection's profile (where it lasts) and takes effect the next time it connects.

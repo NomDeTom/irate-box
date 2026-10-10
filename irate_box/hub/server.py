@@ -4018,7 +4018,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/network":
             act = payload.get("action")
             if act == "scan" and (payload.get("iface") in (None, "") or IFACE_NAME_RE.match(str(payload["iface"]))):
-                self.send_json(202, {"id": control_request({"action": "net-scan", "iface": payload.get("iface") or None})})
+                self.send_json(202, {"id": control_request({"action": "net-scan", "iface": payload.get("iface") or None,
+                                                            "rescan": payload.get("rescan") is True})})
             elif act == "settings":
                 try:
                     settings = uplink.validate(payload.get("settings"))

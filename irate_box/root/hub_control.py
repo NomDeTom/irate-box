@@ -2484,6 +2484,10 @@ def net_scan(req):
     iface = req.get("iface") or None
     if iface is not None and not IFACE_RE.match(str(iface)):
         raise ValueError("not an interface name")
+    if req.get("rescan") is True:
+        # A fresh WiFi scan first (NetworkManager's list is otherwise its last one); a moment's work for the radio.
+        run("nmcli", "dev", "wifi", "rescan", timeout=30)
+        time.sleep(5)
     inv = netinv.scan(iface)
     netinv.write(inv, CONTROL / "netinv.json")
     radios = len(inv["radios"])

@@ -409,6 +409,51 @@ def nm_profile(ref):
             "netplan": (kv.get("connection.id") or "").startswith("netplan-")}
 
 
+def security_kind(sec):
+    """nmcli's SECURITY column as what the page's form asks: wpa-psk, sae (WPA3 only), open, or None
+    for kinds it cannot join by password (802.1X, OWE…)."""
+    words = set((sec or "").split())
+    if not words:
+        return "open"
+    if "802.1X" in words:
+        return None
+    if words & {"WPA1", "WPA2"}:
+        return "wpa-psk"
+    if "WPA3" in words:
+        return "sae"
+    return None
+
+
+def visible_networks(run_=None, known=()):
+    """The WiFi networks NetworkManager has seen (its last scan), one entry per name: the strongest
+    signal, the bands and channels, the security as the form asks it, and whether the box knows it.
+    Networks that hide their name are left out (they are added by name)."""
+    run_ = run_ or run
+    code, out = run_("nmcli", "-t", "-f", "SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY", "dev", "wifi", "list")
+    if code:
+        return []
+    by = {}
+    for f in nm_fields(out):
+        if len(f) < 6 or not f[0]:
+            continue
+        ssid, chan, freq, sig, sec = f[0], f[2], f[3], f[4], f[5]
+        try:
+            mhz, signal = int(freq.split()[0]), int(sig)
+        except (ValueError, IndexError):
+            continue
+        n = by.setdefault(ssid, {"ssid": ssid, "signal": 0, "aps": 0, "bands": set(), "channels": set(),
+                                 "security": sec, "kind": security_kind(sec), "known": ssid in known})
+        n["aps"] += 1
+        n["signal"] = max(n["signal"], signal)
+        n["bands"].add("6 GHz" if mhz >= 5925 else "5 GHz" if mhz >= 5000 else "2.4 GHz")
+        if chan.isdigit():
+            n["channels"].add(int(chan))
+    nets = sorted(by.values(), key=lambda n: (-n["signal"], n["ssid"]))
+    for n in nets:
+        n["bands"], n["channels"] = sorted(n["bands"]), sorted(n["channels"])
+    return nets
+
+
 NETPLAN_PROFILES = "/run/NetworkManager/system-connections/netplan-"
 
 
@@ -666,6 +711,8 @@ def scan(focus=None):
         nm["defaults"]["ifaces"] = {r["iface"]: nmconf.effective_for(r["iface"], r.get("driver"))
                                     for r in radios if r.get("type") == "managed"}
         nm["defaults"]["ifaces_mine"] = nmconf.current_ifaces()
+    if nm and nm.get("running"):
+        nm["visible"] = visible_networks(known={p.get("ssid") for p in nm.get("wifi_profiles", []) if p.get("ssid")})
     # The hotspot on the same radio as a roaming link moves with it.
     for r in radios:
         if r.get("roaming") is not None:
