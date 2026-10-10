@@ -32,6 +32,7 @@ run sim_sbdocs.py
 run sim_pkgwatch.py
 run sim_update_pattern.py
 run sim_wifijoin.py
+run sim_nmconf.py
 run sim_roaming.py
 run sim_backup.py
 run sim_declared_services.py

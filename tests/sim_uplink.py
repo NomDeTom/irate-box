@@ -552,5 +552,36 @@ said = HL.fix("uplink-skip:wlan0:restart")
 check("the doctor's fix: the step left out on that connection, the others kept", U.load_settings()["steps_off"] == {"eth0": ["radio"], "wlan0": ["restart"]}
       and "wlan0" in said, (U.load_settings()["steps_off"], said))
 
+# "Keep retrying": decided by what the profile holds, so a profile written afresh (netplan's, at boot)
+# gets the change again, with the values from before it kept for undo.
+import json as _json, tempfile as _tf3  # noqa: E402
+U.RECORD = Path(_tf3.mkdtemp()) / "uplink-changes.json"
+held = {"connection.autoconnect-retries": "-1", "connection.auth-retries": "-1"}
+def nm_run(*cmd, timeout=60):
+    if cmd[:4] == ("nmcli", "-t", "-g", "connection.autoconnect-retries,connection.auth-retries"):
+        return 0, f"{held['connection.autoconnect-retries']}\n{held['connection.auth-retries']}"
+    if cmd[:3] == ("nmcli", "con", "modify"):
+        args = cmd[5:]
+        for k, v in zip(args[::2], args[1::2]):
+            held[k] = v
+        return 0, ""
+    return 0, ""
+real_run, real_prof = U.run, U._uplink_profile
+U.run, U._uplink_profile = nm_run, lambda: {"uuid": "u-home", "name": "netplan-wlan0-Home"}
+said = U.profile(True)
+rec = _json.loads(U.RECORD.read_text())
+check("Keep retrying: both set to 0, the values from before recorded", held == {"connection.autoconnect-retries": "0", "connection.auth-retries": "0"}
+      and rec["old"] == {"connection.autoconnect-retries": "-1", "connection.auth-retries": "-1"}, (held, rec, said))
+check("  pressed again while they hold: already set", "already set" in U.profile(True))
+held.update({"connection.autoconnect-retries": "-1", "connection.auth-retries": "-1"})   # netplan wrote it afresh
+said = U.profile(True)
+rec = _json.loads(U.RECORD.read_text())
+check("  written afresh since: set again, and the record still has the values from before",
+      held["connection.auth-retries"] == "0" and rec["old"]["connection.auth-retries"] == "-1", (held, rec, said))
+U.profile(False)
+check("  undo puts the values from before back", held == {"connection.autoconnect-retries": "-1", "connection.auth-retries": "-1"}
+      and not U.RECORD.exists(), held)
+U.run, U._uplink_profile = real_run, real_prof
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

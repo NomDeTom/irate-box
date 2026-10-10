@@ -1404,15 +1404,19 @@ def profile(on):
     rec = profile_record()
     if on:
         prof = _uplink_profile()
-        if rec and rec["uuid"] == prof["uuid"]:
-            return f"{prof['name']}: already set to keep retrying"
-        if rec:
-            profile(False)
         code, out = run("nmcli", "-t", "-g", "connection.autoconnect-retries,connection.auth-retries",
                         "con", "show", "uuid", prof["uuid"])
         vals = [v.strip().split(" ")[0] for v in out.splitlines()] if code == 0 else []
         if len(vals) != 2 or not all(re.fullmatch(r"-?\d+", v) for v in vals):
             raise ValueError(f"could not read {prof['name']}'s settings: {out}")
+        if rec and rec["uuid"] == prof["uuid"]:
+            # Decided by what the profile holds, not by the record: a profile written afresh (netplan's,
+            # at boot) has lost the change, and gets it again; the record keeps the values from before.
+            if vals == ["0", "0"]:
+                return f"{prof['name']}: already set to keep retrying"
+            vals = [rec["old"]["connection.autoconnect-retries"], rec["old"]["connection.auth-retries"]]
+        elif rec:
+            profile(False)
         code, out = run("nmcli", "con", "modify", "uuid", prof["uuid"],
                         "connection.autoconnect-retries", "0", "connection.auth-retries", "0")
         if code:

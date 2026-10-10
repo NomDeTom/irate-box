@@ -98,6 +98,13 @@ if { [ -f "$ETC/uplink-changes.json" ] || [ -f "$ETC/uplink-roaming.json" ]; } &
 	say "Putting the WiFi profile back as it was"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink undo-all | sed 's/^/    /' || true
 fi
+# The box defaults chosen on the Network page: irate-box's own NetworkManager drop-in, removed; whatever
+# it shadowed (the image's drop-ins, NetworkManager's defaults) applies again.
+if [ -f /etc/NetworkManager/conf.d/zz-90-irate-box-network.conf ]; then
+	say "Taking out the box defaults set on the Network page"
+	rm -f /etc/NetworkManager/conf.d/zz-90-irate-box-network.conf
+	systemctl reload NetworkManager 2>/dev/null || true
+fi
 # Networks added on the Network page's access tab are the owner's: kept, and said how to remove them.
 if [ -f "$ETC/wifi-joined.json" ] && [ -f "$CODE/irate_box/root/wifijoin.py" ]; then
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" wifijoin kept | sed 's/^/    /' || true

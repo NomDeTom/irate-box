@@ -980,6 +980,16 @@
                 <h4>Wired</h4>
                 <div id="net-wired-now"></div>
               </div>
+              <div class="net-card setting net-card-wide" id="net-defaults-card">
+                <h4>Box defaults for every connection</h4>
+                <p class="setting-desc">What every connection uses unless it has its own setting. NetworkManager keeps these in its
+                  own configuration, so they last even for a connection netplan writes afresh at every boot. Each says where its
+                  value comes from now; changing one writes it to irate-box's own file, and "NetworkManager's own" takes
+                  irate-box's line out again.</p>
+                <div class="net-defaults" id="net-defaults"></div>
+                <span class="library-buttons"><button class="action-btn" type="button" id="net-defaults-save" disabled>Save the box defaults</button></span>
+                <p class="setting-desc action-note" id="net-defaults-note" role="status" hidden></p>
+              </div>
               <div class="net-card setting net-card-wide" id="net-watchdog-card">
                 <h4>Staying on the network</h4>
                 <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>

@@ -395,6 +395,9 @@ def nm_profile(ref):
             "netplan": (kv.get("connection.id") or "").startswith("netplan-")}
 
 
+NETPLAN_PROFILES = "/run/NetworkManager/system-connections/netplan-"
+
+
 def nm_state():
     code, out = run("nmcli", "-t", "-f", "RUNNING,VERSION", "general")
     if code:
@@ -407,13 +410,18 @@ def nm_state():
         if len(f) >= 4:
             devices[f[0]] = {"type": f[1], "state": f[2], "connection": f[3] or None}
     profiles = []
-    for f in nm_fields(run("nmcli", "-t", "-f", "NAME,UUID,TYPE", "con", "show")[1]):
+    for f in nm_fields(run("nmcli", "-t", "-f", "NAME,UUID,TYPE,FILENAME", "con", "show")[1]):
         if len(f) >= 3 and f[2] == "802-11-wireless":
             p = nm_profile(f[1])
             if p:
+                p["file"] = f[3] if len(f) > 3 and f[3] else None
+                # Made by netplan (/run, written afresh at every boot): a change made with nmcli does not last.
+                if p["file"]:
+                    p["netplan"] = p["file"].startswith(NETPLAN_PROFILES)
                 profiles.append(p)
+    from irate_box.hub import nmconf
     return {"running": True, "version": row[1] if len(row) > 1 else None, "devices": devices,
-            "wifi_profiles": profiles}
+            "wifi_profiles": profiles, "defaults": nmconf.effective()}
 
 
 def processes():
@@ -654,6 +662,21 @@ def _h(hid, status, title, detail, fix="", iface=None):
     return out
 
 
+NM_RETRIES = {"auth_retries": 3, "autoconnect_retries": 4}
+
+
+def effective_retries(profile, key, defaults):
+    """(the retries NetworkManager uses for this profile: 0 forever, else a count; where that is set)."""
+    own = profile.get(key)
+    if own not in (None, -1):
+        return own, "this network's own profile"
+    d = ((defaults or {}).get("settings") or {}).get(key) or {}
+    v = d.get("value")
+    if v is not None and re.fullmatch(r"-?\d+", str(v)) and int(v) >= 0:
+        return int(v), f"the box default ({d.get('file')})"
+    return NM_RETRIES[key], "NetworkManager's own default"
+
+
 def hazards(inv):
     out = []
     radios = [r for r in inv["radios"] if r.get("type") in ("managed", "AP")]
@@ -674,12 +697,21 @@ def hazards(inv):
             out.append(_h(f"other-ap:{p['uuid']}", "warn" if p["autoconnect"] else "ok", f"Another hotspot profile: {p['name']}",
                           f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}, autoconnect "
                           f"{'on: it could take the radio at boot' if p['autoconnect'] else 'off'}. Not irate-box's; left as it is."))
-        if p.get("mode") in (None, "infrastructure") and p.get("auth_retries") not in (0,):
-            out.append(_h(f"auth-retries:{p['uuid']}", "warn", f"WiFi profile {p['name']}: gives up on repeated handshake failures",
-                          "After 3 failed handshakes (a flaky link looks like a wrong password) NetworkManager stops "
-                          "trying until someone reconnects it by hand, which a headless box cannot ask for.",
-                          "Network page: \"Keep retrying\" sets auth-retries to 0 on this profile, with your say-so.",
-                          iface=p.get("iface")))
+        if p.get("mode") in (None, "infrastructure"):
+            for key, field, gives_up in (
+                    ("auth_retries", "auth-retries",
+                     "After 3 failed handshakes (a flaky link looks like a wrong password) NetworkManager stops trying "
+                     "until someone reconnects it by hand, which a headless box cannot ask for."),
+                    ("autoconnect_retries", "autoconnect-retries",
+                     "After 4 failed tries NetworkManager stops trying this network for 5 minutes.")):
+                value, where = effective_retries(p, key, nm.get("defaults"))
+                if value != 0:
+                    out.append(_h(f"{field}:{p['uuid']}", "warn",
+                                  f"WiFi network {p['ssid'] or p['name']}: stops trying after {value} failure{'s' if value != 1 else ''}"
+                                  if value and value > 0 else f"WiFi network {p['ssid'] or p['name']}: gives up after repeated failures",
+                                  f"{gives_up} Set by {where}.",
+                                  "Network page, Box defaults: \"Keep trying\" forever, for every network.",
+                                  iface=p.get("iface")))
     for r in radios:
         rf = r.get("rfkill")
         if rf and (rf["soft"] or rf["hard"]):
@@ -706,8 +738,8 @@ def hazards(inv):
         p = r.get("profile") or {}
         if p.get("netplan"):
             out.append(_h(f"netplan:{r['iface']}", "ok", f"{r['iface']}: profile written by netplan",
-                          f"{p['name']} is generated from /etc/netplan; a change made to it with nmcli may be put back "
-                          "by netplan apply or at boot (not tested yet).", iface=r["iface"]))
+                          f"{p['name']} is written afresh from /etc/netplan at every boot, so a change made to it alone "
+                          "(with nmcli, or the page) is lost then. Box defaults still apply to it.", iface=r["iface"]))
     if inv.get("country") in ("00", None) and radios:
         out.append(_h("regdom", "warn", "No WiFi country set",
                       "The radio uses the world-safe channel set, which limits a hotspot's channels and power.",

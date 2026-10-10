@@ -4032,6 +4032,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
+            elif act == "defaults" and isinstance(payload.get("changes"), dict):
+                from irate_box.hub import nmconf
+                try:
+                    changes = nmconf.validate(payload["changes"])
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(202, {"id": control_request({"action": "nm-defaults",
+                                                            "changes": {k: ("default" if v is None else v) for k, v in changes.items()}})})
             elif act == "join" and isinstance(payload.get("ssid"), str) and payload.get("security") in ("wpa-psk", "sae", "open") \
                     and isinstance(payload.get("psk", ""), str) and type(payload.get("hidden", False)) is bool and type(payload.get("now", False)) is bool:
                 # A network for the box to join: checked again by root (wifijoin.validate); the password
