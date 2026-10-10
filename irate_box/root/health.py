@@ -459,6 +459,79 @@ def check_uplink():
                        "or choose a level that goes that far." if stall.get("needs")
                        else "Look at the box by its console or a cable: nothing it can do by itself would help.")))
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
+    out += step_findings(_json_or(CONTROL / "uplink-ladder.json", []), st.get("chosen") or {})
+    return out
+
+
+# How well each repair step works, per connection, from the watchdog's ladder record: a step of its own (not
+# one pressed by hand) "mended" an outage when it was the last taken before the link came back, within
+# MEND_S, and the link held for HELD_S after (no drop or wedge, even at the moment it came back; a roam's
+# flap minutes later is not held against it); a wedged driver "followed" it when one was seen within WEDGE_S.
+STEP_DAYS = 14
+FLAKY_OUTAGES = 5      # a connection with fewer outages in STEP_DAYS is not judged
+STEP_TRIES = 4         # nor a step tried fewer times
+MEND_S, HELD_S, WEDGE_S = 300, 120, 180
+STEP_SAID = {"reconnect": "reconnecting", "restart": "restarting the network service", "radio": "resetting the radio",
+             "reboot": "rebooting"}
+
+
+def step_record(rows, now=None):
+    """{iface: {"outages": n, "steps": {step: {"tries", "mended", "wedged"}}}} over the last STEP_DAYS."""
+    now = time.time() if now is None else now
+    since = now - STEP_DAYS * 86400
+    by = {}
+    for r in sorted((r for r in rows if isinstance(r, dict) and isinstance(r.get("at"), (int, float)) and r.get("i")), key=lambda r: r["at"]):
+        by.setdefault(r["i"], []).append(r)
+    out = {}
+    for iface, rs in by.items():
+        downs = [r["at"] for r in rs if r.get("k") == "down"]
+        rec = {"outages": sum(1 for t in downs if t >= since), "steps": {}}
+        for n, r in enumerate(rs):
+            if r.get("k") != "repair" or not r.get("s") or r["at"] < since or r.get("b") == "hand":
+                continue
+            later = rs[n + 1:]
+            nxt = next((x for x in later if x.get("k") in ("repair", "up")), None)
+            mended = False
+            if nxt and nxt.get("k") == "up" and nxt["at"] - r["at"] <= MEND_S:
+                back = nxt["at"]
+                mended = not any(x is not nxt and x.get("k") in ("down", "wedged") and back <= x["at"] <= back + HELD_S for x in later)
+            wedged = any(x.get("k") == "wedged" and 0 <= x["at"] - r["at"] <= WEDGE_S for x in later) and \
+                not any(x.get("k") == "wedged" and 0 < r["at"] - x["at"] <= WEDGE_S for x in rs[:n])
+            st = rec["steps"].setdefault(r["s"], {"tries": 0, "mended": 0, "wedged": 0})
+            st["tries"] += 1
+            st["mended"] += mended
+            st["wedged"] += wedged
+        out[iface] = rec
+    return out
+
+
+def step_findings(rows, chosen, now=None):
+    """For each flaky connection: how well each step has worked, said; and a finding for a step that rarely mends an
+    outage or that a wedged driver tends to follow, with the choice to leave it out there (never done for the owner)."""
+    off = (chosen or {}).get("steps_off") or {}
+    out = []
+    for iface, rec in sorted(step_record(rows, now).items()):
+        if rec["outages"] < FLAKY_OUTAGES:
+            continue
+        steps = rec["steps"]
+        said = "; ".join(f"{STEP_SAID.get(s, s)} mended {v['mended']} of {v['tries']}" + (f", a wedged driver after it {v['wedged']} time{'s' if v['wedged'] != 1 else ''}" if v["wedged"] else "")
+                         for s, v in sorted(steps.items(), key=lambda kv: list(STEP_SAID).index(kv[0]) if kv[0] in STEP_SAID else 9))
+        out.append(_f(f"uplink-steps-{iface}", f"How well each step works on {iface}", "ok",
+                      f"{rec['outages']} outages in {STEP_DAYS} days. " + (said + "." if said else "No step taken.")))
+        for s, v in steps.items():
+            if s in off.get(iface, []) or v["tries"] < STEP_TRIES or s == "reboot":
+                continue
+            poor = v["mended"] / v["tries"] <= 0.2
+            if not poor and v["wedged"] < 2:
+                continue
+            why = f"{STEP_SAID.get(s, s)[:1].upper() + STEP_SAID.get(s, s)[1:]} mended {v['mended']} of the {v['tries']} outages it was tried on"
+            if v["wedged"] >= 2:
+                why += f", and the radio's driver wedged right after it {v['wedged']} times"
+            out.append(_f(f"uplink-skip-{iface}-{s}", f"{iface}: {STEP_SAID.get(s, s)} isn't helping", "warn",
+                          f"{why} (the last {STEP_DAYS} days). The watchdog could leave it out on {iface} and go on to the next step sooner.",
+                          f"Network → The box's access → Steps it may take: untick it for {iface}.",
+                          [_act(f"uplink-skip:{iface}:{s}", f"Leave it out on {iface}",
+                                f"Leave {STEP_SAID.get(s, s)} out of the watchdog's ladder on {iface}? It can be ticked again on the Network page.")]))
     return out
 
 
@@ -988,7 +1061,8 @@ def scan():
 CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
                        r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
                        r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$|^crashwatch-preempt:(off|warn|radio|reboot)$"
-                       r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$")
+                       r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
+                       r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$")
 
 
 def fix(choice):
@@ -1042,6 +1116,16 @@ def fix(choice):
         return msg + "No readable book is left, so the library was emptied and Kiwix stopped until one is added."
     if kind == "clock-set":
         return set_clock(int(arg))
+    if kind == "uplink-skip":
+        from irate_box.hub import uplink
+        iface, _, step = arg.partition(":")
+        if step not in uplink.STEPS or not uplink.IFACE_RE.match(iface) or iface == "auto":
+            raise ValueError(f"{arg} is not a connection and a step")
+        chosen = uplink.load_settings()
+        steps = set(chosen.get("steps_off", {}).get(iface, [])) | {step}
+        chosen.setdefault("steps_off", {})[iface] = [x for x in uplink.STEPS if x in steps]
+        uplink.save_settings(chosen)  # the watchdog takes it on its next look
+        return f"{iface}: the watchdog leaves out {STEP_SAID.get(step, step)} there from now on"
     try:
         if choice == "rtc-find":
             f = rtc.find()

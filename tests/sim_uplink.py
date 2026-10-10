@@ -502,5 +502,42 @@ for bad in ({"steps_off": {"auto": ["restart"]}}, {"steps_off": {"wlan0": ["nap"
 c2 = U.validate({"pace": "steady", "steps_off": {"wlan0": ["reconnect"]}})
 check("  no reconnect on a connection: no repeats either", U.effective(c2, "wlan0")["repeat"] == 0)
 
+# The doctor reads how well each step works per connection from the ladder record (health.step_record).
+from irate_box.root import health as HL  # noqa: E402
+now = 2_000_000_000
+rows = []
+def outage(t, steps, back_after, wedge_after=None, iface="wlan0"):
+    rows.append({"at": t, "k": "down", "i": iface})
+    for k, (s, dt) in enumerate(steps):
+        rows.append({"at": t + dt, "k": "repair", "s": s, "b": "auto", "i": iface})
+        if wedge_after == s:
+            rows.append({"at": t + dt + 20, "k": "wedged", "i": iface})
+    rows.append({"at": t + back_after, "k": "up", "i": iface})
+d = 86400
+for n in range(4):   # reconnect mends it
+    outage(now - (10 - n) * d, [("reconnect", 60)], 90)
+for n in range(4):   # restart doesn't: the radio reset after it does; twice a wedge right after the restart
+    outage(now - (5 - n) * d, [("reconnect", 60), ("restart", 600), ("radio", 640)], 700, wedge_after="restart" if n < 2 else None)
+outage(now - 40 * d, [("restart", 60)], 90)   # older than the 14 days: not counted
+rec = HL.step_record(rows, now)["wlan0"]
+check("step record: outages in the 14 days, each step's tries and mends", rec["outages"] == 8
+      and rec["steps"]["reconnect"] == {"tries": 8, "mended": 4, "wedged": 0}
+      and rec["steps"]["restart"] == {"tries": 4, "mended": 0, "wedged": 2} and rec["steps"]["radio"] == {"tries": 4, "mended": 4, "wedged": 0}, rec)
+fs = {f["id"]: f for f in HL.step_findings(rows, {}, now)}
+check("  said for the flaky connection", "uplink-steps-wlan0" in fs and "restarting the network service mended 0 of 4" in fs["uplink-steps-wlan0"]["detail"],
+      fs.get("uplink-steps-wlan0"))
+sk = fs.get("uplink-skip-wlan0-restart")
+check("  a finding for the restart, with the wedges, and the choice to leave it out there", sk and sk["status"] == "warn"
+      and "wedged right after it 2 times" in sk["detail"] and sk["actions"][0]["choice"] == "uplink-skip:wlan0:restart", sk)
+check("  none for the steps that work", "uplink-skip-wlan0-reconnect" not in fs and "uplink-skip-wlan0-radio" not in fs)
+check("  none once it is left out", "uplink-skip-wlan0-restart" not in {f["id"] for f in HL.step_findings(rows, {"steps_off": {"wlan0": ["restart"]}}, now)})
+calm = [r for r in rows if r["at"] < now - 6 * d]
+check("  a connection with few outages is not judged", not HL.step_findings(calm, {}, now), HL.step_findings(calm, {}, now))
+U.SETTINGS = Path(_tf2.mkdtemp()) / "uplink.json"; U.ETC = U.SETTINGS.parent
+U.save_settings(U.validate({"pace": "steady", "steps_off": {"eth0": ["radio"]}}))
+said = HL.fix("uplink-skip:wlan0:restart")
+check("the doctor's fix: the step left out on that connection, the others kept", U.load_settings()["steps_off"] == {"eth0": ["radio"], "wlan0": ["restart"]}
+      and "wlan0" in said, (U.load_settings()["steps_off"], said))
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
