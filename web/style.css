@@ -812,7 +812,8 @@ body[data-art] > header { z-index: 2; }
 .heatmap { display: grid; gap: 2px; margin: 0.5rem 0; overflow-x: auto; }
 .hm-row { display: grid; grid-template-columns: 4.5rem repeat(var(--hm-cols), minmax(0.55rem, 1fr)); gap: 2px; align-items: center; }
 .hm-label, .hm-col { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; }
-.hm-col { text-align: left; }
+/* A column's label (every twelfth) runs on over the empty ones after it rather than being cut to a cell. */
+.hm-col { text-align: left; overflow: visible; }
 .hm-cell { display: block; aspect-ratio: 1; min-height: 0.55rem; border-radius: 2px; position: relative; }
 .hm-full { background: var(--ok); }
 .hm-most { background: color-mix(in srgb, var(--ok) 55%, var(--warn)); }
@@ -1529,4 +1530,5 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
    an element the page hides stays on screen (found by tests/browser/look.mjs). Kept last, and as specific
    as the rules they answer. */
 .action-btn.action-btn[hidden], .books-bulk[hidden], #library-sources[hidden], .git-manage[hidden], .aw-filter[hidden],
-.admin-checks[hidden], .net-settings[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden] { display: none; }
+.admin-checks[hidden], .net-settings[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden],
+.findings[hidden] { display: none; }
