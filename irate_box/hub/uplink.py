@@ -138,7 +138,9 @@ BSSID_RE = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
 # a build or an update runs, not soon after boot).
 DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "sensitivity": 3, "iface": "auto",
            "overrides": {}, "hold_until": 0, "on_wedge": "ladder", "roaming": "roam", "lock_bssid": None,
-           "ignore_roams": False}
+           "ignore_roams": False, "steps_off": {}}
+# The steps the owner has switched off for a connection ({iface: [step, ...]}): applied while the
+# watchdog watches that one (a radio that a network restart unsettles, a cable that has no radio).
 # When the evidence says the radio's driver has wedged (wedge_evidence): keep to the ladder as set,
 # or go straight to a radio reset if the reach allows it (a setting per box, off).
 ON_WEDGE = ("ladder", "radio")
@@ -169,9 +171,10 @@ FIELDS_WAS = ("misses", "grace", "flap_count", "flap_window", "flap_action", "gu
 IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leading "-"
 
 
-def effective(chosen):
+def effective(chosen, iface=None):
     """The numbers the watchdog runs on: the pace's, its steps up to the reach, the sensitivity, then
-    the overrides (a step overridden beyond the reach is beyond it still)."""
+    the overrides (a step overridden beyond the reach is beyond it still); last, the steps switched off
+    for the connection watched (iface)."""
     pace, reach = PACE[chosen["pace"]], chosen["reach"]
     allowed = STEPS[:REACH.index(reach)]
     eff = dict(COMMON, check=pace["check"], window=pace["window"], repeat=pace["repeat"],
@@ -190,6 +193,8 @@ def effective(chosen):
                     eff["steps"][s] = t
         else:
             eff[k] = v
+    for s in (chosen.get("steps_off") or {}).get(iface, ()) if iface else ():
+        eff["steps"].pop(s, None)
     if "reconnect" not in eff["steps"]:
         eff["repeat"] = 0
     return eff
@@ -292,6 +297,17 @@ def validate(raw):
             if not rule[0] <= v <= rule[1]:
                 raise ValueError(f"{k} must be between {rule[0]} and {rule[1]}")
             out["overrides"][k] = v
+    off = raw.get("steps_off") or {}
+    if not isinstance(off, dict) or len(off) > 16:
+        raise ValueError("steps_off must be an object of connections")
+    out["steps_off"] = {}
+    for name, steps in off.items():
+        if not IFACE_RE.match(str(name)) or name == "auto":
+            raise ValueError(f"steps_off: {name} is not an interface name")
+        if not isinstance(steps, list) or any(x not in STEPS for x in steps):
+            raise ValueError(f"steps_off.{name}: a list of steps ({', '.join(STEPS)})")
+        if steps:
+            out["steps_off"][name] = [x for x in STEPS if x in steps]
     hold = raw.get("hold_until", 0)
     out["hold_until"] = float(hold) if isinstance(hold, (int, float)) and hold >= 0 else 0
     return out
@@ -698,7 +714,8 @@ def words(chosen):
         ", a wedged radio reset at once" if chosen.get("on_wedge") == "radio" else "") + {
         "no-scan": ", no background scans while the hotspot shares the radio",
         "lock": f", locked to {chosen.get('lock_bssid')}"}.get(chosen.get("roaming"), "") + (
-        ", roams not counted" if chosen.get("ignore_roams") else "")
+        ", roams not counted" if chosen.get("ignore_roams") else "") + "".join(
+        f", on {i} never {' or '.join(STEP_LABEL[x].lower() for x in steps)}" for i, steps in sorted((chosen.get("steps_off") or {}).items()))
 
 
 def busy():
@@ -1200,7 +1217,7 @@ def serve(dry=False):
     old = read_status()
     chosen = load_settings()
     mtime = _settings_mtime()
-    w = Watch(effective(chosen), old.get("events"), _reboot_history(old))
+    w = Watch(effective(chosen, old.get("iface")), old.get("events"), _reboot_history(old))
     now = time.time()
     if old.get("events") and old["events"][-1]["text"].startswith("Reboot"):
         w.log(now, "info", "Started again after the reboot.")
@@ -1228,7 +1245,7 @@ def serve(dry=False):
         if m != mtime:
             before, (mtime, chosen) = chosen, (m, load_settings())
             if {k: v for k, v in before.items() if k != "hold_until"} != {k: v for k, v in chosen.items() if k != "hold_until"}:
-                w.eff = effective(chosen)
+                w.eff = effective(chosen, iface)
                 w.pause_until = now + w.eff["pause_after_change"]
                 w.log(now, "info", f"Settings changed: {words(chosen)}"
                       + (", with custom values" if chosen["overrides"] else "") + ".")
@@ -1240,6 +1257,8 @@ def serve(dry=False):
         if new_iface != iface or now - looked > 600:
             if new_iface != iface and iface:
                 w.log(now, "info", f"Now watching {new_iface}.")
+            if new_iface != iface:
+                w.eff = effective(chosen, new_iface)  # its own steps switched off, if any
             iface, looked = new_iface, now
             if iface:
                 backend = backend_of(iface)

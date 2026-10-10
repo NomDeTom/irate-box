@@ -488,5 +488,19 @@ check("  the slots after the last: not while it may still be writing", H.gaps(hi
 check("  but once two slots have passed, up to now", H.gaps(hist, 113 * S + 7) == [[104 * S, 107 * S], [110 * S, 113 * S + 7]], H.gaps(hist, 113 * S + 7))
 check("  nothing recorded: no gaps", H.gaps({}, 1000) == [] and H.gaps(None, 1000) == [])
 
+# Steps switched off per connection: kept as the owner chose them, applied to the connection watched.
+c = U.validate({"pace": "steady", "steps_off": {"wlan0": ["restart", "restart"], "eth0": []}})
+check("steps_off: kept per connection, in the ladder's order, empty ones dropped", c["steps_off"] == {"wlan0": ["restart"]}, c["steps_off"])
+check("  the WiFi's ladder without the restart; a wired link's whole", sorted(U.effective(c, "wlan0")["steps"]) == ["radio", "reboot", "reconnect"]
+      and "restart" in U.effective(c, "eth0")["steps"] and "restart" in U.effective(c)["steps"])
+check("  said in words", "on wlan0 never restart the network service" in U.words(c), U.words(c))
+for bad in ({"steps_off": {"auto": ["restart"]}}, {"steps_off": {"wlan0": ["nap"]}}, {"steps_off": {"-x": ["radio"]}}, {"steps_off": ["wlan0"]}):
+    try:
+        U.validate(bad); check(f"  refused: {bad}", False)
+    except ValueError:
+        check(f"  refused: {bad}", True)
+c2 = U.validate({"pace": "steady", "steps_off": {"wlan0": ["reconnect"]}})
+check("  no reconnect on a connection: no repeats either", U.effective(c2, "wlan0")["repeat"] == 0)
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

@@ -24,7 +24,7 @@ inv.wired = [{ iface: 'eth0', bus: 'platform', driver: 'rk_gmac', carrier: true 
 const now = Math.floor(Date.now() / 1000);
 const data = { inventory: inv, uptime: fixture.uptime, pending: 0, results: [],
   uplink: { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager', repairs: [], events: [],
-    chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} } },
+    chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {}, steps_off: { wlan0: ['restart'] } } },
   levels: fixture.levels };  // the watchdog's levels as network_snapshot sends them
 const errors = [];
 const vc = new VirtualConsole();
@@ -125,6 +125,17 @@ setTimeout(() => {
     check('  each cell says its link and hour', /^wlan0, \w{3} \d{2} \d{2}:00–\d{2}:00: /.test(on.querySelector('.hm-row:not(.hm-head) .hm-cell').dataset.words), on.querySelector('.hm-row:not(.hm-head) .hm-cell').dataset.words);
     check('  the summary in words, the legend, a link to Network', /^wlan0: up \d/.test(t(on.querySelector('p'))) && on.querySelectorAll('.hm-legend .hm-key').length === 6
       && on.querySelector('a[href="#network"]'), t(on.querySelector('p')));
+    // The watchdog's steps per connection: a row of ticks for each link, restart unticked on wlan0 as saved.
+    const rows = [...d.querySelectorAll('#up-steps .up-steps-row')];
+    const row = (i) => rows.find((r) => r.dataset.iface === i);
+    check('the steps per connection: a row for each WiFi and wired link, four ticks each', row('wlan0') && row('eth0') && row('eth1')
+      && rows.every((r) => r.querySelectorAll('input[data-step]').length === 4) && !rows.some((r) => /ap0/.test(r.dataset.iface)), rows.map((r) => r.dataset.iface).join(','));
+    const tick = (i, st) => row(i).querySelector(`input[data-step="${st}"]`);
+    check('  as saved: restart unticked on wlan0, the rest ticked', !tick('wlan0', 'restart').checked && tick('wlan0', 'radio').checked && tick('eth0', 'restart').checked);
+    tick('eth0', 'radio').checked = false; tick('eth0', 'radio').dispatchEvent(new w.Event('change'));
+    check('  what Save sends: the unticked steps of each connection', JSON.stringify(w.readUpForm().steps_off) === JSON.stringify({ wlan0: ['restart'], eth0: ['radio'] }),
+      JSON.stringify(w.readUpForm().steps_off));
+    check('  a change marks the form as not saved yet', /not saved yet/.test(d.getElementById('up-save').textContent));
     const mesh = d.getElementById('overview-mesh');
     check('meshtasticd: its 72 hours under the network\'s, one row', (on.compareDocumentPosition(mesh) & 4) && mesh.querySelectorAll('.hm-row:not(.hm-head)').length === 1
       && /^meshtasticd, /.test(mesh.querySelector('.hm-row:not(.hm-head) .hm-cell').getAttribute('aria-label')));
