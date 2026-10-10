@@ -1395,10 +1395,20 @@ def admin_login_on():
         return True
 
 
+def admin_login_state():
+    """The box's own login as the root helper last wrote it: {on, reach (off | local | network), password_set}."""
+    try:
+        d = json.loads((CONTROL_DIR / "admin-login.json").read_text())
+    except (OSError, ValueError):
+        d = {}
+    on = d.get("on") is not False
+    return {"on": on, "reach": d.get("reach") or ("network" if on else "off"), "password_set": d.get("password_set", on)}
+
+
 def accounts_view():
     listing = accounts.listing()
     return {"settings": accounts.settings(), "accounts": listing, "counts": accounts.counts(),
-            "admin_login": {"on": admin_login_on(), "results": control_results(10),
+            "admin_login": {**admin_login_state(), "results": control_results(10),
                             "https_admins": [a["name"] for a in listing if a["role"] == "admin" and a["state"] == "user"
                                              and a["password_set"] and a.get("https_login")]}}
 
@@ -3594,8 +3604,14 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 keep = not admin_login_on()
                 if action == "admin-login":
-                    # The box's own login on or off: root's (the web server's login file), checked there too.
-                    self.send_json(202, {"id": control_request({"action": "admin-login", "on": payload.get("on") is True})})
+                    # The box's own login: its reach (off, from the box itself, from the network too), the admin's choice;
+                    # root's (the web server's login files), checked there too. "on" as before.
+                    reach = payload.get("reach")
+                    if reach is not None and reach not in ("off", "local", "network"):
+                        self.send_json(400, {"error": "reach: off, local or network"})
+                        return
+                    req = {"action": "admin-login", "reach": reach} if reach is not None else {"action": "admin-login", "on": payload.get("on") is True}
+                    self.send_json(202, {"id": control_request(req)})
                     return
                 if action == "settings":
                     out = {"settings": accounts.set_settings(payload.get("signup"), payload.get("http"), keep_admin=keep)}

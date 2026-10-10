@@ -208,6 +208,10 @@ ACCESS_STATE = CONTROL / "access.json"
 # and the login file emptied. The hub's copy of whether it is on, for /admin → Accounts.
 ADMIN_LOGIN_OFF = ETC / "admin-login.off"
 ADMIN_LOGIN_STATE = CONTROL / "admin-login.json"
+# How far the box's own login (for scripts) reaches, while it is on: "local" (from the box itself only) or
+# "network" (from other devices too); the admin's choice on Accounts. Absent: "network", as it always was.
+ADMIN_LOGIN_REACH = ETC / "admin-login.reach"
+REACHES = ("off", "local", "network")
 ACCESS_STOPPED = ETC / "access-stopped.json"  # the services "off" stopped, to start again
 NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"))
 # The add-on server's maps (http level), and Caddy's add-on routes: from access.json and the
@@ -721,6 +725,7 @@ def _access_files(state):
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
     files = dict(access.caddy_snippets(state, login, _caddy_directive(), admin_login=not ADMIN_LOGIN_OFF.exists(),
+                                       local_only=_login_reach() == "local",
                                        accounts_ready=_admin_accounts_ready()))
     files["addons-routes.caddy"] = access.addon_caddy_routes(state, local, login, _caddy_directive())
     for name, text in files.items():
@@ -825,8 +830,39 @@ def access_install():
     return ", ".join(f"{k} {v}" for k, v in state.items() if v != "public") or "every app public"
 
 
+def _login_reach():
+    """off | local | network: the box's own login, as the admin chose its reach."""
+    if ADMIN_LOGIN_OFF.exists():
+        return "off"
+    try:
+        r = ADMIN_LOGIN_REACH.read_text().strip()
+    except OSError:
+        return "network"
+    return r if r in ("local", "network") else "network"
+
+
+def _sync_net_logins():
+    """nginx: the login file for requests from other devices (the config's map sends the box's own to
+    NGINX_LOGINS): a copy of it when the reach is the network, else none in it."""
+    if WEB_SERVER != "nginx" or not NGINX_LOGINS.exists():
+        return
+    net = NGINX_LOGINS.with_name(NGINX_LOGINS.name + ".net")
+    text = NGINX_LOGINS.read_text() if _login_reach() == "network" else \
+        "# The box's own login answers only from the box itself (/admin → Accounts).\n"
+    tmp = net.with_name(net.name + ".new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+    if os.geteuid() == 0:  # always, but in the tests
+        os.chown(tmp, 0, NGINX_LOGINS.stat().st_gid)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, net)
+
+
 def _admin_login_record():
-    safeio.write(ADMIN_LOGIN_STATE, json.dumps({"on": not ADMIN_LOGIN_OFF.exists()}))
+    _sync_net_logins()
+    safeio.write(ADMIN_LOGIN_STATE, json.dumps({"on": not ADMIN_LOGIN_OFF.exists(), "reach": _login_reach(),
+                                                "password_set": (ETC / "admin-password").is_file()}))
 
 
 def _https_admins():
@@ -919,10 +955,29 @@ def _caddy_login_off():
 
 
 def admin_login(req):
-    """The box's own admin login (basic auth) on or off. Off only while an admin account has
-    logged in over HTTPS, so the box can't be locked out from /admin; reset-password at the
-    console (or a new password) turns it on again. nginx: its login file emptied; Caddy: its
-    hashes swapped for an unknown one, and its admin gate made a hard one (access.py)."""
+    """The box's own admin login (basic auth, for scripts): its reach, the admin's choice ("reach": off, local
+    (from the box itself only), network (from other devices too)), or on or off ("on", as before: on keeps the
+    reach). Off only while an admin account has logged in over HTTPS, so the box can't be locked out from
+    /admin. On only with a password set at the console (script-login): none is made here. nginx: its login file
+    emptied when off, the network's copy kept or emptied by the reach; Caddy: its hashes swapped for an unknown one,
+    its admin gate made a hard one (access.py), and a login from elsewhere dropped when the reach is local."""
+    reach = req.get("reach")
+    if reach is not None:
+        if reach not in REACHES:
+            raise ValueError(f"reach: one of {', '.join(REACHES)}")
+        if reach == "off":
+            return admin_login({"on": False})
+        if not (ETC / "admin-password").is_file():
+            raise ValueError("the box's own login has no password yet: set one at the box's console, over SSH "
+                             "(sudo /opt/irate-box/irate-box hub_control script-login)")
+        _write_reach(reach)
+        if ADMIN_LOGIN_OFF.exists():
+            _switch_login(True)
+        else:
+            _access_files(access.read(ACCESS_FILE))
+            _reload_web()
+            _admin_login_record()
+        return "the box's own login answers " + ("from the box itself only" if reach == "local" else "from the network too")
     on = req.get("on") is True
     if on == (not ADMIN_LOGIN_OFF.exists()):
         return f"the box's own admin login is already {'on' if on else 'off'}"
@@ -969,6 +1024,12 @@ def _switch_login(on):
     _access_files(access.read(ACCESS_FILE))
     _reload_web()
     _admin_login_record()
+
+
+def _write_reach(reach):
+    fd = os.open(ADMIN_LOGIN_REACH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(reach + "\n")
 
 
 def claim(req):
@@ -1028,7 +1089,11 @@ def console_script_login(on):
             sys.exit("no admin account can sign in yet: make one first (set-admin), or this would lock /admin")
         _switch_login(False)
         return "the box's own login is off"
-    return "the box's own login (admin) set, for scripts: " + set_login(_ask_password("Password for the box's own login (admin): "))
+    if not ADMIN_LOGIN_REACH.exists():
+        _write_reach("local")  # the safer reach to start; widened on Accounts if wanted
+    said = set_login(_ask_password("Password for the box's own login (admin): "))
+    return (f"the box's own login (admin) set, for scripts, answering {'from the box itself only' if _login_reach() == 'local' else 'from the network too'}"
+            f" (Accounts on /admin changes that): {said}")
 
 
 # --- updates ---------------------------------------------------------------------
