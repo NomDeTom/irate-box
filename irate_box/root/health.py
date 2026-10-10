@@ -996,7 +996,7 @@ def check_crashwatch(now=None):
                       "Often a driver's debug output: look for its module's debug parameter, or a newer driver. "
                       "sudo dmesg | tail -50"))
     radios = ", ".join(f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()) or "none found"
-    day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "reset", "reboot", "held")]
+    day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "driver-reset", "reset", "reboot", "held")]
     level = s["preempt"]
     acts = [_chip("When the radio fails", f"crashwatch-preempt:{lv}", PREEMPT_WORDS[lv], lv == level,
                   "Restart the box by itself when the radio fails and a reset doesn't bring it back? Within the uplink "

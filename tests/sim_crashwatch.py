@@ -282,6 +282,28 @@ radio.reset("wlan0", "1-1.1", None, None, run=frun, sleep=lambda s: None, wait=1
 check("  a hotspot that was not up is not started", "systemctl start irate-box-ap.service" not in ran, ran)
 check("  nothing to reset by: said", radio.reset("wlan0", None, "../x", None, run=frun, sleep=lambda s: None) == "no way to reset this radio here")
 
+# The driver mending itself (aic8800_fdrv recover_on_timeout): its line seen, the radio's interfaces gone for a moment
+# are that reset at work, not a failure; once the client is back, the hotspot started again, once.
+did, logged = [], []
+hs = {"missing": True}
+dr = cw.Preempt("reboot", lambda i: did.append(("reset", i)) or "reset", lambda: did.append(("reboot",)), lambda s, n: None,
+                lambda now, iface, kind, text, snapshot=False: logged.append((kind, text)) or {"kind": kind},
+                hotspot=(lambda: hs["missing"], lambda: did.append(("hotspot",)) or "the hotspot started again"))
+k = ["[93.27] cmd_mgr_queue cmd timed-out cmd_mgr->queue_sz:1", "[93.27] aic8800: firmware not answering: resetting the device to load it afresh"]
+dr.act(1000, {"wlan0": (["wlan0 is gone"], []), "ap0": (["ap0 is gone"], [])}, k)
+check("the driver's own reset: said, and no reset or reboot of ours while it works", [x[0] for x in logged] == ["driver-reset"] and not did, (logged, did))
+dr.act(1030, {"wlan0": ([], ["usb 1-1.1: reset high-speed USB device number 4"]), "ap0": (["ap0 is gone"], [])})
+check("  the client back: the hotspot started again, once", did == [("hotspot",)] and ("reset", "the hotspot started again") in logged, (did, logged))
+dr.act(1060, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])})
+check("  not again within the grace", did == [("hotspot",)], did)
+hs["missing"] = False
+dr.act(1200, {"wlan0": ([], []), "ap0": ([], [])})
+check("  after the grace, a healthy radio: nothing more", did == [("hotspot",)], did)
+dr2 = cw.Preempt("radio", lambda i: did.append(("reset", i)) or "reset", lambda: None, lambda s, n: None,
+                 lambda now, iface, kind, text, snapshot=False: {"kind": kind})
+dr2.act(5000, {"wlan0": (["wlan0 is gone"], [])})
+check("without the driver's line, a radio gone is a failure as before (reset)", ("reset", "wlan0") in did, did)
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
