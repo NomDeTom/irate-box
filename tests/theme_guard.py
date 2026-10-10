@@ -38,7 +38,7 @@ for t in others:
     named = [str(p.relative_to(REPO)) for p in sources if re.search(rf"\b{re.escape(t)}\b", p.read_text(encoding="utf-8", errors="replace"))]
     check(f"'{t}' named only in themes.js and themes/", not named, named)
 
-for p in sorted(WEB.glob("*.html")) + [REPO / "irate_box" / "hub" / "server.py"]:
+for p in sorted(WEB.glob("*.html")) + sorted(WEB.glob("guide/*.html")) + [REPO / "irate_box" / "hub" / "server.py"]:
     text = p.read_text(encoding="utf-8")
     if "theme-picker" not in text:
         continue
@@ -49,7 +49,7 @@ for p in sorted(WEB.glob("*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
     check(f"{name}: no hand-written theme buttons", "data-theme-choice" not in text)
 
 # Not a theme, but the same kind of drift: every page's 🏠 is labelled "Hub".
-bare = [str(p.relative_to(REPO)) for p in sorted(WEB.glob("*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
+bare = [str(p.relative_to(REPO)) for p in sorted(WEB.glob("*.html")) + sorted(WEB.glob("guide/*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
         if re.search(r'>🏠</a>', p.read_text(encoding="utf-8"))]
 check("every 🏠 link says Hub", not bare, bare)
 
