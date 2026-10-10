@@ -9,6 +9,13 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(dirname "$here")"
 failed=0
+# Every temporary file and folder the tests make goes in one folder for the run (they all take
+# TMPDIR: Python's tempfile, mktemp), removed at the end, pass or fail: the tests leave theirs.
+run_tmp="$(mktemp -d "${TMPDIR:-/tmp}/irate-box-tests.XXXXXX")"
+export TMPDIR="$run_tmp"
+pid=""
+cleanup() { [ -z "$pid" ] || kill "$pid" 2>/dev/null; rm -rf "$run_tmp"; }
+trap cleanup EXIT
 run() {
 	echo "== $1"
 	local out rc
@@ -90,7 +97,6 @@ state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))
 HUB_STATE_DIR="$state" PORT=$port HUB_BIND=127.0.0.1 "$repo/irate-box" server >"$state/server.log" 2>&1 &
 pid=$!
-trap 'kill $pid 2>/dev/null; rm -rf "$state"' EXIT
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$port/status" && break; sleep 0.1; done
 PORT=$port run api_locks.py
 
