@@ -370,7 +370,9 @@ def nm_keyvals(text):
 PROFILE_FIELDS = ("connection.id", "connection.uuid", "connection.autoconnect", "connection.autoconnect-priority",
                   "connection.autoconnect-retries", "connection.auth-retries", "802-11-wireless.ssid",
                   "802-11-wireless.mode", "802-11-wireless.bssid", "802-11-wireless.band",
-                  "802-11-wireless.powersave", "ipv4.dhcp-timeout", "ipv4.method", "connection.interface-name")
+                  "802-11-wireless.powersave", "ipv4.dhcp-timeout", "ipv4.method", "connection.interface-name",
+                  "connection.metered", "802-11-wireless.cloned-mac-address", "802-11-wireless.channel",
+                  "802-11-wireless.hidden")
 
 
 def nm_profile(ref):
@@ -392,6 +394,8 @@ def nm_profile(ref):
             "bssid_lock": kv.get("802-11-wireless.bssid") or None, "band_lock": kv.get("802-11-wireless.band") or None,
             "powersave": num("802-11-wireless.powersave"), "dhcp_timeout": num("ipv4.dhcp-timeout"),
             "ipv4": kv.get("ipv4.method"), "iface": kv.get("connection.interface-name") or None,
+            "metered": kv.get("connection.metered") or None, "mac": kv.get("802-11-wireless.cloned-mac-address") or None,
+            "channel": num("802-11-wireless.channel"), "hidden": kv.get("802-11-wireless.hidden") == "yes",
             "netplan": (kv.get("connection.id") or "").startswith("netplan-")}
 
 
@@ -633,6 +637,12 @@ def scan(focus=None):
         elif info.get("type") == "AP":
             r["stations"] = ap_stations(iface)
         radios.append(r)
+    # The defaults each WiFi interface gets, as NetworkManager finds them (irate-box's per-interface ones among them).
+    if nm and nm.get("running") and nm.get("defaults"):
+        from irate_box.hub import nmconf
+        nm["defaults"]["ifaces"] = {r["iface"]: nmconf.effective_for(r["iface"], r.get("driver"))
+                                    for r in radios if r.get("type") == "managed"}
+        nm["defaults"]["ifaces_mine"] = nmconf.current_ifaces()
     # The hotspot on the same radio as a roaming link moves with it.
     for r in radios:
         if r.get("roaming") is not None:

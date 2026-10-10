@@ -2636,11 +2636,13 @@ function drawNetTabs(data, inv, u) {
   const current = new Set(wifi.map((r) => r.profile && r.profile.uuid).filter(Boolean));
   const mine = new Map((data.joined || []).map((j) => [j.uuid, j]));
   const busy = data.pending > 0 || !!netWaiting;
-  netTabs.saved.replaceChildren(...(known.length ? [el('ul', { className: 'net-known' }, ...known.map((p) => el('li', {},
+  // Not redrawn while a field in it has focus: the poll would take the field away mid-edit.
+  if (!netTabs.saved.contains(document.activeElement)) netTabs.saved.replaceChildren(...(known.length ? [el('ul', { className: 'net-known' }, ...known.map((p) => el('li', {},
     el('strong', { textContent: p.ssid || p.name }), current.has(p.uuid) ? el('span', { className: 'ok-pill', textContent: 'in use' }) : null,
     el('span', { className: 'setting-desc', textContent: ` ${p.name}${p.autoconnect ? `, joins by itself${p.priority ? ` (priority ${p.priority})` : ''}` : ', only by hand'}`
       + `${p.bssid_lock ? `, locked to ${p.bssid_lock}` : ''}${p.iface ? `, on ${p.iface} only` : ''}.` }),
     mine.has(p.uuid) ? el('span', { className: 'info-pill', textContent: 'added here' }) : null,
+    connSettings(p, inv, data, busy, current.has(p.uuid) ? wifi.find((r) => r.profile && r.profile.uuid === p.uuid) : null),
     mine.has(p.uuid) ? actionButton('Forget', () => { if (confirm(`Forget ${p.ssid || p.name}? The box will not join it again.`)) netRequest({ action: 'forget', uuid: p.uuid }, 'join'); },
       { className: 'small', disabled: busy || current.has(p.uuid), title: current.has(p.uuid) ? 'In use: the box is on it now' : '' }) : null)))]
     : [el('p', { className: 'setting-desc', textContent: nm && nm.running ? 'None saved in NetworkManager.' : 'NetworkManager does not run this box\'s WiFi, so its saved networks are not listed here.' })]));
@@ -2775,25 +2777,50 @@ async function loadNetwork() {
 // NetworkManager's box defaults: each with the value in use and the file it comes from; a change goes
 // to irate-box's own drop-in. Choices kept while the page polls, until saved.
 let defaultsDirty = {};
+let defaultsScope = '';   // '' the whole box, else an interface
+const PER_IFACE = ['auth_retries', 'mac', 'powersave', 'scan_mac'];
 function renderDefaults(inv, busy) {
   const d = inv && inv.stacks && inv.stacks.networkmanager && inv.stacks.networkmanager.defaults;
   const card = document.getElementById('net-defaults-card');
   card.hidden = !d;
   if (!d) return;
   const own = (f) => (f || '').split('/').pop();
-  const rows = Object.entries(d.settings).map(([name, s]) => {
+  const ifaces = Object.keys(d.ifaces || {});
+  if (defaultsScope && !ifaces.includes(defaultsScope)) defaultsScope = '';
+  const scope = el('select', { 'aria-label': 'Which connections', disabled: busy },
+    el('option', { value: '', textContent: 'Every connection on the box' }),
+    ...ifaces.map((i) => el('option', { value: i, textContent: `Connections on ${i} only` })));
+  scope.value = defaultsScope;
+  scope.addEventListener('change', () => { defaultsScope = scope.value; defaultsDirty = {}; renderDefaults(netData && netData.inventory, false); });
+  const names = defaultsScope ? PER_IFACE : Object.keys(d.settings);
+  const mineIf = (d.ifaces_mine || {})[defaultsScope] || {};
+  const rows = names.map((name) => {
+    const s = d.settings[name];
     const sel = el('select', { 'aria-label': s.label, disabled: busy });
-    const opts = [['default', `NetworkManager's own (${s.nm_default})`], ...Object.entries(s.values)];
-    if (s.kind === 'count' && s.value !== null && !(s.value in s.values)) opts.push([s.value, `${s.value} tries`]);
+    const boxNow = s.value === null ? `NetworkManager's own: ${s.nm_default}` : (s.values[s.value] || s.value);
+    const opts = [['default', defaultsScope ? `as the box default (${boxNow})` : `NetworkManager's own (${s.nm_default})`], ...Object.entries(s.values)];
+    const cur = defaultsScope ? (mineIf[name] ?? null) : s.mine;
+    if (s.kind === 'count' && cur !== null && !(cur in s.values)) opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
-    const chosen = name in defaultsDirty ? defaultsDirty[name] : (s.mine !== null ? s.mine : 'default');
+    const chosen = name in defaultsDirty ? defaultsDirty[name] : (cur !== null ? cur : 'default');
     sel.value = opts.some(([v]) => v === chosen) ? chosen : 'default';
     sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = false; });
-    const now = s.value === null ? `now NetworkManager's own: ${s.nm_default}`
-      : `now ${s.values[s.value] || s.value}, set by ${s.mine !== null ? "irate-box's file" : own(s.file)}`;
+    let now;
+    if (defaultsScope) {
+      const e = d.ifaces[defaultsScope][name];
+      now = e.value === null ? `now NetworkManager's own: ${s.nm_default}`
+        : `now ${s.values[e.value] || e.value}, from ${e.section && e.section.includes('-irate-box-') ? `irate-box's setting for ${defaultsScope}`
+          : `${own(e.file)} [${e.section}]`}${e.unsure ? ' (if it matches this device)' : ''}`;
+    } else {
+      now = s.value === null ? `now NetworkManager's own: ${s.nm_default}`
+        : `now ${s.values[s.value] || s.value}, set by ${s.mine !== null ? "irate-box's file" : own(s.file)}`;
+    }
     return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
       el('span', { className: 'setting-desc', textContent: now }));
   });
+  rows.unshift(el('label', { className: 'net-default net-default-scope' }, el('span', { className: 'setting-name', textContent: 'For' }), scope,
+    el('span', { className: 'setting-desc', textContent: defaultsScope
+      ? `Only what NetworkManager takes per interface; how long to keep trying to connect is for the whole box.` : 'A connection\'s own setting, or one for its interface, comes first.' })));
   const notes = [
     ...d.legacy.map((l) => `${own(l.file)} also sets ${l.key}=${l.value} (an older name NetworkManager still reads: ${l.means}).`),
     ...d.scoped.map((x) => `${own(x.file)} sets ${Object.keys(x.keys).join(', ')} for some devices only (${x.match || x.section}).`),
@@ -2809,8 +2836,81 @@ net.defaultsSave.addEventListener('click', () => {
   if (!Object.keys(changes).length) return;
   if (!confirm('Save these box defaults? NetworkManager reads them again at once; connections pick them up the next time they connect.')) return;
   defaultsDirty = {};
-  netRequest({ action: 'defaults', changes }, 'defaults');
+  netRequest({ action: 'defaults', changes, ...(defaultsScope ? { iface: defaultsScope } : {}) }, 'defaults');
 });
+
+// One connection's own settings: each with its value now and the choices, the risky side said; a change
+// goes to that connection's profile (where it lasts) and takes effect the next time it connects.
+const CONN_FIELDS = [
+  ['autoconnect', 'Join it by itself', [['yes', 'yes'], ['no', 'no, only when asked']], (p) => (p.autoconnect ? 'yes' : 'no'),
+    'Off: the box never joins this network on its own.'],
+  ['priority', 'Preference among networks', 'num:-999:999', (p) => String(p.priority ?? 0),
+    'Higher wins when several known networks are in range (0 is NetworkManager\'s own).'],
+  ['autoconnect_retries', 'Keep trying to connect', [['-1', 'as the box default'], ['0', 'forever'], ['1', 'once'], ['4', '4 times, then 5 minutes blocked']],
+    (p) => String(p.autoconnect_retries ?? -1), ''],
+  ['auth_retries', 'Keep trying after a failed password check', [['-1', 'as the box default'], ['0', 'forever'], ['3', '3 times, then waits for someone']],
+    (p) => String(p.auth_retries ?? -1), 'Forever also means a wrong password is tried forever (the box says so).'],
+  ['metered', 'Metered: big downloads wait for another network', [['unknown', 'let NetworkManager guess'], ['yes', 'yes'], ['no', 'no']],
+    (p) => p.metered || 'unknown', 'For a phone\'s hotspot, say: updates and library downloads wait.'],
+  ['mac', 'MAC address', [['', 'as the box default'], ['permanent', 'the board\'s own'], ['preserve', 'as the device has it'],
+    ['random', 'random each time'], ['stable', 'stable, made up for this connection'], ['stable-ssid', 'stable, made up per network']],
+    (p) => p.mac || '', 'Random: the router sees a new device each time, so a reserved address or MAC filter stops working.'],
+  ['bssid', 'Lock to one access point', 'bssid', (p) => p.bssid_lock || '',
+    'Locked: the box cannot roam; if that access point goes, the box stays off the network.'],
+  ['band', 'Lock to a band', [['', 'any'], ['bg', '2.4 GHz only'], ['a', '5 GHz only']], (p) => p.band_lock || '',
+    '2.4 GHz reaches further and is busier; 5 GHz is faster with less reach. A hotspot on the same radio follows it.'],
+  ['channel', 'Lock to a channel', 'num:0:196', (p) => String(p.channel ?? 0), '0 is any. Needs a band chosen.'],
+  ['powersave', 'Power save', [['0', 'as the box default'], ['2', 'off'], ['3', 'on'], ['1', 'leave to the driver']],
+    (p) => String(p.powersave ?? 0), 'On: slower to answer, and some drivers drop.'],
+  ['hidden', 'Hidden network', [['no', 'no'], ['yes', 'yes']], (p) => (p.hidden ? 'yes' : 'no'), 'Yes when the network does not announce its name.'],
+  ['dhcp_timeout', 'Wait for an address (s)', 'num:0:3600', (p) => String(p.dhcp_timeout ?? 0),
+    '0 is NetworkManager\'s 45 s; longer can hide a dead link as "connecting".'],
+];
+const connDirty = {};
+const connOpen = new Set();
+function connSettings(p, inv, data, busy, radio) {
+  const ho = inv && inv.handover;
+  const lasts = !p.netplan || (ho && ho.integrated);
+  const changed = (data.conn_changes || {})[p.uuid];
+  const dirty = connDirty[p.uuid] || (connDirty[p.uuid] = {});
+  const fields = CONN_FIELDS.map(([name, label, kind, now, help]) => {
+    let input;
+    const cur = now(p);
+    if (Array.isArray(kind)) {
+      const opts = kind.some(([v]) => v === cur) ? kind : [...kind, [cur, cur]];
+      input = el('select', { 'aria-label': label, disabled: busy || !lasts }, ...opts.map(([v, t]) => el('option', { value: v, textContent: t })));
+    } else if (kind === 'bssid') {
+      const aps = new Set([cur, radio && radio.link && radio.link.bssid].filter(Boolean).map((b) => b.toLowerCase()));
+      input = el('select', { 'aria-label': label, disabled: busy || !lasts }, el('option', { value: '', textContent: 'any (roams)' }),
+        ...[...aps].map((b) => el('option', { value: b, textContent: `${b}${radio && radio.link && radio.link.bssid && radio.link.bssid.toLowerCase() === b ? ' (on it now)' : ''}` })));
+    } else {
+      const [, lo, hi] = kind.split(':');
+      input = el('input', { type: 'number', min: lo, max: hi, step: 1, 'aria-label': label, disabled: busy || !lasts });
+    }
+    input.value = name in dirty ? dirty[name] : cur;
+    input.addEventListener('change', () => { dirty[name] = input.value; save.disabled = false; });
+    return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: label }), input,
+      help ? el('span', { className: 'setting-desc', textContent: help }) : null);
+  });
+  const save = actionButton('Save its settings', () => {
+    const changes = Object.fromEntries(Object.entries(dirty).filter(([n, v]) => v !== CONN_FIELDS.find((f) => f[0] === n)[3](p)));
+    if (!Object.keys(changes).length) return;
+    if (!confirm(`Change ${Object.keys(changes).length} setting${Object.keys(changes).length === 1 ? '' : 's'} of ${p.ssid || p.name}? `
+      + 'They take effect the next time it connects. Undo puts them back as they were.')) return;
+    connDirty[p.uuid] = {};
+    netRequest({ action: 'connection', uuid: p.uuid, changes }, 'connection');
+  }, { disabled: busy || !Object.keys(dirty).length });
+  const cn = netNotes.connection;
+  const box = el('details', { className: 'net-conn-settings', open: connOpen.has(p.uuid) }, el('summary', { textContent: 'Its own settings' }),
+    lasts ? null : el('p', { className: 'setting-desc', textContent: 'netplan writes this connection afresh at every boot, so a setting made for it alone would be lost. Hand it over to NetworkManager (above) to set these.' }),
+    changed ? el('p', { className: 'setting-desc' }, `Changed here: ${changed.changed.join(', ')}. `,
+      actionButton('Undo', () => { if (confirm(`Put ${p.ssid || p.name}'s settings back as they were?`)) netRequest({ action: 'connection', uuid: p.uuid, undo: true }, 'connection'); }, { disabled: busy })) : null,
+    el('div', { className: 'net-defaults' }, ...fields),
+    lasts ? el('span', { className: 'library-buttons' }, save) : null,
+    cn ? el('p', { className: `setting-desc action-note${cn.ok ? '' : ' bad'}`, role: 'status', textContent: cn.text }) : null);
+  box.addEventListener('toggle', () => { if (box.open) connOpen.add(p.uuid); else connOpen.delete(p.uuid); });
+  return box;
+}
 
 // Connections netplan makes: on a box whose NetworkManager cannot write changes back into netplan,
 // offered to be handed over (and back), so a connection's own settings last.

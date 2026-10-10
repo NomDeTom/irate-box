@@ -102,6 +102,34 @@ check("'default' takes irate-box's line out: Armbian's value applies again",
 hub_control.nm_defaults({"changes": {"auth_retries": "default", "autoconnect_retries": "default"}})
 check("nothing of irate-box's left: the file goes", not nmconf.DROPIN.exists())
 
+# Per interface: sections in irate-box's drop-in, before the plain ones; the value each interface gets.
+try:
+    nmconf.validate({"autoconnect_retries": "0"}, "wlan0"); check("per interface: the connect retries refused (box-wide only)", False)
+except ValueError as exc:
+    check("per interface: the connect retries refused (box-wide only)", "whole box" in str(exc), str(exc))
+hub_control.nm_defaults({"changes": {"auth_retries": "0"}})
+hub_control.nm_defaults({"changes": {"mac": "random", "scan_mac": "yes"}, "iface": "wlan1"})
+text = nmconf.DROPIN.read_text()
+check("an interface's sections come first, each matching it by name, the box's kept",
+      text.index("[connection-irate-box-wlan1]") < text.index("[connection]") and "match-device=interface-name:wlan1" in text
+      and "[device-irate-box-wlan1]" in text and "connection.auth-retries=0" in text, text)
+check("  read back per interface", nmconf.current_ifaces() == {"wlan1": {"mac": "random", "scan_mac": "yes"}}, nmconf.current_ifaces())
+e1, e0 = nmconf.effective_for("wlan1"), nmconf.effective_for("wlan0", driver="aic8800_fdrv")
+check("  wlan1 gets its own MAC and scan settings, from irate-box's section",
+      e1["mac"]["value"] == "random" and e1["mac"]["section"] == "connection-irate-box-wlan1"
+      and e1["scan_mac"]["value"] == "yes", e1)
+check("  wlan0 doesn't: Armbian's scan setting, and the box's retries", e0["scan_mac"]["value"] == "no"
+      and e0["mac"]["value"] is None and e0["auth_retries"]["value"] == "0", e0)
+check("  power save for wlan1: Armbian's, as nothing of irate-box's sets it there", e1["powersave"]["value"] == "2")
+check("  a section for another driver doesn't apply (Armbian's eagle_sdio one)",
+      nmconf.effective_for("wlan9", driver="other")["scan_mac"]["section"] != "device-31-mac-addr-change")
+check("  that section applies to its driver", nmconf._matches("driver:eagle_sdio,driver:wl", "wlan9", "wl") is True
+      and nmconf._matches("except:interface-name:wlan0", "wlan0") is False and nmconf._matches("mac:aa:bb", "wlan0") is None)
+hub_control.nm_defaults({"changes": {"mac": "default", "scan_mac": "default"}, "iface": "wlan1"})
+check("  'as the box default' takes the interface's lines out, the box's kept",
+      nmconf.current_ifaces() == {} and nmconf.current_mine() == {"auth_retries": "0"} and "irate-box-wlan1" not in nmconf.DROPIN.read_text())
+hub_control.nm_defaults({"changes": {"auth_retries": "default"}})
+
 # The doctor's retry findings: the value in use, and where it is set.
 prof = {"uuid": "u1", "name": "netplan-wlan0-Home", "ssid": "Home", "mode": "infrastructure", "iface": "wlan0",
         "auth_retries": -1, "autoconnect_retries": -1, "autoconnect": True}
