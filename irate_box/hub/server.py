@@ -1606,6 +1606,16 @@ def _pending_actions(prefix):
     return n
 
 
+def _metered_view():
+    """For the page: whether the box is on a metered network now, and since when scheduled downloads wait."""
+    from irate_box.hub import netpolicy
+    try:
+        now = netpolicy.metered_now()
+    except (OSError, ValueError):
+        now = None
+    return {"now": now, "waiting": netpolicy.waiting()}
+
+
 def update_snapshot():
     """What /admin's update buttons show: the last check or fetch (from the root helper),
     the tail of the last install's output, whether a request is still being worked on, and
@@ -1633,7 +1643,8 @@ def update_snapshot():
     except (OSError, ValueError):
         sig = {"level": "off", "keys": []}
     return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto, "signing": sig}
+            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto, "signing": sig,
+            "metered": _metered_view()}
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
@@ -1964,6 +1975,7 @@ def network_snapshot():
             "ladder_gaps": linkhistory.gaps(hist),   # its spans with no record (a freeze, a reboot)
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
+            "metered": _metered_view(),
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
                        "roaming": list(uplink.ROAMING),

@@ -459,6 +459,7 @@ def check_uplink():
                        "or choose a level that goes that far." if stall.get("needs")
                        else "Look at the box by its console or a cable: nothing it can do by itself would help.")))
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
+    out += metered_findings()
     out += step_findings(_json_or(CONTROL / "uplink-ladder.json", []), st.get("chosen") or {})
     return out
 
@@ -559,6 +560,20 @@ def roaming_findings(st, inv):
                "the network on a radio that copes worst with that.",
                "Network → Staying on the network: choose no background scans while the hotspot shares the radio, a lock to one access "
                "point, or don't count short roams as missed checks. Or, on your router, put the access points on one channel.")]
+
+
+def metered_findings(now=None):
+    """Scheduled updates and downloads waiting a long while because the box is on a metered network."""
+    from irate_box.hub import netpolicy
+    w = netpolicy.waiting()
+    now = now or time.time()
+    if not w or w.get("since") is None or now - float(w["since"]) < 3 * 86400:
+        return []
+    days = int((now - float(w["since"])) // 86400)
+    return [_f("metered-wait", "Updates waiting for another network", "warn",
+               f"For {days} days the box has been on a metered network ({w.get('connection') or w.get('iface')}, {w.get('how')}), "
+               "so its scheduled updates and downloads (the hub's own, books, mirrors, toolkits) have waited.",
+               "Updates: run one by hand, or on Network → WiFi set this network not metered (its own settings) if its data is not limited.")]
 
 
 def check_inventory():
