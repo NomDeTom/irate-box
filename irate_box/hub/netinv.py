@@ -641,6 +641,13 @@ def scan(focus=None):
     inv = {"at": time.time(), "host": read("/etc/hostname"), "os": _os_name(), "root": os.geteuid() == 0,
            "focus": focus, "iw": iw_ok, "stacks": stacks, "radios": radios, "wired": wired(),
            "default_route": route, "country": reg_country() if iw_ok else None}
+    if inv["root"]:
+        # Connections netplan makes, and whether each can be handed over to NetworkManager (root reads netplan's files).
+        try:
+            from irate_box.root import nmhandover
+            inv["handover"] = nmhandover.candidates()
+        except (OSError, ValueError, ImportError) as exc:
+            inv["handover"] = {"error": str(exc)[:200]}
     inv["hazards"] = hazards(inv)
     inv["uplink"] = uplink_verdict(inv)
     inv["ap"] = ap_verdicts(inv)
@@ -737,9 +744,13 @@ def hazards(inv):
                           "Which one wins is not known yet (a test in the AP research).", iface=r["iface"]))
         p = r.get("profile") or {}
         if p.get("netplan"):
-            out.append(_h(f"netplan:{r['iface']}", "ok", f"{r['iface']}: profile written by netplan",
-                          f"{p['name']} is written afresh from /etc/netplan at every boot, so a change made to it alone "
-                          "(with nmcli, or the page) is lost then. Box defaults still apply to it.", iface=r["iface"]))
+            ho = inv.get("handover") or {}
+            if not ho.get("integrated"):
+                out.append(_h(f"netplan:{r['iface']}", "warn", f"{r['iface']}: its connection is written afresh by netplan at every boot",
+                              f"{p['name']} comes from /etc/netplan, and this NetworkManager cannot write changes back there: a "
+                              "setting made for this connection alone is lost at the next boot. Box defaults still apply.",
+                              "Network page, WiFi: hand it over to NetworkManager, so its own settings last (undo puts it back).",
+                              iface=r["iface"]))
     if inv.get("country") in ("00", None) and radios:
         out.append(_h("regdom", "warn", "No WiFi country set",
                       "The radio uses the world-safe channel set, which limits a hotspot's channels and power.",

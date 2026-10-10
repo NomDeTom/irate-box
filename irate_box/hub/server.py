@@ -4032,6 +4032,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
+            elif act == "handover" and isinstance(payload.get("name"), str) \
+                    and re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}\.yaml", payload["name"]) and type(payload.get("undo", False)) is bool:
+                self.send_json(202, {"id": control_request({"action": "nm-handover", "name": payload["name"],
+                                                            "undo": payload.get("undo", False)})})
             elif act == "defaults" and isinstance(payload.get("changes"), dict):
                 from irate_box.hub import nmconf
                 try:

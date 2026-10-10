@@ -2167,6 +2167,7 @@ const net = {
   unhold: document.getElementById('up-unhold'),
   note: document.getElementById('up-note'),
   profile: document.getElementById('up-profile'),
+  handover: document.getElementById('net-handover'),
   defaults: document.getElementById('net-defaults'),
   defaultsSave: document.getElementById('net-defaults-save'),
   defaultsNote: document.getElementById('net-defaults-note'),
@@ -2723,6 +2724,7 @@ function renderNetwork(data) {
   say(un ? un.text : '', un ? un.ok : true, net.note);
 
   renderDefaults(inv, busy);
+  renderHandover(inv, busy);
   const change = u && u.profile_change;
   const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
@@ -2809,6 +2811,42 @@ net.defaultsSave.addEventListener('click', () => {
   defaultsDirty = {};
   netRequest({ action: 'defaults', changes }, 'defaults');
 });
+
+// Connections netplan makes: on a box whose NetworkManager cannot write changes back into netplan,
+// offered to be handed over (and back), so a connection's own settings last.
+function renderHandover(inv, busy) {
+  const ho = inv && inv.handover;
+  const rows = [];
+  if (ho && ho.integrated) {
+    rows.push(el('p', { className: 'setting-desc', textContent: 'NetworkManager here keeps its connections in netplan itself, so a change made to one connection lasts.' }));
+  } else if (ho && !ho.error) {
+    for (const f of ho.files || []) {
+      const names = f.connections.map((c) => c.name).join(', ');
+      if (f.ok) {
+        rows.push(el('p', { className: 'setting-desc' },
+          `${names || 'Its connections'} come${f.connections.length === 1 ? 's' : ''} from netplan (${f.name}), which writes ${f.connections.length === 1 ? 'it' : 'them'} afresh at every boot: a setting made for one of them alone is lost then. `
+          + 'Handing them over makes them NetworkManager\'s own, with the same name, password and settings; the netplan file is kept, and undo puts it back. ',
+          actionButton('Hand over to NetworkManager', () => {
+            if (confirm(`Hand ${names || f.name} over to NetworkManager? ${f.name} is moved aside (kept), and NetworkManager keeps ${f.connections.length === 1 ? 'the connection' : 'them'} from now on. `
+              + 'Nothing is disconnected; if NetworkManager\'s view of a connection changes in any way, everything is put back at once.'
+              + (f.regdom ? ` The WiFi country it sets (${f.regdom}) is kept.` : ''))) netRequest({ action: 'handover', name: f.name }, 'handover');
+          }, { disabled: busy })));
+      } else {
+        rows.push(el('p', { className: 'setting-desc', textContent: `${f.name}: ${f.why}` }));
+      }
+    }
+    for (const d of ho.done || []) {
+      rows.push(el('p', { className: 'setting-desc' },
+        `${d.name} handed over to NetworkManager on ${new Date(d.at * 1000).toLocaleDateString()}; kept in ${d.backup}. `,
+        actionButton('Put it back', () => {
+          if (confirm(`Put ${d.name} back? netplan makes its connections again, written afresh at every boot.`)) netRequest({ action: 'handover', name: d.name, undo: true }, 'handover');
+        }, { disabled: busy })));
+    }
+  }
+  const hn = netNotes.handover;
+  if (hn) rows.push(el('p', { className: `setting-desc action-note${hn.ok ? '' : ' bad'}`, role: 'status', textContent: hn.text }));
+  net.handover.replaceChildren(...rows);
+}
 
 async function netRequest(body, where) {
   try {
