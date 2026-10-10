@@ -28,7 +28,9 @@ dead += [(p.name, h) for p in guide.WEB.glob("*.html") for h in re.findall(r'hre
          if not (REPO / "web" / h.lstrip("/")).is_file()]
 check("every link between the pages resolves", not dead, dead)
 check("no vault links", not [p.name for p in src if "[[" in p.read_text()])
+# REUSE-IgnoreStart
 check("each source page carries its SPDX lines", all(p.read_text().startswith("<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->") for p in src))
+# REUSE-IgnoreEnd
 out = Path(tempfile.mkdtemp(prefix="guide-")) / guide.ZIM_FILE
 guide.zim(out, "test")
 data = out.read_bytes()

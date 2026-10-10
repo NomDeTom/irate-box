@@ -128,6 +128,7 @@ def render(md):
 
 # --- the box's pages -----------------------------------------------------------------------------
 
+# REUSE-IgnoreStart
 PAGE = """<!DOCTYPE html>
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
@@ -156,6 +157,7 @@ PAGE = """<!DOCTYPE html>
 </body>
 </html>
 """
+# REUSE-IgnoreEnd
 
 
 def pages():
