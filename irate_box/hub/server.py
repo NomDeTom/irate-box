@@ -691,7 +691,8 @@ def _first_use_note():
             '<p>Until its admin account is made, anyone on this network can use its admin pages. Make it now: '
             'over HTTPS, or at the box\'s console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). '
             'Over plain HTTP the password crosses the network where others can read it.</p>'
-            '<p><a class="action-btn" href="/admin/setup">Set up this box</a></p></section>')
+            '<p><a class="action-btn" href="/admin/setup">Set up this box</a> '
+            '<a href="/guide/first-use.html">How: Setting up a new box</a></p></section>')
 _home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
