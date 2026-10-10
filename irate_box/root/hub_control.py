@@ -94,6 +94,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "other-ap", "uuid": "...", "do": "remove"|"leave"|"undo"}
       A hotspot profile that is not irate-box's (root/otherap.py): removed (kept for undo), or left
       and no longer listed.
+  {"id": ..., "action": "radio-test", "iface": "wlan0", "exp": "follows-roam"|"radio-reset"|"driver-reset"}
+      An experiment on one of the box's radios (root/radiotests.py), refused while guests are on the
+      hotspot; its answer kept per radio and driver version.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
@@ -2858,6 +2861,18 @@ def other_ap(req):
             pass
 
 
+def radio_test(req):
+    from irate_box.root import radiotests
+    inv = netinv.scan()
+    try:
+        return radiotests.experiment(inv, req.get("iface"), req.get("exp"))
+    finally:
+        try:
+            netinv.write(netinv.scan(), CONTROL / "netinv.json")
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+
+
 def nm_handover(req):
     from irate_box.root import nmhandover
     name = req.get("name")
@@ -2948,7 +2963,7 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
+           "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "radio-test": radio_test, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}

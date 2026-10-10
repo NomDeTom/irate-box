@@ -2541,8 +2541,28 @@ const MANAGED_BY = {
   none: 'Nothing irate-box recognises.',
 };
 const BUS_WORDS = { usb: 'USB', sdio: 'built-in (SDIO)', pci: 'built-in (PCI)', platform: 'built-in' };
-const COND_MARK = { how: '•', limit: '◦', untested: '?', needs: '!' };
-const COND_WORD = { how: '', limit: 'Limit: ', untested: 'Untested: ', needs: 'Needs: ' };
+const COND_WORD = { how: '', limit: 'Limit: ', untested: 'Not tested yet: ', needs: 'Needs: ' };
+// Experiments the box runs on a radio (root/radiotests.py), each said before it runs.
+const RADIO_TEST_SAYS = {
+  'follows-roam': 'The WiFi link moves to another access point of your network, on another channel, for a few seconds, then back. Guests would lose the hotspot for a moment, so it only runs with nobody on it.',
+  'radio-reset': 'The radio is reset as the watchdog would: the WiFi and the hotspot go away for up to a minute. Only with nobody on the hotspot.',
+  'driver-reset': 'One command to the WiFi chip is made to count as timed out, so the driver resets the chip itself: the WiFi and the hotspot go away for a few seconds. Only with nobody on the hotspot.',
+};
+function radioTestButton(iface, exp, label) {
+  const busy = !!netWaiting || (netData && netData.pending > 0);
+  return actionButton(label, () => { if (confirm(`${RADIO_TEST_SAYS[exp]} Run it now?`)) netRequest({ action: 'radiotest', iface, exp }, 'scan'); },
+    { className: 'small', disabled: busy });
+}
+function radioTests(inv, iface, section, line) {
+  const t = (inv.radio_tests || {})[iface];
+  if (!t || !(t.can || []).length) return [];
+  return [section(line('Tested on this radio', ''), el('ul', { className: 'net-facts' }, ...t.can.map((exp) => {
+    const got = (t.found || {})[exp];
+    return el('li', {}, el('strong', { textContent: t.questions[exp] }), ' ',
+      got ? `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}. ` : 'Not tested yet. ',
+      radioTestButton(iface, exp, got ? 'Test again' : 'Test it now'));
+  })))];
+}
 
 function signalWords(dbm) {
   if (typeof dbm !== 'number') return '';
@@ -2615,14 +2635,24 @@ function deviceCard(inv, d, wifi, hazards) {
       const conds = a.conditions || [{ kind: 'how', text: a.detail }];
       const any = conds.some((c) => c.kind !== 'how');
       const verdict = !a.possible ? 'No.' : any ? `Yes, with conditions (through ${a.backend}).` : `Yes (through ${a.backend}).`;
+      const tests = (inv.radio_tests || {})[d.iface] || {};
       kids.push(section(line('Can it run the hotspot?', verdict),
-        el('ul', { className: 'net-conditions' }, ...conds.map((c) => el('li', { className: `cond-${c.kind}` },
-          el('span', { className: 'cond-mark', textContent: COND_MARK[c.kind] || '•', ariaHidden: 'true' }),
-          el('span', { textContent: `${COND_WORD[c.kind] || ''}${c.text}` }))))));
+        el('ul', { className: 'net-conditions' }, ...conds.map((c) => {
+          const got = c.test && (tests.found || {})[c.test];
+          if (c.kind === 'untested' && got) return el('li', { className: 'cond-tested' }, `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}.`);
+          return el('li', { className: `cond-${c.kind}` }, `${COND_WORD[c.kind] || ''}${c.text}`,
+            c.kind === 'untested' && c.test && (tests.can || []).includes(c.test) ? radioTestButton(d.iface, c.test, 'Test it now') : null);
+        }))));
     }
+    kids.push(...radioTests(inv, d.iface, section, line));
   }
+  // What the box knows about this device, in words: what to look at first, then what is known.
   const mine = hazards.filter((h) => h.iface === d.iface);
-  if (mine.length) kids.push(section(el('ul', { className: 'admin-checks' }, ...mine.map((h) => checkItem(h.status, h.title, h.detail, h.fix)))));
+  const look = mine.filter((h) => h.status !== 'ok'), known = mine.filter((h) => h.status === 'ok');
+  const fact = (h) => el('li', {}, el('strong', { textContent: h.title }), h.detail ? `: ${h.detail}` : '',
+    h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null);
+  if (look.length) kids.push(section(line('To look at', ''), el('ul', { className: 'net-facts' }, ...look.map(fact))));
+  if (known.length) kids.push(section(line('Known about it', ''), el('ul', { className: 'net-facts' }, ...known.map(fact))));
   return el('div', { className: 'net-device setting' }, ...kids);
 }
 
