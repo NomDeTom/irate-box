@@ -926,10 +926,18 @@ def admin_login(req):
     on = req.get("on") is True
     if on == (not ADMIN_LOGIN_OFF.exists()):
         return f"the box's own admin login is already {'on' if on else 'off'}"
+    admins = []
     if not on:
         admins = _https_admins()
         if not admins:
             raise ValueError("first make an admin account, and log in with it over HTTPS: then it can stand in for this login")
+    _switch_login(on)
+    return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
+
+
+def _switch_login(on):
+    """The box's own login on or off, with no question asked (admin_login asks first; the first use and
+    the console need none)."""
     if WEB_SERVER != "nginx":
         if not on:
             _caddy_login_off()
@@ -939,7 +947,7 @@ def admin_login(req):
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
         _admin_login_record()
-        return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
+        return
     if not on:
         fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as fh:
@@ -961,7 +969,66 @@ def admin_login(req):
     _access_files(access.read(ACCESS_FILE))
     _reload_web()
     _admin_login_record()
-    return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
+
+
+def claim(req):
+    """The first use ended by the owner's admin account (the hub made it): no longer free, and no
+    login of the box's own (no password made for scripts: script-login at the console makes one)."""
+    if not UNCLAIMED.exists():
+        raise ValueError("the box's first use has already ended")
+    UNCLAIMED.unlink()
+    (ETC / "admin-password").unlink(missing_ok=True)
+    if not ADMIN_LOGIN_OFF.exists():
+        _switch_login(False)
+    else:
+        _access_files(access.read(ACCESS_FILE))
+        _reload_web()
+    return "first use ended: admin accounts sign in on the box's sign-in page; no login of the box's own for scripts"
+
+
+def _ask_password(prompt="Password: "):
+    """Asked twice at a terminal, without echo; from a script, two lines on stdin."""
+    import getpass
+    ask = getpass.getpass if sys.stdin.isatty() else (lambda _p: sys.stdin.readline().rstrip("\n"))
+    pw = ask(prompt)
+    if len(pw) < MIN_PASSWORD or len(pw) > 128 or any(c in pw for c in "\n\r\0"):
+        sys.exit(f"the password must be {MIN_PASSWORD}-128 characters, on one line")
+    if ask("Again: ") != pw:
+        sys.exit("the two did not match; nothing changed")
+    return pw
+
+
+def console_set_admin(name):
+    """sudo irate-box hub_control set-admin NAME: an admin account from the console (over SSH, so the
+    password never crosses the network in the clear); ends the first use if it is still on."""
+    pw = _ask_password(f"Password for the admin account {name}: ")
+    out = subprocess.run(["runuser", "-u", HUB_USER, "--", "env", f"HUB_STATE_DIR={STATE}",
+                          str(Path(__file__).resolve().parents[2] / "irate-box"), "accounts", "set-admin", name],
+                         input=pw + "\n", capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        sys.exit(out.stderr.strip() or out.stdout.strip() or "accounts: failed")
+    said = [out.stdout.strip()]
+    if UNCLAIMED.exists():
+        said.append(claim({}))
+    else:
+        _access_files(access.read(ACCESS_FILE))
+        _reload_web()
+    return "; ".join(said)
+
+
+def console_script_login(on):
+    """sudo irate-box hub_control script-login [--off]: the box's own login (user admin, for scripts:
+    curl -u admin:… with the password in /etc/hub/admin-password, root's alone), on with a new
+    password or off."""
+    if not on:
+        (ETC / "admin-password").unlink(missing_ok=True)
+        if ADMIN_LOGIN_OFF.exists():
+            return "the box's own login is already off"
+        if not _admin_accounts_ready():
+            sys.exit("no admin account can sign in yet: make one first (set-admin), or this would lock /admin")
+        _switch_login(False)
+        return "the box's own login is off"
+    return "the box's own login (admin) set, for scripts: " + set_login(_ask_password("Password for the box's own login (admin): "))
 
 
 # --- updates ---------------------------------------------------------------------
@@ -2707,7 +2774,7 @@ def _kit_req(fn):
     return action
 
 
-ACTIONS = {"service": service, "password": password,
+ACTIONS = {"service": service, "password": password, "claim": claim,
            "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
            "update-force-install": update_force_install,
            "update-doctor": update_doctor, "update-clear-cache": update_clear_cache, "update-signing": update_signing,
@@ -2806,6 +2873,16 @@ if __name__ == "__main__":
         rec = ap._load(ap.RECORD, {})
         if rec.get("up") and not rec.get("confirmed"):
             _ap_record_status(None, ap.stop(run) + ": not confirmed in time, so the box's WiFi link is back")
+        sys.exit(0)
+    if len(sys.argv) == 3 and sys.argv[1] == "set-admin":
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control set-admin NAME")
+        print(console_set_admin(sys.argv[2]))
+        sys.exit(0)
+    if sys.argv[1:2] == ["script-login"] and sys.argv[2:] in ([], ["--off"]):
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control script-login [--off]")
+        print(console_script_login(sys.argv[2:] != ["--off"]))
         sys.exit(0)
     if sys.argv[1:] == ["reset-password"]:
         if os.geteuid() != 0:

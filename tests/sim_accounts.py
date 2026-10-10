@@ -210,6 +210,21 @@ H.admin_login({"on": False})
 H.set_login("a-new-password", keep=False)
 check("  a new password (reset-password at the console): on again", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
       and not (T / "etc" / "admin-login.off").exists() and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": True})
+# The first use ended by the owner's admin account: no password made for scripts, the box's own login off.
+H.UNCLAIMED = T / "etc" / "unclaimed"; H.UNCLAIMED.write_text("first use\n")
+(T / "etc" / "admin-password").write_text("an-old-one\n")
+out = H.claim({})
+check("claim: the first use over, no login of the box's own (the file emptied, none saved), the gates send people to sign in",
+      not H.UNCLAIMED.exists() and not (T / "etc" / "admin-password").exists() and "admin:" not in (T / "etc" / "htpasswd").read_text()
+      and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False} and "error_page 401" in (gd / "gate-admin.conf").read_text()
+      and "no login" in out, out)
+try:
+    H.claim({}); check("  a second claim: refused", False)
+except ValueError as exc:
+    check("  a second claim: refused", "already ended" in str(exc), exc)
+H.set_login("pw-for-scripts")
+check("  script-login at the console afterwards: the login on, its password root's", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
+      and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n" and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": True})
 
 # The same under Caddy: its hashes swapped for an unknown one and back; the gate hard while off.
 CF = T / "Caddyfile"
@@ -339,7 +354,7 @@ try:
           seen == {"/admin/": 204, "/admin/settings?x=1": 204, "/term/": 401, "/sync/": 401, "/tools/": 401, "/administer": 401,
                    "/admin/../term/": 401, "/admin/%2E%2E/sync/": 401, "/admin/./": 204, "//admin/": 401}, seen)
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "gina", "role": "admin"}, {"X-Irate-Admin": "1"})
-    req("/api/account", {"action": "code", "code": d["code"], "password": "password9"})
+    req("/api/account", {"action": "code", "code": d["code"], "password": "password9"}, https=True)  # an admin's: over HTTPS only
     _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
     code, _, _ = req("/_irate/admin", headers={"Cookie": h.get("Set-Cookie", "").split(";")[0]})
     _, d, _ = req("/admin/accounts")

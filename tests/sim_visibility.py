@@ -117,9 +117,11 @@ try:
     st, _ = go("POST", "/admin/tiles", {"state": {"order": ["about", "nonsense"]}})
     check("refused: an order naming no tile", st == 400, st)
     # The admin level: a tile only an admin account sees.
-    def visit(path, cookie="", body=None, account=False):
+    def visit(path, cookie="", body=None, account=False, https=False):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         h = {"Host": f"127.0.0.1:{port}", "Content-Type": "application/json", "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+        if https:  # as the web server says it for a request over HTTPS
+            h.update({"X-Forwarded-For": "10.1.1.1", "X-Forwarded-Proto": "https"})
         if cookie:
             h["Cookie"] = cookie
         if account:
@@ -131,7 +133,7 @@ try:
     jar = {}
     for name, role in (("ada", "admin"), ("bea", "user")):
         _, body = go("POST", "/admin/accounts", {"action": "make", "name": name, "role": role})
-        visit("/api/account", body={"action": "code", "code": json.loads(body)["code"], "password": "correct horse " + name}, account=True)
+        visit("/api/account", body={"action": "code", "code": json.loads(body)["code"], "password": "correct horse " + name}, account=True, https=True)
         _, jar[name] = visit("/api/account", body={"action": "login", "name": name, "password": "correct horse " + name}, account=True)
     st, _ = go("POST", "/admin/visibility", {"app": "draw", "visible": "admin"})
     check("visible admin taken", st == 200, st)

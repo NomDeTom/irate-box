@@ -679,18 +679,31 @@ def icon_html(icon):
 TILES_MARK = "<!-- apps.d tiles -->"
 BOX_MARK = "<!-- apps.d box tiles -->"
 ACCOUNT_MARK = "<!-- account nav -->"
+FIRST_USE_MARK = "<!-- first use -->"
+
+
+def _first_use_note():
+    """The home page's word while the box is in its first use: its admin pages free to anyone on the
+    network until the owner's admin account is made, and how to make it safely."""
+    if not unclaimed():
+        return ""
+    return ('<section class="first-use-note" role="note"><h2>⚙️ This box is not set up yet</h2>'
+            '<p>Until its admin account is made, anyone on this network can use its admin pages. Make it now: '
+            'over HTTPS, or at the box\'s console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). '
+            'Over plain HTTP the password crosses the network where others can read it.</p>'
+            '<p><a class="action-btn" href="/admin/setup">Set up this box</a></p></section>')
 _home_page = {}   # signed in or not -> {"mtime", "body"}
 
 
 def _account_nav(signed_in):
     """The header's account buttons. One login for everyone, admins included: "Sign in" for a guest
-    (admins sign in there too, so it shows with sign-up off), "My account" for anyone in; "Admin" for an
-    admin, and for everyone while no admin account can sign in yet (the box's own login, or its first use)."""
+    (admins sign in there too, so it shows with sign-up off), "My account" for anyone in; "Admin" for a
+    signed-in admin only (a box in its first use says so on the home page instead: FIRST_USE_MARK)."""
     signup = accounts.settings()["signup"]
     title, label = (("Your account", "My account") if signed_in else
                     ("Sign in" if signup == "off" else "Sign in or sign up", "Sign in"))
     out = f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
-    if signed_in == "admin" or not accounts.admin_ready():
+    if signed_in == "admin":
         out += ('<a class="head-btn labelled" href="/admin/" title="Options for whoever owns the box">'
                 '<span class="head-emoji" aria-hidden="true">⚙️</span> Admin</a>')
     return out
@@ -711,7 +724,7 @@ def home_page(signed_in=False):
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     signup = accounts.settings()["signup"]
-    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready())
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready(), unclaimed())
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -724,7 +737,7 @@ def home_page(signed_in=False):
                 text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
-        text = text.replace(ACCOUNT_MARK, _account_nav(signed_in))
+        text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -1355,7 +1368,6 @@ MIN_PASSWORD = 8
 # admin password has been chosen, the web server lets /admin through with no login, and the
 # hub serves only the set-the-password page there. It sits beside that server's config.
 UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
-SETUP_PATHS = ("/admin", "/admin/", "/admin/setup")
 
 
 # The front's word that a request came through its /admin route, where it asked for the
@@ -1507,7 +1519,7 @@ def admin_box(proxied):
     return {"system": system_status(), "uptime": now, "online": online_count(now),
             "joined": joined_count(), "services": services, "version": hub_version(),
             "service_uptime": svchistory.summarize(svchistory.load()),
-            "net_uptime": net_uptime_72h(), "meshtasticd": meshtasticd_state(),
+            "net_uptime": net_uptime_72h(), "meshtasticd": meshtasticd_state(), "first_use": unclaimed(),
             "results": control_results(),
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
@@ -1676,8 +1688,8 @@ def security_snapshot():
     https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
     to_https = {"go": "security-https", "where": "Security → HTTPS"}
     if unclaimed():
-        pw = {"status": "problem", "detail": "Not chosen yet: anyone on the network can open /admin and choose it.",
-              "fix": "Choose it now, on the Access page.", "do": {"go": "access", "where": "Access"}}
+        pw = {"status": "problem", "detail": "Not set yet: the box is in its first use, and anyone on the network can use /admin until its admin account is made.",
+              "fix": "Make it now: Set up this box, over HTTPS (or HTTP by choice), or at the console over SSH (hub_control set-admin NAME)."}
     elif https and admin_only:
         pw = {"status": "ok", "detail": "Set, and /admin answers over HTTPS only, so the password never crosses the network in clear."}
     elif https:
@@ -2851,11 +2863,11 @@ class Handler(BaseHTTPRequestHandler):
                 token, me = accounts.login(payload.get("name"), payload.get("password"), addr, https=self._https())
                 self.send_json(200, {"me": me}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
             elif action == "password":
-                accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr)
+                accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr, https=self._https())
                 self.send_json(200, {"changed": True})
             elif action == "code":
                 before = accounts.admin_ready()
-                name = accounts.use_code(payload.get("code"), payload.get("password"), addr)
+                name = accounts.use_code(payload.get("code"), payload.get("password"), addr, https=self._https())
                 self._admin_gate_follow(before)
                 self.send_json(200, {"name": name})
             elif action == "prefs":
@@ -2895,10 +2907,12 @@ class Handler(BaseHTTPRequestHandler):
         return not ok
 
     def _admin_locked(self, path):
-        """On an unclaimed box, every admin path but the setup page answers 403."""
-        if path.startswith("/admin") and unclaimed() and path not in SETUP_PATHS:
+        """A box in its first use has its admin pages free to anyone on its network, but for the box's own
+        login (for scripts: the console's, script-login): the first use ends with the owner's admin account,
+        made on /admin/setup or at the console."""
+        if path == "/admin/password" and unclaimed():
             self._discard_body()
-            self.send_json(403, {"error": "no admin password has been chosen yet: open /admin/"})
+            self.send_json(403, {"error": "the box is in its first use: make the admin account first (Set up this box)"})
             return True
         return False
 
@@ -3002,7 +3016,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, accounts_view())
             return
 
-        if path == "/admin/setup":
+        if path == "/admin/setup" and "?" in self.path:
+            # The first use's request, followed (?id=); without a query, the page itself (below).
             query = dict(p.partition("=")[::2] for p in self.path.partition("?")[2].split("&") if p)
             self.send_json(200, setup_status(query.get("id", "")[:40]))
             return
@@ -3270,8 +3285,17 @@ class Handler(BaseHTTPRequestHandler):
 
         admin_page = False
         if path in ("/admin", "/admin/"):
-            path = "/admin-setup.html" if unclaimed() else "/admin.html"
+            path = "/admin.html"
             admin_page = not unclaimed()
+        elif path == "/admin/setup":
+            # The first use's page: making the admin account; after it, /admin.
+            if not unclaimed():
+                self.send_response(302)
+                self.send_header("Location", "/admin/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            path = "/admin-setup.html"
         elif path == "/admin/factory.html":
             # The Firmware Factory's own page: behind /admin's login, as /admin is.
             path = "/admin-factory.html"
@@ -3559,6 +3583,10 @@ class Handler(BaseHTTPRequestHandler):
             # enable, delete, the role; a new account or a reset, each with a one-time code.
             action = payload.get("action")
             before = accounts.admin_ready()
+            if unclaimed() and (action == "admin" or (action == "make" and payload.get("role") == "admin")):
+                # The first admin is the first use's: made on the set-up page (HTTPS, or HTTP by choice) or at the console.
+                self.send_json(403, {"error": "the box is in its first use: make the first admin with Set up this box"})
+                return
             try:
                 keep = not admin_login_on()
                 if action == "admin-login":
@@ -3585,15 +3613,18 @@ class Handler(BaseHTTPRequestHandler):
             pw, name = payload.get("password"), payload.get("name")
             if not unclaimed():
                 self.send_json(403, {"error": "the admin password has already been set"})
+            elif not self._https() and payload.get("over_http") is not True:
+                # The first password over plain HTTP only when the owner chooses it, having been told.
+                self.send_json(403, {"error": "over plain HTTP the password crosses the network where others can read it: "
+                                     "use HTTPS or the console, or choose to set it over HTTP anyway", "https": False})
             elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
                 self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
             elif name is None:
                 # A script's first use (no name): the box's own login, as before.
                 self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
             else:
-                # The owner's first use: their admin account, signed in at once.
-                # The box's own login gets a random password, root's alone (/etc/hub/admin-password), for
-                # scripts and the console: it shares no secret with the account.
+                # The owner's first use: their admin account, signed in at once. The box's own login goes
+                # off (no password made for scripts: script-login at the console makes one).
                 try:
                     token, _me = accounts.claim_admin(name, pw, self._client_addr())
                 except accounts.Wait as exc:
@@ -3602,7 +3633,7 @@ class Handler(BaseHTTPRequestHandler):
                 except accounts.AccountError as exc:
                     self.send_json(400, {"error": str(exc)})
                     return
-                rid = control_request({"action": "password", "password": secrets.token_urlsafe(24), "setup": True})
+                rid = control_request({"action": "claim"})
                 control_request({"action": "admin-gate"})
                 self.send_json(202, {"id": rid}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
             return
@@ -3650,6 +3681,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/password":
             pw = payload.get("password")
+            if not self._https():
+                self.send_json(403, {"error": "an admin password changes only over HTTPS, or at the console over SSH", "https": False})
+                return
             if not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
                 self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
                 return

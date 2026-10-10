@@ -1098,11 +1098,12 @@ for app in mermaid draw tools serial; do
 done
 
 # --- config ----------------------------------------------------------------------
-# The admin password is chosen by the owner, in the browser, on first use: until then the
-# logins get a random placeholder nobody knows (so /sync and /term stay shut), and
-# $UNCLAIMED_MARK tells the web server and the hub to offer /admin/ as the set-the-password
-# page. It sits beside the web server's config, where its workers can see it (/etc/hub cannot
-# be read by them). --admin-password sets the password here instead, for scripted installs.
+# No password is made here. The box starts in its first use: its admin pages free to anyone on the
+# network ($UNCLAIMED_MARK tells the web server and the hub) until the owner makes the admin account
+# (/admin/setup, or hub_control set-admin at the console). The web server's logins get a placeholder
+# nobody knows, so /sync and /term stay shut; it is never saved or shown. The mark sits beside the web
+# server's config, where its workers can see it (/etc/hub cannot be read by them). --admin-password
+# sets the box's own login for scripts instead, for scripted installs.
 UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
 UNCLAIMED=0
 if [ -n "$ADMIN_PW" ]; then
@@ -2453,8 +2454,9 @@ echo
 say "Irate-Box is $([ $fail = 0 ] && echo up || echo "installed, with ${#PROBLEMS[@]} problem$([ ${#PROBLEMS[@]} = 1 ] || echo s) (below)") at $where/"
 echo "    web server: $WEB$([ "$WEB" = caddy ] && echo ' (the fallback; --web nginx switches to the default)')"
 if [ "$UNCLAIMED" = 1 ]; then
-	echo "    admin login: not chosen yet. Open $where/admin/ and set it now:"
-	echo "                 until then, the first person on this network to open that page can."
+	echo "    admin: not set yet. Until it is, anyone on this network can use $where/admin/. Make the admin account"
+	echo "           now: over HTTPS ($where/admin/setup with https://), or here over SSH:"
+	echo "           sudo $CODE/irate-box hub_control set-admin NAME"
 else
 	echo "    admin login: admin / (in $ETC/admin-password)"
 fi

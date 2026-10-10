@@ -28,6 +28,12 @@
     </nav>
 
     <main class="admin-main">
+      <!-- The first use (server.py unclaimed(): /admin/box says first_use): these pages free to anyone on
+           the network until the owner's admin account is made. -->
+      <div class="settings-note admin-note bad first-use-banner" id="first-use" role="alert" hidden>
+        <strong>This box is not set up yet:</strong> anyone on this network can use these pages until its admin
+        account is made. <a href="/admin/setup">Set up this box</a> (over HTTPS, or at the console over SSH).
+      </div>
       <!-- Background art by side-bar group (admin.js sets data-art on main). The controller's
            desk lit, and the Firmware Factory's, are WebM loops played by krab-loop.js (made by tools/make-krab-loops.cjs). -->
       <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
