@@ -76,6 +76,11 @@ def _finding(fid, title, status, detail, fix="", actions=()):
             "actions": list(actions)}
 
 
+def _chip(group, choice, label, on, confirm=None):
+    """One option of a choice, drawn as a chip in its group's row; `on` marks how it is now (pressing it does nothing)."""
+    return {"choice": choice, "label": label, "group": group, "on": bool(on), **({"confirm": confirm} if confirm and not on else {})}
+
+
 def load_record():
     try:
         return json.loads(RECORD.read_text())
@@ -1098,18 +1103,23 @@ def log_findings(rec):
     ours = rec.get("logs")
     undo = [{"choice": "logs-undo", "label": "Undo"}] if ours else []
     ram = _log_in_ram()
+    where = "Where the logs live"
+    back = _chip(where, "logs-undo", "In RAM, as the image had it", False, "Put Armbian's ramlog back as it was? It applies at the next boot.")
     if ram is None:
-        return [_finding("logs-ram", "Logs on the card", "ok", "Set from this page; it applies from the next boot.", "", undo)] if ours else []
+        return [_finding("logs-ram", "Logs on the card", "ok", "Set from this page; it applies from the next boot.", "",
+                         [back, _chip(where, "logs-card", "On the card", True)])] if ours else []
     if not ram:
         return [_finding("logs-ram", "Logs on the card", "ok",
-                         "/var/log is on the card: what sshd and the hub log survives a reboot or a power cut." + (" Set from this page." if ours else ""), "", undo)]
+                         "/var/log is on the card: what sshd and the hub log survives a reboot or a power cut." + (" Set from this page." if ours else ""), "",
+                         [back, _chip(where, "logs-card", "On the card", True)] if ours else [])]
     return [_finding("logs-ram", "Logs live in RAM", "warn",
                      "/var/log is a RAM disk (Armbian's ramlog): sshd's log and the journal are trimmed every 15 minutes and gone at a "
                      "power cut, so the evidence of an intrusion goes with them; the doctor's \"reached from the internet\" sees only since the last boot.",
                      "Logs on the card, a few MB a week: Armbian's ramlog off and the journal kept, capped at 32 MB. It applies from the next boot.",
-                     [{"choice": "logs-card", "label": "Keep logs on the card",
-                       "confirm": "Turn Armbian's ramlog off and keep the journal on the card (32 MB cap)? It applies at the next boot; the card does a little more writing."}]
-                     + undo)]
+                     [back, _chip(where, "logs-card", "On the card, from the next boot", True)] if ours else
+                     [_chip(where, "logs-ram-now", "In RAM", True),
+                      _chip(where, "logs-card", "On the card", False,
+                            "Turn Armbian's ramlog off and keep the journal on the card (32 MB cap)? It applies at the next boot; the card does a little more writing.")])]
 
 
 def _logs(rec, on):
@@ -1155,6 +1165,9 @@ def _floor_apply(floor):
     firewall.apply_all(fl, share.load())
 
 
+REACH = "What a guest on the hotspot can reach"
+
+
 def firewall_findings(rec):
     from irate_box.root import firewall
     ours = rec.get("firewall")
@@ -1170,9 +1183,9 @@ def firewall_findings(rec):
     if not ours or not loaded:
         tcp, udp = firewall.ports(firewall.services_here(floor_default()))
         extra = ", ".join(["MQTT", "Syncthing"] + [s["name"] for s in services.declared() if s["hotspot"] == "open" and services.installed(s)])
-        on = lambda lv: {"choice": f"firewall-{lv}", "label": "Hub and apps" if lv == "apps" else "Hub only",  # noqa: E731
-                         "confirm": f"Limit what a guest on the hotspot ({iface}) can reach to {FLOOR_WORDS[lv]}, and {extra} "
-                                    "where installed? SSH from the hotspot is closed until you open it here. Your own network is not affected."}
+        on = lambda lv: _chip(REACH, f"firewall-{lv}", "Hub and apps" if lv == "apps" else "Hub only", False,  # noqa: E731
+                              f"Limit what a guest on the hotspot ({iface}) can reach to {FLOOR_WORDS[lv]}, and {extra} "
+                              "where installed? SSH from the hotspot is closed until you open it here. Your own network is not affected.")
         return [_finding("firewall", "What a guest on the hotspot can reach", "warn" if not ours else "problem",
                          ("Everything that listens on the box, SSH and the rest: there is no floor." if not ours else
                           "The floor is switched on, but its rules are not loaded (nft list table inet irate_box).")
@@ -1181,7 +1194,7 @@ def firewall_findings(rec):
                          "A default-drop ruleset on the hotspot's interface, loaded at boot, at one of two levels: the hub and its "
                          f"apps, or the hub alone (its apps' ports closed to guests). {extra} open to guests where installed, "
                          "SSH only if you say so; any other service of the box's, each with a switch of its own. Undo here.",
-                         [on("apps"), on("hub")])]
+                         [_chip(REACH, "firewall-off", "Everything (no floor)", True), on("apps"), on("hub")])]
     tcp, udp = firewall.ports(firewall.services_here(wanted), level)
     ssh = "ssh" in wanted
     try:
@@ -1208,13 +1221,14 @@ def firewall_findings(rec):
                      + (" (SSH from the hotspot open, by your choice)." if ssh else "; SSH from the hotspot closed.")
                      + ("".join(f" {x}." for x in said)),
                      "",
-                     [{"choice": f"firewall-{other}", "label": "Hub only: close the apps' ports" if other == "hub" else "Hub and apps: open the apps' ports",
-                       "confirm": None},
-                      {"choice": "firewall-ssh-off" if ssh else "firewall-ssh-on",
-                       "label": "Close SSH from the hotspot" if ssh else "Open SSH from the hotspot",
-                       "confirm": None if ssh else "Let guests on the hotspot reach SSH (port 22)? Keys-only logins are strongly advised first (above)."},
-                      *switches,
-                      {"choice": "firewall-off", "label": "Switch the floor off", "confirm": "Take the floor away? Every listener on the box is then reachable from the hotspot again."}])]
+                     [_chip(REACH, "firewall-off", "Everything (no floor)", False,
+                            "Take the floor away? Every listener on the box is then reachable from the hotspot again."),
+                      _chip(REACH, "firewall-apps", "Hub and apps", level == "apps"),
+                      _chip(REACH, "firewall-hub", "Hub only", level != "apps"),
+                      _chip("SSH from the hotspot", "firewall-ssh-off", "Closed", not ssh),
+                      _chip("SSH from the hotspot", "firewall-ssh-on", "Open", ssh,
+                            "Let guests on the hotspot reach SSH (port 22)? Keys-only logins are strongly advised first (above)."),
+                      *switches])]
 
 
 def _firewall(rec, what):

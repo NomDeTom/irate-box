@@ -1509,6 +1509,8 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .helper-queue ol.admin-checks { list-style: decimal; padding-left: 1.4rem; }
 .helper-queue li.bad { color: var(--bad); }
 
+.sec-choice { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.6rem 0; cursor: default; }
+
 /* Each of these sets a display of its own, which outranks the browser's rule for [hidden]: without this,
    an element the page hides stays on screen (found by tests/browser/look.mjs). Kept last, and as specific
    as the rules they answer. */

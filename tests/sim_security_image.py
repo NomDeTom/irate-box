@@ -311,10 +311,12 @@ check("  the key moved to keyrings and named in the source; trusted.gpg.d withou
 print(security.fix("apt-undo:home_mPWRD_OS.gpg", None))
 check("  undone: both back as they were", (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text().startswith("deb http://")
       and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists() and not (T / "keyrings" / "home_mPWRD_OS.gpg").exists())
-check("logs in RAM (zram on /var/log): warned, the card offered", g["logs-ram"]["status"] == "warn" and g["logs-ram"]["actions"][0]["choice"] == "logs-card")
+opt = lambda f, choice: next((a for a in f["actions"] if a["choice"] == choice), None)  # noqa: E731
+check("logs in RAM (zram on /var/log): warned, In RAM the choice now, the card offered", g["logs-ram"]["status"] == "warn"
+      and [(a["label"], a["on"]) for a in g["logs-ram"]["actions"]] == [("In RAM", True), ("On the card", False)] and opt(g["logs-ram"], "logs-card"))
 print(security.fix("logs-card", None))
 check("  ramlog off and the journal kept, from the next boot", "ENABLED=false" in (T / "ramlog").read_text() and "Storage=persistent" in (T / "journald.conf.d" / "irate-box.conf").read_text()
-      and gate()["logs-ram"]["actions"][-1]["choice"] == "logs-undo")
+      and [(a["choice"], a["on"]) for a in gate()["logs-ram"]["actions"]] == [("logs-undo", False), ("logs-card", True)])
 (T / "log-on-card").touch()
 check("  on the card: ok", gate()["logs-ram"]["status"] == "ok")
 (T / "log-on-card").unlink()
