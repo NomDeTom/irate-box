@@ -2854,7 +2854,7 @@ const CONN_FIELDS = [
     (p) => p.metered || 'unknown', 'For a phone\'s hotspot, say: updates and library downloads wait.'],
   ['mac', 'MAC address', [['', 'as the box default'], ['permanent', 'the board\'s own'], ['preserve', 'as the device has it'],
     ['random', 'random each time'], ['stable', 'stable, made up for this connection'], ['stable-ssid', 'stable, made up per network']],
-    (p) => p.mac || '', 'Random: the router sees a new device each time, so a reserved address or MAC filter stops working.'],
+    (p) => p.cloned || '', 'Random: the router sees a new device each time, so a reserved address or MAC filter stops working.'],
   ['bssid', 'Lock to one access point', 'bssid', (p) => p.bssid_lock || '',
     'Locked: the box cannot roam; if that access point goes, the box stays off the network.'],
   ['band', 'Lock to a band', [['', 'any'], ['bg', '2.4 GHz only'], ['a', '5 GHz only']], (p) => p.band_lock || '',

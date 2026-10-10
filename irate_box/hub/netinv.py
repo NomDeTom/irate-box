@@ -394,7 +394,7 @@ def nm_profile(ref):
             "bssid_lock": kv.get("802-11-wireless.bssid") or None, "band_lock": kv.get("802-11-wireless.band") or None,
             "powersave": num("802-11-wireless.powersave"), "dhcp_timeout": num("ipv4.dhcp-timeout"),
             "ipv4": kv.get("ipv4.method"), "iface": kv.get("connection.interface-name") or None,
-            "metered": kv.get("connection.metered") or None, "mac": kv.get("802-11-wireless.cloned-mac-address") or None,
+            "metered": kv.get("connection.metered") or None, "cloned": kv.get("802-11-wireless.cloned-mac-address") or None,
             "channel": num("802-11-wireless.channel"), "hidden": kv.get("802-11-wireless.hidden") == "yes",
             "netplan": (kv.get("connection.id") or "").startswith("netplan-")}
 
