@@ -369,6 +369,50 @@ factory.unpublish("2.8.1.abcdef0-built", "heltec-v3")
 check("  the last target out: the release gone, and from the flasher's list", not rel.exists()
       and not json.loads(flasher.api("/flasher/api/github/firmware/list")[1])["releases"]["alpha"])
 
+# The light web flasher (ESP Web Tools): a manifest per published ESP32 target, made from its factory.bin.
+def merged(chip_id, at, table, size=0x9000):
+    img = bytearray(b"\xff" * size)
+    img[at] = 0xE9
+    img[at + 12:at + 14] = chip_id.to_bytes(2, "little")
+    for i, (typ, sub, off, sz, label) in enumerate(table):
+        e = b"\xaa\x50" + bytes([typ, sub]) + off.to_bytes(4, "little") + sz.to_bytes(4, "little") + label.encode().ljust(16, b"\0") + b"\0" * 4
+        img[0x8000 + 32 * i:0x8000 + 32 * i + 32] = e
+    return bytes(img)
+MT_TABLE = [(1, 2, 0x9000, 0x5000, "nvs"), (1, 0, 0xE000, 0x2000, "otadata"), (0, 0x10, 0x10000, 0x250000, "app0"),
+            (0, 0x11, 0x260000, 0xA0000, "flashApp"), (1, 0x82, 0x300000, 0x100000, "spiffs")]
+esp = T / "firmware" / "2.9.0.1234567-built"
+esp.mkdir(parents=True)
+for env, chip_id, at, fs_size in (("heltec-v3", 9, 0, 1000), ("tbeam", 0, 0x1000, 0x100001)):
+    names = {f"firmware-{env}-2.9.0.1234567.factory.bin": merged(chip_id, at, MT_TABLE), f"firmware-{env}-2.9.0.1234567.bin": b"app",
+             f"littlefs-{env}-2.9.0.1234567.bin": b"\0" * fs_size, ("mt-esp32s3-ota.bin" if chip_id else "mt-esp32-ota.bin"): b"ota"}
+    for n, data in names.items():
+        (esp / n).write_bytes(data)
+    (esp / f"firmware-{env}-2.9.0.1234567-built.mt.json").write_text(json.dumps({"files": [{"name": n} for n in names] + [{"name": "../escape.bin"}]}))
+(esp / "firmware-rak4631-2.9.0.1234567-built.mt.json").write_text(json.dumps({"files": [{"name": "x.uf2"}]}))
+(esp / "firmware-2.9.0.1234567-built.json").write_text(json.dumps({"version": esp.name, "targets": [
+    {"board": "heltec-v3", "platform": "esp32-s3"}, {"board": "tbeam", "platform": "esp32"}, {"board": "rak4631", "platform": "nrf52840"}]}))
+m = flasher.esp_manifest("2.9.0.1234567-built", "heltec-v3")
+check("ESP Web Tools: an S3's manifest, its chip from the image header", m and m["builds"][0]["chipFamily"] == "ESP32-S3"
+      and m["version"] == "2.9.0.1234567" and m["new_install_prompt_erase"] is True, m)
+check("  factory.bin at 0, the OTA loader at the second app partition, the file system at the data one",
+      [(p["path"].rsplit("/", 1)[1], p["offset"]) for p in m["builds"][0]["parts"]] == [
+          ("firmware-heltec-v3-2.9.0.1234567.factory.bin", 0), ("littlefs-heltec-v3-2.9.0.1234567.bin", 0x300000), ("mt-esp32s3-ota.bin", 0x260000)]
+      and all(p["path"].startswith("/flasher/firmware/2.9.0.1234567-built/") for p in m["builds"][0]["parts"]), m["builds"][0]["parts"])
+m2 = flasher.esp_manifest("2.9.0.1234567-built", "tbeam")
+check("  the classic ESP32 (its header at 0x1000); a file system bigger than its partition left out",
+      m2["builds"][0]["chipFamily"] == "ESP32" and [p["offset"] for p in m2["builds"][0]["parts"]] == [0, 0x260000], m2)
+check("  not offered: an nRF52, a name that climbs, a librarian's release", flasher.esp_manifest("2.9.0.1234567-built", "rak4631") is None
+      and flasher.esp_manifest("2.9.0.1234567-built", "../x") is None and flasher.esp_manifest("2.9.0.1234567", "heltec-v3") is None)
+status, body = flasher.api("/flasher/api/esp")
+lst = json.loads(body)
+check("the page's list: the ESP32 targets, with their chips; the engine and the download said",
+      status == 200 and [(t["env"], t["chip"], t["parts"]) for t in lst["targets"]] == [("heltec-v3", "ESP32-S3", 3), ("tbeam", "ESP32", 2)]
+      and lst["engine"] is False and lst["download"] is False, lst)
+status, body = flasher.api("/flasher/api/esp/2.9.0.1234567-built/heltec-v3/manifest.json")
+check("  a target's manifest by its address", status == 200 and json.loads(body) == m)
+check("  none for one not offered", flasher.api("/flasher/api/esp/2.9.0.1234567-built/rak4631/manifest.json")[0] == 404)
+check("chip(): not an image", flasher.chip(b"\0" * 0x2000) is None and flasher.chip(b"") is None)
+
 # The front page's tile (the owner's choice): the view and the files a guest may have.
 for p in ci.QUEUE.glob("*.json"):
     p.unlink()

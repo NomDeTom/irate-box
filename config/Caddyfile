@@ -260,6 +260,12 @@
 				header Cache-Control "no-cache"
 				file_server
 			}
+			# The light web flasher's engine (ESP Web Tools), loaded by the page /flasher/ in place.
+			handle_path /flasher/esp-web-tools/* {
+				header Cache-Control "no-cache"
+				root * {$HUB_EWT_ROOT:/usr/share/hub/apps/esp-web-tools}
+				file_server
+			}
 			handle_path /flasher/firmware/* {
 				header Access-Control-Allow-Origin "*"
 				header Cache-Control "no-cache"

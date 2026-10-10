@@ -358,6 +358,13 @@ server {
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
 	}
+	# The light web flasher's engine (ESP Web Tools), loaded by the page /flasher/ in place.
+	location ^~ /flasher/esp-web-tools/ {
+		if ($irate_box_off_flasher) { return 404; }
+		alias @APPS@/esp-web-tools/;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
+	}
 	location ^~ /flasher/firmware/ {
 		if ($irate_box_off_flasher) { return 404; }
 		alias @FIRMWARE@/;

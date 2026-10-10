@@ -7,8 +7,17 @@ fails=0; ok() { echo "  ok   $*"; }; bad() { echo "  FAIL $*"; fails=$((fails+1)
 check() { local want=$1; shift; local got; got="$("$@" 2>/dev/null)"; [ "$got" = "$want" ] && ok "$* -> $got" || bad "$* -> $got (want $want)"; }
 hdr() { curl -s -D - -o /dev/null "$@" | tr -d '\r' | awk -F': ' -v h="$HDR" 'tolower($1)==tolower(h){print $2}'; }
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-echo "== the page"
-check 302 code http://$H/flasher/
+echo "== the light flasher: its page in place, its list, ESP Web Tools"
+check 301 code http://$H/flasher
+check 200 code http://$H/flasher/
+check 1 sh -c "curl -s http://$H/flasher/ | grep -c '<h1>⚡ Web flasher</h1>'"
+check '[] True' sh -c "curl -s http://$H/flasher/api/esp | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[\"targets\"], d[\"engine\"])'"
+check 404 code http://$H/flasher/api/esp/2.9.0.1234567-built/x/manifest.json
+check 200 code http://$H/flasher/esp-web-tools/install-button.js
+check 10.4.0 sh -c "curl -s http://$H/flasher/esp-web-tools/VERSION"
+check 1 sh -c "curl -s http://$H/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt | grep -c '^BSD-3-Clause (lit'"
+check 1 sh -c "curl -s -D - -o /dev/null http://$H/flasher/esp-web-tools/install-button.js | grep -ci '^content-type: [a-z/]*javascript'"
+echo "== the Meshtastic one, as a download"
 curl -s -H "Host: $G" http://$H/flasher/flasher.html -o /tmp/dl.html
 check 0 sh -c "grep -c __IRATE_BOX_ORIGIN__ /tmp/dl.html"
 check 16 sh -c "grep -o 'http://$G/flasher' /tmp/dl.html | wc -l"

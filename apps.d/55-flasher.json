@@ -4,7 +4,7 @@
   "status": {
     "path": "/flasher/",
     "name": "Web flasher",
-    "root_env": "HUB_FLASHER_ROOT"
+    "root_env": "HUB_EWT_ROOT"
   },
   "install": {
     "dir": "apps/flasher",
@@ -24,9 +24,9 @@
         "meshtastic": 2,
         "tools-rf": 2
       },
-      "name": "Web flasher, as a download (to flash a radio over USB)",
-      "desc": "One file: save it, then open it from your downloads in Chrome or Edge and plug the radio in. It finds this hub's firmware by itself, or flashes a release zip you have",
-      "href": "/flasher/flasher.html"
+      "name": "Web flasher (to flash an ESP32 radio over USB)",
+      "desc": "In Chrome or Edge on a computer, over this box's HTTPS address: plug the radio in and press Install. The builds are the ones published from the Firmware Factory",
+      "href": "/flasher/"
     }
   ],
   "admin": {
