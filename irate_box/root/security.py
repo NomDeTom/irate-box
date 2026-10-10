@@ -220,7 +220,7 @@ def listener_findings(found, rec):
             out.append(_finding(fid, f["name"], "warn",
                                 f"{where}. Answers name lookups from anyone on the local network; the hub does not use it.",
                                 "Turning LLMNR off in systemd-resolved closes it; normal DNS is unaffected.",
-                                [{"choice": "llmnr-off", "label": "Turn LLMNR off"}]))
+                                [_chip("LLMNR", "llmnr-on-now", "On", True), _chip("LLMNR", "llmnr-off", "Off", False)]))
         elif f["port"] in (41641,) or (f["unit"] or "").startswith("tailscaled"):
             out.append(_finding(fid, "Tailscale", "ok", f"{where}. Encrypted (WireGuard); switched on and off under Access."))
         else:
@@ -258,7 +258,7 @@ def listener_findings(found, rec):
                             [{"choice": "cockpit-undo", "label": "Undo"}]))
     if rec.get("llmnr"):
         out.append(_finding("llmnr-change", "LLMNR", "ok", "Turned off from this page.", "",
-                            [{"choice": "llmnr-undo", "label": "Undo"}]))
+                            [_chip("LLMNR", "llmnr-undo", "On", False), _chip("LLMNR", "llmnr-off-now", "Off", True)]))
     return out
 
 
@@ -1035,16 +1035,21 @@ def _unsigned_lists():
 def apt_findings(rec):
     ours = rec.get("apt", {})
     keys, unsigned = _apt_keys(), _unsigned_lists()
-    undo = [{"choice": f"apt-undo:{k}", "label": f"Put {k} back"} for k in ours]
+    # One choice per key: what it may sign for, how it is now selected.
+    undo = []
+    for k in ours:
+        undo += [_chip(k, f"apt-undo:{k}", "Any repository", False, f"Put {k} back in trusted.gpg.d, trusted for every repository again?"),
+                 _chip(k, f"apt-tied:{k}", "Only its own source", True)]
     if not keys and not unsigned:
         return [_finding("apt-trust", "Repository keys", "ok", "Every source names its own key; nothing in trusted.gpg.d but Debian's.", "", undo)]
     actions = []
     for f, _ in unsigned:
         k = _key_for(f[:-len(".list")], keys)
         if k and FILE_RE.match(k):
-            actions.append({"choice": f"apt-signedby:{k}", "label": f"Tie {k} to {f}",
-                            "confirm": f"Move {k} out of trusted.gpg.d into /usr/share/keyrings, and name it in {f} as that source's "
-                                       "signed-by key? apt then trusts it for that repository alone. Undo puts both back."})
+            actions += [_chip(k, f"apt-any:{k}", "Any repository", True),
+                        _chip(k, f"apt-signedby:{k}", f"Only {f}", False,
+                              f"Move {k} out of trusted.gpg.d into /usr/share/keyrings, and name it in {f} as that source's "
+                              "signed-by key? apt then trusts it for that repository alone. Any repository puts both back.")]
     return [_finding("apt-trust", "Repository keys trusted for every repository", "warn",
                      (f"Keys in trusted.gpg.d ({', '.join(keys)}) can sign packages for any repository, Debian's included. " if keys else "")
                      + (f"Sources with no key of their own: {', '.join(f for f, _ in unsigned)}." if unsigned else ""),
