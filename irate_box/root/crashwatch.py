@@ -95,6 +95,12 @@ RADIO_ERR = re.compile(r"USB disconnect|tx timeout|cmd (?:tx )?time ?out|firmwar
 # burst of "check cmdqueue empty", "cmd_mgr_queue cmd timed-out", then "cmd queue crashed"; none of
 # them seen in normal running). Counted for a radio with an aic driver.
 AIC_ERR = re.compile(r"cmd queue crashed|cmd_mgr_queue cmd timed-out|check cmdqueue empty", re.I)
+# The AIC8800 driver, patched to mend itself (aic8800_fdrv recover_on_timeout): on a command its firmware never
+# answers it resets the USB device, which loads the firmware afresh. Its interfaces go and come back by themselves
+# within seconds; the hotspot's has to be started again. Within DRIVER_GRACE of that line, a radio gone or the USB
+# core's reset lines are that reset at work, not a failure to act on.
+DRIVER_RESET = re.compile(r"aic8800: firmware not answering: resetting the device")
+DRIVER_GRACE = 90
 HANG_SYSCTL = {"kernel.panic": "10", "kernel.panic_on_oops": "1", "kernel.softlockup_panic": "1"}
 
 
@@ -422,15 +428,37 @@ def radio_state(known, kernel):
 class Preempt:
     """What to do about a failing radio, as far as the owner chose. act(now, states) returns the
     events of this look; the system's side (resetting, rebooting, the guards) is passed in."""
-    def __init__(self, level, reset, reboot, guards, log):
+    def __init__(self, level, reset, reboot, guards, log, hotspot=None):
         self.level, self.reset, self.reboot, self.guards, self.log = level, reset, reboot, guards, log
+        # hotspot: (missing, restore): whether the hotspot should be up and its interface is gone; start it again.
+        self.hotspot = hotspot
+        self.driver_reset = None   # when the driver last reset the radio itself
+        self.restored = True       # the hotspot seen to since that reset
         self.recent = {}        # iface: deque of (time, error count)
         self.failed = {}        # iface: since
         self.last_reset = float("-inf")
         self.reset_at = {}      # iface: when it was reset in this failure
 
-    def act(self, now, states):
+    def act(self, now, states, kernel=()):
         events = []
+        said = next((l for l in kernel if DRIVER_RESET.search(l)), None)
+        if said:
+            self.driver_reset, self.restored = now, False
+            events.append(self.log(now, "radio", "driver-reset", "the radio's driver reset it itself (its firmware stopped answering)"))
+        if self.driver_reset is not None and now - self.driver_reset < DRIVER_GRACE:
+            # Its own reset at work: the interfaces come back by themselves; once the client's is back, the hotspot.
+            back = all(not gone for iface, (gone, _e) in states.items() if not iface.startswith("ap"))
+            if back and not self.restored and self.hotspot:
+                missing, restore = self.hotspot
+                if missing():
+                    events.append(self.log(now, "radio", "reset", restore()))
+                self.restored = True
+            return events
+        if self.driver_reset is not None and not self.restored and self.hotspot:
+            missing, restore = self.hotspot
+            if missing():
+                events.append(self.log(now, "radio", "reset", restore()))
+            self.restored = True
         for iface, (gone, errs) in states.items():
             q = self.recent.setdefault(iface, deque(maxlen=2))
             q.append((now, len(errs)))
@@ -690,7 +718,7 @@ def run(once=False):
 
     def log(now, iface, kind, text, snapshot=False):
         e = {"at": now, "boot": boot_id(), "iface": iface, "kind": kind, "text": text}
-        if kind == "failed":
+        if kind in ("failed", "driver-reset"):   # filed with the kernel's lines: what failed, or what the driver timed out on
             try:
                 e["filed"] = file_radio(now, iface, text, pending["lines"], (known.get(iface) or {}).get("port"))["dir"]
             except OSError as exc:
@@ -702,7 +730,10 @@ def run(once=False):
         return e
 
     settings = load_settings()
-    pre = Preempt(settings["preempt"], lambda i: reset_radio(i, known), reboot_now, guards, log)
+    from irate_box.root import radio
+    ap_gone = lambda: radio.hotspot_up() and not any((SYS / "class/net" / i).exists() for i in known if i.startswith("ap"))  # noqa: E731
+    pre = Preempt(settings["preempt"], lambda i: reset_radio(i, known), reboot_now, guards, log,
+                  hotspot=(ap_gone, radio.restore_hotspot))
     mtime = 0.0
     while True:
         now = time.time()
@@ -721,7 +752,7 @@ def run(once=False):
             now_known = radios()
             for i, r in now_known.items():
                 known[i] = r          # a radio that came back, or a new one, watched from now on
-            pre.act(now, radio_state(known, lines))
+            pre.act(now, radio_state(known, lines), lines)
         extra = pending.pop("snap", None) or ""
         pending["snap"] = None
         if settings["snapshots"] or extra:
