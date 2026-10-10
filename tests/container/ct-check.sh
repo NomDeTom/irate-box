@@ -69,6 +69,20 @@ check 401 code -u "admin:$PW1" "http://$H/admin/"
 # back to PW1 for later runs
 set_pw "$PW2" "$PW1" >/dev/null; until_pw "$PW1" || bad "could not set the password back"
 
+echo "== the first use, once ended, stays ended"
+# What the set-up page leaves (hub_control claim): the box's own login off, no password kept. Then the installer again,
+# as every update runs it: the box must not go back to its first use. (No account is made: the rest of the checks
+# expect none.)
+cp /etc/hub/admin-password /tmp/pw.keep
+rm -f /etc/hub/admin-password
+cp /etc/nginx/irate-box.htpasswd /etc/hub/admin-login.off 2>/dev/null || echo "kept aside" >/etc/hub/admin-login.off
+bash /src/install.sh --src /src >/dev/null 2>&1
+[ ! -e "$U" ] && ok "the installer again: not the first use" || bad "the installer made the box free again (its first-use mark is back)"
+r=$(code "http://$H/admin/"); [ "$r" != 200 ] && ok "/admin/ not open to a guest ($r)" || bad "/admin/ open to a guest after the installer"
+printf '%s\n%s\n' "$PW1" "$PW1" | /opt/irate-box/irate-box hub_control script-login >/dev/null 2>&1
+rm -f /tmp/pw.keep
+until_pw "$PW1" || bad "the box's own login not back for the rest"
+
 echo "== routes"
 # Under nginx, /wiki and /notes live on their own origin (a port of their own, for origin
 # isolation), so the main origin sends a cross-origin 302 to that port; under Caddy they stay on
