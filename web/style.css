@@ -934,6 +934,11 @@ details.admin-item summary { cursor: pointer; }
 .help-points { margin: 0 0 2rem; padding-left: 1.2rem; line-height: 1.55; font-size: 0.92rem; }
 .help-points li { margin-bottom: 0.45rem; }
 .help-note { margin: 0 0 2rem; line-height: 1.55; font-size: 0.92rem; color: var(--muted); }
+/* The guide's pages (web/guide/): steps, so closer together, and commands to copy. */
+.guide .help-note { margin-bottom: 0.8rem; color: var(--text); }
+.guide h2 { margin-top: 1.8rem; }
+.help-code { margin: 0 0 0.8rem; padding: 0.6rem 0.8rem; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); font-size: 0.85rem; }
 .app-help { border: 0; background: none; padding: 0 0.3rem; font-size: 0.78rem; color: var(--muted); line-height: 1; cursor: pointer; white-space: nowrap; }
 .app-help span { font-size: 1rem; vertical-align: -0.1em; }
 .help-pop {
