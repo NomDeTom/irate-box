@@ -1106,6 +1106,13 @@ done
 # sets the box's own login for scripts instead, for scripted installs.
 UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
 UNCLAIMED=0
+# An admin account that can sign in (accounts.py's record): the first use has ended, though no password is kept here.
+admin_made() {
+	[ -s "$STATE/accounts.json" ] && python3 -c 'import json, sys
+d = json.load(open(sys.argv[1]))
+sys.exit(0 if any(a.get("role") == "admin" and a.get("state") == "user" and a.get("hash")
+                  for a in (d.get("accounts") or {}).values()) else 1)' "$STATE/accounts.json" 2>/dev/null
+}
 if [ -n "$ADMIN_PW" ]; then
 	# Root's alone from the moment it exists: a new file under umask 077, renamed over the old.
 	(umask 077 && printf '%s\n' "$ADMIN_PW" >"$ETC/.admin-password.new") && mv -f "$ETC/.admin-password.new" "$ETC/admin-password"
@@ -1113,8 +1120,12 @@ elif [ -s "$ETC/admin-password" ]; then
 	chmod 600 "$ETC/admin-password"
 	ADMIN_PW="$(head -1 "$ETC/admin-password")"
 else
-	UNCLAIMED=1
+	# No password kept: the first use (the mark there, after reset-password too, or a new box), or ended by the
+	# owner's admin account with the box's own login off. A placeholder for the web server's logins either way.
 	ADMIN_PW="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
+	if [ -e "$UNCLAIMED_MARK" ] || { [ ! -e "$ETC/admin-login.off" ] && ! admin_made; }; then
+		UNCLAIMED=1
+	fi
 fi
 
 # The front's secret for /admin (server.py FRONT_SECRET): the web server adds it to what comes
