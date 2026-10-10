@@ -70,5 +70,54 @@ IW = ("phy#3\n\tInterface ap0\n\t\tifindex 9\n\t\taddr b2:00:00:00:00:01\n\t\tss
 dev = netinv.parse_iw_dev(IW)
 check("iw dev: the hotspot stays AP with its own address, the P2P device's lines go nowhere", dev["ap0"]["type"] == "AP"
       and dev["ap0"]["addr"] == "b2:00:00:00:00:01" and dev["wlan0"]["type"] == "managed" and set(dev) == {"ap0", "wlan0"}, dev)
+# What lowers the chance of staying on the network (link_findings): from the link's connection and the defaults.
+def link_inv(profile, defaults=None, radio=None, route="wlan0", **extra):
+    r = {"iface": "wlan0", "type": "managed", "driver": "brcmfmac", "profile": profile, "roaming": {"aps": [{}, {}, {}]}}
+    r.update(radio or {})
+    return {"radios": [r], "default_route": {"iface": route} if route else None,
+            "stacks": {"networkmanager": {"running": True, "defaults": defaults or {}}, "netplan": extra.pop("netplan", None)}, **extra}
+base = {"uuid": "u1", "name": "Home", "ssid": "Home", "autoconnect": True, "powersave": 0}
+ids = lambda i: sorted(h["id"].split(":")[0] for h in netinv.link_findings(i))  # noqa: E731
+check("a plain connection: nothing found", ids(link_inv(base)) == [], netinv.link_findings(link_inv(base)))
+check("not joining by itself, locked to an access point and a band: both found",
+      ids(link_inv({**base, "autoconnect": False, "bssid_lock": "aa:bb:cc:dd:ee:ff", "band_lock": "bg"})) == ["autoconnect-off", "locked"])
+h = [x for x in netinv.link_findings(link_inv({**base, "bssid_lock": "aa:bb:cc:dd:ee:ff", "band_lock": "bg"})) if x["id"].startswith("locked")][0]
+check("  the lock says what and how many access points share the name", "the access point aa:bb:cc:dd:ee:ff and the 2.4 GHz band" in h["title"]
+      and "3 access points" in h["detail"], h)
+check("power save on for the connection: found", ids(link_inv({**base, "powersave": 3})) == ["powersave-set"])
+check("power save on as the box default, the connection leaving it: found",
+      ids(link_inv(base, {"settings": {"powersave": {"value": "3"}}})) == ["powersave-set"])
+check("  but off for that interface, which comes first: not found",
+      ids(link_inv(base, {"settings": {"powersave": {"value": "3"}}, "ifaces": {"wlan0": {"powersave": {"value": "2"}}}})) == [])
+check("a random MAC address, the connection's own or the box default's: found",
+      ids(link_inv({**base, "cloned": "random"})) == ["mac-random"] and ids(link_inv(base, {"settings": {"cloned_mac": {"value": "random"}}})) == ["mac-random"])
+check("two files for one connection: found", ids(link_inv(base, duplicate_profiles=[{"uuid": "u1", "name": "Home", "files": ["a", "b"]}])) == ["duplicate"])
+check("netplan that can't be read: a problem", [h["status"] for h in netinv.link_findings(link_inv(base, netplan={"error": "x.yaml:3:5: Invalid YAML"}))] == ["problem"])
+check("the AIC8800 driver without its own reset: found; with it: not",
+      ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {"ps_on": "Y"}})) == ["driver-wedge"]
+      and ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {"recovered_at": "0"}})) == [])
+import tempfile as _tf  # noqa: E402
+d = Path(_tf.mkdtemp())
+(d / "a.nmconnection").write_text("[connection]\nid=Home\nuuid=0c3bb1fa-0f6a-3707-8c8d-4e23598253db\n")
+(d / "b.nmconnection").write_text("[connection]\nid=Home\nuuid=0c3bb1fa-0f6a-3707-8c8d-4e23598253db\n")
+(d / "c.nmconnection").write_text("[connection]\nid=Other\nuuid=11111111-1111-1111-1111-111111111111\n")
+dup = netinv.duplicate_profiles((str(d),))
+check("  two of three files share one: that pair", len(dup) == 1 and dup[0]["files"] == ["a.nmconnection", "b.nmconnection"], dup)
+
+# The box doctor shows the inventory's warnings and problems, with the look's age when it's old.
+import json as _json, os as _os, time as _time  # noqa: E402
+_os.environ["HUB_STATE_DIR"] = str(d)
+from irate_box.root import health  # noqa: E402
+health.CONTROL = d
+inv = {"at": _time.time(), "hazards": [{"id": "locked:u1", "status": "warn", "title": "Home: locked", "detail": "Can't roam.", "fix": "Unlock it."},
+                                       {"id": "ok-thing", "status": "ok", "title": "fine", "detail": "", "fix": ""}]}
+(d / "netinv.json").write_text(_json.dumps(inv))
+f = health.check_inventory()
+check("doctor: the warnings shown, with their fix; the fine ones not", [x["id"] for x in f] == ["net:locked:u1"] and f[0]["fix"] == "Unlock it.", f)
+inv["at"] = _time.time() - 2 * 86400
+(d / "netinv.json").write_text(_json.dumps(inv))
+f = health.check_inventory()
+check("  an old look: its age said, and a finding to look again", "48 h ago" in f[0]["detail"] and f[-1]["id"] == "netinv", f)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

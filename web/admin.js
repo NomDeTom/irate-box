@@ -2798,7 +2798,10 @@ function renderDefaults(inv, busy) {
     const s = d.settings[name];
     const sel = el('select', { 'aria-label': s.label, disabled: busy });
     const boxNow = s.value === null ? `NetworkManager's own: ${s.nm_default}` : (s.values[s.value] || s.value);
-    const opts = [['default', defaultsScope ? `as the box default (${boxNow})` : `NetworkManager's own (${s.nm_default})`], ...Object.entries(s.values)];
+    // "default" means irate-box sets nothing here: said as what applies then, not as NetworkManager's
+    // own when another file (the image's) sets it.
+    const other = s.value !== null && s.mine === null ? `leave as it is (now ${s.values[s.value] || s.value}, set by ${own(s.file)})` : null;
+    const opts = [['default', defaultsScope ? `as the box default (${boxNow})` : (other || `NetworkManager's own (${s.nm_default})`)], ...Object.entries(s.values)];
     const cur = defaultsScope ? (mineIf[name] ?? null) : s.mine;
     if (s.kind === 'count' && cur !== null && !(cur in s.values)) opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
