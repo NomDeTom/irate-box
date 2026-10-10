@@ -1976,6 +1976,7 @@ def network_snapshot():
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
             "metered": _metered_view(),
+            "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
                        "roaming": list(uplink.ROAMING),
@@ -4060,6 +4061,9 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self.send_json(202, {"id": control_request({"action": "nm-defaults", "iface": iface,
                                                             "changes": {k: ("default" if v is None else v) for k, v in changes.items()}})})
+            elif act == "otherap" and isinstance(payload.get("uuid"), str) and payload.get("do") in ("remove", "leave", "undo") \
+                    and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]):
+                self.send_json(202, {"id": control_request({"action": "other-ap", "uuid": payload["uuid"], "do": payload["do"]})})
             elif act == "connection" and isinstance(payload.get("uuid"), str) \
                     and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]) \
                     and (payload.get("undo") is True or (isinstance(payload.get("changes"), dict) and payload["changes"]

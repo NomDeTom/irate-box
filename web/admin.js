@@ -2789,6 +2789,7 @@ function renderNetwork(data) {
   renderDefaults(inv, busy);
   renderHandover(inv, busy);
   renderVisible(inv, busy);
+  renderOtherAp(inv, data, busy);
   const change = u && u.profile_change;
   const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
@@ -2903,6 +2904,40 @@ net.defaultsSave.addEventListener('click', () => {
   defaultsDirty = {};
   netRequest({ action: 'defaults', changes, ...(defaultsScope ? { iface: defaultsScope } : {}) }, 'defaults');
 });
+
+// Hotspot profiles that are not irate-box's (an image's setup hotspot): removed (kept for undo), or left
+// and no longer listed. Started, one would take the box off its own network.
+function renderOtherAp(inv, data, busy) {
+  const box = document.getElementById('net-other-ap');
+  const nm = inv && inv.stacks && inv.stacks.networkmanager;
+  const chosen = data.other_ap || {};
+  const others = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode === 'ap' && p.name !== 'irate-box-ap');
+  const rows = [];
+  for (const p of others) {
+    const c = chosen[p.uuid];
+    if (c && c.choice === 'left') {
+      rows.push(el('p', { className: 'setting-desc' }, `${p.name} (${p.ssid}): another hotspot profile, left as it is. `,
+        actionButton('List it again', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+      continue;
+    }
+    rows.push(el('p', { className: 'setting-desc' },
+      `${p.name} (${p.ssid}) is another hotspot profile, not irate-box's: probably the image's setup hotspot, often with the image's own password. `
+      + `It is ${p.autoconnect ? 'set to start by itself, and at boot could take the radio and the box off its own network' : 'not set to start by itself'}. `
+      + 'irate-box\'s hotspot runs beside the link, so this one adds nothing. ',
+      actionButton('Remove it', () => {
+        if (confirm(`Remove ${p.name}? Its profile is kept, and undo brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
+      }, { className: 'small', disabled: busy }), ' ',
+      actionButton('Leave it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
+  }
+  for (const [uuid, c] of Object.entries(chosen)) {
+    if (c.choice !== 'removed') continue;
+    rows.push(el('p', { className: 'setting-desc' }, `${c.name} (${c.ssid}) removed on ${new Date(c.at * 1000).toLocaleDateString()}; kept in ${c.kept}. `,
+      actionButton('Bring it back', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+  }
+  const n = netNotes.otherap;
+  if (n) rows.push(el('p', { className: `setting-desc action-note${n.ok ? '' : ' bad'}`, role: 'status', textContent: n.text }));
+  box.replaceChildren(...rows);
+}
 
 // The networks NetworkManager has seen, to pick one rather than type its name: the form filled with its
 // name and security, the password left to type. A fresh scan on a radio the hotspot shares can move it.
