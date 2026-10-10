@@ -2192,6 +2192,42 @@ let upDirty = false;
 const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
 const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['roaming', 'roaming']];
 let netAsked = false;
+// Which connection the card shows: '' every connection, else one with its own pace, reach,
+// sensitivity, guests and wedge choice (uplink.py per_iface); the rest is the same for all.
+let upScope = '';
+let upSaved = null;
+const UP_PER_IFACE = ['pace', 'reach', 'sensitivity', 'guests', 'on_wedge'];
+const upScopeBox = document.getElementById('up-scope');
+const upScopeSays = document.getElementById('up-scope-says');
+function drawUpScope(inv) {
+  const links = inv ? [...inv.radios.filter((r) => r.type === 'managed').map((r) => [r.iface, 'WiFi']), ...inv.wired.map((w) => [w.iface, 'wired'])] : [];
+  for (const name of Object.keys((upSaved && upSaved.per_iface) || {})) if (!links.some(([i]) => i === name)) links.push([name, 'not here now']);
+  const key = JSON.stringify(links);
+  if (upScopeBox.dataset.links !== key) {
+    upScopeBox.dataset.links = key;
+    upScopeBox.replaceChildren(el('option', { value: '', textContent: 'Every connection' }),
+      ...links.map(([i, kind]) => el('option', { value: i, textContent: `${i} (${kind}) only` })));
+  }
+  upScopeBox.value = upScope;
+  for (const g of document.querySelectorAll('#net-watchdog-card .up-box-only')) g.hidden = !!upScope;
+  const own = upScope && ((upSaved && upSaved.per_iface) || {})[upScope];
+  upScopeSays.replaceChildren(...(upScope ? [
+    own ? `${upScope} has its own ${Object.keys(own).join(', ')}; the rest as for every connection. ` : `${upScope} follows the settings for every connection; a choice here becomes its own. `,
+    own ? actionButton('Use the settings for every connection', () => {
+      if (!confirm(`Let ${upScope} follow the settings for every connection again?`)) return;
+      const per = { ...(upSaved.per_iface || {}) };
+      delete per[upScope];
+      upDirty = false;
+      netRequest({ action: 'settings', settings: { ...upSaved, per_iface: per } }, 'up');
+    }) : null] : ['Pace, reach, sensitivity, guests and a wedged driver can also be chosen for one connection.']));
+}
+upScopeBox.addEventListener('change', () => {
+  if (upDirty && !confirm('Leave the choices not saved yet?')) { upScopeBox.value = upScope; return; }
+  upScope = upScopeBox.value;
+  upDirty = false;
+  if (netData && upSaved) { fillUpForm(upSaved, netData.levels); drawUpScope(netData.inventory); }
+  showUpSave();
+});
 
 // The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
 function upPreset(pick, levels) {
@@ -2344,7 +2380,9 @@ function showUpSave() {
 
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
-  for (const k of Object.keys(upPick)) upPick[k] = chosen[k] || levels.default[k] || null;
+  upSaved = chosen;
+  const view = upScope ? { ...chosen, ...((chosen.per_iface || {})[upScope] || {}) } : chosen;
+  for (const k of Object.keys(upPick)) upPick[k] = view[k] || levels.default[k] || null;
   upPick.roaming = chosen.roaming || 'roam';
   upPick.ignore_roams = !!chosen.ignore_roams;
   net.ignoreRoams.checked = upPick.ignore_roams;
@@ -2403,7 +2441,11 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  return { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides, steps_off: readUpSteps() };
+  const all = { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides, steps_off: readUpSteps() };
+  const base = upSaved || {};
+  if (!upScope) return { ...all, per_iface: base.per_iface || {} };
+  // One connection's own: those five, over what is saved for every connection.
+  return { ...base, steps_off: all.steps_off, per_iface: { ...(base.per_iface || {}), [upScope]: Object.fromEntries(UP_PER_IFACE.map((k) => [k, all[k]])) } };
 }
 
 // The steps the watchdog may take, a row of ticks per connection (the box's WiFi and wired links, and any
@@ -2702,6 +2744,7 @@ function renderNetwork(data) {
   buildUpFields(levels);
   if (!upDirty) {
     fillUpForm((u && u.chosen) || levels.default, levels);
+    drawUpScope(inv);
     renderUpSteps(data.inventory, (u && u.chosen) || {});
   }
   net.status.textContent = upStatusText(u);

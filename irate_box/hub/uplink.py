@@ -121,6 +121,7 @@ GUESTS = ("protect", "ignore")
 # spread out (a flapping link: "if the link trips the level of misses within the pace window, then
 # it is on the repair ladder"). Fewer is more sensitive.
 SENSITIVITY = (1, 20)
+PER_IFACE = ("pace", "reach", "sensitivity", "guests", "on_wedge")   # what a connection may have of its own
 # The old forgiveness, as a sensitivity: settings saved with it still load.
 FORGIVENESS_WAS = {"tolerant": 5, "normal": 3, "strict": 2}
 COMMON = {"backoff": 2.0, "max_repeat": 3600, "reboots_per_day": 3, "reboot_gap": 3600, "pause_after_change": 120,
@@ -174,7 +175,10 @@ IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leadin
 def effective(chosen, iface=None):
     """The numbers the watchdog runs on: the pace's, its steps up to the reach, the sensitivity, then
     the overrides (a step overridden beyond the reach is beyond it still); last, the steps switched off
-    for the connection watched (iface)."""
+    for the connection watched (iface). The connection's own pace, reach, sensitivity, guests and wedge
+    choice (per_iface), where it has them, come before all of that."""
+    if iface and (chosen.get("per_iface") or {}).get(iface):
+        chosen = {**chosen, **chosen["per_iface"][iface]}
     pace, reach = PACE[chosen["pace"]], chosen["reach"]
     allowed = STEPS[:REACH.index(reach)]
     eff = dict(COMMON, check=pace["check"], window=pace["window"], repeat=pace["repeat"],
@@ -308,6 +312,26 @@ def validate(raw):
             raise ValueError(f"steps_off.{name}: a list of steps ({', '.join(STEPS)})")
         if steps:
             out["steps_off"][name] = [x for x in STEPS if x in steps]
+    per = raw.get("per_iface") or {}
+    if not isinstance(per, dict) or len(per) > 16:
+        raise ValueError("per_iface must be an object of connections")
+    out["per_iface"] = {}
+    for name, own in per.items():
+        if not IFACE_RE.match(str(name)) or name == "auto":
+            raise ValueError(f"per_iface: {name} is not an interface name")
+        if not isinstance(own, dict) or any(k not in PER_IFACE for k in own):
+            raise ValueError(f"per_iface.{name}: only {', '.join(PER_IFACE)}")
+        clean = {}
+        for k, v in own.items():
+            if k == "sensitivity":
+                if type(v) is not int or not SENSITIVITY[0] <= v <= SENSITIVITY[1]:
+                    raise ValueError(f"per_iface.{name}.sensitivity: {SENSITIVITY[0]} to {SENSITIVITY[1]}")
+            elif v not in {"pace": PACE, "reach": REACH, "guests": GUESTS, "on_wedge": ON_WEDGE}[k]:
+                raise ValueError(f"per_iface.{name}.{k}: not one of the choices")
+            if v != out[k]:
+                clean[k] = v   # the same as for every connection is not kept as its own
+        if clean:
+            out["per_iface"][name] = clean
     hold = raw.get("hold_until", 0)
     out["hold_until"] = float(hold) if isinstance(hold, (int, float)) and hold >= 0 else 0
     return out

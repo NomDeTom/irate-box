@@ -995,32 +995,51 @@
                 <h4>Staying on the network</h4>
                 <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
                 <div class="library-buttons" id="up-stall" hidden></div>
-                <div class="net-settings">
-                  <span class="setting-name" id="up-pace-label">Pace: how soon it acts, and how often</span>
-                  <div class="choice-tiles" id="up-pace" role="radiogroup" aria-labelledby="up-pace-label"></div>
-                  <span class="setting-name" id="up-reach-label">Reach: the furthest it may go</span>
-                  <div class="choice-tiles" id="up-reach" role="radiogroup" aria-labelledby="up-reach-label"></div>
-                  <span class="setting-name" id="up-guests-label">Guests on the hotspot</span>
-                  <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
-                  <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
-                  <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
-                  <span class="setting-name" id="up-roaming-label">Roaming between access points that share your network's name</span>
-                  <div class="choice-tiles" id="up-roaming" role="radiogroup" aria-labelledby="up-roaming-label"></div>
-                  <div class="net-lock-aps" id="up-lock-aps" role="radiogroup" aria-label="The access point to lock to" hidden></div>
-                  <label class="inline"><input type="checkbox" id="up-ignore-roams"> Don't count short roams as missed checks: a drop that is
-                    back within 20 s on the same network is drawn on the chart, never counted (failed gateway checks still count)</label>
-                  <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
-                  <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
-                    <span class="setting-desc" id="up-sens-says"></span></span>
-                  <label class="setting-name" for="up-iface">Watch</label>
-                  <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+                <div class="net-settings up-settings">
+                  <div class="up-group up-scope-row">
+                    <label class="setting-name" for="up-scope">For</label>
+                    <select id="up-scope"><option value="">Every connection</option></select>
+                    <p class="setting-desc" id="up-scope-says"></p>
+                  </div>
+                  <div class="up-group">
+                    <span class="setting-name" id="up-pace-label">Pace: how soon it acts, and how often</span>
+                    <div class="choice-tiles" id="up-pace" role="radiogroup" aria-labelledby="up-pace-label"></div>
+                  </div>
+                  <div class="up-group">
+                    <span class="setting-name" id="up-reach-label">Reach: the furthest it may go</span>
+                    <div class="choice-tiles" id="up-reach" role="radiogroup" aria-labelledby="up-reach-label"></div>
+                  </div>
+                  <div class="up-group">
+                    <span class="setting-name" id="up-guests-label">Guests on the hotspot</span>
+                    <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
+                  </div>
+                  <div class="up-group">
+                    <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
+                    <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
+                  </div>
+                  <div class="up-group">
+                    <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
+                    <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
+                      <span class="setting-desc" id="up-sens-says"></span></span>
+                  </div>
+                  <div class="up-group up-box-only">
+                    <span class="setting-name" id="up-roaming-label">Roaming between access points that share your network's name</span>
+                    <div class="choice-tiles" id="up-roaming" role="radiogroup" aria-labelledby="up-roaming-label"></div>
+                    <div class="net-lock-aps" id="up-lock-aps" role="radiogroup" aria-label="The access point to lock to" hidden></div>
+                    <label class="inline"><input type="checkbox" id="up-ignore-roams"> Don't count short roams as missed checks: a drop that is
+                      back within 20 s on the same network is drawn on the chart, never counted (failed gateway checks still count)</label>
+                  </div>
+                  <div class="up-group up-box-only">
+                    <label class="setting-name" for="up-iface">Watch</label>
+                    <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+                  </div>
                   <!-- The steps the watchdog may take, per connection: unticked, it never takes that one there
                        (admin.js renderUpSteps; uplink.py steps_off). -->
                   <span class="setting-name" id="up-steps-label">Steps it may take, for each connection</span>
                   <p class="setting-desc">Untick a step to leave it out on that connection: a radio a network restart unsettles can go
                     straight from a reconnect to a radio reset. The reach above still caps how far it goes.</p>
                   <div class="up-steps" id="up-steps" role="group" aria-labelledby="up-steps-label"></div>
-                  <details id="up-custom">
+                  <details id="up-custom" class="up-box-only">
                     <summary>Custom values (blank: the pace's own)</summary>
                     <div class="net-fields" id="up-fields"></div>
                   </details>
