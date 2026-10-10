@@ -31,6 +31,12 @@ from irate_box.root import safeio
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
 FILESYSTEMS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "iso9660"}
+# Each one's kernel driver (the module's name, for modprobe), and its name in words.
+DRIVER = {"vfat": "vfat", "exfat": "exfat", "ntfs": "ntfs3", "ntfs3": "ntfs3", "ext2": "ext4", "ext3": "ext4", "ext4": "ext4",
+          "btrfs": "btrfs", "xfs": "xfs", "f2fs": "f2fs", "iso9660": "isofs"}
+FS_WORDS = {"vfat": "FAT", "exfat": "exFAT", "ntfs": "NTFS", "ntfs3": "NTFS", "ext2": "ext2", "ext3": "ext3", "ext4": "ext4",
+            "btrfs": "btrfs", "xfs": "XFS", "f2fs": "F2FS", "iso9660": "ISO 9660 (a disc image)"}
+PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 CHUNK = 1 << 20
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 # For tests only: count loop devices as sticks (a container has no USB to plug in).
@@ -39,6 +45,21 @@ INCLUDE_LOOP = os.environ.get("HUB_USB_INCLUDE_LOOP") == "1"
 
 def run(*cmd, timeout=60):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def readable():
+    """{fstype: True if this box can mount it}: its kernel knows it already (/proc/filesystems), or can load its driver
+    (modprobe's dry run, which a built-in driver passes too), or, for NTFS, ntfs-3g is installed."""
+    try:
+        known = {line.split()[-1] for line in (PROC / "filesystems").read_text().splitlines() if line.strip()}
+    except OSError:
+        known = set()
+    drivers = {}
+    for fs in sorted(FILESYSTEMS):
+        mod = DRIVER[fs]
+        if mod not in drivers:
+            drivers[mod] = fs in known or mod in known or run("modprobe", "-n", "-q", mod, timeout=20).returncode == 0
+    return {fs: drivers[DRIVER[fs]] or (fs == "ntfs" and bool(shutil.which("ntfs-3g"))) for fs in FILESYSTEMS}
 
 
 def _walk(devs, parent_usb=False):
@@ -131,7 +152,15 @@ def _zims(root, depth=3):
 
 def scan():
     out = []
+    can = readable()
     for dev in devices():
+        fs = (dev.get("fstype") or "").lower()
+        if not can.get(fs, True):
+            dev["zims"], dev["kits"] = [], []
+            dev["error"] = (f"This box cannot read {FS_WORDS.get(fs, fs)}: its kernel has no driver for it. A stick formatted "
+                            "FAT or exFAT reads on any box.")
+            out.append(dev)
+            continue
         try:
             with Mounted(dev) as root:
                 dev["zims"] = _zims(root)
