@@ -84,14 +84,15 @@ def finding():
     return security.firewall_findings(security.load_record())[0]
 f = finding()
 check("no floor: a warning saying what it would allow, with a switch for each level", f["status"] == "warn"
-      and [a["choice"] for a in f["actions"]] == ["firewall-apps", "firewall-hub"]
+      and [(a["choice"], a["on"]) for a in f["actions"]] == [("firewall-off", True), ("firewall-apps", False), ("firewall-hub", False)]
       and "TCP 53, 80, 443, 8090" in f["detail"] and "wlan1" in f["detail"], f)
 print(security.fix("firewall-on", None))
 f = finding()
 check("on: the file written for wlan1, checked, the unit enabled and loaded; ok, SSH closed, with the SSH switch and Undo",
       (ETC / "firewall.nft").read_text().count('iifname "wlan1"') == 2 and "enable irate-box-firewall.service" in (T / "systemctl-log").read_text()
       and (T / "loaded").exists() and f["status"] == "ok" and "SSH from the hotspot closed" in f["detail"]
-      and [a["choice"] for a in f["actions"]] == ["firewall-hub", "firewall-ssh-on", "firewall-off"], f)
+      and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group")] == [("firewall-off", False), ("firewall-apps", True), ("firewall-hub", False),
+                                                                         ("firewall-ssh-off", True), ("firewall-ssh-on", False)], f)
 check("  no MQTT or Syncthing on this box: not opened", "1883" not in (ETC / "firewall.nft").read_text())
 (T / "mosquitto" / "conf.d").mkdir(parents=True); (T / "mosquitto" / "conf.d" / "irate-box.conf").write_text("listener 1883\n")
 security.fix("firewall-on", None)
@@ -105,7 +106,8 @@ check("  closed again", "{ 22, 53" not in (ETC / "firewall.nft").read_text())
 print(security.fix("firewall-hub", None))
 f = finding()
 check("hub only: the apps' ports closed, said, the switch back to hub and apps", "8090" not in (ETC / "firewall.nft").read_text()
-      and security.load_record()["firewall"]["level"] == "hub" and f["detail"].startswith("Hub only") and f["actions"][0]["choice"] == "firewall-apps", f)
+      and security.load_record()["firewall"]["level"] == "hub" and f["detail"].startswith("Hub only")
+      and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group") == security.REACH] == [("firewall-off", False), ("firewall-apps", False), ("firewall-hub", True)], f)
 print(security.fix("firewall-apps", None))
 check("  and back", "8090" in (ETC / "firewall.nft").read_text() and security.load_record()["firewall"]["level"] == "apps")
 # A declared service (IRC's manifest: network block): no switch while it isn't installed; added after the

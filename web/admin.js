@@ -1346,6 +1346,28 @@ async function healthRepair(choice, label, confirmText) {
   } catch (err) { say(err.message, false, sec.auditNote); }
 }
 
+// A choice on the Security page, as a setting rather than a finding: its name, what it means, its options as
+// chips with how it is now selected (actions with a group), and any other buttons. The status words and
+// "what to do" are the doctors' (Security doctor), not this page's.
+function secChoiceCard(f, busy, note) {
+  const groups = new Map();
+  (f.actions || []).filter((a) => a.group).forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
+  const rows = [...groups].map(([label, choices]) => el('div', { className: 'aw-field' },
+    el('span', { className: 'aw-label', textContent: label }),
+    el('div', { className: 'chip-group', role: 'group', 'aria-label': label }, ...choices.map((a) => {
+      const b = el('button', { type: 'button', className: 'chip' + (a.on ? ' selected' : ''), textContent: a.label, disabled: busy,
+        onclick: () => { if (!a.on) secFix(f.id, a); } });
+      b.setAttribute('aria-pressed', String(!!a.on));
+      return b;
+    }))));
+  const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
+  const buttons = rest.actions.length ? el('div', { className: 'library-buttons' }, ...scanButtons(rest, busy)) : null;
+  return el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
+    el('span', { className: 'setting-name', textContent: f.title }),
+    el('span', { className: 'setting-desc', textContent: f.detail }),
+    f.status !== 'ok' && f.fix && !groups.size && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
+    ...rows, buttons, note);
+}
 function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
@@ -1366,13 +1388,17 @@ function renderSecurity(data) {
     controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
   // The real choices: what waits for one first, what is set (with its Undo) in a fold.
   const waiting = by('choice').filter((f) => f.status !== 'ok'), set = by('choice').filter((f) => f.status === 'ok');
-  sec.findings.replaceChildren(...(waiting.length ? waiting.map((f) => row(f))
+  const card = (f) => secChoiceCard(f, busy, noteUnder(f.id));
+  sec.findings.replaceChildren(...(waiting.length ? waiting.map(card)
     : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing: every choice here is made.' : 'Not scanned yet.' })]));
-  sec.set.replaceChildren(...set.map((f) => row(f, { how: f.actions.length ? 'Each change made here can be put back as it was.' : '' })));
+  sec.set.replaceChildren(...set.map(card));
   sec.setCount.textContent = `(${set.length})`;
   // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
-  sec.hub.replaceChildren(...data.hub.map((f) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
-    how: (f.do && f.do.hub) || f.fix || '', controls: f.do && f.do.go ? [el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })] : [] })));
+  sec.hub.replaceChildren(...data.hub.map((f) => el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
+    el('span', { className: 'setting-name', textContent: f.title }),
+    el('span', { className: 'setting-desc', textContent: f.detail }),
+    (f.do && f.do.hub) || f.fix ? el('span', { className: 'setting-desc', textContent: (f.do && f.do.hub) || f.fix }) : null,
+    f.do && f.do.go ? el('div', { className: 'library-buttons' }, el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })) : null)));
   // Debian's security updates, on Updates.
   // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's.
   // Its badge (up to date / update available) is as fresh as the package lists it was read from.
