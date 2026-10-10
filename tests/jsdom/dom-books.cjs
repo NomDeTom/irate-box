@@ -118,6 +118,16 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   cf.elements.q.value = 'offline'; cf.dispatchEvent(new w.Event('submit', { cancelable: true })); await wait();
   check('offline: the hub\'s reason said', /could not be read .* It needs the internet\./.test(t(d.getElementById('catalogue-note'))), t(d.getElementById('catalogue-note')));
   check('the budget field in the schedule', !!d.querySelector('#library-policy input[name="books_budget_mb"]'));
+  // Suggested for an offline box: the list, each with its size and use; one kept already said so; Keep adds it by name.
+  const sug = () => [...d.querySelectorAll('#suggested-books .admin-item')];
+  check('suggested books: six, each with its size and what it is for', sug().length === 6 && /Amateur Radio Q&A About 72\.0 MB: questions and answers/.test(t(sug()[3])), t(sug()[3] || d.body));
+  w.eval("drawSuggested([{ type: 'kiwix', kiwix_name: 'wikivoyage_en_all', flavour: 'nopic' }])");
+  check('  one kept here already: said, no button', /Kept here already/.test(t(sug()[1])) && !sug()[1].querySelector('button'), t(sug()[1]));
+  posted.length = 0;
+  sug()[3].querySelector('button').click(); await wait();
+  const sAdd = posted.find((b) => b.action === 'add');
+  check('  Keep current here: a kiwix source by its catalogue name and flavour', sAdd && sAdd.source.kiwix_name === 'ham.stackexchange.com_en_all'
+    && sAdd.source.type === 'kiwix' && sAdd.source.flavour === '' && sAdd.source.name === 'ham.stackexchange.com_en_all', JSON.stringify(sAdd));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
