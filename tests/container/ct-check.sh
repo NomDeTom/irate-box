@@ -82,6 +82,20 @@ r=$(code "http://$H/admin/"); [ "$r" != 200 ] && ok "/admin/ not open to a guest
 printf '%s\n%s\n' "$PW1" "$PW1" | /opt/irate-box/irate-box hub_control script-login >/dev/null 2>&1
 rm -f /tmp/pw.keep
 until_pw "$PW1" || bad "the box's own login not back for the rest"
+echo "== the box's own login: from the box itself, or the network too (Accounts)"
+IP=$(hostname -I | awk '{print $1}')
+reach() {
+	local id; id="$(curl -s -u "admin:$PW1" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' \
+		-d "{\"action\":\"admin-login\",\"reach\":\"$1\"}" "http://$H/admin/accounts" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+	result "$id"
+}
+r="$(reach local)"; [[ $r == OK* ]] && ok "reach: from the box itself ($r)" || bad "reach local: $r"
+sleep 2
+check 200 code -u "admin:$PW1" "http://127.0.0.1/admin/"
+r=$(code -u "admin:$PW1" "http://$IP/admin/"); [ "$r" != 200 ] && ok "from another address the login counts for nothing ($r)" || bad "the login worked from $IP"
+r="$(reach network)"; [[ $r == OK* ]] && ok "reach: from the network too" || bad "reach network: $r"
+sleep 2
+check 200 code -u "admin:$PW1" "http://$IP/admin/"
 
 echo "== routes"
 # Under nginx, /wiki and /notes live on their own origin (a port of their own, for origin

@@ -189,7 +189,7 @@ A.login("carol", "password6", https=True)
 out = H.admin_login({"on": False})
 check("  then off: the login file emptied, its hash kept aside, the gates send people to log in, the hub told",
       "admin:" not in (T / "etc" / "htpasswd").read_text() and (T / "etc" / "admin-login.off").read_text() == "admin:$6$hash\n"
-      and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False}
+      and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
       and "carol" in out, out)
 check("  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
       refused(A.change, "carol", "user", True, says="last admin") and refused(A.change, "carol", "delete", True, says="last admin")
@@ -209,14 +209,14 @@ check("  and the root helper reads readiness from the accounts themselves", H._a
 H.admin_login({"on": False})
 H.set_login("a-new-password", keep=False)
 check("  a new password (reset-password at the console): on again", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
-      and not (T / "etc" / "admin-login.off").exists() and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": True})
+      and not (T / "etc" / "admin-login.off").exists() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True)
 # The first use ended by the owner's admin account: no password made for scripts, the box's own login off.
 H.UNCLAIMED = T / "etc" / "unclaimed"; H.UNCLAIMED.write_text("first use\n")
 (T / "etc" / "admin-password").write_text("an-old-one\n")
 out = H.claim({})
 check("claim: the first use over, no login of the box's own (the file emptied, none saved), the gates send people to sign in",
       not H.UNCLAIMED.exists() and not (T / "etc" / "admin-password").exists() and "admin:" not in (T / "etc" / "htpasswd").read_text()
-      and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False} and "error_page 401" in (gd / "gate-admin.conf").read_text()
+      and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and "error_page 401" in (gd / "gate-admin.conf").read_text()
       and "no login" in out, out)
 try:
     H.claim({}); check("  a second claim: refused", False)
@@ -224,7 +224,40 @@ except ValueError as exc:
     check("  a second claim: refused", "already ended" in str(exc), exc)
 H.set_login("pw-for-scripts")
 check("  script-login at the console afterwards: the login on, its password root's", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
-      and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n" and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": True})
+      and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n" and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True)
+
+# The box's own login's reach (Accounts): off, from the box itself, from the network too; the password only at the console.
+net = T / "etc" / "htpasswd.net"
+(T / "etc" / "admin-password").unlink(missing_ok=True)
+try:
+    H.admin_login({"reach": "local"}); check("reach without a password: refused, the console named", False)
+except ValueError as exc:
+    check("reach without a password: refused, the console named", "script-login" in str(exc), exc)
+H.set_login("pw-for-scripts")
+H.admin_login({"reach": "local"})
+rec = json.loads(H.ADMIN_LOGIN_STATE.read_text())
+check("from the box itself: the login on, the network's copy holding none; said in the record", rec == {"on": True, "reach": "local", "password_set": True}
+      and (T / "etc" / "htpasswd").read_text().startswith("admin:$6$") and "admin:" not in net.read_text(), (rec, net.read_text()))
+H.admin_login({"reach": "network"})
+check("from the network too: the network's copy the same login", net.read_text() == (T / "etc" / "htpasswd").read_text()
+      and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] == "network")
+H.admin_login({"reach": "off"})
+check("off: off, both without a login", json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] == "off" and "admin:" not in net.read_text()
+      and "admin:" not in (T / "etc" / "htpasswd").read_text())
+H.admin_login({"reach": "local"})
+check("back on from the box itself: the login as it was", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$") and "admin:" not in net.read_text())
+try:
+    H.admin_login({"reach": "everywhere"}); check("an unknown reach: refused", False)
+except ValueError:
+    check("an unknown reach: refused", True)
+check("Caddy, from the box itself: a login from elsewhere dropped before the gate", access.CADDY_FAR_LOGIN in access.caddy_admin_gate(True, True, True)
+      and access.CADDY_FAR_LOGIN not in access.caddy_admin_gate(True, True, False) and access.CADDY_FAR_LOGIN not in access.caddy_admin_gate(False, True, True)
+      and access.CADDY_FAR_LOGIN.replace("\n", "\n\t") in access.caddy_admin_route("$2a$x", admin_login=True, local_only=True))
+site_text = (REPO / "config" / "irate-box.nginx").read_text()
+check("nginx: every login file read through the map (the box's own address, else the network's copy)",
+      "auth_basic_user_file @HTPASSWD@;" not in site_text and site_text.count("auth_basic_user_file $irate_box_logins;") >= 20
+      and 'default "@HTPASSWD@.net";' in site_text)
+H.admin_login({"reach": "network"})  # as the rest of the test knows it
 
 # The same under Caddy: its hashes swapped for an unknown one and back; the gate hard while off.
 CF = T / "Caddyfile"
@@ -249,7 +282,7 @@ try:
           REAL not in CF.read_text() and CF.read_text().count("$2a$14$" + "u" * 53) == 2
           and (T / "etc" / "admin-login.off").read_text().strip() == REAL and "redirect=1" in gate
           and any(c[-2:] == ["restart", "caddy"] for c in caddy_calls if isinstance(c, list))
-          and json.loads(H.ADMIN_LOGIN_STATE.read_text()) == {"on": False} and "carol" in out, (out, CF.read_text()))
+          and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and "carol" in out, (out, CF.read_text()))
     H.admin_login({"on": True})
     check("  on again: the real hash back everywhere; an admin account ready, so a browser goes to sign in, a script's login passes on",
           CF.read_text().count(REAL) == 2 and not (T / "etc" / "admin-login.off").exists()

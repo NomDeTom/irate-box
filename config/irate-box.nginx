@@ -18,6 +18,14 @@
 
 # WebSocket upgrades pass through; a plain request sends no Connection header, so the
 # keep-alive pool to the hub is reused.
+# The box's own login (for scripts): from the box itself, its login file; from anywhere else, a second file that
+# holds the login only when the admin chose that reach (/admin → Accounts; hub_control.py keeps it in step).
+map $remote_addr $irate_box_logins {
+	"127.0.0.1" "@HTPASSWD@";
+	"::1" "@HTPASSWD@";
+	default "@HTPASSWD@.net";
+}
+
 map $http_upgrade $irate_box_connection {
 	default upgrade;
 	''      "";
@@ -150,7 +158,7 @@ server {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
 		include @ACCESS@.d/gate-drop.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
 	}
@@ -160,7 +168,7 @@ server {
 		if ($irate_box_off_themes) { return 404; }
 		auth_basic $irate_box_auth_themes;
 		include @ACCESS@.d/gate-themes.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
 	}
@@ -168,7 +176,7 @@ server {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
 		include @ACCESS@.d/gate-drop.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_pass http://irate_box_hub;
 	}
 
@@ -178,7 +186,7 @@ server {
 		if ($irate_box_off_drop) { return 404; }
 		auth_basic $irate_box_auth_drop;
 		include @ACCESS@.d/gate-drop.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		client_max_body_size 25m;
 		proxy_pass http://irate_box_hub;
 	}
@@ -200,7 +208,7 @@ server {
 		if ($irate_box_off_draw) { return 404; }
 		auth_basic $irate_box_auth_draw;
 		include @ACCESS@.d/gate-draw.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		alias @APPS@/draw/;
 		try_files $uri /draw/index.html;
 		add_header Cache-Control "no-cache";
@@ -218,7 +226,7 @@ server {
 		if ($irate_box_off_mermaid) { return 404; }
 		auth_basic $irate_box_auth_mermaid;
 		include @ACCESS@.d/gate-mermaid.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		alias @APPS@/mermaid/;
 		try_files $uri $uri.html /mermaid/index.html;
 		add_header Cache-Control "no-cache";
@@ -236,7 +244,7 @@ server {
 		if ($irate_box_off_tools) { return 404; }
 		auth_basic $irate_box_auth_tools;
 		include @ACCESS@.d/gate-tools.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		alias @APPS@/tools/;
 		try_files $uri $uri/index.html =404;
 		add_header Cache-Control "no-cache";
@@ -249,7 +257,7 @@ server {
 		if ($irate_box_off_serial) { return 404; }
 		auth_basic $irate_box_auth_serial;
 		include @ACCESS@.d/gate-serial.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		alias @APPS@/serial/;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
@@ -291,7 +299,7 @@ server {
 	location /sync/ {
 		if ($irate_box_off_sync) { return 404; }
 		auth_basic "Irate-Box";
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		include @ACCESS@.d/gate-admin.conf*;
 		proxy_set_header Host 127.0.0.1:8384;
 		proxy_set_header Cookie $irate_box_app_cookie;
@@ -309,7 +317,7 @@ server {
 		if ($irate_box_off_mqtt) { return 404; }
 		auth_basic $irate_box_auth_mqtt;
 		include @ACCESS@.d/gate-mqtt.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_read_timeout 1h;
 		proxy_pass http://127.0.0.1:9001;
 	}
@@ -329,21 +337,21 @@ server {
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
 		include @ACCESS@.d/gate-flasher.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_pass http://irate_box_hub;
 	}
 	location = /flasher/ {
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
 		include @ACCESS@.d/gate-flasher.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_pass http://irate_box_hub;
 	}
 	location = /flasher/flasher.html {
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
 		include @ACCESS@.d/gate-flasher.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_pass http://irate_box_hub;
 	}
 	location /flasher/api/ {
@@ -440,7 +448,7 @@ server {
 		satisfy any;
 		auth_request /_irate_git_access;
 		auth_basic "Irate-Box";
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		client_max_body_size 64m;
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
@@ -462,7 +470,7 @@ server {
 		satisfy any;
 		auth_request /_irate_git_access;
 		auth_basic "Irate-Box";
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		client_max_body_size 64m;
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
@@ -487,7 +495,7 @@ server {
 		set $irate_box_admin_auth "Irate-Box";
 		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
 		auth_basic $irate_box_admin_auth;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		# Or an admin account's session: gate-admin.conf, from the root helper.
 		include @ACCESS@.d/gate-admin.conf*;
 		# The secret that tells the hub this came through here (server.py FRONT_SECRET), from
@@ -509,7 +517,7 @@ server {
 	location /term/ {
 		if ($irate_box_off_term) { return 404; }
 		auth_basic "Irate-Box";
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		include @ACCESS@.d/gate-admin.conf*;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/ttyd/ttyd.sock;
@@ -561,7 +569,7 @@ server {
 	location ~ ^/(?<irate_box_addon>[a-z0-9-]+)/ {
 		if ($irate_box_addon_off) { return 404; }
 		auth_basic $irate_box_addon_auth;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		# Its own files only; never the bundle record or anything dotted.
 		location ~ (^|/)(\.|irate-box-bundle\.json$) { return 404; }
 		add_header Content-Security-Policy $irate_box_addon_csp always;
@@ -638,7 +646,7 @@ server {
 		if ($irate_box_off_notes) { return 404; }
 		auth_basic $irate_box_auth_notes;
 		include @ACCESS@.d/gate-notes.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
@@ -705,7 +713,7 @@ server {
 		if ($irate_box_off_wiki) { return 404; }
 		auth_basic $irate_box_auth_wiki;
 		include @ACCESS@.d/gate-wiki.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_pass http://127.0.0.1:8081;
 	}
@@ -715,7 +723,7 @@ server {
 		if ($irate_box_off_wiki) { return 404; }
 		auth_basic $irate_box_auth_wiki;
 		include @ACCESS@.d/gate-wiki.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		proxy_hide_header Cache-Control;
 		add_header Cache-Control "no-cache" always;
 		proxy_set_header Cookie $irate_box_app_cookie;
@@ -800,7 +808,7 @@ server {
 		if ($irate_box_off_git) { return 404; }
 		auth_basic $irate_box_auth_git;
 		include @ACCESS@.d/gate-git.conf*;
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;
 		fastcgi_param CGIT_CONFIG @GIT_ROOT@/cgitrc-public;
@@ -816,7 +824,7 @@ server {
 	}
 	location ~ ^/git-private(?<irate_box_cgit_path>/.*)$ {
 		auth_basic "Irate-Box";
-		auth_basic_user_file @HTPASSWD@;
+		auth_basic_user_file $irate_box_logins;
 		include @ACCESS@.d/gate-admin.conf*;
 		include /etc/nginx/fastcgi_params;
 		fastcgi_param SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi;

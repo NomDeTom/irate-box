@@ -4677,30 +4677,38 @@ if (paneShown('security')) loadTls();
 // --- accounts (accounts.py, /admin/accounts) ---------------------------------------------------------
 const acctEl = { settings: document.getElementById('accounts-settings'), note: noteEl('accounts-note'), counts: document.getElementById('accounts-counts'),
   make: document.getElementById('accounts-make'), code: document.getElementById('accounts-code'), list: document.getElementById('accounts-list'),
-  login: document.getElementById('accounts-admin-login'), loginSwitch: document.getElementById('accounts-admin-login-switch') };
+  login: document.getElementById('accounts-admin-login'), loginChoices: document.getElementById('accounts-admin-login-choices') };
 let acctWaiting = null; // the root helper's request for the box's own login
 async function loadAccounts() {
   try { renderAccounts(await getJSON('/admin/accounts')); } catch (_) { acctEl.counts.textContent = 'Could not read the accounts.'; }
 }
+// The box's own login (for scripts): its reach, from the safest. Each said plainly; the password only at the console.
+const LOGIN_REACH = [
+  ['off', 'Off', 'No login for scripts: the admin pages open only to an admin account, signed in.'],
+  ['local', 'From the box itself', 'Scripts running on the box (over SSH, or its own timers) may use it; from any other device it counts for nothing.'],
+  ['network', 'From the network too', 'Any device with the password may use it. It goes with every request: over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.'],
+];
 function renderAccounts(d) {
-  const al = d.admin_login || { on: true, https_admins: [], results: [] };
+  const al = d.admin_login || { on: true, reach: 'network', password_set: true, https_admins: [], results: [] };
   if (acctWaiting) {
     const done = (al.results || []).find((r) => r.id === acctWaiting);
     if (done) { acctWaiting = null; say(done.message, done.ok, acctEl.note); }
     else setTimeout(loadAccounts, 1000);
   }
   const admins = al.https_admins.join(', ');
-  acctEl.login.textContent = al.on
-    ? `On: "admin" and its password open /admin${admins ? `, as do the admin accounts (${admins})` : ''}. ${admins ? 'It can be switched off: the admin accounts then are the way in.' : 'To switch it off, first make an admin account and log in with it over HTTPS.'}`
-    : `Off: only admin accounts (${admins || 'none!'}) open /admin. A new admin password, or reset-password at the box's console, turns it on again.`;
-  acctEl.loginSwitch.hidden = al.on && !admins;
-  acctEl.loginSwitch.disabled = !!acctWaiting;
-  acctEl.loginSwitch.textContent = acctWaiting ? 'Changing…' : al.on ? 'Switch it off' : 'Switch it on';
-  acctEl.loginSwitch.onclick = async () => {
-    if (al.on && !confirm(`Switch the box's own admin login off? Only ${admins} can then open /admin.`)) return;
-    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', on: !al.on })).id; loadAccounts(); }
+  const choose = async (reach) => {
+    if (reach === al.reach || acctWaiting) return;
+    if (reach === 'network' && !confirm('Let the box\'s own login work from other devices? Its password goes with every request; use it over HTTPS.')) return;
+    if (reach === 'off' && !confirm(`Switch the box's own login off? Only the admin accounts (${admins}) then open the admin pages.`)) return;
+    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; loadAccounts(); }
     catch (err) { say(err.message, false, acctEl.note); }
   };
+  // Off needs an admin account that has signed in over HTTPS (so the box can't be locked out); on needs a password.
+  const blocked = (v) => !!acctWaiting || (v === 'off' ? !admins : !al.password_set);
+  acctEl.loginChoices.replaceChildren(chipRow('It answers', LOGIN_REACH.map(([v, w]) => [v, w]), al.reach, choose, blocked));
+  const said = (LOGIN_REACH.find(([v]) => v === al.reach) || LOGIN_REACH[0])[2];
+  acctEl.login.textContent = `${said}${!al.password_set ? ' It has no password yet: set one at the box\'s console first (above).' : ''}`
+    + (al.reach !== 'off' && !admins ? ' To switch it off, first make an admin account and sign in with it over HTTPS.' : '');
   acctEl.settings.elements.signup.value = d.settings.signup;
   acctEl.settings.elements.http.value = d.settings.http;
   const c = d.counts;
