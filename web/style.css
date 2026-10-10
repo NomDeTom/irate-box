@@ -1051,6 +1051,11 @@ body.drop > section + section { margin-top: 2.5rem; }
 
 /* Network page: the uplink settings, and the watchdog's custom values in a compact grid */
 .net-settings { display: flex; flex-direction: column; gap: 0.4rem; max-width: 40rem; }
+.net-defaults { display: grid; grid-template-columns: 1fr; gap: 0.75rem 1.5rem; }
+@media (min-width: 52rem) { .net-defaults { grid-template-columns: 1fr 1fr; } }
+.net-default { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.net-default select { max-width: 100%; }
+.net-defaults > ul { grid-column: 1 / -1; margin: 0; }
 /* The Network pane's devices: a card each, labelled lines, the hotspot's conditions one per line. */
 .net-devices { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .net-device { display: flex; flex-direction: column; gap: 0; }

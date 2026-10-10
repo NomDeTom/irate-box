@@ -2167,6 +2167,9 @@ const net = {
   unhold: document.getElementById('up-unhold'),
   note: document.getElementById('up-note'),
   profile: document.getElementById('up-profile'),
+  defaults: document.getElementById('net-defaults'),
+  defaultsSave: document.getElementById('net-defaults-save'),
+  defaultsNote: document.getElementById('net-defaults-note'),
   events: document.getElementById('up-events'),
 };
 const UP_FIELDS = [
@@ -2719,10 +2722,17 @@ function renderNetwork(data) {
   const un = netNotes.up;
   say(un ? un.text : '', un ? un.ok : true, net.note);
 
+  renderDefaults(inv, busy);
   const change = u && u.profile_change;
   const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
-  const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:'));
-  if (change) {
+  const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
+  if (change && trap) {
+    net.profile.replaceChildren(el('p', { className: 'setting-desc' },
+      `Keep retrying was set on ${change.name}, but the profile no longer has it: it was written afresh (netplan does so at every boot). `
+      + 'The box defaults above last whatever writes the profile. ',
+      actionButton('Set it again', () => netRequest({ action: 'profile', on: true }, 'up'), { disabled: busy }), ' ',
+      actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
+  } else if (change) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
       `Keep retrying is on for ${change.name} (since ${new Date(change.at * 1000).toLocaleDateString()}): NetworkManager never stops trying it. `,
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
@@ -2759,6 +2769,46 @@ async function loadNetwork() {
     netPoll = setTimeout(loadNetwork, 30000);
   }
 }
+
+// NetworkManager's box defaults: each with the value in use and the file it comes from; a change goes
+// to irate-box's own drop-in. Choices kept while the page polls, until saved.
+let defaultsDirty = {};
+function renderDefaults(inv, busy) {
+  const d = inv && inv.stacks && inv.stacks.networkmanager && inv.stacks.networkmanager.defaults;
+  const card = document.getElementById('net-defaults-card');
+  card.hidden = !d;
+  if (!d) return;
+  const own = (f) => (f || '').split('/').pop();
+  const rows = Object.entries(d.settings).map(([name, s]) => {
+    const sel = el('select', { 'aria-label': s.label, disabled: busy });
+    const opts = [['default', `NetworkManager's own (${s.nm_default})`], ...Object.entries(s.values)];
+    if (s.kind === 'count' && s.value !== null && !(s.value in s.values)) opts.push([s.value, `${s.value} tries`]);
+    for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
+    const chosen = name in defaultsDirty ? defaultsDirty[name] : (s.mine !== null ? s.mine : 'default');
+    sel.value = opts.some(([v]) => v === chosen) ? chosen : 'default';
+    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = false; });
+    const now = s.value === null ? `now NetworkManager's own: ${s.nm_default}`
+      : `now ${s.values[s.value] || s.value}, set by ${s.mine !== null ? "irate-box's file" : own(s.file)}`;
+    return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
+      el('span', { className: 'setting-desc', textContent: now }));
+  });
+  const notes = [
+    ...d.legacy.map((l) => `${own(l.file)} also sets ${l.key}=${l.value} (an older name NetworkManager still reads: ${l.means}).`),
+    ...d.scoped.map((x) => `${own(x.file)} sets ${Object.keys(x.keys).join(', ')} for some devices only (${x.match || x.section}).`),
+    ...d.broken.map((f) => `${f} could not be read: NetworkManager may not read it either.`),
+  ];
+  net.defaults.replaceChildren(...rows, ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
+  net.defaultsSave.disabled = busy || !Object.keys(defaultsDirty).length;
+  const dn = netNotes.defaults;
+  say(dn ? dn.text : '', dn ? dn.ok : true, net.defaultsNote);
+}
+net.defaultsSave.addEventListener('click', () => {
+  const changes = { ...defaultsDirty };
+  if (!Object.keys(changes).length) return;
+  if (!confirm('Save these box defaults? NetworkManager reads them again at once; connections pick them up the next time they connect.')) return;
+  defaultsDirty = {};
+  netRequest({ action: 'defaults', changes }, 'defaults');
+});
 
 async function netRequest(body, where) {
   try {
