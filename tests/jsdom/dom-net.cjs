@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // The Network pane in jsdom; BASE is a hub whose /admin/network answers without a login (a proxy that adds it).
-// Usage: BASE=http://127.0.0.1:PORT [JSDOM=…/jsdom] node dom-net.cjs
+// Usage: BASE=http://127.0.0.1:PORT [JSDOM=…/jsdom] node dom-net.cjs; the hub at BASE must run this checkout's code
+// (one left running from older code answers with old levels, and the dials' checks fail).
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -9,6 +10,11 @@ const BASE = process.env.BASE || 'http://127.0.0.1:18098';
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+// It reads a running hub's /admin/network: with none at BASE it says so and stops, rather than fail on nothing.
+if (require('child_process').spawnSync('curl', ['-s', '-o', '/dev/null', '-m', '3', new URL('/status', BASE).href]).status !== 0) {
+  console.log(`skipped: no hub answering at ${BASE} (this test reads a hub's /admin/network; start one and set BASE)`);
+  process.exit(0);
+}
 const errors = [];
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
