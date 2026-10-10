@@ -44,3 +44,10 @@ path = "config/signing/meshtastic-obs.asc"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "openSUSE Build Service (project network:Meshtastic)"
 SPDX-License-Identifier = "LicenseRef-Meshtastic-OBS-public-key"
+
+# The web flasher's install button's notices: a list of what ESP Web Tools' bundle holds, and the
+# texts of the licences those parts come under, quoted.
+[[annotations]]
+path = "config/esp-web-tools-NOTICES.txt"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"

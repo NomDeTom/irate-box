@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web flasher · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="drop">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>⚡ Web flasher</h1>
+    <p class="subtitle">Put Meshtastic on an ESP32 radio from this browser, over USB.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <section>
+    <!-- Whether this browser can flash here, and if not, what would (esp-flasher.js). -->
+    <p class="setting-desc" id="flash-can" role="status">Looking…</p>
+    <ul class="drop-list flash-list" id="flash-list"></ul>
+    <p class="setting-desc">
+      Plug the radio in with a data cable, press Install and choose its port. A first install erases the
+      radio (its settings and messages go); the box asks first. nRF52 and RP2040 radios take a UF2 file
+      dragged onto the drive they show when plugged in: those are among the Firmware Factory's downloads
+      on the hub's front page.
+    </p>
+    <p class="setting-desc" id="flash-download" hidden>
+      The Meshtastic web flasher is here too, as one file to save and open from your downloads:
+      <a href="/flasher/flasher.html">download it</a>.
+    </p>
+    <p class="setting-desc">The install button is ESP Web Tools (ESPHome, Apache-2.0).
+      <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">Its notices</a>.</p>
+  </section>
+  <script src="/esp-flasher.js"></script>
+</body>
+</html>

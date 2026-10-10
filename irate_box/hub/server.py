@@ -4184,13 +4184,29 @@ class Handler(BaseHTTPRequestHandler):
             self.send_empty(404)
 
     def _flasher(self, path):
-        """The web flasher (flasher.py): the page as a download, with this hub's address in
-        it, and the small API it reads. Its static files come from the web server."""
-        if path in ("/flasher", "/flasher/"):
-            self.send_response(302)
-            self.send_header("Location", "/flasher/flasher.html")
+        """The web flashers (flasher.py): /flasher/ the light one's page, in place; the Meshtastic one
+        as a download, with this hub's address in it; and the small API both read. Their static files
+        come from the web server."""
+        if path == "/flasher":
+            self.send_response(301)
+            self.send_header("Location", "/flasher/")
             self.send_header("Content-Length", "0")
             self.end_headers()
+            return
+        if path == "/flasher/":
+            try:
+                body = (STATIC / "esp-flasher.html").read_bytes()
+            except OSError:
+                self.send_empty(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
             return
         if path == "/flasher/flasher.html":
             body = flasher.page(self.headers.get("Host", ""))

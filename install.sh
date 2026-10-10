@@ -238,6 +238,13 @@ SB_DOCS_COMMIT=1340f7369e782a9c99e898de75cd588051fdb7cd
 SB_DOCS_SHA256=ebc4f8134b98d8a21596f874b580c71f75ed6e3801d69534ea68bff3f493f280
 SB_DOCS_NAME="silverbullet-docs-$SB_VERSION.tar.gz"
 TTYD_VERSION=1.7.7
+# ESP Web Tools (ESPHome's install button, Apache-2.0), the light web flasher's engine: npm's tarball,
+# whose dist/web/ is the whole thing bundled, served at /flasher/esp-web-tools/. A new EWT_VERSION
+# needs its digest: curl -sL https://registry.npmjs.org/esp-web-tools/-/esp-web-tools-VERSION.tgz | sha256sum
+EWT_VERSION=10.4.0
+EWT_SHA256=f18da75335d2f0dca044c4bb052848c0696e7b03cc23d61d8530dd6eba0a9008
+EWT_NAME="esp-web-tools-$EWT_VERSION.tgz"
+EWT_URL="https://registry.npmjs.org/esp-web-tools/-/$EWT_NAME"
 
 # Add-ons already on this box stay added on a rerun that does not name them (an update, the
 # doctor's "run the installer again", or a run by hand): from the last record, or, for a box
@@ -442,6 +449,20 @@ sb_docs_get() {
 	fi
 	[ "$("$(dirname "$(readlink -f "$0")")/irate-box" sbdocs sum "$1" 2>/dev/null)" = "$SB_DOCS_SHA256" ] || { rm -f "$1"; return 2; }
 }
+# ESP Web Tools' tarball ($1) from the download cache, the box's own, or npm; checked against
+# EWT_SHA256 either way. Returns 1 when none has it, 2 when what it got does not match (and removes it).
+ewt_get() {
+	local src="" d
+	for d in "$DL_CACHE" "$OWN_CACHE"; do
+		[ -n "$d" ] && [ -s "$d/$EWT_NAME" ] && { src="$d/$EWT_NAME"; break; }
+	done
+	if [ -n "$src" ]; then
+		cp "$src" "$1"
+	else
+		curl -fsSL -o "$1" "$EWT_URL" 2>/dev/null || { rm -f "$1"; return 1; }
+	fi
+	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$EWT_SHA256" ] || { rm -f "$1"; return 2; }
+}
 own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | armv8l) echo armhf ;; armv6l) echo arm ;; esac; }
 own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac; }
 make_bundle() {
@@ -557,6 +578,14 @@ make_bundle() {
 		die "$SB_DOCS_NAME does not match its pinned digest (SB_DOCS_SHA256)"
 	else
 		echo "    no SilverBullet manual (not in the download cache, and no internet): notes work without it"
+	fi
+	# ESP Web Tools, for the light web flasher, the same for every architecture.
+	if [ -s "$KIT_DL/$EWT_NAME" ] || ewt_get "$KIT_DL/$EWT_NAME"; then
+		echo "    ESP Web Tools $EWT_VERSION"
+	elif [ $? = 2 ]; then
+		die "$EWT_NAME does not match its pinned digest (EWT_SHA256)"
+	else
+		echo "    no ESP Web Tools (not in the download cache, and no internet): the flasher page offers downloads only"
 	fi
 	if [ ${#ZIMS[@]} -gt 0 ]; then
 		echo "==> Books"
@@ -999,6 +1028,33 @@ if [ -n "$APPS_SRC" ]; then
 		chown -R root:root "$APPS/$app"
 	done
 fi
+# The light web flasher's engine (ESP Web Tools): its bundle under $APPS/esp-web-tools, kept while
+# it is the pinned version, so an update with no internet keeps the one it has.
+if [ "$(cat "$APPS/esp-web-tools/VERSION" 2>/dev/null)" != "$EWT_VERSION" ]; then
+	tmp="$(mktemp -d)"
+	got=0; ewt_get "$tmp/$EWT_NAME" || got=$?
+	if [ "$got" = 0 ]; then
+		[ -s "$OWN_CACHE/$EWT_NAME" ] || install -D -m 644 "$tmp/$EWT_NAME" "$OWN_CACHE/$EWT_NAME" || true
+		tar -xzf "$tmp/$EWT_NAME" -C "$tmp" package/dist/web package/LICENSE
+		rm -rf "${APPS:?}/.esp-web-tools.new"
+		install -d -m 755 "$APPS/.esp-web-tools.new"
+		cp -r "$tmp/package/dist/web/." "$APPS/.esp-web-tools.new/"
+		install -m 644 "$tmp/package/LICENSE" "$APPS/.esp-web-tools.new/LICENSE"
+		echo "$EWT_VERSION" >"$APPS/.esp-web-tools.new/VERSION"
+		chown -R root:root "$APPS/.esp-web-tools.new"
+		chmod -R u=rwX,go=rX "$APPS/.esp-web-tools.new"
+		rm -rf "${APPS:?}/esp-web-tools"
+		mv "$APPS/.esp-web-tools.new" "$APPS/esp-web-tools"
+		say "ESP Web Tools $EWT_VERSION, for the web flasher"
+	elif [ "$got" = 2 ]; then
+		problem "ESP Web Tools was not installed: $EWT_NAME does not match its pinned digest (EWT_SHA256)"
+	else
+		echo "    ESP Web Tools: not in the download cache, and no internet; the flasher page offers downloads only"
+	fi
+	rm -rf "$tmp"
+fi
+# Its notices: what the bundle holds and their licences (config/esp-web-tools-NOTICES.txt), current with the code.
+[ ! -d "$APPS/esp-web-tools" ] || install -m 644 "$CODE/config/esp-web-tools-NOTICES.txt" "$APPS/esp-web-tools/THIRD-PARTY-NOTICES.txt"
 # ELIZA was a built-in add-on here (--with-eliza). It is a local add-on now, from
 # /admin's catalogue (addons/eliza.json), installed in $STATE/addons/ with no root. The old copy
 # goes, and so does its librarian source unless the local add-on has taken the name.
@@ -1092,6 +1148,8 @@ HUB_CI_ROOT=$STATE/ci
 # The web flasher's bundle, and the firmware the librarian keeps for it (/flasher/).
 HUB_FLASHER_ROOT=$APPS/flasher
 HUB_FIRMWARE_ROOT=$STATE/firmware
+# The light web flasher's engine (ESP Web Tools), served at /flasher/esp-web-tools/.
+HUB_EWT_ROOT=$APPS/esp-web-tools
 # The local add-ons' own origin: the web server's second port (/addons/<id>/ redirects there).
 HUB_ADDON_PORT=$ADDON_PORT
 # The notes' own origin (/notes/ redirects there).
@@ -1333,6 +1391,7 @@ if [ "$WEB" = caddy ]; then
 	Environment=HUB_GIT_ROOT=$STATE/git
 	Environment=HUB_CODE_DIR=$CODE
 	Environment=HUB_FLASHER_ROOT=$APPS/flasher
+	Environment=HUB_EWT_ROOT=$APPS/esp-web-tools
 	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
 	Environment=HUB_ADDON_PORT=$ADDON_PORT
 	Environment=HUB_ADDONS_ROOT=$STATE/addons

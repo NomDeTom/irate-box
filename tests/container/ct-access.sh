@@ -43,6 +43,7 @@ want 401 -L "http://$H/git/"  # its own origin: /git/ on the hub's port redirect
 want 401 "http://$H/git/irate-box-source.git/info/refs?service=git-upload-pack"
 want 200 -u "admin:$PW" "http://$H/git/irate-box-source.git/info/refs?service=git-upload-pack"
 want 401 "http://$H/flasher/flasher.html"
+want 401 "http://$H/flasher/"
 want 200 "http://$H/flasher/api/resource/deviceHardware"
 want 401 -L "http://$H/wiki/"  # likewise Kiwix's own origin
 t="$(tiles)"
@@ -53,6 +54,7 @@ for a in draw flasher term; do set_access $a off; done
 want 404 "http://$H/draw/"
 want 404 -u "admin:$PW" "http://$H/draw/"
 want 404 "http://$H/flasher/api/resource/deviceHardware"
+want 404 "http://$H/flasher/esp-web-tools/install-button.js"
 want 404 -u "admin:$PW" "http://$H/term/"
 [[ "$(tiles)" != *"Terminal|"* ]] && ok "Terminal tile gone" || bad "tiles: $(tiles)"
 [ "$(systemctl is-enabled ttyd 2>/dev/null)" != enabled ] && ok "ttyd disabled ($(systemctl is-enabled ttyd 2>&1))" || bad "ttyd still enabled"
