@@ -21,3 +21,5 @@
 
 - [Using the hub](for-guests.md): the apps, the shoutbox and board, files, privacy.
 - [Words used here](glossary.md)
+
+The whole guide as a book for a Kiwix app, to read anywhere: [irate-box-guide.zim](/guide/irate-box-guide.zim).

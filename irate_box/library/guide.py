@@ -7,7 +7,14 @@ where Kiwix is chosen (install.sh). The Markdown is the plain kind the guide use
 another page of the guide becoming its .html.
 
     ./irate-box guide build            web/guide/*.html from docs/guide/*.md
-    ./irate-box guide zim OUT.zim      the guide as one ZIM
+    ./irate-box guide zim OUT.zim      the guide as one ZIM, made here (stdlib: no search index)
+    ./irate-box guide site DIR         the pages as a static site for docusaurus2zim's package.py; DIR/.zim-source
+                                       holds source-hash
+    ./irate-box guide book             the book that ships: web/guide/irate-box-guide.zim, packed by docusaurus2zim
+                                       (a search index), with web/guide/irate-box-guide.source; needs D2Z_HOME and
+                                       D2Z_PYTHON (its packaging environment), run after the guide changes
+    ./irate-box guide source-hash      what the guide is made from, as one hash: the shipped book is current when
+                                       its .source says the same (tests/guide_guard.py)
 Stdlib only."""
 
 import hashlib
@@ -24,6 +31,9 @@ SOURCE = CHECKOUT / "docs" / "guide"
 WEB = CHECKOUT / "web" / "guide"
 ZIM_NAME = "irate-box-guide"
 ZIM_FILE = f"{ZIM_NAME}.zim"
+BOOK = WEB / ZIM_FILE                    # the book that ships, beside the pages (and downloadable from /guide/)
+BOOK_SOURCE = WEB / f"{ZIM_NAME}.source"  # the source hash it was made from
+D2Z_CONFIG = CHECKOUT / "config" / "guide-zim.json"
 
 # --- Markdown, the guide's kind ------------------------------------------------------------------
 
@@ -193,12 +203,33 @@ ZIM_STYLE = ("body{font-family:system-ui,sans-serif;max-width:46rem;margin:1.5re
 
 
 def zim_page(stem, md):
+    """A page as the book has it: self-contained (its style inline), linking only among the book's pages; its
+    text in <main>, which is all a search indexes (docusaurus2zim's index_selector)."""
     title, subtitle, body = render(md)
     body = body.replace('href="/guide/', 'href="').replace(' class="help-note"', "").replace(' class="help-code"', "")
     nav = "" if stem == "index" else '<p><a href="index.html">The guide\'s other pages</a></p>'
     return (f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
-            f"<title>{html.escape(title)}</title><style>{ZIM_STYLE}</style></head><body><h1>{_inline(title)}</h1>"
-            f'<p class="subtitle">{_inline(subtitle)}</p>{body}{nav}</body></html>')
+            f"<title>{html.escape(title)}</title><style>{ZIM_STYLE}</style></head><body><main><h1>{_inline(title)}</h1>"
+            f'<p class="subtitle">{_inline(subtitle)}</p>{body}</main>{nav}</body></html>')
+
+
+def source_hash():
+    """One hash of the guide's source, in its order: a book made from the same source has the same."""
+    h = hashlib.sha256()
+    for stem, md in pages():
+        h.update(stem.encode() + b"\0" + md.encode() + b"\0")
+    return h.hexdigest()
+
+
+def site(out):
+    """The pages as a static site for docusaurus2zim's package.py (index.html its main page), with
+    .zim-source (the source hash; package.py leaves .zim-* files out of the book)."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    for stem, md in pages():
+        (out / f"{stem}.html").write_text(zim_page(stem, md))
+    (out / ".zim-source").write_text(source_hash() + "\n")
+    return out
 
 
 def write_zim(path, articles, meta, main="index.html", uid=None):
@@ -254,9 +285,37 @@ def zim(out, version=""):
     return out
 
 
+def book():
+    """web/guide/irate-box-guide.zim from the pages, by docusaurus2zim's package.py (D2Z_HOME, D2Z_PYTHON: its
+    action sets both in CI; locally, its checkout and a python with zimscraperlib), and its .source."""
+    import os
+    import subprocess
+    import tempfile
+    home, py = os.environ.get("D2Z_HOME"), os.environ.get("D2Z_PYTHON")
+    if not (home and py and Path(home, "package.py").is_file()):
+        raise SystemExit("guide book: set D2Z_HOME (docusaurus2zim's checkout) and D2Z_PYTHON (a python with zimscraperlib)")
+    with tempfile.TemporaryDirectory() as tmp:
+        built = site(Path(tmp) / "site")
+        out = Path(tmp) / ZIM_FILE
+        subprocess.run([py, str(Path(home, "package.py")), "--config", str(D2Z_CONFIG), "--build-dir", str(built),
+                        "--output", str(out)], check=True)
+        BOOK.write_bytes(out.read_bytes())
+    BOOK_SOURCE.write_text(source_hash() + "\n")
+    return BOOK
+
+
 def main(argv):
     if argv == ["build"]:
         print("\n".join(build()))
+        return 0
+    if len(argv) == 2 and argv[0] == "site":
+        print(site(argv[1]))
+        return 0
+    if argv == ["book"]:
+        print(book())
+        return 0
+    if argv == ["source-hash"]:
+        print(source_hash())
         return 0
     if len(argv) in (2, 3) and argv[0] == "zim":
         print(zim(Path(argv[1]), argv[2] if len(argv) == 3 else ""))
