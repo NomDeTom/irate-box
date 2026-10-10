@@ -1431,16 +1431,23 @@ def _check_for_update(progress):
         _git("clone", "--depth", "200", "--branch", branch, repo, src)
     sig = signing.load(ETC)
     tag = None
+    # The release tags (v*), fetched whatever the signing level, so the box holds them: needed when
+    # signed releases are chosen, kept otherwise (their failing then only noted).
+    tags_said = None
+    got = run("git", "-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
+    if got.returncode != 0:
+        # git says nothing when no tag matches: tell that apart from a fetch that failed.
+        remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
+        if remote.returncode == 0 and not remote.stdout.strip():
+            tags_said = f"{repo} has no release tag ({signing.TAG_GLOB}) yet"
+        else:
+            tags_said = "git fetch of the release tags: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1]
+        if sig["level"] == "tags":
+            raise ValueError(f"updates are set to signed releases, and {tags_said}" if "no release tag" in tags_said else tags_said)
+    newest = signing.newest_tag(src)
     if sig["level"] == "tags":
         # Signed releases (signing.py): the newest v* tag, not the branch's tip.
-        got = run("git", "-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
-        if got.returncode != 0:
-            # git says nothing when no tag matches: tell that apart from a fetch that failed.
-            remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
-            if remote.returncode == 0 and not remote.stdout.strip():
-                raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
-            raise ValueError("git fetch of the release tags: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1])
-        tag = signing.newest_tag(src)
+        tag = newest
         if not tag:
             raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
         _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
@@ -1458,7 +1465,7 @@ def _check_for_update(progress):
         "installed": installed, "up_to_date": up_to_date,
         "changes": changes[:50], "changes_known": known, "fetched": time.time(),
         "verified": None, "verified_sha": None, "checks": [],
-        "signing": sig["level"], "tag": tag,
+        "signing": sig["level"], "tag": tag, "release_tag": newest, "tags_problem": tags_said,
     }
     # The same commit fetched before: its checks and downloads still stand. Matched on the
     # whole hash: a commit sharing the first 7 digits must not inherit "verified".
