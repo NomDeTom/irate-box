@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# The guide's book: it ships in the package, beside the guide's pages (web/guide/irate-box-guide.zim, with its .source),
+# made by docusaurus2zim (`./irate-box guide book`, openZIM's zimscraperlib: only the text in <main> indexed). Here,
+# whenever the guide changes: docusaurus2zim still packs it, and the result is kept as an artifact to look at.
+# Whether the shipped book is current with the guide is tests/guide_guard.py's (in CI's checks).
+name: Guide book
+on:
+  push:
+    branches: [main]
+    paths: ['docs/guide/**', 'irate_box/library/guide.py', 'config/guide-zim.json', 'web/guide/irate-box-guide.*', '.github/workflows/guide-zim.yml']
+  pull_request:
+    paths: ['docs/guide/**', 'irate_box/library/guide.py', 'config/guide-zim.json', 'web/guide/irate-box-guide.*', '.github/workflows/guide-zim.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docusaurus2zim's packaging environment
+        uses: NomDeTom/docusaurus2zim@5d2833ca10c8e9d3ce3c712715612f544d8d07a6
+      - name: The book, packed again
+        run: |
+          python3 -m irate_box.library.guide book
+          ls -l web/guide/irate-box-guide.*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: irate-box-guide
+          path: web/guide/irate-box-guide.*

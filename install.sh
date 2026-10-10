@@ -1768,13 +1768,23 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# This box's guide as a book, where Kiwix is chosen (irate_box/library/guide.py, from docs/guide): made again
-# each run, so it describes the code installed; taken out with Kiwix.
+# This box's guide as a book, where Kiwix is chosen, each run, so it describes the code installed; taken out with
+# Kiwix. The book that ships beside the guide's pages (web/guide/, made by docusaurus2zim: with a search index)
+# when it is current with the guide (its .source), else one made here (stdlib, no search index).
 GUIDE_ZIM="$STATE/zim/irate-box-guide.zim"
+guide_book() {
+	local want
+	want="$(runuser -u "$HUB_USER" -- "$CODE/irate-box" guide source-hash 2>/dev/null)"
+	if [ -n "$want" ] && [ -s "$CODE/web/guide/irate-box-guide.zim" ] && [ "$(head -1 "$CODE/web/guide/irate-box-guide.source" 2>/dev/null)" = "$want" ]; then
+		install -o "$HUB_USER" -g "$HUB_USER" -m 644 "$CODE/web/guide/irate-box-guide.zim" "$GUIDE_ZIM"
+		return 0
+	fi
+	runuser -u "$HUB_USER" -- "$CODE/irate-box" guide zim "$GUIDE_ZIM" "$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null)" >/dev/null &&
+		echo "    the guide: made here, without a search index (the shipped book is not current with the guide)"
+}
 if [ "$KIWIX" = 1 ] && [[ " ${REMOVE[*]} " != *" kiwix "* ]]; then
 	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/zim"
-	runuser -u "$HUB_USER" -- "$CODE/irate-box" guide zim "$GUIDE_ZIM" "$(cut -d' ' -f1 "$CODE/VERSION" 2>/dev/null)" >/dev/null ||
-		problem "the guide was not made as a book: $CODE/irate-box guide zim says why"
+	guide_book || problem "the guide was not made as a book: $CODE/irate-box guide zim says why"
 else
 	rm -f "$GUIDE_ZIM"
 fi

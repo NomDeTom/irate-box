@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "name": "irate-box-guide",
+    "title": "Irate-Box guide",
+    "description": "How to set up and look after this box",
+    "language": "eng",
+    "creator": "Irate-Box",
+    "publisher": "Irate-Box",
+    "base_url": "",
+    "index_selector": "main",
+    "prune_prefixes": "",
+    "exclude": "",
+    "asset_prefixes": "",
+    "mirror_hosts": "",
+    "only_current_version": true,
+    "docusaurus_overrides": {},
+    "tags": "_category:other;guide;irate-box",
+    "long_description": "The Irate-Box user guide: setting up a new box, the admin pages, accounts, updates and backup, add-ons and books, the network and hotspot, security, git and firmware, toolkits, and what to do when something goes wrong."
+  }
+}
