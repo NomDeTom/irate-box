@@ -47,7 +47,7 @@ SYS_NET = Path("/sys/class/net")
 AP_PROFILE = "irate-box-ap"  # the hub's own hotspot profile, when it exists
 MESH_CONFIG = Path("/var/lib/meshtasticd/.portduino/default/prefs/config.proto")
 # Driver options that bear on power save and roaming, read when the driver has them.
-DRIVER_PARAMS = ("ps_on", "dpsm", "roamoff", "feature_disable", "power_save", "rtw_power_mgnt", "recovered_at",
+DRIVER_PARAMS = ("ps_on", "dpsm", "roamoff", "feature_disable", "power_save", "rtw_power_mgnt", "recovered_at", "fake_cmd_timeout",
                  "rtw_ips_mode", "rtw_enusbss", "swcrypto", "ant_div", "tx_lft")
 
 
@@ -728,6 +728,20 @@ def scan(focus=None):
         except (OSError, ValueError, ImportError):
             inv["other_ap"] = {}
         inv["duplicate_profiles"] = duplicate_profiles()
+        # What the box has found out about each WiFi radio by testing it (root/radiotests.py), and what it can test.
+        try:
+            from irate_box.root import radiotests
+            found = radiotests.results()
+            inv["radio_tests"] = {}
+            for r in radios:
+                if r.get("type") != "managed":
+                    continue
+                shares = any(a.get("type") == "AP" and a.get("phy") == r.get("phy") for a in radios)
+                can = ["radio-reset"] + (["follows-roam"] if shares else []) + (["driver-reset"] if "fake_cmd_timeout" in (r.get("params") or {}) else [])
+                inv["radio_tests"][r["iface"]] = {"key": radiotests.radio_key(r), "found": found.get(radiotests.radio_key(r), {}),
+                                                  "can": can, "questions": {e: radiotests.QUESTIONS[e] for e in can}}
+        except (OSError, ValueError, ImportError):
+            pass
         if stacks.get("netplan") is not None and shutil.which("netplan"):
             code, out = run("netplan", "get", timeout=30)
             if code != 0:
@@ -900,9 +914,10 @@ def hazards(inv):
                           iface=r["iface"]))
         params = r.get("params") or {}
         if r.get("power_save") == "off" and params.get("ps_on") in ("Y", "1"):
-            out.append(_h(f"driver-ps:{r['iface']}", "ok", f"{r['iface']}: driver loaded with ps_on",
-                          f"{r.get('driver')} has its own power-save option on, while iw reports power save off. "
-                          "Which one wins is not known yet (a test in the AP research).", iface=r["iface"]))
+            out.append(_h(f"driver-ps:{r['iface']}", "ok", f"{r['iface']}: the driver's own power saving is on",
+                          f"{r.get('driver')} was loaded with ps_on, while NetworkManager's power save is off. The driver's "
+                          "setting is read only when it loads, so trying it off means loading the driver with ps_on=0 and "
+                          "counting the drops over some days.", iface=r["iface"]))
         p = r.get("profile") or {}
         if p.get("netplan"):
             ho = inv.get("handover") or {}
@@ -990,7 +1005,8 @@ def ap_verdicts(inv):
             conditions.append({"kind": "how", "text": "It can run the hotspot and stay on your WiFi at the same time, as a second interface beside the link."})
             if r["channels_at_once"] > 1:
                 conditions.append({"kind": "limit", "text": f"It can use up to {r['channels_at_once']} channels at once, so the hotspot need not follow your WiFi's channel."})
-                conditions.append({"kind": "untested", "text": "Whether the hotspot stays put when your WiFi roams to another channel."})
+                conditions.append({"kind": "untested", "text": "Whether the hotspot stays put when your WiFi roams to another channel.",
+                                   "test": "follows-roam"})
             else:
                 conditions.append({"kind": "limit", "text": "It works on one channel at a time, so the hotspot follows your WiFi's channel."})
         else:

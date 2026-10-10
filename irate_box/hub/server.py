@@ -4061,6 +4061,9 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self.send_json(202, {"id": control_request({"action": "nm-defaults", "iface": iface,
                                                             "changes": {k: ("default" if v is None else v) for k, v in changes.items()}})})
+            elif act == "radiotest" and payload.get("exp") in ("follows-roam", "radio-reset", "driver-reset") \
+                    and IFACE_NAME_RE.match(str(payload.get("iface") or "")):
+                self.send_json(202, {"id": control_request({"action": "radio-test", "iface": payload["iface"], "exp": payload["exp"]})})
             elif act == "otherap" and isinstance(payload.get("uuid"), str) and payload.get("do") in ("remove", "leave", "undo") \
                     and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]):
                 self.send_json(202, {"id": control_request({"action": "other-ap", "uuid": payload["uuid"], "do": payload["do"]})})

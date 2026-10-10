@@ -1066,6 +1066,7 @@ body.drop > section + section { margin-top: 2.5rem; }
 .net-defaults > ul { grid-column: 1 / -1; margin: 0; }
 .net-default-scope { grid-column: 1 / -1; max-width: 32rem; }
 .net-conn-settings { margin: 0.4rem 0 0.6rem; }
+.net-facts { margin: 0.2rem 0 0.4rem; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .net-visible-list { list-style: none; padding: 0; margin: 0.3rem 0 0.8rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .net-visible-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; }
 .net-conn-settings > summary { cursor: pointer; }
