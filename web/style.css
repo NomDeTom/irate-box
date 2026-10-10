@@ -1056,6 +1056,10 @@ body.drop > section + section { margin-top: 2.5rem; }
 .net-default { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .net-default select { max-width: 100%; }
 .net-defaults > ul { grid-column: 1 / -1; margin: 0; }
+.net-default-scope { grid-column: 1 / -1; max-width: 32rem; }
+.net-conn-settings { margin: 0.4rem 0 0.6rem; }
+.net-conn-settings > summary { cursor: pointer; }
+.net-conn-settings .net-defaults { margin-top: 0.5rem; }
 /* The Network pane's devices: a card each, labelled lines, the hotspot's conditions one per line. */
 .net-devices { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.75rem 0; }
 .net-device { display: flex; flex-direction: column; gap: 0; }

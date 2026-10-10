@@ -1963,6 +1963,7 @@ def network_snapshot():
             "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab
             "ladder_gaps": linkhistory.gaps(hist),   # its spans with no record (a freeze, a reboot)
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
+            "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
                        "roaming": list(uplink.ROAMING),
@@ -4038,13 +4039,20 @@ class Handler(BaseHTTPRequestHandler):
                                                             "undo": payload.get("undo", False)})})
             elif act == "defaults" and isinstance(payload.get("changes"), dict):
                 from irate_box.hub import nmconf
+                iface = payload.get("iface")
                 try:
-                    changes = nmconf.validate(payload["changes"])
+                    changes = nmconf.validate(payload["changes"], iface)
                 except ValueError as exc:
                     self.send_json(400, {"error": str(exc)})
                     return
-                self.send_json(202, {"id": control_request({"action": "nm-defaults",
+                self.send_json(202, {"id": control_request({"action": "nm-defaults", "iface": iface,
                                                             "changes": {k: ("default" if v is None else v) for k, v in changes.items()}})})
+            elif act == "connection" and isinstance(payload.get("uuid"), str) \
+                    and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]) \
+                    and (payload.get("undo") is True or (isinstance(payload.get("changes"), dict) and payload["changes"]
+                                                        and all(isinstance(k, str) and isinstance(v, str) for k, v in payload["changes"].items()))):
+                self.send_json(202, {"id": control_request({"action": "nm-connection", "uuid": payload["uuid"],
+                                                            "changes": payload.get("changes") or {}, "undo": payload.get("undo") is True})})
             elif act == "join" and isinstance(payload.get("ssid"), str) and payload.get("security") in ("wpa-psk", "sae", "open") \
                     and isinstance(payload.get("psk", ""), str) and type(payload.get("hidden", False)) is bool and type(payload.get("now", False)) is bool:
                 # A network for the box to join: checked again by root (wifijoin.validate); the password

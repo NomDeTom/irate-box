@@ -105,6 +105,11 @@ if [ -f /etc/NetworkManager/conf.d/zz-90-irate-box-network.conf ]; then
 	rm -f /etc/NetworkManager/conf.d/zz-90-irate-box-network.conf
 	systemctl reload NetworkManager 2>/dev/null || true
 fi
+# One connection's own settings chosen on the Network page: put back as they were.
+if [ -f "$ETC/nm-connection-changes.json" ] && [ -f "$CODE/irate_box/root/nmconnection.py" ]; then
+	say "Putting back the WiFi connections' own settings"
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" nmconnection undo-all | sed 's/^/    /' || true
+fi
 # Connections handed over from netplan to NetworkManager stay NetworkManager's (the box stays on its
 # network); said how to put the netplan files back.
 if [ -f "$ETC/netplan-handover.json" ] && [ -f "$CODE/irate_box/root/nmhandover.py" ]; then

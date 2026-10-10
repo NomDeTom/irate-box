@@ -81,13 +81,16 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       No repairs for that long (0 ends a hold), for an owner working on the network.
   {"id": ..., "action": "uplink-profile", "on": true|false}
       The by-consent change to the owner's WiFi profile (keep retrying), or its undo.
-  {"id": ..., "action": "nm-defaults", "changes": {name: value | "default"}}
+  {"id": ..., "action": "nm-defaults", "changes": {name: value | "default"}, "iface": null | "wlan0"}
       NetworkManager's box defaults (hub/nmconf.py): the owner's choices written to irate-box's own
       drop-in in /etc/NetworkManager/conf.d, NetworkManager told to read it again. "default" takes
       irate-box's line out; with none left, the file goes.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
+  {"id": ..., "action": "nm-connection", "uuid": "...", "changes": {name: value | "default"}, "undo": false|true}
+      One WiFi connection's own settings (root/nmconnection.py), where a change lasts; the values
+      from before recorded for undo and uninstall.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
@@ -2786,14 +2789,17 @@ def uplink_profile(req):
 
 def nm_defaults(req):
     from irate_box.hub import nmconf
-    clean = nmconf.validate(req.get("changes"))
-    mine = nmconf.current_mine()
+    iface = req.get("iface")
+    clean = nmconf.validate(req.get("changes"), iface)
+    mine, ifaces = nmconf.current_mine(), nmconf.current_ifaces()
+    target = mine if iface is None else ifaces.setdefault(iface, {})
     for k, v in clean.items():
         if v is None:
-            mine.pop(k, None)
+            target.pop(k, None)
         else:
-            mine[k] = v
-    text = nmconf.dropin_text(mine)
+            target[k] = v
+    ifaces = {i: v for i, v in ifaces.items() if v}
+    text = nmconf.dropin_text(mine, ifaces)
     if text:
         nmconf.DROPIN.parent.mkdir(parents=True, exist_ok=True)
         safeio.write(nmconf.DROPIN, text, 0o644)
@@ -2808,9 +2814,26 @@ def nm_defaults(req):
         netinv.write(netinv.scan(), CONTROL / "netinv.json")
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
-    said = "; ".join(f"{nmconf.SETTINGS[k]['label']}: "
-                     + ("NetworkManager's own" if v is None else nmconf.SETTINGS[k]["values"].get(v, v)) for k, v in clean.items())
+    said = (f"On {iface}: " if iface else "") + "; ".join(
+        f"{nmconf.SETTINGS[k]['label']}: "
+        + (("as the box default" if iface else "NetworkManager's own") if v is None else nmconf.SETTINGS[k]["values"].get(v, v))
+        for k, v in clean.items())
     return said + ("" if code == 0 else f" (NetworkManager did not reload: {out[-160:]}; it reads them at its next start)")
+
+
+def nm_connection(req):
+    from irate_box.root import nmconnection, nmhandover
+    uuid = req.get("uuid")
+    try:
+        if req.get("undo") is True:
+            return nmconnection.undo(uuid)
+        return nmconnection.change(uuid, req.get("changes"), integrated=nmhandover.integrated())
+    finally:
+        safeio.write(CONTROL / "nm-connection-changes.json", json.dumps(nmconnection.public()))
+        try:
+            netinv.write(netinv.scan(), CONTROL / "netinv.json")
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
 
 
 def nm_handover(req):
@@ -2903,7 +2926,7 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
            "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
            "app-install": app_install, "app-rollback": app_rollback,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
+           "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
