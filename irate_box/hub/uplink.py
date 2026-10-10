@@ -1048,6 +1048,17 @@ class Ladder:
             cur = self._cur = {"at": slot, "k": "m", "n": 0, "th": line, "i": iface}
         cur["n"], cur["th"] = max(cur["n"], int(n)), line
 
+    def started(self, now, last, uptime):
+        """The watchdog started: {at, k: "start", last, t}, where last is its last check before it stopped
+        (None if not known). The chart ends an outage left open there, and draws the time between as
+        no record rather than as the outage going on: a box that froze or rebooted mid-outage."""
+        boot = uptime < 600
+        row = {"at": round(now, 1), "k": "start", "t": "Watching again after the box started." if boot
+               else "Watching again (the watchdog restarted)."}
+        if isinstance(last, (int, float)) and 0 < last < now:
+            row["last"] = round(last, 1)
+        self.add([], None, now, [row])
+
     def add(self, events, iface, now, raw=()):
         if not events and not raw:
             return
@@ -1202,6 +1213,7 @@ def serve(dry=False):
     pinned = None
     history = History()
     ladder = Ladder()
+    ladder.started(now, old.get("at"), uptime())
     roams = Roams()
     tls_at = 0  # HTTPS: the certificate renewed when due, looked at every six hours
 

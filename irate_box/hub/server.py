@@ -1872,7 +1872,7 @@ def health_snapshot():
     except OSError:
         log = []
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
-            "ladder": load(uplink.LADDER) or [],
+            "ladder": load(uplink.LADDER) or [], "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
             "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
             "progress": update_progress()}
 
@@ -1896,8 +1896,10 @@ def network_snapshot():
         status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
     # Each link's uptime: hours for a week, days for 35, summed here from the watchdog's
     # five-minute slots, so the page gets a few KB rather than the slots.
-    return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(load(uplink.HISTORY)),
+    hist = load(uplink.HISTORY)
+    return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(hist),
             "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab
+            "ladder_gaps": linkhistory.gaps(hist),   # its spans with no record (a freeze, a reboot)
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
