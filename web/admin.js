@@ -778,6 +778,26 @@ function renderServiceUptime(services, u) {
     el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
 }
 
+// The network on the Overview: each link's last 72 hours by hour, the box's link to the network
+// first, with its summary in words; the days and the details on Network.
+function renderOverviewNet(u) {
+  const box = document.getElementById('overview-net');
+  if (!box) return;
+  const ifaces = Object.keys(u || {});
+  if (!ifaces.length) { box.replaceChildren(); return; }
+  const first = u[ifaces[0]], sm = first.summary;
+  const said = sm.up == null ? `${ifaces[0]}: no data lately.`
+    : `${ifaces[0]}: up ${Heatmap.percent(sm.up)} over the last 72 hours`
+      + (sm.drops ? `, ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : ', no drops')
+      + (sm.longest ? `; the longest outage ${sm.longest.minutes} min.` : '.');
+  box.replaceChildren(
+    el('h3', { textContent: 'Network, the last 72 hours' }),
+    Heatmap.grid({ caption: 'The network links, the last 72 hours by hour', cols: first.hour_cols,
+      rows: ifaces.map((i) => ({ label: i, cells: u[i].hours, where: (k) => `${i}, ${u[i].hour_full[k]}` })) }),
+    Heatmap.legend(),
+    el('p', { className: 'setting-desc' }, said + ' ', el('a', { href: '#network', textContent: 'The links, by day too, on Network' })));
+}
+
 function renderBox(data) {
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
@@ -787,6 +807,7 @@ function renderBox(data) {
     tile('Powered on', `${Math.floor(h / 24)} d ${h % 24} h in total`),
     tile('Guests', `${data.online} on the page${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ''}`),
   );
+  renderOverviewNet(data.net_uptime);
   document.getElementById('hub-version').textContent = data.version;
 
   const rows = data.services.map((s) => {
