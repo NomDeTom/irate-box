@@ -108,6 +108,26 @@ check("Install anyway refuses a version not signed as required", ok, why)
 hub_control.update_signing({"level": "off", "signers": ""})
 check("off: no signature check", hub_control._signature_check(src, None) == [])
 
+# The release tags fetched whatever the level: held by the box with signing off too.
+class _Quiet:
+    def step(self, *a): pass
+    def add_steps(self, *a): pass
+(Path(hub_control.ETC) / "install-options").write_text(f"--repo\n{src}\n--branch\nmain\n")
+shutil.rmtree(hub_control.UPDATE_SRC, ignore_errors=True)
+st, _ = hub_control._check_for_update(_Quiet())
+held = git(hub_control.UPDATE_SRC, "tag", "-l", "v*").split()
+check("off: the release tags fetched all the same, the newest recorded; the branch's tip what is offered",
+      {"v1.9", "v1.10", "v1.12-eve"} <= set(held) and st["release_tag"] == "v1.12-eve" and st["tag"] is None and not st["tags_problem"], (held, st.get("release_tag")))
+bare = T / "no-tags"
+subprocess.run(["git", "clone", "-q", "--bare", "--no-tags", str(src), str(bare)], check=True)
+for t in git(bare, "tag", "-l").split():
+    git(bare, "tag", "-d", t)
+(Path(hub_control.ETC) / "install-options").write_text(f"--repo\n{bare}\n--branch\nmain\n")
+shutil.rmtree(hub_control.UPDATE_SRC, ignore_errors=True)
+st, _ = hub_control._check_for_update(_Quiet())
+check("  a repository with no release tag: noted, not in the way while signing is off", st["release_tag"] is None
+      and "no release tag" in (st["tags_problem"] or ""), st.get("tags_problem"))
+
 # --- merged on GitHub: GitHub's key, a key of our own standing in for it ---
 if not (shutil.which("gpg") and shutil.which("gpgv")):
     print("SKIP GitHub's level: gpg or gpgv is not installed here (CI's runner has both)")
