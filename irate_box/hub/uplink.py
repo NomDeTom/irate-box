@@ -490,6 +490,14 @@ class Watch:
         if wedged and not o.get("wedged"):
             o["wedged"] = wedged
             self.log(now, "wedged", f"The radio's driver looks wedged: {wedged}.")
+        own = obs.get("driver_reset")
+        if own is not None:
+            # The driver reset its device itself (its firmware stopped answering): left to it, as a
+            # reset from here on top of it would only start it over.
+            if not o.get("own_reset"):
+                o["own_reset"] = True
+                self.log(now, "info", f"The radio's driver reset it itself {human(own)} ago: left to it to come back.")
+            return []
         if self._paused(now, obs):
             return []
         can = obs.get("can", set())
@@ -805,6 +813,17 @@ def recent_journal(secs=120):
     code, out = run("journalctl", f"--since=@{int(time.time() - secs)}", "--no-pager", "-o", "cat",
                     "-t", "NetworkManager", "-t", "wpa_supplicant", timeout=20)
     return out.splitlines() if code == 0 else []
+
+
+def own_reset():
+    """Seconds since the radio's driver reset its device itself, while that is recent enough to
+    leave it to come back (root/radio.py's DRIVER_GRACE); None otherwise."""
+    from irate_box.root import radio
+    try:
+        _marker, age = radio.driver_reset()
+    except OSError:
+        return None
+    return age if age is not None and age < radio.DRIVER_GRACE else None
 
 
 def crashwatch_events():
@@ -1295,6 +1314,7 @@ def serve(dry=False):
             known = was if was != "none" else known_backend
             obs["wedged"] = wedge_evidence(iface, backend, known, recent_journal(), crashwatch_events(), now,
                                            (SYS_NET / iface).exists(), (SYS_NET / iface / "phy80211").exists())
+            obs["driver_reset"] = own_reset()
         elif backend and backend != "none":
             known_backend = backend
         if chosen.get("roaming") == "no-scan" and up and not dry:

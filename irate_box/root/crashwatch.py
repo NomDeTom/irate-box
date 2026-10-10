@@ -98,7 +98,8 @@ AIC_ERR = re.compile(r"cmd queue crashed|cmd_mgr_queue cmd timed-out|check cmdqu
 # The AIC8800 driver, patched to mend itself (aic8800_fdrv recover_on_timeout): on a command its firmware never
 # answers it resets the USB device, which loads the firmware afresh. Its interfaces go and come back by themselves
 # within seconds; the hotspot's has to be started again. Within DRIVER_GRACE of that line, a radio gone or the USB
-# core's reset lines are that reset at work, not a failure to act on.
+# core's reset lines are that reset at work, not a failure to act on. The driver counts its resets in sysfs too
+# (radio.driver_reset), as a flood in the kernel's small log can overwrite the line before a look reads it.
 DRIVER_RESET = re.compile(r"aic8800: firmware not answering: resetting the device")
 DRIVER_GRACE = 90
 HANG_SYSCTL = {"kernel.panic": "10", "kernel.panic_on_oops": "1", "kernel.softlockup_panic": "1"}
@@ -433,17 +434,24 @@ class Preempt:
         # hotspot: (missing, restore): whether the hotspot should be up and its interface is gone; start it again.
         self.hotspot = hotspot
         self.driver_reset = None   # when the driver last reset the radio itself
+        self.own_seen = None       # the driver's own count of its resets, as last read (radio.driver_reset)
         self.restored = True       # the hotspot seen to since that reset
         self.recent = {}        # iface: deque of (time, error count)
         self.failed = {}        # iface: since
         self.last_reset = float("-inf")
         self.reset_at = {}      # iface: when it was reset in this failure
 
-    def act(self, now, states, kernel=()):
+    def act(self, now, states, kernel=(), own=(None, None)):
+        """own: (marker, age) of the driver's last reset of its own device (radio.driver_reset), which
+        a busy kernel log may have overwritten before this look read it."""
         events = []
         said = next((l for l in kernel if DRIVER_RESET.search(l)), None)
-        if said:
-            self.driver_reset, self.restored = now, False
+        marker, age = own
+        fresh = marker is not None and marker != self.own_seen and age is not None and age < DRIVER_GRACE
+        if marker is not None:
+            self.own_seen = marker
+        if said or fresh:
+            self.driver_reset, self.restored = (now - age if fresh and not said else now), False
             events.append(self.log(now, "radio", "driver-reset", "the radio's driver reset it itself (its firmware stopped answering)"))
         if self.driver_reset is not None and now - self.driver_reset < DRIVER_GRACE:
             # Its own reset at work: the interfaces come back by themselves; once the client's is back, the hotspot.
@@ -752,7 +760,7 @@ def run(once=False):
             now_known = radios()
             for i, r in now_known.items():
                 known[i] = r          # a radio that came back, or a new one, watched from now on
-            pre.act(now, radio_state(known, lines), lines)
+            pre.act(now, radio_state(known, lines), lines, radio.driver_reset())
         extra = pending.pop("snap", None) or ""
         pending["snap"] = None
         if settings["snapshots"] or extra:

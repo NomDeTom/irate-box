@@ -269,6 +269,19 @@ check("on_wedge radio, the level stopping short of it: stalled, needing a radio 
 a, w = wedged_night("persistent", "radio", guests=1)
 check("on_wedge radio, guests on the hotspot: held, said once, not reset", "radio" not in [x for _, x in a]
       and sum(e["kind"] == "held" for e in w.events) == 1, [e["text"] for e in w.events if e["kind"] == "held"])
+# The driver resetting its device itself (its firmware stopped answering): left to it while that is recent.
+w = U.Watch(U.effective(C("persistent", 3, on_wedge="radio")))
+acts = []
+for t in range(0, 600, 30):
+    own = (t - 300) if 300 <= t < 390 else None
+    obs = {"link": False, "drops": [], "can": ALL, "guests": 0,
+           "wedged": "networkmanager no longer runs wlan0, though it is still there" if t >= 300 else None, "driver_reset": own}
+    acts += [(t, x) for x in w.tick(t, obs)]
+check("the driver's own reset: no radio reset of ours on top of it while it is recent, said once",
+      not any(x == "radio" and 300 <= t < 390 for t, x in acts)
+      and sum("reset it itself" in e["text"] for e in w.events) == 1, (acts, [e["text"] for e in w.events]))
+check("  still down after it: the ladder goes on (a radio reset)", any(x == "radio" and t >= 390 for t, x in acts), acts)
+check("own_reset: none on a box whose driver counts nothing", U.own_reset() is None)
 check("validate: on_wedge ladder by default, radio accepted, nothing else",
       U.validate({})["on_wedge"] == "ladder" and U.validate({"on_wedge": "radio"})["on_wedge"] == "radio")
 try:
