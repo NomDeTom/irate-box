@@ -6,8 +6,8 @@ hotspot. Each answer is kept per radio (its USB id or driver, and the driver's v
 was found, and asked again when the driver changes.
 
   follows-roam   Does the hotspot stay on its channel, or follow, when the WiFi link moves to an access
-                 point on another channel? The link is moved to one (of the same network), the hotspot's
-                 channel read, and the link moved back.
+                 point on another channel? The link's profile is held to one (of the same network) for
+                 the test, the hotspot's channel read, and the profile given back what it had.
   radio-reset    How long a radio reset takes (root/radio.py, as the uplink watchdog and crash watch do
                  it), and whether the hotspot comes back.
   driver-reset   Where the driver resets its own device on a command timeout and offers a fake one
@@ -132,24 +132,34 @@ def follows_roam(radio, ap, sleep=time.sleep):
     target = next(a for a in sorted((radio.get("roaming") or {}).get("aps") or [], key=lambda a: -(a.get("signal") or 0))
                   if a.get("bssid") != here and a.get("channel") and a["channel"] != here_ch)
     before = _channels().get(ap)
+    # "nmcli con up ... ap BSSID" is only a hint (the supplicant may pick the strongest instead), so the
+    # profile is held to the target for the test, and given back what it had after.
+    code, was = run("nmcli", "-g", "802-11-wireless.bssid", "con", "show", "uuid", prof["uuid"])
+    was = (was or "").replace("\\:", ":").strip() if code == 0 else ""
     t0 = time.time()
-    code, out = run("nmcli", "con", "up", "uuid", prof["uuid"], "ap", target["bssid"], timeout=60)
-    took = round(time.time() - t0)
-    sleep(5)
-    chans = _channels()
-    after, link_ch = chans.get(ap), chans.get(iface)
-    back = run("nmcli", "con", "up", "uuid", prof["uuid"], "ap", here, timeout=60)[0] == 0 if here else False
+    try:
+        run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", target["bssid"])
+        code, out = run("nmcli", "con", "up", "uuid", prof["uuid"], timeout=60)
+        took = round(time.time() - t0)
+        sleep(5)
+        chans = _channels()
+        after, link_ch = chans.get(ap), chans.get(iface)
+    finally:
+        run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", was)
+        back = run("nmcli", "con", "up", "uuid", prof["uuid"], timeout=60)[0] == 0
     if code != 0:
         return "unknown", f"the move to {target['bssid']} (channel {target['channel']}) failed: {out[-120:]}"
+    if link_ch == here_ch:
+        return "unknown", f"the link did not move off channel {here_ch} (asked for {target['bssid']} on channel {target['channel']})"
     if after is None:
         from irate_box.root import radio as radio_mod
         said = radio_mod.restore_hotspot()
         return "doesn't", (f"the hotspot went down when the link moved to channel {link_ch}" + (f"; {said}" if said else ""))
-    put_back = "" if back else " (the link was left on the new access point)"
+    put_back = "" if back else " (the link could not be brought back up afterwards)"
     if after == link_ch and after != before:
         return "follows", f"the hotspot moved with the link from channel {before} to {after}; the move took {took} s{put_back}"
     if after == before:
-        return "stays", f"the hotspot stayed on channel {before} while the link moved to {link_ch}{put_back}"
+        return "stays", f"the hotspot stayed on channel {before} while the link moved to {link_ch}: this radio runs both at once{put_back}"
     return "unknown", f"the hotspot went from channel {before} to {after}, the link to {link_ch}{put_back}"
 
 

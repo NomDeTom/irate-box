@@ -38,6 +38,7 @@ radio = {"iface": "wlan0", "type": "managed", "phy": "phy0", "driver": "aic8800_
 inv = {"radios": [radio, {"iface": "ap0", "type": "AP", "phy": "phy0"}]}
 st = {"guests": 0, "ap": 11, "link": 11, "follow": True, "ap_dies": False, "reset": True}
 ran = []
+ran_locks = []
 
 
 def fake_run(*cmd, timeout=60):
@@ -48,8 +49,14 @@ def fake_run(*cmd, timeout=60):
         return 0, ("Interface wlan0\n\tchannel %d (2462 MHz)\n" % st["link"]) + ("" if st["ap_dies"] else "Interface ap0\n\tchannel %d (2462 MHz)\n" % st["ap"])
     if cmd[:4] == ("iw", "dev", "wlan0", "link"):
         return 0, "Connected to 04:95:e6:72:b6:d1"
+    if cmd[:4] == ("nmcli", "-g", "802-11-wireless.bssid", "con"):
+        return 0, st.get("lock", "")
+    if cmd[:3] == ("nmcli", "con", "modify"):
+        st["lock"] = cmd[-1]
+        ran_locks.append(cmd[-1])
+        return 0, ""
     if cmd[:3] == ("nmcli", "con", "up"):
-        st["link"] = 6 if cmd[-1] == "50:0f:f5:ad:15:e1" else 11
+        st["link"] = 11 if st.get("ignore_lock") else (6 if st.get("lock") == "50:0f:f5:ad:15:e1" else 11)
         if st["follow"]:
             st["ap"] = st["link"]
         return 0, ""
@@ -83,8 +90,13 @@ key = R.radio_key(radio)
 got = R.results()[key]["follows-roam"]
 check("follows-roam: the hotspot moved with the link; kept per radio and driver version",
       got["answer"] == "follows" and "from channel 11 to 6" in got["detail"] and key == "a69c:88dc aic8800_fdrv 6.4.3.0", (key, got))
-check("  the link moved back afterwards", ran.count(("nmcli", "con", "up", "uuid", radio["profile"]["uuid"], "ap", "04:95:e6:72:b6:d1")) == 1
-      and st["link"] == 11)
+check("  the profile held to the target for the test, then given back what it had", ran_locks[-2:] == ["50:0f:f5:ad:15:e1", ""]
+      and st["lock"] == "" and st["link"] == 11, ran_locks)
+st.update(ignore_lock=True)
+R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
+check("  a link that did not move: not counted as an answer", R.results()[key]["follows-roam"]["answer"] == "unknown"
+      and "did not move" in R.results()[key]["follows-roam"]["detail"])
+st.update(ignore_lock=False)
 st.update(follow=False, ap=11)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check("  a hotspot that stays: said so", R.results()[key]["follows-roam"]["answer"] == "stays")
