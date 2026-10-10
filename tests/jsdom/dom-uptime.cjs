@@ -11,7 +11,8 @@
 // And the services' (from svchistory.summarize): a fold under Overview's table, closed,
 // a row per service by hour for the last 72 hours and by day for 72 days, the starts marked, kept
 // open across the pane's redraws. And the network's 72 hours on Overview, under the tiles, and
-// meshtasticd's where it is installed. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
+// meshtasticd's where it is installed; a tooltip for any cell, by pointer, tap or keys.
+// Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -65,9 +66,27 @@ setTimeout(() => {
   const cells = hours && rows(hours)[0].querySelectorAll('.hm-cell');
   check('  before the record began: no data', cells && cells[0].classList.contains('hm-none') && cells[1].classList.contains('hm-none'));
   check('  the outage\'s hour: partly down, a mark for the drop, and it says so', cells && cells[10].classList.contains('hm-part') && cells[10].classList.contains('hm-mark')
-    && /Mon 05 03:00–04:00: up 75 %, 1 drop$/.test(cells[10].getAttribute('aria-label')), cells && cells[10].title);
-  check('  the hour switched off: off, not down', cells && cells[20].classList.contains('hm-off') && /switched off/.test(cells[20].title));
-  check('  the current hour, only partly sampled, up so far', cells && cells[71].classList.contains('hm-full') && /up 100 %$/.test(cells[71].title), cells && cells[71].title);
+    && /Mon 05 03:00–04:00: up 75 %, 1 drop$/.test(cells[10].getAttribute('aria-label')), cells && cells[10].dataset.words);
+  check('  the hour switched off: off, not down', cells && cells[20].classList.contains('hm-off') && /switched off/.test(cells[20].dataset.words));
+  check('  the current hour, only partly sampled, up so far', cells && cells[71].classList.contains('hm-full') && /up 100 %$/.test(cells[71].dataset.words), cells && cells[71].dataset.words);
+  // The tooltip: one for the page, the cell's words, shown on pointing, on a tap, and by the arrow keys.
+  const tipOf = () => d.querySelector('body > .hm-tip');
+  cells[10].dispatchEvent(new w.MouseEvent('pointerover', { bubbles: true }));
+  check('the tooltip: pointing at a cell shows its words, the cell ringed', tipOf() && !tipOf().hidden && tipOf().textContent === cells[10].dataset.words
+    && cells[10].classList.contains('hm-on') && !cells[10].hasAttribute('title'), tipOf() && tipOf().textContent);
+  hours.dispatchEvent(new w.MouseEvent('pointerleave', { bubbles: false }));
+  check('  leaving hides it', tipOf().hidden && !cells[10].classList.contains('hm-on'));
+  cells[20].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  check('  a tap shows it too', !tipOf().hidden && /switched off/.test(tipOf().textContent));
+  hours.focus();
+  check('  the grid takes focus: the cell kept, else the newest', hours.tabIndex === 0 && !tipOf().hidden && hours.getAttribute('aria-activedescendant') === cells[20].id, tipOf().textContent);
+  hours.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  hours.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  check('  End, then ←: the hour before the newest', tipOf().textContent === cells[70].dataset.words && cells[70].classList.contains('hm-on'), tipOf().textContent);
+  hours.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check('  Escape hides it', tipOf().hidden);
+  hours.blur();
+  check('  one tooltip for the page', d.querySelectorAll('.hm-tip').length === 1);
   check('72 days, one row', month && rows(month).length === 1 && rows(month)[0].querySelectorAll('.hm-cell').length === 72);
   check('  most days with no record: no data', month && [...month.querySelectorAll('.hm-cell')].filter((c) => c.classList.contains('hm-none')).length >= 60);
   check('a legend, and what up means for the uplink', up && up.querySelectorAll('.hm-legend .hm-key').length === 6 && /the gateway answered/.test(t(up)));
@@ -92,8 +111,8 @@ setTimeout(() => {
     const k = shours ? [...shours.querySelectorAll('.hm-cell')] : [];
     const marked = k.filter((c) => c.classList.contains('hm-mark'));
     check('  the hour it stopped and started again: partly down, marked, said', marked.length === 1 && marked[0].classList.contains('hm-part')
-      && /Library \(Kiwix\), Mon 05 03:00–04:00: up 83 %, 1 restart$/.test(marked[0].title), marked.map((c) => c.title).join(' | '));
-    check('  72 days by day too, with the hub\'s dates', smonth && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-cell')].pop().title));
+      && /Library \(Kiwix\), Mon 05 03:00–04:00: up 83 %, 1 restart$/.test(marked[0].dataset.words), marked.map((c) => c.dataset.words).join(' | '));
+    check('  72 days by day too, with the hub\'s dates', smonth && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-cell')].pop().dataset.words));
     check('  a service never recorded: a dash, no strip', [...d.querySelectorAll('#service-table tbody tr')].some((r) => !r.querySelector('.heatmap')));
     const body = d.getElementById('svc-uptime-body');
     check('  the week in a line, and the legend, under the table', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(d.querySelector('#svc-uptime-body > p'))) && body.querySelectorAll('.hm-legend .hm-key').length === 6, t(d.querySelector('#svc-uptime-body > p')));

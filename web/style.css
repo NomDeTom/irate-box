@@ -820,6 +820,12 @@ body[data-art] > header { z-index: 2; }
 .hm-down { background: #e5484d; }
 .hm-off { background: color-mix(in srgb, var(--muted) 45%, transparent); }
 .hm-none { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+.hm-cell.hm-on { outline: 2px solid var(--text); outline-offset: 1px; z-index: 1; }
+.heatmap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hm-tip { position: fixed; z-index: 60; pointer-events: none; max-width: min(22rem, calc(100vw - 8px)); padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 0.75rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25); }
+.hm-tip[hidden] { display: none; }
 .hm-mark::after { content: ""; position: absolute; inset: 35%; border-radius: 50%; background: var(--bg); opacity: 0.8; }
 .hm-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.75rem; color: var(--muted); }
 .hm-key { display: inline-flex; align-items: center; gap: 0.3rem; }
