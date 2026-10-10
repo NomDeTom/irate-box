@@ -1313,6 +1313,7 @@ function sudoToggle(f, busy) {
 // A line of the box's scan: its buttons, each acting through the root helper (only what its last scan offered).
 function scanButtons(f, busy) {
   if (f.id === 'sudo-nopasswd') return sudoToggle(f, busy);
+  if ((f.actions || []).some((a) => a.group)) return [...secChipRows(f, busy), ...scanButtons({ ...f, actions: f.actions.filter((a) => !a.group) }, busy)];
   return (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
     onclick: () => secFix(f.id, a) }));
 }
@@ -1379,10 +1380,10 @@ async function healthRepair(choice, label, confirmText) {
 // A choice on the Security page, as a setting rather than a finding: its name, what it means, its options as
 // chips with how it is now selected (actions with a group), and any other buttons. The status words and
 // "what to do" are the doctors' (Security doctor), not this page's.
-function secChoiceCard(f, busy, note) {
+function secChipRows(f, busy) {
   const groups = new Map();
   (f.actions || []).filter((a) => a.group).forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
-  const rows = [...groups].map(([label, choices]) => el('div', { className: 'aw-field' },
+  return [...groups].map(([label, choices]) => el('div', { className: 'aw-field' },
     el('span', { className: 'aw-label', textContent: label }),
     el('div', { className: 'chip-group', role: 'group', 'aria-label': label }, ...choices.map((a) => {
       const b = el('button', { type: 'button', className: 'chip' + (a.on ? ' selected' : ''), textContent: a.label, disabled: busy,
@@ -1390,12 +1391,15 @@ function secChoiceCard(f, busy, note) {
       b.setAttribute('aria-pressed', String(!!a.on));
       return b;
     }))));
+}
+function secChoiceCard(f, busy, note) {
+  const rows = secChipRows(f, busy);
   const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
   const buttons = rest.actions.length ? el('div', { className: 'library-buttons' }, ...scanButtons(rest, busy)) : null;
   return el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
     el('span', { className: 'setting-name', textContent: f.title }),
     el('span', { className: 'setting-desc', textContent: f.detail }),
-    f.status !== 'ok' && f.fix && !groups.size && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
+    f.status !== 'ok' && f.fix && !rows.length && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     ...rows, buttons, note);
 }
 function renderSecurity(data) {

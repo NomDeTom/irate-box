@@ -28,7 +28,9 @@ const CSV = 'IP,Hostname,Port,Port Protocol,CVSS,Severity,QoD,Solution Type,NVT 
 // The box's scan, one of each kind: a cure, two choices, a toggle, an update.
 const F = (id, title, status, actions) => ({ id, title, status, detail: 'd', fix: '', actions });
 const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn', detail: 'No certificate in use.', fix: 'Make the box\'s certificate.',
-    actions: [], do: { go: 'security-https', where: 'Security → HTTPS' } }], accepted: {}, scan: { at: now, listeners: [], findings: [
+    actions: [], do: { go: 'security-https', where: 'Security → HTTPS' } }], accepted: {}, scan: { at: now, listeners: [{ proto: 'udp', port: 5355, addr: '0.0.0.0', name: 'LLMNR', unit: 'systemd-resolved.service' }], findings: [
+    F('port-udp-5355', 'LLMNR (systemd-resolved)', 'warn', [{ choice: 'llmnr-on-now', label: 'On', group: 'LLMNR', on: true },
+      { choice: 'llmnr-off', label: 'Off', group: 'LLMNR', on: false }]),
     F('kernel-links', 'Kernel link protections', 'problem', [{ choice: 'kernel-links-debian', label: "Install Debian's defaults" }]),
     F('ssh-password', 'SSH password login', 'warn', [{ choice: 'ssh-password-off', label: 'Turn password login off' }]),
     F('sudo-nopasswd', 'Passwordless sudo', 'problem', [{ choice: 'sudo-drop:90-lyra', label: 'Remove 90-lyra', confirm: 'Remove it?' }]),
@@ -113,6 +115,14 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   d.getElementById('joint-search').dispatchEvent(new w.Event('input'));
   [...rows().find((r) => /Bluetooth/.test(t(r))).querySelectorAll('button')].find((b) => /Accept as it is/.test(t(b))).click();
   await wait();
+  {
+    const llmnr = [...d.querySelectorAll('#security-listeners .chip')];
+    check("the listening table: LLMNR's choice as chips, On selected", llmnr.map((b) => `${b.textContent}${b.classList.contains('selected') ? '*' : ''}`).join(' ') === 'On* Off',
+      llmnr.map((b) => b.textContent));
+    const before = posted.length;
+    llmnr[0] && llmnr[0].click();
+    check('  the selected chip sends nothing', posted.length === before);
+  }
   check('Accept: the hub keeps it, by the item\'s key', posted.some(([, b]) => b.action === 'accept' && b.key === 'finding:doctor:image-bluetooth'));
   w.renderSecurity({ ...sec, accepted: { 'finding:doctor:image-bluetooth': { at: now, title: 'Bluetooth is on' } } });
   check('  accepted: out of the list and the counts, in its own fold with Take back', !rows().some((r) => /Bluetooth/.test(t(r)))

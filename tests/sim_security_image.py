@@ -302,12 +302,15 @@ check("keys where sshd looks (AuthorizedKeysFile with %h and %u): none yet", sec
 check("  a key in the file sshd names: found", security.keys_on_box() == ["lyra"])
 check("apt: a key in trusted.gpg.d with a source of its name: warned, the tie offered",
       g["apt-trust"]["status"] == "warn" and "home_mPWRD_OS.gpg" in g["apt-trust"]["detail"] and "debian-archive" not in g["apt-trust"]["detail"]
-      and g["apt-trust"]["actions"][0]["choice"] == "apt-signedby:home_mPWRD_OS.gpg", g["apt-trust"])
+      and [(a["group"], a["choice"], a["on"]) for a in g["apt-trust"]["actions"]][:2] == [
+          ("home_mPWRD_OS.gpg", "apt-any:home_mPWRD_OS.gpg", True), ("home_mPWRD_OS.gpg", "apt-signedby:home_mPWRD_OS.gpg", False)], g["apt-trust"])
 print(security.fix("apt-signedby:home_mPWRD_OS.gpg", None))
 lst = (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text()
 check("  the key moved to keyrings and named in the source; trusted.gpg.d without it; ok with Undo",
       lst.startswith("deb [signed-by=" + str(T / "keyrings" / "home_mPWRD_OS.gpg") + "] http://") and (T / "keyrings" / "home_mPWRD_OS.gpg").read_bytes() == b"KEY"
       and not (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists() and gate()["apt-trust"]["status"] == "ok", lst)
+check("  its choice now: Only its own source, with Any repository to put it back", [(a["choice"], a["on"]) for a in gate()["apt-trust"]["actions"]]
+      == [("apt-undo:home_mPWRD_OS.gpg", False), ("apt-tied:home_mPWRD_OS.gpg", True)], gate()["apt-trust"]["actions"])
 print(security.fix("apt-undo:home_mPWRD_OS.gpg", None))
 check("  undone: both back as they were", (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text().startswith("deb http://")
       and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists() and not (T / "keyrings" / "home_mPWRD_OS.gpg").exists())
