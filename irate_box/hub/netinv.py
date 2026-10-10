@@ -722,6 +722,11 @@ def scan(focus=None):
            "focus": focus, "iw": iw_ok, "stacks": stacks, "radios": radios, "wired": wired(),
            "default_route": route, "country": reg_country() if iw_ok else None}
     if inv["root"]:
+        try:
+            from irate_box.root import otherap
+            inv["other_ap"] = otherap.record()
+        except (OSError, ValueError, ImportError):
+            inv["other_ap"] = {}
         inv["duplicate_profiles"] = duplicate_profiles()
         if stacks.get("netplan") is not None and shutil.which("netplan"):
             code, out = run("netplan", "get", timeout=30)
@@ -848,9 +853,18 @@ def hazards(inv):
     nm = inv["stacks"].get("networkmanager") or {}
     for p in nm.get("wifi_profiles", []) if nm.get("running") else []:
         if p.get("mode") == "ap" and p["name"] != AP_PROFILE:
-            out.append(_h(f"other-ap:{p['uuid']}", "warn" if p["autoconnect"] else "ok", f"Another hotspot profile: {p['name']}",
-                          f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}, autoconnect "
-                          f"{'on: it could take the radio at boot' if p['autoconnect'] else 'off'}. Not irate-box's; left as it is."))
+            left = (inv.get("other_ap") or {}).get(p["uuid"], {}).get("choice") == "left"
+            if p["autoconnect"]:
+                out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile set to start by itself: {p['name']}",
+                              f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}: at boot it could take the radio, and the "
+                              "box off its own network. Not irate-box's.",
+                              "Network page, WiFi: remove it (kept for undo), or set it not to start by itself."))
+            elif not left:
+                out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile: {p['name']}",
+                              f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}, not set to start by itself. Not irate-box's: "
+                              "probably the image's setup hotspot, often with the image's own password. Started, it would take the box "
+                              "off its own network; irate-box's hotspot runs beside the link instead.",
+                              "Network page, WiFi: remove it (kept for undo), or leave it and stop listing it."))
         if p.get("mode") in (None, "infrastructure"):
             for key, field, gives_up in (
                     ("auth_retries", "auth-retries",

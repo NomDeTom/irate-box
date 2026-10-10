@@ -36,6 +36,7 @@ run sim_nmconf.py
 run sim_nmhandover.py
 run sim_nmconnection.py
 run sim_netpolicy.py
+run sim_otherap.py
 run sim_roaming.py
 run sim_backup.py
 run sim_declared_services.py
