@@ -866,9 +866,11 @@ DEFAULT_SETTINGS = {
     "shout_marks": True,
     "board_who": "guests",
     "board_marks": True,
-    # Page widths in rem (80 by default, with the owner's choice of 45, 60, 80, 90 or 100; the shoutbox and the forum their own, 45 as they always were).
+    # Page widths in rem (80 by default, with the owner's choice of 45, 60, 80, 90 or 100): the hub's pages, the admin
+    # pages (as the hub's until chosen apart), and the shoutbox and the forum their own, 45 as they always were.
     # Every page reads them from /layout.css.
     "page_width": 80,
+    "admin_width": 80,
     "shout_width": 45,
     "board_width": 45,
     # The emoji pickers' set: Unicode's emoji up to a release the guests' phones
@@ -924,7 +926,7 @@ def valid_setting(key, value):
     want = type(DEFAULT_SETTINGS[key])
     if key in ("shout_who", "board_who"):
         return value in POSTERS
-    if key in ("page_width", "shout_width", "board_width"):
+    if key in ("page_width", "admin_width", "shout_width", "board_width"):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
@@ -959,6 +961,8 @@ def load_settings():
         for key in DEFAULT_SETTINGS:
             if valid_setting(key, stored.get(key)):
                 data[key] = stored[key]
+        if "admin_width" not in stored:  # chosen before the admin pages had a width of their own: the one width for both
+            data["admin_width"] = data["page_width"]
     return data
 
 
@@ -3367,7 +3371,8 @@ class Handler(BaseHTTPRequestHandler):
             with _settings_lock:
                 cur = dict(_settings)
             body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
-                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"])).encode()
+                    "body.admin { --page-width: %drem; }\n"
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"])).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
             self.send_header("Content-Length", len(body))

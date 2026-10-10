@@ -4706,12 +4706,13 @@ async function loadAppearance() {
   fillWidthBlocks();
   const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
   box.replaceChildren(AW.settings([
-    row('page_width', 'Hub and admin', 'the tiles, the menu and its pages'),
+    row('page_width', 'Hub', 'the tiles, the menu and its pages'),
+    row('admin_width', 'Admin', 'these pages'),
     row('shout_width', 'Shoutbox', 'its tab on the hub page'),
     row('board_width', 'Forum', 'its tab on the hub page'),
   ], { save: async (changed) => {
     const now = await postJSON('/admin/settings', changed);
-    document.documentElement.style.setProperty('--page-width', now.page_width + 'rem');
+    document.body.style.setProperty('--page-width', now.admin_width + 'rem');  // this page is an admin one
     return now;
   } }),
   // The emoji pickers' set: newer sets have more, but a phone older than a set's
