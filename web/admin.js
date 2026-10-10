@@ -297,6 +297,7 @@ function renderApps(snap, busy) {
 
 function renderLibrary(snap) {
   const busy = snap.running;
+  drawSuggested(snap.sources);
   if (libNote && libNote.busy && !busy) libNote = null;
   renderApps(snap, busy);
   const job = snap.job || {};
@@ -582,6 +583,35 @@ async function searchCatalogue(more) {
     if (more) cat.results.append(...rows); else cat.results.replaceChildren(...rows);
     cat.pager.hidden = catStart + 20 >= d.total;
   } catch (err) { say(err.message, false, cat.note); }
+}
+// A short list of books worth having offline (from Kiwix's catalogue: name, flavour; sizes as it gave them, 2026-10).
+const SUGGESTED_BOOKS = [
+  { name: 'mdwiki_en_all', flavour: 'maxi', title: 'MDWiki medical encyclopedia', mb: 2200, why: 'medicine and first aid, written for readers' },
+  { name: 'wikivoyage_en_all', flavour: 'nopic', title: 'Wikivoyage', mb: 260, why: 'travel guides: places, getting around, staying safe' },
+  { name: 'ifixit_en_all', flavour: '', title: 'iFixit repair guides', mb: 3400, why: 'step-by-step repairs of phones, radios, tools' },
+  { name: 'ham.stackexchange.com_en_all', flavour: '', title: 'Amateur Radio Q&A', mb: 72, why: 'questions and answers on radio, antennas, licensing' },
+  { name: 'electronics.stackexchange.com_en_all', flavour: '', title: 'Electronics Q&A', mb: 4000, why: 'circuits, components, debugging' },
+  { name: 'wikibooks_en_all', flavour: 'nopic', title: 'Wikibooks', mb: 3300, why: 'open textbooks and how-tos' },
+];
+function drawSuggested(sources) {
+  const box = document.getElementById('suggested-books');
+  if (!box) return;
+  const kept = new Set((sources || []).filter((s) => s.type === 'kiwix').map((s) => `${s.kiwix_name}|${s.flavour || ''}`));
+  box.replaceChildren(...SUGGESTED_BOOKS.map((b) => {
+    const have = kept.has(`${b.name}|${b.flavour}`);
+    const name = (b.flavour ? `${b.name}_${b.flavour}` : b.name).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 64);
+    return el('div', { className: 'admin-item' },
+      el('span', { className: 'setting-name', textContent: b.title }),
+      el('span', { className: 'setting-desc', textContent: ` About ${size(b.mb * 2 ** 20)}${b.flavour === 'nopic' ? ', without pictures' : ''}: ${b.why}.` }),
+      el('span', { className: 'library-buttons' }, have ? el('span', { className: 'setting-desc', textContent: 'Kept here already.' })
+        : actionButton('Keep current here', async () => {
+          try {
+            await libPost({ action: 'add', source: { name, type: 'kiwix', kiwix_name: b.name, flavour: b.flavour } });
+            say(`Added ${b.title}: Update in the table above fetches it (about ${size(b.mb * 2 ** 20)}).`, true, cat.note);
+            loadLibrary(); loadBooks();
+          } catch (err) { say(err.message, false, cat.note); }
+        })));
+  }));
 }
 cat.form.addEventListener('submit', (e) => { e.preventDefault(); searchCatalogue(false); });
 cat.more.addEventListener('click', () => searchCatalogue(true));

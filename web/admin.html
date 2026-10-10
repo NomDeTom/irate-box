@@ -296,6 +296,12 @@
             manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
             as a source that follows its newest release; Update fetches it.
           </p>
+          <details class="sec-fold" id="suggested-fold" open>
+            <summary>Suggested for an offline box</summary>
+            <p class="setting-desc">Books worth having where there is no internet, from the same catalogue, checked against its
+              published sha256 when fetched. Sizes are about what the catalogue gives; mind the card's room (Backup says it).</p>
+            <div id="suggested-books" class="admin-list"></div>
+          </details>
           <form id="catalogue-form" class="books-tools">
             <label>Search <input type="search" name="q" placeholder="e.g. raspberry, medicine, wikipedia" aria-label="Search Kiwix's catalogue"></label>
             <label>Language <input name="language" size="5" placeholder="eng" pattern="[a-z]{3}(,[a-z]{3})*" title="three-letter codes, e.g. eng or fra,deu"></label>
