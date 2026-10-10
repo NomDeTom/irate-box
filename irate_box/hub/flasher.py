@@ -38,13 +38,15 @@ page and the API:
                                              until there is any
   OPTIONS /flasher/api/...                   the CORS preflight
 
-Stdlib only.
+Stdlib, and confine for the paths.
 """
 
 import json
 import os
 import re
 from pathlib import Path
+
+from irate_box import confine
 
 ROOT = Path(os.environ.get("HUB_FLASHER_ROOT", "/usr/share/hub/apps/flasher"))
 EWT = Path(os.environ.get("HUB_EWT_ROOT", "/usr/share/hub/apps/esp-web-tools"))
@@ -114,17 +116,19 @@ def partitions(data):
 
 ESP_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}" + "-built$")
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
+FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")   # factory.py's, for the files a manifest names
 OTA_RE = re.compile(r"^(mt-esp32[a-z0-9]*-ota|bleota[a-z0-9-]*)\.bin$")
 
 
 def _target_files(folder, env):
-    """A published target's manifest (.mt.json) and the files it names that are there."""
+    """A published target's manifest (.mt.json) and the files it names that are there: {name: path}."""
     try:
-        mt = json.loads((folder / f"firmware-{env}-{folder.name}.mt.json").read_text())
+        mt = json.loads(confine.under(folder, f"firmware-{env}-{folder.name}.mt.json").read_text())
     except (OSError, ValueError):
-        return None, []
+        return None, {}
     names = [str(f.get("name", "")) for f in mt.get("files") or []]
-    return mt, [n for n in names if n and "/" not in n and (folder / n).is_file()]
+    paths = {n: confine.under(folder, n) for n in names if FILE_RE.match(n)}
+    return mt, {n: p for n, p in paths.items() if p.is_file()}
 
 
 def esp_manifest(version, env):
@@ -133,12 +137,15 @@ def esp_manifest(version, env):
     and they fit."""
     if not ESP_VERSION_RE.match(version or "") or not ENV_RE.match(env or ""):
         return None
-    folder = FIRMWARE / version
+    try:
+        folder = confine.under(FIRMWARE, version)
+    except ValueError:
+        return None
     mt, names = _target_files(folder, env)
     factory = next((n for n in names if n.endswith(".factory.bin")), None)
     if not mt or not factory:
         return None
-    data = (folder / factory).read_bytes()
+    data = names[factory].read_bytes()
     fam = chip(data)
     if not fam:
         return None
@@ -148,7 +155,7 @@ def esp_manifest(version, env):
     fs = next((p for p in table if p["type"] == 1 and p["subtype"] in (0x82, 0x83)), None)
     for name in names:
         where = ota if OTA_RE.match(name) else fs if name.startswith("littlefs-") and name.endswith(".bin") else None
-        if where and (folder / name).stat().st_size <= where["size"]:
+        if where and names[name].stat().st_size <= where["size"]:
             parts.append({"path": f"/flasher/firmware/{version}/{name}", "offset": where["offset"]})
     return {"name": f"Meshtastic for {mt.get('display_name') or env}", "version": version[:-len(BUILT)],
             "new_install_prompt_erase": True, "new_install_improv_wait_time": 0,
