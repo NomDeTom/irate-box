@@ -798,6 +798,31 @@ function renderOverviewNet(u) {
     el('p', { className: 'setting-desc' }, said + ' ', el('a', { href: '#network', textContent: 'The links, by day too, on Network' })));
 }
 
+// meshtasticd on the Overview, where it is installed: its last 72 hours by hour (the hub samples it
+// with the services) and its state in words, for its trends: restarts, and a crash loop ended by
+// systemd's start limit.
+function meshWords(m, sm) {
+  const ran = m.restarts ? `; systemd restarted it ${m.restarts} time${m.restarts === 1 ? '' : 's'} since the box started` : '';
+  const now = m.active === 'active' ? `running${ran}.`
+    : m.active === 'failed' && m.result === 'start-limit-hit'
+      ? `stopped: it kept failing, and systemd's limit (${m.burst} starts within ${m.interval}) ended the loop. It stays down until it is started again.`
+      : m.active === 'failed' ? `failed (${m.result || 'no reason given'})${ran}.`
+        : m.active === 'activating' ? `starting${ran}.` : `not running${ran}.`;
+  const week = sm && sm.up != null ? ` Over the last 72 hours: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}.` : '';
+  return `meshtasticd is ${now}${week}`;
+}
+function renderOverviewMesh(m, u) {
+  const box = document.getElementById('overview-mesh');
+  if (!box) return;
+  if (!m) { box.replaceChildren(); return; }
+  const rec = u && (u.units || {})['meshtasticd.service'];
+  box.replaceChildren(el('h3', { textContent: 'Meshtastic (meshtasticd), the last 72 hours' }),
+    rec ? Heatmap.grid({ caption: 'meshtasticd, the last 72 hours by hour', cols: u.hour_cols,
+      rows: [{ label: 'meshtasticd', cells: rec.hours, where: (k) => `meshtasticd, ${u.hour_full[k]}` }] })
+      : el('p', { className: 'setting-desc', textContent: 'Not recorded yet: the hub looks at it every five minutes, once the box\'s clock is known to be right.' }),
+    el('p', { className: 'setting-desc', textContent: meshWords(m, rec && rec.summary) }));
+}
+
 function renderBox(data) {
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
@@ -808,6 +833,7 @@ function renderBox(data) {
     tile('Guests', `${data.online} on the page${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ''}`),
   );
   renderOverviewNet(data.net_uptime);
+  renderOverviewMesh(data.meshtasticd, data.service_uptime);
   document.getElementById('hub-version').textContent = data.version;
 
   const rows = data.services.map((s) => {

@@ -1458,6 +1458,27 @@ def control_results(limit=10):
     return out
 
 
+MESHTASTICD = "meshtasticd.service"   # sampled for its trends where installed; not one of the hub's services
+
+
+def meshtasticd_state():
+    """meshtasticd on Overview, or None where it is not installed: running or not, how it last
+    ended, its restarts since the box started, and systemd's start limit, which ends a crash loop
+    (the unit restarts it always, up to the limit, then leaves it failed until it is started again)."""
+    try:
+        out = subprocess.run(["systemctl", "show", "--property=LoadState,ActiveState,SubState,Result,NRestarts,"
+                              "StartLimitBurst,StartLimitIntervalUSec", MESHTASTICD],
+                             capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    f = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    if f.get("LoadState") in (None, "", "not-found"):
+        return None
+    num = lambda k: int(f[k]) if f.get(k, "").isdigit() else None  # noqa: E731
+    return {"active": f.get("ActiveState"), "sub": f.get("SubState"), "result": f.get("Result"),
+            "restarts": num("NRestarts"), "burst": num("StartLimitBurst"), "interval": f.get("StartLimitIntervalUSec")}
+
+
 def net_uptime_72h():
     """The Overview's network heatmap: each link recorded in the last 72 hours, by hour (the Network
     page's own summary, without the days), the box's link to the network first."""
@@ -1486,7 +1507,7 @@ def admin_box(proxied):
     return {"system": system_status(), "uptime": now, "online": online_count(now),
             "joined": joined_count(), "services": services, "version": hub_version(),
             "service_uptime": svchistory.summarize(svchistory.load()),
-            "net_uptime": net_uptime_72h(),
+            "net_uptime": net_uptime_72h(), "meshtasticd": meshtasticd_state(),
             "results": control_results(),
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
@@ -4311,7 +4332,7 @@ if __name__ == "__main__":
     # The mesh heard through the box's MQTT broker: decoded with the owner's channel keys.
     MESH.start()
     # The services' uptime: every unit's state every five minutes, for /admin's grid.
-    svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s]).start()
+    svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
     server = HubServer((BIND, PORT), Handler)

@@ -10,7 +10,8 @@
 // no record says how one comes.
 // And the services' (from svchistory.summarize): a fold under Overview's table, closed,
 // a row per service by hour for the last 72 hours and by day for 72 days, the starts marked, kept
-// open across the pane's redraws. And the network's 72 hours on Overview, under the tiles. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
+// open across the pane's redraws. And the network's 72 hours on Overview, under the tiles, and
+// meshtasticd's where it is installed. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -33,7 +34,11 @@ const w = dom.window;
 // The Overview's network rows: net_uptime_72h()'s shape, the uplink first.
 const netUp = Object.fromEntries(['wlan0', 'eth0'].filter((i) => fixture.uptime[i]).map((i) => [i,
   (({ kind, hours, hour_cols, hour_full, summary }) => ({ kind, hours, hour_cols, hour_full, summary }))(fixture.uptime[i])]));
-const box = { system: {}, uptime: 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: fixture.services, net_uptime: netUp,
+// meshtasticd where installed: failed, its crash loop ended by systemd's start limit; sampled with the services.
+const svcWithMesh = JSON.parse(JSON.stringify(fixture.services));
+svcWithMesh.units['meshtasticd.service'] = svcWithMesh.units['kiwix.service'];
+const box = { meshtasticd: { active: 'failed', sub: 'failed', result: 'start-limit-hit', restarts: 5, burst: 5, interval: '3min 20s' },
+  system: {}, uptime: 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: svcWithMesh, net_uptime: netUp,
   services: [{ name: 'Library (Kiwix)', unit: 'kiwix.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] }] };
@@ -101,6 +106,16 @@ setTimeout(() => {
     check('  each cell says its link and hour', /^wlan0, \w{3} \d{2} \d{2}:00–\d{2}:00: /.test(on.querySelector('.hm-row:not(.hm-head) .hm-cell').title), on.querySelector('.hm-row:not(.hm-head) .hm-cell').title);
     check('  the summary in words, the legend, a link to Network', /^wlan0: up \d/.test(t(on.querySelector('p'))) && on.querySelectorAll('.hm-legend .hm-key').length === 6
       && on.querySelector('a[href="#network"]'), t(on.querySelector('p')));
+    const mesh = d.getElementById('overview-mesh');
+    check('meshtasticd: its 72 hours under the network\'s, one row', (on.compareDocumentPosition(mesh) & 4) && mesh.querySelectorAll('.hm-row:not(.hm-head)').length === 1
+      && /^meshtasticd, /.test(mesh.querySelector('.hm-row:not(.hm-head) .hm-cell').getAttribute('aria-label')));
+    check('  the start limit said: the loop ended, down until started again', /systemd's limit \(5 starts within 3min 20s\) ended the loop/.test(t(mesh))
+      && /Over the last 72 hours: up 99\.\d %, started 1 time/.test(t(mesh)), t(mesh));
+    check('  not in the services\' table', !/meshtasticd/.test(t(d.getElementById('service-table'))));
+    check('the words for each state', w.meshWords({ active: 'active', restarts: 2 }) === 'meshtasticd is running; systemd restarted it 2 times since the box started.'
+      && /^meshtasticd is failed \(exit-code\)\.$/.test(w.meshWords({ active: 'failed', result: 'exit-code', restarts: 0 })), w.meshWords({ active: 'active', restarts: 2 }));
+    w.renderOverviewMesh(null, null);
+    check('  not installed: nothing shown', mesh.children.length === 0);
     console.log(`failures: ${fails}`);
     process.exit(fails ? 1 : 0);
   }, 300);
