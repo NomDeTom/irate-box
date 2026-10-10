@@ -878,6 +878,18 @@ def set_clock(epoch):
 PREEMPT_WORDS = {"off": "Off", "warn": "Warn", "radio": "Reset the radio", "reboot": "Reset, then restart the box"}
 
 
+def check_usb_filesystems():
+    """Which filesystems a USB stick may have for this box to read it (books, toolkits, imports)."""
+    from irate_box.root import usbstick
+    can = usbstick.readable()
+    words = lambda names: ", ".join(dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n))))  # noqa: E731
+    yes = [n for n, ok in can.items() if ok]
+    no = [n for n, ok in can.items() if not ok and not (n == "ntfs3" and can.get("ntfs")) and not (n == "ntfs" and can.get("ntfs3"))]
+    return [_f("usb-filesystems", "USB sticks this box can read", "ok",
+               f"{words(yes)}." + (f" Not {words(no)}: this kernel has no driver for {'them' if len(no) > 1 else 'it'}." if no else ""),
+               "A stick formatted FAT or exFAT reads on any box." if no else "")]
+
+
 def check_crashwatch(now=None):
     """Crash watch (crashwatch.py): crashes, kernel floods, the radio and pre-emption, the hang settings."""
     from irate_box.root import crashwatch as cw
@@ -962,7 +974,7 @@ def check_crashwatch(now=None):
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_hotspot, check_space, check_builds, check_crashwatch):
+                  check_hotspot, check_space, check_builds, check_crashwatch, check_usb_filesystems):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
