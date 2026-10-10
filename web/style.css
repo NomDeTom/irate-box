@@ -826,6 +826,8 @@ body[data-art] > header { z-index: 2; }
 .hm-key .hm-cell { width: 0.7rem; min-height: 0.7rem; }
 /* The services' strips: one thin row of cells in the service's own table row, hours over days. */
 .svc-uptime { margin: 0.75rem 0; }
+.overview-net { margin: 0.75rem 0; }
+.overview-net h3 { margin: 0 0 0.4rem; font-size: 1rem; }
 .hm-bare { margin: 0; }
 .hm-bare .hm-row { grid-template-columns: repeat(var(--hm-cols), minmax(0.2rem, 1fr)); gap: 1px; }
 .hm-bare .hm-cell { aspect-ratio: auto; height: 0.5rem; min-height: 0; border-radius: 1px; }

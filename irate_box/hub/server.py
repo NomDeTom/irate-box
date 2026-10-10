@@ -1458,6 +1458,20 @@ def control_results(limit=10):
     return out
 
 
+def net_uptime_72h():
+    """The Overview's network heatmap: each link recorded in the last 72 hours, by hour (the Network
+    page's own summary, without the days), the box's link to the network first."""
+    try:
+        hist = json.loads(uplink.HISTORY.read_text())
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for iface, u in sorted(linkhistory.summarize(hist).items(), key=lambda kv: (kv[1]["kind"] != "uplink", kv[0])):
+        if u["summary"]["hours_seen"]:
+            out[iface] = {k: u[k] for k in ("kind", "hours", "hour_cols", "hour_full", "summary")}
+    return out
+
+
 def admin_box(proxied):
     units = [s["unit"] for s in SERVICES if "unit" in s]
     states = unit_states(units)
@@ -1472,6 +1486,7 @@ def admin_box(proxied):
     return {"system": system_status(), "uptime": now, "online": online_count(now),
             "joined": joined_count(), "services": services, "version": hub_version(),
             "service_uptime": svchistory.summarize(svchistory.load()),
+            "net_uptime": net_uptime_72h(),
             "results": control_results(),
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 

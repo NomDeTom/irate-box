@@ -10,7 +10,7 @@
 // no record says how one comes.
 // And the services' (from svchistory.summarize): a fold under Overview's table, closed,
 // a row per service by hour for the last 72 hours and by day for 72 days, the starts marked, kept
-// open across the pane's redraws. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
+// open across the pane's redraws. And the network's 72 hours on Overview, under the tiles. Usage: [JSDOM=…/jsdom] node dom-uptime.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -30,7 +30,10 @@ vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) er
 vc.on('error', (...a) => { if (!/HTTP 404/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
 const dom = new JSDOM(html, { url: 'http://box.local/admin/#network', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
-const box = { system: {}, uptime: 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: fixture.services,
+// The Overview's network rows: net_uptime_72h()'s shape, the uplink first.
+const netUp = Object.fromEntries(['wlan0', 'eth0'].filter((i) => fixture.uptime[i]).map((i) => [i,
+  (({ kind, hours, hour_cols, hour_full, summary }) => ({ kind, hours, hour_cols, hour_full, summary }))(fixture.uptime[i])]));
+const box = { system: {}, uptime: 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: fixture.services, net_uptime: netUp,
   services: [{ name: 'Library (Kiwix)', unit: 'kiwix.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] }] };
@@ -90,6 +93,14 @@ setTimeout(() => {
     const body = d.getElementById('svc-uptime-body');
     check('  the week in a line, and the legend, under the table', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(d.querySelector('#svc-uptime-body > p'))) && body.querySelectorAll('.hm-legend .hm-key').length === 6, t(d.querySelector('#svc-uptime-body > p')));
     check('no page errors', !errors.length, errors.join(' | '));
+    const on = d.getElementById('overview-net');
+    const tiles = d.getElementById('box-tiles'), table = d.getElementById('service-table');
+    check('Overview: the network\'s 72 hours, below the tiles and above the services', on && (tiles.compareDocumentPosition(on) & 4) && (on.compareDocumentPosition(table) & 4));
+    check('  a row per link, the uplink first, 72 cells each', [...on.querySelectorAll('.hm-row:not(.hm-head) .hm-label')].map(t).join(',') === Object.keys(netUp).join(',')
+      && [...on.querySelectorAll('.hm-row:not(.hm-head)')].every((r) => r.querySelectorAll('.hm-cell').length === 72), [...on.querySelectorAll('.hm-label')].map(t).join(','));
+    check('  each cell says its link and hour', /^wlan0, \w{3} \d{2} \d{2}:00–\d{2}:00: /.test(on.querySelector('.hm-row:not(.hm-head) .hm-cell').title), on.querySelector('.hm-row:not(.hm-head) .hm-cell').title);
+    check('  the summary in words, the legend, a link to Network', /^wlan0: up \d/.test(t(on.querySelector('p'))) && on.querySelectorAll('.hm-legend .hm-key').length === 6
+      && on.querySelector('a[href="#network"]'), t(on.querySelector('p')));
     console.log(`failures: ${fails}`);
     process.exit(fails ? 1 : 0);
   }, 300);
