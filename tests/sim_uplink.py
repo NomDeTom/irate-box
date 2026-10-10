@@ -552,6 +552,20 @@ said = HL.fix("uplink-skip:wlan0:restart")
 check("the doctor's fix: the step left out on that connection, the others kept", U.load_settings()["steps_off"] == {"eth0": ["radio"], "wlan0": ["restart"]}
       and "wlan0" in said, (U.load_settings()["steps_off"], said))
 
+# A connection's own pace, reach, sensitivity, guests and wedge choice (per_iface), before everything else.
+v = U.validate({"pace": "steady", "reach": "reboot", "per_iface": {"wlan0": {"reach": "radio", "sensitivity": 5, "pace": "steady"}}})
+check("per connection: kept, less what is the same as for every connection", v["per_iface"] == {"wlan0": {"reach": "radio", "sensitivity": 5}}, v["per_iface"])
+e_w, e_e = U.effective(v, "wlan0"), U.effective(v, "eth0")
+check("  wlan0 runs on its own: no reboot step, its sensitivity", "reboot" not in e_w["steps"] and "radio" in e_w["steps"] and e_w["sensitivity"] == 5, e_w)
+check("  eth0 on the settings for every connection", "reboot" in e_e["steps"] and e_e["sensitivity"] == v["sensitivity"], e_e)
+check("  with steps_off too, both apply", "radio" not in U.effective({**v, "steps_off": {"wlan0": ["radio"]}}, "wlan0")["steps"])
+for bad in ({"wlan0": {"roaming": "lock"}}, {"wlan0": {"pace": "warp"}}, {"auto": {"pace": "steady"}}, {"wlan0": {"sensitivity": 99}}, ["wlan0"]):
+    try:
+        U.validate({"per_iface": bad}); check(f"refused: per_iface {bad}", False)
+    except ValueError:
+        check(f"refused: per_iface {bad}", True)
+check("none of its own: none kept", U.validate({"per_iface": {"wlan0": {"pace": U.DEFAULT["pace"]}}})["per_iface"] == {})
+
 # "Keep retrying": decided by what the profile holds, so a profile written afresh (netplan's, at boot)
 # gets the change again, with the values from before it kept for undo.
 import json as _json, tempfile as _tf3  # noqa: E402

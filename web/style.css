@@ -1051,6 +1051,14 @@ body.drop > section + section { margin-top: 2.5rem; }
 
 /* Network page: the uplink settings, and the watchdog's custom values in a compact grid */
 .net-settings { display: flex; flex-direction: column; gap: 0.4rem; max-width: 40rem; }
+.up-settings { max-width: none; }
+.up-group { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+@media (min-width: 64rem) {
+  .up-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.5rem; align-items: start; }
+  .up-settings > .up-scope-row, .up-settings > .up-steps, .up-settings > #up-steps-label, .up-settings > p.setting-desc,
+  .up-settings > details { grid-column: 1 / -1; }
+}
+.up-scope-row select { max-width: 24rem; }
 .net-defaults { display: grid; grid-template-columns: 1fr; gap: 0.75rem 1.5rem; }
 @media (min-width: 52rem) { .net-defaults { grid-template-columns: 1fr 1fr; } }
 .net-default { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
@@ -1555,7 +1563,7 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
    an element the page hides stays on screen (found by tests/browser/look.mjs). Kept last, and as specific
    as the rules they answer. */
 .action-btn.action-btn[hidden], .books-bulk[hidden], #library-sources[hidden], .git-manage[hidden], .aw-filter[hidden],
-.admin-checks[hidden], .net-settings[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden],
+.admin-checks[hidden], .net-settings[hidden], .up-group[hidden], .net-card[hidden], .setting[hidden], .setting-name[hidden], .fw-boards[hidden],
 .findings[hidden] { display: none; }
 
 /* The first use (server.py unclaimed()): the admin pages' banner above every pane, and the home page's note. */
