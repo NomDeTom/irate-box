@@ -224,7 +224,7 @@ setTimeout(() => {
   check('an old address still lands: #backup opens Updates and backup', !pageOf('backup').hidden && pageOf('backup').getAttribute('aria-label') === 'Updates and backup');
   w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
-    && /\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp[^}]*width: min\(46vw, 34rem\)/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
+    && /\[data-art="workbench"\] \{[^}]*--art-w: min\(46vw, 34rem\)[^}]*\}\s*\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
   check('the desk lit by its WebM loop (krab-loop.js), over the still', !!d.querySelector('.art-lamps') && !!d.querySelector('.art-krab') && /src="\/krab-loop\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && !/krab-desk\.js"/.test(fs.readFileSync(`${WEB}/admin.html`, 'utf8')) && ['', '-krab'].every((n) => fs.existsSync(`${WEB}/art/krab-controller${n}.webp`)) && ['controller', 'factory'].every((n) => fs.existsSync(`${WEB}/art/krab-${n}-loop.webm`)) && /controller: 'art\/krab-controller-loop\.webm'/.test(fs.readFileSync(`${WEB}/krab-loop.js`, 'utf8')));
   w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   const af = d.getElementById('auto-form');

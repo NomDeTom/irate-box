@@ -771,26 +771,33 @@ body[data-art] > header, body[data-art] > section { position: relative; z-index:
    🎨 theme menu. */
 body[data-art] > header { z-index: 2; }
 [data-art-side="left"] .admin-art { right: auto; left: 1rem; background-position: left bottom; }
+/* Each picture's width and shape (height / width) as variables on the element that names it, read
+   by the picture and by the room kept under the page for it. */
+[data-art] { --art-w: min(30vw, 22rem); --art-r: calc(539 / 520); --art-o: 0.16; }
+/* Room at the foot of a page with art: the picture's height and a margin, so the text scrolls clear
+   of it and it can be seen whole (on a phone too, where it sits under the text). */
+[data-art]:not([data-art=""]) { padding-bottom: calc(var(--art-w) * var(--art-r) + 2.5rem); }
 .admin-art {
   display: none; position: fixed; right: 1rem; bottom: 1rem; z-index: 0; pointer-events: none;
-  width: min(30vw, 22rem); aspect-ratio: 520 / 539; background: no-repeat center / contain; opacity: 0.16;
+  width: var(--art-w, min(30vw, 22rem)); height: calc(var(--art-w, min(30vw, 22rem)) * var(--art-r, 1));
+  background: no-repeat center / contain; opacity: var(--art-o, 0.16);
 }
-[data-art="doctor"] .admin-art {
-  display: block; background-image: url("art/krab-doctor.webp"); aspect-ratio: 1;
-}
-[data-art="welcome-controller"] .admin-art {
-  display: block; background-image: url("art/krab-controller-clipboard.webp"); aspect-ratio: 1;
-}
-[data-art="librarian"] .admin-art { display: block; background-image: url("art/krab-librarian.webp"); aspect-ratio: 600 / 475; }
-[data-art="electronics"] .admin-art { display: block; background-image: url("art/krab-electronics.webp"); aspect-ratio: 520 / 550; }
+[data-art="doctor"] { --art-r: 1; }
+[data-art="doctor"] .admin-art { display: block; background-image: url("art/krab-doctor.webp"); }
+[data-art="welcome-controller"] { --art-r: 1; }
+[data-art="welcome-controller"] .admin-art { display: block; background-image: url("art/krab-controller-clipboard.webp"); }
+[data-art="librarian"] { --art-r: calc(475 / 600); }
+[data-art="librarian"] .admin-art { display: block; background-image: url("art/krab-librarian.webp"); }
+[data-art="electronics"] { --art-r: calc(550 / 520); }
+[data-art="electronics"] .admin-art { display: block; background-image: url("art/krab-electronics.webp"); }
 /* The workbench (Toolkits) is a desk too: shown the controller desk's size. */
-[data-art="workbench"] .admin-art { display: block; background-image: url("art/krab-workbench.webp");
-  width: min(46vw, 34rem); aspect-ratio: 900 / 315; opacity: 0.22; }
-[data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp");
-  width: min(46vw, 34rem); aspect-ratio: 900 / 317; opacity: 0.22; }
+[data-art="workbench"] { --art-w: min(46vw, 34rem); --art-r: calc(315 / 900); --art-o: 0.22; }
+[data-art="workbench"] .admin-art { display: block; background-image: url("art/krab-workbench.webp"); }
+[data-art="controller"] { --art-w: min(46vw, 34rem); --art-r: calc(317 / 900); --art-o: 0.22; }
+[data-art="controller"] .admin-art { display: block; background-image: url("art/krab-controller.webp"); }
 /* The Firmware Factory's production line: the desk's size, with lights of its own (krab-desk.js). */
-[data-art="factory"] .admin-art { display: block; background-image: url("art/krab-factory.webp");
-  width: min(46vw, 34rem); aspect-ratio: 900 / 266; opacity: 0.22; }
+[data-art="factory"] { --art-w: min(46vw, 34rem); --art-r: calc(266 / 900); --art-o: 0.22; }
+[data-art="factory"] .admin-art { display: block; background-image: url("art/krab-factory.webp"); }
 /* The desk's lights: the picture above is the desk dark (krab-controller.webp). krab-desk.js reads
    the colour mask (krab-controller-mask.webp; each blob is one light, pink the yellow ones, green
    the blue ones), shares the blobs out into groups, and adds each group as an <i> in .art-lamps:
@@ -804,8 +811,8 @@ body[data-art] > header { z-index: 2; }
 .art-krab { background: url("art/krab-controller-krab.webp") no-repeat center / contain; }
 /* No motion asked for: krab-desk.js leaves every light on, as in the picture. */
 @media (max-width: 760px) {
-  .admin-art { width: 45vw; opacity: 0.12; }
-  [data-art="controller"] .admin-art, [data-art="workbench"] .admin-art, [data-art="factory"] .admin-art { width: 70vw; opacity: 0.16; }
+  [data-art] { --art-w: 45vw; --art-o: 0.12; }
+  [data-art="controller"], [data-art="workbench"], [data-art="factory"] { --art-w: 70vw; --art-o: 0.16; }
 }
 @media print { .admin-art { display: none !important; } }
 /* The uptime heatmaps (heatmap.js): a label column, then the cells; colours from the palette. */
