@@ -7,7 +7,17 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const fs = require('fs');
 const WEB = require('path').resolve(__dirname, '../../web');
-const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/@import[^;]*;/g, '');
+// jsdom's CSS parser does not know @container (the narrow admin's sidebar), and drops the whole sheet over it:
+// those blocks taken out, their braces matched.
+const noContainer = (s) => {
+  for (let i = s.indexOf('@container'); i >= 0; i = s.indexOf('@container')) {
+    let j = s.indexOf('{', i), depth = 0;
+    for (; j < s.length; j++) { if (s[j] === '{') depth++; else if (s[j] === '}' && --depth === 0) break; }
+    s = s.slice(0, i) + s.slice(j + 1);
+  }
+  return s;
+};
+const css = noContainer(fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/@import[^;]*;/g, ''));
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => errors.push('jsdom: ' + e.message));
