@@ -122,7 +122,7 @@ setTimeout(() => {
     check('Overview: the network\'s 72 hours, below the tiles and above the services', on && (tiles.compareDocumentPosition(on) & 4) && (on.compareDocumentPosition(table) & 4));
     check('  a row per link, the uplink first, 72 cells each', [...on.querySelectorAll('.hm-row:not(.hm-head) .hm-label')].map(t).join(',') === Object.keys(netUp).join(',')
       && [...on.querySelectorAll('.hm-row:not(.hm-head)')].every((r) => r.querySelectorAll('.hm-cell').length === 72), [...on.querySelectorAll('.hm-label')].map(t).join(','));
-    check('  each cell says its link and hour', /^wlan0, \w{3} \d{2} \d{2}:00–\d{2}:00: /.test(on.querySelector('.hm-row:not(.hm-head) .hm-cell').title), on.querySelector('.hm-row:not(.hm-head) .hm-cell').title);
+    check('  each cell says its link and hour', /^wlan0, \w{3} \d{2} \d{2}:00–\d{2}:00: /.test(on.querySelector('.hm-row:not(.hm-head) .hm-cell').dataset.words), on.querySelector('.hm-row:not(.hm-head) .hm-cell').dataset.words);
     check('  the summary in words, the legend, a link to Network', /^wlan0: up \d/.test(t(on.querySelector('p'))) && on.querySelectorAll('.hm-legend .hm-key').length === 6
       && on.querySelector('a[href="#network"]'), t(on.querySelector('p')));
     const mesh = d.getElementById('overview-mesh');
