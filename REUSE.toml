@@ -57,3 +57,9 @@ SPDX-License-Identifier = "MIT"
 path = ["web/guide/irate-box-guide.zim", "web/guide/irate-box-guide.source"]
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# docusaurus2zim's settings for the guide's book (JSON carries no comment).
+[[annotations]]
+path = "config/guide-zim.json"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"
