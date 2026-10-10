@@ -4086,7 +4086,12 @@ function renderMirrors(data) {
         el('span', { className: 'setting-desc', textContent: `keeps ${keeps}` }),
         subs.length ? el('span', { className: 'setting-desc', textContent: `submodules: ${subs.join(', ')}` }) : null,
         relNote ? el('span', { className: `setting-desc${st.releases_cached ? ' warn' : ''}`, textContent: relNote }) : null,
-        el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state })),
+        el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state }),
+        // Every upstream tag, held apart for checking (mirrors.py _sync_tags); one moved upstream said plainly.
+        st.tags ? el('span', { className: `setting-desc${(st.tags.moved || []).length ? ' bad' : ''}`, textContent:
+          `Holds all ${st.tags.count} of its upstream's tags (${st.tags.signed} signed), without their files`
+          + ((st.tags.moved || []).length ? `; moved upstream since it was first seen: ${st.tags.moved.join(', ')}` : '') }) : null,
+        st.tags_error ? el('span', { className: 'setting-desc bad', textContent: `The tags: ${st.tags_error}` }) : null),
       el('span', { className: 'library-buttons' },
         actionButton('Check now', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
         actionButton('Fetch', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Fetching is a mirror\'s update' }),

@@ -39,6 +39,7 @@ for i in range(1, 13):
         g("tag", f"v2.{i}.0-alpha", cwd=UP)
 g("tag", "-a", "v2.10.0", "-m", "annotated", cwd=UP)  # on c12: version order puts it above v2.8.0
 g("branch", "dev", "HEAD~3", cwd=UP)
+g("config", "uploadpack.allowFilter", "true", cwd=UP)  # as GitHub serves partial fetches
 URL = f"file://{UP}"
 base = {"name": "fw", "area": "public", "upstream": URL, "branches": ["main"], "follow": "latest", "pin": "",
         "history": "shallow", "budget_mb": 100,
@@ -59,6 +60,20 @@ check("read-only on the box", g("config", "--get", "irate-box.write", cwd=path).
 check("it says it is a mirror", (path / "description").read_text().startswith(f"Mirror of {URL}"))
 check("the Git page sees it as public-read-only", next(r for r in gitrepos.snapshot()["repos"] if r["name"] == "fw")["preset"] == "public-read-only")
 check("a second update: nothing to do", mirrors.sync(m) == "up to date")
+# Every upstream tag held apart, without the files: for checking signatures and noticing a tag moved.
+tp = mirrors.tags_path(m)
+tg = mirrors.status()["fw"].get("tags", {})
+check("the tags repository: every upstream tag, counted, none signed here", sorted(r for r in refs(tp)) == sorted(
+      f"refs/tags/{t}" for t in ("v2.2.0", "v2.4.0", "v2.6.0", "v2.8.0", "v2.9.0-alpha", "v2.10.0", "v2.11.0-alpha"))
+      and tg.get("count") == 7 and tg.get("signed") == 0 and not mirrors.status()["fw"].get("tags_error"), (refs(tp), mirrors.status()["fw"]))
+miss = g("rev-list", "--objects", "--all", "--missing=print", cwd=tp).stdout.split()
+check("  the tags and their commits, no files (the trees left upstream)", any(x.startswith("?") for x in miss)
+      and g("cat-file", "-t", "refs/tags/v2.10.0", cwd=tp).stdout.strip() == "tag", miss[:6])
+check("  never served: outside the git folder", not str(tp).startswith(str(gitrepos.ROOT)))
+g("tag", "-f", "v2.2.0", "HEAD~6", cwd=UP)
+line = mirrors.sync(m)
+check("a tag moved upstream: said, and kept on the record", "moved upstream since the last look: v2.2.0" in line
+      and mirrors.status()["fw"]["tags"]["moved"] == ["v2.2.0"], (line, mirrors.status()["fw"].get("tags")))
 
 # The upstream moves on: a new stable tag; the oldest kept one drops out, and its objects with it.
 (UP / "f").write_text("13\n"); g("commit", "-qam", "c13", cwd=UP); g("tag", "v2.13.0", cwd=UP)
