@@ -18,6 +18,9 @@ fixture.report.findings.push({ id: 'crash-hang', check: 'A frozen box', status: 
   chip('Watchdog', 'crashwatch-watchdog:on', "On (the board's, after a restart)", false, 'Let a watchdog restart the box?')] });
 fixture.report.findings.push({ id: 'builds-families', check: 'Firmware builds that always fail', status: 'warn',
   detail: 'Every build here has failed for this family: esp32c6 (2).', fix: "Open a failed one's log (Firmware Factory, Built).", actions: [] });
+fixture.queue = { running: { action: 'kit-fetch', detail: 'build', for: 600 },
+  waiting: [{ id: 'q1', action: 'health-fix', detail: 'rerun-install', waited: 300 }, { id: 'q2', action: 'update-check', detail: '', waited: 30 }],
+  done: [{ id: 'r1', ok: false, message: 'no internet', ago: 120 }] };
 let fails = 0;
 const check = (name, ok, extra) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ` ${JSON.stringify(extra)}`}`); if (!ok) fails++; };
 const errors = [];
@@ -38,6 +41,11 @@ setTimeout(() => {
   const d = w.document;
   const row = d.getElementById('hl-crash-hang');
   check('the finding is there', !!row);
+  const txt = (id) => (d.getElementById(id) || {}).textContent || '';
+  check("the root helper's queue: what runs and for how long", txt('hq-running') === 'Running: Toolkit: download (build), for 10 min.', txt('hq-running'));
+  check('  what waits, in order, in words', [...d.querySelectorAll('#hq-waiting li')].map((l) => l.textContent).join(' | ')
+    === 'Box doctor (rerun-install): waiting 5 min | Updates: check: waiting under a minute', [...d.querySelectorAll('#hq-waiting li')].map((l) => l.textContent));
+  check('  what finished, a failure marked', !d.getElementById('hq-done-fold').hidden && /✗ 2 min ago: no internet/.test(txt('hq-done')), txt('hq-done'));
   const fam = d.getElementById('hl-builds-families');
   const go = fam && [...fam.querySelectorAll('a.go-btn')].map((a) => `${a.textContent} ${a.getAttribute('href')}`);
   check('the Firmware Factory, named in a finding, gets its link', !!go && go.join() === 'Go to Firmware Factory → #factory', go);

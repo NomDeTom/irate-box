@@ -1829,8 +1829,43 @@ let hlShow = 'all';  // the counters double as the list's filter: all, problem, 
 document.getElementById('health-search').addEventListener('input', () => hlLast && renderHealth(hlLast));
 
 let hlLast = null;
+// The root helper's queue in words: its action names, as the pages that ask for them call them.
+const HELPER_WORDS = {
+  'health-scan': 'Box doctor: look again', 'health-fix': 'Box doctor', 'kit-fetch': 'Toolkit: download', 'kit-install': 'Toolkit: install',
+  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-status': 'Toolkits: look', 'kit-keep': 'Toolkit: keep',
+  'kit-expire': 'Toolkits: tidy', 'kit-define': 'Toolkit: save', 'kit-undefine': 'Toolkit: delete', 'kit-extra': 'Toolkit: extras',
+  'update-check': 'Updates: check', 'update-fetch': 'Updates: fetch', 'update-install': 'Updates: install',
+  'update-force-install': 'Updates: install anyway', 'update-doctor': 'Updates: look', 'update-clear-cache': 'Updates: clear the cache',
+  'update-signing': 'Updates: signing', 'pkg-check': 'Packages: check', 'pkg-fetch': 'Packages: fetch', 'pkg-install': 'Packages: install',
+  'pkg-rollback': 'Packages: roll back', 'pkg-settings': 'Packages: settings', 'addon': 'Add-on', 'app-install': 'Apps: install',
+  'app-rollback': 'Apps: roll back', 'security-scan': 'Security: scan', 'security-fix': 'Security', 'security-audit': 'Security doctor',
+  'security-deep-audit': 'Security doctor: deep audit', 'net-scan': 'Network: look', 'uplink-set': 'Network: watchdog settings',
+  'uplink-do': 'Network: a step by hand', 'uplink-hold': 'Network: hold', 'uplink-profile': 'Network: profile', 'wifi-join': 'Network: join',
+  'wifi-forget': 'Network: forget', 'ap-on': 'Hotspot: on', 'ap-off': 'Hotspot: off', 'ap-try': 'Hotspot: try', 'ap-confirm': 'Hotspot: keep',
+  'share-set': 'Guests\' internet', 'share-allow': 'Guests\' internet', 'service': 'A service', 'password': 'The password', 'access': 'Who may open an app',
+  'admin-gate': 'The admin login', 'admin-login': 'The admin login', 'tls-switch': 'HTTPS', 'tls-make': 'HTTPS: a certificate',
+  'tls-renew': 'HTTPS: renew', 'tls-import': 'HTTPS: import', 'tls-box': 'HTTPS', 'tls-admin-only': 'HTTPS', 'usb-scan': 'USB stick: look',
+  'usb-import': 'USB stick: import', 'usb-export': 'USB stick: export', 'usb-export-many': 'USB stick: export', 'usb-kit-import': 'USB stick: a toolkit in',
+  'usb-kit-export': 'USB stick: a toolkit out', 'offline-kit': 'Backup: an offline kit', 'content-export': 'Backup: content export',
+  'backup-image': 'Backup: an image',
+};
+const helperWords = (r) => `${HELPER_WORDS[r.action] || r.action.replace(/-/g, ' ')}${r.detail ? ` (${r.detail})` : ''}`;
+const spanOf = (secs) => ago(secs).replace(/ ago$/, '').replace('just now', 'under a minute');
+function renderHelperQueue(q) {
+  const run = document.getElementById('hq-running'), wait = document.getElementById('hq-waiting');
+  const doneFold = document.getElementById('hq-done-fold'), done = document.getElementById('hq-done');
+  if (!run || !q) return;
+  run.textContent = q.running ? `Running: ${helperWords(q.running)}${q.running.for != null ? `, for ${spanOf(q.running.for)}` : ''}.`
+    : (q.waiting || []).length ? 'Starting the next one.' : 'Nothing running.';
+  wait.hidden = !(q.waiting || []).length;
+  wait.replaceChildren(...(q.waiting || []).map((w) => el('li', { textContent: `${helperWords(w)}: waiting ${spanOf(w.waited || 0)}` })));
+  doneFold.hidden = !(q.done || []).length;
+  done.replaceChildren(...(q.done || []).map((r) => el('li', { className: r.ok ? '' : 'bad',
+    textContent: `${r.ok ? '✓' : '✗'} ${r.ago != null ? ago(r.ago) : ''}: ${r.message}` })));
+}
 function renderHealth(data) {
   hlLast = data;
+  renderHelperQueue(data.queue);
   const h = data.helper || {};
   // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
   const lad = document.getElementById('health-ladder');

@@ -1801,6 +1801,36 @@ def helper_busy():
     return max(0, time.monotonic() - since) if since else None
 
 
+QUEUE_DETAIL_KEYS = ("kit", "app", "choice", "name")  # what a request is for, safe to show: never its other fields
+
+
+def helper_queue(done=8):
+    """The root helper's queue, for the page: what it runs now (it says so in control/helper-doing.json), what
+    waits, oldest first, and the last answers. A request shows only its action and what it is for (a kit, an
+    app, a doctor's choice, a name): requests can carry passwords and passphrases."""
+    now = time.time()
+    age = lambda at: round(max(0, now - at)) if isinstance(at, (int, float)) else None  # by the hub's clock, never the browser's
+
+    def detail(req):
+        return next((str(req[k])[:60] for k in QUEUE_DETAIL_KEYS if isinstance(req.get(k), str)), "")
+    try:
+        d = json.loads((CONTROL_DIR / "helper-doing.json").read_text())
+        running = {"action": str(d.get("action", ""))[:40], "detail": str(d.get("detail", ""))[:60], "for": age(d.get("started"))}
+    except (OSError, ValueError, AttributeError):
+        running = None
+    waiting = []
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            req = json.loads(path.read_text())
+            waiting.append({"id": path.stem[:32], "action": str(req.get("action", "?"))[:40], "detail": detail(req), "waited": age(path.stat().st_mtime)})
+        except (OSError, ValueError, AttributeError):
+            continue
+    waiting.sort(key=lambda w: -(w["waited"] or 0))
+    finished = [{"id": str(r.get("id", ""))[:32], "ok": bool(r.get("ok")), "message": str(r.get("message", ""))[:200], "ago": age(r.get("at"))}
+                for r in control_results(done)]
+    return {"running": running, "waiting": waiting, "done": finished}
+
+
 def helper_state():
     """Is the root helper answering? The hub can see that for itself: its requests wait in a
     folder it owns. One left for more than 90 s means everything on /admin that needs root
@@ -1839,7 +1869,7 @@ def health_snapshot():
         log = []
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
             "ladder": load(uplink.LADDER) or [],
-            "helper": helper_state(), "pending": _pending_actions("health-"), "results": control_results(5),
+            "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
             "progress": update_progress()}
 
 
