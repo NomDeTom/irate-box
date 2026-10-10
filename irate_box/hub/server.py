@@ -1494,14 +1494,16 @@ def meshtasticd_state():
 
 def net_uptime_72h():
     """The Overview's network heatmap: each link recorded in the last 72 hours, by hour (the Network
-    page's own summary, without the days), the box's link to the network first."""
+    page's own summary, without the days), the box's link to the network first; a link never up in that
+    time (a port with no cable) left off."""
     try:
         hist = json.loads(uplink.HISTORY.read_text())
     except (OSError, ValueError):
         return {}
     out = {}
     for iface, u in sorted(linkhistory.summarize(hist).items(), key=lambda kv: (kv[1]["kind"] != "uplink", kv[0])):
-        if u["summary"]["hours_seen"]:
+        # A link never up in the 72 hours (a port with no cable) is left off: drawn, it would be red throughout.
+        if u["summary"]["hours_seen"] and (u["kind"] == "uplink" or u["summary"]["up"]):
             out[iface] = {k: u[k] for k in ("kind", "hours", "hour_cols", "hour_full", "summary")}
     return out
 
