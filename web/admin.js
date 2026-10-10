@@ -2778,7 +2778,7 @@ async function loadNetwork() {
 // to irate-box's own drop-in. Choices kept while the page polls, until saved.
 let defaultsDirty = {};
 let defaultsScope = '';   // '' the whole box, else an interface
-const PER_IFACE = ['auth_retries', 'mac', 'powersave', 'scan_mac'];
+const PER_IFACE = ['auth_retries', 'cloned_mac', 'powersave', 'scan_mac'];
 function renderDefaults(inv, busy) {
   const d = inv && inv.stacks && inv.stacks.networkmanager && inv.stacks.networkmanager.defaults;
   const card = document.getElementById('net-defaults-card');
@@ -2852,7 +2852,7 @@ const CONN_FIELDS = [
     (p) => String(p.auth_retries ?? -1), 'Forever also means a wrong password is tried forever (the box says so).'],
   ['metered', 'Metered: big downloads wait for another network', [['unknown', 'let NetworkManager guess'], ['yes', 'yes'], ['no', 'no']],
     (p) => p.metered || 'unknown', 'For a phone\'s hotspot, say: updates and library downloads wait.'],
-  ['mac', 'MAC address', [['', 'as the box default'], ['permanent', 'the board\'s own'], ['preserve', 'as the device has it'],
+  ['cloned_mac', 'MAC address', [['', 'as the box default'], ['permanent', 'the board\'s own'], ['preserve', 'as the device has it'],
     ['random', 'random each time'], ['stable', 'stable, made up for this connection'], ['stable-ssid', 'stable, made up per network']],
     (p) => p.cloned || '', 'Random: the router sees a new device each time, so a reserved address or MAC filter stops working.'],
   ['bssid', 'Lock to one access point', 'bssid', (p) => p.bssid_lock || '',

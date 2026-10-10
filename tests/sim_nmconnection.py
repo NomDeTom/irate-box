@@ -58,15 +58,15 @@ def fake_run(*cmd, timeout=60):
 
 C.run = fake_run
 
-said = C.change(HOME, {"auth_retries": "0", "metered": "yes", "mac": "stable"})
+said = C.change(HOME, {"auth_retries": "0", "metered": "yes", "cloned_mac": "stable"})
 rec = json.loads(C.RECORD.read_text())
 check("set: written to the profile, said, and taking effect next time", values[HOME]["connection.auth-retries"] == "0"
       and values[HOME]["connection.metered"] == "yes" and "next time" in said, said)
-check("  the values from before recorded", rec[HOME]["old"] == {"auth_retries": "-1", "metered": "unknown", "mac": ""}, rec)
+check("  the values from before recorded", rec[HOME]["old"] == {"auth_retries": "-1", "metered": "unknown", "cloned_mac": ""}, rec)
 C.change(HOME, {"auth_retries": "5"})
 check("  changed again: the value from before still the first one", json.loads(C.RECORD.read_text())[HOME]["old"]["auth_retries"] == "-1")
-C.change(HOME, {"mac": "default"})
-check("  set back to NetworkManager's own: no longer counted as changed", "mac" not in json.loads(C.RECORD.read_text())[HOME]["old"]
+C.change(HOME, {"cloned_mac": "default"})
+check("  set back to NetworkManager's own: no longer counted as changed", "cloned_mac" not in json.loads(C.RECORD.read_text())[HOME]["old"]
       and values[HOME]["802-11-wireless.cloned-mac-address"] == "")
 check("  public: names only, nothing secret", C.public() == {HOME: {"name": "Home", "changed": ["auth_retries", "metered"]}}, C.public())
 said = C.undo(HOME)

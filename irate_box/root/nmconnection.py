@@ -54,7 +54,7 @@ SETTINGS = {
     "autoconnect_retries": ("connection.autoconnect-retries", _int(-1, 1000), "-1"),
     "auth_retries": ("connection.auth-retries", _int(-1, 1000), "-1"),
     "metered": ("connection.metered", _one_of("yes", "no", "unknown"), "unknown"),
-    "mac": ("802-11-wireless.cloned-mac-address", _one_of("", "preserve", "permanent", "random", "stable", "stable-ssid"), ""),
+    "cloned_mac": ("802-11-wireless.cloned-mac-address", _one_of("", "preserve", "permanent", "random", "stable", "stable-ssid"), ""),
     "bssid": ("802-11-wireless.bssid", _mac_or_empty, ""),
     "band": ("802-11-wireless.band", _one_of("", "a", "bg"), ""),
     "channel": ("802-11-wireless.channel", _int(0, 196), "0"),

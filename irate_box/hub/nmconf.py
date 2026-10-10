@@ -39,7 +39,7 @@ SETTINGS = {
         "label": "Keep trying after a failed password check", "nm_default": "3 tries, then waits for someone",
         "values": {"0": "forever"},
     },
-    "mac": {
+    "cloned_mac": {
         "section": "connection", "key": "wifi.cloned-mac-address", "kind": "choice",
         "label": "MAC address on WiFi", "nm_default": "as the device has it",
         "values": {"permanent": "the board's own", "preserve": "as the device has it", "random": "random each time",
@@ -57,7 +57,7 @@ SETTINGS = {
     },
 }
 # What NetworkManager allows per device (match-device sections); the connect retries are box-wide only.
-PER_IFACE = ("auth_retries", "mac", "powersave", "scan_mac")
+PER_IFACE = ("auth_retries", "cloned_mac", "powersave", "scan_mac")
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 
 # Older names NetworkManager still reads, shown where they set the same thing.

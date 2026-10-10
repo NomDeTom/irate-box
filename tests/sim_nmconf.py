@@ -64,7 +64,7 @@ check("a file in /etc shadows one of the same name in /run", nmconf.effective()[
 
 # The owner's choices: validated, written, read back, and taken out.
 try:
-    nmconf.validate({"mac": "sometimes"}); check("validate refuses a value not offered", False)
+    nmconf.validate({"cloned_mac": "sometimes"}); check("validate refuses a value not offered", False)
 except ValueError:
     check("validate refuses a value not offered", True)
 try:
@@ -73,10 +73,10 @@ except ValueError:
     check("validate refuses a setting not offered", True)
 check("validate: counts as numbers, 'default' as taking it out",
       nmconf.validate({"auth_retries": "0", "autoconnect_retries": "default"}) == {"auth_retries": "0", "autoconnect_retries": None})
-text = nmconf.dropin_text({"autoconnect_retries": "0", "auth_retries": "0", "mac": None})
+text = nmconf.dropin_text({"autoconnect_retries": "0", "auth_retries": "0", "cloned_mac": None})
 check("the drop-in holds only what was chosen, each in its section",
       "[main]\nautoconnect-retries-default=0" in text and "[connection]\nconnection.auth-retries=0" in text and "cloned" not in text, text)
-check("nothing chosen: no file text", nmconf.dropin_text({"mac": None}) == "")
+check("nothing chosen: no file text", nmconf.dropin_text({"cloned_mac": None}) == "")
 
 # The root action: writes the drop-in, reloads NetworkManager, says what it did.
 os.environ.update(HUB_ETC_DIR=str(T / "hub-etc"), HUB_STATE_DIR=str(T / "state"))
@@ -108,24 +108,24 @@ try:
 except ValueError as exc:
     check("per interface: the connect retries refused (box-wide only)", "whole box" in str(exc), str(exc))
 hub_control.nm_defaults({"changes": {"auth_retries": "0"}})
-hub_control.nm_defaults({"changes": {"mac": "random", "scan_mac": "yes"}, "iface": "wlan1"})
+hub_control.nm_defaults({"changes": {"cloned_mac": "random", "scan_mac": "yes"}, "iface": "wlan1"})
 text = nmconf.DROPIN.read_text()
 check("an interface's sections come first, each matching it by name, the box's kept",
       text.index("[connection-irate-box-wlan1]") < text.index("[connection]") and "match-device=interface-name:wlan1" in text
       and "[device-irate-box-wlan1]" in text and "connection.auth-retries=0" in text, text)
-check("  read back per interface", nmconf.current_ifaces() == {"wlan1": {"mac": "random", "scan_mac": "yes"}}, nmconf.current_ifaces())
+check("  read back per interface", nmconf.current_ifaces() == {"wlan1": {"cloned_mac": "random", "scan_mac": "yes"}}, nmconf.current_ifaces())
 e1, e0 = nmconf.effective_for("wlan1"), nmconf.effective_for("wlan0", driver="aic8800_fdrv")
 check("  wlan1 gets its own MAC and scan settings, from irate-box's section",
-      e1["mac"]["value"] == "random" and e1["mac"]["section"] == "connection-irate-box-wlan1"
+      e1["cloned_mac"]["value"] == "random" and e1["cloned_mac"]["section"] == "connection-irate-box-wlan1"
       and e1["scan_mac"]["value"] == "yes", e1)
 check("  wlan0 doesn't: Armbian's scan setting, and the box's retries", e0["scan_mac"]["value"] == "no"
-      and e0["mac"]["value"] is None and e0["auth_retries"]["value"] == "0", e0)
+      and e0["cloned_mac"]["value"] is None and e0["auth_retries"]["value"] == "0", e0)
 check("  power save for wlan1: Armbian's, as nothing of irate-box's sets it there", e1["powersave"]["value"] == "2")
 check("  a section for another driver doesn't apply (Armbian's eagle_sdio one)",
       nmconf.effective_for("wlan9", driver="other")["scan_mac"]["section"] != "device-31-mac-addr-change")
 check("  that section applies to its driver", nmconf._matches("driver:eagle_sdio,driver:wl", "wlan9", "wl") is True
       and nmconf._matches("except:interface-name:wlan0", "wlan0") is False and nmconf._matches("mac:aa:bb", "wlan0") is None)
-hub_control.nm_defaults({"changes": {"mac": "default", "scan_mac": "default"}, "iface": "wlan1"})
+hub_control.nm_defaults({"changes": {"cloned_mac": "default", "scan_mac": "default"}, "iface": "wlan1"})
 check("  'as the box default' takes the interface's lines out, the box's kept",
       nmconf.current_ifaces() == {} and nmconf.current_mine() == {"auth_retries": "0"} and "irate-box-wlan1" not in nmconf.DROPIN.read_text())
 hub_control.nm_defaults({"changes": {"auth_retries": "default"}})
