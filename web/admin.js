@@ -201,7 +201,7 @@ function sourceRow(src, st, busy) {
   const key = `book:${src.name}`;
   const button = (label, body, confirmText, opts = {}) => el('button', {
     type: 'button', className: 'action-btn', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
-    onclick: () => libAct(key, body, confirmText),
+    onclick: () => { if (['fetch', 'update'].includes(body.action) && !meteredOk(`${label}: the download`)) return; libAct(key, body, confirmText); },
   });
   // Check finds a newer version; Fetch downloads and checks it beside the book in use;
   // Update swaps it in (fetching first if that has not happened).
@@ -1175,8 +1175,23 @@ function renderUpdoctor(d) {
   upd.udFineCount.textContent = `(${fine.length})`;
   upd.udFine.replaceChildren(...fine.map((f, i) => item(f, `fine-${i}`)));
 }
+// On a metered network (a phone's hotspot, say): scheduled updates and downloads wait, and one
+// started by hand asks first (meteredOk).
+let meteredNow = null;
+function meteredOk(what) {
+  if (!meteredNow || !meteredNow.metered) return true;
+  return confirm(`The box is on a metered network now (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). ${what} may use a lot of its data. Go ahead?`);
+}
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
+  const m = data.metered || {};
+  meteredNow = m.now || null;
+  const mEl = document.getElementById('update-metered');
+  const w = m.waiting;
+  mEl.hidden = !(meteredNow && meteredNow.metered) && !w;
+  mEl.textContent = w ? `Scheduled updates and downloads have waited since ${new Date(w.since * 1000).toLocaleString()}: the box is on a metered network `
+    + `(${w.connection || w.iface}, ${w.how}). They go ahead on another network; one started here asks first. Set a network not metered in its own settings (Network → WiFi).`
+    : meteredNow && meteredNow.metered ? `The box is on a metered network now (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}): scheduled updates and downloads will wait for another.` : '';
   const s = data.state;
   const p = data.progress;
   const busy = data.pending > 0 || !!updWaiting || !!p;
@@ -1262,7 +1277,7 @@ async function requestUpdate(action) {
 }
 
 upd.check.addEventListener('click', () => requestUpdate('check'));
-upd.fetch.addEventListener('click', () => requestUpdate('fetch'));
+upd.fetch.addEventListener('click', () => { if (meteredOk('Fetching the update')) requestUpdate('fetch'); });
 upd.doctor.addEventListener('click', () => requestUpdate('doctor'));
 upd.clear.addEventListener('click', () => {
   if (confirm('Remove the cached copy and downloads? The next check starts afresh.')) requestUpdate('clear-cache');
@@ -2671,7 +2686,9 @@ function drawNetTabs(data, inv, u) {
   const wifi = inv ? inv.radios.filter((r) => r.type === 'managed') : [];
   netTabs.wifiNow.replaceChildren(...(wifi.length ? wifi.map((r) => el('div', {}, netLine(r.iface, linkNow(inv, r)),
     r.link && r.link.bssid ? netLine('Access point', `${r.link.bssid}${r.profile && r.profile.bssid_lock ? ' (locked to it)' : ''}`) : null,
-    r.profile ? netLine('Profile', `${r.profile.name}${r.profile.autoconnect ? '' : ', autoconnect off'}`) : null))
+    r.profile ? netLine('Profile', `${r.profile.name}${r.profile.autoconnect ? '' : ', autoconnect off'}`) : null,
+    meteredNow && meteredNow.iface === r.iface ? netLine('Metered', meteredNow.metered
+      ? `yes (${meteredNow.how}): scheduled updates and downloads wait for another network` : `no (${meteredNow.how})`) : null))
     : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here: the box reaches its network another way.' : 'Not looked yet.' })]));
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== 'ap');
@@ -2703,6 +2720,7 @@ function drawNetTabs(data, inv, u) {
 }
 
 function renderNetwork(data) {
+  if (data.metered) meteredNow = data.metered.now || null;
   netData = data;
   const busy = data.pending > 0 || !!netWaiting;
   if (netWaiting) {
@@ -4638,6 +4656,7 @@ function hoursPicker(value) {
 const pickedHours = (sel) => (sel.value === 'never' ? null : Number(sel.value));
 
 async function kitAct(body, quiet) {
+  if (body.action === 'fetch' && !quiet && !meteredOk('Fetching the toolkit')) return;
   try {
     const data = await postJSON('/admin/kits', body);
     if (data.id) kitsWaiting.add(data.id);

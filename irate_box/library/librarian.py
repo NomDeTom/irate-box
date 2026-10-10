@@ -1438,6 +1438,14 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     Returns {name: outcome}. One source failing never stops the others."""
     cfg = load_config()
     policy = cfg["policy"]
+    if scheduled:
+        # On a metered network (a phone's hotspot, say) the scheduled run waits for another; one
+        # started by hand goes ahead (the page asks first).
+        from irate_box.hub import netpolicy
+        why = netpolicy.gate()
+        if why:
+            log(why)
+            return {"_metered": why}
     # The timer goes as far as the owner chose; asked for by name or from /admin, it does what was asked.
     mode = mode or (("check", "fetch", "update")[policy["auto_install"]] if scheduled else "update" if download else "check")
     results = {}
