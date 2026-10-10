@@ -47,7 +47,7 @@ SYS_NET = Path("/sys/class/net")
 AP_PROFILE = "irate-box-ap"  # the hub's own hotspot profile, when it exists
 MESH_CONFIG = Path("/var/lib/meshtasticd/.portduino/default/prefs/config.proto")
 # Driver options that bear on power save and roaming, read when the driver has them.
-DRIVER_PARAMS = ("ps_on", "dpsm", "roamoff", "feature_disable", "power_save", "rtw_power_mgnt",
+DRIVER_PARAMS = ("ps_on", "dpsm", "roamoff", "feature_disable", "power_save", "rtw_power_mgnt", "recovered_at",
                  "rtw_ips_mode", "rtw_enusbss", "swcrypto", "ant_div", "tx_lft")
 
 
@@ -412,6 +412,19 @@ def nm_profile(ref):
 NETPLAN_PROFILES = "/run/NetworkManager/system-connections/netplan-"
 
 
+def duplicate_profiles(dirs=("/etc/NetworkManager/system-connections",)):
+    """[{uuid, name, files}] for NetworkManager keyfiles that share a uuid (root reads them)."""
+    seen = {}
+    for d in dirs:
+        for f in sorted(Path(d).glob("*.nmconnection")) if Path(d).is_dir() else []:
+            text = read(f) or ""
+            m = re.search(r"^uuid=([0-9a-f-]{36})\s*$", text, re.M)
+            n = re.search(r"^id=(.*)$", text, re.M)
+            if m:
+                seen.setdefault(m.group(1), {"uuid": m.group(1), "name": n.group(1) if n else "?", "files": []})["files"].append(f.name)
+    return [v for v in seen.values() if len(v["files"]) > 1]
+
+
 def nm_state():
     code, out = run("nmcli", "-t", "-f", "RUNNING,VERSION", "general")
     if code:
@@ -662,6 +675,11 @@ def scan(focus=None):
            "focus": focus, "iw": iw_ok, "stacks": stacks, "radios": radios, "wired": wired(),
            "default_route": route, "country": reg_country() if iw_ok else None}
     if inv["root"]:
+        inv["duplicate_profiles"] = duplicate_profiles()
+        if stacks.get("netplan") is not None and shutil.which("netplan"):
+            code, out = run("netplan", "get", timeout=30)
+            if code != 0:
+                stacks["netplan"]["error"] = (out.strip().splitlines() or ["netplan get failed."])[0][:240]
         # Connections netplan makes, and whether each can be handed over to NetworkManager (root reads netplan's files).
         try:
             from irate_box.root import nmhandover
@@ -702,6 +720,68 @@ def effective_retries(profile, key, defaults):
     if v is not None and re.fullmatch(r"-?\d+", str(v)) and int(v) >= 0:
         return int(v), f"the box default ({d.get('file')})"
     return NM_RETRIES[key], "NetworkManager's own default"
+
+
+def _uplink_radio(inv):
+    route = inv.get("default_route") or {}
+    managed = [r for r in inv["radios"] if r.get("type") == "managed"]
+    return next((r for r in managed if r["iface"] == route.get("iface")), None) or (managed[0] if managed and not route else None)
+
+
+def link_findings(inv):
+    """What lowers the chance of the box staying on its network, beyond the radio itself: the link's
+    connection set not to join by itself or locked, power save or a random address from wherever it is
+    set, two copies of one connection, configuration that cannot be read, a driver known to wedge."""
+    out = []
+    nm = inv["stacks"].get("networkmanager") or {}
+    r = _uplink_radio(inv)
+    p = (r or {}).get("profile") or {}
+    dflt = (nm.get("defaults") or {})
+    if p:
+        name, iface = p.get("ssid") or p["name"], r["iface"]
+        if p.get("autoconnect") is False:
+            out.append(_h(f"autoconnect-off:{p['uuid']}", "warn", f"{name}: not set to join by itself",
+                          "After a drop or a reboot the box won't join its own network again unless someone asks it to.",
+                          "Network page, WiFi: its own settings, Join it by itself.", iface=iface))
+        locks = [x for x in (f"the access point {p['bssid_lock']}" if p.get("bssid_lock") else None,
+                             {"a": "5 GHz", "bg": "2.4 GHz"}.get(p.get("band_lock") or "", None) and f"the {({'a': '5 GHz', 'bg': '2.4 GHz'})[p['band_lock']]} band",
+                             f"channel {p['channel']}" if p.get("channel") else None) if x]
+        if locks:
+            roam = (r.get("roaming") or {})
+            out.append(_h(f"locked:{p['uuid']}", "warn", f"{name}: locked to {' and '.join(locks)}",
+                          "The box can't move to another access point or band of the same network: if that one goes, the box "
+                          "stays off the network" + (f" ({len(roam['aps'])} access points share its name)." if len(roam.get("aps") or []) > 1 else "."),
+                          "Network page, WiFi: its own settings, the locks; or Staying on the network, roaming.", iface=iface))
+        ps_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("powersave") or {}).get("value") or ((dflt.get("settings") or {}).get("powersave") or {}).get("value")
+        if p.get("powersave") == 3 or (p.get("powersave") in (0, None) and ps_box == "3"):
+            out.append(_h(f"powersave-set:{p['uuid']}", "warn", f"{name}: WiFi power save on",
+                          "Set " + ("for this connection" if p.get("powersave") == 3 else "as a default") + ": the link is slower to answer, "
+                          "and some drivers drop.", "Network page: power save off (its own settings, or Box defaults).", iface=iface))
+        mac_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("cloned_mac") or {}).get("value") or ((dflt.get("settings") or {}).get("cloned_mac") or {}).get("value")
+        if p.get("cloned") == "random" or (not p.get("cloned") and mac_box == "random"):
+            out.append(_h(f"mac-random:{p['uuid']}", "warn", f"{name}: a new random MAC address each time it connects",
+                          "Your router sees a new device each time: an address reserved for the box, a MAC filter or a "
+                          "'known devices' list stops matching it.", "Network page: MAC address, the board's own or stable.", iface=iface))
+    for d in inv.get("duplicate_profiles") or []:
+        out.append(_h(f"duplicate:{d['uuid']}", "warn", f"Two files for one connection ({d['name']})",
+                      f"{', '.join(d['files'])} have the same uuid: NetworkManager uses one of them, and which may change.",
+                      "Keep the one in use; move the other out of /etc/NetworkManager/system-connections."))
+    np = inv["stacks"].get("netplan") or {}
+    if np.get("error"):
+        out.append(_h("netplan-broken", "problem", "netplan's configuration can't be read",
+                      f"{np['error']} netplan stops at the first error, so none of its connections are made afresh, and "
+                      "netplan apply fails.", "Fix or move aside the file it names (in /etc/netplan)."))
+    for f in dflt.get("broken") or []:
+        out.append(_h(f"nmconf-broken:{f}", "warn", "A NetworkManager configuration file can't be read",
+                      f"{f}: NetworkManager may ignore it, or refuse to start.", "Fix or move it aside."))
+    for rr in inv["radios"]:
+        if rr.get("driver") == "aic8800_fdrv" and "recovered_at" not in (rr.get("params") or {}):
+            out.append(_h(f"driver-wedge:{rr['iface']}", "warn", f"{rr['iface']}: a WiFi driver known to wedge",
+                          "This AIC8800 driver stops answering after one late reply from its firmware, until it is loaded "
+                          "again; the box's watchdog resets the radio then. A patched driver resets the chip itself.",
+                          "See the patched aic8800 driver (resets itself on a command timeout).", iface=rr["iface"]))
+            break
+    return out
 
 
 def hazards(inv):
@@ -771,6 +851,7 @@ def hazards(inv):
                               "setting made for this connection alone is lost at the next boot. Box defaults still apply.",
                               "Network page, WiFi: hand it over to NetworkManager, so its own settings last (undo puts it back).",
                               iface=r["iface"]))
+    out += link_findings(inv)
     if inv.get("country") in ("00", None) and radios:
         out.append(_h("regdom", "warn", "No WiFi country set",
                       "The radio uses the world-safe channel set, which limits a hotspot's channels and power.",

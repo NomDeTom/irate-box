@@ -562,10 +562,22 @@ def roaming_findings(st, inv):
 
 
 def check_inventory():
+    """The network inventory's findings that lower the chance of the box staying on its network (its
+    warnings and problems), each with its fix, and how old the look is when that matters."""
     p = CONTROL / "netinv.json"
     if not p.exists():
         return [_f("netinv", "Network inventory", "warn", "Not looked yet.", "", [_act("net-scan", "Look now")])]
-    return []
+    inv = _json_or(p)
+    if not isinstance(inv, dict):
+        return [_f("netinv", "Network inventory", "warn", "The last look can't be read.", "", [_act("net-scan", "Look again")])]
+    age = time.time() - float(inv.get("at") or 0)
+    when = f" (as of a look {int(age // 3600)} h ago)" if age > 6 * 3600 else ""
+    out = [_f(f"net:{h['id']}", h["title"], h["status"], h["detail"] + when, h.get("fix", ""))
+           for h in inv.get("hazards") or [] if h.get("status") in ("warn", "problem")]
+    if age > 24 * 3600:
+        out.append(_f("netinv", "Network inventory", "warn", f"The last look at the network was {int(age // 86400)} days ago.", "",
+                      [_act("net-scan", "Look again")]))
+    return out
 
 
 def check_hotspot():
