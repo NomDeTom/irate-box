@@ -138,6 +138,7 @@ scenario_addons() {
 	$DOCKER cp "$dc" "$CID":/dl >/dev/null || { rc=$((rc + 1)); return; }
 	install_hub --web nginx --with-term --download-cache /dl || { rc=$((rc + 1)); return; }
 	run_ct addons-kept
+	run_ct kiwix-addon
 }
 
 # Books: needs a real mermaid-docs.zim. Set ZIM to its path.
