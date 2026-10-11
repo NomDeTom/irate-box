@@ -5,8 +5,9 @@
 The light one is the page /flasher/ itself, served in place: over HTTPS it flashes an ESP32 from
 the browser (Web Serial needs a secure context), with ESP Web Tools (ESPHome's install button,
 Apache-2.0; install.sh puts its bundle in $HUB_EWT_ROOT, served at /flasher/esp-web-tools/). It
-offers each ESP32 target the owner published from the Firmware Factory (factory.py publish), each
-with a manifest made here from the build's own factory.bin: the chip from its image header, the
+offers each ESP32 target the owner published from the Firmware Factory (factory.py publish), and
+each of the Meshtastic releases the librarian keeps (firmware.py), each with a manifest made here
+from the build's own factory.bin: the chip from its image header, the
 offsets of the file system and the OTA loader from the partition table inside it. nRF52 and RP2040
 boards take a UF2 dragged onto their USB drive: the Factory's downloads.
 
@@ -73,18 +74,26 @@ API_FILES = {
 BUILT = "-built"   # factory.py's folders: <version>-built/firmware-<version>-built.json
 
 
-def _built():
-    """The releases built here, newest first: [{version, targets}] (factory.published, read here
-    without the factory's imports)."""
+def _releases():
+    """The releases here, newest first: [{version, targets, built}]: those built here (factory.published,
+    read without the factory's imports) and those the librarian keeps (firmware.py), in the same layout."""
     out = []
-    for folder in FIRMWARE.glob("*" + BUILT) if FIRMWARE.is_dir() else []:
+    for folder in FIRMWARE.iterdir() if FIRMWARE.is_dir() else []:
+        if not ESP_VERSION_RE.match(folder.name):
+            continue
         try:
             targets = json.loads((folder / f"firmware-{folder.name}.json").read_text()).get("targets") or []
         except (OSError, ValueError):
             continue
-        if targets and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}" + BUILT, folder.name):
-            out.append((folder.stat().st_mtime, {"version": folder.name, "targets": targets}))
-    return [r for _, r in sorted(out, key=lambda x: x[0], reverse=True)]
+        if targets:
+            out.append((folder.name.endswith(BUILT), folder.stat().st_mtime,
+                        {"version": folder.name, "targets": targets, "built": folder.name.endswith(BUILT)}))
+    return [r for _, _, r in sorted(out, key=lambda x: (x[0], x[1]), reverse=True)]
+
+
+def _built():
+    """The releases built here, newest first."""
+    return [r for r in _releases() if r["built"]]
 
 
 # --- the light flasher: ESP Web Tools' manifests --------------------------------------------------
@@ -114,7 +123,7 @@ def partitions(data):
     return out
 
 
-ESP_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}" + "-built$")
+ESP_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}(-built)?$")
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")   # factory.py's, for the files a manifest names
 OTA_RE = re.compile(r"^(mt-esp32[a-z0-9]*-ota|bleota[a-z0-9-]*)\.bin$")
@@ -157,22 +166,23 @@ def esp_manifest(version, env):
         where = ota if OTA_RE.match(name) else fs if name.startswith("littlefs-") and name.endswith(".bin") else None
         if where and names[name].stat().st_size <= where["size"]:
             parts.append({"path": f"/flasher/firmware/{version}/{name}", "offset": where["offset"]})
-    return {"name": f"Meshtastic for {mt.get('display_name') or env}", "version": version[:-len(BUILT)],
+    return {"name": f"Meshtastic for {mt.get('display_name') or env}", "version": version.removesuffix(BUILT),
             "new_install_prompt_erase": True, "new_install_improv_wait_time": 0,
             "builds": [{"chipFamily": fam, "parts": parts}]}
 
 
 def esp_targets():
-    """The ESP32 targets offered on the page, newest release first: [{version, env, name, chip, parts}]."""
+    """The ESP32 targets offered on the page, those built here first, then the kept releases, each
+    newest first: [{version, env, name, chip, parts, built}]."""
     out = []
-    for r in _built():
+    for r in _releases():
         for t in r["targets"]:
             if not str(t.get("platform") or "").startswith("esp32"):
                 continue
             m = esp_manifest(r["version"], t.get("board"))
             if m:
                 out.append({"version": r["version"], "env": t["board"], "name": m["name"], "chip": m["builds"][0]["chipFamily"],
-                            "parts": len(m["builds"][0]["parts"])})
+                            "parts": len(m["builds"][0]["parts"]), "built": r["built"]})
     return out
 
 

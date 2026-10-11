@@ -401,13 +401,28 @@ check("  factory.bin at 0, the OTA loader at the second app partition, the file 
 m2 = flasher.esp_manifest("2.9.0.1234567-built", "tbeam")
 check("  the classic ESP32 (its header at 0x1000); a file system bigger than its partition left out",
       m2["builds"][0]["chipFamily"] == "ESP32" and [p["offset"] for p in m2["builds"][0]["parts"]] == [0, 0x260000], m2)
-check("  not offered: an nRF52, a name that climbs, a librarian's release", flasher.esp_manifest("2.9.0.1234567-built", "rak4631") is None
+check("  not offered: an nRF52, a name that climbs, a release that isn't here", flasher.esp_manifest("2.9.0.1234567-built", "rak4631") is None
       and flasher.esp_manifest("2.9.0.1234567-built", "../x") is None and flasher.esp_manifest("2.9.0.1234567", "heltec-v3") is None)
+# A release the librarian keeps (firmware.py), in release.meshtastic.org's layout: offered too, after those built here.
+kept = T / "firmware" / "2.8.2.abcdef1"
+kept.mkdir(parents=True)
+kn = {"firmware-heltec-v3-2.8.2.abcdef1.factory.bin": merged(9, 0, MT_TABLE), "mt-esp32s3-ota.bin": b"ota"}
+for n_, data in kn.items():
+    (kept / n_).write_bytes(data)
+(kept / "firmware-heltec-v3-2.8.2.abcdef1.mt.json").write_text(json.dumps({"display_name": "Heltec V3", "files": [{"name": n_} for n_ in kn]}))
+(kept / "firmware-2.8.2.abcdef1.json").write_text(json.dumps({"version": "2.8.2.abcdef1", "targets": [{"board": "heltec-v3", "platform": "esp32-s3"}]}))
+(T / "firmware" / "2.8.1.8e6a88d").mkdir()   # a build cache's folder: no board list, not a release
+mk = flasher.esp_manifest("2.8.2.abcdef1", "heltec-v3")
+check("a kept release's manifest: its own version, its files under its folder", mk and mk["version"] == "2.8.2.abcdef1"
+      and mk["name"] == "Meshtastic for Heltec V3" and mk["builds"][0]["parts"][0]["path"] == "/flasher/firmware/2.8.2.abcdef1/firmware-heltec-v3-2.8.2.abcdef1.factory.bin", mk)
 status, body = flasher.api("/flasher/api/esp")
 lst = json.loads(body)
-check("the page's list: the ESP32 targets, with their chips; the engine and the download said",
-      status == 200 and [(t["env"], t["chip"], t["parts"]) for t in lst["targets"]] == [("heltec-v3", "ESP32-S3", 3), ("tbeam", "ESP32", 2)]
+check("the page's list: the ESP32 targets, with their chips, those built here first, then the kept release; the engine and the download said",
+      status == 200 and [(t["env"], t["chip"], t["parts"], t["built"]) for t in lst["targets"]] == [
+          ("heltec-v3", "ESP32-S3", 3, True), ("tbeam", "ESP32", 2, True), ("heltec-v3", "ESP32-S3", 2, False)]
       and lst["engine"] is False and lst["download"] is False, lst)
+check("  the download flasher's list still names only the builds as its own alphas (the kept ones come from index.json)",
+      [r["id"] for r in json.loads(flasher.api("/flasher/api/github/firmware/list")[1])["releases"]["alpha"]] == ["v2.9.0.1234567-built"])
 status, body = flasher.api("/flasher/api/esp/2.9.0.1234567-built/heltec-v3/manifest.json")
 check("  a target's manifest by its address", status == 200 and json.loads(body) == m)
 check("  none for one not offered", flasher.api("/flasher/api/esp/2.9.0.1234567-built/rak4631/manifest.json")[0] == 404)
