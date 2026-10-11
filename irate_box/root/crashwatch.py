@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Crash watch: what the box was doing when it stopped, and acting before a failing radio takes it
-down.
+"""Crash watch: what the box was doing when it stopped, kept where a reboot doesn't lose it.
 
 irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: small, one process.
 
@@ -15,21 +14,12 @@ irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: sm
               boot with no clean mark is a box that stopped without shutting down (a hang, a crash
               or the power going): its last snapshots and the previous boot's journal tail are filed
               under STATE/crashwatch/crashes/<time>/ for the box doctor (the last 30 kept).
-  Pre-emption the WiFi radio watched for a hardware or driver failure, told apart from an access
-              point going away (that is uplink.py's): its interface or USB device gone, or a burst
-              of driver errors (the AIC8800's own "cmd queue crashed" among them). Each failure is
-              filed as it happens (crashes/<time>-radio-<iface>/: the ten minutes before it and
-              the kernel's lines), as the box may never stop. As far as the owner chose (box doctor):
-                off      nothing
-                warn     a fuller snapshot and the doctor's finding (the default)
-                radio    ... and the radio reset at once (root/radio.py, shared with uplink.py): its
-                         USB device (its hub's, when the device itself is gone), then authorized
-                         0/1, then its driver, with NetworkManager stopped around it and the
-                         hotspot started again after
-                reboot   ... and the box restarted if the radio isn't back within 3 minutes
-              With uplink.py's guards: the owner's Hold, guests on the hotspot (unless the uplink's
-              settings say to ignore them), no reboot while a build or an update runs, within
-              15 minutes of boot, or past the uplink's daily cap (one shared history).
+  A radio     the WiFi radio watched for a hardware or driver failure: its interface or USB device
+              gone, or a burst of driver errors (the AIC8800's own "cmd queue crashed" among them),
+              and its driver resetting the radio itself. Each failure is filed as it happens
+              (crashes/<time>-radio-<iface>/: the ten minutes before it and the kernel's lines), as
+              the box may never stop, and noted in events.json. Crash watch never acts on the radio:
+              the uplink watchdog (uplink.py) reads these as evidence and does the repairing.
   A hang      the kernel itself freezing, which nothing in user space can act on. Two choices, off by
               default, each the owner's (box doctor): reboot on a kernel panic, oops or lockup
               (kernel.panic and its kin); and a watchdog (the board's own, or the kernel's softdog
@@ -38,12 +28,10 @@ irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: sm
     crashwatch.py run               the watcher
     crashwatch.py boot | shutdown   the service's start and stop marks (ExecStartPre, ExecStopPost)
     crashwatch.py status            what it knows, as JSON
-    crashwatch.py set KEY VALUE     snapshots on|off, preempt off|warn|radio|reboot,
-                                    panic on|off, watchdog on|off
+    crashwatch.py set KEY VALUE     snapshots on|off, panic on|off, watchdog on|off
     crashwatch.py undo-all          for uninstall.sh: the hang settings taken away
 
-Settings in /etc/hub/crashwatch.json (root's). Stdlib only, besides irate_box.hub (uplink, netinv)
-when acting on the radio.
+Settings in /etc/hub/crashwatch.json (root's). Stdlib only.
 """
 
 import json
@@ -65,7 +53,7 @@ RUN = DIR / "run.json"               # this boot: its id, when it started, wheth
 CRASHES = DIR / "crashes"
 INDEX = DIR / "crashes.json"
 INCIDENTS = DIR / "incidents.json"   # a radio's failures, filed as they happen (the box may never stop)
-EVENTS = DIR / "events.json"         # the radio's failures and what was done, newest last
+EVENTS = DIR / "events.json"         # the radio's failures, its driver's own resets, its recoveries, newest last
 STATUS = DIR / "status.json"         # for the box doctor: the radios watched, the floods, the last look
 PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
@@ -80,11 +68,7 @@ OVERLAY_NAME = "irate-box-watchdog"
 TICK = 30
 SNAP_MAX = 4_000_000
 KEEP_CRASHES = 30
-PREEMPT = ("off", "warn", "radio", "reboot")
-DEFAULT = {"snapshots": True, "preempt": "warn", "panic": False, "watchdog": False}
-RADIO_WAIT = 180          # seconds for a reset radio to come back before a reboot
-RADIO_GAP = 900           # no second radio reset within this
-BOOT_CALM = 900           # no reboot within this of boot
+DEFAULT = {"snapshots": True, "panic": False, "watchdog": False}
 FLOOD = 30                # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5             # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
@@ -97,8 +81,8 @@ RADIO_ERR = re.compile(r"USB disconnect|tx timeout|cmd (?:tx )?time ?out|firmwar
 AIC_ERR = re.compile(r"cmd queue crashed|cmd_mgr_queue cmd timed-out|check cmdqueue empty", re.I)
 # The AIC8800 driver, patched to mend itself (aic8800_fdrv recover_on_timeout): on a command its firmware never
 # answers it resets the USB device, which loads the firmware afresh. Its interfaces go and come back by themselves
-# within seconds; the hotspot's has to be started again. Within DRIVER_GRACE of that line, a radio gone or the USB
-# core's reset lines are that reset at work, not a failure to act on. The driver counts its resets in sysfs too
+# within seconds. Within DRIVER_GRACE of that line, a radio gone or the USB core's reset lines are that reset at
+# work, not a failure of its own. The driver counts its resets in sysfs too
 # (radio.driver_reset), as a flood in the kernel's small log can overwrite the line before a look reads it.
 DRIVER_RESET = re.compile(r"aic8800: firmware not answering: resetting the device")
 DRIVER_GRACE = 90
@@ -116,9 +100,31 @@ def load_settings():
     for k in ("snapshots", "panic", "watchdog"):
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
-    if raw.get("preempt") in PREEMPT:
-        out["preempt"] = raw["preempt"]
     return out
+
+
+def carry_over():
+    """Crash watch once reset a failing radio and rebooted the box itself ("preempt" radio or reboot);
+    that is the uplink watchdog's now, as its choice for a failed radio (on_wedge). An owner's choice
+    is carried over, never lowered, and the old setting dropped. Returns what was done, or None."""
+    try:
+        raw = json.loads(SETTINGS.read_text())
+    except (OSError, ValueError):
+        return None
+    old = raw.get("preempt") if isinstance(raw, dict) else None
+    if old is None:
+        return None
+    said = None
+    if old in ("radio", "reboot"):
+        from irate_box.hub import uplink
+        chosen = uplink.load_settings()
+        order = uplink.ON_WEDGE
+        if order.index(old) > order.index(chosen.get("on_wedge", "ladder")):
+            chosen["on_wedge"] = old
+            uplink.save_settings(chosen)
+            said = f"the uplink watchdog now does what crash watch did for a failed radio (on_wedge {old})"
+    save_settings(load_settings())
+    return said or "crash watch's old radio setting dropped"
 
 
 def save_settings(s):
@@ -426,20 +432,15 @@ def radio_state(known, kernel):
     return out
 
 
-class Preempt:
-    """What to do about a failing radio, as far as the owner chose. act(now, states) returns the
-    events of this look; the system's side (resetting, rebooting, the guards) is passed in."""
-    def __init__(self, level, reset, reboot, guards, log, hotspot=None):
-        self.level, self.reset, self.reboot, self.guards, self.log = level, reset, reboot, guards, log
-        # hotspot: (missing, restore): whether the hotspot should be up and its interface is gone; start it again.
-        self.hotspot = hotspot
+class RadioWatch:
+    """A failing radio noticed and noted, never acted on (the uplink watchdog repairs). act(now,
+    states) returns the events of this look."""
+    def __init__(self, log):
+        self.log = log
         self.driver_reset = None   # when the driver last reset the radio itself
         self.own_seen = None       # the driver's own count of its resets, as last read (radio.driver_reset)
-        self.restored = True       # the hotspot seen to since that reset
-        self.recent = {}        # iface: deque of (time, error count)
-        self.failed = {}        # iface: since
-        self.last_reset = float("-inf")
-        self.reset_at = {}      # iface: when it was reset in this failure
+        self.recent = {}           # iface: deque of (time, error count)
+        self.failed = {}           # iface: since
 
     def act(self, now, states, kernel=(), own=(None, None)):
         """own: (marker, age) of the driver's last reset of its own device (radio.driver_reset), which
@@ -451,100 +452,24 @@ class Preempt:
         if marker is not None:
             self.own_seen = marker
         if said or fresh:
-            self.driver_reset, self.restored = (now - age if fresh and not said else now), False
+            self.driver_reset = now - age if fresh and not said else now
             events.append(self.log(now, "radio", "driver-reset", "the radio's driver reset it itself (its firmware stopped answering)"))
         if self.driver_reset is not None and now - self.driver_reset < DRIVER_GRACE:
-            # Its own reset at work: the interfaces come back by themselves; once the client's is back, the hotspot.
-            back = all(not gone for iface, (gone, _e) in states.items() if not iface.startswith("ap"))
-            if back and not self.restored and self.hotspot:
-                missing, restore = self.hotspot
-                if missing():
-                    events.append(self.log(now, "radio", "reset", restore()))
-                self.restored = True
-            return events
-        if self.driver_reset is not None and not self.restored and self.hotspot:
-            missing, restore = self.hotspot
-            if missing():
-                events.append(self.log(now, "radio", "reset", restore()))
-            self.restored = True
+            return events   # its own reset at work: the interfaces come back by themselves, or don't
         for iface, (gone, errs) in states.items():
             q = self.recent.setdefault(iface, deque(maxlen=2))
             q.append((now, len(errs)))
             burst = sum(n for _, n in q) >= ERR_BURST
-            bad = bool(gone) or burst
-            if not bad:
+            if not (gone or burst):
                 if iface in self.failed:
                     events.append(self.log(now, iface, "recovered", "the radio is back"))
                     self.failed.pop(iface)
-                    self.reset_at.pop(iface, None)
                 continue
-            why = "; ".join(gone) or f"{sum(n for _, n in q)} driver errors in a minute: {errs[-1][:160] if errs else ''}"
             if iface not in self.failed:
                 self.failed[iface] = now
+                why = "; ".join(gone) or f"{sum(n for _, n in q)} driver errors in a minute: {errs[-1][:160] if errs else ''}"
                 events.append(self.log(now, iface, "failed", why, snapshot=True))
-            if self.level in ("radio", "reboot") and iface not in self.reset_at:
-                held = self.guards("radio", now)
-                if held:
-                    events.append(self.log(now, iface, "held", f"radio reset held: {held}"))
-                    self.reset_at[iface] = now          # once per failure: said, not repeated
-                elif now - self.last_reset < RADIO_GAP:
-                    pass
-                else:
-                    self.last_reset = self.reset_at[iface] = now
-                    events.append(self.log(now, iface, "reset", self.reset(iface)))
-            elif self.level == "reboot" and iface in self.reset_at and now - self.reset_at[iface] >= RADIO_WAIT:
-                held = self.guards("reboot", now)
-                if held:
-                    if not any(e.get("kind") == "held" for e in events):
-                        events.append(self.log(now, iface, "held", f"reboot held: {held}"))
-                    self.reset_at[iface] = now          # look again after another wait
-                else:
-                    events.append(self.log(now, iface, "reboot", "the radio did not come back: rebooting"))
-                    self.reboot()
         return events
-
-
-def reset_radio(iface, known):
-    """The one radio reset the uplink watchdog uses too (root/radio.py): its USB device (or the hub
-    it hangs off), then `authorized` 0/1, then its driver; the hotspot started again after."""
-    from irate_box.root import radio
-    r = known.get(iface, {})
-    return radio.reset(iface, r.get("port"), r.get("driver"), r.get("product"))
-
-
-def guards(step, now):
-    """uplink.py's guards, shared: the owner's Hold, guests on the hotspot, a busy box, the reboot cap."""
-    from irate_box.hub import uplink
-    chosen = uplink.load_settings()
-    eff = uplink.effective(chosen)
-    if chosen.get("hold_until", 0) > now:
-        return "the owner holds repairs (Network → Hold)"
-    if eff.get("guests") == "protect":
-        try:
-            n = uplink.guests()
-        except Exception:  # noqa: BLE001 - a radio that has failed may not answer iw at all
-            n = 0
-        if n:
-            return f"{n} guest{'s are' if n != 1 else ' is'} on the hotspot"
-    if step == "reboot":
-        if uptime() < BOOT_CALM:
-            return "the box started less than 15 minutes ago"
-        busy = uplink.busy()
-        if busy:
-            return f"{busy} is running"
-        day = [t for t in _json(uplink.REBOOTS, []) if t > now - 86400]
-        if len(day) >= eff.get("reboots_per_day", 2):
-            return f"it has rebooted {len(day)} times today already"
-    return None
-
-
-def reboot_now():
-    from irate_box.hub import uplink
-    from irate_box.root import safeio
-    hist = [t for t in _json(uplink.REBOOTS, []) if t > time.time() - 86400] + [time.time()]
-    safeio.write(uplink.REBOOTS, json.dumps(hist), 0o600)
-    os.sync()
-    subprocess.Popen(["systemctl", "reboot"])
 
 
 # --- the hang settings ---------------------------------------------------------------------------
@@ -679,10 +604,6 @@ def set_option(key, value):
     if key == "snapshots" and value in ("on", "off"):
         s["snapshots"] = value == "on"
         msg = "snapshots to the box's storage every 30 s" if s["snapshots"] else "no snapshots: a crash leaves only the journal's last sync"
-    elif key == "preempt" and value in PREEMPT:
-        s["preempt"] = value
-        msg = {"off": "the radio is not watched", "warn": "a failing radio is noted and said, nothing more",
-               "radio": "a failing radio is reset at once", "reboot": "a failing radio is reset, and the box restarted if it doesn't come back"}[value]
     elif key == "panic" and value in ("on", "off"):
         msg = set_panic(value == "on")
         s["panic"] = value == "on"
@@ -739,9 +660,13 @@ def run(once=False):
 
     settings = load_settings()
     from irate_box.root import radio
-    ap_gone = lambda: radio.hotspot_up() and not any((SYS / "class/net" / i).exists() for i in known if i.startswith("ap"))  # noqa: E731
-    pre = Preempt(settings["preempt"], lambda i: reset_radio(i, known), reboot_now, guards, log,
-                  hotspot=(ap_gone, radio.restore_hotspot))
+    try:
+        said = carry_over()
+        if said:
+            print(f"crashwatch: {said}", file=sys.stderr)
+    except (OSError, ValueError) as exc:
+        print(f"crashwatch: the old radio setting not carried over: {exc}", file=sys.stderr)
+    watch = RadioWatch(log)
     mtime = 0.0
     while True:
         now = time.time()
@@ -751,16 +676,13 @@ def run(once=False):
             m = 0.0
         if m != mtime:
             mtime, settings = m, load_settings()
-            pre.level = settings["preempt"]
         lines = kmsg.read()
         pending["lines"] = lines
         keep, flood = floods(lines)
         floods_hour.update(flood)
-        if settings["preempt"] != "off":
-            now_known = radios()
-            for i, r in now_known.items():
-                known[i] = r          # a radio that came back, or a new one, watched from now on
-            pre.act(now, radio_state(known, lines), lines, radio.driver_reset())
+        for i, r in radios().items():
+            known[i] = r          # a radio that came back, or a new one, watched from now on
+        watch.act(now, radio_state(known, lines), lines, radio.driver_reset())
         extra = pending.pop("snap", None) or ""
         pending["snap"] = None
         if settings["snapshots"] or extra:

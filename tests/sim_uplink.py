@@ -258,7 +258,7 @@ def wedged_night(e, on_wedge, guests=0):
     return acts, w
 a, w = wedged_night("persistent", "radio")
 check("on_wedge radio, the level reaching it: straight to the radio reset when the evidence comes (not restart at 6 min, radio at 16)",
-      a == [(60, "reconnect"), (240, "pin"), (300, "radio")] and any("can't mend a wedged driver" in e["text"] for e in w.events), a)
+      a == [(60, "reconnect"), (240, "pin"), (300, "radio")] and any("can't mend a failed radio" in e["text"] for e in w.events), a)
 a, w = wedged_night("persistent", "ladder")
 check("on_wedge ladder (the default): the ladder as set, the evidence said once",
       (360, "restart") in a and (960, "radio") in a and sum(e["kind"] == "wedged" for e in w.events) == 1, a)
@@ -282,12 +282,79 @@ check("the driver's own reset: no radio reset of ours on top of it while it is r
       and sum("reset it itself" in e["text"] for e in w.events) == 1, (acts, [e["text"] for e in w.events]))
 check("  still down after it: the ladder goes on (a radio reset)", any(x == "radio" and t >= 390 for t, x in acts), acts)
 check("own_reset: none on a box whose driver counts nothing", U.own_reset() is None)
-check("validate: on_wedge ladder by default, radio accepted, nothing else",
-      U.validate({})["on_wedge"] == "ladder" and U.validate({"on_wedge": "radio"})["on_wedge"] == "radio")
+check("validate: on_wedge ladder by default, radio and reboot accepted, nothing else",
+      U.validate({})["on_wedge"] == "ladder" and U.validate({"on_wedge": "radio"})["on_wedge"] == "radio"
+      and U.validate({"on_wedge": "reboot"})["on_wedge"] == "reboot")
 try:
-    U.validate({"on_wedge": "reboot"}); check("validate refuses on_wedge reboot", False)
+    U.validate({"on_wedge": "nuke"}); check("validate refuses on_wedge nuke", False)
 except ValueError:
-    check("validate refuses on_wedge reboot", True)
+    check("validate refuses on_wedge nuke", True)
+
+# 7d'. Each outage's cause: a failed radio, or the network at fault.
+def caused(e, cause, until=3600, step=30, on_wedge="ladder", **kw):
+    w = U.Watch(U.effective(C(e, 3, on_wedge=on_wedge, **kw)))
+    acts = []
+    for t in range(0, until, step):
+        c = cause(t) if callable(cause) else cause
+        obs = {"link": False, "drops": [], "can": ALL, "guests": 0, "uptime": 1e9, "cause": c}
+        acts += [(t, x) for x in w.tick(t, obs)]
+    return acts, w
+a, w = caused("stubborn", "absent", until=86400 * 2, step=60)
+check("the network gone: reconnects only, never a restart, radio reset or reboot, even with the reach at reboot",
+      {x for _, x in a} <= {"reconnect", "pin"} and len(a) > 5 and any("not in range" in e["text"] for e in w.events), sorted({x for _, x in a}))
+gaps = [b - t for (t, _), (b, _) in zip(a, a[1:])]
+check("  tried again for as long as it takes (the default), the gap growing to an hour (steady)", a[-1][0] > 86400 and max(gaps) <= 3600 + 60, max(gaps))
+a2, _ = caused("stubborn", "absent", until=86400 * 2, step=60, retry="sparing")
+check("  sparing: fewer tries, the gap growing to 6 hours", len(a2) < len(a) and max(b - t for (t, _), (b, _) in zip(a2, a2[1:])) > 3600, (len(a2), len(a)))
+a3, w3 = caused("stubborn", "absent", until=86400, step=60, give_up="hour")
+check("  give up after an hour: no tries after it, said once, the page told it has stopped",
+      max(t for t, _ in a3) < 3600 + 60 and sum("Stopped trying" in e["text"] for e in w3.events) == 1
+      and w3.stall(86000)["text"].startswith("Stopped trying") and w3.next_step(86000) is None, (a3[-3:], w3.stall(86000)))
+a, w = caused("stubborn", "join", until=7200)
+check("the network seen but not joining: reconnects, and the network service restarted once; no radio reset or reboot",
+      {x for _, x in a} <= {"reconnect", "pin", "restart"} and [x for _, x in a].count("restart") == 1, a)
+a, w = caused("stubborn", "gateway", until=7200)
+check("joined, the gateway silent: reconnects only", {x for _, x in a} <= {"reconnect", "pin"}, a)
+a, w = caused("persistent", lambda t: "absent" if t < 600 else "radio", until=3600, on_wedge="radio")
+check("  the cause changing from the network to the radio: the radio reset comes then", (600, "radio") in a, a)
+a, w = caused("persistent", "radio", until=3600, on_wedge="reboot", reach="reboot")
+check("a failed radio, on_wedge reboot: the radio reset at once, a reboot when it isn't back 3 minutes later",
+      a[:2] == [(60, "radio"), (240, "reboot")] and any("not back 3 min after its reset" in e["text"] for e in w.events), a)
+a, w = caused("persistent", lambda t: "radio" if t < 90 else "absent", until=1200, on_wedge="reboot", reach="reboot")
+check("  the radio back but the network not: no reboot", "reboot" not in [x for _, x in a], a)
+a, w = caused("persistent", "radio", until=1200, on_wedge="reboot", reach="radio")
+check("  the reach stopping at the radio: no reboot", "reboot" not in [x for _, x in a] and ("radio" in [x for _, x in a]), a)
+a, w = caused("persistent", "radio", until=3600, on_wedge="radio")
+check("  on_wedge radio: the reset, no reboot of its own (the ladder's own reboot comes at its time)",
+      a[0] == (60, "radio") and (240, "reboot") not in a, a[:3])
+# The look: why it is down.
+scan = lambda out, code=0: (lambda *c, **k: (code, out))  # noqa: E731
+check("outage_cause: the driver resetting itself, wedge evidence, a radio's interface gone: the radio",
+      U.outage_cause("wlan0", False, None, True, True, None, 12.0, "Home") == "radio"
+      and U.outage_cause("wlan0", False, None, True, True, "scans keep failing", None, "Home") == "radio"
+      and U.outage_cause("wlan0", False, None, True, False, None, None, "Home") == "radio")
+check("  joined, the gateway silent: gateway; up and answering: nothing to say",
+      U.outage_cause("wlan0", True, False, True, True, None, None, "Home") == "gateway"
+      and U.outage_cause("wlan0", True, True, True, True, None, None, "Home") is None)
+check("  the network in NetworkManager's last scan: join; not in it: absent; no scan list or no profile: can't tell",
+      U.outage_cause("wlan0", False, None, True, True, None, None, "Home", run=scan("Other\nHome\n")) == "join"
+      and U.outage_cause("wlan0", False, None, True, True, None, None, "Home", run=scan("Other\n")) == "absent"
+      and U.outage_cause("wlan0", False, None, True, True, None, None, "Home", run=scan("", 10)) is None
+      and U.outage_cause("wlan0", False, None, True, True, None, None, "") is None)
+check("  a name with a colon in it, as nmcli escapes it", U.outage_cause("wlan0", False, None, True, True, None, None, "a:b",
+      run=scan("a\\:b\n")) == "join")
+check("  not WiFi: can't tell", U.outage_cause("eth0", False, None, False, True, None, None, "") is None)
+check("  no profile in use yet (the box started with the network gone): the networks it knows, any of them seen: join; none: absent",
+      U.outage_cause("wlan0", False, None, True, True, None, None, {"Home", "Work"}, run=scan("Work\n")) == "join"
+      and U.outage_cause("wlan0", False, None, True, True, None, None, {"Home", "Work"}, run=scan("Cafe\n")) == "absent")
+def nm(*c, **k):
+    if c[:4] == ("nmcli", "-t", "-f", "UUID,TYPE"):
+        return 0, "u1:802-11-wireless\nu2:802-3-ethernet\nu3:802-11-wireless\n"
+    return 0, {"u1": "Home", "u3": "Work"}.get(c[-1], "")
+check("known_ssids: the WiFi profiles' network names, not the wired ones", U.known_ssids(run=nm) == {"Home", "Work"})
+check("wedge_evidence: a radio's interface gone is evidence", "wlan0 has gone" in (U.wedge_evidence("wlan0", "none", "networkmanager", [], [], 0, exists=False) or ""))
+check("  crash watch's failure from before the last reset: left behind",
+      U.wedge_evidence("wlan0", "networkmanager", None, [], cwev, 1000, since=950) is None)
 
 # 7e. Two dials, the restart guard on a shared radio, settings from before carried over.
 def shared(guests, sharing, ignore=False):
@@ -318,7 +385,10 @@ for bad in [{"pace": "fast"}, {"reach": "nuke"}, {"guests": "maybe"}]:
     try: U.validate(bad); check(f"validate rejects {bad}", False)
     except ValueError: check(f"validate rejects {bad}", True)
 check("the settings in words", U.words(U.validate({"pace": "steady", "reach": "radio", "guests": "ignore", "on_wedge": "radio"}))
-      == "steady pace, reach radio, sensitivity 3 missed checks, guests or not, a wedged radio reset at once")
+      == "steady pace, reach radio, sensitivity 3 missed checks, guests or not, a failed radio reset at once"
+      and U.words(U.validate({"pace": "gentle", "on_wedge": "reboot", "retry": "sparing", "give_up": "hour"}))
+      == "gentle pace, reach reboot, sensitivity 3 missed checks, a failed radio reset at once and the box rebooted if it isn't back, "
+         "reconnects at most every 6 h, stops trying after an hour of the network at fault")
 
 # 7f. The escalation record (the box doctor's chart): each outage, step, hold and stall, with who took it.
 a, w = night("gentle/reboot")

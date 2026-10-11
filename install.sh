@@ -30,8 +30,8 @@
 #   irate-box-uplink.service  the uplink watchdog (uplink.py, root): keeps the box on its network
 #                             as eagerly as --uplink or /admin's Network page says
 #   irate-box-crashwatch.service  crash watch (crashwatch.py, root): snapshots to the box's storage,
-#                             a crash filed at the next boot, a failing radio pre-empted as far as
-#                             the box doctor's setting says
+#                             a crash filed at the next boot, a failing radio noted and filed
+#                             (the uplink watchdog does the repairing)
 #   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
 #                             hashed with daily and weekly salts held in memory, only the counts
 #                             written; runs only while counting is on (irate-box-visitors-switch.path)

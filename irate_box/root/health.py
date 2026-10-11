@@ -17,8 +17,8 @@ the box itself, for when something has stopped or an install did not finish:
   - the uplink watchdog's report, the network inventory, the web server's config, whether
     the hub answers, the space left
   - crash watch (crashwatch.py): a box that stopped without shutting down, and what it was doing;
-    a driver flooding the kernel log; the radio failing, and how far pre-emption goes; whether a
-    frozen box restarts by itself
+    a driver flooding the kernel log; the radio failing (noted there, repaired by the uplink watchdog);
+    whether a frozen box restarts by itself
 
 Every finding says what to do by hand ("fix", shell commands where they help) and, where it is
 safe to do from a button, offers it ("actions", carried out by fix()). Nothing changes unless
@@ -975,9 +975,6 @@ def set_clock(epoch):
             f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(epoch))}.{saved}")
 
 
-PREEMPT_WORDS = {"off": "Off", "warn": "Warn", "radio": "Reset the radio", "reboot": "Reset, then restart the box"}
-
-
 def check_usb_filesystems():
     """Which filesystems a USB stick may have for this box to read it (books, toolkits, imports)."""
     from irate_box.root import usbstick
@@ -991,7 +988,7 @@ def check_usb_filesystems():
 
 
 def check_crashwatch(now=None):
-    """Crash watch (crashwatch.py): crashes, kernel floods, the radio and pre-emption, the hang settings."""
+    """Crash watch (crashwatch.py): crashes, kernel floods, the radio's failures, the hang settings."""
     from irate_box.root import crashwatch as cw
     now = now or time.time()
     if not (UNIT_DIR / "irate-box-crashwatch.service").exists() and not cw.DIR.exists():
@@ -1023,24 +1020,18 @@ def check_crashwatch(now=None):
                       "Often a driver's debug output: look for its module's debug parameter, or a newer driver. "
                       "sudo dmesg | tail -50"))
     radios = ", ".join(f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()) or "none found"
-    day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "driver-reset", "reset", "reboot", "held")]
-    level = s["preempt"]
-    acts = [_chip("When the radio fails", f"crashwatch-preempt:{lv}", PREEMPT_WORDS[lv], lv == level,
-                  "Restart the box by itself when the radio fails and a reset doesn't bring it back? Within the uplink "
-                  "watchdog's guards: never with guests on the hotspot (unless it says otherwise), during a build or an "
-                  "update, within 15 minutes of starting, or past its daily cap." if lv == "reboot" else None)
-            for lv in cw.PREEMPT]
-    detail = (f"Watching: {radios}. When the radio fails: {PREEMPT_WORDS[level]}" + {
-        "off": " (a failing radio isn't looked for).", "warn": " (a failing radio is noted and said here, nothing more).",
-        "radio": " (a failing radio is reset at once: its USB device, then its driver, and the hotspot started again).",
-        "reboot": " (a failing radio is reset, and the box restarted if it isn't back within 3 minutes)."}[level])
+    # What crash watch saw; the old events of its own resets and reboots, from before it only recorded, said as they were.
+    day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "driver-reset", "recovered", "reset", "reboot")]
+    detail = f"Watching: {radios}. Crash watch notes and files a failing radio; the uplink watchdog does the repairing."
     if day:
-        detail += " In the last day: " + "; ".join(f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}" for e in day[-4:])
+        detail += " In the last day: " + "; ".join(f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}" for e in day[-4:]) + "."
     kept = [i for i in st.get("incidents", []) if i.get("at", 0) > now - 7 * 86400]
     if kept:
         detail += f" Kept as it happened: {len(kept)} this week, the last in {cw.CRASHES}/{kept[-1]['dir']}/ (snapshots.log, kernel.log)."
-    out.append(_f("crash-radio", "The WiFi radio", "warn" if day else "ok", detail,
-                  "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver.", acts))
+    failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
+    out.append(_f("crash-radio", "The WiFi radio", "warn" if failed else "ok", detail,
+                  "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver. "
+                  "What is done when it fails: Network → The box's access → A failed radio." if failed else ""))
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
     hang = [_chip("Kernel panic or lockup", "crashwatch-panic:off", "Stay stopped", not s["panic"]),
             _chip("Kernel panic or lockup", "crashwatch-panic:on", "Restart after 10 s", s["panic"],
@@ -1087,7 +1078,7 @@ def scan():
 
 CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
                        r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
-                       r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$|^crashwatch-preempt:(off|warn|radio|reboot)$"
+                       r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
                        r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$")
 

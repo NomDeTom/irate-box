@@ -1780,7 +1780,7 @@ INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
 HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
                               r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
                               r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
-                              r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$|^crashwatch-preempt:(off|warn|radio|reboot)$"
+                              r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
                               r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
                               r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$")
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
@@ -1979,6 +1979,7 @@ def network_snapshot():
             "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
+                       "retry": uplink.RETRY, "give_up": uplink.GIVE_UP,
                        "roaming": list(uplink.ROAMING),
                        "describe": uplink.DESCRIBE, "default": uplink.DEFAULT,
                        "presets": {"pace": uplink.PACE, "common": uplink.COMMON},
