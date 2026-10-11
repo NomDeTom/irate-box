@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""One radio reset, for the uplink watchdog (uplink.py's `radio` step) and crash watch (its
-pre-emption) both, so the two never disagree on how.
+"""The radio reset the uplink watchdog takes (uplink.py's `radio` step), and the radio test's
+(radiotests.py), so the two never disagree on how.
 
 What brings back an AIC8800 whose firmware has wedged ("cmd queue crashed"): the USB device reset
 at its port, the firmware loaded afresh, then the hotspot started again. With NetworkManager

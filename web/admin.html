@@ -1016,8 +1016,18 @@
                     <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
                   </div>
                   <div class="up-group">
-                    <span class="setting-name" id="up-wedge-label">A wedged radio driver</span>
+                    <span class="setting-name" id="up-wedge-label">A failed radio (its driver wedged, or its interface gone)</span>
                     <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
+                  </div>
+                  <!-- The network at fault (gone, not letting the box join, the gateway silent): reconnects only,
+                       never a radio reset or a reboot; how often, and for how long (uplink.py retry, give_up). -->
+                  <div class="up-group">
+                    <span class="setting-name" id="up-retry-label">The network gone: how often to try again</span>
+                    <div class="choice-tiles" id="up-retry" role="radiogroup" aria-labelledby="up-retry-label"></div>
+                  </div>
+                  <div class="up-group">
+                    <span class="setting-name" id="up-giveup-label">The network gone: how long to keep trying</span>
+                    <div class="choice-tiles" id="up-giveup" role="radiogroup" aria-labelledby="up-giveup-label"></div>
                   </div>
                   <div class="up-group">
                     <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>

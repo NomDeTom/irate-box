@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Crash watch (root/crashwatch.py) and the box doctor's findings on it, offline: the
 kernel's flood counted not copied, a snapshot from a stand-in /proc and /sys, a crash filed at the next
-boot (and not after a clean shutdown), a failing radio told from a link going down, pre-emption at
-each level with its guards, the hang settings, and the doctor's switches. Every command that would
+boot (and not after a clean shutdown), a failing radio told from a link going down and noted (never
+acted on), its old setting carried over to the uplink watchdog, the hang settings, and the doctor's switches. Every command that would
 change the system is stood in. python3 tests/sim_crashwatch.py"""
 import json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
@@ -87,30 +87,21 @@ shutil.rmtree(SYS / "bus/usb/devices/1-1.1"); shutil.rmtree(SYS / "class/net/wla
 st = cw.radio_state(known, [])
 check("  its interface and USB device gone: said", st["wlan0"][0] == ["wlan0 is gone", "its USB device 1-1.1 (AIC8800DC) left the bus"], st)
 
-# --- pre-emption, at each level ---
-def drive(level, guard=None, ticks=((0, True), (30, True), (210, True), (240, False))):
-    did, log = [], []
+# --- a failing radio: noticed and noted, never acted on (the uplink watchdog repairs) ---
+def drive(ticks=((0, True), (30, True), (210, True), (240, False))):
+    log = []
     def lg(now, iface, kind, text, snapshot=False):
         e = {"at": now, "iface": iface, "kind": kind, "text": text}; log.append(e); return e
-    p = cw.Preempt(level, lambda i: did.append(("reset", i)) or "reset", lambda: did.append(("reboot",)), lambda step, now: guard and guard(step), lg)
+    p = cw.RadioWatch(lg)
     for t, bad in ticks:
         p.act(t, {"wlan0": (["wlan0 is gone"] if bad else [], [])})
-    return did, [e["kind"] for e in log]
-did, kinds = drive("warn")
-check("warn: the failure noted and its recovery, nothing done", did == [] and kinds == ["failed", "recovered"], (did, kinds))
-did, kinds = drive("radio")
-check("radio: reset once in the failure, never a reboot", did == [("reset", "wlan0")] and kinds == ["failed", "reset", "recovered"], (did, kinds))
-did, kinds = drive("reboot")
-check("reboot: reset, then restarted when it isn't back after 3 minutes", did == [("reset", "wlan0"), ("reboot",)] and "reboot" in kinds, (did, kinds))
-did, kinds = drive("reboot", guard=lambda step: "2 guests are on the hotspot")
-check("  held by a guard: said once, nothing done", did == [] and kinds.count("held") <= 2 and kinds[0] == "failed", (did, kinds))
-did, kinds = drive("reboot", guard=lambda step: "a build is running" if step == "reboot" else None)
-check("  the radio reset, the reboot held while a build runs", did == [("reset", "wlan0")] and "held" in kinds, (did, kinds))
-did, kinds = drive("off")
-check("off: nothing, not even noted", did == [] and kinds == ["failed", "recovered"] or kinds == [], (did, kinds))
-burst = cw.Preempt("radio", lambda i: "reset", lambda: None, lambda s, n: None, lambda *a, **k: {"kind": a[2]})
+    return [e["kind"] for e in log]
+kinds = drive()
+check("a failing radio: the failure noted once and its recovery, nothing done", kinds == ["failed", "recovered"], kinds)
+check("  crash watch can no longer reset the radio or reboot", not any(hasattr(cw, n) for n in ("Preempt", "reset_radio", "reboot_now", "guards")))
+burst = cw.RadioWatch(lambda *a, **k: {"kind": a[2]})
 ev = burst.act(0, {"wlan0": ([], ["e"] * 3)}) + burst.act(30, {"wlan0": ([], ["e"] * 3)})
-check("a burst of driver errors over two looks: a failure", [e["kind"] for e in ev] == ["failed", "reset"], ev)
+check("a burst of driver errors over two looks: a failure", [e["kind"] for e in ev] == ["failed"], ev)
 
 # --- the hang settings ---
 ran = []
@@ -124,7 +115,7 @@ check("watchdog on, the board having none: softdog loaded and kept, systemd feed
       and "RuntimeWatchdogSec=60" in cw.SYSTEMD_CONF.read_text() and ["modprobe", "softdog"] in ran and ["systemctl", "daemon-reexec"] in ran)
 done = cw.undo_all()
 check("undo-all: both taken away", not cw.SYSCTL.exists() and not cw.SYSTEMD_CONF.exists() and not cw.MODULES.exists() and len(done) == 2, done)
-for bad in (("preempt", "moon"), ("snapshots", "maybe"), ("rm", "-rf")):
+for bad in (("preempt", "radio"), ("snapshots", "maybe"), ("rm", "-rf")):
     try:
         cw.set_option(*bad); ok = False
     except ValueError:
@@ -132,7 +123,7 @@ for bad in (("preempt", "moon"), ("snapshots", "maybe"), ("rm", "-rf")):
     check(f"set {bad}: refused", ok)
 
 # --- the box doctor ---
-cw.set_option("preempt", "warn"); cw.set_option("panic", "off"); cw.set_option("watchdog", "off")
+cw.set_option("panic", "off"); cw.set_option("watchdog", "off")
 now = 4300.0
 cw._write(cw.STATUS, {"at": now, "radios": known, "floods": {"4addr #": 4000}, "flood_window": 3600})
 cw._write(cw.EVENTS, [{"at": now - 600, "iface": "wlan0", "kind": "failed", "text": "wlan0 is gone"}])
@@ -141,11 +132,9 @@ check("the doctor: the last crash said, with its last snapshot, and what would h
       f["crash-last"]["status"] == "warn" and "2 times this week" in f["crash-last"]["detail"] and "=== " in f["crash-last"]["detail"]
       and "hang settings below" in f["crash-last"]["fix"], f["crash-last"])
 check("  the kernel flood, with its rate", f["crash-flood"]["status"] == "warn" and "about 1.1 a second" in f["crash-flood"]["detail"], f["crash-flood"])
-check("  the radio watched, its failure in the last day, pre-emption's other levels to choose, a confirm before restarting",
+check("  the radio watched, its failure in the last day, nothing to choose here: where repairs are set, said",
       f["crash-radio"]["status"] == "warn" and "wlan0 (AIC8800DC)" in f["crash-radio"]["detail"] and "wlan0 failed" in f["crash-radio"]["detail"]
-      and [(a["choice"], a["on"]) for a in f["crash-radio"]["actions"]] == [("crashwatch-preempt:off", False), ("crashwatch-preempt:warn", True),
-                                                                          ("crashwatch-preempt:radio", False), ("crashwatch-preempt:reboot", False)]
-      and {a["group"] for a in f["crash-radio"]["actions"]} == {"When the radio fails"} and f["crash-radio"]["actions"][-1].get("confirm"), f["crash-radio"])
+      and not f["crash-radio"]["actions"] and "Network → The box's access → A failed radio" in f["crash-radio"]["fix"], f["crash-radio"])
 check("  a frozen box after a crash, nothing to restart it: a warning, every choice offered as chips, the current marked",
       f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"]
       and [(a["group"], a["choice"], a["on"]) for a in f["crash-hang"]["actions"]] == [
@@ -154,12 +143,27 @@ check("  a frozen box after a crash, nothing to restart it: a warning, every cho
       and not f["crash-hang"]["actions"][0].get("confirm") and f["crash-hang"]["actions"][1].get("confirm"), f["crash-hang"])
 check("  snapshots: both chips, On marked", [(a["choice"], a["on"]) for a in f["crash-snapshots"]["actions"]]
       == [("crashwatch-snapshots:off", False), ("crashwatch-snapshots:on", True)], f["crash-snapshots"])
-for good in ("crashwatch-preempt:reboot", "crashwatch-panic:on", "crashwatch-snapshots:off"):
+for good in ("crashwatch-panic:on", "crashwatch-snapshots:off"):
     check(f"  the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
-for bad in ("crashwatch-preempt:moon", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
+for bad in ("crashwatch-preempt:reboot", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
-said = health.fix("crashwatch-preempt:radio")
-check("  a switch pressed: the setting changed, and said", cw.load_settings()["preempt"] == "radio" and said == "a failing radio is reset at once")
+said = health.fix("crashwatch-snapshots:off")
+check("  a switch pressed: the setting changed, and said", cw.load_settings()["snapshots"] is False and said.startswith("no snapshots"))
+cw.set_option("snapshots", "on")
+# Crash watch's old radio setting, carried over to the uplink watchdog once and dropped.
+from irate_box.hub import uplink
+uplink.ETC, uplink.SETTINGS = cw.ETC, cw.ETC / "uplink.json"
+cw.SETTINGS.write_text(json.dumps({"snapshots": True, "preempt": "reboot", "panic": False, "watchdog": False}))
+said = cw.carry_over()
+check("carried over: preempt reboot becomes the watchdog's on_wedge reboot, and is dropped",
+      uplink.load_settings()["on_wedge"] == "reboot" and "preempt" not in json.loads(cw.SETTINGS.read_text()) and "on_wedge reboot" in said, said)
+check("  once only", cw.carry_over() is None)
+uplink.save_settings(dict(uplink.load_settings(), on_wedge="reboot"))
+cw.SETTINGS.write_text(json.dumps({"preempt": "radio"}))
+cw.carry_over()
+check("  never lowered: radio leaves the watchdog's reboot as it was", uplink.load_settings()["on_wedge"] == "reboot")
+cw.SETTINGS.write_text(json.dumps({"preempt": "warn"}))
+check("  warn: nothing to carry, the setting dropped", cw.carry_over() and "preempt" not in json.loads(cw.SETTINGS.read_text()))
 
 # --- a board whose watchdog its device tree leaves switched off (the Lyra's RK3506) ---
 DTD, BOOTD = T / "dt", T / "boot"
@@ -213,11 +217,10 @@ check("the wedge's lines now counted: the cmdqueue burst, the timeout, cmd queue
       len(errs) == 57 and any("cmd queue crashed" in l for l in errs) and any("cmd_mgr_queue cmd timed-out" in l for l in errs), len(errs))
 check("  for an aic radio only: another driver's radio is not blamed for them",
       cw.radio_state({"wlan1": {"driver": "rtl8xxxu", "port": "1-1.2"}}, wedge)["wlan1"][1] == [])
-did, kinds = [], []
-pre = cw.Preempt("warn", lambda i: "reset", lambda: None, lambda s, n: None,
-                 lambda now, iface, kind, text, snapshot=False: kinds.append(kind) or {"kind": kind})
+kinds = []
+pre = cw.RadioWatch(lambda now, iface, kind, text, snapshot=False: kinds.append(kind) or {"kind": kind})
 pre.act(100, cw.radio_state(aic, wedge))
-check("  so pre-emption sees a failure at once (warn: noted, nothing done)", kinds == ["failed"], kinds)
+check("  so a failure is noted at once", kinds == ["failed"], kinds)
 # Filed as it happens, the box running on: the ten minutes before, and the look's kernel lines.
 cw.SNAP.with_name("snap.log.1").unlink(missing_ok=True)
 put(cw.SNAP, "".join(f"=== 2026-10-09 03:{m:02d}:00 up 1s load 0\n  x\n" for m in range(40, 60)) + "=== 2026-10-09 04:00:12 up 1s load 0\n  !! wedge\n")
@@ -325,37 +328,26 @@ check("  no count in sysfs: the journal's line", m == "journal:431.5" and age ==
 check("  nor there: nothing", radio.driver_reset(run=lambda *c, **k: (1, "")) == (None, None))
 
 # The driver mending itself (aic8800_fdrv recover_on_timeout): its line seen, the radio's interfaces gone for a moment
-# are that reset at work, not a failure; once the client is back, the hotspot started again, once.
-did, logged = [], []
-hs = {"missing": True}
-dr = cw.Preempt("reboot", lambda i: did.append(("reset", i)) or "reset", lambda: did.append(("reboot",)), lambda s, n: None,
-                lambda now, iface, kind, text, snapshot=False: logged.append((kind, text)) or {"kind": kind},
-                hotspot=(lambda: hs["missing"], lambda: did.append(("hotspot",)) or "the hotspot started again"))
+# are that reset at work, not a failure.
+logged = []
+dr = cw.RadioWatch(lambda now, iface, kind, text, snapshot=False: logged.append((kind, text)) or {"kind": kind})
 k = ["[93.27] cmd_mgr_queue cmd timed-out cmd_mgr->queue_sz:1", "[93.27] aic8800: firmware not answering: resetting the device to load it afresh"]
 dr.act(1000, {"wlan0": (["wlan0 is gone"], []), "ap0": (["ap0 is gone"], [])}, k)
-check("the driver's own reset: said, and no reset or reboot of ours while it works", [x[0] for x in logged] == ["driver-reset"] and not did, (logged, did))
-dr.act(1030, {"wlan0": ([], ["usb 1-1.1: reset high-speed USB device number 4"]), "ap0": (["ap0 is gone"], [])})
-check("  the client back: the hotspot started again, once", did == [("hotspot",)] and ("reset", "the hotspot started again") in logged, (did, logged))
+check("the driver's own reset: said, not a failure while it works", [x[0] for x in logged] == ["driver-reset"], logged)
 dr.act(1060, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])})
-check("  not again within the grace", did == [("hotspot",)], did)
-hs["missing"] = False
-dr.act(1200, {"wlan0": ([], []), "ap0": ([], [])})
-check("  after the grace, a healthy radio: nothing more", did == [("hotspot",)], did)
+check("  within the grace: nothing more", [x[0] for x in logged] == ["driver-reset"], logged)
+dr.act(1200, {"wlan0": (["wlan0 is gone"], []), "ap0": ([], [])})
+check("  after the grace, a radio still gone: a failure", [x[0] for x in logged] == ["driver-reset", "failed"], logged)
 # The driver's line overwritten before the look read it (a flood in a small kernel log): its count in sysfs says it.
-did.clear(); logged.clear()
-dr3 = cw.Preempt("reboot", lambda i: did.append(("reset", i)) or "reset", lambda: did.append(("reboot",)), lambda s, n: None,
-                 lambda now, iface, kind, text, snapshot=False: logged.append((kind, text)) or {"kind": kind})
+logged.clear()
+dr3 = cw.RadioWatch(lambda now, iface, kind, text, snapshot=False: logged.append((kind, text)) or {"kind": kind})
 dr3.act(2000, {"wlan0": ([], []), "ap0": ([], [])}, [], ("aic8800_fdrv:0:0", None))
 dr3.act(2030, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])}, [], ("aic8800_fdrv:1:1990", 18.0))
-check("the driver's reset known from its count alone: said, no reset of ours", [x[0] for x in logged] == ["driver-reset"] and not did, (logged, did))
+check("the driver's reset known from its count alone: said", [x[0] for x in logged] == ["driver-reset"], logged)
 dr3.act(2060, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])}, [], ("aic8800_fdrv:1:1990", 48.0))
-check("  the same count again: not said again", [x[0] for x in logged] == ["driver-reset"] and not did, logged)
+check("  the same count again: not said again", [x[0] for x in logged] == ["driver-reset"], logged)
 dr3.act(2200, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])}, [], ("aic8800_fdrv:1:1990", 188.0))
-check("  after the grace, a radio still gone is a failure again", ("reset", "ap0") in did, did)
-dr2 = cw.Preempt("radio", lambda i: did.append(("reset", i)) or "reset", lambda: None, lambda s, n: None,
-                 lambda now, iface, kind, text, snapshot=False: {"kind": kind})
-dr2.act(5000, {"wlan0": (["wlan0 is gone"], [])})
-check("without the driver's line, a radio gone is a failure as before (reset)", ("reset", "wlan0") in did, did)
+check("  after the grace, a radio still gone is a failure", ("failed", "ap0 is gone") in logged, logged)
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

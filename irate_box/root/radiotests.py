@@ -8,8 +8,8 @@ was found, and asked again when the driver changes.
   follows-roam   Does the hotspot stay on its channel, or follow, when the WiFi link moves to an access
                  point on another channel? The link's profile is held to one (of the same network) for
                  the test, the hotspot's channel read, and the profile given back what it had.
-  radio-reset    How long a radio reset takes (root/radio.py, as the uplink watchdog and crash watch do
-                 it), and whether the hotspot comes back.
+  radio-reset    How long a radio reset takes (root/radio.py, as the uplink watchdog does it), and
+                 whether the hotspot comes back.
   driver-reset   Where the driver resets its own device on a command timeout and offers a fake one
                  (the patched AIC8800's fake_cmd_timeout): how long until the link is back.
 

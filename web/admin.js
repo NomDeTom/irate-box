@@ -2172,6 +2172,8 @@ const net = {
   reach: document.getElementById('up-reach'),
   guests: document.getElementById('up-guests'),
   wedge: document.getElementById('up-wedge'),
+  retry: document.getElementById('up-retry'),
+  giveUp: document.getElementById('up-giveup'),
   sens: document.getElementById('up-sens'),
   roaming: document.getElementById('up-roaming'),
   lockAps: document.getElementById('up-lock-aps'),
@@ -2209,14 +2211,14 @@ let netPoll = null;
 let upDirty = false;
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach, guests,
 // a wedged driver, and the sensitivity, a number of missed checks within the pace's window.
-const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
-const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['roaming', 'roaming']];
+const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', retry: 'steady', give_up: 'never', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
+const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['retry', 'retry'], ['giveUp', 'give_up'], ['roaming', 'roaming']];
 let netAsked = false;
 // Which connection the card shows: '' every connection, else one with its own pace, reach,
 // sensitivity, guests and wedge choice (uplink.py per_iface); the rest is the same for all.
 let upScope = '';
 let upSaved = null;
-const UP_PER_IFACE = ['pace', 'reach', 'sensitivity', 'guests', 'on_wedge'];
+const UP_PER_IFACE = ['pace', 'reach', 'sensitivity', 'guests', 'on_wedge', 'retry', 'give_up'];
 const upScopeBox = document.getElementById('up-scope');
 const upScopeSays = document.getElementById('up-scope-says');
 function drawUpScope(inv) {
@@ -2255,6 +2257,9 @@ function upPreset(pick, levels) {
   const allowed = levels.steps.slice(0, levels.reach.indexOf(pick.reach));
   const eff = { ...p.common, check: pace.check, window: pace.window, repeat: pace.repeat, guests: pick.guests, sensitivity: pick.sensitivity };
   eff.steps = Object.fromEntries(Object.entries(pace.steps).filter(([s]) => allowed.includes(s)));
+  if (levels.retry && pick.retry in levels.retry) eff.max_repeat = levels.retry[pick.retry];
+  eff.on_wedge = pick.on_wedge;
+  eff.give_up = levels.give_up ? levels.give_up[pick.give_up] : null;
   if (!('reconnect' in eff.steps)) eff.repeat = 0;
   return eff;
 }
@@ -2318,7 +2323,15 @@ function sensLine(n, eff) {
 const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while guests are on the hotspot, nor a restart of the network service when the hotspot shares the radio. Said, and done once they have gone.'],
   ignore: ['Go ahead', 'Every step the reach allows, guests on or not: they lose the hotspot for a while.'] };
 const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, with a button to reset the radio by hand; the steps come as the pace and reach set them.'],
-  radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a wedged driver: go straight to the radio reset, if the reach allows it and no guests are held for.'] };
+  radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a failed radio: go straight to the radio reset, if the reach allows it and no guests are held for.'],
+  reboot: ['Reset it, then restart the box', 'As the one before, and the box restarted if the radio is not back 3 minutes after its reset: if the reach goes that far, within the reboot\'s limits (a day\'s cap, not during a build or an update).'] };
+// The network at fault rather than the radio: reconnecting is all that helps, as often and for as long as chosen.
+const RETRY_WORDS = { eager: ['Eager', 'Again soon, the gap growing to at most 10 minutes: back quickest when the network returns.'],
+  steady: ['Steady', 'The gap growing to at most an hour.'],
+  sparing: ['Sparing', 'The gap growing to at most 6 hours: fewest tries, for a box on a battery.'] };
+const GIVEUP_WORDS = { never: ['Keep trying', 'For as long as it takes: the box gets back on whenever the network does.'],
+  hour: ['An hour', 'Then it stops, and says so; the network coming back by itself still brings the box back.'],
+  day: ['A day', 'Then it stops, and says so.'], week: ['A week', 'Then it stops, and says so.'] };
 
 // Roaming: from the least change to the owner's system to the most,
 // each with its cost. The last two change the WiFi profile, by consent, and are undone the same way.
@@ -2350,7 +2363,11 @@ function willText(eff) {
   return `What this will do: it checks the link every ${dur(eff.check)}. When ${eff.sensitivity} checks have failed, or the link has dropped, `
     + `within ${dur(eff.window)}, it goes on the ladder (a link that keeps dropping too, until it settles), and then ${stepsInWords(eff)}. `
     + `Outages within ${dur(eff.relapse)} of each other are one episode: what did not hold is not repeated while a heavier step is left, `
-    + 'and a reconnect after the first is locked to the strongest access point.';
+    + 'and a reconnect after the first is locked to the strongest access point. '
+    + 'When it can tell the network is at fault (gone from the scan, not letting the box join, the gateway silent), it only reconnects, '
+    + `never resetting the radio or rebooting${eff.give_up ? `, and stops after ${dur(eff.give_up)}` : ', for as long as it takes'}. `
+    + (eff.on_wedge === 'reboot' ? 'A failed radio is reset at once, and the box restarted if it is not back 3 minutes later.'
+      : eff.on_wedge === 'radio' ? 'A failed radio is reset at once.' : 'A failed radio climbs the ladder like any outage.');
 }
 
 // Every choice the same way: radio cards, each one's description and what it does.
@@ -2365,6 +2382,8 @@ function buildUpChoices(levels) {
     does: n === 'watch' ? 'Checks, and never acts.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
   rungs(net.guests, 'guests', levels.guests.map((n) => ({ value: n, title: GUEST_WORDS[n][0], desc: GUEST_WORDS[n][1] })));
   rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
+  rungs(net.retry, 'retry', Object.keys(levels.retry || RETRY_WORDS).map((n) => ({ value: n, title: RETRY_WORDS[n][0], desc: RETRY_WORDS[n][1] })));
+  rungs(net.giveUp, 'give_up', Object.keys(levels.give_up || GIVEUP_WORDS).map((n) => ({ value: n, title: GIVEUP_WORDS[n][0], desc: GIVEUP_WORDS[n][1] })));
   drawRoamTiles(levels);
   net.ignoreRoams.addEventListener('change', () => upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels));
   net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
