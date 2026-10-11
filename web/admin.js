@@ -1911,6 +1911,11 @@ let hlWaiting = null; // { id, fid }
 let hlNote = null; // { fid, text, ok }
 let hlPoll = null;
 let hlAsked = false;
+// A report's age in words once it is an hour old ("Looked …, 4 hours ago"): what it says may be out of date.
+function agoText(at) {
+  const h = Math.floor((Date.now() / 1000 - at) / 3600);
+  return h < 1 ? '' : h < 48 ? `, ${h} hour${h === 1 ? '' : 's'} ago` : `, ${Math.floor(h / 24)} days ago`;
+}
 
 function installText(st) {
   if (!st) return 'No record yet: older installs kept none. The next run of the installer keeps one.';
@@ -2092,7 +2097,7 @@ function renderHealth(data) {
   const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
   say(loose && !inClock ? loose.text : '', loose ? loose.ok : true, hl.note);
   say(inClock ? loose.text : '', loose ? loose.ok : true, hl.clockNote);
-  hl.when.textContent = rep ? `Looked ${new Date(rep.at * 1000).toLocaleString()}.` + (busy ? ' Working…' : '')
+  hl.when.textContent = rep ? `Looked ${new Date(rep.at * 1000).toLocaleString()}${agoText(rep.at)}.` + (busy ? ' Working…' : '')
     : busy ? 'Looking…' : 'Not looked yet.';
   hl.clockWhen.textContent = hl.when.textContent;
   hl.scan.disabled = hl.clockScan.disabled = busy || h.stuck;
@@ -2767,7 +2772,7 @@ function renderNetwork(data) {
   const u = data.uplink;
   const levels = data.levels;
   // What the box has
-  net.when.textContent = inv ? `Looked ${new Date(inv.at * 1000).toLocaleString()}${inv.focus ? ` at ${inv.focus} only` : ''}.`
+  net.when.textContent = inv ? `Looked ${new Date(inv.at * 1000).toLocaleString()}${agoText(inv.at)}${inv.focus ? ` at ${inv.focus} only` : ''}.`
     + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not looked yet.';
   net.scan.disabled = busy;
   const devices = inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : [];
