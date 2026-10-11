@@ -624,6 +624,31 @@ check("  a finding for the restart, with the wedges, and the choice to leave it 
       and "wedged right after it 2 times" in sk["detail"] and sk["actions"][0]["choice"] == "uplink-skip:wlan0:restart", sk)
 check("  none for the steps that work", "uplink-skip-wlan0-reconnect" not in fs and "uplink-skip-wlan0-radio" not in fs)
 check("  none once it is left out", "uplink-skip-wlan0-restart" not in {f["id"] for f in HL.step_findings(rows, {"steps_off": {"wlan0": ["restart"]}}, now)})
+check("  its words name the tick to untick", "untick Restart the network service for wlan0" in sk["fix"], sk["fix"])
+# One wedge charged to one step; a repeat of a step on the same evidence, a flap with no misses, and steps
+# taken while the network was at fault are not held against a step.
+r2 = []
+t0 = now - 2 * d
+r2 += [{"at": t0, "k": "down", "i": "wlan0"}, {"at": t0 + 60, "k": "repair", "s": "reconnect", "b": "auto", "i": "wlan0"},
+       {"at": t0 + 100, "k": "wedged", "i": "wlan0"}, {"at": t0 + 100, "k": "repair", "s": "radio", "b": "auto", "i": "wlan0"},
+       {"at": t0 + 130, "k": "up", "i": "wlan0"}, {"at": t0 + 130, "k": "down", "i": "wlan0", "t": "Dropped or missed 0 times within 10 min: on the ladder while it flaps."},
+       {"at": t0 + 130, "k": "wedged", "i": "wlan0"}, {"at": t0 + 130, "k": "repair", "s": "radio", "b": "auto", "i": "wlan0"},
+       {"at": t0 + 150, "k": "up", "i": "wlan0"}]
+st = HL.step_record(r2, now)["wlan0"]["steps"]
+check("a wedge after a reconnect, the radio reset answering it: charged to the reconnect only; the radio reset mended it "
+      "(the flap with no misses and that look's stale wedge not held against it); its repeat on the same evidence not counted",
+      st["reconnect"] == {"tries": 1, "mended": 0, "wedged": 1} and st["radio"] == {"tries": 1, "mended": 1, "wedged": 0}, st)
+t1 = now - 1 * d
+r3 = [{"at": t1, "k": "down", "i": "wlan0"}, {"at": t1 + 5, "k": "cause", "s": "absent", "i": "wlan0"},
+      {"at": t1 + 60, "k": "repair", "s": "reconnect", "b": "auto", "i": "wlan0"}, {"at": t1 + 4000, "k": "up", "i": "wlan0"}]
+check("  steps taken while the network was gone: not judged", "reconnect" not in HL.step_record(r3, now)["wlan0"]["steps"], HL.step_record(r3, now))
+# The watchdog itself: a link back in the look a drop is seen in starts no flap with no misses.
+w = U.Watch(U.effective(C("prompt/reboot", 3)))
+for t in range(0, 300, 30):
+    w.tick(t, {"link": False, "drops": [], "can": ALL, "guests": 0})
+w.tick(300, {"link": True, "gateway": True, "drops": [295], "can": ALL, "guests": 0})
+check("the link back with a drop in the same look: the outage ends, no flap declared with no misses",
+      w.outage is None and not any("0 times" in e["text"] for e in w.events), [e["text"] for e in w.events][-3:])
 calm = [r for r in rows if r["at"] < now - 6 * d]
 check("  a connection with few outages is not judged", not HL.step_findings(calm, {}, now), HL.step_findings(calm, {}, now))
 U.SETTINGS = Path(_tf2.mkdtemp()) / "uplink.json"; U.ETC = U.SETTINGS.parent

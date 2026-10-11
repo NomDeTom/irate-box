@@ -53,6 +53,7 @@ kinds = [(r["by"], r["kind"], r.get("step")) for r in watchlog.read()]
 check("the watchdog's outage, its cause, the radio reset and the reboot: all in the record, as they happened",
       ("watchdog", "down", None) in kinds and ("watchdog", "cause", None) in kinds and ("watchdog", "repair", "radio") in kinds
       and ("watchdog", "repair", "reboot") in kinds and w.shared == [], kinds)
+check("  the cause kept as its own field", [r.get("cause") for r in watchlog.read(kinds={"cause"})] == ["radio"])
 uplink.share(w, "wlan0", dry=True)
 check("  a dry run writes nothing", len(watchlog.read()) == len(kinds))
 

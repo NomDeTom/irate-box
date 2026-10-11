@@ -464,16 +464,29 @@ def check_uplink():
     return out
 
 
-# How well each repair step works, per connection, from the watchdog's ladder record: a step of its own (not
+# How well each step works, per connection, from the watchdog's ladder record: a step of its own (not
 # one pressed by hand) "mended" an outage when it was the last taken before the link came back, within
 # MEND_S, and the link held for HELD_S after (no drop or wedge, even at the moment it came back; a roam's
-# flap minutes later is not held against it); a wedged driver "followed" it when one was seen within WEDGE_S.
+# flap minutes later is not held against it); a wedged driver "followed" it when one was seen within WEDGE_S
+# and no other step came between (one wedge is charged to one step), and none was seen up to the step
+# itself (a wedge logged in the same look as the step is what the step answered). Not judged: a step
+# taken while the network was at fault (its cause: no step of the box's can bring a network back), and a
+# repeat of the same step within REPEAT_S (the same evidence answered twice, as before the watchdog read
+# evidence only from after a reset).
 STEP_DAYS = 14
 FLAKY_OUTAGES = 5      # a connection with fewer outages in STEP_DAYS is not judged
 STEP_TRIES = 4         # nor a step tried fewer times
-MEND_S, HELD_S, WEDGE_S = 300, 120, 180
+MEND_S, HELD_S, WEDGE_S, REPEAT_S = 300, 120, 180, 120
+NET_CAUSES = ("absent", "join", "gateway")   # uplink.NET_CAUSES: the network at fault, not the box
 STEP_SAID = {"reconnect": "reconnecting", "restart": "restarting the network service", "radio": "resetting the radio",
              "reboot": "rebooting"}
+STEP_TICK = {"reconnect": "Reconnect", "restart": "Restart the network service", "radio": "Reset the radio", "reboot": "Reboot the box"}
+
+
+def _no_misses(row):
+    """A flap declared with no misses at all, as the watchdog once did in the look the link came back in:
+    not a relapse."""
+    return row.get("k") == "down" and str(row.get("t", "")).startswith("Dropped or missed 0 times")
 
 
 def step_record(rows, now=None):
@@ -487,17 +500,31 @@ def step_record(rows, now=None):
     for iface, rs in by.items():
         downs = [r["at"] for r in rs if r.get("k") == "down"]
         rec = {"outages": sum(1 for t in downs if t >= since), "steps": {}}
+        cause, last = None, {}
         for n, r in enumerate(rs):
-            if r.get("k") != "repair" or not r.get("s") or r["at"] < since or r.get("b") == "hand":
+            k = r.get("k")
+            if k == "down":
+                cause = None
+            elif k == "cause":
+                cause = r.get("s")
+            if k != "repair" or not r.get("s") or r["at"] < since or r.get("b") == "hand":
+                continue
+            again = r["at"] - last.get(r["s"], float("-inf")) <= REPEAT_S
+            last[r["s"]] = r["at"]
+            if cause in NET_CAUSES or again:
                 continue
             later = rs[n + 1:]
             nxt = next((x for x in later if x.get("k") in ("repair", "up")), None)
             mended = False
             if nxt and nxt.get("k") == "up" and nxt["at"] - r["at"] <= MEND_S:
                 back = nxt["at"]
-                mended = not any(x is not nxt and x.get("k") in ("down", "wedged") and back <= x["at"] <= back + HELD_S for x in later)
-            wedged = any(x.get("k") == "wedged" and 0 <= x["at"] - r["at"] <= WEDGE_S for x in later) and \
-                not any(x.get("k") == "wedged" and 0 < r["at"] - x["at"] <= WEDGE_S for x in rs[:n])
+                stale = {x["at"] for x in later if _no_misses(x)}   # that look's wedge was the evidence from before
+                mended = not any(x is not nxt and x.get("k") in ("down", "wedged") and back <= x["at"] <= back + HELD_S
+                                 and not _no_misses(x) and not (x.get("k") == "wedged" and x["at"] in stale) for x in later)
+            # The first wedge after it, if no other step came first: charged to this step only.
+            first = next((x for x in later if x.get("k") in ("wedged", "repair")), None)
+            wedged = bool(first) and first.get("k") == "wedged" and 0 <= first["at"] - r["at"] <= WEDGE_S and \
+                not any(x.get("k") == "wedged" and 0 <= r["at"] - x["at"] <= WEDGE_S for x in rs[:n])
             st = rec["steps"].setdefault(r["s"], {"tries": 0, "mended": 0, "wedged": 0})
             st["tries"] += 1
             st["mended"] += mended
@@ -530,7 +557,7 @@ def step_findings(rows, chosen, now=None):
                 why += f", and the radio's driver wedged right after it {v['wedged']} times"
             out.append(_f(f"uplink-skip-{iface}-{s}", f"{iface}: {STEP_SAID.get(s, s)} isn't helping", "warn",
                           f"{why} (the last {STEP_DAYS} days). The watchdog could leave it out on {iface} and go on to the next step sooner.",
-                          f"Network → The box's access → Steps it may take: untick it for {iface}.",
+                          f"Network → The box's access → Steps it may take: untick {STEP_TICK.get(s, s)} for {iface}.",
                           [_act(f"uplink-skip:{iface}:{s}", f"Leave it out on {iface}",
                                 f"Leave {STEP_SAID.get(s, s)} out of the watchdog's ladder on {iface}? It can be ticked again on the Network page.")]))
     return out
