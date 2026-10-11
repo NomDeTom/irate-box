@@ -1601,7 +1601,9 @@ def share(w, iface, dry):
     """The watchdog's new events into the watchers' record (watchlog), shared with crash watch's."""
     if not dry:
         for e in w.shared:
-            watchlog.add("watchdog", e["kind"], e["text"], iface, at=e["at"], step=e.get("step"), how=e.get("by"))
+            cause = e["kind"] == "cause"   # its step is the cause (LADDER_KINDS)
+            watchlog.add("watchdog", e["kind"], e["text"], iface, at=e["at"], step=None if cause else e.get("step"),
+                         cause=e.get("step") if cause else None, how=e.get("by"))
     w.shared = []
 
 
