@@ -205,12 +205,13 @@ const AL = (() => {
       if (g.flat) list.append(el('div', { class: 'admin-side-links', role: 'group', 'aria-label': g.name }, entries.map((e) => e.link)));
       else list.append(...group(g.name, entries.map((e) => e.link)));
     }
-    // Whatever no page claimed: kept, under Apps, so nothing is lost while the manifests catch up.
+    // Whatever no page claimed: kept on pages of its own so nothing is lost. Listed under "More" only once
+    // the apps' list has come (or failed): before it, every app's section is unclaimed for a moment.
     const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-|app-updates-|app-flagged-)/.test(id));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);
-      list.append(...group(g.name, extra.map((e) => e.link)));
+      if (apps) list.append(...group(g.name, extra.map((e) => e.link)));
     }
     Object.keys(badges).forEach(paint);
     hiddenLinks.forEach((id) => hide(id, true));
@@ -279,11 +280,9 @@ const AL = (() => {
   const ready = fetch('/admin/apps', { headers: { 'X-Irate-Admin': '1' } })
     .then((r) => (r.ok ? r.json() : null)).catch(() => null)
     .then((data) => {
-      if (data && Array.isArray(data.apps)) {
-        build(data.apps);
-        show();
-        window.dispatchEvent(new HashChangeEvent('hashchange'));
-      }
+      build(data && Array.isArray(data.apps) ? data.apps : []);
+      show();
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
   return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (f) => onBadge.push(f),
     titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
