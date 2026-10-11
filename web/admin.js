@@ -2597,7 +2597,8 @@ function uptimeSection(iface) {
     Heatmap.legend());
   fold.append(el('p', { className: 'setting-desc', textContent: u.kind === 'uplink'
     ? 'Up means the link was up and the gateway answered. A drop is the link going down after being up; switched off by you is not counted.'
-    : 'Only whether the link was up (a cable in, or joined to a network): the gateway is checked on the box\'s link to your network.' }));
+    : u.kind === 'hotspot' ? 'Up means the hotspot was running: its interface up and serving.'
+      : 'Only whether the link was up (a cable in, or joined to a network): the gateway is checked on the box\'s link to your network.' }));
   return fold;
 }
 

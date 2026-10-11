@@ -426,6 +426,16 @@ check("  written as the slot closes: the uplink's full state, the others' link (
       and saved["ifaces"]["eth0"]["s"] == "d" and saved["ifaces"]["eth0"]["kind"] == "link", saved)
 check("  the watched link's letter from its state", [U.history_state(x, l) for x, l in (("up", True), ("checking", True), ("down", True), ("down", False), ("off", False))]
       == ["u", "g", "g", "d", "o"])
+rec.note(D0 + 1000, "wlan0", "u", {}, {"ap0": "u"}); rec.note(D0 + 1200, "wlan0", "u", {})
+saved = json.loads(U.HISTORY.read_text())
+check("  the hotspot recorded as a kind of its own", saved["ifaces"]["ap0"]["kind"] == "hotspot" and saved["ifaces"]["ap0"]["s"] == "u", saved["ifaces"].get("ap0"))
+_types = rec.types; _typed = rec.typed
+rec.types, rec.typed = {"wlan0": "managed", "ap0": "AP", "ap9": "AP"}, D0 + 10 ** 9
+_exists, _up = U.SYS_NET, U.link_up
+_net = Path(tempfile.mkdtemp()); (_net / "ap0").mkdir(); U.SYS_NET = _net
+U.link_up = lambda name: name == "ap0"
+check("  hotspots(): the AP-mode interfaces there, up or down (one gone left out)", rec.hotspots(D0 + 10 ** 9) == {"ap0": "u"}, rec.hotspots(D0 + 10 ** 9))
+U.SYS_NET, U.link_up, rec.types, rec.typed = _exists, _up, _types, _typed
 
 # Roaming: by default it roams naturally between access points; ignoring short roams is a checkbox; the blip is 20 s.
 check("roaming: roam naturally by default, no scans or a lock as choices; a lock needs a BSSID, kept only with lock", U.ROAMING == ("roam", "no-scan", "lock")
