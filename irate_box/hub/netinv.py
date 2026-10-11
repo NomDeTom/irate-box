@@ -32,6 +32,7 @@ Root sees more (netplan's files, meshtasticd's config); without it those show as
 Stdlib only, and no other irate-box module, so it can be copied to a board on its own.
 """
 
+import functools
 import json
 import os
 import re
@@ -788,6 +789,32 @@ def effective_retries(profile, key, defaults):
     return NM_RETRIES[key], "NetworkManager's own default"
 
 
+MODULES_DIR = Path(os.environ.get("HUB_MODULES_DIR", "/lib/modules"))
+SELF_RESET = b"firmware not answering: resetting the device"
+
+
+@functools.lru_cache(maxsize=8)
+def resets_itself(driver):
+    """Whether the driver's module file is one that resets its own device when the firmware stops answering
+    (the patched AIC8800 says so in its log line, which is in the file)."""
+    base = MODULES_DIR / os.uname().release
+    stem = driver.replace("-", "_")
+    for f in sorted(base.rglob(f"{stem}*.ko*")) if base.is_dir() else []:
+        try:
+            data = f.read_bytes()
+        except OSError:
+            continue
+        if f.suffix == ".xz":
+            import lzma
+            try:
+                data = lzma.decompress(data)
+            except lzma.LZMAError:
+                continue
+        if SELF_RESET in data:
+            return True
+    return False
+
+
 def _uplink_radio(inv):
     route = inv.get("default_route") or {}
     managed = [r for r in inv["radios"] if r.get("type") == "managed"]
@@ -841,11 +868,11 @@ def link_findings(inv):
         out.append(_h(f"nmconf-broken:{f}", "warn", "A NetworkManager configuration file can't be read",
                       f"{f}: NetworkManager may ignore it, or refuse to start.", "Fix or move it aside."))
     for rr in inv["radios"]:
-        if rr.get("driver") == "aic8800_fdrv" and "recovered_at" not in (rr.get("params") or {}):
+        if rr.get("driver") == "aic8800_fdrv" and not resets_itself(rr["driver"]):
             out.append(_h(f"driver-wedge:{rr['iface']}", "warn", f"{rr['iface']}: a WiFi driver known to wedge",
                           "This AIC8800 driver stops answering after one late reply from its firmware, until it is loaded "
                           "again; the box's watchdog resets the radio then. A patched driver resets the chip itself.",
-                          "See the patched aic8800 driver (resets itself on a command timeout).", iface=rr["iface"]))
+                          "A patched aic8800 driver resets the chip itself on a command timeout.", iface=rr["iface"]))
             break
     return out
 

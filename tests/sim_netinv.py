@@ -93,9 +93,21 @@ check("a random MAC address, the connection's own or the box default's: found",
       ids(link_inv({**base, "cloned": "random"})) == ["mac-random"] and ids(link_inv(base, {"settings": {"cloned_mac": {"value": "random"}}})) == ["mac-random"])
 check("two files for one connection: found", ids(link_inv(base, duplicate_profiles=[{"uuid": "u1", "name": "Home", "files": ["a", "b"]}])) == ["duplicate"])
 check("netplan that can't be read: a problem", [h["status"] for h in netinv.link_findings(link_inv(base, netplan={"error": "x.yaml:3:5: Invalid YAML"}))] == ["problem"])
-check("the AIC8800 driver without its own reset: found; with it: not",
-      ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {"ps_on": "Y"}})) == ["driver-wedge"]
-      and ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {"recovered_at": "0"}})) == [])
+_real_resets = netinv.resets_itself
+netinv.resets_itself = lambda drv: False
+check("the AIC8800 driver without its own reset: found", ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {"ps_on": "Y"}})) == ["driver-wedge"])
+netinv.resets_itself = lambda drv: True
+check("  with it: not", ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {}})) == [])
+netinv.resets_itself = _real_resets
+import tempfile as _tf0, os as _os0  # noqa: E402
+_m = Path(_tf0.mkdtemp()); netinv.MODULES_DIR = _m
+(_m / _os0.uname().release / "updates/dkms").mkdir(parents=True)
+(_m / _os0.uname().release / "updates/dkms/aic8800_fdrv_usb.ko").write_bytes(b"\x7fELF...aic8800: firmware not answering: resetting the device to load it afresh...")
+netinv.resets_itself.cache_clear()
+check("  the module file read for the patch's line", netinv.resets_itself("aic8800_fdrv"))
+(_m / _os0.uname().release / "updates/dkms/aic8800_fdrv_usb.ko").write_bytes(b"\x7fELF...vendor...")
+netinv.resets_itself.cache_clear()
+check("  a vendor module without it: no", not netinv.resets_itself("aic8800_fdrv"))
 import tempfile as _tf  # noqa: E402
 d = Path(_tf.mkdtemp())
 (d / "a.nmconnection").write_text("[connection]\nid=Home\nuuid=0c3bb1fa-0f6a-3707-8c8d-4e23598253db\n")
