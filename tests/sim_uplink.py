@@ -607,5 +607,16 @@ check("  undo puts the values from before back", held == {"connection.autoconnec
       and not U.RECORD.exists(), held)
 U.run, U._uplink_profile = real_run, real_prof
 
+# A radio reset by the ladder filed as crash watch files a failure, with the kernel's last lines.
+from irate_box.root import crashwatch as CW  # noqa: E402
+filed = []
+_fr, _run = CW.file_radio, U.run
+CW.file_radio = lambda now, iface, text, kernel, radio=None: filed.append((iface, text, kernel, radio))
+U.run = lambda *c, **k: (0, "[  10.0] aic8800: cmd timed-out\n[  11.0] usb 1-1.1: reset")
+U._file_reset("wlan0", "1-1.1")
+check("a radio reset by the ladder: filed with the kernel's lines and the radio's port", filed == [("wlan0", "radio reset by the uplink watchdog",
+      ["[  10.0] aic8800: cmd timed-out", "[  11.0] usb 1-1.1: reset"], "1-1.1")], filed)
+CW.file_radio, U.run = _fr, _run
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
