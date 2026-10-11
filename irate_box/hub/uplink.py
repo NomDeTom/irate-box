@@ -839,6 +839,17 @@ def recent_journal(secs=120):
     return out.splitlines() if code == 0 else []
 
 
+def _file_reset(iface, port):
+    """A radio reset filed as crash watch files a radio's failure (its snapshots and the kernel's last
+    ten minutes), so it leaves something to read after; joined to crash watch's own if it filed one."""
+    try:
+        from irate_box.root import crashwatch
+        code, out = run("journalctl", "-k", "-b", "--no-pager", "-o", "short-monotonic", "--since", "-10min", timeout=30)
+        crashwatch.file_radio(time.time(), iface, "radio reset by the uplink watchdog", out.splitlines() if code == 0 else [], port)
+    except (OSError, ValueError, ImportError) as exc:
+        print(f"uplink: the radio reset not filed: {exc}", file=sys.stderr)
+
+
 def own_reset():
     """Seconds since the radio's driver reset its device itself, while that is recent enough to
     leave it to come back (root/radio.py's DRIVER_GRACE); None otherwise."""
@@ -937,6 +948,7 @@ class Actor:
         from irate_box.root import radio
         facts = netinv.device_facts(self.iface)
         usb = facts.get("usb") or {}
+        _file_reset(self.iface, usb.get("port"))
         return radio.reset(self.iface, usb.get("port"), facts.get("driver"), usb.get("product") or usb.get("id"))
 
     def _reboot(self):
