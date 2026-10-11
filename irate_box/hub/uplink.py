@@ -83,7 +83,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from irate_box.hub import linkhistory, netinv
+from irate_box.hub import linkhistory, netinv, watchlog
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -413,6 +413,7 @@ class Watch:
         self.owner_off = False
         self.can = set()  # the repairs possible at the last look, for next_step() and stall()
         self.ladder = []  # the ladder's events since serve() last took them (Ladder.add)
+        self.shared = []  # every event since serve() last wrote them to the watchers' record (watchlog)
         # Outages close together are one episode: {since, outages,
         # failed: steps that "worked" and were followed by a relapse, tried, last_end, last_done}.
         self.episode = None
@@ -427,6 +428,7 @@ class Watch:
         if by:
             e["by"] = by
         self.events.append(e)
+        self.shared.append(e)
         if kind in LADDER_KINDS:
             self.ladder.append(e)
 
@@ -550,7 +552,7 @@ class Watch:
             says = ("a radio reset, then a reboot if it isn't back" if cause == "radio"
                     else "reconnecting" + (" (and once a restart of the network service)" if cause == "join" else "")
                     + ", never a radio reset or a reboot")
-            self.log(now, "info", f"Why it is down: {CAUSE_WORDS[cause]}. What can help: {says}.")
+            self.log(now, "cause", f"Why it is down: {CAUSE_WORDS[cause]}. What can help: {says}.")
         return o.get("cause")
 
     def _allowed(self, o):
@@ -1543,6 +1545,7 @@ def serve(dry=False):
         if asked:
             more, _ = w.by_hand(now, obs, asked)
             actions += [s for s in more if s not in actions]
+        share(w, iface, dry)   # before acting: a reboot leaves no time after
         if up and answers:
             actor.remember()
             ssids_known = None
@@ -1581,6 +1584,7 @@ def serve(dry=False):
             except OSError as exc:
                 w.log(now, "info", f"The escalation record was not written: {exc}")
         w.ladder = []
+        share(w, iface, dry)
         report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
         report["roams_hour"] = roams.hour()
         report["roam_last"] = roams.last
@@ -1590,6 +1594,14 @@ def serve(dry=False):
         # While a check or an outage is under way, look again sooner than the steady pace.
         wait = w.eff["check"] if not (w.misses or w.outage) else min(w.eff["check"], 15)
         nap(wake, wait, mtime)
+
+
+def share(w, iface, dry):
+    """The watchdog's new events into the watchers' record (watchlog), shared with crash watch's."""
+    if not dry:
+        for e in w.shared:
+            watchlog.add("watchdog", e["kind"], e["text"], iface, at=e["at"], step=e.get("step"), how=e.get("by"))
+    w.shared = []
 
 
 def _status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, dry):

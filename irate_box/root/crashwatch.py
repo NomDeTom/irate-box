@@ -20,6 +20,10 @@ irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: sm
               (crashes/<time>-radio-<iface>/: the ten minutes before it and the kernel's lines), as
               the box may never stop, and noted in events.json. Crash watch never acts on the radio:
               the uplink watchdog (uplink.py) reads these as evidence and does the repairing.
+  The record  what it notes, and why each boot happened (the uplink watchdog's reboot, a clean stop,
+              or stopping without shutting down), goes into the watchers' one record too
+              (hub/watchlog.py), beside the uplink watchdog's; a filed failure or crash carries its
+              lines (watchers.log).
   A hang      the kernel itself freezing, which nothing in user space can act on. Two choices, off by
               default, each the owner's (box doctor): reboot on a kernel panic, oops or lockup
               (kernel.panic and its kin); and a watchdog (the board's own, or the kernel's softdog
@@ -348,6 +352,7 @@ def file_radio(now, iface, text, kernel, radio=None):
     d.mkdir(parents=True, exist_ok=True)
     (d / "snapshots.log").write_text(snapshots_tail(0, since=now - 600))
     (d / "kernel.log").write_text("\n".join(kernel[-300:]) + "\n")
+    _file_watchers(d, since=now - 600)
     rec = {"dir": d.name, "kind": "radio", "iface": iface, "ifaces": [iface], "radio": radio, "at": now, "boot": boot_id(), "text": text}
     (d / "info.json").write_text(json.dumps(rec, indent=1))
     index = index + [rec]
@@ -355,6 +360,34 @@ def file_radio(now, iface, text, kernel, radio=None):
         shutil.rmtree(CRASHES / old.get("dir", "-"), ignore_errors=True)
     _write(INCIDENTS, index[-KEEP_CRASHES:])
     return rec
+
+
+def _file_watchers(d, since=0.0, boot=None):
+    """What the watchers saw and did (watchlog), beside a filed failure or crash."""
+    from irate_box.hub import watchlog
+    lines = [watchlog.line(e) for e in watchlog.read(since=since, boot=boot)]
+    if lines:
+        (d / "watchers.log").write_text("\n".join(lines[-500:]) + "\n")
+
+
+def boot_reason(prev, now=None):
+    """Why this boot happened, in words, from the last one's record (RUN) and the watchers' record:
+    it stopped without shutting down (a hang, a crash or the power going: which, the box can't tell
+    afterwards; the hardware watchdog restarts a hang by itself when it is on); or it shut down
+    cleanly, after the uplink watchdog's reboot, or otherwise (by hand, an update, the system)."""
+    from irate_box.hub import watchlog
+    if not prev or not prev.get("boot"):
+        return "the first boot crash watch has seen"
+    if not prev.get("clean"):
+        s = load_settings()
+        return ("it stopped without shutting down: a hang, a crash or the power going"
+                + (" (a frozen box is restarted by the watchdog within a minute or so)" if s.get("watchdog") else ""))
+    stopped = prev.get("stopped") or 0
+    asked = [e for e in watchlog.read(boot=prev["boot"], kinds={"repair"}) if e.get("step") == "reboot"
+             and (not stopped or 0 <= stopped - e.get("at", 0) <= 600)]
+    if asked:
+        return f"the uplink watchdog rebooted it: {asked[-1]['text']}"
+    return "it was shut down or restarted cleanly (by hand, or by the system)"
 
 
 def last_snapshot(text):
@@ -379,6 +412,7 @@ def boot(now=None):
         snaps = snapshots_tail(since=first - 300 if first else None)
         (d / "snapshots.log").write_text(snaps)
         (d / "journal-previous-boot.log").write_text(journal_tail())
+        _file_watchers(d, boot=prev["boot"])
         filed = {"dir": stamp, "boot": prev["boot"], "started": prev.get("at"), "detected": now,
                  "last": last_snapshot(snaps)[:1500], "events": events[-5:]}
         (d / "info.json").write_text(json.dumps(filed, indent=1))
@@ -387,6 +421,8 @@ def boot(now=None):
             shutil.rmtree(CRASHES / old.get("dir", "-"), ignore_errors=True)
         _write(INDEX, index[-KEEP_CRASHES:])
     if not prev or prev.get("boot") != cur:
+        from irate_box.hub import watchlog
+        watchlog.add("box", "boot", f"Started: {boot_reason(prev, now)}.", at=now, filed=filed and filed["dir"])
         _write(RUN, {"boot": cur, "at": now, "clean": False})
     else:
         _write(RUN, dict(prev, clean=False))
@@ -396,7 +432,7 @@ def boot(now=None):
 def shutdown():
     rec = _json(RUN, {})
     if rec.get("boot") == boot_id():
-        _write(RUN, dict(rec, clean=True))
+        _write(RUN, dict(rec, clean=True, stopped=time.time()))
 
 
 # --- the radio ---------------------------------------------------------------------------------
@@ -654,6 +690,9 @@ def run(once=False):
                 print(f"crashwatch: radio failure not filed: {exc}", file=sys.stderr)
         events.append(e)
         _write(EVENTS, list(events))
+        from irate_box.hub import watchlog
+        watchlog.add("driver" if kind == "driver-reset" else "crashwatch", kind, text, None if iface == "radio" else iface, at=now,
+                     filed=e.get("filed"))
         if snapshot:
             pending["snap"] = f"  !! {iface}: {text}"
         return e

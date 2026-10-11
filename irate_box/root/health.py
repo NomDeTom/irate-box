@@ -1062,10 +1062,28 @@ def check_crashwatch(now=None):
     return out
 
 
+def check_watchers(now=None):
+    """What the watchers saw and did in the last day, in one time line (watchlog): the uplink
+    watchdog's outages, causes and steps, crash watch's radio failures, the driver's own resets, and
+    why each boot happened. Said so the owner can follow one incident from start to end."""
+    from irate_box.hub import watchlog
+    now = now or time.time()
+    day = watchlog.read(since=now - 86400, kinds=watchlog.NOTABLE)
+    if not day:
+        return [_f("watchers", "What the watchers did", "ok", "Nothing in the last day: no outage, no radio failure, no restart.")]
+    boots = [e for e in day if e.get("kind") == "boot"]
+    steps = [e for e in day if e.get("kind") == "repair"]
+    lines = [watchlog.line(e).split(" ", 1)[1] for e in day[-12:]]
+    head = (f"In the last day: {len(boots)} start{'s' if len(boots) != 1 else ''} of the box, "
+            f"{len(steps)} repair{'s' if len(steps) != 1 else ''} by the watchdog. The latest, oldest first: ")
+    return [_f("watchers", "What the watchers did", "ok", head + " | ".join(lines),
+               f"All of it, every watcher in one place: sudo tail -n 100 {watchlog.LOG}")]
+
+
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_hotspot, check_space, check_builds, check_crashwatch, check_usb_filesystems):
+                  check_hotspot, check_space, check_builds, check_crashwatch, check_watchers, check_usb_filesystems):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
