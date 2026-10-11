@@ -21,7 +21,7 @@
   }
 
   function row(t, ready) {
-    const what = el('span', {}, el('strong', { textContent: t.name }), ` · ${t.chip} · ${t.version.replace(/-built$/, '')}`);
+    const what = el('span', {}, el('strong', { textContent: t.name }), ` · ${t.chip} · ${t.version.replace(/-built$/, '')}${t.built ? ' · built on this box' : ' · release'}`);
     if (!ready) return el('li', {}, what);
     const btn = document.createElement('esp-web-install-button');
     btn.setAttribute('manifest', `/flasher/api/esp/${encodeURIComponent(t.version)}/${encodeURIComponent(t.env)}/manifest.json`);
@@ -48,7 +48,7 @@
       try { await import('/flasher/esp-web-tools/install-button.js'); } catch (e) { can.textContent = `The install button did not load (${e.message}).`; return; }
     }
     if (!data.targets.length) {
-      can.textContent = 'Nothing to flash yet: ESP32 builds appear here once they are published from the Firmware Factory (Admin → Firmware Factory, a build\'s "Publish to the web flasher").';
+      can.textContent = 'Nothing to flash yet: ESP32 builds appear here once they are published from the Firmware Factory (Admin → Firmware Factory, a build\'s "Publish to the web flasher"), or once the librarian keeps Meshtastic releases (Admin → The librarian → Firmware).';
     } else if (stop) {
       can.replaceChildren(stop);
     } else if (!data.engine) {
