@@ -99,7 +99,7 @@ STATUS = STATE / "control" / "uplink.json"
 HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
 LADDER = STATE / "control" / "uplink-ladder.json"     # what the watchdog did, for the box doctor's chart
 # The events that make the escalation chart: whether more patience or more aggression is needed.
-LADDER_KINDS = ("down", "up", "repair", "held", "skip", "stalled", "wedged", "flap")
+LADDER_KINDS = ("down", "up", "repair", "held", "skip", "stalled", "wedged", "flap", "cause")   # cause: its s is the cause
 LADDER_KEEP = 72 * 86400
 SYS_NET = Path("/sys/class/net")
 # Running any of these, the box is busy with something a reboot would spoil.
@@ -465,7 +465,8 @@ class Watch:
             if self.outage and self.outage.get("flapping") and tripped:
                 return self._repair(now, obs)
             self._healthy(now, obs)
-            if tripped and drops:
+            # Counted again: an outage that has just ended took its misses with it.
+            if drops and len(self.miss_at) >= eff["sensitivity"]:
                 self._declare(now, obs, flapping=True)
                 return self._repair(now, obs)
             return []
@@ -552,7 +553,7 @@ class Watch:
             says = ("a radio reset, then a reboot if it isn't back" if cause == "radio"
                     else "reconnecting" + (" (and once a restart of the network service)" if cause == "join" else "")
                     + ", never a radio reset or a reboot")
-            self.log(now, "cause", f"Why it is down: {CAUSE_WORDS[cause]}. What can help: {says}.")
+            self.log(now, "cause", f"Why it is down: {CAUSE_WORDS[cause]}. What can help: {says}.", cause)
         return o.get("cause")
 
     def _allowed(self, o):
