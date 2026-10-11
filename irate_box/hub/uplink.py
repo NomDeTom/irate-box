@@ -1043,14 +1043,16 @@ class History:
             self.slot, self.ok = idx, self.trusted()
         return self.ok
 
-    def note(self, now, watched, state, others=None):
-        """state: the watched link's (linkhistory's letters); others: {iface: "u" | "d"}."""
+    def note(self, now, watched, state, others=None, hotspots=None):
+        """state: the watched link's (linkhistory's letters); others, hotspots: {iface: "u" | "d"}."""
         if not self._turn(now):
             return
         if watched and state:
             self.dirty |= linkhistory.record(self.hist, watched, state, now, "uplink")
         for iface, st in (others or {}).items():
             self.dirty |= linkhistory.record(self.hist, iface, st, now, "link")
+        for iface, st in (hotspots or {}).items():
+            self.dirty |= linkhistory.record(self.hist, iface, st, now, "hotspot")
 
     def flush(self):
         if not self.dirty:
@@ -1059,6 +1061,12 @@ class History:
         HISTORY.parent.mkdir(parents=True, exist_ok=True)
         safeio.write(HISTORY, json.dumps(self.hist, separators=(",", ":")))
         self.dirty = False
+
+    def hotspots(self, now):
+        """The hotspot's interfaces (WiFi in AP mode), up or down."""
+        self.others(None, now)   # the interfaces' types, looked at afresh when due
+        return {name: ("u" if link_up(name) else "d") for name, kind in sorted(self.types.items())
+                if kind == "AP" and (SYS_NET / name).exists()}
 
     def others(self, watched, now):
         """The other wired and WiFi-client links, up or down (the hotspot's interface is not one)."""
@@ -1310,7 +1318,7 @@ def serve(dry=False):
                 actor.backend = backend
                 watcher.iface = iface
         if not iface:
-            history.note(now, None, None, history.others(None, now))
+            history.note(now, None, None, history.others(None, now), history.hotspots(now))
             write_status({"at": now, "state": "no-link", "iface": None, "events": list(w.events),
                           "chosen": chosen, "settings": w.eff, "reboots": w.reboots, "dry_run": dry})
             nap(wake, w.eff["check"], mtime)
@@ -1383,7 +1391,8 @@ def serve(dry=False):
         report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
         report["roams_hour"] = roams.hour()
         report["roam_last"] = roams.last
-        history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]))
+        history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]),
+                     history.hotspots(report["at"]))
         write_status(report)
         # While a check or an outage is under way, look again sooner than the steady pace.
         wait = w.eff["check"] if not (w.misses or w.outage) else min(w.eff["check"], 15)
