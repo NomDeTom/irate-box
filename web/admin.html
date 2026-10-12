@@ -203,8 +203,9 @@
       <section class="admin-pane" id="appearance" aria-labelledby="appearance-title">
         <h2 id="appearance-title">Appearance</h2>
         <p class="setting-desc">
-          How wide the pages are, for everyone: the hub's pages, these admin pages, and the shoutbox
-          and the forum on the hub page, each its own. Text stays at reading width whatever you choose,
+          The hub's name, the line under it and its accent colour; then how wide the pages are, for
+          everyone: the hub's pages, these admin pages, and the shoutbox and the forum on the hub page,
+          each its own. Text stays at reading width whatever you choose,
           and on a phone everything fits the screen anyway. Below them, which emoji the pickers offer.
         </p>
         <div id="appearance-box"></div>
@@ -460,11 +461,15 @@
         </form>
         <p class="setting-desc action-note" role="status" hidden></p>
         <p class="setting-desc" id="kits-summary"></p>
-        <form id="kits-budget" class="library-form inline-form">
-          <label>The cache's budget, MB <input name="budget" type="number" min="10" max="65536" step="10"></label>
-          <button class="action-btn primary" type="submit">Save</button>
-          <button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Fetch all now</button>
+        <form id="kits-budget" class="library-form">
+          <label for="kits-budget-mb">The cache's budget, MB</label>
+          <div class="input-row">
+            <input id="kits-budget-mb" name="budget" type="number" min="10" max="65536" step="10">
+            <button class="action-btn" type="button" id="kits-budget-discard" disabled>Discard</button>
+            <button class="action-btn primary" type="submit" disabled>Save</button>
+          </div>
         </form>
+        <p class="library-buttons"><button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Fetch all now</button></p>
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
         <div id="kits-grid"></div>
@@ -866,6 +871,7 @@
             connection, and reboots for it, are the uplink watchdog's: <a href="#net-watchdog-card">Network → Staying on the network</a>.</p>
           <div id="health-settings-groups"></div>
           <div class="library-buttons">
+            <button class="action-btn" type="button" id="health-settings-discard" disabled>Discard</button>
             <button class="action-btn primary" type="button" id="health-settings-save" disabled>Save</button>
           </div>
           <p class="setting-desc action-note" id="health-settings-note" role="status" hidden></p>
@@ -1019,7 +1025,7 @@
                   value comes from now; changing one writes it to irate-box's own file, and "NetworkManager's own" takes
                   irate-box's line out again.</p>
                 <div class="net-defaults" id="net-defaults"></div>
-                <span class="library-buttons"><button class="action-btn" type="button" id="net-defaults-save" disabled>Save the box defaults</button></span>
+                <span class="library-buttons"><button class="action-btn" type="button" id="net-defaults-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-defaults-save" disabled>Save the box defaults</button></span>
                 <p class="setting-desc action-note" id="net-defaults-note" role="status" hidden></p>
               </div>
               <div class="net-card setting net-card-wide" id="net-watchdog-card">
@@ -1087,6 +1093,7 @@
                 </div>
                 <p class="setting-desc up-will" id="up-will" role="status"></p>
                 <div class="library-buttons">
+                  <button class="action-btn" type="button" id="up-discard" disabled>Discard</button>
                   <button class="action-btn" type="button" id="up-save">Save</button>
                   <button class="action-btn" type="button" id="up-hold">Hold repairs for an hour</button>
                   <button class="action-btn" type="button" id="up-unhold" hidden>End the hold</button>
@@ -1151,7 +1158,8 @@
             </div>
             <ul class="admin-checks" id="hs-warnings"></ul>
             <div class="library-buttons">
-              <button class="action-btn" type="button" id="hs-save">Save</button>
+              <button class="action-btn" type="button" id="hs-discard" disabled>Discard</button>
+              <button class="action-btn primary" type="button" id="hs-save" disabled>Save</button>
             </div>
             <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
             <h4>Guests reach the internet</h4>
@@ -1166,7 +1174,7 @@
             <div id="guest-net-box">
               <div class="chip-group" role="radiogroup" aria-label="Guests reach the internet" id="guest-net-chips"></div>
               <p class="setting-desc" id="guest-net-said"></p>
-              <p class="library-buttons"><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
+              <p class="library-buttons"><button class="action-btn" type="button" id="guest-net-discard" disabled>Discard</button><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
             </div>
             <p class="setting-desc action-note" id="guest-net-note" role="status" hidden></p>
           </div>
@@ -1186,6 +1194,7 @@
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <p class="sec-counts" id="security-counts"></p>
+        <div class="sec-pending" hidden></div>
         <!-- Each line: what it is, what it means, and one thing to do. -->
         <h3>Waiting for your choice</h3>
         <div class="findings" id="security-findings"></div>
@@ -1480,6 +1489,7 @@
         </div>
         <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
+        <div class="sec-pending" hidden></div>
         <!-- Each source and how fresh it is: what it covers in its title. -->
         <p class="fresh-strip" id="joint-fresh" aria-label="Each source, and how fresh it is"></p>
         <div class="sec-counts" id="joint-summary" role="group" aria-label="Show"></div>

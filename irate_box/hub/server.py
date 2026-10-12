@@ -6,6 +6,8 @@
 Serves web/ itself so a bare `./irate-box server` works; behind the web server
 (nginx, or Caddy) the assets come off disk and only `/` and the API reach this process."""
 
+import base64
+import binascii
 import io
 import ipaddress
 import json
@@ -720,14 +722,16 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE):
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE, PICTURES["hub-art"]["file"]):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     signup = accounts.settings()["signup"]
-    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready(), unclaimed())
+    words = settings_snapshot()
+    notice_over = bool(words["notice_until"]) and time.time() >= words["notice_until"]
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready(), unclaimed(), notice_over)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -741,6 +745,18 @@ def home_page(signed_in=False):
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
+        title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
+        text = text.replace("<title>Hub</title>", f"<title>{title}</title>", 1).replace("<h1>Hub</h1>", f"<h1>{title}</h1>", 1)
+        notice, keeper = words["notice_text"].strip(), words["keeper_contact"].strip()
+        if notice and not notice_over:
+            text = text.replace("</header>", f'</header>\n  <p class="hub-notice" role="status">{html.escape(notice)}</p>', 1)
+        if keeper:
+            text = text.replace('  <script src="qrcode.js">', f'  <footer class="hub-keeper">Looked after by: {html.escape(keeper)}</footer>\n'
+                                '  <script src="qrcode.js">', 1)
+        art = picture_mtime("hub-art")
+        if art:
+            text = text.replace(f"<h1>{title}</h1>", f'<img class="hub-art" src="/hub-art?{int(art)}" alt=""><h1>{title}</h1>', 1)
+        text = re.sub(r'<p class="subtitle">[^<]*</p>', (f'<p class="subtitle">{sub}</p>' if sub else ""), text, count=1)
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -858,6 +874,33 @@ def note_client(handler):
 # The gate is the web server's basic auth on /admin/*, the same treatment /term/ gets -- run
 # the hub bare, with no web server in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
+# The owner's pictures (Appearance), each a file in $STATE served at its own path, its type told by its
+# first bytes: the favicon (a PNG or an icon file) and the hub page's header picture (PNG, JPEG or WebP).
+# Never SVG: one served from the hub's own origin could carry script.
+PNG, ICO, JPEG = (b"\x89PNG\r\n\x1a\n", "image/png"), (b"\x00\x00\x01\x00", "image/x-icon"), (b"\xff\xd8\xff", "image/jpeg")
+PICTURES = {
+    "favicon": {"file": STATE_DIR / "favicon", "url": "/favicon.ico", "max": 64 * 1024, "kinds": (PNG, ICO), "says": "a PNG or .ico file"},
+    "hub-art": {"file": STATE_DIR / "hub-art", "url": "/hub-art", "max": 180 * 1024, "kinds": (PNG, JPEG, "webp"),
+                "says": "a PNG, JPEG or WebP picture"},
+}
+PICTURE_URLS = {p["url"]: name for name, p in PICTURES.items()}
+
+
+def picture_kind(name, data):
+    for k in PICTURES[name]["kinds"]:
+        if k == "webp":
+            if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+                return "image/webp"
+        elif data.startswith(k[0]):
+            return k[1]
+    return None
+
+
+def picture_mtime(name):
+    try:
+        return PICTURES[name]["file"].stat().st_mtime
+    except OSError:
+        return None
 DEFAULT_SETTINGS = {
     # The saved-work store (store.py): its size cap, and how long a gallery save lives
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
@@ -894,6 +937,19 @@ DEFAULT_SETTINGS = {
     # Android 12; 15.0 for iOS 16.4 (every iPhone from the 8 on) and Android 14; 16.0 for iOS 18.4
     # (iPhone XS on) and Android 16. Read by emoji.js from /layout.css.
     "emoji_set": "13.1",
+    # The hub's own words and colour (Appearance): its name (the page's heading and the browser
+    # tab's), the line under it, and an accent colour for the main light and dark themes ("" keeps
+    # theirs). The other themes keep their own colours.
+    "hub_title": "Hub",
+    "hub_subtitle": "You're connected to the local network.",
+    "accent": "",
+    # The Krab art at the foot of the admin pages and a few others: on, or off for a plainer look.
+    "krab_art": True,
+    # What guests see: a notice at the top of the hub page ("Back online at 6 pm"), until a time
+    # (epoch seconds; 0 for no end), and how to reach whoever looks after the box, at its foot.
+    "notice_text": "",
+    "notice_until": 0,
+    "keeper_contact": "",
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
     # (irate_box/root/visitors.py). On by default, as one of the setup's
     # decisions; off, the helper doesn't run at all.
@@ -928,6 +984,19 @@ DEFAULT_SETTINGS = {
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
 EMOJI_SETS = ("13.1", "15.0", "16.0")
+TEXT_LIMITS = {"hub_title": 40, "hub_subtitle": 120, "notice_text": 200, "keeper_contact": 200}
+
+
+def accent_ink(accent):
+    """The text colour on the accent: white or near-black, whichever stands out more from it."""
+    def lum(hexc):
+        def ch(v):
+            v /= 255
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(hexc[i:i + 2], 16) for i in (1, 3, 5))
+        return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+    a = lum(accent)
+    return "#fff" if (1.05) / (a + 0.05) >= (a + 0.05) / (lum("#0f1117") + 0.05) else "#0f1117"
 # The setup decisions (anything that has an impact on user or box security):
 # web/admin-tour.js has each one's words and where it lives.
 # With the setup's own steps and the backup: one list, one tour.
@@ -952,6 +1021,11 @@ def valid_setting(key, value):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "emoji_set":
         return value in EMOJI_SETS
+    if key in TEXT_LIMITS:
+        return (isinstance(value, str) and len(value.strip()) <= TEXT_LIMITS[key]
+                and (key != "hub_title" or value.strip()) and not any(ord(c) < 32 for c in value))
+    if key == "accent":
+        return value == "" or (isinstance(value, str) and re.fullmatch(r"#[0-9a-f]{6}", value) is not None)
     if key == "names_to":
         return value in ("users", "admin")
     if key == "report_threshold":
@@ -3472,6 +3546,25 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path in PICTURE_URLS:
+            name = PICTURE_URLS[path]
+            try:
+                body = PICTURES[name]["file"].read_bytes()
+            except OSError:
+                body = b""
+            kind = picture_kind(name, body)
+            if not kind:
+                self.send_empty(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", len(body))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/layout.css":
             # The owner's page widths for every page: public, tiny, read after style.css.
             # No file of that name in web/, so both web servers hand it to the hub.
@@ -3479,7 +3572,15 @@ class Handler(BaseHTTPRequestHandler):
                 cur = dict(_settings)
             body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
                     "body.admin { --page-width: %drem; }\n"
-                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"])).encode()
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"]))
+            if not cur["krab_art"]:
+                body += ('.admin-art, .art-loop { display: none !important; }\n'
+                         '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n')
+            if cur["accent"]:
+                # The main themes only (light, dark, or as the device): another theme keeps its colours.
+                body += ('html:root:not([data-theme]), html:root[data-theme="light"], html:root[data-theme="dark"] '
+                         "{ --accent: %s; --accent-ink: %s; }\n" % (cur["accent"], accent_ink(cur["accent"])))
+            body = body.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
             self.send_header("Content-Length", len(body))
@@ -3706,6 +3807,29 @@ class Handler(BaseHTTPRequestHandler):
                 if current["visitor_counts"] != was_counting or not VISITORS_WANT.exists():
                     write_visitors_want(current["visitor_counts"])
             self.send_json(200, current)
+            return
+
+        if path == "/admin/picture":
+            name = payload.get("which")
+            if name not in PICTURES:
+                self.send_json(400, {"error": f"which: one of {', '.join(PICTURES)}"})
+                return
+            pic = PICTURES[name]
+            if payload.get("remove") is True:
+                pic["file"].unlink(missing_ok=True)
+                self.send_json(200, {name: False})
+                return
+            try:
+                data = base64.b64decode(payload.get("data") or "", validate=True)
+            except (binascii.Error, TypeError, ValueError):
+                data = b""
+            if not data or len(data) > pic["max"] or not picture_kind(name, data):
+                self.send_json(400, {"error": f"{pic['says']} of at most {pic['max'] >> 10} KB"})
+                return
+            tmp = pic["file"].with_name(pic["file"].name + ".tmp")
+            tmp.write_bytes(data)
+            os.replace(tmp, pic["file"])
+            self.send_json(200, {name: True})
             return
 
         if path == "/admin/tailscale":

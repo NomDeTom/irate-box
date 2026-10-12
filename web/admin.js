@@ -1410,9 +1410,10 @@ function secKind(f) {
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
 function sudoToggle(f, busy) {
   return f.actions.map((a) => {
-    const on = /^sudo-drop:/.test(a.choice), file = a.choice.split(':')[1];
-    const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : ''), disabled: busy,
-      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secFix(f.id, a) });
+    const file = a.choice.split(':')[1];
+    const on = /^sudo-drop:/.test(a.choice) !== secChosen(f.id, a);   // as it would be after Save
+    const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : '') + (secChosen(f.id, a) ? ' pending' : ''), disabled: busy,
+      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secChoose(f, a) });
     b.setAttribute('aria-pressed', String(on));
     return b;
   });
@@ -1421,8 +1422,50 @@ function sudoToggle(f, busy) {
 function scanButtons(f, busy) {
   if (f.id === 'sudo-nopasswd') return sudoToggle(f, busy);
   if ((f.actions || []).some((a) => a.group)) return [...secChipRows(f, busy), ...scanButtons({ ...f, actions: f.actions.filter((a) => !a.group) }, busy)];
-  return (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
-    onclick: () => secFix(f.id, a) }));
+  return (f.actions || []).map((a) => {
+    const b = el('button', { type: 'button', className: 'action-btn' + (secChosen(f.id, a) ? ' pending' : ''), textContent: a.label, disabled: busy,
+      title: secChosen(f.id, a) ? 'Chosen: waits for Save. Press again to leave it out.' : '', onclick: () => secChoose(f, a) });
+    b.setAttribute('aria-pressed', String(secChosen(f.id, a)));
+    return b;
+  });
+}
+// The Security page's and the Security doctor's choices are set, then saved: each chosen thing waits, marked, with
+// what it does said in the bar at the top (no pop-up per switch); Save sends them all, Discard forgets them.
+const secPending = new Map();   // finding id -> {f, a}
+const secChosen = (fid, a) => secPending.has(fid) && secPending.get(fid).a.choice === a.choice;
+function secChoose(f, a) {
+  // Chosen again, or the choice it has now: nothing to save for it.
+  if (secChosen(f.id, a) || a.on) secPending.delete(f.id);
+  else secPending.set(f.id, { f, a });
+  if (secData) renderSecurity(secData);
+}
+function drawSecPending(busy) {
+  const list = [...secPending.values()];
+  document.querySelectorAll('.sec-pending').forEach((bar) => {
+    bar.hidden = !list.length;
+    if (!list.length) { bar.replaceChildren(); return; }
+    bar.replaceChildren(
+      el('p', { className: 'setting-name', textContent: `${list.length} change${list.length === 1 ? '' : 's'} not saved yet` }),
+      el('ul', { className: 'sec-pending-list' }, ...list.map(({ f, a }) => el('li', {},
+        el('strong', { textContent: `${f.title}: ` }), a.label,
+        a.confirm ? el('span', { className: 'setting-desc', textContent: ` ${a.confirm.replace(/\?$/, '.')}` }) : null))),
+      el('div', { className: 'library-buttons' },
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: busy,
+          onclick: () => { secPending.clear(); if (secData) renderSecurity(secData); } }),
+        el('button', { type: 'button', className: 'action-btn primary', textContent: `Save ${list.length === 1 ? 'it' : `all ${list.length}`}`, disabled: busy,
+          onclick: secSavePending })));
+  });
+}
+async function secSavePending() {
+  const list = [...secPending.values()];
+  const ids = [];
+  for (const { a } of list) {
+    try { ids.push((await postJSON('/admin/security', { action: 'fix', choice: a.choice })).id); }
+    catch (err) { secNote = { fid: 'scan', text: err.message, ok: false }; break; }
+  }
+  secPending.clear();
+  if (ids.length) { secWaiting = { id: ids[ids.length - 1], ids, fid: 'scan' }; secNote = null; }
+  loadSecurity();
 }
 
 // --- one finding, the same shape on every page -------------------------------------------------------
@@ -1493,9 +1536,11 @@ function secChipRows(f, busy) {
   return [...groups].map(([label, choices]) => el('div', { className: 'aw-field' },
     el('span', { className: 'aw-label', textContent: label }),
     el('div', { className: 'chip-group', role: 'group', 'aria-label': label }, ...choices.map((a) => {
-      const b = el('button', { type: 'button', className: 'chip' + (a.on ? ' selected' : ''), textContent: a.label, disabled: busy,
-        onclick: () => { if (!a.on) secFix(f.id, a); } });
-      b.setAttribute('aria-pressed', String(!!a.on));
+      const pend = secPending.get(f.id);
+      const sel = pend ? pend.a.choice === a.choice : !!a.on;
+      const b = el('button', { type: 'button', className: 'chip' + (sel ? ' selected' : '') + (pend && sel ? ' pending' : ''), textContent: a.label, disabled: busy,
+        onclick: () => secChoose(f, a) });
+      b.setAttribute('aria-pressed', String(sel));
       return b;
     }))));
 }
@@ -1513,10 +1558,12 @@ function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
+  drawSecPending(busy);
   if (secWaiting) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
-      secNote = { fid: secWaiting.fid, text: done.message, ok: done.ok };
+      const all = (secWaiting.ids || [secWaiting.id]).map((id) => (data.results || []).find((r) => r.id === id)).filter(Boolean);
+      secNote = { fid: secWaiting.fid, text: all.map((r) => r.message).join(' '), ok: all.every((r) => r.ok) };
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -1960,6 +2007,7 @@ const hl = {
   glance: document.getElementById('health-glance'),
   setGroups: document.getElementById('health-settings-groups'),
   setSave: document.getElementById('health-settings-save'),
+  setDiscard: document.getElementById('health-settings-discard'),
   setNote: document.getElementById('health-settings-note'),
   fineFold: document.getElementById('health-fine-fold'),
   fineCount: document.getElementById('health-fine-count'),
@@ -2117,7 +2165,8 @@ function renderDoctorSettings(data, rep) {
 }
 function showDoctorSave(groups) {
   const changed = groups.filter((g) => hsPick[g.key] !== undefined && hsPick[g.key] !== g.current);
-  hl.setSave.disabled = !!hsSaving || !changed.length;
+  hl.setSave.disabled = hl.setDiscard.disabled = !!hsSaving || !changed.length;
+  hl.setDiscard.onclick = () => { hsPick = {}; hsFrom = ''; if (hlLast) renderHealth(hlLast); };
   hl.setSave.textContent = hsSaving ? 'Saving…' : changed.length ? `Save (${changed.length} not saved yet)` : 'Save';
   hl.setSave.onclick = async () => {
     for (const g of changed) {
@@ -2347,6 +2396,7 @@ const net = {
   custom: document.getElementById('up-custom'),
   fields: document.getElementById('up-fields'),
   save: document.getElementById('up-save'),
+  discard: document.getElementById('up-discard'),
   hold: document.getElementById('up-hold'),
   stall: document.getElementById('up-stall'),
   unhold: document.getElementById('up-unhold'),
@@ -2355,6 +2405,7 @@ const net = {
   handover: document.getElementById('net-handover'),
   defaults: document.getElementById('net-defaults'),
   defaultsSave: document.getElementById('net-defaults-save'),
+  defaultsDiscard: document.getElementById('net-defaults-discard'),
   defaultsNote: document.getElementById('net-defaults-note'),
   events: document.getElementById('up-events'),
 };
@@ -2406,6 +2457,11 @@ function drawUpScope(inv) {
       netRequest({ action: 'settings', settings: { ...upSaved, per_iface: per } }, 'up');
     }) : null] : ['Pace, reach, sensitivity, guests and a wedged driver can also be chosen for one connection.']));
 }
+net.discard.addEventListener('click', () => {
+  upDirty = false;
+  if (netData && upSaved) { fillUpForm(upSaved, netData.levels); drawUpScope(netData.inventory); }
+  showUpSave();
+});
 upScopeBox.addEventListener('change', () => {
   if (upDirty && !confirm('Leave the choices not saved yet?')) { upScopeBox.value = upScope; return; }
   upScope = upScopeBox.value;
@@ -2576,7 +2632,7 @@ function upChoose(change, levels) {
 
 function showUpSave() {
   const busy = !!netWaiting || (netData && netData.pending > 0);
-  net.save.disabled = busy || !upDirty;
+  net.save.disabled = net.discard.disabled = busy || !upDirty;
   net.save.textContent = upDirty ? 'Save (not saved yet)' : 'Save';
 }
 
@@ -3101,7 +3157,7 @@ function renderDefaults(inv, busy) {
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
     const chosen = name in defaultsDirty ? defaultsDirty[name] : (cur !== null ? cur : 'default');
     sel.value = opts.some(([v]) => v === chosen) ? chosen : 'default';
-    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = false; });
+    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = net.defaultsDiscard.disabled = false; });
     let now;
     if (defaultsScope) {
       const e = d.ifaces[defaultsScope][name];
@@ -3126,10 +3182,11 @@ function renderDefaults(inv, busy) {
     ...d.broken.map((f) => `${f} could not be read: NetworkManager may not read it either.`),
   ];
   net.defaults.replaceChildren(...rows, ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
-  net.defaultsSave.disabled = busy || !Object.keys(defaultsDirty).length;
+  net.defaultsSave.disabled = net.defaultsDiscard.disabled = busy || !Object.keys(defaultsDirty).length;
   const dn = netNotes.defaults;
   say(dn ? dn.text : '', dn ? dn.ok : true, net.defaultsNote);
 }
+net.defaultsDiscard.addEventListener('click', () => { defaultsDirty = {}; renderDefaults(netData && netData.inventory, false); });
 net.defaultsSave.addEventListener('click', () => {
   const changes = { ...defaultsDirty };
   if (!Object.keys(changes).length) return;
@@ -3440,9 +3497,13 @@ const hs = {
   wpa2Desc: document.getElementById('hs-wpa2-desc'),
   warnings: document.getElementById('hs-warnings'),
   save: document.getElementById('hs-save'),
+  discard: document.getElementById('hs-discard'),
   note: document.getElementById('hs-note'),
 };
 let hsData = null;
+// The hotspot's choices wait for Save; a reload of the page's data leaves a change in progress alone.
+let hsDirty = false;
+function hsTouched() { hsDirty = true; hs.save.disabled = hs.discard.disabled = false; }
 
 function hsChosen() {
   const r = hs.modes.querySelector('input[name="hs-mode"]:checked');
@@ -3467,10 +3528,12 @@ function hsShowFields() {
 
 function renderHotspot(data) {
   hsData = data;
+  hs.save.disabled = hs.discard.disabled = !hsDirty;
+  if (hsDirty) { hsShowFields(); drawGuestNet(data.share || 'off', data.results); return; }
   const s = data.settings;
   AW.choices(hs.modes, 'hs-mode', data.modes.map((m) => ({
     value: m, title: data.label[m], desc: data.what[m], why: data.available[m],
-  })), { value: s.mode, onChange: hsShowFields });
+  })), { value: s.mode, onChange: () => { hsTouched(); hsShowFields(); } });
   hs.second.value = s.second;
   hs.password.value = s.password || '';
   hs.wpa2.checked = !!s.allow_wpa2;
@@ -3511,8 +3574,9 @@ function drawGuestNet(level, results) {
   }));
   document.getElementById('guest-net-said').textContent = GUEST_NET.find((x) => x[0] === cur)[2]
     + (['users-web', 'sheet-web', 'sheet-all'].includes(cur) ? ' Each device is let out for 12 hours at a time.' : '');
-  document.getElementById('guest-net-save').disabled = !guestNetDraft || !!guestNetWaiting;
+  document.getElementById('guest-net-save').disabled = document.getElementById('guest-net-discard').disabled = !guestNetDraft || !!guestNetWaiting;
 }
+document.getElementById('guest-net-discard').addEventListener('click', () => { guestNetDraft = null; drawGuestNet(guestNetSaved); });
 document.getElementById('guest-net-save').addEventListener('click', async () => {
   const level = guestNetDraft;
   if (!level) return;
@@ -3533,8 +3597,10 @@ async function loadHotspot() {
   }
 }
 
-hs.second.addEventListener('change', hsShowFields);
-hs.wpa2.addEventListener('change', hsShowFields);
+hs.second.addEventListener('change', () => { hsTouched(); hsShowFields(); });
+hs.wpa2.addEventListener('change', () => { hsTouched(); hsShowFields(); });
+hs.password.addEventListener('input', hsTouched);
+hs.discard.addEventListener('click', () => { hsDirty = false; if (hsData) renderHotspot(hsData); });
 hs.generate.addEventListener('click', () => {
   // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
   const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -3547,12 +3613,14 @@ hs.generate.addEventListener('click', () => {
     }
   }
   hs.password.value = [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
+  hsTouched();
 });
 hs.save.addEventListener('click', async () => {
   const mode = hsChosen();
   if (mode !== 'open' && !confirm(`Use "${hsData.label[mode]}" for the hotspot? Read the warnings under the choices first.`)) return;
   try {
     const r = await postJSON('/admin/hotspot', { settings: { mode, second: hs.second.value, password: hs.password.value, allow_wpa2: hs.wpa2.checked } });
+    hsDirty = false;
     say(r.message, true, hs.note);
     loadHotspot();
   } catch (err) { say(err.message, false, hs.note); }
@@ -4948,7 +5016,11 @@ function renderKits(data) {
   kitsEl.summary.textContent = (st.at ? `${cached.length} of ${kits.length} toolkits cached, ${size(st.pool_bytes || 0)} of ${cfg.budget_mb} MB` +
     (newest ? `; newest fetch ${dayOf(newest)}` : '') + '. Cached kits install with no internet.' : 'Not looked at yet.') +
     (feed && feed.fetched ? ` debsecan's data: ${dayOf(feed.fetched)}.` : '') + (kitsWaiting.size ? ' Working…' : '');
-  if (!kitsEl.budget.contains(document.activeElement)) kitsEl.budget.elements.budget.value = cfg.budget_mb;
+  if (!kitsEl.budget.contains(document.activeElement) && !kitsBudgetDirty()) {
+    kitsEl.budget.elements.budget.value = cfg.budget_mb;
+    kitsEl.budget.dataset.saved = cfg.budget_mb;
+    kitsBudgetSync();
+  }
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
     'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
   // A card per kit, its details in a drawer inside the card; not redrawn
@@ -5141,9 +5213,27 @@ async function loadKits() {
     renderKits(data);
   } catch (_) { kitsEl.summary.textContent = 'Could not read the toolkits.'; }
 }
-kitsEl.budget.addEventListener('submit', (e) => {
+// The budget waits for Save; Discard puts back the saved one.
+function kitsBudgetDirty() {
+  const f = kitsEl.budget;
+  return f.dataset.saved !== undefined && f.elements.budget.value !== String(f.dataset.saved);
+}
+function kitsBudgetSync() {
+  const dirty = kitsBudgetDirty();
+  kitsEl.budget.querySelector('[type="submit"]').disabled = !dirty;
+  document.getElementById('kits-budget-discard').disabled = !dirty;
+}
+kitsEl.budget.elements.budget.addEventListener('input', kitsBudgetSync);
+document.getElementById('kits-budget-discard').addEventListener('click', () => {
+  kitsEl.budget.elements.budget.value = kitsEl.budget.dataset.saved;
+  kitsBudgetSync();
+});
+kitsEl.budget.addEventListener('submit', async (e) => {
   e.preventDefault();
-  kitAct({ action: 'settings', budget_mb: Number(kitsEl.budget.elements.budget.value) });
+  const mb = Number(kitsEl.budget.elements.budget.value);
+  await kitAct({ action: 'settings', budget_mb: mb });
+  kitsEl.budget.dataset.saved = mb;
+  kitsBudgetSync();
 });
 document.getElementById('kits-refresh-all').addEventListener('click', async () => {
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
@@ -5374,7 +5464,81 @@ if (paneShown('mesh')) loadMesh();
 // ---- Appearance: the page widths, for everyone, read by every page from
 // /layout.css. A choice shows on this page at once; Save keeps it.
 const WIDTHS = [45, 60, 80, 90, 100];
+// A width in rem, and in pixels at the browsers' default text size (16 px a rem).
+const widthOption = (w) => [w, `${w}rem (about ${w * 16} px)`];
 let appearanceSettings = null;
+// The accent is drawn as text on the themes' backgrounds: WCAG asks 4.5:1 for text, 3:1 for
+// buttons and other large marks. Says which theme falls short, or '' when both are fine.
+const THEME_GROUNDS = { light: ['#f4f5f9', '#ffffff'], dark: ['#0f1117', '#1a1d27'] };
+function luminance(hex) {
+  const ch = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
+}
+function contrast(a, b) {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+function accentWarning(hex) {
+  const short = Object.entries(THEME_GROUNDS).map(([theme, grounds]) => [theme, Math.min(...grounds.map((g) => contrast(hex, g)))])
+    .filter(([, r]) => r < 4.5);
+  if (!short.length) return '';
+  return '⚠ Hard to read: ' + short.map(([t, r]) => `${r.toFixed(1)}:1 on the ${t} theme`).join(', ')
+    + '. The accessibility guidelines (WCAG AA) ask for 4.5:1 for text' + (short.some(([, r]) => r < 3) ? ', and 3:1 even for buttons.' : '.');
+}
+// The owner's pictures: the favicon (the browser tab's icon on every page) and the hub page's header picture.
+// An upload acts at once (not a setting held for Save); Remove takes it away again.
+const PICTURE_ROWS = {
+  favicon: { label: 'Favicon', url: '/favicon.ico', max: 64, accept: 'image/png,image/x-icon,.ico,.png', size: 32,
+    none: 'None set: browsers show their own.', note: 'the browser tab\'s icon on every page: a PNG or .ico file, up to 64 KB (32 or 64 px square is plenty)' },
+  'hub-art': { label: 'Header picture', url: '/hub-art', max: 180, accept: 'image/png,image/jpeg,image/webp', size: 64,
+    none: 'None: the hub page starts with its name.', note: 'over the hub page\'s name: a PNG, JPEG or WebP picture, up to 180 KB (a banner about 1200 px wide, as WebP, fits)' },
+};
+function pictureRow(which) {
+  const p = PICTURE_ROWS[which];
+  const img = el('img', { className: 'picture-preview', alt: `${p.label} now`, height: p.size });
+  const note = el('small', { className: 'setting-desc', role: 'status' });
+  const remove = el('button', { type: 'button', className: 'action-btn', textContent: 'Remove' });
+  const file = el('input', { type: 'file', accept: p.accept });
+  file.setAttribute('aria-label', `Upload a ${p.label.toLowerCase()}`);
+  const show = () => {
+    img.hidden = true;
+    img.onload = () => { img.hidden = false; remove.disabled = false; note.textContent = ''; };
+    img.onerror = () => { remove.disabled = true; note.textContent = p.none; };
+    img.src = `${p.url}?${Date.now()}`;
+  };
+  const refreshTab = () => {
+    if (which !== 'favicon') return;
+    let link = document.querySelector('link[rel="icon"]');
+    if (!link) { link = el('link', { rel: 'icon' }); document.head.append(link); }
+    link.href = `/favicon.ico?${Date.now()}`;
+  };
+  const send = async (body) => {
+    try { await postJSON('/admin/picture', { which, ...body }); show(); refreshTab(); } catch (e) { note.textContent = e.message; }
+  };
+  file.addEventListener('change', async () => {
+    const f = file.files[0];
+    file.value = '';
+    if (!f) return;
+    if (f.size > p.max * 1024) { note.textContent = `At most ${p.max} KB: that one is ${Math.ceil(f.size / 1024)} KB.`; return; }
+    const data = await new Promise((ok, fail) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result).split(',')[1] || '');
+      r.onerror = fail;
+      r.readAsDataURL(f);
+    });
+    send({ data });
+  });
+  remove.addEventListener('click', () => send({ remove: true }));
+  show();
+  return el('div', { className: 'aw-field picture-row' }, el('span', { className: 'aw-label', textContent: p.label }),
+    el('span', { className: 'aw-colour' }, img, file, remove), note, el('small', { className: 'setting-desc', textContent: p.note }));
+}
+const faviconRow = () => pictureRow('favicon');
+// The page's own /layout.css again, so a saved colour shows here at once.
+function reloadLayoutCss() {
+  const link = document.querySelector('link[href^="/layout.css"]');
+  if (link) link.href = '/layout.css?' + Date.now();
+}
 async function loadAppearance() {
   const box = document.getElementById('appearance-box');
   if (!box) return;
@@ -5382,8 +5546,20 @@ async function loadAppearance() {
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
   appearanceSettings = st;
   fillWidthBlocks();
-  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
-  box.replaceChildren(AW.settings([
+  const hub = AW.settings([
+    { key: 'hub_title', label: 'Name', kind: 'text', value: st.hub_title, max: 40, note: 'the hub page\'s heading and its browser tab' },
+    { key: 'hub_subtitle', label: 'Line under it', kind: 'text', value: st.hub_subtitle, max: 120, note: 'empty for none' },
+    { key: 'accent', label: 'Accent colour', kind: 'colour', value: st.accent, unset: 'The theme\'s own', shown: '#5b4bd6',
+      warn: accentWarning, note: 'links, buttons and headings in the light and dark themes; the other themes keep theirs' },
+    { key: 'krab_art', label: 'Krab art', kind: 'toggle', value: st.krab_art, note: 'the pictures at the foot of the admin pages and a few others' },
+  ], { save: async (changed) => {
+    if ('hub_title' in changed && !changed.hub_title.trim()) throw new Error('The hub needs a name.');
+    const now = await postJSON('/admin/settings', changed);
+    reloadLayoutCss();
+    return now;
+  } });
+  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map(widthOption) });
+  box.replaceChildren(el('h3', { textContent: 'The hub' }), hub, el('h3', { textContent: 'Pictures' }), el('div', { className: 'aw-settings' }, faviconRow(), pictureRow('hub-art')), el('h3', { textContent: 'Widths' }), AW.settings([
     row('page_width', 'Hub', 'the tiles, the menu and its pages'),
     row('admin_width', 'Admin', 'these pages'),
     row('shout_width', 'Shoutbox', 'its tab on the hub page'),
@@ -5495,7 +5671,7 @@ function fillWidthBlocks() {
   document.querySelectorAll('.width-block[data-key]').forEach((block) => {
     const key = block.dataset.key;
     block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
-      note: 'also on System → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+      note: 'also on System → Appearance', options: WIDTHS.map(widthOption) }],
     { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
   });
 }
