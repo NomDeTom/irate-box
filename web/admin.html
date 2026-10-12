@@ -49,6 +49,25 @@
         <h2 id="overview-title">Overview</h2>
         <div class="attention" id="attention" aria-live="polite"></div>
         <div class="admin-tiles" id="box-tiles"></div>
+        <details class="sec-fold overview-memory" id="memory-history">
+          <summary>Memory history</summary>
+          <div class="view-switch memory-range" role="group" aria-label="Memory history range">
+            <button class="view-switch-btn active" type="button" data-memory-hours="24" aria-pressed="true">24 hours</button>
+            <button class="view-switch-btn" type="button" data-memory-hours="168" aria-pressed="false">7 days</button>
+          </div>
+          <p class="memory-legend" id="memory-current"></p>
+          <div id="memory-graph"></div>
+          <p class="setting-desc memory-readout" id="memory-readout" aria-live="polite"></p>
+          <p class="setting-desc" id="memory-history-note"></p>
+          <details class="sec-fold" id="memory-processes" hidden>
+            <summary>Largest processes at last sample</summary>
+            <div class="scroll-x"><table class="admin-table">
+              <caption id="memory-processes-at"></caption>
+              <thead><tr><th>Process</th><th>PID</th><th>Resident memory</th></tr></thead>
+              <tbody id="memory-processes-body"></tbody>
+            </table></div>
+          </details>
+        </details>
         <!-- The network's last 72 hours by hour, each link a row (linkhistory.py), drawn by admin.js. -->
         <div class="overview-net" id="overview-net"></div>
         <!-- meshtasticd's last 72 hours, where it is installed (svchistory.py), and its state in words. -->

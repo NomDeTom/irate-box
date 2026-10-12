@@ -100,6 +100,23 @@ w = {"hub_window_start": 23, "hub_window_end": 4}
 check("window 23-04: 23, 0 and 3 in; 4 and 12 out", all(U.in_window(w, h) for h in (23, 0, 3)) and not any(U.in_window(w, h) for h in (4, 12)))
 check("window 02-05: 2 and 4 in; 5 and 1 out", all(U.in_window(pol(), h) for h in (2, 4)) and not any(U.in_window(pol(), h) for h in (5, 1)))
 check("an empty window never installs", not any(U.in_window({"hub_window_start": 3, "hub_window_end": 3}, h) for h in range(24)))
+
+import subprocess
+from unittest import mock
+from irate_box.root import hub_control
+page_logs = []
+def nginx_check(*args, **kwargs):
+    conf = Path(args[args.index("-c") + 1])
+    text = conf.read_text()
+    check("update verification resolves the page log placeholder", "@PAGELOG@" not in text)
+    page_logs.extend(line.split()[1] for line in text.splitlines()
+                     if "access_log " in line and "irate_box_pages" in line)
+    check("update verification puts every page log in its scratch folder",
+          bool(page_logs) and all(path == str(conf.parent / "pages.log") for path in page_logs), page_logs)
+    return subprocess.CompletedProcess(args, 0, "", "")
+with mock.patch.object(hub_control, "run", side_effect=nginx_check):
+    result = hub_control._nginx_check(Path(REPO), [])
+check("update verification accepts the rendered nginx site", result["ok"], result)
 srv.shutdown()
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

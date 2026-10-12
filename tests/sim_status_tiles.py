@@ -33,6 +33,11 @@ try:
     _, body = go("GET", "/admin/status-tiles")
     ids = [t["id"] for t in json.loads(body)["tiles"]]
     check("the box row's tiles listed", {"box-people", "box-qr", "box-system", "box-services"} <= set(ids), ids)
+    _, body = go("GET", "/admin/box")
+    box = json.loads(body)
+    check("Overview exposes bounded memory history", isinstance(box.get("memory_history", {}).get("samples"), list))
+    check("Overview reports current boot uptime separately from accumulated time",
+            box["system"].get("boot_uptime", -1) >= 0 and box["uptime"] + 1 >= box["system"]["boot_uptime"], box["system"])
     _, home = go("GET", "/")
     check("by default: the join QR on the page, People before Memory and disk", 'id="qr-card"' in home and home.find('id="people-card"') < home.find('id="system-card"'))
     st, _ = go("POST", "/admin/status-tiles", {"state": {"hidden": ["box-qr"], "order": ["box-system", "box-people"], "double": ["box-people"]}})

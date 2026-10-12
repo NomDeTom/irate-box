@@ -1459,7 +1459,8 @@ def _nginx_check(src, opts):
         (Path(tmp) / "tls").mkdir()
         for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_GATES@": f"{tmp}/addon-gates.d", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
                            "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491",
-                           "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons")}.items():
+                           "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons"),
+                           "@PAGELOG@": f"{tmp}/pages.log"}.items():
             text = text.replace(key, value)
         # A port placeholder this helper does not know yet (an update adds a server block): a
         # spare port stands in, so a newer site is checked by its syntax, not refused for being

@@ -63,5 +63,46 @@ check("  then a sample, of every unit at once", smp.tick(D0) is True and calls =
 (T / "run").mkdir(); (T / "run" / "clock-trusted").write_text("")
 check("the owner's mark counts as a trusted clock", S.clock_trusted())
 check("the server samples and sends the summary", "svchistory.Sampler(" in (Path(__file__).resolve().parents[1] / "irate_box/hub/server.py").read_text())
+from irate_box.hub import memhistory as M
+mem = {"total": 1024, "available": 512, "swap_total": 256, "swap_free": 128}
+hist = {"samples": []}
+check("memory: first sample", M.record(hist, mem, D0) and hist["samples"][0]["available"] == 512)
+check("memory: duplicate samples and backward clock jumps ignored",
+      not M.record(hist, mem, D0 + 10) and not M.record(hist, mem, D0 - 300))
+for sample in range(1, M.LIMIT + 10):
+    M.record(hist, mem, D0 + sample * M.EVERY)
+check("memory: seven days retained with a fixed size bound", len(hist["samples"]) == M.LIMIT
+      and hist["samples"][-1]["at"] - hist["samples"][0]["at"] == M.KEEP)
+M.FILE.write_text(json.dumps(hist))
+check("memory: history survives reload", M.load() == hist)
+check("memory: expired and future samples not served", not M.snapshot(D0 - 1)["samples"]
+      and not M.snapshot(D0 + 30 * 86400)["samples"])
+M.FILE.write_text("not json")
+check("memory: torn history starts empty", M.load() == {"samples": []})
+M.FILE.write_text(json.dumps({"samples": [None, {}, dict(mem, at=D0, total=-1)]}))
+check("memory: malformed samples are ignored", M.load()["samples"] == [])
+M.FILE.unlink()
+from unittest import mock
+sampler = M.Sampler(trusted=lambda: False)
+check("memory: no writes before the clock is trusted", not sampler.tick(D0) and not M.FILE.exists())
+sampler = M.Sampler(trusted=lambda: True)
+with mock.patch.object(M, "memory", return_value=mem), mock.patch.object(M, "processes", return_value=[{"pid": 1, "name": "hub", "resident": 128}]):
+    check("memory: trusted sampler writes memory and largest processes", sampler.tick(D0)
+          and M.snapshot(D0)["processes"][0]["name"] == "hub")
+    check("memory: restart does not duplicate the last sample", not sampler.tick(D0 + 1))
+check("memory: stale process snapshots are not presented as current", not M.snapshot(D0 + 3 * M.EVERY)["processes"])
+proc = T / "proc"
+proc.mkdir()
+(proc / "meminfo").write_text("MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 200 kB\nSwapFree: 150 kB\n")
+for pid in range(1, 8):
+    folder = proc / str(pid)
+    folder.mkdir()
+    (folder / "statm").write_text(f"100 {pid}\n")
+    (folder / "comm").write_text(f"process-{pid}\n")
+with mock.patch.object(M, "PROC", proc):
+    check("memory: uses available memory and swap in bytes", M.memory() == {"total": 1024000, "available": 614400, "swap_total": 204800, "swap_free": 153600})
+    check("memory: only the five largest processes, ranked by resident bytes", [entry["pid"] for entry in M.processes()] == [7, 6, 5, 4, 3])
+    (proc / "meminfo").write_text("MemTotal: 1000 kB\nMemAvailable: 600 kB\n")
+    check("memory: a system without swap still records", M.memory()["swap_total"] == 0 and M.memory()["swap_free"] == 0)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

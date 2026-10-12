@@ -452,7 +452,15 @@ const AW = (() => {
       let snap = null, restoring = false;
       const own = [...f.querySelectorAll('button')].some((b) => /^Discard/.test(b.textContent.trim()));
       const discard = own ? null : btn('Discard', { class: 'action-btn aw-discard', disabled: true, title: 'Put back what was there before your changes' });
-      if (discard) btns()[0].before(discard);
+      if (discard) {
+        const save = btns()[0];
+        if (!save.parentElement.classList.contains('library-buttons')) {
+          const actions = h('div', { class: 'library-buttons' });
+          save.before(actions);
+          actions.append(save);
+        }
+        save.before(discard);
+      }
       const take = () => { if (!snap) snap = fields(f).map((e) => [e, e.value, e.checked]); };
       f.addEventListener('pointerdown', take, true);
       f.addEventListener('focusin', (e) => { if (e.target !== discard) take(); }, true);
