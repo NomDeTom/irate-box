@@ -97,9 +97,10 @@ def ports(services=(), level="apps"):
     return sorted(tcp), sorted(udp)
 
 
-def ruleset(iface, floor=None, sharing=None):
+def ruleset(iface, floor=None, sharing=None, kept=()):
     """The nftables text. floor: None (off), or {"level": "hub"|"apps", "services": [...]} with the
-    services already those on the box (services_here); sharing: share.load()'s dict, or None (off)."""
+    services already those on the box (services_here); sharing: share.load()'s dict, or None (off).
+    kept: [(address, seconds left)] already let out, carried into the new set (kept_out)."""
     from irate_box.root import share
     if not IFACE_RE.match(iface):
         raise ValueError(f"{iface!r} is not an interface name")
@@ -120,7 +121,10 @@ def ruleset(iface, floor=None, sharing=None):
     ]
     if sharing:
         out += ["\tset out {", f"\t\ttype {'ether_addr' if c.get('by_mac') else 'ipv4_addr'}", "\t\tflags timeout",
-                f"\t\ttimeout {share.OUT_HOURS}h", "\t}"]
+                f"\t\ttimeout {share.OUT_HOURS}h"]
+        if kept:
+            out.append("\t\telements = { " + ", ".join(f"{a} timeout {max(int(left), 1)}s" for a, left in kept) + " }")
+        out.append("\t}")
     out += ["\tchain input {", "\t\ttype filter hook input priority filter; policy accept;"]
     if sharing:
         # The guests' resolver answers only what was sent there (the redirect marks it), never a direct ask.
@@ -216,6 +220,35 @@ def loaded():
     return r.returncode == 0
 
 
+ADDR_RE = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$|^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
+
+
+def kept_out(sharing):
+    """[(address, seconds left)]: the devices let out now, so writing the ruleset again (a level changed, the
+    hotspot back up) doesn't shut them out while the hub still counts them out. Only when the set holds the same
+    kind of address as the new one will (a hardware address, or an IP), and only at a level that lets out."""
+    from irate_box.root import share
+    if not sharing or sharing.get("level") not in share.LET_OUT:
+        return []
+    want = "ether_addr" if (sharing.get("contain") or {}).get("by_mac") else "ipv4_addr"
+    try:
+        r = run("nft", "-j", "list", "set", TABLE.split()[0], TABLE.split()[1], "out")
+        data = json.loads(r.stdout) if r.returncode == 0 else {}
+    except (OSError, ValueError):
+        return []
+    out = []
+    for item in data.get("nftables", []):
+        st = item.get("set")
+        if not st or st.get("type") != want:
+            continue
+        for e in st.get("elem", []):
+            e = e.get("elem", e) if isinstance(e, dict) else {"val": e}
+            val, left = str(e.get("val", "")), e.get("expires")
+            if ADDR_RE.match(val) and isinstance(left, (int, float)) and left > 0:
+                out.append((val, int(left)))
+    return out
+
+
 def apply_all(floor, sharing, iface=None):
     """The floor and guests' internet together: written, checked with nft, loaded in one transaction
     now and at every boot; with neither on, the table and its file gone. Raises ValueError, having
@@ -224,7 +257,7 @@ def apply_all(floor, sharing, iface=None):
     if not floor and not share.on(sharing or {"level": "off"}):
         remove()
         return
-    text = ruleset(iface or hotspot_iface(), floor, sharing)
+    text = ruleset(iface or hotspot_iface(), floor, sharing, kept_out(sharing))
     RULES.parent.mkdir(parents=True, exist_ok=True)
     tmp = RULES.with_name(f".{RULES.name}.new")
     tmp.write_text(text)

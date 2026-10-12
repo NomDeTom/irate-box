@@ -177,6 +177,21 @@ check("a part turned off while nothing is shared: kept, no rules touched, and th
 security.fix("share-contain-dns_hold-on", None)
 check("  back on: the doctor says nothing again", security.share_findings() == [] and share.load()["contain"] == ALL)
 
+# --- devices let out stay out when the ruleset is written again (a level changed, the hotspot back up) ---
+listed = {"nftables": [{"metainfo": {}}, {"set": {"family": "inet", "name": "out", "table": "irate_box", "type": "ether_addr",
+          "elem": [{"elem": {"val": "aa:bb:cc:dd:ee:01", "timeout": 43200, "expires": 40000}},
+                   {"elem": {"val": "aa:bb:cc:dd:ee:02", "timeout": 43200, "expires": 0}}]}}]}
+firewall.run = lambda *c, **k: subprocess.CompletedProcess(c, 0, json.dumps(listed), "")
+kept = firewall.kept_out(S("sheet-all"))
+check("kept_out: the devices let out now, with the time each has left (an expired one not)", kept == [("aa:bb:cc:dd:ee:01", 40000)], kept)
+check("  not when the new set holds the other kind of address (by_mac switched off)", firewall.kept_out(S("sheet-all", by_mac=1)) == [])
+check("  nor at a level that lets nobody out one by one", firewall.kept_out(S("open")) == [] and firewall.kept_out(None) == [])
+firewall.run = lambda *c, **k: subprocess.CompletedProcess(c, 1, "", "Error: No such file or directory")
+check("  none when there is no table yet", firewall.kept_out(S("sheet-web")) == [])
+text = firewall.ruleset("ap0", None, S("sheet-all"), kept)
+check("the new set carries them, each for the time it had left", "elements = { aa:bb:cc:dd:ee:01 timeout 40000s }" in text, text[:600])
+check("  and without any, no elements line", "elements" not in firewall.ruleset("ap0", None, S("sheet-all")))
+
 import shutil
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

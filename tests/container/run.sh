@@ -103,6 +103,7 @@ scenario_nginx() {
 	run_ct git nginx
 	run_ct net 80
 	run_ct floor
+	run_ct share
 	run_ct health 80
 	run_ct ci
 }
