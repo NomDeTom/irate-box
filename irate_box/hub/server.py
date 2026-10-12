@@ -729,7 +729,9 @@ def home_page(signed_in=False):
             chosen = (chosen, None)
     show_factory = settings_snapshot()["factory_tile"]
     signup = accounts.settings()["signup"]
-    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready(), unclaimed())
+    words = settings_snapshot()
+    notice_over = bool(words["notice_until"]) and time.time() >= words["notice_until"]
+    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready(), unclaimed(), notice_over)
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -743,9 +745,14 @@ def home_page(signed_in=False):
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
-        words = settings_snapshot()
         title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
         text = text.replace("<title>Hub</title>", f"<title>{title}</title>", 1).replace("<h1>Hub</h1>", f"<h1>{title}</h1>", 1)
+        notice, keeper = words["notice_text"].strip(), words["keeper_contact"].strip()
+        if notice and not notice_over:
+            text = text.replace("</header>", f'</header>\n  <p class="hub-notice" role="status">{html.escape(notice)}</p>', 1)
+        if keeper:
+            text = text.replace('  <script src="qrcode.js">', f'  <footer class="hub-keeper">Looked after by: {html.escape(keeper)}</footer>\n'
+                                '  <script src="qrcode.js">', 1)
         art = picture_mtime("hub-art")
         if art:
             text = text.replace(f"<h1>{title}</h1>", f'<img class="hub-art" src="/hub-art?{int(art)}" alt=""><h1>{title}</h1>', 1)
@@ -938,6 +945,11 @@ DEFAULT_SETTINGS = {
     "accent": "",
     # The Krab art at the foot of the admin pages and a few others: on, or off for a plainer look.
     "krab_art": True,
+    # What guests see: a notice at the top of the hub page ("Back online at 6 pm"), until a time
+    # (epoch seconds; 0 for no end), and how to reach whoever looks after the box, at its foot.
+    "notice_text": "",
+    "notice_until": 0,
+    "keeper_contact": "",
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
     # (irate_box/root/visitors.py). On by default, as one of the setup's
     # decisions; off, the helper doesn't run at all.
@@ -972,7 +984,7 @@ DEFAULT_SETTINGS = {
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
 EMOJI_SETS = ("13.1", "15.0", "16.0")
-TEXT_LIMITS = {"hub_title": 40, "hub_subtitle": 120}
+TEXT_LIMITS = {"hub_title": 40, "hub_subtitle": 120, "notice_text": 200, "keeper_contact": 200}
 
 
 def accent_ink(accent):
@@ -1009,9 +1021,9 @@ def valid_setting(key, value):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "emoji_set":
         return value in EMOJI_SETS
-    if key in ("hub_title", "hub_subtitle"):
+    if key in TEXT_LIMITS:
         return (isinstance(value, str) and len(value.strip()) <= TEXT_LIMITS[key]
-                and (key == "hub_subtitle" or value.strip()) and not any(ord(c) < 32 for c in value))
+                and (key != "hub_title" or value.strip()) and not any(ord(c) < 32 for c in value))
     if key == "accent":
         return value == "" or (isinstance(value, str) and re.fullmatch(r"#[0-9a-f]{6}", value) is not None)
     if key == "names_to":

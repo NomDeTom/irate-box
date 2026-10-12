@@ -112,6 +112,19 @@ try:
     go("POST", "/admin/settings", page, json.dumps({"krab_art": False}).encode())
     _, _, css = go("GET", "/layout.css")
     check("the Krab art: on by default; off, /layout.css hides it", on and ".admin-art, .art-loop { display: none" in css, css)
+    # What guests see: a notice at the top until its time, and who looks after the box at the foot.
+    later = int(time.time()) + 3600
+    go("POST", "/admin/settings", page, json.dumps({"notice_text": "Back <online> at 6", "notice_until": later, "keeper_contact": "Tom, on #lobby"}).encode())
+    _, _, home = go("GET", "/")
+    check("a notice: at the top of the hub page, escaped; who looks after it at the foot",
+          '<p class="hub-notice" role="status">Back &lt;online&gt; at 6</p>' in home and "Looked after by: Tom, on #lobby" in home
+          and home.index("hub-notice") < home.index("services"), home[:900])
+    go("POST", "/admin/settings", page, json.dumps({"notice_until": int(time.time()) - 5}).encode())
+    _, _, home = go("GET", "/")
+    check("  its time past: gone by itself", "hub-notice" not in home and "Looked after by" in home)
+    go("POST", "/admin/settings", page, json.dumps({"notice_until": 0, "keeper_contact": ""}).encode())
+    _, _, home = go("GET", "/")
+    check("  no end: there again; no contact, no footer", "hub-notice" in home and "Looked after by" not in home)
 finally:
     hub.terminate()
 # A box that chose a width before the admin pages had their own keeps it for both, until set apart.
