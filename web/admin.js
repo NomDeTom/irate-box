@@ -191,7 +191,9 @@ let libPoll = null;
 const el = (tag, props = {}, ...kids) => {
   // A button with no class of its own is an action button (rule 6a: the control vocabulary).
   if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
-  const node = Object.assign(document.createElement(tag), props);
+  const { dataset, ...rest } = props;
+  const node = Object.assign(document.createElement(tag), rest);
+  if (dataset) Object.assign(node.dataset, dataset);
   node.append(...kids.filter((k) => k !== null && k !== undefined));
   return node;
 };
@@ -2917,7 +2919,17 @@ function linkNow(inv, d) {
 }
 // Roaming: on the WiFi card, the access points sharing the network and how often the box
 // moved between them; a lock whose access point has gone, with Unlock. On Hardware, which controls work here.
-const ROAM_SHORT = { roam: 'roams naturally', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
+const ROAM_SHORT = { roam: 'normal', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
+// A list in words: "1, 6 and 11".
+const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : String(xs[0] ?? ''));
+// wpa_supplicant's background scan ("simple:30:-65:300": short interval, signal threshold, long interval) in words.
+function bgscanWords(v) {
+  if (!v) return 'off: it looks for a stronger access point only when the link drops.';
+  const m = /^simple:(\d+):(-?\d+):(\d+)$/.exec(v);
+  if (!m) return v;
+  const t = (sec) => (sec % 60 === 0 && sec >= 60 ? `${sec / 60} min` : `${sec} s`);
+  return `looks for a stronger access point every ${t(+m[1])} while the signal is weaker than ${m[2]} dBm, every ${t(+m[3])} while it is stronger.`;
+}
 function drawRoaming(inv, u, wifi) {
   const box = document.getElementById('net-roaming'), caps = document.getElementById('net-roam-caps');
   const r = wifi.find((x) => x.roaming), f = r && r.roaming;
@@ -2925,12 +2937,12 @@ function drawRoaming(inv, u, wifi) {
   const chosen = (u && u.chosen) || {};
   const n = f.aps.length, hour = u && !u.stale ? u.roams_hour || 0 : null;
   const lines = [netLine('Roaming', n > 1
-    ? `${n} access points share ${f.ssid} (${f.channels.map((c) => `channel ${c}`).join(', ')}); `
-      + (hour == null ? '' : `${hour} roam${hour === 1 ? '' : 's'} in the last hour; `) + `set to: ${ROAM_SHORT[chosen.roaming || 'roam']}`
-      + (chosen.ignore_roams ? ', short roams not counted' : '') + '.'
-      + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves with each roam.' : '')
+    ? `Roaming: ${ROAM_SHORT[chosen.roaming || 'roam']}${chosen.ignore_roams ? ' (short moves not counted as drops)' : ''}. `
+      + `${n} access points for ${f.ssid}, on channel${f.channels.length === 1 ? '' : 's'} ${andList(f.channels)}. `
+      + (hour == null ? '' : hour ? `The box moved between them ${hour === 1 ? 'once' : `${hour} times`} in the last hour.` : 'The box hasn\'t moved between them in the last hour.')
+      + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves too.' : '')
     : `One access point for ${f.ssid}: nothing to roam between.`)];
-  if (f.bgscan != null) lines.push(netLine('Background scan', f.bgscan ? f.bgscan : 'off'));
+  if (f.bgscan != null) lines.push(netLine('Background scan', cap1(bgscanWords(f.bgscan))));
   const lockGone = chosen.roaming === 'lock' && u && u.state !== 'up' && !f.aps.some((a) => a.bssid === chosen.lock_bssid);
   if (lockGone) {
     lines.push(el('p', { className: 'setting-desc bad' }, `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,
@@ -3085,25 +3097,31 @@ function renderNetwork(data) {
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
   if (change && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Keep retrying was set on ${change.name}, but the profile no longer has it: it was written afresh (netplan does so at every boot). `
-      + 'The box defaults above last whatever writes the profile. ',
+      `Your WiFi connection ${change.name} was set to try for ever, but that was lost when netplan wrote it afresh at boot. `
+      + 'The settings above last whatever writes the connection. ',
       actionButton('Set it again', () => netRequest({ action: 'profile', on: true }, 'up'), { disabled: busy }), ' ',
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
   } else if (change) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Keep retrying is on for ${change.name} (since ${new Date(change.at * 1000).toLocaleDateString()}): NetworkManager never stops trying it. `,
+      `Your WiFi connection ${change.name} is also set, on its own, to try for ever (since ${new Date(change.at * 1000).toLocaleDateString()}). `,
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
   } else if (prof && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Your WiFi profile ${prof} stops trying after a few failed handshakes, and then waits for someone to reconnect it by hand — which a box with no screen cannot ask for, and a flaky link can cause. `
-      + 'Keep retrying sets its connection.autoconnect-retries and connection.auth-retries to 0. Undo, here or by uninstalling, puts the old values back. ',
-      actionButton('Keep retrying', () => {
+      `Your WiFi connection ${prof} stops after a few failures and waits for someone to reconnect it by hand, which a box with no screen can't ask for. `
+      + 'This sets it, on its own, to try for ever; undo, here or by uninstalling, puts it back. ',
+      actionButton('Try for ever', () => {
         if (confirm(`Change two settings of your WiFi profile ${prof}, so it never stops trying? Undo puts them back.`)) netRequest({ action: 'profile', on: true }, 'up');
       }, { disabled: busy })));
   } else {
     net.profile.replaceChildren();
   }
-  document.getElementById('net-changes').hidden = !['up-profile', 'net-handover', 'net-other-ap', 'net-wifisync'].some((id) => document.getElementById(id).childElementCount);
+  document.getElementById('up-retries-group').hidden = !document.getElementById('net-retry-defaults').childElementCount && !net.profile.childElementCount;
+  const changes = ['net-handover', 'net-other-ap', 'net-wifisync'].some((id) => document.getElementById(id).childElementCount);
+  document.getElementById('net-changes').hidden = !changes;
+  applyChangesHidden();
+  const lead = document.getElementById('net-changes-lead');
+  lead.hidden = !(inv && inv.uplink && inv.uplink.backend === 'networkmanager');
+  lead.textContent = 'NetworkManager runs this box\'s WiFi and network connections, and irate-box makes its changes through it.';
   const evs = (u && u.events) || [];
   // One line per event: when, then what.
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
@@ -3133,6 +3151,13 @@ async function loadNetwork() {
 let defaultsDirty = {};
 let defaultsScope = '';   // '' the whole box, else an interface
 const PER_IFACE = ['auth_retries', 'cloned_mac', 'powersave', 'scan_mac'];
+const RETRY_DEFAULTS = ['autoconnect_retries', 'auth_retries'];
+function syncRetryButtons() {
+  document.getElementById('net-retry-save').disabled = net.defaultsSave.disabled;
+  document.getElementById('net-retry-discard').disabled = net.defaultsDiscard.disabled;
+}
+document.getElementById('net-retry-save').addEventListener('click', () => net.defaultsSave.click());
+document.getElementById('net-retry-discard').addEventListener('click', () => net.defaultsDiscard.click());
 function renderDefaults(inv, busy) {
   const d = inv && inv.stacks && inv.stacks.networkmanager && inv.stacks.networkmanager.defaults;
   const card = document.getElementById('net-defaults-card');
@@ -3161,7 +3186,7 @@ function renderDefaults(inv, busy) {
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
     const chosen = name in defaultsDirty ? defaultsDirty[name] : (cur !== null ? cur : 'default');
     sel.value = opts.some(([v]) => v === chosen) ? chosen : 'default';
-    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = net.defaultsDiscard.disabled = false; });
+    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = net.defaultsDiscard.disabled = false; syncRetryButtons(); });
     let now;
     if (defaultsScope) {
       const e = d.ifaces[defaultsScope][name];
@@ -3174,9 +3199,15 @@ function renderDefaults(inv, busy) {
     }
     // What each word choice means, said once under them: the box default, NetworkManager's own.
     const means = [defaultsScope ? `the box default is ${boxNow}` : null, s.value !== null || defaultsScope ? `NetworkManager's own is ${s.nm_default}` : null].filter(Boolean);
-    return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
+    const row = el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
       el('span', { className: 'setting-desc', textContent: cap1(now) + (means.length ? `; ${means.join('; ')}` : '') + '.' }));
+    row.dataset.name = name;
+    return row;
   });
+  // The retries go beside the watchdog's own (Staying on the network), for the whole box.
+  const retries = defaultsScope ? [] : rows.filter((r) => RETRY_DEFAULTS.includes(r.dataset.name));
+  document.getElementById('net-retry-defaults').replaceChildren(...retries);
+  document.getElementById('up-retries-group').hidden = !retries.length && !net.profile.childElementCount;
   rows.unshift(el('label', { className: 'net-default net-default-scope' }, el('span', { className: 'setting-name', textContent: 'For' }), scope,
     el('span', { className: 'setting-desc', textContent: defaultsScope
       ? `Only what NetworkManager takes per interface; how long to keep trying to connect is for the whole box.` : 'A connection\'s own setting, or one for its interface, comes first.' })));
@@ -3185,8 +3216,9 @@ function renderDefaults(inv, busy) {
     ...d.scoped.map((x) => `${own(x.file)} sets ${Object.keys(x.keys).join(', ')} for some devices only (${x.match || x.section}).`),
     ...d.broken.map((f) => `${f} could not be read: NetworkManager may not read it either.`),
   ];
-  net.defaults.replaceChildren(...rows, ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
+  net.defaults.replaceChildren(...rows.filter((r) => !retries.includes(r)), ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
   net.defaultsSave.disabled = net.defaultsDiscard.disabled = busy || !Object.keys(defaultsDirty).length;
+  syncRetryButtons();
   const dn = netNotes.defaults;
   say(dn ? dn.text : '', dn ? dn.ok : true, net.defaultsNote);
 }
@@ -3207,7 +3239,7 @@ function renderWifisync(inv, data, busy) {
   const rec = data.wifisync || {};
   if (!h) { box.replaceChildren(); return; }
   const on = h.status !== 'ok';
-  const rows = [el('p', { className: 'setting-desc' },
+  const rows = [el('p', { className: 'setting-desc', dataset: { change: 'wifisync' } },
     `mPWRD-OS's wifisync is ${on ? 'on' : 'off'}: ${on ? 'it switches the WiFi radio off whenever meshtasticd\'s WiFi setting is off, '
       + 'which takes the box off its network and its hotspot down' : 'it leaves the WiFi radio alone'}. `,
     actionButton(on ? 'Switch it off' : 'Switch it on', () => netRequest({ action: 'wifisync', do: on ? 'off' : 'on' }, 'wifisync'),
@@ -3230,24 +3262,31 @@ function renderOtherAp(inv, data, busy) {
   const rows = [];
   for (const p of others) {
     const c = chosen[p.uuid];
+    const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || '') ? ', Armbian\'s setup hotspot' : ', probably the system\'s own setup hotspot'}`;
     if (c && c.choice === 'left') {
-      rows.push(el('p', { className: 'setting-desc' }, `${p.name} (${p.ssid}): another hotspot profile, left as it is. `,
-        actionButton('List it again', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+      rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } }, `Ignored: ${what}. `,
+        actionButton('Stop ignoring it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
       continue;
     }
-    rows.push(el('p', { className: 'setting-desc' },
-      `${p.name} (${p.ssid}) is another hotspot profile, not irate-box's: probably the image's setup hotspot, often with the image's own password. `
-      + `It is ${p.autoconnect ? 'set to start by itself, and at boot could take the radio and the box off its own network' : 'not set to start by itself'}. `
-      + 'irate-box\'s hotspot runs beside the link, so this one adds nothing. ',
-      actionButton('Remove it', () => {
-        if (confirm(`Remove ${p.name}? Its profile is kept, and undo brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
+    rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } },
+      `This box has ${what}. `
+      + (p.active ? 'It is running now: it holds the WiFi, so the box\'s own network link and irate-box\'s hotspot can\'t have it. '
+        : p.autoconnect ? 'It is set to start by itself: at boot it could take over the WiFi and take the box off its network. '
+          : 'It is switched off (it does not start by itself), so irate-box has the WiFi and runs its own hotspot. ')
+      + 'Delete it (a copy is kept, to restore it), or ignore it. ',
+      actionButton('Delete it', () => {
+        if (confirm(`Delete ${p.name}? A copy is kept, and Restore brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
       }, { className: 'small', disabled: busy }), ' ',
-      actionButton('Leave it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
+      actionButton('Ignore it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
   }
   for (const [uuid, c] of Object.entries(chosen)) {
     if (c.choice !== 'removed') continue;
-    rows.push(el('p', { className: 'setting-desc' }, `${c.name} (${c.ssid}) removed on ${new Date(c.at * 1000).toLocaleDateString()}; kept in ${c.kept}. `,
-      actionButton('Bring it back', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+    rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${uuid}` } },
+      `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}; a copy is kept. `,
+      actionButton('Restore it', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy }), ' ',
+      actionButton('Delete the copy too', () => {
+        if (confirm(`Delete the kept copy of ${c.name} for good? It can't be restored after.`)) netRequest({ action: 'otherap', uuid, do: 'forget' }, 'otherap');
+      }, { className: 'small', disabled: busy })));
   }
   const n = netNotes.otherap;
   if (n) rows.push(el('p', { className: `setting-desc action-note${n.ok ? '' : ' bad'}`, role: 'status', textContent: n.text }));
@@ -3268,16 +3307,20 @@ function renderVisible(inv, busy) {
   const f = joinForm.elements;
   box.replaceChildren(
     el('p', { className: 'setting-desc' }, nets.length ? `Networks the box can see (from ${inv ? new Date(inv.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'its last look'}): pick one, then give its password. ` : 'No networks seen in the last look. ', scanAgain),
-    ...(nets.length ? [el('ul', { className: 'net-visible-list' }, ...nets.slice(0, 25).map((n) => el('li', {},
-      el('strong', { textContent: n.ssid }), ' ',
-      el('span', { className: 'setting-desc', textContent: `${n.signal}%, ${n.bands.join(' and ')}${n.channels.length ? ` (channel ${n.channels.join(', ')})` : ''}`
-        + `${n.aps > 1 ? `, ${n.aps} access points` : ''}, ${n.security || 'open'}` }),
-      n.known ? el('span', { className: 'info-pill', textContent: 'known' }) : null,
-      n.kind ? actionButton('Use this one', () => {
-        f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
-        (n.kind === 'open' ? f.ssid : f.psk).focus();
-      }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
-        : el('span', { className: 'setting-desc', textContent: ' needs a login (802.1X) or a kind of security the box cannot join by password' }))))] : []));
+    ...(nets.length ? [el('div', { className: 'table-scroll' }, el('table', { className: 'admin-table net-visible-table' },
+      el('thead', {}, el('tr', {}, ...['Network', 'Signal', 'Band', 'Channel', 'Access points', 'Security', ''].map((h) => el('th', { textContent: h })))),
+      el('tbody', {}, ...nets.slice(0, 25).map((n) => el('tr', {},
+        el('td', {}, el('strong', { textContent: n.ssid }), n.known ? el('span', { className: 'info-pill', textContent: 'known' }) : null),
+        el('td', { className: 'num', textContent: `${n.signal}%` }),
+        el('td', { textContent: n.bands.join(', ') }),
+        el('td', { className: 'num', textContent: n.channels.join(', ') }),
+        el('td', { className: 'num', textContent: String(n.aps || 1) }),
+        el('td', { textContent: n.security || 'open' }),
+        el('td', {}, n.kind ? actionButton('Use this one', () => {
+          f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
+          (n.kind === 'open' ? f.ssid : f.psk).focus();
+        }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
+          : el('span', { className: 'setting-desc', textContent: 'needs a login (802.1X)' })))))))] : []));
 }
 
 // One connection's own settings: each with its value now and the choices, the risky side said; a change
@@ -3342,7 +3385,7 @@ function connSettings(p, inv, data, busy, radio) {
     netRequest({ action: 'connection', uuid: p.uuid, changes }, 'connection');
   }, { disabled: busy || !Object.keys(dirty).length });
   const cn = netNotes.connection;
-  const box = el('details', { className: 'net-conn-settings', open: connOpen.has(p.uuid) }, el('summary', { textContent: 'Its own settings' }),
+  const box = el('details', { className: 'net-conn-settings', open: connOpen.has(p.uuid) }, el('summary', { textContent: 'Settings for this network' }),
     lasts ? null : el('p', { className: 'setting-desc', textContent: 'netplan writes this connection afresh at every boot, so a setting made for it alone would be lost. Hand it over to NetworkManager (above) to set these.' }),
     changed ? el('p', { className: 'setting-desc' }, `Changed here: ${changed.changed.join(', ')}. `,
       actionButton('Undo', () => { if (confirm(`Put ${p.ssid || p.name}'s settings back as they were?`)) netRequest({ action: 'connection', uuid: p.uuid, undo: true }, 'connection'); }, { disabled: busy })) : null,
@@ -3364,10 +3407,10 @@ function renderHandover(inv, busy) {
     for (const f of ho.files || []) {
       const names = f.connections.map((c) => c.name).join(', ');
       if (f.ok) {
-        rows.push(el('p', { className: 'setting-desc' },
-          `${names || 'Its connections'} come${f.connections.length === 1 ? 's' : ''} from netplan (${f.name}), which writes ${f.connections.length === 1 ? 'it' : 'them'} afresh at every boot: a setting made for one of them alone is lost then. `
-          + 'Handing them over makes them NetworkManager\'s own, with the same name, password and settings; the netplan file is kept, and undo puts it back. ',
-          actionButton('Hand over to NetworkManager', () => {
+        rows.push(el('p', { className: 'setting-desc', dataset: { change: `handover:${f.name}` } },
+          `${names || 'Your connection'}: netplan rewrites ${f.connections.length === 1 ? 'it' : 'them'} from its file ${f.name} at every boot, which undoes any change made here. `
+          + 'Hand it to NetworkManager to keep for good, with the same name, password and settings; netplan\'s file is kept aside, so it can be undone. ',
+          actionButton('Hand it to NetworkManager', () => {
             if (confirm(`Hand ${names || f.name} over to NetworkManager? ${f.name} is moved aside (kept), and NetworkManager keeps ${f.connections.length === 1 ? 'the connection' : 'them'} from now on. `
               + 'Nothing is disconnected; if NetworkManager\'s view of a connection changes in any way, everything is put back at once.'
               + (f.regdom ? ` The WiFi country it sets (${f.regdom}) is kept.` : ''))) netRequest({ action: 'handover', name: f.name }, 'handover');
@@ -3377,9 +3420,11 @@ function renderHandover(inv, busy) {
       }
     }
     for (const d of ho.done || []) {
-      rows.push(el('p', { className: 'setting-desc' },
-        `${d.name} handed over to NetworkManager on ${new Date(d.at * 1000).toLocaleDateString()}; kept in ${d.backup}. `,
-        actionButton('Put it back', () => {
+      const conns = (d.connections || []).map((c) => (c.keyfile || '').split('/').pop().replace(/\.nmconnection$/, '')).filter(Boolean).join(', ');
+      rows.push(el('p', { className: 'setting-desc', dataset: { change: `handover:${d.name}` } },
+        `${conns ? `Your connection ${conns} is` : 'Your connections are'} kept by NetworkManager itself since ${new Date(d.at * 1000).toLocaleDateString()}. `
+        + `Before, netplan rewrote ${conns ? 'it' : 'them'} from its file ${d.name} at every boot, undoing any change made here; that file is kept aside. `,
+        actionButton('Give it back to netplan', () => {
           if (confirm(`Put ${d.name} back? netplan makes its connections again, written afresh at every boot.`)) netRequest({ action: 'handover', name: d.name, undo: true }, 'handover');
         }, { disabled: busy })));
     }
@@ -3387,6 +3432,50 @@ function renderHandover(inv, busy) {
   const hn = netNotes.handover;
   if (hn) rows.push(el('p', { className: `setting-desc action-note${hn.ok ? '' : ' bad'}`, role: 'status', textContent: hn.text }));
   net.handover.replaceChildren(...rows);
+}
+
+// The changes made here are old news once set up: each can be hidden (a hub setting, the same on every
+// device), and one button shows the hidden ones again for a look.
+let changesHidden = null, changesShowAll = false;
+getJSON('/admin/settings').then((st) => { changesHidden = st.net_changes_hidden || []; applyChangesHidden(); }).catch(() => {});
+async function setChangesHidden(list) {
+  try { changesHidden = (await postJSON('/admin/settings', { net_changes_hidden: list })).net_changes_hidden; } catch (_) { /* kept as it was */ }
+  applyChangesHidden();
+}
+function applyChangesHidden() {
+  const sec = document.getElementById('net-changes');
+  if (!sec || changesHidden === null) return;
+  const rows = [...sec.querySelectorAll('[data-change]')];
+  let hiddenNow = 0;
+  for (const r of rows) {
+    const id = r.dataset.change, isHidden = changesHidden.includes(id);
+    r.hidden = isHidden && !changesShowAll;
+    hiddenNow += isHidden;
+    let b = r.querySelector(':scope > .change-hide');
+    if (!b) {
+      b = el('button', { type: 'button', className: 'link-button change-hide' });
+      r.append(' ', b);
+    }
+    b.textContent = isHidden ? 'Keep it shown' : 'Hide';
+    b.title = isHidden ? 'Show it here again from now on' : 'Hide it here: it stays as it is, one button away';
+    b.onclick = () => setChangesHidden(isHidden ? changesHidden.filter((x) => x !== id) : [...changesHidden, id]);
+  }
+  // A part whose every change is hidden goes too, box and all.
+  for (const id of ['net-handover', 'net-other-ap', 'net-wifisync']) {
+    const part = document.getElementById(id), own = part ? [...part.querySelectorAll('[data-change]')] : [];
+    if (part) part.hidden = own.length > 0 && own.every((r) => r.hidden);
+  }
+  let more = document.getElementById('net-changes-more');
+  if (!more) {
+    more = el('button', { type: 'button', className: 'action-btn small', id: 'net-changes-more' });
+    more.addEventListener('click', () => { changesShowAll = !changesShowAll; applyChangesHidden(); });
+    sec.append(more);
+  }
+  more.hidden = !hiddenNow;
+  more.textContent = changesShowAll ? 'Hide them again' : `Show the ${hiddenNow} hidden change${hiddenNow === 1 ? '' : 's'}`;
+  // All hidden and folded: the section's heading alone, with its button.
+  const lead = document.getElementById('net-changes-lead');
+  if (lead) lead.dataset.allHidden = String(hiddenNow === rows.length && !changesShowAll);
 }
 
 async function netRequest(body, where) {

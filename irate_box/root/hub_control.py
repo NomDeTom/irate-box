@@ -95,7 +95,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       mPWRD-OS's wifisync (it rfkills the WiFi radio while meshtasticd's WiFi setting is off): switched
       off or on (systemctl disable/enable --now), the state from before the first change kept for undo
       and uninstall.
-  {"id": ..., "action": "other-ap", "uuid": "...", "do": "remove"|"leave"|"undo"}
+  {"id": ..., "action": "other-ap", "uuid": "...", "do": "remove"|"leave"|"undo"|"forget"}
       A hotspot profile that is not irate-box's (root/otherap.py): removed (kept for undo), or left
       and no longer listed.
   {"id": ..., "action": "radio-test", "iface": "wlan0", "exp": "follows-roam"|"radio-reset"|"driver-reset"}
@@ -2892,8 +2892,8 @@ def wifisync(req):
 def other_ap(req):
     from irate_box.root import otherap
     do, uuid = req.get("do"), req.get("uuid")
-    if do not in ("remove", "leave", "undo"):
-        raise ValueError("do: remove, leave or undo")
+    if do not in ("remove", "leave", "undo", "forget"):
+        raise ValueError("do: remove, leave, undo or forget")
     try:
         return getattr(otherap, do)(uuid)
     finally:
