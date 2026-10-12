@@ -323,13 +323,16 @@ function renderApps(snap, busy) {
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
   };
-  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).map(([name, a]) => row(name, a, true)));
+  // Each app's row is on its own page; All apps keeps only one that has no page to hold it.
+  const paged = new Set([...document.querySelectorAll('.updates-block[data-app]')].map((b) => b.dataset.app));
+  document.getElementById('apps-list').replaceChildren(...Object.entries(apps).filter(([name]) => !paged.has(name)).map(([name, a]) => row(name, a, true)));
   // Each app's own page has its row too, its access being at the top of that page already.
   document.querySelectorAll('.updates-block[data-app]').forEach((b) => {
     const a = apps[b.dataset.app];
     b.replaceChildren(a ? row(b.dataset.app, a, false) : el('p', { className: 'setting-desc', textContent: 'The librarian has nothing on it yet.' }));
   });
   lastLibrary = snap;
+  renderInventory();
 }
 
 function renderLibrary(snap) {
@@ -4050,8 +4053,12 @@ function renderAccess(data) {
     if (a.kind === 'builtin') builtin.push(a);
   }
   fillAccessBlocks();
-  document.getElementById('builtin-list').replaceChildren(...builtin.map((a) => el('div', { className: 'setting library-source' },
+  const paged = new Set([...document.querySelectorAll('.access-block[data-app]')].map((b) => b.dataset.app));
+  const unpaged = builtin.filter((a) => !paged.has(a.id));
+  document.getElementById('builtin-list').replaceChildren(...unpaged.map((a) => el('div', { className: 'setting library-source' },
     el('span', {}, el('span', { className: 'setting-name', textContent: a.title }), accessSlot(a.id)))));
+  document.getElementById('builtin-more').hidden = !unpaged.length;
+  renderInventory();
   clearTimeout(accessPoll);
   if (accessWaiting) accessPoll = setTimeout(loadAccess, 1000);
 }
@@ -4119,6 +4126,7 @@ async function loadTileOrder() {
   try { tilesData = await getJSON('/admin/tiles'); } catch (e) { return; }
   tilesDraft = { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) } };
   drawTileOrder();
+  renderInventory();
 }
 const OPENS = { public: 'everyone', users: 'users', private: 'the admin', off: 'off' };
 function tileWords(id) {
@@ -4331,7 +4339,9 @@ function renderAddons(data) {
   const steps = p ? Math.max(p.steps, p.step, 1) : 0;
   const progressText = p ? `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}`
     + (p.label ? ` — ${p.label}` : '') + '.' : '';
-  ado.list.replaceChildren(...data.addons.map((a) => addonCard(a, busy, true, progressText)));
+  // Each add-on's card is on its own page; All apps keeps one only where no page holds it.
+  const paged = new Set([...document.querySelectorAll('.addon-block[data-addon]')].map((b) => b.dataset.addon));
+  ado.list.replaceChildren(...data.addons.filter((a) => !paged.has(a.id)).map((a) => addonCard(a, busy, true, progressText)));
   document.querySelectorAll('.addon-block').forEach((block) => {
     const addon = data.addons.find((a) => a.id === block.dataset.addon);
     block.replaceChildren(addon ? addonCard(addon, busy, false, progressText)
@@ -4343,6 +4353,7 @@ function renderAddons(data) {
     ado.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
     ado.step.textContent = progressText;
   }
+  renderInventory();
   ado.output.hidden = !(data.log.length && (busy || adoNote));
   ado.log.textContent = data.log.join('\n');
   ado.log.scrollTop = ado.log.scrollHeight;
@@ -4397,7 +4408,10 @@ function capsText(c) {
     + (c && c.storage ? " Keeps data in the visitor's browser." : '');
 }
 
+let lastLocal = null;
 function renderLocal(data) {
+  lastLocal = data;
+  renderInventory();
   loc.port.textContent = data.addon_port;
   const note = (id) => (locNote && locNote.id === id
     ? el('span', { className: `setting-desc action-note${locNote.ok ? '' : ' bad'}`, role: 'status', textContent: locNote.text }) : null);
@@ -5737,7 +5751,32 @@ async function loadFolders() {
 function fillFolderBlocks() {
   if (!folders) return;
   document.querySelectorAll('.folder-block[data-folder]').forEach((b) => drawFolder(b, b.dataset.folder));
+  drawFolderIndex();
 }
+// The Folders page: a line per folder, with how many entries it shows, leading to its own page.
+function drawFolderIndex() {
+  const list = document.getElementById('folder-index-list');
+  const apps = AL.apps();
+  if (!list || !apps) return;
+  const dirty = !!folders && JSON.stringify(folderNorm(folderDraft)) !== JSON.stringify(folderNorm(folders.state));
+  const rows = apps.filter((a) => a.folder).map((a) => {
+    const fol = folders && folders.folders.find((x) => x.id === a.id);
+    let count = '';
+    if (fol) {
+      const hrefs = new Set([...fol.entries.map((e) => e.href), ...((folderDraft[a.id] || {}).extra || [])]);
+      const n = [...hrefs].filter((h) => inFolder(a.id, h)).length;
+      count = `${n} ${n === 1 ? 'entry' : 'entries'} shown`;
+    }
+    return el('li', { className: 'inv-row' }, el('a', { className: 'inv-name', href: `#page-app-${a.id}` }, a.icon ? `${a.icon} ${a.name}` : a.name),
+      el('span', { className: 'inv-facts' }, count ? el('span', { className: 'inv-fact', textContent: count }) : null));
+  });
+  list.replaceChildren(...(rows.length ? rows : [el('li', { className: 'setting-desc', textContent: 'This hub has no folders.' })]));
+  const note = document.getElementById('folder-index-note') || el('p', { className: 'setting-desc action-note', id: 'folder-index-note', role: 'status' });
+  note.textContent = dirty ? 'Unsaved folder changes: Save or Discard them on any folder\'s page; one Save keeps the changes in every folder.' : '';
+  if (!note.isConnected) list.after(note);
+}
+AL.onBuild(drawFolderIndex);
+drawFolderIndex();  // the menu may have been built before this script ran
 AL.onBuild(fillFolderBlocks);
 // The arrangement without its empty parts, sorted by folder: what changed, and nothing else.
 const folderNorm = (s) => Object.fromEntries(Object.entries(s || {}).sort().map(([f, v]) => [f, Object.fromEntries(['hidden', 'order', 'extra'].filter((k) => (v[k] || []).length).map((k) => [k, v[k]]))]).filter(([, v]) => Object.keys(v).length));
@@ -6009,3 +6048,83 @@ if (sigEl.form) {
     } catch (err) { say(err.message, false, sigEl.note); }
   });
 }
+
+// ---- All apps: one line per app, from what the other loaders already hold (the manifests, access,
+// the librarian, the installer's add-ons, the web add-ons, the tiles). It edits nothing: each line
+// leads to the app's own page. What no loader has answered for yet is said as unknown.
+let invShow = 'all';
+const INV_KIND = { builtin: 'Built in', app: 'App bundle', addon: 'Installer add-on', local: 'Web add-on' };
+const INV_OPENS = { public: 'Opens: everyone', users: 'Opens: users', private: 'Opens: the admin', off: 'Off' };
+function inventoryRows() {
+  const manifests = AL.apps() || [];
+  const access = new Map(((lastAccess || {}).apps || []).map((a) => [a.id, a]));
+  const libApps = lastLibrary ? lastLibrary.apps || {} : null;
+  const addons = new Map(((lastAddons || {}).addons || []).map((a) => [a.id, a]));
+  const local = lastLocal;
+  const tileIds = tilesData ? new Set(tilesData.tiles.map((t) => t.id)) : null;
+  const pages = new Set(AL.pages().map((p) => p.id));
+  const rows = new Map();
+  const add = (id, name, kind) => { if (!rows.has(id)) rows.set(id, { id, name, kind, facts: [], attention: [] }); return rows.get(id); };
+  for (const m of manifests.filter((x) => !x.folder)) {
+    const a = access.get(m.id);
+    add(m.id, m.name, (a && a.kind) || (m.addon ? 'addon' : m.local ? 'local' : m.updates ? 'app' : 'builtin'));
+  }
+  for (const a of access.values()) add(a.id, a.title, a.kind);
+  for (const a of addons.values()) add(a.id, a.title, 'addon');
+  if (libApps) for (const [id, a] of Object.entries(libApps)) add(id, a.title, 'app');
+  const offered = local ? (local.catalogue || []).filter((c) => !c.added) : [];
+  for (const c of offered) add(c.id, c.title, 'local').offered = true;
+  for (const r of rows.values()) {
+    const a = access.get(r.id);
+    let state = 'unknown';
+    if (r.kind === 'builtin') state = 'builtin';
+    else if (r.offered) state = 'available';
+    else if (r.kind === 'addon') {
+      const x = addons.get(r.id);
+      if (x) state = x.added === null ? 'unknown' : x.added ? 'installed' : 'available';
+      if (x && x.added && x.active === false && !(a && a.mode === 'off')) r.attention.push('Not running');
+    } else if (r.kind === 'app' && libApps) {
+      const lib = libApps[r.id];
+      state = lib ? (lib.installed ? 'installed' : 'available') : 'unknown';
+      const st = (lastLibrary.status || {})[r.id] || {};
+      if (st.install_result && !st.install_result.ok) r.attention.push('Install failed');
+      if (st.error) r.attention.push('Update check failed');
+      const target = lib && lib.pin && ((st.follow || 'pinned') === 'pinned') ? st.pinned : st.latest;
+      if (target && st.current && target.version !== st.current.version) r.attention.push('Newer build known');
+    } else if (r.kind === 'local' && local) {
+      const x = (local.added || []).find((y) => y.id === r.id);
+      state = x ? (x.installed && x.installed.commit ? 'installed' : 'fetching') : 'unknown';
+      if (x && x.catalogue && x.catalogue.status === 'held') r.attention.push('New version waiting for consent');
+    }
+    r.state = state;
+    if (state !== 'builtin') r.facts.push({ installed: 'Installed', available: 'Not installed', fetching: 'Not installed yet', unknown: 'Installation unknown' }[state]);
+    if (a) r.facts.push(INV_OPENS[a.mode] || a.mode);
+    if (a && a.mode !== 'off' && tileIds) {
+      r.facts.push(!tileIds.has(r.id) ? 'No home tile' : a.visible && a.visible !== 'auto' ? `Tile: ${SEEN_LABEL[a.visible] || a.visible}` : 'Tile: as its access');
+    }
+    r.href = pages.has('page-app-' + r.id) ? '#page-app-' + r.id : r.kind === 'local' ? (r.offered ? '#local-catalogue' : '#local-added') : r.kind === 'addon' ? '#addons' : '#apps';
+  }
+  return [...rows.values()];
+}
+function renderInventory() {
+  const list = document.getElementById('inv-list');
+  if (!list || !AL.apps()) return;
+  const q = document.getElementById('inv-q').value.trim().toLowerCase();
+  const all = inventoryRows();
+  const want = (r) => invShow === 'all' || r.state === invShow || (invShow === 'available' && r.state === 'fetching');
+  const shown = all.filter((r) => want(r) && (!q || `${r.name} ${INV_KIND[r.kind]}`.toLowerCase().includes(q)));
+  list.replaceChildren(...shown.map((r) => el('li', { className: 'inv-row' },
+    el('a', { className: 'inv-name', href: r.href, textContent: r.name }),
+    el('span', { className: 'inv-kind', textContent: INV_KIND[r.kind] || r.kind }),
+    el('span', { className: 'inv-facts' }, ...r.facts.map((t) => el('span', { className: 'inv-fact', textContent: t })),
+      ...r.attention.map((t) => el('span', { className: 'inv-fact bad', textContent: t }))))));
+  document.getElementById('inv-note').textContent = shown.length ? `${shown.length} of ${all.length} shown.` : 'Nothing matches.';
+  document.querySelectorAll('[data-inv]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.inv === invShow);
+    b.setAttribute('aria-pressed', String(b.dataset.inv === invShow));
+  });
+}
+document.querySelectorAll('[data-inv]').forEach((b) => b.addEventListener('click', () => { invShow = b.dataset.inv; renderInventory(); }));
+document.getElementById('inv-q').addEventListener('input', renderInventory);
+AL.onBuild(renderInventory);
+renderInventory();  // the menu may have been built before this script ran

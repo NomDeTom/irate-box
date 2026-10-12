@@ -3,23 +3,29 @@
 // /admin's menu, built from one table. admin.html keeps every section as it was, each a <section class="admin-pane">
 // with its own id, so admin.js binds to them unchanged; this file gathers them into pages:
 //   Overview · Apps (a page per app, from /admin/apps: what each app's manifest says it owns)
-//   · Folders · Moderation · System · Doctors, the doctors last.
+//   · Hub layout (what visitors see: tiles, folders, status widgets, appearance) · Moderation · System
+//   · Doctors, the doctors last.
 // The address names a section (#books, #backup): the page holding it opens, scrolled to it, so
 // every old link and bookmark still lands. A section no page claims goes to "More" at the end
 // rather than vanish (the jsdom tests check none does).
 const AL = (() => {
   'use strict';
   // The box-wide groups. A page: its title, the sections it holds, its art if not the group's.
-  // The Apps and Folders groups also get a page per app from the manifests (apps: true).
+  // The Apps and Hub layout groups also get a page per app or folder from the manifests (apps).
+  // A group with `under` keeps those pages off the sidebar: they open from the page holding that
+  // section (the Folders index), whose link stands for them.
   const LAYOUT = [
     // flat: no group head to fold; the links stand at the top of the sidebar.
     { name: 'Overview', art: 'controller', flat: true, pages: [
       { title: 'Overview', sections: ['overview'] },
       { title: 'Setup steps', sections: ['welcome'], art: 'welcome-controller' }] },
     { name: 'Apps', art: 'librarian', apps: 'apps', pages: [
-      { title: 'All apps, in order', sections: ['tile-order', 'apps', 'addons'] }] },
-    { name: 'Folders', art: 'librarian', apps: 'folders', pages: [
-      { title: 'Status tiles', sections: ['status-tiles'], art: 'controller' }] },
+      { title: 'All apps', sections: ['app-inventory', 'apps', 'addons'] }] },
+    { name: 'Hub layout', art: 'librarian', apps: 'folders', under: 'folder-index', pages: [
+      { title: 'Home tiles', sections: ['tile-order'] },
+      { title: 'Folders', sections: ['folder-index'] },
+      { title: 'Status widgets', sections: ['status-tiles'], art: 'controller' },
+      { title: 'Appearance', sections: ['appearance'], art: 'controller' }] },
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'Everything people made', sections: ['made'] }] },
@@ -30,7 +36,6 @@ const AL = (() => {
       { title: 'The librarian', sections: ['sources'] },
       { title: 'Toolkits', sections: ['toolkits'], art: 'workbench' },
       { title: 'Clock', sections: ['clock'] },
-      { title: 'Appearance', sections: ['appearance'] },
       { title: 'Updates and backup', sections: ['updates', 'backup'] }] },
     { name: 'Doctors', art: 'doctor', pages: [
       { title: 'Box doctor', sections: ['health'] },
@@ -144,6 +149,7 @@ const AL = (() => {
 
   // The box-wide groups now; the apps' pages when /admin/apps answers (or without it, at worst).
   const slots = {};
+  let appList = null;  // /admin/apps, once it answers: the All apps list and the Folders index read it
   function build(apps) {
     list.replaceChildren();
     groups.clear();
@@ -205,13 +211,15 @@ const AL = (() => {
             a = { ...a, sections: [...a.sections, id] };
           }
           const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: a.sections, empty: false });
+          if (e && g.under) e.parent = fixed.find((p) => p.el.querySelector('#' + g.under)) || null;
           if (e) entries.push(e);
         }
       }
       if (g.apps === 'apps') slots.apps = entries;
       if (!entries.length) continue;
-      if (g.flat) list.append(el('div', { class: 'admin-side-links', role: 'group', 'aria-label': g.name }, entries.map((e) => e.link)));
-      else list.append(...group(g.name, entries.map((e) => e.link)));
+      const links = entries.filter((e) => !e.parent).map((e) => e.link);
+      if (g.flat) list.append(el('div', { class: 'admin-side-links', role: 'group', 'aria-label': g.name }, links));
+      else list.append(...group(g.name, links));
     }
     // Whatever no page claimed: kept on pages of its own so nothing is lost. Listed under "More" only once
     // the apps' list has come (or failed): before it, every app's section is unclaimed for a moment.
@@ -238,7 +246,8 @@ const AL = (() => {
     if (!pages.length) return;
     const { page: cur, target } = pageFor(location.hash);
     pages.forEach((p) => { p.el.hidden = p !== cur; });
-    pages.forEach((p) => { if (p === cur) p.link.setAttribute('aria-current', 'page'); else p.link.removeAttribute('aria-current'); });
+    // A page without a sidebar link of its own (a folder's) lights the link it opens from.
+    pages.forEach((p) => { if (p === cur || p === cur.parent) p.link.setAttribute('aria-current', 'page'); else p.link.removeAttribute('aria-current'); });
     main.dataset.art = cur.el.dataset.art || '';
     fold(cur.group);
     document.getElementById('admin-current').textContent = cur.title;
@@ -288,11 +297,12 @@ const AL = (() => {
   const ready = fetch('/admin/apps', { headers: { 'X-Irate-Admin': '1' } })
     .then((r) => (r.ok ? r.json() : null)).catch(() => null)
     .then((data) => {
-      build(data && Array.isArray(data.apps) ? data.apps : []);
+      appList = data && Array.isArray(data.apps) ? data.apps : [];
+      build(appList);
       show();
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
   return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (f) => onBadge.push(f),
-    titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built };
+    titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
 })();
 if (typeof window !== 'undefined') window.AL = AL;

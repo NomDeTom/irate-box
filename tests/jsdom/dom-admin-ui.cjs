@@ -118,11 +118,15 @@ setTimeout(() => {
   // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box), the Doctors last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Folders|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Hub layout|Moderation|System|Doctors', groups.join('|'));
   check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
-  check('sidebar: Clock and Appearance under System', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Appearance') > side.indexOf('System') && side.indexOf('Clock') < hi);
+  check('sidebar: Clock under System; Appearance under Hub layout, before Moderation', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Clock') < hi
+    && side.indexOf('Appearance') > side.indexOf('Hub layout') && side.indexOf('Appearance') < side.indexOf('Moderation'));
+  check('Hub layout: Home tiles, Folders, Status widgets, Appearance, and no folder of its own in the sidebar',
+    ['Home tiles', 'Folders', 'Status widgets', 'Appearance'].every((x, i, all) => side.indexOf(x) > (i ? side.indexOf(all[i - 1]) : side.indexOf('Hub layout')))
+    && !d.querySelector('.admin-side-list a[href="#page-app-tools-rf"]'));
   check('sidebar: a page per app that owns sections, in the hub\'s order', (() => { const at = (n) => side.findIndex((x) => x.endsWith(n)); return ['Kiwix', 'Git', 'Web flasher', 'Mesh', 'Firmware Factory'].every((a, i, all) => at(a) > side.indexOf('Apps') && at(a) < side.indexOf('Moderation') && (!i || at(a) > at(all[i - 1]))); })(), side.join('|'));
   const sections = [...d.querySelectorAll('.admin-pane')];
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
@@ -192,7 +196,8 @@ setTimeout(() => {
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
   check('  its own updates: the librarian\'s row, with Check and Update, without a second access switch', /Installed: abc1234/.test(t('#app-updates-draw')[0])
     && [...d.querySelectorAll('#app-updates-draw button')].some((b) => b.textContent === 'Install') && !d.querySelector('#app-updates-draw .access'));
-  check('  and the Apps list still has the row, with its access', /Installed: abc1234/.test(t('#apps-list')[0]) && !!d.querySelector('#apps-list .access'));
+  check('  and All apps has no second copy of it, only its line in the list', !/Installed: abc1234/.test(t('#apps-list')[0] || '')
+    && !!d.querySelector('#inv-list a[href="#page-app-draw"]'));
   check('the shoutbox\'s page ends with what was reported there', [...d.querySelectorAll('#page-app-shoutbox > .admin-pane')].pop().id === 'app-flagged-shoutbox');
   check('  the shoutbox\'s reported post on its page; none on the board\'s', d.querySelectorAll('#app-flagged-shoutbox .aw-row').length === 1
     && /buy cheap things/.test(t('#app-flagged-shoutbox')[0]) && /Nothing reported here/.test(t('#app-flagged-board')[0]), t('#app-flagged-shoutbox')[0]);
@@ -201,7 +206,25 @@ setTimeout(() => {
   // The Factory's building is inside the app, on its own page; /admin keeps its settings.
   check('the Factory in /admin: its tile setting and a link to its own page, no build form', !!d.querySelector('#factory #factory_tile')
     && d.querySelector('#factory-open').getAttribute('href') === '/admin/factory.html' && !d.getElementById('factory-form') && !d.getElementById('factory-runs'));
-  check('All apps starts with the tiles in order', [...d.querySelectorAll('#page-tile-order > .admin-pane')].map((x) => x.id).join(' ') === 'tile-order apps addons');
+  check('All apps: the list, then the sources and the installer', [...d.querySelectorAll('#page-app-inventory > .admin-pane')].map((x) => x.id).join(' ') === 'app-inventory apps addons');
+  check('Home tiles holds the tiles in order', [...d.querySelectorAll('#page-tile-order > .admin-pane')].map((x) => x.id).join(' ') === 'tile-order');
+  {
+    const lines = [...d.querySelectorAll('#inv-list .inv-row')];
+    const line = (name) => lines.find((r) => r.querySelector('.inv-name').textContent === name);
+    check('All apps: a line per app, folders left out', lines.length > 5 && !line('RF & LoRa') && !!line('File drop'), lines.map((r) => r.querySelector('.inv-name').textContent).join('|'));
+    check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Live collaboration (whiteboard)').textContent)
+      && line('Live collaboration (whiteboard)').querySelector('a').getAttribute('href') === '#page-app-room');
+    check('  an add-on whose state is unknown says so', /Installation unknown/.test(t('#inv-list')[0]));
+    d.querySelector('[data-inv="builtin"]').click();
+    const built = [...d.querySelectorAll('#inv-list .inv-row')];
+    check('  Built in shows only the hub\'s own parts', built.length && built.every((r) => /Built in/.test(r.textContent)), built.length);
+    d.querySelector('[data-inv="all"]').click();
+    const q = d.getElementById('inv-q');
+    q.value = 'kiwix'; q.dispatchEvent(new w.Event('input'));
+    check('  searching narrows the list', [...d.querySelectorAll('#inv-list .inv-name')].map((x) => x.textContent).join('|') === 'Kiwix');
+    q.value = ''; q.dispatchEvent(new w.Event('input'));
+  }
+  check('Folders: a line per folder, leading to its page', !!d.querySelector('#folder-index-list a[href="#page-app-tools-rf"]'));
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
   check('clock findings in the Clock pane, in the doctors\' one shape', t('#clock-findings .finding').length === 2 && t('#clock-findings .finding .ftitle')[0].includes('Clock'), t('#clock-findings .finding'));
   check('no clock findings in the services doctor', !t('#health-findings .finding .ftitle, #health-fine .finding .ftitle').some((x) => /Clock/.test(x)), t('#health-findings .finding .ftitle'));
@@ -210,13 +233,11 @@ setTimeout(() => {
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
-  const built = t('#builtin-list .setting-name');
-  check('built-in parts listed with the access block each', built.join('|') === 'File drop|Kiwix|Git' && d.querySelectorAll('#builtin-list .access-set').length === 3, built);
+  check('built-in parts with pages of their own are not listed a second time', d.getElementById('builtin-more').hidden && !t('#builtin-list .setting-name').length);
   const on = (id) => [...d.querySelectorAll(`#${id} [aria-checked="true"]`)].map((b) => b.textContent);
-  const notes = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Notes'));
-  check('the Notes add-on carries its block, set to off', notes && picked(notes, 'Who can open it') === 'off');
-  const term = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Terminal'));
-  check('Terminal public still says it asks for the login', term && term.textContent.includes('still asks for the admin login'));
+  check('the Notes add-on\'s page carries its access block, set to off', picked(d.getElementById('app-access-notes'), 'Who can open it') === 'off');
+  check('Terminal public still says it asks for the login', t('#app-access-term')[0].includes('still asks for the admin login'));
+  check('add-ons with pages of their own are not carded again on All apps', !d.querySelector('#addons-list .library-source'));
   const ircInstall = d.getElementById('app-install-irc');
   check('IRC has installation status, requirements and Add on its own page', ircInstall && ircInstall.closest('.admin-page').id === 'page-app-irc'
     && /Not added\./.test(ircInstall.textContent) && /Needs: ngircd/.test(ircInstall.textContent) && ircInstall.querySelector('button').textContent === 'Add');
@@ -233,7 +254,7 @@ setTimeout(() => {
     && !posted.some((post) => post[0] === '/admin/addons'));
   w.renderAddons({ ...addons, pending: 1, progress: { action: 'addon', steps: 3, step: 2, label: 'Installing packages' } });
   check('installer busy disables both app and central controls and shows progress on the app page', d.querySelector('#app-install-irc button').disabled
-    && [...d.querySelectorAll('#addons-list .library-buttons > button')].every((button) => button.disabled)
+    && /step 2 of 3/.test(t('#addons-step')[0])
     && /step 2 of 3/.test(t('#app-install-irc')[0]) && d.querySelector('#app-install-irc a[href="#addons"]'));
   w.renderAddons(addons);
   w.confirm = () => true;
@@ -401,7 +422,7 @@ setTimeout(() => {
   mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   force.click();
-  const drop = [...d.querySelectorAll('#builtin-list .library-source')][0];
+  const drop = d.getElementById('app-access-drop');
   {
     // The tile's own icon: emoji, or up to four letters and digits.
     const field = rowOf(d.getElementById('app-access-about'), 'Tile icon');
@@ -421,7 +442,7 @@ setTimeout(() => {
     save().click();
   }
   chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
-  [...[...d.querySelectorAll('#builtin-list .library-source')][0].querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
+  [...d.getElementById('app-access-drop').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   d.querySelector('#app-install-irc button').click();
   check('Add on the IRC page sends the existing installer request', posted.some((post) => post[0] === '/admin/addons'
     && post[1].addon === 'irc' && post[1].on === true));
@@ -462,8 +483,9 @@ setTimeout(() => {
     const installedAddons = { ...addons, addons: addons.addons.map((addon) => addon.id === 'irc' ? { ...addon, added: true, active: true } : addon),
       results: [{ id: 'x', ok: true, message: 'IRC installed.' }] };
     w.renderAddons(installedAddons);
-    check('installation completion updates both views with Remove and the result', /Added, and running/.test(t('#app-install-irc')[0])
-      && /IRC installed\./.test(t('#app-install-irc')[0]) && /IRC installed\./.test(t('#addons-list')[0])
+    const ircLine = [...d.querySelectorAll('#inv-list .inv-row')].find((r) => r.querySelector('a[href="#page-app-irc"]'));
+    check('installation completion updates the page and All apps\' line with Remove and the result', /Added, and running/.test(t('#app-install-irc')[0])
+      && /IRC installed\./.test(t('#app-install-irc')[0]) && ircLine && /Installed/.test(ircLine.textContent)
       && d.querySelector('#app-install-irc button').textContent === 'Remove' && !d.querySelector('#app-install-irc button').disabled);
     w.renderAddons(installedAddons);
     check('status refresh retains installation controls without duplicate sections', d.querySelectorAll('#app-install-irc').length === 1
