@@ -3079,6 +3079,7 @@ function renderNetwork(data) {
   renderHandover(inv, busy);
   renderVisible(inv, busy);
   renderOtherAp(inv, data, busy);
+  renderWifisync(inv, data, busy);
   const change = u && u.profile_change;
   const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
@@ -3102,7 +3103,7 @@ function renderNetwork(data) {
   } else {
     net.profile.replaceChildren();
   }
-  document.getElementById('net-changes').hidden = !['up-profile', 'net-handover', 'net-other-ap'].some((id) => document.getElementById(id).childElementCount);
+  document.getElementById('net-changes').hidden = !['up-profile', 'net-handover', 'net-other-ap', 'net-wifisync'].some((id) => document.getElementById(id).childElementCount);
   const evs = (u && u.events) || [];
   // One line per event: when, then what.
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
@@ -3197,6 +3198,27 @@ net.defaultsSave.addEventListener('click', () => {
   defaultsDirty = {};
   netRequest({ action: 'defaults', changes, ...(defaultsScope ? { iface: defaultsScope } : {}) }, 'defaults');
 });
+
+// mPWRD-OS's wifisync, which switches the WiFi radio off while meshtasticd's WiFi setting is off: a switch, with
+// undo back to how the image had it. Shown only where it is installed.
+function renderWifisync(inv, data, busy) {
+  const box = document.getElementById('net-wifisync');
+  const h = inv && (inv.hazards || []).find((x) => x.id === 'wifisync');
+  const rec = data.wifisync || {};
+  if (!h) { box.replaceChildren(); return; }
+  const on = h.status !== 'ok';
+  const rows = [el('p', { className: 'setting-desc' },
+    `mPWRD-OS's wifisync is ${on ? 'on' : 'off'}: ${on ? 'it switches the WiFi radio off whenever meshtasticd\'s WiFi setting is off, '
+      + 'which takes the box off its network and its hotspot down' : 'it leaves the WiFi radio alone'}. `,
+    actionButton(on ? 'Switch it off' : 'Switch it on', () => netRequest({ action: 'wifisync', do: on ? 'off' : 'on' }, 'wifisync'),
+      { className: 'small', disabled: busy }),
+    rec.was ? ' ' : null,
+    rec.was ? actionButton(`Undo: ${rec.was === 'enabled' ? 'on' : 'off'}, as the image had it`, () => netRequest({ action: 'wifisync', do: 'undo' }, 'wifisync'),
+      { className: 'small', disabled: busy }) : null)];
+  const n = netNotes.wifisync;
+  if (n) rows.push(el('p', { className: `setting-desc action-note${n.ok ? '' : ' bad'}`, role: 'status', textContent: n.text }));
+  box.replaceChildren(...rows);
+}
 
 // Hotspot profiles that are not irate-box's (an image's setup hotspot): removed (kept for undo), or left
 // and no longer listed. Started, one would take the box off its own network.

@@ -2069,6 +2069,7 @@ def network_snapshot():
             "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
             "metered": _metered_view(),
             "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
+            "wifisync": load(CONTROL_DIR / "wifisync.json") or {},   # mPWRD-OS's wifisync: as the image had it, if changed here
             "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
                        "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
                        "retry": uplink.RETRY, "give_up": uplink.GIVE_UP,
@@ -4266,6 +4267,8 @@ class Handler(BaseHTTPRequestHandler):
             elif act == "radiotest" and payload.get("exp") in ("follows-roam", "radio-reset", "driver-reset") \
                     and IFACE_NAME_RE.match(str(payload.get("iface") or "")):
                 self.send_json(202, {"id": control_request({"action": "radio-test", "iface": payload["iface"], "exp": payload["exp"]})})
+            elif act == "wifisync" and payload.get("do") in ("off", "on", "undo"):
+                self.send_json(202, {"id": control_request({"action": "wifisync", "do": payload["do"]})})
             elif act == "otherap" and isinstance(payload.get("uuid"), str) and payload.get("do") in ("remove", "leave", "undo") \
                     and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]):
                 self.send_json(202, {"id": control_request({"action": "other-ap", "uuid": payload["uuid"], "do": payload["do"]})})
