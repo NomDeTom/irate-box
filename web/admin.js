@@ -5395,6 +5395,46 @@ function accentWarning(hex) {
   return '⚠ Hard to read: ' + short.map(([t, r]) => `${r.toFixed(1)}:1 on the ${t} theme`).join(', ')
     + '. The accessibility guidelines (WCAG AA) ask for 4.5:1 for text' + (short.some(([, r]) => r < 3) ? ', and 3:1 even for buttons.' : '.');
 }
+// The favicon: the browser tab's icon on every page, a PNG or .ico file the owner uploads.
+// It acts at once (an upload, not a setting held for Save); Remove goes back to the browser's own.
+function faviconRow() {
+  const img = el('img', { className: 'favicon-preview', alt: 'The favicon now', width: 32, height: 32 });
+  const note = el('small', { className: 'setting-desc', role: 'status' });
+  const remove = el('button', { type: 'button', className: 'action-btn', textContent: 'Remove' });
+  const file = el('input', { type: 'file', accept: 'image/png,image/x-icon,.ico,.png' });
+  file.setAttribute('aria-label', 'Upload a favicon');
+  const show = () => {
+    img.hidden = true;
+    img.onload = () => { img.hidden = false; remove.disabled = false; note.textContent = ''; };
+    img.onerror = () => { remove.disabled = true; note.textContent = 'None set: browsers show their own.'; };
+    img.src = '/favicon.ico?' + Date.now();
+  };
+  const refreshTab = () => {
+    let link = document.querySelector('link[rel="icon"]');
+    if (!link) { link = el('link', { rel: 'icon' }); document.head.append(link); }
+    link.href = '/favicon.ico?' + Date.now();
+  };
+  file.addEventListener('change', async () => {
+    const f = file.files[0];
+    file.value = '';
+    if (!f) return;
+    if (f.size > 64 * 1024) { note.textContent = 'At most 64 KB: a small square PNG (32 or 64 px) is plenty.'; return; }
+    const data = await new Promise((ok, fail) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result).split(',')[1] || '');
+      r.onerror = fail;
+      r.readAsDataURL(f);
+    });
+    try { await postJSON('/admin/favicon', { data }); show(); refreshTab(); } catch (e) { note.textContent = e.message; }
+  });
+  remove.addEventListener('click', async () => {
+    try { await postJSON('/admin/favicon', { remove: true }); show(); refreshTab(); } catch (e) { note.textContent = e.message; }
+  });
+  show();
+  return el('div', { className: 'aw-field favicon-row' }, el('span', { className: 'aw-label', textContent: 'Favicon' }),
+    el('span', { className: 'aw-colour' }, img, file, remove), note,
+    el('small', { className: 'setting-desc', textContent: 'the browser tab\'s icon on every page: a PNG or .ico file, up to 64 KB; it changes at once' }));
+}
 // The page's own /layout.css again, so a saved colour shows here at once.
 function reloadLayoutCss() {
   const link = document.querySelector('link[href^="/layout.css"]');
@@ -5419,7 +5459,7 @@ async function loadAppearance() {
     return now;
   } });
   const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map(widthOption) });
-  box.replaceChildren(el('h3', { textContent: 'The hub' }), hub, el('h3', { textContent: 'Widths' }), AW.settings([
+  box.replaceChildren(el('h3', { textContent: 'The hub' }), hub, faviconRow(), el('h3', { textContent: 'Widths' }), AW.settings([
     row('page_width', 'Hub', 'the tiles, the menu and its pages'),
     row('admin_width', 'Admin', 'these pages'),
     row('shout_width', 'Shoutbox', 'its tab on the hub page'),

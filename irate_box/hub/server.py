@@ -6,6 +6,8 @@
 Serves web/ itself so a bare `./irate-box server` works; behind the web server
 (nginx, or Caddy) the assets come off disk and only `/` and the API reach this process."""
 
+import base64
+import binascii
 import io
 import ipaddress
 import json
@@ -862,6 +864,15 @@ def note_client(handler):
 # The gate is the web server's basic auth on /admin/*, the same treatment /term/ gets -- run
 # the hub bare, with no web server in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
+# The owner's favicon (Appearance), served at /favicon.ico: a PNG or an icon file, by its first
+# bytes. Not SVG: one served from the hub's own origin could carry script.
+FAVICON_FILE = STATE_DIR / "favicon"
+FAVICON_MAX = 64 * 1024
+FAVICON_KINDS = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\x00\x00\x01\x00", "image/x-icon"))
+
+
+def favicon_kind(data):
+    return next((t for magic, t in FAVICON_KINDS if data.startswith(magic)), None)
 DEFAULT_SETTINGS = {
     # The saved-work store (store.py): its size cap, and how long a gallery save lives
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
@@ -3500,6 +3511,24 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/favicon.ico":
+            try:
+                body = FAVICON_FILE.read_bytes()
+            except OSError:
+                body = b""
+            kind = favicon_kind(body)
+            if not kind:
+                self.send_empty(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", len(body))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/layout.css":
             # The owner's page widths for every page: public, tiny, read after style.css.
             # No file of that name in web/, so both web servers hand it to the hub.
@@ -3739,6 +3768,24 @@ class Handler(BaseHTTPRequestHandler):
                 if current["visitor_counts"] != was_counting or not VISITORS_WANT.exists():
                     write_visitors_want(current["visitor_counts"])
             self.send_json(200, current)
+            return
+
+        if path == "/admin/favicon":
+            if payload.get("remove") is True:
+                FAVICON_FILE.unlink(missing_ok=True)
+                self.send_json(200, {"favicon": False})
+                return
+            try:
+                data = base64.b64decode(payload.get("data") or "", validate=True)
+            except (binascii.Error, TypeError, ValueError):
+                data = b""
+            if not data or len(data) > FAVICON_MAX or not favicon_kind(data):
+                self.send_json(400, {"error": f"a PNG or .ico file of at most {FAVICON_MAX >> 10} KB"})
+                return
+            tmp = FAVICON_FILE.with_name(FAVICON_FILE.name + ".tmp")
+            tmp.write_bytes(data)
+            os.replace(tmp, FAVICON_FILE)
+            self.send_json(200, {"favicon": True})
             return
 
         if path == "/admin/tailscale":

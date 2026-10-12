@@ -1606,3 +1606,10 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .up-steps { display: grid; gap: 0.4rem; margin: 0.3rem 0 0.8rem; }
 .up-steps-row { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; margin: 0; padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; }
 .up-steps-row legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--muted); }
+
+/* Appearance: a colour with its "theme's own" button and its warning; the favicon's preview and upload. */
+.aw-colour { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.aw-colour input[type="color"] { width: 3rem; height: 2rem; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }
+.aw-colour .aw-warn { flex-basis: 100%; color: var(--bad); }
+.aw-colour .aw-warn:empty { display: none; }
+.favicon-preview { image-rendering: pixelated; border: 1px solid var(--border); border-radius: 4px; }

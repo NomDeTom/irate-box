@@ -24,7 +24,7 @@ try:
     def go(method, path, headers=None, body=None):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         c.request(method, path, body=body, headers={"Host": f"127.0.0.1:{port}", **(headers or {})})
-        r = c.getresponse(); return r.status, r.getheader("Content-Type") or "", r.read().decode()
+        r = c.getresponse(); return r.status, r.getheader("Content-Type") or "", r.read().decode("utf-8", "replace")
     page = {"X-Irate-Front": SECRET, "X-Irate-Admin": "1", "Content-Type": "application/json",
             "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
     st, ctype, css = go("GET", "/layout.css")
@@ -75,6 +75,23 @@ try:
     go("POST", "/admin/settings", page, json.dumps({"accent": "#1a237e"}).encode())
     _, _, css = go("GET", "/layout.css")
     check("  white ink on a dark accent", "--accent-ink: #fff;" in css, css)
+    # The favicon: none until uploaded; a PNG or an icon file by its first bytes; not SVG; removed again.
+    import base64
+    st, _, _ = go("GET", "/favicon.ico")
+    check("no favicon at first: 404", st == 404, st)
+    png = b"\x89PNG\r\n\x1a\n" + b"\0" * 40
+    st, _, _ = go("POST", "/admin/favicon", page, json.dumps({"data": base64.b64encode(png).decode()}).encode())
+    st2, ctype, _ = go("GET", "/favicon.ico")
+    check("  a PNG uploaded: served as one, to anyone", st == 200 and st2 == 200 and ctype == "image/png", (st, st2, ctype))
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    bad = [go("POST", "/admin/favicon", page, json.dumps({"data": d}).encode())[0]
+           for d in (base64.b64encode(svg).decode(), "not base64!", base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * 70000).decode())]
+    _, ctype, _ = go("GET", "/favicon.ico")
+    check("  an SVG, a broken upload, one too big: refused, the PNG kept", bad == [400, 400, 400] and ctype == "image/png", (bad, ctype))
+    st = go("POST", "/admin/favicon", {**page, "Origin": "http://evil.example"}, json.dumps({"remove": True}).encode())[0]
+    check("  another site can't remove it", st == 403 and go("GET", "/favicon.ico")[0] == 200, st)
+    go("POST", "/admin/favicon", page, json.dumps({"remove": True}).encode())
+    check("  removed: 404 again", go("GET", "/favicon.ico")[0] == 404)
 finally:
     hub.terminate()
 # A box that chose a width before the admin pages had their own keeps it for both, until set apart.
