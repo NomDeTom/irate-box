@@ -5489,8 +5489,8 @@ if (paneShown('mesh')) loadMesh();
 // ---- Appearance: the page widths, for everyone, read by every page from
 // /layout.css. A choice shows on this page at once; Save keeps it.
 const WIDTHS = [45, 60, 80, 90, 100];
-// A width in rem, and in pixels at the browsers' default text size (16 px a rem).
-const widthOption = (w) => [w, `${w}rem (about ${w * 16} px)`];
+// A width as pixels, at the browsers' default text size (16 px a rem); stored in rem.
+const widthOption = (w) => [w, `${w * 16} px`];
 let appearanceSettings = null;
 // The accent is drawn as text on the themes' backgrounds: WCAG asks 4.5:1 for text, 3:1 for
 // buttons and other large marks. Says which theme falls short, or '' when both are fine.
