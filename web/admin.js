@@ -17,6 +17,43 @@ const badge = AL.badge;
 // Is this section on the page that's showing? (The loaders that wait to be seen.)
 const paneShown = AL.shown;
 
+// Each pane's data is asked for when the page opens; on a small board two dozen answers at once are slow,
+// the shown pane's among them. So GETs go out a few at a time, the shown pane's first, then those no pane
+// owns (the page's own settings), then the rest; the others go straight out. PANE_OF: an address's panes.
+const PANE_OF = {
+  '/admin/network': ['network'], '/admin/hotspot': ['network'], '/admin/health': ['health', 'clock'],
+  '/admin/update': ['updates', 'updoctor'], '/admin/packages': ['updates'], '/admin/security': ['security', 'secdoctor'],
+  '/admin/tls': ['security'], '/admin/library': ['books', 'sources'], '/admin/books': ['books'], '/admin/moderation': ['moderation',
+    'shoutbox-mod', 'board-mod', 'drop-mod'], '/admin/store': ['saved', 'made'], '/admin/kit': ['backup'], '/admin/backup/plan': ['backup'],
+  '/admin/kits': ['toolkits'], '/admin/tiles': ['tile-order'], '/admin/access': ['apps'], '/admin/addons': ['addons'],
+  '/admin/local-addons': ['addons'], '/admin/usb': ['books', 'toolkits', 'backup'], '/admin/git': ['git'], '/admin/ci': ['git'],
+  '/admin/firmware': ['firmware', 'factory'], '/admin/folders': ['mirrors'], '/admin/status-tiles': ['status-tiles'],
+  '/admin/tailscale': ['access'], '/admin/mesh': ['mesh'], '/admin/accounts': ['accounts'] };
+const GETS_AT_ONCE = 3;
+(() => {
+  const send = window.fetch.bind(window);
+  const queue = [];
+  let out = 0;
+  const rank = (url) => {
+    const panes = PANE_OF[String(url).split('?')[0]];
+    return !panes ? 1 : panes.some((p) => document.getElementById(p) && paneShown(p)) ? 0 : 2;
+  };
+  const next = () => {
+    while (out < GETS_AT_ONCE && queue.length) {
+      queue.sort((a, b) => rank(a.url) - rank(b.url) || a.n - b.n);   // ranked as they leave: the pane shown then
+      const job = queue.shift();
+      out += 1;
+      send(job.url, job.opts).then(job.resolve, job.reject).finally(() => { out -= 1; next(); });
+    }
+  };
+  let n = 0;
+  window.fetch = (url, opts = {}) => {
+    if ((opts.method || 'GET').toUpperCase() !== 'GET' || !String(url).startsWith('/admin/')) return send(url, opts);
+    // Sent after the script that asked has run on: the page's opening burst is all queued, and ranked, first.
+    return new Promise((resolve, reject) => { queue.push({ url, opts, resolve, reject, n: n++ }); queueMicrotask(next); });
+  };
+})();
+
 // Every answer goes in the note right under the control that asked for it.
 const noteEl = (id) => document.getElementById(id);
 function say(text, ok, at) {
