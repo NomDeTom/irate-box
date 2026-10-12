@@ -401,7 +401,8 @@ def admin_apps(manifests):
                     "sections": list(adm.get("sections", [])), "folder": bool(menu),
                     "art": (menu or {}).get("art"), "local": bool(m.get("local")),
                     "page": bool(adm.get("page")), "width": adm.get("width"), "updates": bool(m.get("source")),
-                    "addon": bool((m.get("addon") or {}).get("option"))})
+                    "addon": bool((m.get("addon") or {}).get("option")),
+                    "href": tile.get("href") or (m.get("status") or {}).get("path")})
     return out
 
 

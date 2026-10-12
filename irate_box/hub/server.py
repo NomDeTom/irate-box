@@ -191,7 +191,7 @@ def _service_entry(status):
 
 
 def _services():
-    return [_service_entry(m["status"]) for m in MANIFESTS if "status" in m] + [
+    return [dict(_service_entry(m["status"]), app=m["id"]) for m in MANIFESTS if "status" in m] + [
         {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
          "active": True, "note": "switched on and off from /admin"},
         {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},

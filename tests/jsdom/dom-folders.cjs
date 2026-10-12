@@ -47,10 +47,12 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
   const save = () => button(block(), 'Save');
   check('Save waits for a change', save().disabled);
   click(row('Airtime').querySelector('.aw-row-head'));
-  click(button(row('Airtime'), 'Shown: On'));
+  click(button(row('Airtime'), 'Shown in this folder: On'));
   check('hiding an entry: marked hidden, Save offered', /hidden/i.test(t(row('Airtime').querySelector('.p'))) && !save().disabled);
   check('  its line stays open after the change', row('Airtime').querySelector('.aw-row-head').getAttribute('aria-expanded') === 'true');
   click(button(row('Airtime'), 'Electronics'));
+  const foot = () => t(block().querySelector('.aw-foot .note'));
+  check('the Save note names every folder a Save changes', /Save keeps the changes in RF & LoRa, Electronics/.test(foot()), foot());
   click(button(row('Airtime'), '↓ Later'));
   check('moved: the order changes', [...block().querySelectorAll('.aw-row .t')].map(t).join('|') === 'Frame|Airtime|Serial download', [...block().querySelectorAll('.aw-row .t')].map(t).join('|'));
   click(save());
@@ -61,7 +63,7 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
     && st['tools-rf'].order[0] === '/app.html#/tools/frame.html', JSON.stringify(st));
   check('  and Save waits again', save().disabled);
   click(row('Frame').querySelector('.aw-row-head'));
-  click(button(row('Frame'), 'Shown: On'));
+  click(button(row('Frame'), 'Shown in this folder: On'));
   click(button(block(), 'Discard'));
   check('Discard puts back what was saved', !/hidden/i.test(t(row('Frame').querySelector('.p'))) && save().disabled);
   check('no page errors', !errors.length, errors.join('; '));
