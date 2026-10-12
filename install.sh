@@ -1989,7 +1989,9 @@ fi
 # No credential of its own (ttyd's was the admin password, on its command line, readable
 # in /proc by every process for as long as it ran). It listens on a socket only the web
 # server's group can open, so the web server's admin login is the gate, and a stray start is
-# not a root shell on loopback. The terminal itself is /bin/login: a real account is needed.
+# not a root shell on loopback. The terminal itself is /bin/login: a real account is needed. login
+# runs inside a terminal of its own (script): Debian 13's login (util-linux) hangs up the terminal
+# it is given as it starts, and under ttyd that left a blank page that took no input.
 rm -f "$ETC/ttyd.env"
 if [ "$WEB" = nginx ]; then term_group="$ngx_group"; else term_group="$(id -gn caddy 2>/dev/null || echo root)"; fi
 cat >/etc/systemd/system/ttyd.service <<EOF
@@ -1998,7 +2000,7 @@ Description=ttyd terminal for Irate-Box (/term/), off unless install.sh --with-t
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/ttyd --interface $TTYD_SOCKET --base-path /term --check-origin --writable /bin/login
+ExecStart=/usr/local/bin/ttyd --interface $TTYD_SOCKET --base-path /term --check-origin --writable -- /usr/bin/script -qfc /bin/login /dev/null
 # As root (+): the socket to the web server's group, once ttyd has made it.
 ExecStartPost=+/bin/sh -c 'until [ -S $TTYD_SOCKET ]; do sleep 0.1; done; chgrp $term_group $TTYD_SOCKET && chmod 660 $TTYD_SOCKET'
 RuntimeDirectory=ttyd
