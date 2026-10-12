@@ -1629,3 +1629,6 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .hub-notice { max-width: var(--page-width, 80rem); margin: 0 auto 1rem; padding: 0.6rem 1rem; border-radius: 8px;
   border: 1px solid var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 600; text-align: center; }
 .hub-keeper { max-width: var(--page-width, 80rem); margin: 2rem auto 1rem; color: var(--muted); font-size: 0.9rem; text-align: center; }
+/* About: its sections' headings stand out above the names in its lists (the shared h2 is small and muted). */
+body.about section > h2 { font-size: 1.3rem; font-weight: 700; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 0.75rem; }
+body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--text); }
