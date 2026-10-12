@@ -1,0 +1,20 @@
+{
+  "id": "freeocd",
+  "order": 56,
+  "status": {
+    "path": "/flasher/freeocd/",
+    "name": "FreeOCD (ARM flasher)",
+    "root_env": "HUB_FREEOCD_ROOT"
+  },
+  "entries": [
+    {
+      "menus": {
+        "flashing": 2
+      },
+      "name": "FreeOCD: flash, verify and recover ARM chips through a debug probe",
+      "desc": "In Chrome or Edge on a computer, over this box's HTTPS address, with a CMSIS-DAP probe plugged in. Nordic's nRF54L15 so far",
+      "href": "/flasher/freeocd/"
+    }
+  ],
+  "admin": {"title": "FreeOCD", "icon": "🔧"}
+}

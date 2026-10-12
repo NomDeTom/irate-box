@@ -32,12 +32,16 @@
     {
       "menus": {
         "tools-rf": 1,
-        "meshtastic": 1
+        "meshtastic": 1,
+        "flashing": 4
       },
       "name": "Serial terminal, as a download (for live USB)",
       "desc": "One file: save it, then open it from your downloads in Chrome or Edge, where live USB serial works. Its SHA-256 is beside it on the box",
       "href": "/serial/serial-terminal.html"
     }
   ],
-  "admin": {"title": "Serial terminal", "icon": "🔌"}
+  "admin": {
+    "title": "Serial terminal",
+    "icon": "🔌"
+  }
 }
