@@ -50,6 +50,12 @@ said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", 
 check("the doctor warns of ttyd on a TCP port", any(s == "warn" and "TCP" in m for s, m, _ in said), said)
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "/bin/login"]))
 check("and not of ttyd on its socket", said == [], said)
+unit_argv = ["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/script", "-qfc", "/bin/login", "/dev/null"]
+said = secdoctor.probe_ttyd({}, {}, show(unit_argv))
+check("  nor of login given a terminal of its own (script -c /bin/login, as install.sh writes it)", said == [], said)
+said = secdoctor.probe_ttyd({}, {}, show(unit_argv[:-2] + ["/bin/bash", "/dev/null"]))
+check("  but script around a bare shell is still a bare shell", any(s == "problem" and "bare shell (/bin/bash)" in m for s, m, _ in said), said)
+check("install.sh's unit runs login that way", "--writable -- /usr/bin/script -qfc /bin/login /dev/null" in (REPO / "install.sh").read_text())
 
 # kiwix-manage
 ran = []

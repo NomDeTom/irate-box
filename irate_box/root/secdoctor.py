@@ -1184,11 +1184,24 @@ def probe_kiwix(ctx, a, show):
     return [] if "--blockexternal" in _argv_of(show) else [("warn", "no --blockexternal: book pages may load content from other sites", "add --blockexternal")]
 
 
+def _ttyd_runs(argv):
+    """What ttyd runs in its terminal: the words after "--" (or the last word), looking through script(1)'s
+    -c, which gives the command a terminal of its own."""
+    cmd = argv[argv.index("--") + 1:] if "--" in argv else argv[-1:]
+    if cmd and os.path.basename(cmd[0]) == "script":
+        for i, w in enumerate(cmd[1:], 1):
+            if w.startswith("-") and not w.startswith("--") and "c" in w[1:] and i + 1 < len(cmd):
+                return cmd[i + 1].split()[0]
+            if w.startswith("--command="):
+                return w.split("=", 1)[1].split()[0]
+    return cmd[0] if cmd else ""
+
+
 def probe_ttyd(ctx, a, show):
     argv = _argv_of(show)
     out = []
-    if argv and os.path.basename(argv[-1]) in ("sh", "bash", "zsh", "dash", "ash"):
-        out.append(("problem", f"it runs a bare shell ({argv[-1]}), so the login is the only barrier to a shell as "
+    if argv and os.path.basename(_ttyd_runs(argv)) in ("sh", "bash", "zsh", "dash", "ash"):
+        out.append(("problem", f"it runs a bare shell ({_ttyd_runs(argv)}), so the login is the only barrier to a shell as "
                     f"{show.get('User') or 'root'}", "run /bin/login, which asks for a real account"))
     if "--interface" not in argv and "-i" not in argv:
         out.append(("problem", "no --interface: ttyd listens on every interface", "--interface /run/ttyd/ttyd.sock"))
