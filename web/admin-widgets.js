@@ -256,7 +256,8 @@ const AW = (() => {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openStack.length) closeCard(openStack[openStack.length - 1]); });
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts ----
-  //   rows: [{key, label, kind: 'toggle'|'choice'|'button'|'readout'|'text', value, options, note, onclick, decision}]
+  //   rows: [{key, label, kind: 'toggle'|'choice'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
+  //           max (text), unset, shown, warn (colour)}]
   //   opts: {save(values) → Promise|void}: changed values are held until Save; Discard puts them back.
   function settings(rows, opts = {}) {
     const values = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r.value]));
@@ -283,7 +284,19 @@ const AW = (() => {
               c.classList.toggle('selected', c === e.currentTarget); c.setAttribute('aria-pressed', String(c === e.currentTarget)); }); sync(); } }, t);
         }));
       } else if (r.kind === 'button') ctl = btn(r.text || r.label, { onclick: r.onclick });
-      else if (r.kind === 'text') ctl = h('input', { type: 'text', value: draft[r.key] ?? '', 'aria-label': r.label, oninput: (e) => { draft[r.key] = e.target.value; sync(); } });
+      else if (r.kind === 'text') ctl = h('input', { type: 'text', value: draft[r.key] ?? '', maxlength: r.max || null, 'aria-label': r.label, oninput: (e) => { draft[r.key] = e.target.value; sync(); } });
+      else if (r.kind === 'colour') {
+        // A colour, or '' for the theme's own (r.unset names it); r.warn(value) says what's wrong with one, live.
+        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status' });
+        const pick = h('input', { type: 'color', value: draft[r.key] || r.shown || '#000000', 'aria-label': r.label });
+        const own = btn(r.unset || 'Default', { 'aria-pressed': String(!draft[r.key]) });
+        const show = () => { own.setAttribute('aria-pressed', String(!draft[r.key])); own.classList.toggle('active', !draft[r.key]);
+          warn.textContent = (draft[r.key] && r.warn && r.warn(draft[r.key])) || ''; };
+        pick.addEventListener('input', () => { draft[r.key] = pick.value.toLowerCase(); show(); sync(); });
+        own.addEventListener('click', () => { draft[r.key] = ''; show(); sync(); });
+        ctl = h('span', { class: 'aw-colour' }, pick, own, warn);
+        show();
+      }
       else ctl = h('span', { class: 'output-value', text: r.value ?? '' });
       return h('div', { class: 'aw-field', 'data-setting': r.key || null, 'data-decision-row': r.decision || null },
         h('span', { class: 'aw-label', text: r.label }), ctl,

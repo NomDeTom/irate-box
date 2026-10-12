@@ -741,6 +741,10 @@ def home_page(signed_in=False):
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
+        words = settings_snapshot()
+        title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
+        text = text.replace("<title>Hub</title>", f"<title>{title}</title>", 1).replace("<h1>Hub</h1>", f"<h1>{title}</h1>", 1)
+        text = re.sub(r'<p class="subtitle">[^<]*</p>', (f'<p class="subtitle">{sub}</p>' if sub else ""), text, count=1)
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -894,6 +898,12 @@ DEFAULT_SETTINGS = {
     # Android 12; 15.0 for iOS 16.4 (every iPhone from the 8 on) and Android 14; 16.0 for iOS 18.4
     # (iPhone XS on) and Android 16. Read by emoji.js from /layout.css.
     "emoji_set": "13.1",
+    # The hub's own words and colour (Appearance): its name (the page's heading and the browser
+    # tab's), the line under it, and an accent colour for the main light and dark themes ("" keeps
+    # theirs). The other themes keep their own colours.
+    "hub_title": "Hub",
+    "hub_subtitle": "You're connected to the local network.",
+    "accent": "",
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
     # (irate_box/root/visitors.py). On by default, as one of the setup's
     # decisions; off, the helper doesn't run at all.
@@ -928,6 +938,19 @@ DEFAULT_SETTINGS = {
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
 EMOJI_SETS = ("13.1", "15.0", "16.0")
+TEXT_LIMITS = {"hub_title": 40, "hub_subtitle": 120}
+
+
+def accent_ink(accent):
+    """The text colour on the accent: white or near-black, whichever stands out more from it."""
+    def lum(hexc):
+        def ch(v):
+            v /= 255
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(hexc[i:i + 2], 16) for i in (1, 3, 5))
+        return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+    a = lum(accent)
+    return "#fff" if (1.05) / (a + 0.05) >= (a + 0.05) / (lum("#0f1117") + 0.05) else "#0f1117"
 # The setup decisions (anything that has an impact on user or box security):
 # web/admin-tour.js has each one's words and where it lives.
 # With the setup's own steps and the backup: one list, one tour.
@@ -952,6 +975,11 @@ def valid_setting(key, value):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "emoji_set":
         return value in EMOJI_SETS
+    if key in ("hub_title", "hub_subtitle"):
+        return (isinstance(value, str) and len(value.strip()) <= TEXT_LIMITS[key]
+                and (key == "hub_subtitle" or value.strip()) and not any(ord(c) < 32 for c in value))
+    if key == "accent":
+        return value == "" or (isinstance(value, str) and re.fullmatch(r"#[0-9a-f]{6}", value) is not None)
     if key == "names_to":
         return value in ("users", "admin")
     if key == "report_threshold":
@@ -3479,7 +3507,12 @@ class Handler(BaseHTTPRequestHandler):
                 cur = dict(_settings)
             body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
                     "body.admin { --page-width: %drem; }\n"
-                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"])).encode()
+                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"]))
+            if cur["accent"]:
+                # The main themes only (light, dark, or as the device): another theme keeps its colours.
+                body += ('html:root:not([data-theme]), html:root[data-theme="light"], html:root[data-theme="dark"] '
+                         "{ --accent: %s; --accent-ink: %s; }\n" % (cur["accent"], accent_ink(cur["accent"])))
+            body = body.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
             self.send_header("Content-Length", len(body))

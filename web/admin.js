@@ -5377,6 +5377,29 @@ const WIDTHS = [45, 60, 80, 90, 100];
 // A width in rem, and in pixels at the browsers' default text size (16 px a rem).
 const widthOption = (w) => [w, `${w}rem (about ${w * 16} px)`];
 let appearanceSettings = null;
+// The accent is drawn as text on the themes' backgrounds: WCAG asks 4.5:1 for text, 3:1 for
+// buttons and other large marks. Says which theme falls short, or '' when both are fine.
+const THEME_GROUNDS = { light: ['#f4f5f9', '#ffffff'], dark: ['#0f1117', '#1a1d27'] };
+function luminance(hex) {
+  const ch = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
+}
+function contrast(a, b) {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+function accentWarning(hex) {
+  const short = Object.entries(THEME_GROUNDS).map(([theme, grounds]) => [theme, Math.min(...grounds.map((g) => contrast(hex, g)))])
+    .filter(([, r]) => r < 4.5);
+  if (!short.length) return '';
+  return '⚠ Hard to read: ' + short.map(([t, r]) => `${r.toFixed(1)}:1 on the ${t} theme`).join(', ')
+    + '. The accessibility guidelines (WCAG AA) ask for 4.5:1 for text' + (short.some(([, r]) => r < 3) ? ', and 3:1 even for buttons.' : '.');
+}
+// The page's own /layout.css again, so a saved colour shows here at once.
+function reloadLayoutCss() {
+  const link = document.querySelector('link[href^="/layout.css"]');
+  if (link) link.href = '/layout.css?' + Date.now();
+}
 async function loadAppearance() {
   const box = document.getElementById('appearance-box');
   if (!box) return;
@@ -5384,8 +5407,19 @@ async function loadAppearance() {
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
   appearanceSettings = st;
   fillWidthBlocks();
+  const hub = AW.settings([
+    { key: 'hub_title', label: 'Name', kind: 'text', value: st.hub_title, max: 40, note: 'the hub page\'s heading and its browser tab' },
+    { key: 'hub_subtitle', label: 'Line under it', kind: 'text', value: st.hub_subtitle, max: 120, note: 'empty for none' },
+    { key: 'accent', label: 'Accent colour', kind: 'colour', value: st.accent, unset: 'The theme\'s own', shown: '#5b4bd6',
+      warn: accentWarning, note: 'links, buttons and headings in the light and dark themes; the other themes keep theirs' },
+  ], { save: async (changed) => {
+    if ('hub_title' in changed && !changed.hub_title.trim()) throw new Error('The hub needs a name.');
+    const now = await postJSON('/admin/settings', changed);
+    reloadLayoutCss();
+    return now;
+  } });
   const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map(widthOption) });
-  box.replaceChildren(AW.settings([
+  box.replaceChildren(el('h3', { textContent: 'The hub' }), hub, el('h3', { textContent: 'Widths' }), AW.settings([
     row('page_width', 'Hub', 'the tiles, the menu and its pages'),
     row('admin_width', 'Admin', 'these pages'),
     row('shout_width', 'Shoutbox', 'its tab on the hub page'),

@@ -54,6 +54,27 @@ try:
         go("POST", "/admin/settings", page, json.dumps({"emoji_set": bad}).encode())
     _, _, css = go("GET", "/layout.css")
     check("  anything but 13.1, 15.0 or 16.0 refused (nothing written into the CSS)", "--emoji-set: 16.0;" in css, css)
+    # The hub's name, the line under it, and the accent colour.
+    _, _, home = go("GET", "/")
+    _, _, css = go("GET", "/layout.css")
+    check("the hub's words by default: Hub, and the connected line; no accent in /layout.css",
+          "<h1>Hub</h1>" in home and "<title>Hub</title>" in home and "connected to the local network" in home and "--accent" not in css)
+    st, _, _ = go("POST", "/admin/settings", page, json.dumps({"hub_title": "Camp <Krab>", "hub_subtitle": "", "accent": "#ffd400"}).encode())
+    _, _, home = go("GET", "/")
+    check("  a name set: the heading and the tab, escaped; an empty line under it left out", st == 200
+          and "<h1>Camp &lt;Krab&gt;</h1>" in home and "<title>Camp &lt;Krab&gt;</title>" in home and 'class="subtitle"' not in home, home[:600])
+    _, _, css = go("GET", "/layout.css")
+    check("  an accent set: the main themes only, with dark ink on a light accent",
+          '[data-theme="dark"]' in css and "--accent: #ffd400; --accent-ink: #0f1117;" in css and "eink" not in css, css)
+    for key, bad in (("accent", "red"), ("accent", "#FFD400; } body { display: none"), ("hub_title", "  "),
+                     ("hub_title", "x" * 41), ("hub_subtitle", "a\nb")):
+        go("POST", "/admin/settings", page, json.dumps({key: bad}).encode())
+    _, _, home = go("GET", "/")
+    _, _, css = go("GET", "/layout.css")
+    check("  a bad colour, an empty or long name, a line break: refused", "--accent: #ffd400;" in css and "<h1>Camp &lt;Krab&gt;</h1>" in home, css)
+    go("POST", "/admin/settings", page, json.dumps({"accent": "#1a237e"}).encode())
+    _, _, css = go("GET", "/layout.css")
+    check("  white ink on a dark accent", "--accent-ink: #fff;" in css, css)
 finally:
     hub.terminate()
 # A box that chose a width before the admin pages had their own keeps it for both, until set apart.
