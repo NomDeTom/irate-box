@@ -27,6 +27,7 @@ run() {
 run sim_uplink.py
 run sim_crashwatch.py
 run sim_watchlog.py
+run sim_pagehistory.py
 run sim_usb_filesystems.py
 run sim_doctor_choices.py
 run sim_idle.py

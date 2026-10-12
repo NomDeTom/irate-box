@@ -31,6 +31,15 @@ map $http_upgrade $irate_box_connection {
 	''      "";
 }
 
+# The pages the web server serves itself (the apps' own files, no service of theirs to sample): a line for each
+# page loaded (a folder or an .html, not the scripts and pictures it pulls in), with its time, status and path and
+# nothing about who asked, for the hub's use heatmap (pagehistory.py). The rest of the box logs nothing.
+map $uri $irate_box_page_load {
+	~(/|\.html)$ 1;
+	default 0;
+}
+log_format irate_box_pages '$msec $status $uri';
+
 # HTTPS: each origin's port for the scheme a request came in on, so a
 # redirect from a page on HTTPS goes to that origin's TLS twin. The twins listen only once the box
 # has a certificate (root/tls.py writes the includes in each server block below); without one,
@@ -205,6 +214,7 @@ server {
 	# old build after an upgrade. The same split for /mermaid and /serial.
 	location = /draw { return 301 /draw/; }
 	location ^~ /draw/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_draw) { return 404; }
 		auth_basic $irate_box_auth_draw;
 		include @ACCESS@.d/gate-draw.conf*;
@@ -223,6 +233,7 @@ server {
 	# --- /mermaid -> mermaid-live-editor, static ------------------------------------
 	location = /mermaid { return 301 /mermaid/; }
 	location ^~ /mermaid/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_mermaid) { return 404; }
 		auth_basic $irate_box_auth_mermaid;
 		include @ACCESS@.d/gate-mermaid.conf*;
@@ -241,6 +252,7 @@ server {
 	# --- /tools -> the calculators, single-file pages --------------------------------
 	location = /tools { return 301 /tools/; }
 	location ^~ /tools/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_tools) { return 404; }
 		auth_basic $irate_box_auth_tools;
 		include @ACCESS@.d/gate-tools.conf*;
@@ -254,6 +266,7 @@ server {
 	# --- /serial -> Meshtastic serial terminal / log analyser, static ----------------
 	location = /serial { return 301 /serial/; }
 	location ^~ /serial/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_serial) { return 404; }
 		auth_basic $irate_box_auth_serial;
 		include @ACCESS@.d/gate-serial.conf*;
@@ -341,6 +354,7 @@ server {
 		proxy_pass http://irate_box_hub;
 	}
 	location = /flasher/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
 		include @ACCESS@.d/gate-flasher.conf*;
@@ -348,6 +362,7 @@ server {
 		proxy_pass http://irate_box_hub;
 	}
 	location = /flasher/flasher.html {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_flasher) { return 404; }
 		auth_basic $irate_box_auth_flasher;
 		include @ACCESS@.d/gate-flasher.conf*;
@@ -375,6 +390,7 @@ server {
 	}
 	# FreeOCD's WebDebugger (an ARM flasher over WebUSB), in the flashing tools.
 	location ^~ /flasher/freeocd/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
 		if ($irate_box_off_flasher) { return 404; }
 		alias @APPS@/freeocd/;
 		add_header Cache-Control "no-cache";

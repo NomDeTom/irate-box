@@ -788,7 +788,9 @@ function tile(label, value) {
 // hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
 // (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
 // and each service's week in words.
-function serviceStrips(s, u) {
+function serviceStrips(s, u, pages) {
+  // A page the web server serves itself has no unit: its use instead (pagehistory.py), the hours it was loaded.
+  if (!s.unit && pages && s.path && (pages.pages || {})[s.path]) u = { ...pages, units: { [s.path]: pages.pages[s.path] } }, s = { ...s, unit: s.path };
   const rec = u && s.unit && (u.units || {})[s.unit];
   if (!rec) return el('span', { className: 'setting-desc', textContent: '—' });
   const dayLabel = (back) => u.month_days[71 - back].label;
@@ -798,10 +800,11 @@ function serviceStrips(s, u) {
     Heatmap.grid({ bare: true, caption: `${s.name}, the last 72 days by day`, cols: rec.month,
       rows: [{ label: s.name, cells: rec.month, where: (i) => `${s.name}, ${dayLabel(71 - i)}` }] }));
 }
-function renderServiceUptime(services, u) {
+function renderServiceUptime(services, u, pages) {
   const body = document.getElementById('svc-uptime-body');
   const units = (u && u.units) || {};
   const mine = services.filter((s) => s.unit && units[s.unit]);
+  const used = services.filter((s) => !s.unit && s.path && pages && (pages.pages || {})[s.path]);
   if (!mine.length) {
     body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Uptime: nothing recorded yet. The hub looks at every service every five minutes, '
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
@@ -809,10 +812,14 @@ function renderServiceUptime(services, u) {
   }
   const said = (s) => { const sm = units[s.unit].summary;
     return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
+  const usedSaid = (s) => { const sm = pages.pages[s.path].summary;
+    return `${s.name}: ${sm.uses ? `loaded ${sm.uses} time${sm.uses === 1 ? '' : 's'}${sm.errors ? `, ${sm.errors} failed` : ''}` : 'not used'} in the last 72 hours`; };
   body.replaceChildren(
     el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
     Heatmap.legend(),
-    el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }));
+    el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }),
+    ...(used.length ? [el('p', { className: 'setting-desc', textContent: 'The pages the web server serves itself have no service to watch: '
+      + 'their strips show use instead. Blank, not used; green, every load answered; red, a load failed. ' + used.map(usedSaid).join('; ') + '.' })] : []));
 }
 
 // The network on the Overview: each link's last 72 hours by hour, the box's link to the network
@@ -885,13 +892,13 @@ function renderBox(data) {
         s.why ? el('span', { className: 'setting-desc bad', textContent: s.why }) : null),
       el('td', {}, el('span', { className: `state state-${s.state}`, textContent: STATE_LABEL[s.state] || s.state })),
       el('td', { textContent: s.unit && s.state !== 'missing' ? (s.enabled ? 'yes' : 'no') : '—' }),
-      el('td', {}, serviceStrips(s, data.service_uptime)),
+      el('td', {}, serviceStrips(s, data.service_uptime, data.page_use)),
       el('td', {}, el('span', { className: 'library-buttons' },
         ...(s.state === 'missing' ? [] : ops.map((op) => actionButton(OP_LABEL[op], () => control(s, op), OP_TITLE[op] ? { title: OP_TITLE[op] } : {}))))),
     );
   });
   document.querySelector('#service-table tbody').replaceChildren(...rows);
-  renderServiceUptime(data.services, data.service_uptime);
+  renderServiceUptime(data.services, data.service_uptime, data.page_use);
 
   const results = data.results || [];
   document.getElementById('control-results').replaceChildren(...results.slice(0, 4).map((r) =>

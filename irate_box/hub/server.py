@@ -45,6 +45,7 @@ from irate_box.library import librarian
 from irate_box.hub import manifests
 from irate_box.hub import meshbridge
 from irate_box.hub import store
+from irate_box.hub import pagehistory
 from irate_box.hub import svchistory
 from irate_box.hub import uplink
 from irate_box.hub import watchlog
@@ -1532,7 +1533,7 @@ def admin_box(proxied):
     now = CLOCK.ticks()
     return {"system": system_status(), "uptime": now, "online": online_count(now),
             "joined": joined_count(), "services": services, "version": hub_version(),
-            "service_uptime": svchistory.summarize(svchistory.load()),
+            "service_uptime": svchistory.summarize(svchistory.load()), "page_use": pagehistory.summarize(pagehistory.load()),
             "net_uptime": net_uptime_72h(), "meshtasticd": meshtasticd_state(), "first_use": unclaimed(),
             "results": control_results(),
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
@@ -4460,6 +4461,8 @@ if __name__ == "__main__":
     MESH.start()
     # The services' uptime: every unit's state every five minutes, for /admin's grid.
     svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]).start()
+    # The pages the web server serves itself (no unit to sample): their use, from nginx's log of page loads.
+    pagehistory.Sampler(lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
     server = HubServer((BIND, PORT), Handler)
