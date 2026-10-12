@@ -80,18 +80,38 @@ try:
     st, _, _ = go("GET", "/favicon.ico")
     check("no favicon at first: 404", st == 404, st)
     png = b"\x89PNG\r\n\x1a\n" + b"\0" * 40
-    st, _, _ = go("POST", "/admin/favicon", page, json.dumps({"data": base64.b64encode(png).decode()}).encode())
+    st, _, _ = go("POST", "/admin/picture", page, json.dumps({"which": "favicon", "data": base64.b64encode(png).decode()}).encode())
     st2, ctype, _ = go("GET", "/favicon.ico")
     check("  a PNG uploaded: served as one, to anyone", st == 200 and st2 == 200 and ctype == "image/png", (st, st2, ctype))
     svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
-    bad = [go("POST", "/admin/favicon", page, json.dumps({"data": d}).encode())[0]
+    bad = [go("POST", "/admin/picture", page, json.dumps({"which": "favicon", "data": d}).encode())[0]
            for d in (base64.b64encode(svg).decode(), "not base64!", base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * 70000).decode())]
     _, ctype, _ = go("GET", "/favicon.ico")
     check("  an SVG, a broken upload, one too big: refused, the PNG kept", bad == [400, 400, 400] and ctype == "image/png", (bad, ctype))
-    st = go("POST", "/admin/favicon", {**page, "Origin": "http://evil.example"}, json.dumps({"remove": True}).encode())[0]
+    st = go("POST", "/admin/picture", {**page, "Origin": "http://evil.example"}, json.dumps({"which": "favicon", "remove": True}).encode())[0]
     check("  another site can't remove it", st == 403 and go("GET", "/favicon.ico")[0] == 200, st)
-    go("POST", "/admin/favicon", page, json.dumps({"remove": True}).encode())
+    go("POST", "/admin/picture", page, json.dumps({"which": "favicon", "remove": True}).encode())
     check("  removed: 404 again", go("GET", "/favicon.ico")[0] == 404)
+    # The hub page's header picture: a WebP over the name, then gone again; not one given as a favicon's kind.
+    webp = b"RIFF\x10\0\0\0WEBPVP8 " + b"\0" * 40
+    st = go("POST", "/admin/picture", page, json.dumps({"which": "hub-art", "data": base64.b64encode(webp).decode()}).encode())[0]
+    st2, ctype, _ = go("GET", "/hub-art")
+    _, _, home = go("GET", "/")
+    check("a header picture (WebP): served, and on the hub page over its name", st == 200 and st2 == 200 and ctype == "image/webp"
+          and '<img class="hub-art" src="/hub-art?' in home and home.index('class="hub-art"') < home.index("<h1>"), (st, st2, ctype))
+    ico = b"\x00\x00\x01\x00" + b"\0" * 20
+    st = go("POST", "/admin/picture", page, json.dumps({"which": "hub-art", "data": base64.b64encode(ico).decode()}).encode())[0]
+    st2 = go("POST", "/admin/picture", page, json.dumps({"which": "nope", "remove": True}).encode())[0]
+    check("  an icon file as the header, or a picture with no name: refused", st == 400 and st2 == 400, (st, st2))
+    go("POST", "/admin/picture", page, json.dumps({"which": "hub-art", "remove": True}).encode())
+    _, _, home = go("GET", "/")
+    check("  removed: the page without it", go("GET", "/hub-art")[0] == 404 and "hub-art" not in home)
+    # The Krab art: on by default; off hides it everywhere through /layout.css.
+    _, _, css = go("GET", "/layout.css")
+    on = ".admin-art" not in css
+    go("POST", "/admin/settings", page, json.dumps({"krab_art": False}).encode())
+    _, _, css = go("GET", "/layout.css")
+    check("the Krab art: on by default; off, /layout.css hides it", on and ".admin-art, .art-loop { display: none" in css, css)
 finally:
     hub.terminate()
 # A box that chose a width before the admin pages had their own keeps it for both, until set apart.

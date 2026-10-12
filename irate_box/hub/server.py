@@ -722,7 +722,7 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE):
+    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE, PICTURES["hub-art"]["file"]):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
@@ -746,6 +746,9 @@ def home_page(signed_in=False):
         words = settings_snapshot()
         title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
         text = text.replace("<title>Hub</title>", f"<title>{title}</title>", 1).replace("<h1>Hub</h1>", f"<h1>{title}</h1>", 1)
+        art = picture_mtime("hub-art")
+        if art:
+            text = text.replace(f"<h1>{title}</h1>", f'<img class="hub-art" src="/hub-art?{int(art)}" alt=""><h1>{title}</h1>', 1)
         text = re.sub(r'<p class="subtitle">[^<]*</p>', (f'<p class="subtitle">{sub}</p>' if sub else ""), text, count=1)
         cached["body"] = text.encode()
         cached["mtime"] = mtime
@@ -864,15 +867,33 @@ def note_client(handler):
 # The gate is the web server's basic auth on /admin/*, the same treatment /term/ gets -- run
 # the hub bare, with no web server in front, and these are as open as every other hub API.
 SETTINGS_FILE = STATE_DIR / "settings.json"
-# The owner's favicon (Appearance), served at /favicon.ico: a PNG or an icon file, by its first
-# bytes. Not SVG: one served from the hub's own origin could carry script.
-FAVICON_FILE = STATE_DIR / "favicon"
-FAVICON_MAX = 64 * 1024
-FAVICON_KINDS = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\x00\x00\x01\x00", "image/x-icon"))
+# The owner's pictures (Appearance), each a file in $STATE served at its own path, its type told by its
+# first bytes: the favicon (a PNG or an icon file) and the hub page's header picture (PNG, JPEG or WebP).
+# Never SVG: one served from the hub's own origin could carry script.
+PNG, ICO, JPEG = (b"\x89PNG\r\n\x1a\n", "image/png"), (b"\x00\x00\x01\x00", "image/x-icon"), (b"\xff\xd8\xff", "image/jpeg")
+PICTURES = {
+    "favicon": {"file": STATE_DIR / "favicon", "url": "/favicon.ico", "max": 64 * 1024, "kinds": (PNG, ICO), "says": "a PNG or .ico file"},
+    "hub-art": {"file": STATE_DIR / "hub-art", "url": "/hub-art", "max": 180 * 1024, "kinds": (PNG, JPEG, "webp"),
+                "says": "a PNG, JPEG or WebP picture"},
+}
+PICTURE_URLS = {p["url"]: name for name, p in PICTURES.items()}
 
 
-def favicon_kind(data):
-    return next((t for magic, t in FAVICON_KINDS if data.startswith(magic)), None)
+def picture_kind(name, data):
+    for k in PICTURES[name]["kinds"]:
+        if k == "webp":
+            if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+                return "image/webp"
+        elif data.startswith(k[0]):
+            return k[1]
+    return None
+
+
+def picture_mtime(name):
+    try:
+        return PICTURES[name]["file"].stat().st_mtime
+    except OSError:
+        return None
 DEFAULT_SETTINGS = {
     # The saved-work store (store.py): its size cap, and how long a gallery save lives
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
@@ -915,6 +936,8 @@ DEFAULT_SETTINGS = {
     "hub_title": "Hub",
     "hub_subtitle": "You're connected to the local network.",
     "accent": "",
+    # The Krab art at the foot of the admin pages and a few others: on, or off for a plainer look.
+    "krab_art": True,
     # Unique visitors counted by a helper of their own, from salted hashes it keeps in memory
     # (irate_box/root/visitors.py). On by default, as one of the setup's
     # decisions; off, the helper doesn't run at all.
@@ -3511,12 +3534,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if path == "/favicon.ico":
+        if path in PICTURE_URLS:
+            name = PICTURE_URLS[path]
             try:
-                body = FAVICON_FILE.read_bytes()
+                body = PICTURES[name]["file"].read_bytes()
             except OSError:
                 body = b""
-            kind = favicon_kind(body)
+            kind = picture_kind(name, body)
             if not kind:
                 self.send_empty(404)
                 return
@@ -3537,6 +3561,9 @@ class Handler(BaseHTTPRequestHandler):
             body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
                     "body.admin { --page-width: %drem; }\n"
                     % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"]))
+            if not cur["krab_art"]:
+                body += ('.admin-art, .art-loop { display: none !important; }\n'
+                         '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n')
             if cur["accent"]:
                 # The main themes only (light, dark, or as the device): another theme keeps its colours.
                 body += ('html:root:not([data-theme]), html:root[data-theme="light"], html:root[data-theme="dark"] '
@@ -3770,22 +3797,27 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, current)
             return
 
-        if path == "/admin/favicon":
+        if path == "/admin/picture":
+            name = payload.get("which")
+            if name not in PICTURES:
+                self.send_json(400, {"error": f"which: one of {', '.join(PICTURES)}"})
+                return
+            pic = PICTURES[name]
             if payload.get("remove") is True:
-                FAVICON_FILE.unlink(missing_ok=True)
-                self.send_json(200, {"favicon": False})
+                pic["file"].unlink(missing_ok=True)
+                self.send_json(200, {name: False})
                 return
             try:
                 data = base64.b64decode(payload.get("data") or "", validate=True)
             except (binascii.Error, TypeError, ValueError):
                 data = b""
-            if not data or len(data) > FAVICON_MAX or not favicon_kind(data):
-                self.send_json(400, {"error": f"a PNG or .ico file of at most {FAVICON_MAX >> 10} KB"})
+            if not data or len(data) > pic["max"] or not picture_kind(name, data):
+                self.send_json(400, {"error": f"{pic['says']} of at most {pic['max'] >> 10} KB"})
                 return
-            tmp = FAVICON_FILE.with_name(FAVICON_FILE.name + ".tmp")
+            tmp = pic["file"].with_name(pic["file"].name + ".tmp")
             tmp.write_bytes(data)
-            os.replace(tmp, FAVICON_FILE)
-            self.send_json(200, {"favicon": True})
+            os.replace(tmp, pic["file"])
+            self.send_json(200, {name: True})
             return
 
         if path == "/admin/tailscale":
