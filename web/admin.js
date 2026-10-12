@@ -1960,6 +1960,7 @@ const hl = {
   glance: document.getElementById('health-glance'),
   setGroups: document.getElementById('health-settings-groups'),
   setSave: document.getElementById('health-settings-save'),
+  setDiscard: document.getElementById('health-settings-discard'),
   setNote: document.getElementById('health-settings-note'),
   fineFold: document.getElementById('health-fine-fold'),
   fineCount: document.getElementById('health-fine-count'),
@@ -2117,7 +2118,8 @@ function renderDoctorSettings(data, rep) {
 }
 function showDoctorSave(groups) {
   const changed = groups.filter((g) => hsPick[g.key] !== undefined && hsPick[g.key] !== g.current);
-  hl.setSave.disabled = !!hsSaving || !changed.length;
+  hl.setSave.disabled = hl.setDiscard.disabled = !!hsSaving || !changed.length;
+  hl.setDiscard.onclick = () => { hsPick = {}; hsFrom = ''; if (hlLast) renderHealth(hlLast); };
   hl.setSave.textContent = hsSaving ? 'Saving…' : changed.length ? `Save (${changed.length} not saved yet)` : 'Save';
   hl.setSave.onclick = async () => {
     for (const g of changed) {
