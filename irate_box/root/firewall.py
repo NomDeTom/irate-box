@@ -293,13 +293,18 @@ def share_sysctl():
     return share.SYSCTL
 
 
+# A root unit's sandbox (the security doctor's units-root): nothing written but what each names. nft and sysctl
+# need no more: /proc/sys stays writable under ProtectSystem=strict.
+SANDBOX = ("ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "ProtectHome=yes", "ProtectProc=invisible")
+
+
 def unit_text(code_dir="/opt/irate-box"):
     """The systemd unit install.sh writes: loads the file when there is one, removes the table on stop."""
     return "\n".join([
         "[Unit]", "Description=Irate-Box: what a guest on the hotspot can reach (root/firewall.py)",
         "Documentation=file://" + code_dir + "/irate_box/root/firewall.py",
         "DefaultDependencies=no", "Before=network-pre.target", "Wants=network-pre.target", "",
-        "[Service]", "Type=oneshot", "RemainAfterExit=yes",
+        "[Service]", "Type=oneshot", "RemainAfterExit=yes", *SANDBOX,
         f"ExecStart=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
         f"ExecReload=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
         # Stopped while guests share the connection: forwarding off too, so nothing passes unfiltered.

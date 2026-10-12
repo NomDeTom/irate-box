@@ -1482,6 +1482,12 @@ fi
 # whole system read-only but what each names in ReadWritePaths, no privilege gained through a
 # setuid program, a /tmp of its own, no home folders, other users' processes out of sight, no
 # devices, kernel settings or modules, no namespaces.
+# The root units' own (the security doctor's units-root): each adds the paths it writes (ReadWritePaths).
+ROOT_SANDBOX="ProtectSystem=strict
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectProc=invisible"
 HUB_SANDBOX="ProtectSystem=strict
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -2318,6 +2324,8 @@ Description=Irate-Box: apply the visitor-counting switch ($STATE/visitors.want)
 Type=oneshot
 Environment=HUB_STATE_DIR=$STATE
 ExecStart=$CODE/scripts/visitors-apply.sh
+$ROOT_SANDBOX
+ReadWritePaths=-/run/irate-box-visitors
 EOF
 cat >/etc/systemd/system/irate-box-visitors-switch.path <<EOF
 [Unit]
@@ -2367,6 +2375,8 @@ Description=Irate-Box: apply the remote-access switch ($STATE/tailscale.want)
 Type=oneshot
 Environment=HUB_STATE_DIR=$STATE HUB_USER=$HUB_USER
 ExecStart=$CODE/scripts/tailscale-apply.sh
+$ROOT_SANDBOX
+ReadWritePaths=$STATE
 EOF
 	cat >/etc/systemd/system/irate-box-tailscale.path <<EOF
 [Unit]
@@ -2388,6 +2398,8 @@ After=network.target
 Type=oneshot
 Environment=HUB_STATE_DIR=$STATE HUB_USER=$HUB_USER
 ExecStart=$CODE/scripts/tailscale-apply.sh --boot
+$ROOT_SANDBOX
+ReadWritePaths=$STATE
 
 [Install]
 WantedBy=multi-user.target
