@@ -17,7 +17,7 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 try:
-    for _ in range(50):
+    for _ in range(150):   # up to 15 s: a busy CI runner starts the hub slowly
         try:
             http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status"); break
         except OSError:
