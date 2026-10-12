@@ -2362,6 +2362,11 @@ fi
 # Apps switched off on /admin (Apps, Add-ons) keep their services stopped.
 mapfile -t off_units < <(HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_WEB_SERVER="$WEB" \
 	"$CODE/irate-box" hub_control access-off-units 2>/dev/null)
+# Kiwix's whole setup is its unit, its program and the books it serves (new ones it picks up by itself):
+# restarted only when one of those changed (the guide's book is replaced each run, and a replaced book
+# stays open until a restart) or when it isn't running, so an update leaves the library serving.
+KIWIX_PRINT="$STATE/.kiwix-print"
+kiwix_print() { cat /etc/systemd/system/kiwix.service "$(command -v kiwix-serve || echo /usr/bin/kiwix-serve)" "$GUIDE_ZIM" 2>/dev/null | sha256sum | cut -c1-64; }
 # One at a time: a unit that will not start is a problem to report, not a reason to stop.
 for u in "${units[@]}"; do
 	if printf '%s\n' "${off_units[@]}" | grep -qxF "$u.service"; then
@@ -2369,6 +2374,15 @@ for u in "${units[@]}"; do
 		continue
 	fi
 	systemctl enable --quiet "$u" || problem "$u could not be enabled: systemctl status $u"
+	if [ "$u" = kiwix ]; then
+		print="$(kiwix_print)"
+		if systemctl is-active --quiet kiwix && [ "$print" = "$(cat "$KIWIX_PRINT" 2>/dev/null)" ]; then
+			echo "    kiwix: unchanged, left running"
+			continue
+		fi
+		systemctl restart kiwix && echo "$print" >"$KIWIX_PRINT" || problem "kiwix did not start: journalctl -u kiwix -n 30"
+		continue
+	fi
 	systemctl restart "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # Turned on by an earlier run: keep it on, with the current credential.

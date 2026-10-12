@@ -150,6 +150,7 @@ scenario_zim() {
 	$DOCKER cp "$zim" "$CID":/var/lib/hub/zim/mermaid-docs.zim >/dev/null
 	cexec chown hub:hub /var/lib/hub/zim/mermaid-docs.zim
 	run_ct zim 80
+	run_ct kiwix-rerun
 }
 
 # Accounts under Caddy: self-contained (its own non-systemd container; see its header).
