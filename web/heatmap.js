@@ -21,6 +21,8 @@ const Heatmap = (() => {
   // What a cell says: "Tue 07 14:00–15:00: up 92 %, 2 drops".
   function words(where, c) {
     if (!c) return `${where}: no data`;
+    // A page's use (pagehistory.py): loads in the hour or day, and how many failed.
+    if (c.uses != null) return `${where}: loaded ${c.uses} time${c.uses === 1 ? '' : 's'}${c.errors ? `, ${c.errors} failed` : ', every one answered'}`;
     if (c.off && c.up === 0) return `${where}: switched off`;
     const extra = [c.drops ? `${c.drops} drop${c.drops === 1 ? '' : 's'}` : '', c.off ? 'switched off for a while' : '',
       c.restarts ? `${c.restarts} restart${c.restarts === 1 ? '' : 's'}` : ''].filter(Boolean);
