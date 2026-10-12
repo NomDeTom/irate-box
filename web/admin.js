@@ -2551,7 +2551,7 @@ const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, wit
 const RETRY_WORDS = { eager: ['Eager', 'Again soon, the gap growing to at most 10 minutes: back quickest when the network returns.'],
   steady: ['Steady', 'The gap growing to at most an hour.'],
   sparing: ['Sparing', 'The gap growing to at most 6 hours: fewest tries, for a box on a battery.'] };
-const GIVEUP_WORDS = { never: ['Keep trying', 'For as long as it takes: the box gets back on whenever the network does.'],
+const GIVEUP_WORDS = { never: ['Try forever', 'For as long as it takes: the box gets back on whenever the network does.'],
   hour: ['An hour', 'Then it stops, and says so; the network coming back by itself still brings the box back.'],
   day: ['A day', 'Then it stops, and says so.'], week: ['A week', 'Then it stops, and says so.'] };
 
