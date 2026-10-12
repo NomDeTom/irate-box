@@ -945,6 +945,24 @@ def _our_units():
     return sorted(names)
 
 
+# Sandbox lines a unit goes without by design, each with its reason: the audit counts them as set and says why.
+ALL_LINES = ("ProtectSystem=strict", "NoNewPrivileges", "PrivateTmp", "ProtectHome", "ProtectProc=invisible")
+SANDBOX_EXEMPT = {
+    "irate-box-control.service": {
+        "ProtectSystem=strict": "the root helper installs updates and packages, so it writes across the system",
+        "ProtectHome": "it sets the box's accounts up, home folders included"},
+    "ttyd.service": {line: "the admin's terminal: a login shell that must see and reach the whole box, sudo included"
+                     for line in ALL_LINES},
+    "irate-box-secdoctor.service": {
+        "ProtectProc=invisible": "the audit looks at every process: what listens, and as whom"},
+    "irate-box-uplink.service": {
+        "ProtectSystem=strict": "its repairs start the network's own tools (ifup, the DHCP client), which write /run, "
+                                "/var/lib and /etc/resolv.conf"},
+    "irate-box-crashwatch.service": {
+        "ProtectProc=invisible": "it keeps a snapshot of every process for after a hang"},
+}
+
+
 UNIT_PROPS = ("LoadState", "User", "DynamicUser", "ProtectSystem", "NoNewPrivileges", "PrivateTmp", "ProtectHome",
               "ProtectProc", "IPAddressDeny", "PrivateNetwork", "RestrictAddressFamilies", "CapabilityBoundingSet")
 
@@ -954,7 +972,7 @@ def step_units(ctx):
     units = ctx["units"]
     if not units:
         return [_cannot("units", "Unit sandboxing", "no systemd units found (or systemctl is not answering)", "F19")]
-    out, root_weak, hub_weak = [], [], []
+    out, root_weak, hub_weak, exempt = [], [], [], []
     for u, p in units.items():
         if p.get("LoadState") != "loaded":
             continue
@@ -964,6 +982,9 @@ def step_units(ctx):
             ("ProtectSystem=strict", strict), ("NoNewPrivileges", p.get("NoNewPrivileges") == "yes"),
             ("PrivateTmp", p.get("PrivateTmp") == "yes"), ("ProtectHome", p.get("ProtectHome") not in ("no", "", None)),
             ("ProtectProc=invisible", p.get("ProtectProc") in ("invisible", "noaccess"))) if not ok]
+        kept = SANDBOX_EXEMPT.get(u, {})
+        exempt += [f"{u[:-8]} without {name}: {kept[name]}" for name in weak if name in kept]
+        weak = [name for name in weak if name not in kept]
         # A root unit is reported for any line it lacks: a flaw in one is root, so each missing line
         # counts. A guest-reachable unit when most of them are gone.
         if is_root and weak:
@@ -980,6 +1001,8 @@ def step_units(ctx):
                      "ProtectProc=invisible; narrow CapabilityBoundingSet and SystemCallFilter where possible.", "F19"))
     else:
         out.append(F("units-root", "Root units", "ok", "None of the hub's root units is left with its sandbox almost empty.", ref="F19"))
+    if exempt:
+        out.append(F("units-exempt", "Sandbox lines left out by design", "ok", "; ".join(exempt) + ".", ref="F19"))
     if hub_weak:
         out.append(F("units-hub", "Guest-reachable units with a bare sandbox", "warn",
                      f"{_list(hub_weak)}: guest-reachable services (the hub, fcgiwrap with cgit and git-http-backend, add-ons) "

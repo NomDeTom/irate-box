@@ -43,10 +43,14 @@ def hostapd_conf(plan, settings, ssid=DEFAULT_SSID, country=None):
     return "\n".join(lines) + "\n"
 
 
+# A root unit's sandbox (the security doctor's units-root); each unit adds the paths it writes.
+SANDBOX = ("ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "ProtectHome=yes", "ProtectProc=invisible")
+
+
 def hostapd_unit():
     return "\n".join([
         "[Unit]", "Description=Irate-Box: the hotspot through hostapd (root/ap.py)", "After=network.target", "",
-        "[Service]", f"ExecStart=/usr/sbin/hostapd {HOSTAPD_CONF}", "Restart=on-failure", "",
+        "[Service]", f"ExecStart=/usr/sbin/hostapd {HOSTAPD_CONF}", "Restart=on-failure", *SANDBOX, "ReadWritePaths=-/run/hostapd", "",
         "[Install]", "WantedBy=multi-user.target", ""])
 
 
@@ -138,7 +142,7 @@ def dnsmasq_unit():
         "[Unit]", "Description=Irate-Box: DHCP and DNS on the hotspot (root/ap.py)",
         "After=NetworkManager.service", "",
         "[Service]", f"ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={DNSMASQ_CONF} --pid-file=",
-        "Restart=on-failure", "",
+        "Restart=on-failure", *SANDBOX, "ReadWritePaths=-/var/lib/misc", "",
         "[Install]", "WantedBy=multi-user.target", "",
     ])
 
@@ -196,8 +200,27 @@ def boot_unit():
     return "\n".join([
         "[Unit]", "Description=Irate-Box: the hotspot, again after a reboot (root/ap.py)",
         "After=NetworkManager.service", "Wants=NetworkManager.service", "",
-        "[Service]", "Type=oneshot", f"ExecStart={CODE}/irate-box hub_control ap-boot", "",
+        "[Service]", "Type=oneshot", f"ExecStart={CODE}/irate-box hub_control ap-boot", *SANDBOX,
+        # It starts the hotspot as the root helper does: its record and the hub's, NetworkManager's connections,
+        # the guests' rules, their resolver's unit and forwarding's sysctl file.
+        "ReadWritePaths=/etc/hub /var/lib/hub -/etc/NetworkManager /etc/systemd/system /etc/sysctl.d", "",
         "[Install]", "WantedBy=multi-user.target", ""])
+
+
+def refresh_units():
+    """The hotspot's units brought up to this version's text, for each one already written here (an
+    update changes them; only a hotspot set up again would otherwise). Their names, for a restart."""
+    changed = []
+    for name, text in ((DNSMASQ_UNIT, dnsmasq_unit()), (HOSTAPD_UNIT, hostapd_unit()), (BOOT_UNIT, boot_unit())):
+        path = UNITS / name
+        try:
+            if path.read_text() == text:
+                continue
+        except FileNotFoundError:
+            continue
+        _put(path, text)
+        changed.append(name)
+    return changed
 
 
 def boot(run, inv, settings, ssid=DEFAULT_SSID):

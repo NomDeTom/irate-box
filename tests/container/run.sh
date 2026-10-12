@@ -107,6 +107,7 @@ scenario_nginx() {
 	run_ct freeocd 80
 	run_ct pagelog 80
 	run_ct health 80
+	run_ct sandbox
 	run_ct ci
 }
 
