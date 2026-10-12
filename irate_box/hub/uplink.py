@@ -179,11 +179,12 @@ DESCRIBE = {
     "steady": "A reconnect after a minute, again every 5; heavier steps after 10, 20 and 60 minutes down.",
     "brisk": "A reconnect at once, again every 3 minutes; heavier steps after 5, 15 and 30 minutes down.",
     "urgent": "Everything soonest: heavier steps after 3, 8 and 30 minutes down.",
-    "watch": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
-    "reconnect": "Reconnect, and nothing heavier.",
-    "restart": "Up to restarting the network service.",
-    "radio": "Up to resetting the radio (its USB device or driver).",
-    "reboot": "Up to rebooting the box: at most 3 times a day, never during a build or an update, nor soon after it started.",
+    "watch": "Looks and logs. Nothing else: NetworkManager (or whatever runs the link) is left to itself.",
+    "reconnect": "Reconnects.",
+    "restart": "Reconnects; then restarts the network service.",
+    "radio": "Reconnects; restarts the network service; then resets the radio. A USB radio: port reset, then rebind, then "
+             "re-authorise. An SDIO radio: rebind the function, then rebind the SD host. Either, last: reload the driver.",
+    "reboot": "All of the above; then reboots the box: at most 3 times a day, never during a build or an update, nor soon after it started.",
 }
 # Every value a Custom field may set: (low, high), or the allowed words.
 FIELDS = {
