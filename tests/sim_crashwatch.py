@@ -134,7 +134,8 @@ check("the doctor: the last crash said, with its last snapshot, and what would h
 check("  the kernel flood, with its rate", f["crash-flood"]["status"] == "warn" and "about 1.1 a second" in f["crash-flood"]["detail"], f["crash-flood"])
 check("  the radio watched, its failure in the last day, nothing to choose here: where repairs are set, said",
       f["crash-radio"]["status"] == "warn" and "wlan0 (AIC8800DC)" in f["crash-radio"]["detail"] and "wlan0 failed" in f["crash-radio"]["detail"]
-      and not f["crash-radio"]["actions"] and "Network → The box's access → A failed radio" in f["crash-radio"]["fix"], f["crash-radio"])
+      and not f["crash-radio"]["actions"] and "Network → The box's access → A failed radio" in f["crash-radio"]["fix"]
+      and f["crash-radio"]["go"]["mark"] == "up-wedge", f["crash-radio"])
 check("  a frozen box after a crash, nothing to restart it: a warning, every choice offered as chips, the current marked",
       f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"]
       and [(a["group"], a["choice"], a["on"]) for a in f["crash-hang"]["actions"]] == [

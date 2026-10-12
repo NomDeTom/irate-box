@@ -90,9 +90,18 @@ def run(*cmd, timeout=60, **kw):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
-def _f(fid, check, status, detail, fix="", actions=()):
-    """status: ok | warn | problem. actions: [{choice, label, confirm?}]."""
-    return {"id": fid, "check": check, "status": status, "detail": detail, "fix": fix, "actions": list(actions)}
+def _f(fid, check, status, detail, fix="", actions=(), go=None):
+    """status: ok | warn | problem. actions: [{choice, label, confirm?}]. go: where it is changed, for the page's
+    link: {section: an element id that is always there, mark: the very setting inside it (drawn later, perhaps),
+    where: the words}; the page opens the section and highlights the mark."""
+    out = {"id": fid, "check": check, "status": status, "detail": detail, "fix": fix, "actions": list(actions)}
+    if go:
+        out["go"] = go
+    return out
+
+
+def _go(section, where, mark=None):
+    return {"section": section, "where": where, **({"mark": mark} if mark else {})}
 
 
 def _act(choice, label, confirm=None):
@@ -457,7 +466,8 @@ def check_uplink():
                       f"{st.get('iface')} down for {down} min. {stall.get('text', '')}",
                       (f"Network → Staying on the network: {stall['label'][:1].upper() + stall['label'][1:]} now, "
                        "or choose a level that goes that far." if stall.get("needs")
-                       else "Look at the box by its console or a cable: nothing it can do by itself would help.")))
+                       else "Look at the box by its console or a cable: nothing it can do by itself would help."),
+                      go=_go("net-watchdog-card", "Network → Staying on the network", "up-stall" if stall.get("needs") else "up-reach")))
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
     out += metered_findings()
     out += step_findings(_json_or(CONTROL / "uplink-ladder.json", []), st.get("chosen") or {})
@@ -559,7 +569,8 @@ def step_findings(rows, chosen, now=None):
                           f"{why} (the last {STEP_DAYS} days). The watchdog could leave it out on {iface} and go on to the next step sooner.",
                           f"Network → The box's access → Steps it may take: untick {STEP_TICK.get(s, s)} for {iface}.",
                           [_act(f"uplink-skip:{iface}:{s}", f"Leave it out on {iface}",
-                                f"Leave {STEP_SAID.get(s, s)} out of the watchdog's ladder on {iface}? It can be ticked again on the Network page.")]))
+                                f"Leave {STEP_SAID.get(s, s)} out of the watchdog's ladder on {iface}? It can be ticked again on the Network page.")],
+                          go=_go("up-steps", "Network → Steps it may take", f"up-step-{iface}-{s}")))
     return out
 
 
@@ -1058,7 +1069,8 @@ def check_crashwatch(now=None):
     failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
     out.append(_f("crash-radio", "The WiFi radio", "warn" if failed else "ok", detail,
                   "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver. "
-                  "What is done when it fails: Network → The box's access → A failed radio." if failed else ""))
+                  "What is done when it fails: Network → The box's access → A failed radio." if failed else "",
+                  go=_go("net-watchdog-card", "Network → A failed radio", "up-wedge") if failed else None))
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
     hang = [_chip("Kernel panic or lockup", "crashwatch-panic:off", "Stay stopped", not s["panic"]),
             _chip("Kernel panic or lockup", "crashwatch-panic:on", "Restart after 10 s", s["panic"],

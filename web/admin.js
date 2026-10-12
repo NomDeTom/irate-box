@@ -1860,19 +1860,40 @@ function renderImports(imports) {
 loadSecurity();
 
 // A "Go to …" link (the doctor's, the Security page's) names the very line or section: open the folds
-// around it, bring it into view and mark it for a moment, so the owner lands on the thing to change.
+// around it, bring it into view and mark it as the setup tour does, so the owner lands on the thing to
+// change. A doctor's link may name a setting inside the section that is drawn only once the page's data
+// has come (a connection's tick): it is waited for, a few seconds, and marked instead.
+let landMark = null;
 function landOn() {
-  const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
-  if (!target || target.classList.contains('admin-pane') || target.classList.contains('admin-page')) return;
-  for (let d = target.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
-  if (target.tagName === 'DETAILS') target.open = true;
-  setTimeout(() => {
-    if (target.scrollIntoView) target.scrollIntoView({ block: 'center' });
-    target.classList.add('landed');
-    setTimeout(() => target.classList.remove('landed'), 2500);
-  }, 50);
+  const section = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+  const mark = landMark;
+  landMark = null;
+  if (!section || ((section.classList.contains('admin-pane') || section.classList.contains('admin-page')) && !mark)) return;
+  const open = (t) => {
+    for (let d = t.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+    if (t.tagName === 'DETAILS') t.open = true;
+  };
+  open(section);
+  let tries = 0;
+  const go = () => {
+    const target = (mark && document.getElementById(mark)) || null;
+    if (mark && !target && tries++ < 50) { setTimeout(go, 100); return; }
+    const t = target && !target.closest('[hidden]') ? target : section;
+    open(t);
+    if (t.scrollIntoView) t.scrollIntoView({ block: 'center' });
+    t.classList.add('landed');
+    const off = () => { t.classList.remove('landed'); t.removeEventListener('change', off, true); };
+    t.addEventListener('change', off, true);
+    setTimeout(off, 6000);
+  };
+  setTimeout(go, 50);
 }
 window.addEventListener('hashchange', landOn);
+// A link to a section, marking one setting inside it once there.
+function goLink(go) {
+  return el('a', { className: 'action-btn go-btn', href: `#${go.section}`, textContent: `Go to ${go.where} →`,
+    onclick: () => { landMark = go.mark || null; if (location.hash === `#${go.section}`) setTimeout(landOn, 0); } });
+}
 
 // --- health ----------------------------------------------------------------------------
 // The box doctor (health.py, through the root helper): findings with what to do and the safe
@@ -1976,7 +1997,8 @@ function healthDo(f, busy) {
       c.after].filter(Boolean).join(' ').replace(/::$/, ':');
   }
   const go = HEALTH_GO.find(([re]) => re.test(f.fix || ''));
-  if (go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${go[1]}`, textContent: `Go to ${go[2]} →` }));
+  if (f.go) controls.push(goLink(f.go));
+  else if (go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${go[1]}`, textContent: `Go to ${go[2]} →` }));
   if (!how && !controls.length) how = 'Nothing to press: it is said so you know.';
   return { how, controls };
 }
@@ -2503,7 +2525,7 @@ function renderUpSteps(inv, chosen) {
         const input = el('input', { type: 'checkbox', checked: !(off[iface] || []).includes(step) });
         input.dataset.step = step;
         input.addEventListener('change', () => { upDirty = true; showUpSave(); });
-        return el('label', { className: 'inline' }, input, ` ${label}`);
+        return el('label', { className: 'inline', id: `up-step-${iface}-${step}` }, input, ` ${label}`);
       }));
     row.dataset.iface = iface;
     return row;
