@@ -20,7 +20,7 @@ check("Kiwix owns Books", by.get("wiki", {}).get("sections") == ["books"], by.ge
 check("installable add-ons are marked for their app pages", by.get("irc", {}).get("addon") is True
     and by.get("notes", {}).get("addon") is True and by.get("drop", {}).get("addon") is False)
 check("an add-on without a tile still has an installation page", by.get("room", {}).get("addon") is True
-    and by["room"]["name"] == "Live collaboration (whiteboard)")
+    and by["room"]["name"] == "Whiteboard relay" and by["room"]["icon"] == "🤝")
 check("Git owns its repositories and mirrors", by.get("git", {}).get("sections") == ["git", "mirrors"], by.get("git"))
 check("the Factory is named by its admin part", by.get("box-factory", {}).get("name") == "Firmware Factory", by.get("box-factory"))
 check("the folders are marked", all(by[i]["folder"] for i in ("meshtastic", "tools-rf", "tools-general", "tools-electronics") if i in by))

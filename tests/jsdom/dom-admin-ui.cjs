@@ -230,8 +230,8 @@ setTimeout(() => {
     const lines = [...d.querySelectorAll('#inv-list .inv-row')];
     const line = (name) => lines.find((r) => r.querySelector('.inv-name').textContent === name);
     check('All apps: a line per app, folders left out', lines.length > 5 && !line('RF & LoRa') && !!line('File drop'), lines.map((r) => r.querySelector('.inv-name').textContent).join('|'));
-    check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Live collaboration (whiteboard)').textContent)
-      && line('Live collaboration (whiteboard)').querySelector('a').getAttribute('href') === '#page-app-room');
+    check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
+      && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
     check('  an add-on whose state is unknown says so', /Installation unknown/.test(t('#inv-list')[0]));
     d.querySelector('[data-inv="builtin"]').click();
     const built = [...d.querySelectorAll('#inv-list .inv-row')];
