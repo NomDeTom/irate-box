@@ -191,7 +191,9 @@ let libPoll = null;
 const el = (tag, props = {}, ...kids) => {
   // A button with no class of its own is an action button (rule 6a: the control vocabulary).
   if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
-  const node = Object.assign(document.createElement(tag), props);
+  const { dataset, ...rest } = props;
+  const node = Object.assign(document.createElement(tag), rest);
+  if (dataset) Object.assign(node.dataset, dataset);
   node.append(...kids.filter((k) => k !== null && k !== undefined));
   return node;
 };
@@ -3116,6 +3118,7 @@ function renderNetwork(data) {
   document.getElementById('up-retries-group').hidden = !document.getElementById('net-retry-defaults').childElementCount && !net.profile.childElementCount;
   const changes = ['net-handover', 'net-other-ap', 'net-wifisync'].some((id) => document.getElementById(id).childElementCount);
   document.getElementById('net-changes').hidden = !changes;
+  applyChangesHidden();
   const lead = document.getElementById('net-changes-lead');
   lead.hidden = !(inv && inv.uplink && inv.uplink.backend === 'networkmanager');
   lead.textContent = 'NetworkManager runs this box\'s WiFi and network connections, and irate-box makes its changes through it.';
@@ -3236,7 +3239,7 @@ function renderWifisync(inv, data, busy) {
   const rec = data.wifisync || {};
   if (!h) { box.replaceChildren(); return; }
   const on = h.status !== 'ok';
-  const rows = [el('p', { className: 'setting-desc' },
+  const rows = [el('p', { className: 'setting-desc', dataset: { change: 'wifisync' } },
     `mPWRD-OS's wifisync is ${on ? 'on' : 'off'}: ${on ? 'it switches the WiFi radio off whenever meshtasticd\'s WiFi setting is off, '
       + 'which takes the box off its network and its hotspot down' : 'it leaves the WiFi radio alone'}. `,
     actionButton(on ? 'Switch it off' : 'Switch it on', () => netRequest({ action: 'wifisync', do: on ? 'off' : 'on' }, 'wifisync'),
@@ -3261,11 +3264,11 @@ function renderOtherAp(inv, data, busy) {
     const c = chosen[p.uuid];
     const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || '') ? ', Armbian\'s setup hotspot' : ', probably the system\'s own setup hotspot'}`;
     if (c && c.choice === 'left') {
-      rows.push(el('p', { className: 'setting-desc' }, `Ignored: ${what}. `,
+      rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } }, `Ignored: ${what}. `,
         actionButton('Stop ignoring it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
       continue;
     }
-    rows.push(el('p', { className: 'setting-desc' },
+    rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } },
       `This box has ${what}. `
       + (p.active ? 'It is running now: it holds the WiFi, so the box\'s own network link and irate-box\'s hotspot can\'t have it. '
         : p.autoconnect ? 'It is set to start by itself: at boot it could take over the WiFi and take the box off its network. '
@@ -3278,7 +3281,7 @@ function renderOtherAp(inv, data, busy) {
   }
   for (const [uuid, c] of Object.entries(chosen)) {
     if (c.choice !== 'removed') continue;
-    rows.push(el('p', { className: 'setting-desc' },
+    rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${uuid}` } },
       `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}; a copy is kept. `,
       actionButton('Restore it', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy }), ' ',
       actionButton('Delete the copy too', () => {
@@ -3404,7 +3407,7 @@ function renderHandover(inv, busy) {
     for (const f of ho.files || []) {
       const names = f.connections.map((c) => c.name).join(', ');
       if (f.ok) {
-        rows.push(el('p', { className: 'setting-desc' },
+        rows.push(el('p', { className: 'setting-desc', dataset: { change: `handover:${f.name}` } },
           `${names || 'Your connection'}: netplan rewrites ${f.connections.length === 1 ? 'it' : 'them'} from its file ${f.name} at every boot, which undoes any change made here. `
           + 'Hand it to NetworkManager to keep for good, with the same name, password and settings; netplan\'s file is kept aside, so it can be undone. ',
           actionButton('Hand it to NetworkManager', () => {
@@ -3418,7 +3421,7 @@ function renderHandover(inv, busy) {
     }
     for (const d of ho.done || []) {
       const conns = (d.connections || []).map((c) => (c.keyfile || '').split('/').pop().replace(/\.nmconnection$/, '')).filter(Boolean).join(', ');
-      rows.push(el('p', { className: 'setting-desc' },
+      rows.push(el('p', { className: 'setting-desc', dataset: { change: `handover:${d.name}` } },
         `${conns ? `Your connection ${conns} is` : 'Your connections are'} kept by NetworkManager itself since ${new Date(d.at * 1000).toLocaleDateString()}. `
         + `Before, netplan rewrote ${conns ? 'it' : 'them'} from its file ${d.name} at every boot, undoing any change made here; that file is kept aside. `,
         actionButton('Give it back to netplan', () => {
@@ -3429,6 +3432,50 @@ function renderHandover(inv, busy) {
   const hn = netNotes.handover;
   if (hn) rows.push(el('p', { className: `setting-desc action-note${hn.ok ? '' : ' bad'}`, role: 'status', textContent: hn.text }));
   net.handover.replaceChildren(...rows);
+}
+
+// The changes made here are old news once set up: each can be hidden (a hub setting, the same on every
+// device), and one button shows the hidden ones again for a look.
+let changesHidden = null, changesShowAll = false;
+getJSON('/admin/settings').then((st) => { changesHidden = st.net_changes_hidden || []; applyChangesHidden(); }).catch(() => {});
+async function setChangesHidden(list) {
+  try { changesHidden = (await postJSON('/admin/settings', { net_changes_hidden: list })).net_changes_hidden; } catch (_) { /* kept as it was */ }
+  applyChangesHidden();
+}
+function applyChangesHidden() {
+  const sec = document.getElementById('net-changes');
+  if (!sec || changesHidden === null) return;
+  const rows = [...sec.querySelectorAll('[data-change]')];
+  let hiddenNow = 0;
+  for (const r of rows) {
+    const id = r.dataset.change, isHidden = changesHidden.includes(id);
+    r.hidden = isHidden && !changesShowAll;
+    hiddenNow += isHidden;
+    let b = r.querySelector(':scope > .change-hide');
+    if (!b) {
+      b = el('button', { type: 'button', className: 'link-button change-hide' });
+      r.append(' ', b);
+    }
+    b.textContent = isHidden ? 'Keep it shown' : 'Hide';
+    b.title = isHidden ? 'Show it here again from now on' : 'Hide it here: it stays as it is, one button away';
+    b.onclick = () => setChangesHidden(isHidden ? changesHidden.filter((x) => x !== id) : [...changesHidden, id]);
+  }
+  // A part whose every change is hidden goes too, box and all.
+  for (const id of ['net-handover', 'net-other-ap', 'net-wifisync']) {
+    const part = document.getElementById(id), own = part ? [...part.querySelectorAll('[data-change]')] : [];
+    if (part) part.hidden = own.length > 0 && own.every((r) => r.hidden);
+  }
+  let more = document.getElementById('net-changes-more');
+  if (!more) {
+    more = el('button', { type: 'button', className: 'action-btn small', id: 'net-changes-more' });
+    more.addEventListener('click', () => { changesShowAll = !changesShowAll; applyChangesHidden(); });
+    sec.append(more);
+  }
+  more.hidden = !hiddenNow;
+  more.textContent = changesShowAll ? 'Hide them again' : `Show the ${hiddenNow} hidden change${hiddenNow === 1 ? '' : 's'}`;
+  // All hidden and folded: the section's heading alone, with its button.
+  const lead = document.getElementById('net-changes-lead');
+  if (lead) lead.dataset.allHidden = String(hiddenNow === rows.length && !changesShowAll);
 }
 
 async function netRequest(body, where) {

@@ -975,6 +975,9 @@ DEFAULT_SETTINGS = {
     # Setup steps the owner has muted: still listed, greyed,
     # but not counted in Overview's "needs attention" or the tour's "still to do". Hiding is the whole page.
     "setup_muted": [],
+    # The Network page's changes made here that the owner has hidden as old news (handover:<file>,
+    # otherap:<uuid>, wifisync): still there, one button away.
+    "net_changes_hidden": [],
     # A tile a guest can't open (the setup decision "sign-in-offer"): for an app
     # open to users and left at "as its access", show its tile to guests too, with a lock that leads
     # to sign-in. Off (the default) shows it only to those who may open it, as before.
@@ -1019,6 +1022,9 @@ def valid_setting(key, value):
         return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
     if key == "locked_all":
         return value == "" or value in LOCKED_AS
+    if key == "net_changes_hidden":
+        return isinstance(value, list) and len(value) <= 32 and all(
+            isinstance(v, str) and re.fullmatch(r"(handover|otherap|wifisync)(:[A-Za-z0-9._-]{1,80})?", v) for v in value)
     if key in ("setup_decided", "setup_muted"):
         return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
     if key == "emoji_set":

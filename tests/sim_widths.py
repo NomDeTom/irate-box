@@ -125,6 +125,14 @@ try:
     go("POST", "/admin/settings", page, json.dumps({"notice_until": 0, "keeper_contact": ""}).encode())
     _, _, home = go("GET", "/")
     check("  no end: there again; no contact, no footer", "hub-notice" in home and "Looked after by" not in home)
+    # The Network page's changes hidden as old news: their ids kept; anything else refused.
+    ok = ["handover:30-wifis-dhcp.yaml", "otherap:0c3bb1fa-0f6a-3707-8c8d-4e23598253db", "wifisync"]
+    _, _, body = go("POST", "/admin/settings", page, json.dumps({"net_changes_hidden": ok}).encode())
+    kept = json.loads(body).get("net_changes_hidden")
+    for bad in (["something:else"], ["handover:../x y"], "wifisync", [1]):
+        go("POST", "/admin/settings", page, json.dumps({"net_changes_hidden": bad}).encode())
+    _, _, body = go("POST", "/admin/settings", page, b"{}")
+    check("changes hidden on the Network page: kept by id, anything else refused", kept == ok and json.loads(body)["net_changes_hidden"] == ok, body[:300])
 finally:
     hub.terminate()
 # A box that chose a width before the admin pages had their own keeps it for both, until set apart.

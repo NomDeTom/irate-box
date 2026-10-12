@@ -1640,3 +1640,7 @@ body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--tex
 .net-visible-table td.num, .net-visible-table th:nth-child(2), .net-visible-table th:nth-child(4), .net-visible-table th:nth-child(5) { text-align: right; }
 .net-visible-table .info-pill { margin-left: 0.4rem; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
+/* A change made here, hidden as old news: its Hide is a quiet link; the section keeps one button to show them. */
+.net-changes .change-hide { font-size: 0.85rem; margin-left: 0.25rem; }
+#net-changes-more { margin-top: 0.4rem; align-self: flex-start; justify-self: start; width: auto; }
+.net-changes [hidden] { display: none !important; }
