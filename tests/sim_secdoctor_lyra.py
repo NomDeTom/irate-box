@@ -78,6 +78,23 @@ check("every item ends in something to do: a check's own command is the item's (
 check("the CIS checks keep a command each where their script says one plainly", sum(1 for i in it2.values() for c in i["checks"] if c.get("cmd")) >= 40)
 check("the counts with the deep audit: 1 to fix, 20 to look at, the rest suggestions or not for this board",
       (j2["after"]["problem"], j2["after"]["warn"]) == (1, 20), j2["after"])
+
+# Each saved board audit, read the same way: nothing lost, every item ends in something to do, the counts add up.
+for day in ("2026-10-09", "2026-10-12"):
+    fxd = json.loads((REPO / "tests" / "fixtures" / f"lyra-secdoctor-{day}.json").read_text())
+    shutil.copy(REPO / f"tests/fixtures/lyra-security-deep-{day}.json", T / "control" / "security-deep.json")
+    _t.time = lambda: json.loads(deepaudit.REPORT.read_text())["at"] + 3600
+    deep = [{"title": "The CIS benchmark", "findings": sd._deep_findings("debian-cis")}, {"title": "Lynis", "findings": sd._deep_findings("lynis")}]
+    _t.time = _now
+    st = [s for s in fxd["steps"] if not any(f.get("source") in ("debian-cis", "lynis") for f in s["findings"])] + deep
+    jd = sd.joint(st)
+    said_d = {(l["source"], l["id"]) for i in jd["items"] for l in i["lines"]}
+    lost = [(f.get("source", "doctor"), f["id"]) for s in st for f in s["findings"]
+            if f["status"] != "ok" and not f.get("accepted") and (f.get("source", "doctor"), f["id"]) not in said_d]
+    idle = [i["key"] for i in jd["items"] if not (i["do"] or i["fix"] or i["cmd"] or i["page"])]
+    check(f"{day}: nothing lost, every item ends in something to do, one to fix (the floor)",
+          not lost and not idle and [i["key"] for i in jd["items"] if i["status"] == "problem" and not i["tier"]] == ["setting:firewall"],
+          (lost[:3], idle[:3], jd["after"]))
 shutil.rmtree(T, ignore_errors=True)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
