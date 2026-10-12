@@ -3450,9 +3450,13 @@ const hs = {
   wpa2Desc: document.getElementById('hs-wpa2-desc'),
   warnings: document.getElementById('hs-warnings'),
   save: document.getElementById('hs-save'),
+  discard: document.getElementById('hs-discard'),
   note: document.getElementById('hs-note'),
 };
 let hsData = null;
+// The hotspot's choices wait for Save; a reload of the page's data leaves a change in progress alone.
+let hsDirty = false;
+function hsTouched() { hsDirty = true; hs.save.disabled = hs.discard.disabled = false; }
 
 function hsChosen() {
   const r = hs.modes.querySelector('input[name="hs-mode"]:checked');
@@ -3477,10 +3481,12 @@ function hsShowFields() {
 
 function renderHotspot(data) {
   hsData = data;
+  hs.save.disabled = hs.discard.disabled = !hsDirty;
+  if (hsDirty) { hsShowFields(); drawGuestNet(data.share || 'off', data.results); return; }
   const s = data.settings;
   AW.choices(hs.modes, 'hs-mode', data.modes.map((m) => ({
     value: m, title: data.label[m], desc: data.what[m], why: data.available[m],
-  })), { value: s.mode, onChange: hsShowFields });
+  })), { value: s.mode, onChange: () => { hsTouched(); hsShowFields(); } });
   hs.second.value = s.second;
   hs.password.value = s.password || '';
   hs.wpa2.checked = !!s.allow_wpa2;
@@ -3521,8 +3527,9 @@ function drawGuestNet(level, results) {
   }));
   document.getElementById('guest-net-said').textContent = GUEST_NET.find((x) => x[0] === cur)[2]
     + (['users-web', 'sheet-web', 'sheet-all'].includes(cur) ? ' Each device is let out for 12 hours at a time.' : '');
-  document.getElementById('guest-net-save').disabled = !guestNetDraft || !!guestNetWaiting;
+  document.getElementById('guest-net-save').disabled = document.getElementById('guest-net-discard').disabled = !guestNetDraft || !!guestNetWaiting;
 }
+document.getElementById('guest-net-discard').addEventListener('click', () => { guestNetDraft = null; drawGuestNet(guestNetSaved); });
 document.getElementById('guest-net-save').addEventListener('click', async () => {
   const level = guestNetDraft;
   if (!level) return;
@@ -3543,8 +3550,10 @@ async function loadHotspot() {
   }
 }
 
-hs.second.addEventListener('change', hsShowFields);
-hs.wpa2.addEventListener('change', hsShowFields);
+hs.second.addEventListener('change', () => { hsTouched(); hsShowFields(); });
+hs.wpa2.addEventListener('change', () => { hsTouched(); hsShowFields(); });
+hs.password.addEventListener('input', hsTouched);
+hs.discard.addEventListener('click', () => { hsDirty = false; if (hsData) renderHotspot(hsData); });
 hs.generate.addEventListener('click', () => {
   // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
   const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -3557,12 +3566,14 @@ hs.generate.addEventListener('click', () => {
     }
   }
   hs.password.value = [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
+  hsTouched();
 });
 hs.save.addEventListener('click', async () => {
   const mode = hsChosen();
   if (mode !== 'open' && !confirm(`Use "${hsData.label[mode]}" for the hotspot? Read the warnings under the choices first.`)) return;
   try {
     const r = await postJSON('/admin/hotspot', { settings: { mode, second: hs.second.value, password: hs.password.value, allow_wpa2: hs.wpa2.checked } });
+    hsDirty = false;
     say(r.message, true, hs.note);
     loadHotspot();
   } catch (err) { say(err.message, false, hs.note); }
