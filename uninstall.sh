@@ -60,6 +60,7 @@ done
 # sharing, and its sysctl file goes.
 systemctl disable --now irate-box-guest-dns.service 2>/dev/null || true
 rm -f /etc/systemd/system/irate-box-guest-dns.service
+rm -f /etc/logrotate.d/irate-box-pages
 if [ -f /etc/sysctl.d/90-irate-box-share.conf ]; then
 	rm -f /etc/sysctl.d/90-irate-box-share.conf
 	was="$(python3 -c 'import json; print(json.load(open("/etc/hub/share.json")).get("forward_was") or "")' 2>/dev/null || true)"

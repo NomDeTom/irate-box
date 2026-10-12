@@ -56,6 +56,8 @@
         a.setAttribute('download', f.name);
         const row = li('drop-item', f.pinned ? span('drop-locked', '📌 ') : f.locked ? span('drop-locked', '🔒 ') : '', a,
           span('setting-desc', ` ${size(f.size)} · ${f.pinned ? 'this box\'s own source, always here (see About)' : `${f.by ? `${f.by} · ` : ''}${formatAge(f.age)}`}`));
+        // Anyone can report a file to the box's owner (not the box's own source).
+        if (!f.pinned && typeof reportButton === 'function') row.append(' ', reportButton('drop', { id: f.id }, data.report_reasons));
         if (f.locked && window.HubLock && HubLock.has('drop', f.id)) {
           const rm = document.createElement('button');
           rm.type = 'button';

@@ -57,6 +57,14 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   on.dispatchEvent(new w.Event('change', { bubbles: true }));
   check('  a choice made: not saved yet, said on the button', !save.disabled && save.textContent === 'Save (1 not saved yet)', save.textContent);
   check('  nothing sent before Save', posted.filter((b) => b.action === 'fix').length === 0);
+  const discard = d.getElementById('health-settings-discard');
+  check('  Discard on with it', !discard.disabled);
+  discard.click();
+  check('  Discard: the choice as saved again, Save and Discard idle, nothing sent', d.querySelector('#hs-panic input[value="off"]').checked
+    && save.disabled && discard.disabled && posted.filter((b) => b.action === 'fix').length === 0, save.textContent);
+  const on2 = d.querySelector('#hs-panic input[value="on"]');
+  on2.checked = true;
+  on2.dispatchEvent(new w.Event('change', { bubbles: true }));
   save.click();
   await later(100);
   check('  Save: asked first when the choice asks, then sent', asked.includes('Restart the box?') && posted.some((b) => b.choice === 'crashwatch-panic:on'), posted);

@@ -156,6 +156,26 @@ function sync() {
   }
   title.textContent = cur.name;
   document.title = cur.name ? `${cur.name} · Hub` : 'Hub';
+  drawReport(cur.path);
+}
+
+// A notes page can be reported to the box's owner from the bar: SilverBullet has no such button of its own.
+// The reasons are the owner's, asked for once.
+const reportSlot = document.getElementById('app-report');
+let reportFor = '', reportReasons = null;
+function drawReport(path) {
+  let page = '';
+  if (path.startsWith('/notes/')) {
+    try { page = decodeURIComponent(path.slice('/notes/'.length).split(/[?#]/)[0]).replace(/\/+$/, ''); } catch (_) { page = ''; }
+  }
+  if (page.startsWith('.')) page = '';   // SilverBullet's own pages (.shell, .proxy and the like)
+  if (page === reportFor) return;
+  reportFor = page;
+  reportSlot.hidden = !page || typeof reportButton !== 'function';
+  if (reportSlot.hidden) { reportSlot.replaceChildren(); return; }
+  const draw = () => { if (reportFor === page) reportSlot.replaceChildren(reportButton('notes', { page }, reportReasons)); };
+  if (reportReasons) { draw(); return; }
+  fetch('/api/report').then((r) => r.json()).then((d) => { reportReasons = d.reasons || []; draw(); }).catch(() => {});
 }
 
 // Loads catch ordinary links; the interval catches single-page apps (SilverBullet,

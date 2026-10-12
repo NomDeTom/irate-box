@@ -27,6 +27,7 @@ run() {
 run sim_uplink.py
 run sim_crashwatch.py
 run sim_watchlog.py
+run sim_pagehistory.py
 run sim_usb_filesystems.py
 run sim_doctor_choices.py
 run sim_idle.py
@@ -49,6 +50,7 @@ run sim_secdoctor_accounts.py
 run sim_secdoctor_sandbox.py
 run sim_helper_busy.py
 run sim_widths.py
+run sim_notes_download.py
 run sim_admin_apps.py
 run sim_visibility.py
 run sim_folders.py
