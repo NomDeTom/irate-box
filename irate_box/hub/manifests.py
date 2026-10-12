@@ -394,13 +394,14 @@ def admin_apps(manifests):
     out = []
     for m in sorted(manifests, key=lambda x: x["order"]):
         tile, adm, menu = m.get("tile") or {}, m.get("admin") or {}, m.get("menu")
-        name = adm.get("title") or tile.get("name") or (menu or {}).get("title")
+        name = adm.get("title") or tile.get("name") or (menu or {}).get("title") or (m.get("addon") or {}).get("title")
         if not name or (tile.get("widget") and not adm):
             continue
         out.append({"id": m["id"], "name": name, "icon": adm.get("icon") or tile.get("icon", ""),
                     "sections": list(adm.get("sections", [])), "folder": bool(menu),
                     "art": (menu or {}).get("art"), "local": bool(m.get("local")),
-                    "page": bool(adm.get("page")), "width": adm.get("width"), "updates": bool(m.get("source"))})
+                    "page": bool(adm.get("page")), "width": adm.get("width"), "updates": bool(m.get("source")),
+                    "addon": bool((m.get("addon") or {}).get("option"))})
     return out
 
 

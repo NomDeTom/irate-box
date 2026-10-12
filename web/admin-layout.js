@@ -155,7 +155,7 @@ const AL = (() => {
       const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
-        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page))) {
+        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
           // Who opens it, who sees it: first on its page (admin.js fills it from /admin/access).
           // An app with no switch of its own (a folder, About) has only who sees its tile.
           if (a.switch || a.seen) {
@@ -163,6 +163,14 @@ const AL = (() => {
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-access', id },
               el('h2', { text: a.switch ? 'Who opens it, who sees it' : 'Who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
             a = { ...a, sections: [id, ...a.sections] };
+          }
+          if (a.addon) {
+            const id = 'app-install-' + a.id;
+            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-install', id },
+              el('h2', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': a.id },
+                el('p', { class: 'setting-desc', text: 'Loading installation status.' }))));
+            const at = a.switch || a.seen ? 1 : 0;
+            a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
           }
           // An app drawn on the hub page: its width, after its first section.
           if (a.width) {
@@ -185,7 +193,7 @@ const AL = (() => {
             const id = 'app-updates-' + a.id;
             if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-updates', id },
               el('h2', { text: 'Its own updates' }), el('div', { class: 'updates-block', 'data-app': a.id })));
-            const own = new Set(a.sections.filter((s) => !/^(app-access-|app-width-|folder-)/.test(s)));
+            const own = new Set(a.sections.filter((s) => !/^(app-access-|app-install-|app-width-|folder-)/.test(s)));
             const at = a.sections.findIndex((s) => own.has(s));
             a = { ...a, sections: at < 0 ? [...a.sections, id] : [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
           }
@@ -207,7 +215,7 @@ const AL = (() => {
     }
     // Whatever no page claimed: kept on pages of its own so nothing is lost. Listed under "More" only once
     // the apps' list has come (or failed): before it, every app's section is unclaimed for a moment.
-    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-width-|folder-|app-updates-|app-flagged-)/.test(id));
+    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-install-|app-width-|folder-|app-updates-|app-flagged-)/.test(id));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);
