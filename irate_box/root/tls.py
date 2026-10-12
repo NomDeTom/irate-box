@@ -50,10 +50,10 @@ CA_DAYS = 3650
 # Who besides root reads the server key: Caddy runs as its own user; nginx's master reads it as root.
 FRONT = TLS / "front"
 # Each origin's TLS twin (install.sh: TLS_PORT and the rest): the hub's own, then the add-ons',
-# the notes', Kiwix's and cgit's, beside their plain ports.
+# the notes', Kiwix's, cgit's and the notebooks', beside their plain ports.
 TWINS = {"main": int(os.environ.get("HUB_TLS_PORT", "443")), "addons": int(os.environ.get("HUB_ADDON_TLS_PORT", "8490")),
          "notes": int(os.environ.get("HUB_NOTES_TLS_PORT", "8491")), "wiki": int(os.environ.get("HUB_WIKI_TLS_PORT", "8492")),
-         "git": int(os.environ.get("HUB_GIT_TLS_PORT", "8493"))}
+         "git": int(os.environ.get("HUB_GIT_TLS_PORT", "8493")), "notebook": int(os.environ.get("HUB_NOTEBOOK_TLS_PORT", "8494"))}
 FRONT_GROUP = os.environ.get("HUB_TLS_GROUP") or ("caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else "")
 
 

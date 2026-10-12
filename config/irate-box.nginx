@@ -49,6 +49,7 @@ map $scheme $irate_box_addon_port { https @ADDON_TLS_PORT@; default @ADDON_PORT@
 map $scheme $irate_box_notes_port { https @NOTES_TLS_PORT@; default @NOTES_PORT@; }
 map $scheme $irate_box_wiki_port  { https @WIKI_TLS_PORT@;  default @WIKI_PORT@; }
 map $scheme $irate_box_git_port   { https @GIT_TLS_PORT@;   default @GIT_PORT@; }
+map $scheme $irate_box_notebook_port { https @NOTEBOOK_TLS_PORT@; default @NOTEBOOK_PORT@; }
 # The hub's session cookie is the hub's: an app on a sibling port (notes, books, cgit, Syncthing)
 # gets the rest of the Cookie header without it, so a page there cannot act as the owner.
 # The gates (auth_request) still see the whole header.
@@ -304,6 +305,12 @@ server {
 	location /notes/ {
 		if ($irate_box_off_notes) { return 404; }
 		return 302 $scheme://$host:$irate_box_notes_port$request_uri;
+	}
+	# A notebook per login: on an origin of its own (the server block at the end), apart from the
+	# shared notes', so a shared page's script cannot read anyone's own notebook.
+	location ^~ /notebook/ {
+		if ($irate_box_off_notes) { return 404; }
+		return 302 $scheme://$host:$irate_box_notebook_port/notebook/;
 	}
 
 	# --- /sync -> Syncthing web GUI (add-on, operator only) -------------------------
@@ -673,6 +680,60 @@ server {
 		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_read_timeout 1h;
 		proxy_pass http://unix:/run/silverbullet/silverbullet.sock;
+	}
+	location / { return 404; }
+}
+
+# --- the notebooks' origin: a SilverBullet per login (--with-notes) -----------------------------
+# The hub answers every request (/_irate/notebook): whose notebook this session's is, as a header
+# routed on to that login's socket; not signed in, to the sign-in; not running yet, to the hub's
+# waiting page, which starts it.
+server {
+	listen @NOTEBOOK_PORT@;
+	listen [::]:@NOTEBOOK_PORT@;
+	include @TLS@/nginx-notebook.conf*;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	absolute_redirect off;
+	include @ACCESS@;
+	# Every header set again, as setting one drops the server's (Connection above all: see the notes' /_irate_user).
+	location = /_irate_notebook {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/notebook;
+	}
+	location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=/notebook.html; }
+	location @irate_box_notebook_wait { return 302 $scheme://$host:$irate_box_hub_port/notebook.html; }
+	client_max_body_size 50m;  # attachments
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection $irate_box_connection;
+	proxy_set_header X-Irate-Front "";
+	location = / { return 302 /notebook/; }
+	location = /notebook { return 301 /notebook/; }
+	location ~* ^/notebook/\.(shell|proxy|runtime) { return 403; }
+	location /notebook/ {
+		if ($irate_box_off_notes) { return 404; }
+		auth_request /_irate_notebook;
+		auth_request_set $irate_box_notebook $upstream_http_x_irate_notebook;
+		error_page 401 = @irate_box_login;
+		error_page 403 = @irate_box_notebook_wait;
+		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_read_timeout 1h;
+		proxy_pass http://unix:/run/irate-box-notebooks/$irate_box_notebook/sb.sock:;
 	}
 	location / { return 404; }
 }

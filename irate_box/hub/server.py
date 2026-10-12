@@ -49,6 +49,7 @@ from irate_box.library import librarian
 from irate_box.hub import manifests
 from irate_box.hub import meshbridge
 from irate_box.hub import memhistory
+from irate_box.hub import notebooks
 from irate_box.hub import store
 from irate_box.hub import pagehistory
 from irate_box.hub import svchistory
@@ -983,6 +984,12 @@ DEFAULT_SETTINGS = {
     # What every tile does for one who sees it but may not open it, over the per-app choices (a
     # global override). "" (the default) leaves each app to its own choice.
     "locked_all": "",
+    # A notebook per login (notebooks.py): "" decides by sign-up (private wherever people may sign
+    # in), "private", or "communal" (the shared notes only). At most so many running at once, and
+    # none started while the box has less than so much memory free.
+    "notebooks": "",
+    "notebooks_max": 5,
+    "notebooks_keep_free_mb": 96,
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -1033,6 +1040,12 @@ def valid_setting(key, value):
         return value in ("users", "admin")
     if key == "report_threshold":
         return type(value) is int and 1 <= value <= 20
+    if key == "notebooks":
+        return value in notebooks.MODES
+    if key == "notebooks_max":
+        return type(value) is int and value in notebooks.MAX_CHOICES
+    if key == "notebooks_keep_free_mb":
+        return type(value) is int and value in notebooks.FREE_CHOICES
     return type(value) is want and (want is not int or value >= 0)
 
 
@@ -1072,6 +1085,10 @@ def save_settings(data):
 # Held in memory so a page full of /status pollers costs no disk reads.
 _settings = load_settings()
 apply_settings(_settings)
+# The notebooks per login: the list of those running starts empty with the hub (a notebook left
+# running from before is stopped, and opens again on its owner's next visit).
+NOTEBOOKS = notebooks.Notebooks(lambda path: socket_listening(path), lambda k: accounts.has_session(k),
+                                lambda: settings_snapshot(), lambda: accounts.settings()["signup"], WEB_SERVER)
 
 
 def settings_snapshot():
@@ -2993,7 +3010,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         action, addr = payload.get("action"), self._client_addr()
         if action == "logout":
+            me = accounts.session(self._session_token())
             accounts.logout(self._session_token())
+            if me and not accounts.has_session(me["name"]):
+                NOTEBOOKS.close(me["name"])
             self.send_json(200, {"me": None}, [self._session_cookie("", 0)])
             return
         if action in ("signup", "login", "password", "code") and not self._https() and accounts.settings()["http"] == "prevented":
@@ -3082,11 +3102,14 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def _send_notes(self):
-        """The shared notes (SilverBullet's space) as a zip: its pages and attachments, without its own
-        hidden files (a dot at any level) and never past a link out of the folder."""
-        base = STATE_DIR / "notes"
+        """The shared notes (SilverBullet's space) as a zip."""
+        self._send_zip(STATE_DIR / "notes", "notes", "no notes yet: SilverBullet is not installed, or nothing has been written")
+
+    def _send_zip(self, base, stem, missing):
+        """A SilverBullet space as a zip: its pages and attachments, without its own hidden files (a
+        dot at any level) and never past a link out of the folder."""
         if not base.is_dir():
-            self.send_json(404, {"error": "no notes yet: SilverBullet is not installed, or nothing has been written"})
+            self.send_json(404, {"error": missing})
             return
         root = base.resolve()
         with tempfile.SpooledTemporaryFile(max_size=32 << 20) as buf:
@@ -3100,7 +3123,7 @@ class Handler(BaseHTTPRequestHandler):
                         z.write(full, str(full.relative_to(root)))
             size = buf.tell()
             buf.seek(0)
-            name = f"notes-{time.strftime('%Y-%m-%d')}.zip"
+            name = f"{stem}-{time.strftime('%Y-%m-%d')}.zip"
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Length", str(size))
@@ -3181,6 +3204,33 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/_irate/admin", "/_irate/user"):
             self._irate_check(path)
+            return
+
+        if path == "/_irate/notebook":
+            # The notebooks' origin asks on every request: whose notebook (a header nginx routes on).
+            code, k = NOTEBOOKS.gate(accounts.session(self._session_token()))
+            self.send_response(204 if code == 204 else code)
+            if k:
+                self.send_header("X-Irate-Notebook", k)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/api/notebook":
+            self.send_json(200, NOTEBOOKS.status(accounts.session(self._session_token())))
+            return
+
+        if path == "/api/notebook/download":
+            me = accounts.session(self._session_token())
+            k = notebooks.key(me["name"]) if me else None
+            if k is None:
+                self.send_json(401, {"error": "sign in to download your notebook"})
+                return
+            self._send_zip(NOTEBOOKS.folder(k), f"notebook-{k}", "no notebook yet: open it once first")
+            return
+
+        if path == "/admin/notebooks":
+            self.send_json(200, NOTEBOOKS.view())
             return
 
         if path == "/api/account":
@@ -3790,6 +3840,21 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/account":
             self._account_post(payload)
+            return
+
+        if path == "/api/notebook":
+            # Open (start) this login's own notebook; only from the hub's own pages, as /api/account.
+            site = self.headers.get("Sec-Fetch-Site")
+            if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")):
+                self.send_json(403, {"error": "this must come from the box's own pages"})
+                return
+            me = accounts.session(self._session_token())
+            if payload.get("action") == "close":
+                if me:
+                    NOTEBOOKS.close(me["name"])
+                self.send_json(200, NOTEBOOKS.status(me))
+            else:
+                self.send_json(200, NOTEBOOKS.open(me))
             return
 
         if path == "/admin/accounts":
@@ -4657,6 +4722,7 @@ if __name__ == "__main__":
     svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]).start()
     memory_sampler = memhistory.Sampler()
     memory_sampler.start()
+    notebooks.Reaper(NOTEBOOKS).start()
     # The pages the web server serves itself (no unit to sample): their use, from nginx's log of page loads.
     pagehistory.Sampler(lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
