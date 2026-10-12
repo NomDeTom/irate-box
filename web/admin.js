@@ -2935,9 +2935,9 @@ function drawRoaming(inv, u, wifi) {
   const chosen = (u && u.chosen) || {};
   const n = f.aps.length, hour = u && !u.stale ? u.roams_hour || 0 : null;
   const lines = [netLine('Roaming', n > 1
-    ? `${n} access points for ${f.ssid}, on channel${f.channels.length === 1 ? '' : 's'} ${andList(f.channels)}. `
-      + (hour == null ? '' : hour ? `The box moved between them ${hour === 1 ? 'once' : `${hour} times`} in the last hour. ` : 'The box hasn\'t moved between them in the last hour. ')
-      + `Roaming: ${ROAM_SHORT[chosen.roaming || 'roam']}${chosen.ignore_roams ? ' (short moves not counted as drops)' : ''}.`
+    ? `Roaming: ${ROAM_SHORT[chosen.roaming || 'roam']}${chosen.ignore_roams ? ' (short moves not counted as drops)' : ''}. `
+      + `${n} access points for ${f.ssid}, on channel${f.channels.length === 1 ? '' : 's'} ${andList(f.channels)}. `
+      + (hour == null ? '' : hour ? `The box moved between them ${hour === 1 ? 'once' : `${hour} times`} in the last hour.` : 'The box hasn\'t moved between them in the last hour.')
       + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves too.' : '')
     : `One access point for ${f.ssid}: nothing to roam between.`)];
   if (f.bgscan != null) lines.push(netLine('Background scan', cap1(bgscanWords(f.bgscan))));
@@ -3304,16 +3304,20 @@ function renderVisible(inv, busy) {
   const f = joinForm.elements;
   box.replaceChildren(
     el('p', { className: 'setting-desc' }, nets.length ? `Networks the box can see (from ${inv ? new Date(inv.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'its last look'}): pick one, then give its password. ` : 'No networks seen in the last look. ', scanAgain),
-    ...(nets.length ? [el('ul', { className: 'net-visible-list' }, ...nets.slice(0, 25).map((n) => el('li', {},
-      el('strong', { textContent: n.ssid }), ' ',
-      el('span', { className: 'setting-desc', textContent: `${n.signal}%, ${n.bands.join(' and ')}${n.channels.length ? ` (channel ${n.channels.join(', ')})` : ''}`
-        + `${n.aps > 1 ? `, ${n.aps} access points` : ''}, ${n.security || 'open'}` }),
-      n.known ? el('span', { className: 'info-pill', textContent: 'known' }) : null,
-      n.kind ? actionButton('Use this one', () => {
-        f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
-        (n.kind === 'open' ? f.ssid : f.psk).focus();
-      }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
-        : el('span', { className: 'setting-desc', textContent: ' needs a login (802.1X) or a kind of security the box cannot join by password' }))))] : []));
+    ...(nets.length ? [el('div', { className: 'table-scroll' }, el('table', { className: 'admin-table net-visible-table' },
+      el('thead', {}, el('tr', {}, ...['Network', 'Signal', 'Band', 'Channel', 'Access points', 'Security', ''].map((h) => el('th', { textContent: h })))),
+      el('tbody', {}, ...nets.slice(0, 25).map((n) => el('tr', {},
+        el('td', {}, el('strong', { textContent: n.ssid }), n.known ? el('span', { className: 'info-pill', textContent: 'known' }) : null),
+        el('td', { className: 'num', textContent: `${n.signal}%` }),
+        el('td', { textContent: n.bands.join(', ') }),
+        el('td', { className: 'num', textContent: n.channels.join(', ') }),
+        el('td', { className: 'num', textContent: String(n.aps || 1) }),
+        el('td', { textContent: n.security || 'open' }),
+        el('td', {}, n.kind ? actionButton('Use this one', () => {
+          f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
+          (n.kind === 'open' ? f.ssid : f.psk).focus();
+        }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
+          : el('span', { className: 'setting-desc', textContent: 'needs a login (802.1X)' })))))))] : []));
 }
 
 // One connection's own settings: each with its value now and the choices, the risky side said; a change
@@ -3378,7 +3382,7 @@ function connSettings(p, inv, data, busy, radio) {
     netRequest({ action: 'connection', uuid: p.uuid, changes }, 'connection');
   }, { disabled: busy || !Object.keys(dirty).length });
   const cn = netNotes.connection;
-  const box = el('details', { className: 'net-conn-settings', open: connOpen.has(p.uuid) }, el('summary', { textContent: 'Its own settings' }),
+  const box = el('details', { className: 'net-conn-settings', open: connOpen.has(p.uuid) }, el('summary', { textContent: 'Settings for this network' }),
     lasts ? null : el('p', { className: 'setting-desc', textContent: 'netplan writes this connection afresh at every boot, so a setting made for it alone would be lost. Hand it over to NetworkManager (above) to set these.' }),
     changed ? el('p', { className: 'setting-desc' }, `Changed here: ${changed.changed.join(', ')}. `,
       actionButton('Undo', () => { if (confirm(`Put ${p.ssid || p.name}'s settings back as they were?`)) netRequest({ action: 'connection', uuid: p.uuid, undo: true }, 'connection'); }, { disabled: busy })) : null,
