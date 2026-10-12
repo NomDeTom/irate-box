@@ -1175,11 +1175,11 @@ def check_crashwatch(now=None):
         said += " This kernel has no watchdog (neither the board's nor softdog)."
     out.append(_f("crash-hang", "A frozen box", "warn" if week and not on else "ok", said,
                   "Each restart is filed as a crash, with what the box was doing, so nothing is lost by allowing it. "
-                  "Set in the doctor's settings, above.", go=_go("health-settings", "the doctor's settings", "hs-panic")))
+                  "Set on Recovery and monitoring.", go=_go("health-settings", "Recovery and monitoring", "hs-panic")))
     out.append(_f("crash-snapshots", "Crash watch's snapshots", "ok" if s["snapshots"] else "warn",
                   f"Every 30 s to {cw.SNAP}, synced: what a crash is explained by." if s["snapshots"] else
                   "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).",
-                  "Set in the doctor's settings, above.", go=_go("health-settings", "the doctor's settings", "hs-snapshots")))
+                  "Set on Recovery and monitoring.", go=_go("health-settings", "Recovery and monitoring", "hs-snapshots")))
     return out
 
 

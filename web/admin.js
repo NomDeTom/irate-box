@@ -1266,6 +1266,7 @@ const upd = {
   doctor: document.getElementById('update-doctor'),
   clear: document.getElementById('update-clear'),
   doctorNote: document.getElementById('doctor-note'),
+  clearNote: document.getElementById('update-clear-note'),
   doctorWhen: document.getElementById('doctor-when'),
   findings: document.getElementById('doctor-findings'),
   udSummary: document.getElementById('updoctor-summary'), udEmpty: document.getElementById('updoctor-empty'),
@@ -1284,10 +1285,10 @@ const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update',
 let updWaiting = null; // { id, action }
 let updPoll = null;
 
-// Each answer goes under the buttons that asked: the doctor's and the cache's under theirs.
+// Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
 function updSay(action, text, ok) {
-  const node = action === 'force-install' ? upd.forceNote
-    : action === 'doctor' || action === 'clear-cache' ? upd.doctorNote : upd.note;
+  const node = action === 'force-install' ? upd.forceNote : action === 'clear-cache' ? upd.clearNote
+    : action === 'doctor' ? upd.doctorNote : upd.note;
   node.textContent = text;
   node.classList.toggle('bad', !ok);
   node.hidden = !text;
@@ -1321,9 +1322,15 @@ function renderUpdoctor(d) {
     b.setAttribute('aria-pressed', String(udShow === key));
     return b;
   })));
-  const item = (f, i) => {
+  // Each row named by its check, not its place in the list, so a link to it survives a new report.
+  const slug = (f) => `ud-${String(f.id || f.check).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  const item = (f) => {
     const x = healthDo(f, false);
-    return findingRow({ id: `ud-${i}`, state: f.status, title: f.check, detail: f.detail, how: x.how, controls: x.controls });
+    // The cache and a failed verification are dealt with in Updates' Maintenance, where their buttons are.
+    if (f.status !== 'ok' && /cache|cached copy|verif/i.test(`${f.check} ${f.fix || ''}`) && !x.controls.some((c) => c.getAttribute && c.getAttribute('href') === '#update-maint')) {
+      x.controls.push(el('a', { className: 'action-btn go-btn', href: '#update-maint', textContent: 'Go to Updates → Maintenance →' }));
+    }
+    return findingRow({ id: slug(f), state: f.status, title: f.check, detail: f.detail, how: x.how, controls: x.controls });
   };
   const open = all.filter((f) => f.status !== 'ok' && (udShow === 'all' || f.status === udShow));
   upd.findings.replaceChildren(...open.map(item));
@@ -1332,7 +1339,7 @@ function renderUpdoctor(d) {
   const fine = all.filter((f) => f.status === 'ok');
   upd.udFineFold.hidden = !fine.length;
   upd.udFineCount.textContent = `(${fine.length})`;
-  upd.udFine.replaceChildren(...fine.map((f, i) => item(f, `fine-${i}`)));
+  upd.udFine.replaceChildren(...fine.map(item));
 }
 // On a metered network (a phone's hotspot, say): scheduled updates and downloads wait, and one
 // started by hand asks first (meteredOk).
@@ -1487,8 +1494,6 @@ const sec = {
   counts: document.getElementById('security-counts'),
   findings: document.getElementById('security-findings'),
   hub: document.getElementById('security-hub'),
-  set: document.getElementById('security-set'),
-  setCount: document.getElementById('security-set-count'),
   listeners: document.querySelector('#security-listeners tbody'),
   output: document.getElementById('security-output'),
   log: document.getElementById('security-log'),
@@ -1659,12 +1664,24 @@ function secChipRows(f, busy) {
       return b;
     }))));
 }
+// The Security page's subjects: where each of the box's choices lives.
+const SEC_SUBJECTS = [
+  ['exposure', 'What guests can reach', 'The ports that answer, the floor between guests and the box, and what is shared onward.'],
+  ['login', 'Logging in and root', 'Who can log in to the box itself, how, and what they may do as root.'],
+  ['system', 'The system', 'How the system underneath is set up: its kernel, its package sources, its logs and its services.'],
+];
+function secSubject(f) {
+  if (/^(port-|listen-|firewall|guest-net|cockpit|llmnr|share)/.test(f.id)) return 'exposure';
+  if (/^(ssh|sudo|root-|group-)/.test(f.id)) return 'login';
+  return 'system';
+}
 function secChoiceCard(f, busy, note) {
   const rows = secChipRows(f, busy);
   const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
   const buttons = rest.actions.length ? el('div', { className: 'library-buttons' }, ...scanButtons(rest, busy)) : null;
   return el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
-    el('span', { className: 'setting-name', textContent: f.title }),
+    el('span', { className: 'setting-name' }, f.title, ' ',
+      el('span', { className: `fstate fstate-${f.status === 'ok' ? 'ok' : f.status}`, textContent: f.status === 'ok' ? 'Set' : 'Waiting for your choice' })),
     el('span', { className: 'setting-desc', textContent: f.detail }),
     f.status !== 'ok' && f.fix && !rows.length && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     ...rows, buttons, note);
@@ -1689,13 +1706,17 @@ function renderSecurity(data) {
   const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
     how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Nothing to press: it is said so you know.'),
     controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
-  // The real choices: what waits for one first, what is set (with its Undo) in a fold.
-  const waiting = by('choice').filter((f) => f.status !== 'ok'), set = by('choice').filter((f) => f.status === 'ok');
+  // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
+  // choice or is set, so a setting can always be found and changed back.
+  const choices = lines.filter((f) => secKind(f) === 'choice');
+  const waiting = choices.filter((f) => f.status !== 'ok'), set = choices.filter((f) => f.status === 'ok');
   const card = (f) => secChoiceCard(f, busy, noteUnder(f.id));
-  sec.findings.replaceChildren(...(waiting.length ? waiting.map(card)
-    : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing: every choice here is made.' : 'Not scanned yet.' })]));
-  sec.set.replaceChildren(...set.map(card));
-  sec.setCount.textContent = `(${set.length})`;
+  sec.findings.replaceChildren(...(!scan ? [el('p', { className: 'setting-desc', textContent: 'Not scanned yet.' })]
+    : SEC_SUBJECTS.map(([key, title, words]) => {
+      const mine = choices.filter((f) => secSubject(f) === key);
+      return mine.length ? el('div', { className: 'sec-subject', id: `security-${key}` }, el('h3', { textContent: title }),
+        el('p', { className: 'setting-desc', textContent: words }), el('div', { className: 'findings' }, ...mine.map(card))) : null;
+    }).filter(Boolean)));
   // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
   sec.hub.replaceChildren(...data.hub.map((f) => el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
     el('span', { className: 'setting-name', textContent: f.title }),
@@ -1756,7 +1777,7 @@ function renderSecurity(data) {
   sec.counts.replaceChildren(...[
     [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
     [ports, `port${ports === 1 ? '' : 's'} worth a look`, ports ? 'warn' : 'ok', 'security-ports'],
-    [set.length, 'set', 'ok', 'security-set-fold']].map(([n, word, st, to]) =>
+    [set.length, 'set', 'ok', 'security-findings']].map(([n, word, st, to]) =>
     el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
   badge('security', problems ? String(problems) : '');
   const updProblems = by('update').filter((f) => f.status === 'problem').length;
@@ -1787,7 +1808,15 @@ function jointDo(i, data, busy) {
   const page = (i.page || []).map((id) => scanBy.get(id)).filter(Boolean);
   const seen = new Set(), controls = [];
   for (const f of page) {
-    if (f.id === 'sudo-nopasswd') { controls.push(...sudoToggle(f, busy)); continue; }
+    // A repair with one right answer is done here; an ongoing choice is the Security page's (or Updates'),
+    // where it can be seen and changed back: the doctor links to it rather than changing it itself.
+    if (secKind(f) !== 'cure') {
+      if ((f.actions || []).length || f.status !== 'ok') {
+        const [to, where] = secKind(f) === 'update' ? ['updates-security', 'Updates'] : [`sec-${f.id}`, 'Security'];
+        if (!seen.has(to)) { seen.add(to); controls.push(el('a', { className: 'action-btn go-btn', href: `#${to}`, textContent: `Choose on ${where} →` })); }
+      }
+      continue;
+    }
     for (const a of f.actions || []) {
       if (seen.has(a.choice)) continue;
       seen.add(a.choice);

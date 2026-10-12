@@ -138,7 +138,7 @@ check("  the radio watched, its failure in the last day, nothing to choose here:
       and f["crash-radio"]["go"]["mark"] == "up-wedge", f["crash-radio"])
 check("  a frozen box after a crash, nothing to restart it: a warning; the choice is the doctor's settings', linked to its row",
       f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"] and not f["crash-hang"]["actions"]
-      and f["crash-hang"]["go"] == {"section": "health-settings", "where": "the doctor's settings", "mark": "hs-panic"}, f["crash-hang"])
+      and f["crash-hang"]["go"] == {"section": "health-settings", "where": "Recovery and monitoring", "mark": "hs-panic"}, f["crash-hang"])
 check("  snapshots: said, linked to their row", not f["crash-snapshots"]["actions"] and f["crash-snapshots"]["go"]["mark"] == "hs-snapshots", f["crash-snapshots"])
 g = {x["key"]: x for x in health.doctor_settings()["groups"]}
 check("the doctor's settings: snapshots, a panic, and the watchdog where there is one, each with its current choice, the safest first",

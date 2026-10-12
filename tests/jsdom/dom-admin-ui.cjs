@@ -248,6 +248,11 @@ setTimeout(() => {
   check('no clock findings in the services doctor', !t('#health-findings .finding .ftitle, #health-fine .finding .ftitle').some((x) => /Clock/.test(x)), t('#health-findings .finding .ftitle'));
   check('the clock\'s badge counts its problem', d.querySelector('a[href="#clock"]').dataset.badge === '1');
   check('the box doctor is titled so', t('#health-title')[0] === 'Box doctor');
+  check('Recovery and monitoring under System holds the recovery settings; the Box doctor links there', !!d.querySelector('#page-recovery #health-settings')
+    && !d.querySelector('#health #health-settings') && !!d.querySelector('#health-recovery-summary a[href="#recovery"]')
+    && side.indexOf('Recovery and monitoring') > side.indexOf('System'));
+  check('update maintenance on Updates, folded: the cache and Install anyway; the Updates doctor points there', !!d.querySelector('#updates details#update-maint #update-clear')
+    && !!d.querySelector('#update-maint #update-force') && !d.querySelector('#updoctor #update-clear') && !!d.querySelector('#updoctor a[href="#update-maint"]'));
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));

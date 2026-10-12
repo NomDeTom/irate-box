@@ -157,7 +157,18 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
   // Each line of the scan where it belongs, in the same shape.
   const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
-  check('Security: what waits for a choice, worst first', [...d.querySelectorAll('#security-findings .sec-choice > .setting-name')].map(t).join('|') === 'Passwordless sudo|Cockpit|SSH password login', ids('#security-findings'));
+  const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .setting-name`)].map((n) => n.firstChild.textContent.trim()).join('|');
+  check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH password login|Passwordless sudo',
+    `${titlesIn('#security-exposure')} / ${titlesIn('#security-login')}`);
+  check('  each says whether it waits for a choice or is set', /Waiting for your choice/.test(t(d.getElementById('sec-ssh-password'))));
+  {
+    // The Security doctor: a choice is linked to where it is made; a repair with one right answer stays a button.
+    const ssh = w.jointDo({ page: ['ssh-password'], do: null }, sec, false).controls;
+    const kernel = w.jointDo({ page: ['kernel-links'], do: null }, sec, false).controls;
+    check('Security doctor: a policy finding links to its setting on Security, with no button of its own',
+      ssh.length === 1 && ssh[0].tagName === 'A' && ssh[0].getAttribute('href') === '#sec-ssh-password', ssh.map((c) => c.outerHTML).join(' '));
+    check('  a cure keeps its button', kernel.some((c) => c.tagName === 'BUTTON'), kernel.map((c) => c.outerHTML).join(' '));
+  }
   check('  the cure is not there (it is the doctor\'s)', !/Kernel link/.test(t(d.getElementById('security-findings'))));
   check('  the hub\'s own lines, with where to change them', /Plain HTTP only/.test(t(d.getElementById('security-hub')))
     && d.querySelector('#security-hub a.go-btn').getAttribute('href') === '#security-https' && !!d.getElementById('security-https'));
