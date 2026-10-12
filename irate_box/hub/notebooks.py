@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
 """A notebook per login: a SilverBullet of its own for each signed-in person, beside the shared notes.
 
 Each runs only while its owner uses it. The hub keeps the list of the notebooks that should be
