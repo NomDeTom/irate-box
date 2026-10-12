@@ -199,6 +199,22 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   [...d.querySelector('#security .sec-pending').querySelectorAll('button')].find((b) => /^Save/.test(t(b))).click();
   await wait();
   check('  Off asks root to take the rule out, on Save, with no pop-up', sent() && asked === 0);
+  {
+    // A Save the hub refuses part-way: what was not sent stays chosen, and the note says so.
+    const realPost = w.postJSON;
+    let n = 0;
+    w.postJSON = async (u, b) => { if (u === '/admin/security' && b.action === 'fix' && n++ >= 1) throw new Error('the helper is busy.'); return realPost(u, b); };
+    w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });
+    [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Turn password login off').click();
+    [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Switch off').click();
+    await wait();
+    [...d.querySelector('#security .sec-pending').querySelectorAll('button')].find((b) => /^Save/.test(t(b))).click();
+    await wait();
+    const bar = d.querySelector('#security .sec-pending');
+    check('a Save refused part-way: the unsent change stays chosen, the note says how many went', !bar.hidden && /1 change not saved yet/.test(t(bar))
+      && /1 of 2 sent/.test(t(d.getElementById('security-note'))), `${t(bar)} / ${t(d.getElementById('security-note'))}`);
+    w.postJSON = realPost;
+  }
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);

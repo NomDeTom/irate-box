@@ -1577,14 +1577,19 @@ function drawSecPending(busy) {
   });
 }
 async function secSavePending() {
-  const list = [...secPending.values()];
+  const list = [...secPending.entries()];
   const ids = [];
-  for (const { a } of list) {
-    try { ids.push((await postJSON('/admin/security', { action: 'fix', choice: a.choice })).id); }
-    catch (err) { secNote = { fid: 'scan', text: err.message, ok: false }; break; }
+  let failed = null;
+  // Each change sent in turn; one the hub refuses, and those after it, stay chosen (and shown) for another Save.
+  for (const [key, { a }] of list) {
+    try { ids.push((await postJSON('/admin/security', { action: 'fix', choice: a.choice })).id); secPending.delete(key); }
+    catch (err) { failed = err.message; break; }
   }
-  secPending.clear();
   if (ids.length) { secWaiting = { id: ids[ids.length - 1], ids, fid: 'scan' }; secNote = null; }
+  if (failed) {
+    secNote = { fid: 'scan', text: `${ids.length} of ${list.length} sent; then: ${failed} The rest are still chosen, not saved.`, ok: false };
+    if (ids.length) secWaiting.keepNote = secNote;
+  }
   loadSecurity();
 }
 
@@ -1639,12 +1644,28 @@ async function secAccept(key, title, yes) {
     if (secData) { secData.accepted = r.accepted; renderSecurity(secData); }
   } catch (err) { say(err.message, false, sec.auditNote); }
 }
+let secRepair = null;  // { id, label }: a repair asked from the Security doctor, answered there
 async function healthRepair(choice, label, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
   try {
-    await postJSON('/admin/health', { action: 'fix', choice });
-    say(`${label}: asked; the Box doctor shows its progress and answer.`, true, sec.auditNote);
+    secRepair = { id: (await postJSON('/admin/health', { action: 'fix', choice })).id, label };
+    say(`${label}: waiting for the root helper.`, true, sec.auditNote);
+    loadHealth();
   } catch (err) { say(err.message, false, sec.auditNote); }
+}
+// Told by each health report: the repair's place in the queue, then its answer, where it was asked.
+function secRepairFollow(data) {
+  if (!secRepair) return;
+  const done = (data.results || []).find((r) => r.id === secRepair.id);
+  const q = data.queue || {};
+  if (done) {
+    say(`${secRepair.label}: ${done.message}`, done.ok, sec.auditNote);
+    secRepair = null;
+    return;
+  }
+  // Still a request file: queued (oldest first); gone but not answered: the helper has it.
+  const ahead = (q.waiting || []).findIndex((x) => x.id === secRepair.id);
+  say(`${secRepair.label}: ${ahead < 0 ? 'running' : ahead ? `queued, ${ahead} ahead of it` : 'next in the queue'}. The full queue is on the Box doctor.`, true, sec.auditNote);
 }
 
 // A choice on the Security page, as a setting rather than a finding: its name, what it means, its options as
@@ -1695,7 +1716,8 @@ function renderSecurity(data) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
       const all = (secWaiting.ids || [secWaiting.id]).map((id) => (data.results || []).find((r) => r.id === id)).filter(Boolean);
-      secNote = { fid: secWaiting.fid, text: all.map((r) => r.message).join(' '), ok: all.every((r) => r.ok) };
+      secNote = { fid: secWaiting.fid, text: [all.map((r) => r.message).join(' '), secWaiting.keepNote ? secWaiting.keepNote.text : ''].filter(Boolean).join(' '),
+        ok: all.every((r) => r.ok) && !secWaiting.keepNote };
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -1741,8 +1763,10 @@ function renderSecurity(data) {
   const auditSaid = secNote && secNote.fid === 'audit' ? secNote : null;
   say(auditSaid ? auditSaid.text : '', auditSaid ? auditSaid.ok : true, sec.auditNote);
 
-  sec.when.textContent = scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` + (busy ? ' Scanning…' : '')
-    : busy ? 'Scanning…' : 'Not scanned yet.';
+  // Scanning only while a scan asked from here is out; anything else the helper has is said as such.
+  const doing = secWaiting && secWaiting.fid === 'scan' && !secWaiting.ids ? 'Scanning…'
+    : secWaiting ? 'Saving: waiting for the root helper…' : busy ? 'The root helper is busy with other work; this report is from before it.' : '';
+  sec.when.textContent = (scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` : 'Not scanned yet.') + (doing ? ` ${doing}` : '');
   sec.scan.disabled = busy;
   sec.auditRun.disabled = busy;
   sec.auditDeep.disabled = busy;
@@ -2369,6 +2393,7 @@ function renderHelperQueue(q) {
 function renderHealth(data) {
   hlLast = data;
   renderHelperQueue(data.queue);
+  secRepairFollow(data);
   const h = data.helper || {};
   // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
   const lad = document.getElementById('health-ladder');
