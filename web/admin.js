@@ -2357,6 +2357,7 @@ const net = {
   handover: document.getElementById('net-handover'),
   defaults: document.getElementById('net-defaults'),
   defaultsSave: document.getElementById('net-defaults-save'),
+  defaultsDiscard: document.getElementById('net-defaults-discard'),
   defaultsNote: document.getElementById('net-defaults-note'),
   events: document.getElementById('up-events'),
 };
@@ -3103,7 +3104,7 @@ function renderDefaults(inv, busy) {
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
     const chosen = name in defaultsDirty ? defaultsDirty[name] : (cur !== null ? cur : 'default');
     sel.value = opts.some(([v]) => v === chosen) ? chosen : 'default';
-    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = false; });
+    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = net.defaultsDiscard.disabled = false; });
     let now;
     if (defaultsScope) {
       const e = d.ifaces[defaultsScope][name];
@@ -3128,10 +3129,11 @@ function renderDefaults(inv, busy) {
     ...d.broken.map((f) => `${f} could not be read: NetworkManager may not read it either.`),
   ];
   net.defaults.replaceChildren(...rows, ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
-  net.defaultsSave.disabled = busy || !Object.keys(defaultsDirty).length;
+  net.defaultsSave.disabled = net.defaultsDiscard.disabled = busy || !Object.keys(defaultsDirty).length;
   const dn = netNotes.defaults;
   say(dn ? dn.text : '', dn ? dn.ok : true, net.defaultsNote);
 }
+net.defaultsDiscard.addEventListener('click', () => { defaultsDirty = {}; renderDefaults(netData && netData.inventory, false); });
 net.defaultsSave.addEventListener('click', () => {
   const changes = { ...defaultsDirty };
   if (!Object.keys(changes).length) return;
