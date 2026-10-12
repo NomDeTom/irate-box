@@ -227,6 +227,11 @@ DO = [
     ("*", r"^image-bluetooth$", {"cmd": "sudo systemctl disable --now bluetooth.service"}),
     ("*", r"^image-kernel$", {"cmd": "apt list --upgradable 2>/dev/null | grep linux-image"}),
     ("*", r"^(debian-cis|lynis)-old$", {"act": "deep", "where": "Run the deep audit again"}),
+    # Lynis's tests met on a real board's deep audit with no answer of their own.
+    ("lynis", r"^lynis-HTTP-6710$", {"go": "security-https", "where": "Security → HTTPS",
+                                     "say": "Lynis looks for HTTPS in nginx's own sites; the hub's HTTPS is its own front, set on Security → HTTPS."}),
+    ("lynis", r"^lynis-NETW-3200", {"cmd": "printf 'install %s /bin/true\\n' dccp sctp rds tipc | sudo tee /etc/modprobe.d/60-rare-protocols.conf"}),
+    ("lynis", r"^lynis-STRG-1846$", {"say": "The boards irate-box runs on have no FireWire port: nothing to do."}),
     ("*", r"^notes-login$", {"go": "apps", "where": "Apps (Notes: who may open it)"}),
     ("*", r"^addon-tailscale$", {"go": "access", "where": "Access → Remote access",
                                  "say": "Tailscale came with the OS, and its unit's sandbox is its makers'. If you don't use it to reach the box from afar, switch it off."}),
