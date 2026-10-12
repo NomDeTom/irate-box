@@ -7,8 +7,10 @@ fails=0
 ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 inv() { systemctl show -p InvocationID --value kiwix; }
-systemctl is-active --quiet kiwix || { echo "  skip kiwix is not running here (no readable book)"; exit 0; }
 rerun() { bash /src/install.sh --src /src $(tr '\n' ' ' </etc/hub/install-options) >/tmp/rerun.log 2>&1; }
+# A book added after the first install: the next run starts Kiwix.
+systemctl is-active --quiet kiwix || rerun
+systemctl is-active --quiet kiwix || { echo "  skip kiwix is not running here (no readable book)"; exit 0; }
 before=$(inv)
 rerun || bad "install.sh again failed: $(tail -3 /tmp/rerun.log)"
 grep -q "kiwix: unchanged, left running" /tmp/rerun.log && ok "said: kiwix unchanged, left running" || bad "not said: $(grep -i kiwix /tmp/rerun.log | tail -2)"
