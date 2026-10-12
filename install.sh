@@ -1355,7 +1355,7 @@ if [ "$WEB" = nginx ]; then
 		"$ETC/front-secret.env" "$FRONT_SECRET" >"$NGINX_FRONT" )
 	# The page loads of the pages nginx serves itself (pagehistory.py reads them): a folder the hub can read,
 	# the file nginx's own (root), emptied by logrotate past 1 MB (the hub starts again when it shrinks).
-	install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE/pagelog"
+	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/pagelog"
 	printf '%s\n' "# Written by irate-box install.sh: the page loads the hub's use heatmap reads (pagehistory.py)." \
 		"$STATE/pagelog/pages.log {" "	size 1M" "	rotate 0" "	copytruncate" "	missingok" "	notifempty" "}" >/etc/logrotate.d/irate-box-pages
 	nginx_config "$HUB_PORT" >"$NGINX_SITE"
