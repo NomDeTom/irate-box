@@ -955,6 +955,9 @@ SANDBOX_EXEMPT = {
                      for line in ALL_LINES},
     "irate-box-secdoctor.service": {
         "ProtectProc=invisible": "the audit looks at every process: what listens, and as whom"},
+    "irate-box-uplink.service": {
+        "ProtectSystem=strict": "its repairs start the network's own tools (ifup, the DHCP client), which write /run, "
+                                "/var/lib and /etc/resolv.conf"},
     "irate-box-crashwatch.service": {
         "ProtectProc=invisible": "it keeps a snapshot of every process for after a hang"},
 }

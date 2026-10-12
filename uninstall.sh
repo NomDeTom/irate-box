@@ -141,6 +141,7 @@ rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" "$UNIT
 
 say "Removing service config"
 rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl
+rm -rf /etc/systemd/system/mosquitto.service.d/irate-box-sandbox.conf
 rm -f /etc/ngircd/irate-box.conf /etc/ngircd/irate-box.motd
 # An owner's own Caddy: the hub's site file and the import line install.sh added go; the
 # rest of their Caddyfile is theirs and stays as it is.
