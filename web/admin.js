@@ -2349,6 +2349,7 @@ const net = {
   custom: document.getElementById('up-custom'),
   fields: document.getElementById('up-fields'),
   save: document.getElementById('up-save'),
+  discard: document.getElementById('up-discard'),
   hold: document.getElementById('up-hold'),
   stall: document.getElementById('up-stall'),
   unhold: document.getElementById('up-unhold'),
@@ -2409,6 +2410,11 @@ function drawUpScope(inv) {
       netRequest({ action: 'settings', settings: { ...upSaved, per_iface: per } }, 'up');
     }) : null] : ['Pace, reach, sensitivity, guests and a wedged driver can also be chosen for one connection.']));
 }
+net.discard.addEventListener('click', () => {
+  upDirty = false;
+  if (netData && upSaved) { fillUpForm(upSaved, netData.levels); drawUpScope(netData.inventory); }
+  showUpSave();
+});
 upScopeBox.addEventListener('change', () => {
   if (upDirty && !confirm('Leave the choices not saved yet?')) { upScopeBox.value = upScope; return; }
   upScope = upScopeBox.value;
@@ -2579,7 +2585,7 @@ function upChoose(change, levels) {
 
 function showUpSave() {
   const busy = !!netWaiting || (netData && netData.pending > 0);
-  net.save.disabled = busy || !upDirty;
+  net.save.disabled = net.discard.disabled = busy || !upDirty;
   net.save.textContent = upDirty ? 'Save (not saved yet)' : 'Save';
 }
 
