@@ -5,14 +5,26 @@
 
 What brings back an AIC8800 whose firmware has wedged ("cmd queue crashed"): the USB device reset
 at its port, the firmware loaded afresh, then the hotspot started again. With NetworkManager
-stopped around it, each of these until the radio is back:
+stopped around it, each of these until the radio is back. A USB radio:
 
   1. the USB device reset at its port (USBDEVFS_RESET: what `usbreset` does; the driver probes
      again and loads the firmware afresh)
   2. the USB device unbound and bound again (its parent hub's when the device itself has gone)
   3. the USB device's `authorized` set to 0, then 1
-  4. the driver reloaded (rmmod by the name it is loaded under, modprobe by its module file's
-     name, which DKMS may have changed: aic8800_fdrv from aic8800_fdrv_usb.ko), each with a time limit
+
+A radio on the board's SDIO bus (a Raspberry Pi's):
+
+  1. the SDIO function unbound from its driver and bound again (the driver starts again and loads
+     the firmware afresh)
+  2. the SD host controller it sits on unbound and bound again (the card found again from scratch;
+     where the board has a power line for the chip, it is switched off and on with it)
+
+Either, last:
+
+  4. the driver reloaded: the modules that hold it unloaded first (brcmfmac_cyw holds brcmfmac),
+     then it (rmmod by the name it is loaded under), then modprobe by its module file's name, which
+     DKMS may have changed (aic8800_fdrv from aic8800_fdrv_usb.ko), and the holders again; each
+     with a time limit
 
 then NetworkManager started again if it was running, and the hotspot (irate-box-ap.service, the
 same boot path a reboot takes) if it was up. The radio counts as back when the interface asked
@@ -163,6 +175,36 @@ def _usb_target(port):
     return parent if parent and (SYS / "bus/usb/devices" / parent).exists() else None
 
 
+def _sdio_target(iface):
+    """For a radio on the SDIO bus: (its function's name, its driver, the SD host's platform device, the
+    host's driver), from the interface's place in sysfs; None for any other."""
+    try:
+        dev = (SYS / "class/net" / iface / "device").resolve()
+    except OSError:
+        return None
+    parts = dev.parts
+    if "mmc_host" not in parts or not (dev / "driver").exists():
+        return None
+    host = parts[parts.index("mmc_host") - 1]
+    host_drv = (SYS / "bus/platform/devices" / host / "driver")
+    return {"func": dev.name, "driver": (dev / "driver").resolve().name, "host": host,
+            "host_driver": host_drv.resolve().name if host_drv.exists() else None}
+
+
+def _rebind(bus, driver, name, sleep, pause=3):
+    d = SYS / "bus" / bus / "drivers" / driver
+    (d / "unbind").write_text(name)
+    sleep(pause)
+    (d / "bind").write_text(name)
+
+
+def _holders(driver):
+    try:
+        return sorted(h.name for h in (SYS / "module" / driver.replace("-", "_") / "holders").iterdir())
+    except OSError:
+        return []
+
+
 def hotspot_up():
     try:
         return bool(json.loads(AP_RECORD.read_text()).get("up"))
@@ -183,6 +225,7 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
     """Reset the radio behind iface (its USB port and driver as netinv.device_facts gives them).
     One line saying what was done and whether the interface came back."""
     tried = []
+    sdio = None if _usb_target(port) else _sdio_target(iface)   # looked up while the interface is still there
     nm = run("systemctl", "is-active", "--quiet", "NetworkManager", timeout=10)[0] == 0
     if nm:
         run("systemctl", "stop", "NetworkManager", timeout=90)
@@ -217,14 +260,38 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
                     back = _back(iface, wait, sleep, target)
                 except OSError as exc:
                     tried.append(f"{name}: authorized failed ({exc})")
+        if not back and sdio:
+            name = f"SDIO {sdio['func']} ({sdio['driver']})"
+            try:
+                _rebind("sdio", sdio["driver"], sdio["func"], sleep)
+                tried.append(f"{name} unbound and bound again")
+                back = _back(iface, wait, sleep)
+            except OSError as exc:
+                tried.append(f"{name}: unbind/bind failed ({exc})")
+            if not back and sdio["host_driver"]:
+                try:
+                    _rebind("platform", sdio["host_driver"], sdio["host"], sleep)
+                    tried.append(f"its SD host {sdio['host']} unbound and bound again")
+                    back = _back(iface, wait, sleep)
+                except OSError as exc:
+                    tried.append(f"SD host {sdio['host']}: unbind/bind failed ({exc})")
         if not back and driver and MOD_RE.fullmatch(driver):
             loaded = (SYS / "module" / driver.replace("-", "_")).exists()
-            code, out = run("rmmod", driver, timeout=30) if loaded else (0, "")
+            holders = [h for h in _holders(driver) if MOD_RE.fullmatch(h)] if loaded else []
+            code, out = 0, ""
+            for m in [*holders, driver] if loaded else []:
+                code, out = run("rmmod", m, timeout=30)
+                if code:
+                    break
             if code == 0:
                 sleep(2)
                 mod = _module_file(driver)
                 code, out = run("modprobe", mod, timeout=60)
-                tried.append(f"{driver} reloaded" if code == 0 else f"modprobe {mod}: {out[-120:]}")
+                for h in holders:   # the driver may load its own again; any it has not, by hand
+                    if not (SYS / "module" / h).exists():
+                        run("modprobe", h, timeout=60)
+                tried.append((f"{driver} reloaded" + (f" (with {', '.join(holders)})" if holders else "")) if code == 0
+                             else f"modprobe {mod}: {out[-120:]}")
                 back = code == 0 and _back(iface, wait, sleep, target)
             else:
                 tried.append(f"{driver} would not unload ({out[-120:] or f'rc {code}'})")

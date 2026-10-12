@@ -2558,7 +2558,7 @@ const GIVEUP_WORDS = { never: ['Try forever', 'For as long as it takes: the box 
 // Roaming: from the least change to the owner's system to the most,
 // each with its cost. The last two change the WiFi profile, by consent, and are undone the same way.
 const ROAM_WORDS = {
-  roam: ['Roam naturally', 'The WiFi moves between your access points as it finds a stronger one (NetworkManager\'s own background scans). Nothing on the box changes.',
+  roam: ['Roam normally', 'The WiFi moves between your access points as it finds a stronger one (NetworkManager\'s own background scans). Nothing on the box changes.',
     'Cost: each move is a moment off the network, and the hotspot moves with it when it shares the radio.'],
   'no-scan': ['No background scans while the hotspot shares the radio', 'wpa_supplicant\'s background scan is switched off for the network in use, so the box stays where it is; it still reconnects (perhaps to another access point) if the link is really lost. Only while the hotspot runs on this radio.',
     'Cost: a box carried around the house stays on a weak access point until it drops. Changes your WiFi\'s running settings; undone here.'],

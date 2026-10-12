@@ -147,8 +147,8 @@ setTimeout(() => {
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
   check('Save is off until something changes', save.disabled && save.textContent === 'Save');
-  // Roaming: three tiles, roam naturally chosen; a checkbox apart to ignore it.
-  check('roaming: three tiles, Roam naturally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
+  // Roaming: three tiles, roam normally chosen; a checkbox apart to ignore it.
+  check('roaming: three tiles, Roam normally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
     && tiles('up-roaming')[0].classList.contains('chosen') && !d.getElementById('up-ignore-roams').checked, vals('up-roaming'));
   check('  the WiFi card says how many access points share the network, and that the hotspot moves with it', /3 access points share .*channel 6, channel 11/.test(t('#net-roaming')[0])
     && /hotspot shares this radio/.test(t('#net-roaming')[0]), t('#net-roaming')[0]);

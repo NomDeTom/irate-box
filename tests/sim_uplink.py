@@ -508,7 +508,7 @@ check("  hotspots(): the AP-mode interfaces there, up or down (one gone left out
 U.SYS_NET, U.link_up, rec.types, rec.typed = _exists, _up, _types, _typed
 
 # Roaming: by default it roams naturally between access points; ignoring short roams is a checkbox; the blip is 20 s.
-check("roaming: roam naturally by default, no scans or a lock as choices; a lock needs a BSSID, kept only with lock", U.ROAMING == ("roam", "no-scan", "lock")
+check("roaming: roam normally by default, no scans or a lock as choices; a lock needs a BSSID, kept only with lock", U.ROAMING == ("roam", "no-scan", "lock")
       and U.validate({})["roaming"] == "roam" and U.validate({"roaming": "lock", "lock_bssid": "AA:BB:CC:00:00:01"})["lock_bssid"] == "aa:bb:cc:00:00:01"
       and U.validate({"roaming": "roam", "lock_bssid": "aa:bb:cc:00:00:01"})["lock_bssid"] is None)
 check("  ignoring short roams a checkbox apart, off by default; the first names read as these", U.validate({})["ignore_roams"] is False
