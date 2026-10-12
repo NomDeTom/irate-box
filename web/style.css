@@ -1542,6 +1542,25 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .net-card h4 .state { color: var(--muted); }
 .net-card h5 { margin: 0.6rem 0 0.2rem; font-size: 0.9rem; }
 .net-card-wide { grid-column: 1 / -1; }
+/* .setting starts its children at their own width; a card's heading rule and section lines run its full width. */
+.net-card, .net-device { align-items: stretch; }
+/* The WiFi card: what it is on now beside the networks it knows; one column on a narrow screen. */
+.net-wifi-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 0.4rem 1.5rem; }
+.net-wifi-col { min-width: 0; }
+.net-wifi-col h5, .net-changes h5 { margin-top: 0.3rem; }
+/* Changes made to the box's networking here: a row each, its words beside its buttons. */
+.net-changes { border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.net-changes > div:not(:empty) { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 0.7rem; }
+.net-changes > div:not(:empty) { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; }
+.net-changes > div p { margin: 0; flex: 1 1 22rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; }
+/* Roaming: the access points as tiles in a row; the choices as yes/no, one a line. */
+.net-ap-tiles { list-style: none; margin: 0.3rem 0 0.6rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.5rem; }
+.net-ap-tile { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.45rem 0.6rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.net-ap-tile.in-use { border-color: var(--accent); }
+.net-ap-tile meter { width: 100%; height: 0.5rem; }
+.net-ap-bssid { font-family: var(--mono, monospace); font-size: 0.85rem; }
+.net-device ul { font-size: 0.88rem; }
+.net-choice-pills { list-style: none; margin: 0.3rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.88rem; }
 .net-overview { font-size: 0.95rem; }
 .net-known { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
 .net-known li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }

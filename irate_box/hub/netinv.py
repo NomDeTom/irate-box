@@ -1019,7 +1019,8 @@ def ap_verdicts(inv):
                         "detail": f"{r.get('driver') or 'This radio'} cannot be an access point.",
                         "conditions": [{"kind": "limit", "text": f"{r.get('driver') or 'This radio'} cannot be an access point."}]})
             continue
-        is_uplink = up.get("iface") == r["iface"] and up.get("kind") == "wifi"
+        # The radio is the link's when any of its interfaces is: its hotspot interface may be listed first.
+        is_uplink = up.get("kind") == "wifi" and any(x.get("iface") == up.get("iface") for x in inv["radios"] if x.get("phy") == r.get("phy"))
         conditions = []
         if not is_uplink:
             mode, detail = "radio-alone", "The radio is not the box's link to the network: the hotspot can have it to itself."

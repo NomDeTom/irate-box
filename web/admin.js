@@ -2836,8 +2836,17 @@ function drawRoaming(inv, u, wifi) {
   }
   box.replaceChildren(...lines);
   caps.replaceChildren(el('div', { className: 'net-device setting' }, el('h4', {}, el('span', { textContent: `${r.iface}: roaming` })),
-    netLine('Access points', f.aps.length ? f.aps.map((a) => `${a.bssid} ch ${a.channel} (${a.signal}%)`).join('; ') : 'none in the last scan'),
-    netLine('Choices here', ['roam', 'no-scan', 'lock'].map((c) => `${ROAM_WORDS[c][0]}: ${f.choices.includes(c) ? 'yes' : `no, ${f.why[c]}`}`).join('; ') + '.'),
+    el('p', { className: 'net-label', textContent: `Access points sharing ${f.ssid}` }),
+    f.aps.length ? el('ul', { className: 'net-ap-tiles' }, ...f.aps.map((a) => el('li', { className: 'net-ap-tile' + (r.link && r.link.bssid === a.bssid ? ' in-use' : '') },
+      el('span', { className: 'net-ap-bssid', textContent: a.bssid }),
+      el('span', { className: 'setting-desc', textContent: `Channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` }),
+      el('meter', { min: 0, max: 100, value: a.signal, title: `Signal ${a.signal}%` }),
+      el('span', { className: 'setting-desc', textContent: `${a.signal}%${r.link && r.link.bssid === a.bssid ? ', in use' : ''}` }))))
+      : el('p', { className: 'setting-desc', textContent: 'None in the last scan.' }),
+    el('p', { className: 'net-label', textContent: 'Roaming choices this box can take' }),
+    el('ul', { className: 'net-choice-pills' }, ...['roam', 'no-scan', 'lock'].map((c) => el('li', {},
+      el('span', { className: f.choices.includes(c) ? 'ok-pill' : 'info-pill', textContent: f.choices.includes(c) ? 'yes' : 'no' }),
+      ` ${ROAM_WORDS[c][0]}${f.choices.includes(c) ? '' : `: ${f.why[c]}`}`))),
     f.nm_version ? netLine('NetworkManager', f.nm_version) : null));
 }
 
@@ -2926,7 +2935,10 @@ function renderNetwork(data) {
   const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
   net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
   drawNetTabs(data, inv, u);
-  net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => checkItem(h.status, h.title, h.detail, h.fix)));
+  net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => el('div', { className: 'net-device setting' },
+    el('h4', {}, el('span', { textContent: h.title }), el('span', { className: { problem: 'bad-pill', warn: 'warn-pill', ok: 'ok-pill' }[h.status] || 'info-pill', textContent: STATE_WORD[h.status] || h.status })),
+    h.detail ? el('p', { className: 'setting-desc', textContent: h.detail }) : null,
+    h.fix ? el('p', { className: 'setting-desc', textContent: h.fix }) : null)));
   const sn = netNotes.scan;
   say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
   const jn = netNotes.join;
@@ -2987,6 +2999,7 @@ function renderNetwork(data) {
   } else {
     net.profile.replaceChildren();
   }
+  document.getElementById('net-changes').hidden = !['up-profile', 'net-handover', 'net-other-ap'].some((id) => document.getElementById(id).childElementCount);
   const evs = (u && u.events) || [];
   // One line per event: when, then what.
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
@@ -3037,8 +3050,8 @@ function renderDefaults(inv, busy) {
     const boxNow = s.value === null ? `NetworkManager's own: ${s.nm_default}` : (s.values[s.value] || s.value);
     // "default" means irate-box sets nothing here: said as what applies then, not as NetworkManager's
     // own when another file (the image's) sets it.
-    const other = s.value !== null && s.mine === null ? `leave as it is (now ${s.values[s.value] || s.value}, set by ${own(s.file)})` : null;
-    const opts = [['default', defaultsScope ? `as the box default (${boxNow})` : (other || `NetworkManager's own (${s.nm_default})`)], ...Object.entries(s.values)];
+    const other = s.value !== null && s.mine === null ? 'Leave as it is' : null;
+    const opts = [['default', defaultsScope ? 'As the box default' : (other || "NetworkManager's own")], ...Object.entries(s.values).map(([v, l]) => [v, cap1(l)])];
     const cur = defaultsScope ? (mineIf[name] ?? null) : s.mine;
     if (s.kind === 'count' && cur !== null && !(cur in s.values)) opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
@@ -3055,8 +3068,10 @@ function renderDefaults(inv, busy) {
       now = s.value === null ? `now NetworkManager's own: ${s.nm_default}`
         : `now ${s.values[s.value] || s.value}, set by ${s.mine !== null ? "irate-box's file" : own(s.file)}`;
     }
+    // What each word choice means, said once under them: the box default, NetworkManager's own.
+    const means = [defaultsScope ? `the box default is ${boxNow}` : null, s.value !== null || defaultsScope ? `NetworkManager's own is ${s.nm_default}` : null].filter(Boolean);
     return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
-      el('span', { className: 'setting-desc', textContent: now }));
+      el('span', { className: 'setting-desc', textContent: cap1(now) + (means.length ? `; ${means.join('; ')}` : '') + '.' }));
   });
   rows.unshift(el('label', { className: 'net-default net-default-scope' }, el('span', { className: 'setting-name', textContent: 'For' }), scope,
     el('span', { className: 'setting-desc', textContent: defaultsScope

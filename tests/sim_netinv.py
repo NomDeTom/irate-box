@@ -35,6 +35,11 @@ v = netinv.ap_verdicts(inv({"owner": "iwd"}, uplink_iface="eth0"))[0]
 check("a manager irate-box can't drive: not possible, a limit saying so", not v["possible"] and kinds(v)[-1] == "limit" and "iwd" in v["conditions"][-1]["text"], v)
 v = netinv.ap_verdicts(inv({"ap": False}))[0]
 check("no AP mode at all: not possible, one limit", not v["possible"] and kinds(v) == ["limit"], v)
+two = inv({"ap_beside_client": True, "channels_at_once": 3})
+two["radios"].insert(0, dict(two["radios"][0], iface="ap0", type="AP"))   # the hotspot's interface listed first, on the same radio
+v = netinv.ap_verdicts(two)[0]
+check("the hotspot's interface listed before the link's on the same radio: still the link's radio (not \"its own radio\")",
+      v["mode"] == "beside-client", v["mode"])
 h = netinv._h("x", "warn", "t", "d", iface="wlan0")
 check("a finding can name its device", h["iface"] == "wlan0" and "iface" not in netinv._h("y", "ok", "t", "d"))
 
