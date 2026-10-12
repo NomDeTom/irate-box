@@ -5374,6 +5374,8 @@ if (paneShown('mesh')) loadMesh();
 // ---- Appearance: the page widths, for everyone, read by every page from
 // /layout.css. A choice shows on this page at once; Save keeps it.
 const WIDTHS = [45, 60, 80, 90, 100];
+// A width in rem, and in pixels at the browsers' default text size (16 px a rem).
+const widthOption = (w) => [w, `${w}rem (about ${w * 16} px)`];
 let appearanceSettings = null;
 async function loadAppearance() {
   const box = document.getElementById('appearance-box');
@@ -5382,7 +5384,7 @@ async function loadAppearance() {
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
   appearanceSettings = st;
   fillWidthBlocks();
-  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map((w) => [w, w + 'rem']) });
+  const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map(widthOption) });
   box.replaceChildren(AW.settings([
     row('page_width', 'Hub', 'the tiles, the menu and its pages'),
     row('admin_width', 'Admin', 'these pages'),
@@ -5495,7 +5497,7 @@ function fillWidthBlocks() {
   document.querySelectorAll('.width-block[data-key]').forEach((block) => {
     const key = block.dataset.key;
     block.replaceChildren(AW.settings([{ key, label: WIDTH_LABEL[key] || 'Width', kind: 'choice', value: appearanceSettings[key],
-      note: 'also on System → Appearance', options: WIDTHS.map((w) => [w, w + 'rem']) }],
+      note: 'also on System → Appearance', options: WIDTHS.map(widthOption) }],
     { save: async (changed) => { appearanceSettings = await postJSON('/admin/settings', changed); loadAppearance(); return appearanceSettings; } }));
   });
 }
