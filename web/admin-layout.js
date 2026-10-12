@@ -175,7 +175,7 @@ const AL = (() => {
             return id;
           };
           const ids = [];
-          if (!a.folder) ids.push(made('app-head-' + a.id, 'app-head', 'Now', () => el('div', { class: 'head-block', 'data-app': a.id })));
+          if (!a.folder) ids.push(made('app-head-' + a.id, 'app-head', 'Status', () => el('div', { class: 'head-block', 'data-app': a.id })));
           if (a.folder) ids.push(made('folder-' + a.id, 'folder-section', 'What\'s in it', () => el('div', { class: 'folder-block', 'data-folder': a.id })));
           // An app drawn on the hub page: its width, before what it owns.
           if (a.width) ids.push(made('app-width-' + a.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': a.width })));

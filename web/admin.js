@@ -4194,7 +4194,7 @@ function fillTileBlocks() {
     if (!tilesData) { block.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Loading the tiles.' })); return; }
     if (!t) {
       block.replaceChildren(el('p', { className: 'setting-desc', textContent: a && a.mode === 'off'
-        ? 'No tile while it is off.' : 'No tile on the home page: it opens from its address or from a folder.' }));
+        ? 'No tile while it is off.' : 'No tile on the home page.' }));
       return;
     }
     const order = tilesData.tiles.map((x) => x.id);
@@ -4225,7 +4225,7 @@ function fillHeadBlocks() {
     const svc = lastBox && (lastBox.services || []).find((x) => x.app === id);
     const buttons = [];
     if (m.href && r && ['installed', 'builtin'].includes(r.state) && !(a && a.mode === 'off')) {
-      buttons.push(el('a', { className: 'head-btn', href: m.href, target: '_blank', rel: 'noopener', textContent: 'Open' }));
+      buttons.push(el('a', { className: 'action-btn primary', href: m.href, target: '_blank', rel: 'noopener', textContent: 'Open' }));
     }
     const addon = lastAddons && (lastAddons.addons || []).find((x) => x.id === id);
     if (r && r.kind === 'addon' && addon && addon.added === false) {

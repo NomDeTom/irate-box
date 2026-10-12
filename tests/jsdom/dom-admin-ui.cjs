@@ -141,7 +141,7 @@ setTimeout(() => {
   check('an app\'s page: its state, its own sections, then access, its tile and maintenance', panes('page-app-wiki') === 'app-head-wiki books app-access-wiki app-tile-wiki app-maint-wiki', panes('page-app-wiki'));
   check('  access, tile and maintenance fold, closed to start', kiwix.querySelectorAll(':scope > .admin-pane > details.app-fold:not([open])').length === 3);
   check('  its header: what it is, who opens it, and Open', /Built in/.test(t('#app-head-wiki')[0]) && /Opens: the admin/.test(t('#app-head-wiki')[0])
-    && (d.querySelector('#app-head-wiki a.head-btn') || {}).textContent === 'Open', t('#app-head-wiki')[0]);
+    && (d.querySelector('#app-head-wiki a.action-btn') || {}).textContent === 'Open', t('#app-head-wiki')[0]);
   check('  who can open it: four chips, Kiwix (private) at admin; its tile is not edited here', chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
     && picked(kiwix, 'Who can open it') === 'admin' && !rowOf(kiwix, 'Who sees the tile') && !rowOf(kiwix, 'Tile icon'), t('#app-access-wiki')[0]);
   check('  its tile: a summary, and the way to Home tiles', /shows only to an admin account/.test(t('#app-tile-wiki')[0]) && /Place 3 of 3/.test(t('#app-tile-wiki')[0])
