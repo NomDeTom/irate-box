@@ -29,6 +29,7 @@ run sim_crashwatch.py
 run sim_watchlog.py
 run sim_usb_filesystems.py
 run sim_doctor_choices.py
+run sim_idle.py
 run sim_sbdocs.py
 run sim_pkgwatch.py
 run sim_update_pattern.py

@@ -286,6 +286,8 @@ def check_units():
     # done: see why; accept it (often harmless on these images); start it again, asked first, as it isn't ours.
     # A package the box watches (Updates → Packages from their makers): known, so said as itself.
     watched = watched_units()
+    idle = {i["unit"] for i in idle_units()}   # said by check_idle, with switching it off as the choice
+    failed = [u for u in failed if u not in idle]
     for u in [u for u in failed if u in watched]:
         out.append(_f(f"watched-failed:{u}", f"{watched[u]}: its service failed", "warn",
                       f"{u} stopped with an error. The box watches this package's updates; whether it runs is the "
@@ -301,6 +303,97 @@ def check_units():
                       [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? It isn't irate-box's: the doctor "
                             "only clears its failed mark and starts it.")]))
     return out
+
+
+# --- what adds nothing here ----------------------------------------------------------------------
+# Services of the image's that do nothing on this box and could cause trouble (a unit failing at every boot,
+# a radio stack nobody uses): each said, with switching it off as the owner's choice and switching it back
+# on as its undo; never done for the owner. What was switched off here is kept in IDLE_OFF.
+IDLE_OFF = ETC / "idle-off.json"
+NO_LORA = re.compile(r"No (?:sx\d+|lr\d+|rf95|llcc68|[a-z0-9]+) radio\b|No radio instance", re.I)
+
+
+def _idle_off():
+    try:
+        d = json.loads(IDLE_OFF.read_text())
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def idle_units():
+    """[{unit, title, why}]: services here that do nothing for this box, as far as it can tell."""
+    out = []
+    p = unit_props("meshtasticd.service")
+    if p.get("LoadState") == "loaded" and p.get("UnitFileState") == "enabled":
+        log = run("journalctl", "-u", "meshtasticd.service", "-b", "--no-pager", "-o", "cat", "-n", "300").stdout
+        if NO_LORA.search(log) and p.get("ActiveState") != "active":
+            out.append({"unit": "meshtasticd.service", "title": "meshtasticd, with no LoRa radio",
+                        "why": f"It finds no LoRa radio on this box ({NO_LORA.search(log).group(0)}) and stops, at every boot"
+                               + (", until systemd gives up on it" if p.get("Result") == "start-limit-hit" else "") + "."})
+    p = unit_props("ModemManager.service")
+    if p.get("ActiveState") == "active":
+        r = run("mmcli", "-L")
+        if r.returncode == 0 and "No modems were found" in r.stdout:
+            out.append({"unit": "ModemManager.service", "title": "ModemManager, with no modem",
+                        "why": "It looks for mobile-data modems, and this box has none; it also probes serial ports, which can upset "
+                               "a radio or a device on one."})
+    p = unit_props("bluetooth.service")
+    if p.get("ActiveState") == "active":
+        r = run("bluetoothctl", "devices", "Paired", timeout=10)
+        if r.returncode == 0 and not r.stdout.strip():
+            out.append({"unit": "bluetooth.service", "title": "Bluetooth, with nothing paired",
+                        "why": "Nothing is paired with the box, and nothing on the hub uses Bluetooth. On a radio that does WiFi and "
+                               "Bluetooth both (as the AIC8800 does), it shares the chip with the WiFi."})
+    return out
+
+
+def check_idle():
+    off = _idle_off()
+    out = []
+    for i in idle_units():
+        if i["unit"] in off:
+            continue
+        out.append(_f(f"idle:{i['unit']}", f"{i['title']}: adds nothing here", "warn", i["why"],
+                      "Switch it off if this box doesn't need it: it stops, and doesn't start at boot. Switched off here, it can be "
+                      "switched back on here.",
+                      [_act(f"idle-off:{i['unit']}", "Switch it off", f"Switch {i['unit']} off, now and at boot? The doctor lists it "
+                            "afterwards with a button to switch it back on.")]))
+    for unit, rec in sorted(off.items()):
+        out.append(_f(f"idle-off:{unit}", f"{unit}: switched off here", "ok",
+                      f"Switched off on {time.strftime('%Y-%m-%d', time.localtime(rec.get('at', 0)))} because it added nothing here.",
+                      "", [_act(f"idle-on:{unit}", "Switch it back on", f"Switch {unit} back on, as it was?")]))
+    return out
+
+
+def idle_switch(unit, on):
+    """Switch an idle service off (kept in IDLE_OFF, as it was), or back on as it was."""
+    if unit not in IDLE_UNITS:
+        raise ValueError(f"{unit} is not one the doctor switches off")
+    off = _idle_off()
+    if on:
+        rec = off.pop(unit, None)
+        if rec is None:
+            raise ValueError(f"{unit} was not switched off here")
+        if rec.get("enabled"):
+            run("systemctl", "enable", unit)
+        if rec.get("active"):
+            run("systemctl", "start", unit, timeout=120)
+        msg = f"{unit}: switched back on, as it was"
+    else:
+        p = unit_props(unit)
+        off[unit] = {"at": time.time(), "enabled": p.get("UnitFileState") == "enabled", "active": p.get("ActiveState") == "active"}
+        r = run("systemctl", "disable", "--now", unit, timeout=120)
+        if r.returncode:
+            raise ValueError(f"{unit}: {r.stderr.strip()[-200:] or 'could not be switched off'}")
+        run("systemctl", "reset-failed", unit)
+        msg = f"{unit}: switched off, and won't start at boot"
+    from irate_box.root import safeio
+    safeio.write(IDLE_OFF, json.dumps(off, indent=1), 0o644)
+    return msg
+
+
+IDLE_UNITS = ("meshtasticd.service", "ModemManager.service", "bluetooth.service")
 
 
 # --- Kiwix ----------------------------------------------------------------------------------------
@@ -1140,7 +1233,7 @@ def check_watchers(now=None):
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_hotspot, check_space, check_builds, check_crashwatch, check_watchers, check_usb_filesystems):
+                  check_hotspot, check_space, check_builds, check_crashwatch, check_watchers, check_idle, check_usb_filesystems):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
@@ -1168,7 +1261,8 @@ CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9
                        r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
                        r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
-                       r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$")
+                       r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
+                       r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$")
 
 
 def fix(choice):
@@ -1222,6 +1316,8 @@ def fix(choice):
         return msg + "No readable book is left, so the library was emptied and Kiwix stopped until one is added."
     if kind == "clock-set":
         return set_clock(int(arg))
+    if kind in ("idle-off", "idle-on"):
+        return idle_switch(arg, kind == "idle-on")
     if kind == "uplink-skip":
         from irate_box.hub import uplink
         iface, _, step = arg.partition(":")
