@@ -82,17 +82,20 @@ for bad, why in ((OURS, "irate-box's own"), (HOME, "only another hotspot"), ("x"
         check(f"refused: {why}", why in str(exc), str(exc))
 
 
-def found(autoconnect, chosen):
-    p = {"uuid": SETUP, "name": "Hotspot", "ssid": "armbiansetup-lyra", "mode": "ap", "autoconnect": autoconnect, "iface": "wlan0"}
+def found(autoconnect, chosen, active=False):
+    p = {"uuid": SETUP, "name": "Hotspot", "ssid": "armbiansetup-lyra", "mode": "ap", "autoconnect": autoconnect, "iface": "wlan0", "active": active}
     inv = {"radios": [], "country": "GB", "other_ap": chosen, "stacks": {"networkmanager": {"running": True, "wifi_profiles": [p]}}}
     return [h for h in netinv.hazards(inv) if h["id"] == f"other-ap:{SETUP}"]
 
 
 check("inventory: one not chosen for, listed with what to do", [h["status"] for h in found(False, {})] == ["warn"]
-      and "remove it" in found(False, {})[0]["fix"])
+      and "delete it" in found(False, {})[0]["fix"])
 check("  left: no longer listed", found(False, {SETUP: {"choice": "left"}}) == [])
 check("  set to start by itself: warned, left or not", [h["status"] for h in found(True, {SETUP: {"choice": "left"}})] == ["warn"]
       and "start by itself" in found(True, {})[0]["title"])
+check("  running now (a fresh image's setup hotspot): a problem, left or not, said as running",
+      [h["status"] for h in found(True, {SETUP: {"choice": "left"}}, active=True)] == ["problem"]
+      and "running" in found(False, {}, active=True)[0]["title"])
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

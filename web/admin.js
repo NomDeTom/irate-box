@@ -3249,7 +3249,7 @@ function renderOtherAp(inv, data, busy) {
   const rows = [];
   for (const p of others) {
     const c = chosen[p.uuid];
-    const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || '') ? ', Armbian\'s setup hotspot' : ''}`;
+    const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || '') ? ', Armbian\'s setup hotspot' : ', probably the system\'s own setup hotspot'}`;
     if (c && c.choice === 'left') {
       rows.push(el('p', { className: 'setting-desc' }, `Ignored: ${what}. `,
         actionButton('Stop ignoring it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
@@ -3257,8 +3257,9 @@ function renderOtherAp(inv, data, busy) {
     }
     rows.push(el('p', { className: 'setting-desc' },
       `This box has ${what}. `
-      + (p.autoconnect ? 'It is set to start by itself: at boot it could take over the WiFi and take the box off its network. '
-        : 'It is switched off (it does not start by itself), so irate-box has the WiFi and runs its own hotspot. ')
+      + (p.active ? 'It is running now: it holds the WiFi, so the box\'s own network link and irate-box\'s hotspot can\'t have it. '
+        : p.autoconnect ? 'It is set to start by itself: at boot it could take over the WiFi and take the box off its network. '
+          : 'It is switched off (it does not start by itself), so irate-box has the WiFi and runs its own hotspot. ')
       + 'Delete it (a copy is kept, to restore it), or ignore it. ',
       actionButton('Delete it', () => {
         if (confirm(`Delete ${p.name}? A copy is kept, and Restore brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
