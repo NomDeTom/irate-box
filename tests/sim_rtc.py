@@ -165,5 +165,10 @@ f = health.check_module()
 check("doctor: three set-up offers after a search (one DS3231, the ambiguous pair)",
       sorted(a["choice"] for x in f for a in x["actions"]) == ["rtc-setup:ds3231:1:0x68", "rtc-setup:rv8803:4:0x32", "rtc-setup:rx8130:4:0x32"],
       [a["choice"] for x in f for a in x["actions"]])
+fake({"1": {}})
+rtc.find()
+f = health.check_module()
+check("doctor: none found on I2C is yellow, with the offer to look again", f and f[0]["status"] == "warn" and "None found" in f[0]["detail"]
+      and [a["choice"] for a in f[0]["actions"]] == ["rtc-find"], [(x["status"], x["detail"][:60]) for x in f])
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

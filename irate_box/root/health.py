@@ -1041,11 +1041,11 @@ def check_module():
     except (OSError, ValueError):
         if list(Path("/sys/class/rtc").glob("rtc*")):
             return []  # the kernel has a hardware clock already; nothing to offer unless asked
-        return [_f("rtc", "Clock module", "ok", "No clock module set up. A battery-backed module on I2C (DS3231, RV-8803, "
+        return [_f("rtc", "Clock module", "warn", "No clock module set up. A battery-backed module on I2C (DS3231, RV-8803, "
                    "RX8130 and others) lets the box keep its time while it is off.", "", [look])]
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(found["at"]))
     if not found["found"]:
-        return [_f("rtc", "Clock module", "ok", f"None found on I2C (looked {when}"
+        return [_f("rtc", "Clock module", "warn", f"None found on I2C (looked {when}"
                    + (")." if found["buses"] else "; no I2C bus is enabled on this board: that is a board setting, such as "
                       "an Armbian overlay, and it is yours to change)."), "", [look])]
     out = []
