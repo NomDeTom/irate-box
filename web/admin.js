@@ -984,23 +984,26 @@ function renderReports(data, del) {
   badge('moderation', queue.length ? String(queue.length) : '');
   const q = document.getElementById('mod-queue');
   if (q) q.replaceChildren(queue.length ? AW.shortList(queue.map((r) => ({ id: r.key, title: r.text.slice(0, 80) || '(empty)',
-    summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`,
+    summary: `${r.where}${r.by ? ` · by ${r.by}` : ''} · ${r.count} report${r.count === 1 ? '' : 's'}`,
     badges: Object.keys(r.reasons || {}),
     detail: () => [
       AW.h('p', { class: 'admin-text', text: r.text }),
       AW.dl(Object.fromEntries(Object.entries(r.reasons || {}).map(([k, n]) => [k, `${n}`]))),
       AW.btn('Keep it', { onclick: async () => { try { renderModeration(await postJSON('/admin/moderation', { action: 'keep', key: r.key })); } catch (err) { say(err.message, false, noteEl('mod-note')); } } }),
       ' ',
-      AW.btn('Delete it', { onclick: r.key.startsWith('shoutbox:')
-        ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
-        : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
+      // A notes page is changed or deleted in Notes itself; the rest from here.
+      r.link ? AW.h('a', { href: r.link, class: 'action-btn', target: '_blank', rel: 'noopener' }, 'Open it in Notes')
+        : AW.btn('Delete it', { onclick: r.key.startsWith('shoutbox:')
+          ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
+          : r.drop ? del({ action: 'delete_drop', id: r.drop }, 'this file')
+            : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
     ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
   // Each app's slice of it, on its own page: the same lines, its posts only.
   lastReports = [data, del];
   document.querySelectorAll('.flagged-block[data-app]').forEach((b) => {
     const mine = queue.filter((r) => r.key.startsWith(b.dataset.app + ':'));
     b.replaceChildren(mine.length ? AW.shortList(mine.map((r) => ({ id: 'own-' + r.key, title: r.text.slice(0, 80) || '(empty)',
-      summary: `${r.where} · by ${r.by} · ${r.count} report${r.count === 1 ? '' : 's'}`, badges: Object.keys(r.reasons || {}),
+      summary: `${r.where}${r.by ? ` · by ${r.by}` : ''} · ${r.count} report${r.count === 1 ? '' : 's'}`, badges: Object.keys(r.reasons || {}),
       detail: () => [AW.h('p', { class: 'admin-text', text: r.text }), AW.h('a', { href: '#moderation', class: 'action-btn' }, 'Keep or delete it under Moderation →')] })),
     { id: 'mod-queue-' + b.dataset.app }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported here.' }));
   });

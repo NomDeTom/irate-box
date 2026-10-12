@@ -2422,6 +2422,8 @@ def moderation_action(payload):
             forget_report(f"board:{payload['id']}:{int(posts[payload['index']].get('created', 0))}")
     elif action == "delete_drop" and isinstance(payload.get("id"), str):
         ok = DROP.delete(payload["id"], force=True)  # moderation removes locked files too
+        if ok:
+            forget_report(f"drop:{payload['id']}")
     else:
         return 400, {"error": "unknown action"}
     return (200 if ok else 404), moderation_snapshot()
@@ -2434,6 +2436,8 @@ def moderation_action(payload):
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
 store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
+store.REPORT_REASONS = lambda: settings_snapshot()["report_reasons"]
+store.HIDDEN = lambda: hidden_by_reports()
 # Saves tied to accounts: the admin's setting, off by default.
 store.CROSS_DEVICE = lambda: settings_snapshot()["saves_cross_device"]
 
@@ -2458,7 +2462,9 @@ _report_salt = secrets.token_bytes(32)
 _reported = set()       # hashes of (visitor, post): who has reported what, this run only
 _report_times = {}      # visitor hash -> recent report times (at most REPORTS_PER_HOUR an hour)
 REPORTS_PER_HOUR = 20
-REPORT_KEY_RE = re.compile(r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20})$")
+# A notes page by its path in SilverBullet's space (no leading slash, no "..", no control characters).
+REPORT_KEY_RE = re.compile(r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20}|drop:[A-Za-z0-9_-]{1,64}"
+                           r"|notes:(?!/)(?!(?:.*/)?\.\.(?:/|$))[^\x00-\x1f]{1,200})$")
 
 
 def reports():
@@ -2477,13 +2483,18 @@ def save_reports(data):
 
 
 def report_key(app, ref):
-    """The key of a post from what the page sends: shoutbox {created, name}; board {thread, created}."""
+    """The key of a post from what the page sends: shoutbox {created, name}; board {thread, created};
+    drop {id}; notes {page}."""
     if not isinstance(ref, dict):
         return None
     if app == "shoutbox" and type(ref.get("created")) in (int, float) and isinstance(ref.get("name"), str):
         key = f"shoutbox:{int(ref['created'])}:{ref['name'][:40]}"
     elif app == "board" and type(ref.get("thread")) is int and type(ref.get("created")) in (int, float):
         key = f"board:{ref['thread']}:{int(ref['created'])}"
+    elif app == "drop" and isinstance(ref.get("id"), str):
+        key = f"drop:{ref['id']}"
+    elif app == "notes" and isinstance(ref.get("page"), str):
+        key = f"notes:{ref['page'].strip('/')}"
     else:
         return None
     return key if REPORT_KEY_RE.match(key) else None
@@ -2532,9 +2543,17 @@ def moderation_queue():
     for t in BOARD.all_threads()["threads"]:
         for i, p in enumerate(t["posts"]):
             posts[f"board:{t['id']}:{int(p.get('created', 0))}"] = (t, i, p)
+    files = {m.get("id"): m for m in DROP.list()}
     out = []
     for k, r in reports().items():
         if r.get("kept") or r.get("count", 0) < st["report_threshold"]:
+            continue
+        kind, _, rest = k.partition(":")
+        if kind == "drop" and rest in files:
+            out.append(dict(r, key=k, by=files[rest].get("by") or "", text=files[rest].get("name", ""), where="File drop", drop=rest))
+            continue
+        if kind == "notes":
+            out.append(dict(r, key=k, by="", text=rest, where="Notes", link="/notes/" + rest))
             continue
         if k in msgs:
             m = msgs[k]
@@ -3175,6 +3194,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if store.handle(self, "GET", path, STORE, DROP):
+            return
+
+        if path == "/api/report":
+            # The reasons a report may give, for a page with no listing of its own to carry them (the hub bar).
+            self.send_json(200, {"reasons": settings_snapshot()["report_reasons"]})
             return
 
         if path == "/messages":

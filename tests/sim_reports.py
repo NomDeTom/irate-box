@@ -17,7 +17,7 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 try:
-    for _ in range(50):
+    for _ in range(150):
         try:
             http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status"); break
         except OSError:
@@ -82,6 +82,39 @@ try:
     go("POST", "/admin/moderation", {"action": "delete_message", "created": spam["created"], "name": "Moth"}, admin=True)
     _, mod = go("GET", "/admin/moderation", admin=True)
     check("deleted: gone from the queue", not any(x["key"].startswith("shoutbox:") for x in mod["queue"]), mod["queue"])
+    # A file in the drop: reported by two (the threshold), hidden from the listing and the download meanwhile,
+    # in the queue as a file; deleted, gone with its report.
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    c.request("POST", "/api/drop", body=b"not nice", headers={"Host": f"127.0.0.1:{port}", "Content-Length": "8", "X-Drop-Name": "rude.txt",
+                                                             "X-Drop-By": "Moth", "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"})
+    r = c.getresponse(); up = json.loads(r.read().decode() or "{}")
+    _, listing = go("GET", "/api/drop")
+    fid = next((f["id"] for f in listing.get("files", []) if f["name"] == "rude.txt"), None)
+    check("the drop's listing carries the reasons", fid and listing.get("report_reasons") == ["spam", "unkind", "personal details", "other"], (up, listing))
+    for who in ("10.0.0.21", "10.0.0.22"):
+        st, _ = go("POST", "/api/report", {"app": "drop", "ref": {"id": fid}, "reason": "unkind"}, who=who)
+    _, listing = go("GET", "/api/drop")
+    st_dl, _ = go("GET", f"/api/drop/{fid}")
+    check("  reported enough: hidden from the listing and the download", st == 200 and not any(f["id"] == fid for f in listing["files"]) and st_dl == 404,
+          (st, st_dl))
+    _, mod = go("GET", "/admin/moderation", admin=True)
+    item = next((x for x in mod["queue"] if x["key"] == f"drop:{fid}"), {})
+    check("  in the queue as a file, with its name and who left it", item.get("where") == "File drop" and item.get("text") == "rude.txt"
+          and item.get("by") == "Moth" and item.get("drop") == fid, item)
+    go("POST", "/admin/moderation", {"action": "delete_drop", "id": fid}, admin=True)
+    _, mod = go("GET", "/admin/moderation", admin=True)
+    check("  deleted: gone, its report too", not any(x["key"] == f"drop:{fid}" for x in mod["queue"]))
+    # A notes page, reported from the hub bar: in the queue with a link to it; a path out of the space refused.
+    st, reasons = go("GET", "/api/report")
+    check("the hub bar is told the reasons", st == 200 and reasons.get("reasons") == ["spam", "unkind", "personal details", "other"], reasons)
+    for who in ("10.0.0.31", "10.0.0.32"):
+        go("POST", "/api/report", {"app": "notes", "ref": {"page": "Journal/Day one"}, "reason": "personal details"}, who=who)
+    _, mod = go("GET", "/admin/moderation", admin=True)
+    item = next((x for x in mod["queue"] if x["key"] == "notes:Journal/Day one"), {})
+    check("  a notes page: in the queue, with a link to open it", item.get("where") == "Notes" and item.get("link") == "/notes/Journal/Day one", item)
+    bad = [go("POST", "/api/report", {"app": "notes", "ref": {"page": p}, "reason": "spam"}, who="10.0.0.33")[0]
+           for p in ("../admin-password", "a/../../b", "x\ny", "", 7)]
+    check("  a page outside the space, or no page: refused", bad == [400] * 5, bad)
     # A flood from one visitor is stopped.
     codes = [go("POST", "/api/report", {"app": "shoutbox", "ref": {"created": 1000 + i, "name": "x"}, "reason": "spam"}, who="10.0.0.9")[0] for i in range(22)]
     check("at most 20 reports an hour from one visitor", codes[:20] == [200] * 20 and codes[20:] == [429, 429], codes[18:])

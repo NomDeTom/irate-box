@@ -546,11 +546,13 @@ def _handle_drop(handler, method, path, drop):
     from urllib.parse import unquote
     if path == "/api/drop" and method == "GET":
         me = VIEWER(handler) if VIEWER else None
+        hidden = HIDDEN() if HIDDEN else set()
         _send_json(handler, 200, {"files": [{**{k: m.get(k) for k in ("id", "name", "size", "by", "age", "seen_by")}, "locked": bool(m.get("lock")),
                                              "pinned": bool(m.get("pinned")),
                                              **({"lock_n": m["lock"]["n"]} if m.get("lock") else {})}
-                                            for m in drop.list() if can_see(m, me)],
-                                  "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL})
+                                            for m in drop.list() if can_see(m, me) and f"drop:{m.get('id')}" not in hidden],
+                                  "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL,
+                                  "report_reasons": REPORT_REASONS() if REPORT_REASONS else []})
         return True
     if path == "/api/drop" and method == "POST":
         if handler.headers.get("Transfer-Encoding", "").lower() == "chunked":
@@ -600,7 +602,8 @@ def _handle_drop(handler, method, path, drop):
         return True
     if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
         found = drop.open(path[len("/api/drop/"):])
-        if found and not can_see(found[0], VIEWER(handler) if VIEWER else None):
+        if found and (not can_see(found[0], VIEWER(handler) if VIEWER else None)
+                      or (HIDDEN and f"drop:{found[0].get('id')}" in HIDDEN())):
             found[1].close()
             found = None
         if not found:
@@ -696,6 +699,9 @@ def _blob_get(handler, store, namespace, key):
 # A save or a dropped file made by someone signed in carries their account and, if narrower than
 # everyone, their choice; the listings and the reads leave out what the asker may not see.
 VIEWER = None
+# Reports (the hub's): the reasons a guest may give, and the keys hidden from everyone until the owner looks.
+REPORT_REASONS = None
+HIDDEN = None
 SEEN_BY = None
 # Saves tied to accounts: the admin's setting, off by default (server.py). On, a save's own account may change or remove it from any
 # device, past the device lock that otherwise guards it; a guest's saves are untouched either way.
