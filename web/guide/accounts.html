@@ -26,7 +26,10 @@
   <h2>Passwords over plain HTTP</h2>
   <p class="help-note"><strong>Prevented</strong> (passwords only over HTTPS), <strong>Warning</strong> (the default: allowed, and the page says it can be read off the air) or <strong>Permitted</strong>. An admin's password changes only over HTTPS, or at the console, whatever this says.</p>
   <h2>The account page</h2>
-  <p class="help-note">Everyone's, at <code>/account.html</code>: change your password; whether others see your name in "here now"; your name's colour; whether your files in the drop are locked by default; who sees what you post; log out.</p>
+  <p class="help-note">Everyone's, at <code>/account.html</code>: change your password; whether others see your name in "here now"; your name's colour; whether your files in the drop are locked by default; who sees what you post; your own notebook; log out.</p>
+  <h2>Notebooks</h2>
+  <p class="help-note">Beside the shared notes, each signed-in person can have a notebook of their own that no one else can open: <strong>My notebook</strong> on the account page opens it, or downloads it as a zip. It runs only while its owner uses it: it starts when opened, and stops at sign-out or half an hour after it was last used. About 40 MB of memory each while running.</p>
+  <p class="help-note">On the admin pages, <strong>Accounts → Notebooks</strong>: <strong>Shared notes only</strong>, <strong>By sign-up</strong> (the default: a notebook for each login wherever people may sign up) or <strong>Also one per login</strong>; how many may run at once (5 by default); and how much memory to keep free, below which no more start. A notebook's pages stay on the box when it stops, when notebooks are switched off, and when its account is deleted. They are not in the box's backup: each person keeps their own with the download.</p>
   <h2>The box's own login, for scripts</h2>
   <p class="help-note">A separate login (user <code>admin</code>) for scripts that call the admin pages, made only when you ask, at the console: <code>sudo /opt/irate-box/irate-box hub_control script-login</code>. Its password is kept in <code>/etc/hub/admin-password</code>, readable only by root. <code>--off</code> removes it.</p>
 

@@ -26,6 +26,7 @@
     "option": "--with-collab",
     "title": "Live collaboration (whiteboard)",
     "summary": "Lets several people draw on the same Excalidraw board at once. Installs Node.js (about 60 MB on disk, 40 MB of memory while in use).",
-    "needs": "The relay itself: Apps → Collaboration relay → Keep current, then Update, first."
-  }
+    "needs": "The relay itself first: on this page, Maintenance → Its own updates: Keep current, then Install."
+  },
+  "admin": {"title": "Whiteboard relay", "icon": "🤝"}
 }

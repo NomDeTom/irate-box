@@ -26,7 +26,7 @@ Programs the box watches for its makers' updates (meshtasticd, for one), with **
 **Back up this box** makes a file to download:
 
 - **Settings only**: the hub's settings, accounts, the apps' and add-ons' settings, the library's and mirrors' sources, mesh channels.
-- **Settings and data**: also notes, saved work, the board and shoutbox, dropped files, the box's own git repositories.
+- **Settings and data**: also the shared notes, saved work, the board and shoutbox, dropped files, the box's own git repositories. People's own notebooks are not included: each keeps theirs with **My notebook**'s download.
 - **Full image**: the whole card, written to a USB stick in parts.
 
 Books, firmware, mirrors, builds and caches are never in a backup: they're fetched again. Syncthing's private keys go in only if you tick it; whoever holds that file can pose as the box, so keep it like a password.

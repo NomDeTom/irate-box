@@ -1385,6 +1385,15 @@ html:has(> body.admin) { background: var(--bg); }
 .admin-page > .admin-pane > h2.same-as-page { display: none; }
 .admin-page:not(.solo) > .admin-pane > h2 { font-size: 1.2rem; margin: 2rem 0 0.75rem; }
 .admin-page:not(.solo) > .admin-pane:first-of-type > h2 { margin-top: 0.5rem; }
+/* An app page's folded parts: the heading is the summary, on the arrow's line, as the open parts' headings. */
+.app-fold { margin: 2rem 0 0; }
+.app-fold > summary { display: flex; align-items: baseline; gap: 0.5rem; padding: 0; list-style: none; }
+.app-fold > summary::-webkit-details-marker { display: none; }
+.app-fold > summary::before { content: "▸"; color: var(--muted); width: 1em; }
+.app-fold[open] > summary::before { content: "▾"; }
+.app-fold > summary h2 { display: inline; margin: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; text-transform: none; color: var(--text); }
+.app-fold[open] > summary { margin-bottom: 0.75rem; }
+.app-fold h3:first-child { margin-top: 0.5rem; }
 .admin-side-list a .side-icon { width: 1.3em; text-align: center; flex: none; }
 .admin-side-list a[hidden] { display: none; }
 

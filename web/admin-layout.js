@@ -161,56 +161,37 @@ const AL = (() => {
       const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
-        for (let a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
-          // Who opens it, who sees it: first on its page (admin.js fills it from /admin/access).
-          // An app with no switch of its own (a folder, About) has only who sees its tile.
-          if (a.switch || a.seen) {
-            const id = 'app-access-' + a.id;
-            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-access', id },
-              el('h2', { text: a.switch ? 'Who opens it, who sees it' : 'Who sees it' }), el('div', { class: 'access-block', 'data-app': a.id })));
-            a = { ...a, sections: [id, ...a.sections] };
+        for (const a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
+          // An app's page, in one order: what it is and what can be done now; its own settings
+          // and content; then, folded, who can open it, its tile (a summary: Home tiles arranges
+          // tiles) and its maintenance (updates, installation, Remove). Only the parts that apply.
+          const made = (id, cls, title, build, fold) => {
+            if (!sections.has(id)) {
+              const body = build();
+              sections.set(id, fold
+                ? el('section', { class: `admin-pane ${cls}`, id }, el('details', { class: 'sec-fold app-fold' }, el('summary', {}, el('h2', { text: title })), body))
+                : el('section', { class: `admin-pane ${cls}`, id }, el('h2', { text: title }), body));
+            }
+            return id;
+          };
+          const ids = [];
+          if (!a.folder) ids.push(made('app-head-' + a.id, 'app-head', 'Status', () => el('div', { class: 'head-block', 'data-app': a.id })));
+          if (a.folder) ids.push(made('folder-' + a.id, 'folder-section', 'What\'s in it', () => el('div', { class: 'folder-block', 'data-folder': a.id })));
+          // An app drawn on the hub page: its width, before what it owns.
+          if (a.width) ids.push(made('app-width-' + a.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': a.width })));
+          ids.push(...a.sections);
+          // What was reported there, for an app drawn on the hub page.
+          if (a.page) ids.push(made('app-flagged-' + a.id, 'app-flagged', 'Flagged and reported', () => el('div', { class: 'flagged-block', 'data-app': a.id })));
+          if (a.switch) ids.push(made('app-access-' + a.id, 'app-access', 'Who can open it', () => el('div', { class: 'access-block', 'data-app': a.id }), true));
+          if (a.switch || a.seen) ids.push(made('app-tile-' + a.id, 'app-tile', 'Hub tile', () => el('div', { class: 'tile-block', 'data-app': a.id }), true));
+          // Maintenance: its own updates and its installation, each where admin.js draws it.
+          if (a.updates || a.addon) {
+            ids.push(made('app-maint-' + a.id, 'app-maint', 'Maintenance', () => el('div', {},
+              a.updates ? el('div', { class: 'app-updates', id: 'app-updates-' + a.id }, el('h3', { text: 'Its own updates' }), el('div', { class: 'updates-block', 'data-app': a.id })) : null,
+              a.addon ? el('div', { class: 'app-install', id: 'app-install-' + a.id }, el('h3', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': a.id },
+                el('p', { class: 'setting-desc', text: 'Loading installation status.' }))) : null), true));
           }
-          if (a.addon) {
-            const id = 'app-install-' + a.id;
-            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-install', id },
-              el('h2', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': a.id },
-                el('p', { class: 'setting-desc', text: 'Loading installation status.' }))));
-            const at = a.switch || a.seen ? 1 : 0;
-            a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
-          }
-          // An app drawn on the hub page: its width, after its first section.
-          if (a.width) {
-            const id = 'app-width-' + a.id;
-            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-width', id },
-              el('h2', { text: 'Width' }), el('div', { class: 'width-block', 'data-key': a.width })));
-            a = { ...a, sections: [a.sections[0], id, ...a.sections.slice(1)].filter(Boolean) };
-          }
-          // A folder's entries: after its access, before its other sections.
-          if (a.folder) {
-            const id = 'folder-' + a.id;
-            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane folder-section', id },
-              el('h2', { text: 'What\'s in it' }), el('div', { class: 'folder-block', 'data-folder': a.id })));
-            const at = a.switch || a.seen ? 1 : 0;
-            a = { ...a, sections: [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
-          }
-          // The app's own updates: after its access, width and
-          // folder, before what it owns. Drawn by admin.js from the librarian's snapshot.
-          if (a.updates) {
-            const id = 'app-updates-' + a.id;
-            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-updates', id },
-              el('h2', { text: 'Its own updates' }), el('div', { class: 'updates-block', 'data-app': a.id })));
-            const own = new Set(a.sections.filter((s) => !/^(app-access-|app-install-|app-width-|folder-)/.test(s)));
-            const at = a.sections.findIndex((s) => own.has(s));
-            a = { ...a, sections: at < 0 ? [...a.sections, id] : [...a.sections.slice(0, at), id, ...a.sections.slice(at)] };
-          }
-          // What was reported there (flagged items last), for an app drawn on the hub page.
-          if (a.page) {
-            const id = 'app-flagged-' + a.id;
-            if (!sections.has(id)) sections.set(id, el('section', { class: 'admin-pane app-flagged', id },
-              el('h2', { text: 'Flagged and reported' }), el('div', { class: 'flagged-block', 'data-app': a.id })));
-            a = { ...a, sections: [...a.sections, id] };
-          }
-          const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: a.sections, empty: false });
+          const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: ids, empty: false });
           if (e && g.under) e.parent = fixed.find((p) => p.el.querySelector('#' + g.under)) || null;
           if (e) entries.push(e);
         }
@@ -223,7 +204,7 @@ const AL = (() => {
     }
     // Whatever no page claimed: kept on pages of its own so nothing is lost. Listed under "More" only once
     // the apps' list has come (or failed): before it, every app's section is unclaimed for a moment.
-    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-access-|app-install-|app-width-|folder-|app-updates-|app-flagged-)/.test(id));
+    const left = [...sections.keys()].filter((id) => !placed.has(id) && !/^(app-head-|app-access-|app-tile-|app-maint-|app-width-|folder-|app-flagged-)/.test(id));
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);
@@ -254,6 +235,8 @@ const AL = (() => {
     document.title = `${cur.title} · Hub admin`;
     side.classList.remove('open');
     menu.setAttribute('aria-expanded', 'false');
+    // A target inside a folded part opens it (a link to an app's installation or access).
+    for (let d = target && target.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
     if (target && target !== cur.el && target !== cur.el.querySelector('.admin-pane') && target.scrollIntoView) target.scrollIntoView({ block: 'start' });
     else window.scrollTo(0, 0);
   }

@@ -21,7 +21,13 @@ To make one yourself: **Make user** or **Make admin**. The box gives a one-time 
 
 ## The account page
 
-Everyone's, at `/account.html`: change your password; whether others see your name in "here now"; your name's colour; whether your files in the drop are locked by default; who sees what you post; log out.
+Everyone's, at `/account.html`: change your password; whether others see your name in "here now"; your name's colour; whether your files in the drop are locked by default; who sees what you post; your own notebook; log out.
+
+## Notebooks
+
+Beside the shared notes, each signed-in person can have a notebook of their own that no one else can open: **My notebook** on the account page opens it, or downloads it as a zip. It runs only while its owner uses it: it starts when opened, and stops at sign-out or half an hour after it was last used. About 40 MB of memory each while running.
+
+On the admin pages, **Accounts → Notebooks**: **Shared notes only**, **By sign-up** (the default: a notebook for each login wherever people may sign up) or **Also one per login**; how many may run at once (5 by default); and how much memory to keep free, below which no more start. A notebook's pages stay on the box when it stops, when notebooks are switched off, and when its account is deleted. They are not in the box's backup: each person keeps their own with the download.
 
 ## The box's own login, for scripts
 

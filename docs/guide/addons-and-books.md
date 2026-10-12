@@ -2,14 +2,14 @@
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Add-ons and books
 
-*What more the box can do, and its offline library. On the admin pages: All apps → Add-ons, and Kiwix → Books.*
+*What more the box can do, and its offline library. On the admin pages: each add-on's own page (**Add** at its top, **Remove** under Maintenance) or All apps → Add-ons; and Kiwix → Books.*
 
 ## Add-ons
 
 Each is added or removed on its own, from the admin pages (the same installer runs; the hub restarts part-way) or with the installer's options:
 
 - **Kiwix** (`--with-kiwix`): the offline library at `/wiki/`.
-- **Notes** (`--with-notes`): a shared notebook at `/notes/`.
+- **Notes** (`--with-notes`): shared notes at `/notes/` that everyone with notes access can change, and, where the owner allows it, a private notebook for each signed-in person (see [Accounts](accounts.md)).
 - **Syncthing** (`--with-sync`): file sync, behind the admin login.
 - **MQTT broker** (`--with-mqtt`): for Meshtastic nodes and phones.
 - **IRC** (`--with-irc`): a small chat server for any IRC app.
