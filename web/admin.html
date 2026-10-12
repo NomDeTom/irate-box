@@ -461,11 +461,15 @@
         </form>
         <p class="setting-desc action-note" role="status" hidden></p>
         <p class="setting-desc" id="kits-summary"></p>
-        <form id="kits-budget" class="library-form inline-form">
-          <label>The cache's budget, MB <input name="budget" type="number" min="10" max="65536" step="10"></label>
-          <button class="action-btn primary" type="submit">Save</button>
-          <button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Fetch all now</button>
+        <form id="kits-budget" class="library-form">
+          <label for="kits-budget-mb">The cache's budget, MB</label>
+          <div class="input-row">
+            <input id="kits-budget-mb" name="budget" type="number" min="10" max="65536" step="10">
+            <button class="action-btn" type="button" id="kits-budget-discard" disabled>Discard</button>
+            <button class="action-btn primary" type="submit" disabled>Save</button>
+          </div>
         </form>
+        <p class="library-buttons"><button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Fetch all now</button></p>
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
         <div id="kits-grid"></div>

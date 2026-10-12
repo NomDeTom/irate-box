@@ -4948,7 +4948,11 @@ function renderKits(data) {
   kitsEl.summary.textContent = (st.at ? `${cached.length} of ${kits.length} toolkits cached, ${size(st.pool_bytes || 0)} of ${cfg.budget_mb} MB` +
     (newest ? `; newest fetch ${dayOf(newest)}` : '') + '. Cached kits install with no internet.' : 'Not looked at yet.') +
     (feed && feed.fetched ? ` debsecan's data: ${dayOf(feed.fetched)}.` : '') + (kitsWaiting.size ? ' Working…' : '');
-  if (!kitsEl.budget.contains(document.activeElement)) kitsEl.budget.elements.budget.value = cfg.budget_mb;
+  if (!kitsEl.budget.contains(document.activeElement) && !kitsBudgetDirty()) {
+    kitsEl.budget.elements.budget.value = cfg.budget_mb;
+    kitsEl.budget.dataset.saved = cfg.budget_mb;
+    kitsBudgetSync();
+  }
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
     'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
   // A card per kit, its details in a drawer inside the card; not redrawn
@@ -5141,9 +5145,27 @@ async function loadKits() {
     renderKits(data);
   } catch (_) { kitsEl.summary.textContent = 'Could not read the toolkits.'; }
 }
-kitsEl.budget.addEventListener('submit', (e) => {
+// The budget waits for Save; Discard puts back the saved one.
+function kitsBudgetDirty() {
+  const f = kitsEl.budget;
+  return f.dataset.saved !== undefined && f.elements.budget.value !== String(f.dataset.saved);
+}
+function kitsBudgetSync() {
+  const dirty = kitsBudgetDirty();
+  kitsEl.budget.querySelector('[type="submit"]').disabled = !dirty;
+  document.getElementById('kits-budget-discard').disabled = !dirty;
+}
+kitsEl.budget.elements.budget.addEventListener('input', kitsBudgetSync);
+document.getElementById('kits-budget-discard').addEventListener('click', () => {
+  kitsEl.budget.elements.budget.value = kitsEl.budget.dataset.saved;
+  kitsBudgetSync();
+});
+kitsEl.budget.addEventListener('submit', async (e) => {
   e.preventDefault();
-  kitAct({ action: 'settings', budget_mb: Number(kitsEl.budget.elements.budget.value) });
+  const mb = Number(kitsEl.budget.elements.budget.value);
+  await kitAct({ action: 'settings', budget_mb: mb });
+  kitsEl.budget.dataset.saved = mb;
+  kitsBudgetSync();
 });
 document.getElementById('kits-refresh-all').addEventListener('click', async () => {
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);

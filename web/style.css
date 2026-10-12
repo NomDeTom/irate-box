@@ -1613,3 +1613,6 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .aw-colour .aw-warn { flex-basis: 100%; color: var(--bad); }
 .aw-colour .aw-warn:empty { display: none; }
 .favicon-preview { image-rendering: pixelated; border: 1px solid var(--border); border-radius: 4px; }
+/* An input with the buttons that act on it, on one line (wrapping on a phone). */
+.input-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.input-row input { flex: 0 1 12rem; }
