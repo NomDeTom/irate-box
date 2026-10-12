@@ -207,6 +207,22 @@ def boot_unit():
         "[Install]", "WantedBy=multi-user.target", ""])
 
 
+def refresh_units():
+    """The hotspot's units brought up to this version's text, for each one already written here (an
+    update changes them; only a hotspot set up again would otherwise). Their names, for a restart."""
+    changed = []
+    for name, text in ((DNSMASQ_UNIT, dnsmasq_unit()), (HOSTAPD_UNIT, hostapd_unit()), (BOOT_UNIT, boot_unit())):
+        path = UNITS / name
+        try:
+            if path.read_text() == text:
+                continue
+        except FileNotFoundError:
+            continue
+        _put(path, text)
+        changed.append(name)
+    return changed
+
+
 def boot(run, inv, settings, ssid=DEFAULT_SSID):
     """The boot unit's call. Off: nothing. On and confirmed (or never needing it): planned and started
     again. A hotspot that took the box's own link and was never confirmed: the link comes back instead."""

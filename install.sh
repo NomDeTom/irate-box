@@ -2304,6 +2304,15 @@ EOF
 # The network floor (root/firewall.py): loads /etc/hub/firewall.nft when the Security page has
 # written one, nothing otherwise; the page enables it, uninstall.sh takes it away.
 PYTHONPATH="$CODE" python3 -c "from irate_box.root import firewall; print(firewall.unit_text(\"$CODE\"), end=\"\")" >/etc/systemd/system/irate-box-firewall.service
+# The hotspot's units, where it was set up, in this version's form; the running ones take it now (the
+# DHCP and DNS server and hostapd: a moment's gap for guests), the boot one at the next boot.
+ap_changed="$(PYTHONPATH="$CODE" HUB_CODE_DIR="$CODE" python3 -c "from irate_box.root import ap; print(' '.join(ap.refresh_units()))")"
+if [ -n "$ap_changed" ]; then
+	systemctl daemon-reload
+	for u in $ap_changed; do
+		case "$u" in irate-box-ap.service) ;; *) systemctl try-restart "$u" || true ;; esac
+	done
+fi
 
 cat >/etc/systemd/system/irate-box-secdoctor.timer <<EOF
 [Unit]
