@@ -1616,3 +1616,10 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 /* An input with the buttons that act on it, on one line (wrapping on a phone). */
 .input-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .input-row input { flex: 0 1 12rem; }
+/* Security: choices set, waiting for Save (the bar at the pane's top lists them and what each does). */
+.sec-pending { position: sticky; top: 0.5rem; z-index: 3; margin: 0.75rem 0; padding: 0.6rem 0.9rem; border: 1px solid var(--accent);
+  border-radius: 8px; background: var(--surface); box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); }
+.sec-pending .setting-name { margin: 0 0 0.3rem; }
+.sec-pending-list { margin: 0 0 0.5rem; padding-left: 1.2rem; }
+.sec-pending-list li { margin: 0.2rem 0; }
+.chip.pending, .chip-btn.pending, .action-btn.pending { outline: 2px dashed var(--accent); outline-offset: 2px; }

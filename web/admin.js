@@ -1410,9 +1410,10 @@ function secKind(f) {
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
 function sudoToggle(f, busy) {
   return f.actions.map((a) => {
-    const on = /^sudo-drop:/.test(a.choice), file = a.choice.split(':')[1];
-    const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : ''), disabled: busy,
-      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secFix(f.id, a) });
+    const file = a.choice.split(':')[1];
+    const on = /^sudo-drop:/.test(a.choice) !== secChosen(f.id, a);   // as it would be after Save
+    const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : '') + (secChosen(f.id, a) ? ' pending' : ''), disabled: busy,
+      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secChoose(f, a) });
     b.setAttribute('aria-pressed', String(on));
     return b;
   });
@@ -1421,8 +1422,50 @@ function sudoToggle(f, busy) {
 function scanButtons(f, busy) {
   if (f.id === 'sudo-nopasswd') return sudoToggle(f, busy);
   if ((f.actions || []).some((a) => a.group)) return [...secChipRows(f, busy), ...scanButtons({ ...f, actions: f.actions.filter((a) => !a.group) }, busy)];
-  return (f.actions || []).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
-    onclick: () => secFix(f.id, a) }));
+  return (f.actions || []).map((a) => {
+    const b = el('button', { type: 'button', className: 'action-btn' + (secChosen(f.id, a) ? ' pending' : ''), textContent: a.label, disabled: busy,
+      title: secChosen(f.id, a) ? 'Chosen: waits for Save. Press again to leave it out.' : '', onclick: () => secChoose(f, a) });
+    b.setAttribute('aria-pressed', String(secChosen(f.id, a)));
+    return b;
+  });
+}
+// The Security page's and the Security doctor's choices are set, then saved: each chosen thing waits, marked, with
+// what it does said in the bar at the top (no pop-up per switch); Save sends them all, Discard forgets them.
+const secPending = new Map();   // finding id -> {f, a}
+const secChosen = (fid, a) => secPending.has(fid) && secPending.get(fid).a.choice === a.choice;
+function secChoose(f, a) {
+  // Chosen again, or the choice it has now: nothing to save for it.
+  if (secChosen(f.id, a) || a.on) secPending.delete(f.id);
+  else secPending.set(f.id, { f, a });
+  if (secData) renderSecurity(secData);
+}
+function drawSecPending(busy) {
+  const list = [...secPending.values()];
+  document.querySelectorAll('.sec-pending').forEach((bar) => {
+    bar.hidden = !list.length;
+    if (!list.length) { bar.replaceChildren(); return; }
+    bar.replaceChildren(
+      el('p', { className: 'setting-name', textContent: `${list.length} change${list.length === 1 ? '' : 's'} not saved yet` }),
+      el('ul', { className: 'sec-pending-list' }, ...list.map(({ f, a }) => el('li', {},
+        el('strong', { textContent: `${f.title}: ` }), a.label,
+        a.confirm ? el('span', { className: 'setting-desc', textContent: ` ${a.confirm.replace(/\?$/, '.')}` }) : null))),
+      el('div', { className: 'library-buttons' },
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: busy,
+          onclick: () => { secPending.clear(); if (secData) renderSecurity(secData); } }),
+        el('button', { type: 'button', className: 'action-btn primary', textContent: `Save ${list.length === 1 ? 'it' : `all ${list.length}`}`, disabled: busy,
+          onclick: secSavePending })));
+  });
+}
+async function secSavePending() {
+  const list = [...secPending.values()];
+  const ids = [];
+  for (const { a } of list) {
+    try { ids.push((await postJSON('/admin/security', { action: 'fix', choice: a.choice })).id); }
+    catch (err) { secNote = { fid: 'scan', text: err.message, ok: false }; break; }
+  }
+  secPending.clear();
+  if (ids.length) { secWaiting = { id: ids[ids.length - 1], ids, fid: 'scan' }; secNote = null; }
+  loadSecurity();
 }
 
 // --- one finding, the same shape on every page -------------------------------------------------------
@@ -1493,9 +1536,11 @@ function secChipRows(f, busy) {
   return [...groups].map(([label, choices]) => el('div', { className: 'aw-field' },
     el('span', { className: 'aw-label', textContent: label }),
     el('div', { className: 'chip-group', role: 'group', 'aria-label': label }, ...choices.map((a) => {
-      const b = el('button', { type: 'button', className: 'chip' + (a.on ? ' selected' : ''), textContent: a.label, disabled: busy,
-        onclick: () => { if (!a.on) secFix(f.id, a); } });
-      b.setAttribute('aria-pressed', String(!!a.on));
+      const pend = secPending.get(f.id);
+      const sel = pend ? pend.a.choice === a.choice : !!a.on;
+      const b = el('button', { type: 'button', className: 'chip' + (sel ? ' selected' : '') + (pend && sel ? ' pending' : ''), textContent: a.label, disabled: busy,
+        onclick: () => secChoose(f, a) });
+      b.setAttribute('aria-pressed', String(sel));
       return b;
     }))));
 }
@@ -1513,10 +1558,12 @@ function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
+  drawSecPending(busy);
   if (secWaiting) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
-      secNote = { fid: secWaiting.fid, text: done.message, ok: done.ok };
+      const all = (secWaiting.ids || [secWaiting.id]).map((id) => (data.results || []).find((r) => r.id === id)).filter(Boolean);
+      secNote = { fid: secWaiting.fid, text: all.map((r) => r.message).join(' '), ok: all.every((r) => r.ok) };
       secWaiting = null;
       return renderSecurity(data);
     }

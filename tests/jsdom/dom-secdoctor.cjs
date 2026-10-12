@@ -167,10 +167,27 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });  // the answer to what was asked: no longer busy
   const sudo = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));
   check('passwordless sudo a toggle, On while the rule is there', sudo && t(sudo) === 'Passwordless sudo: On' && sudo.getAttribute('aria-pressed') === 'true', sudo && t(sudo));
-  w.confirm = () => true;
+  let asked = 0;
+  w.confirm = () => { asked++; return true; };
+  const sent = () => posted.some(([u, b]) => u === '/admin/security' && b.action === 'fix' && b.choice === 'sudo-drop:90-lyra');
   sudo.click();
   await wait();
-  check('  Off asks root to take the rule out', posted.some(([u, b]) => u === '/admin/security' && b.action === 'fix' && b.choice === 'sudo-drop:90-lyra'));
+  const bar = d.querySelector('#security .sec-pending');
+  const sudo2 = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));
+  check('  set, not sent: shown Off, marked, nothing posted, no pop-up', !sent() && t(sudo2) === 'Passwordless sudo: Off'
+    && sudo2.classList.contains('pending') && asked === 0, t(sudo2));
+  check('  the bar at the top lists it, with Discard and Save', !bar.hidden && /1 change not saved yet/.test(t(bar))
+    && /Passwordless sudo/.test(t(bar)) && [...bar.querySelectorAll('button')].map(t).join('|') === 'Discard|Save it', t(bar));
+  check('  the Security doctor\'s page shows the same bar', !d.querySelector('#secdoctor .sec-pending').hidden);
+  [...bar.querySelectorAll('button')].find((b) => t(b) === 'Discard').click();
+  await wait();
+  check('  Discard: back to On, the bar gone, nothing posted', !sent() && d.querySelector('#security .sec-pending').hidden
+    && t([...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)))) === 'Passwordless sudo: On');
+  [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b))).click();
+  await wait();
+  [...d.querySelector('#security .sec-pending').querySelectorAll('button')].find((b) => /^Save/.test(t(b))).click();
+  await wait();
+  check('  Off asks root to take the rule out, on Save, with no pop-up', sent() && asked === 0);
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
