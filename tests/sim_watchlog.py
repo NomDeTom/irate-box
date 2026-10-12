@@ -86,5 +86,15 @@ check("the doctor: the last day in one line, starts and repairs counted, where i
 watchlog.LOG.unlink()
 check("  nothing in the last day: said so", "Nothing in the last day" in health.check_watchers()[0]["detail"])
 
+# The doctor's overview, from the hub: the last start and why, the last repair, the link now.
+from irate_box.hub import server  # noqa: E402
+watchlog.add("box", "boot", "Started: it was shut down or restarted cleanly (by hand, or by the system).", at=now + 700)
+watchlog.add("watchdog", "repair", "Reconnect (2 min down).", "wlan0", at=now + 800, step="reconnect")
+(watchlog.LOG.parent / "uplink.json").write_text('{"at": 1, "state": "down", "iface": "wlan0", "cause": "absent", "events": []}')
+gl = server.watchers_glance()
+check("the overview's watchers: the last start, the last repair, the link and its cause",
+      gl["last_boot"]["text"].startswith("Started: it was shut down") and gl["last_repair"]["text"] == "Reconnect (2 min down)."
+      and gl["link"] == {"at": 1, "state": "down", "iface": "wlan0", "cause": "absent"}, gl)
+
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

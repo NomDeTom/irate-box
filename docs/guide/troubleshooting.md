@@ -8,7 +8,7 @@
 
 On the admin pages, under Doctors:
 
-- **Box doctor**: is everything the installer set up still there and working: the services, the web server's configuration, the clock, the space, the network watchdog, crashes. Each problem says what to do; the safe repairs are buttons. **Look again** runs it now.
+- **Box doctor**: is everything the installer set up still there and working: the services, the web server's configuration, the clock, the space, the network watchdog, crashes. Each problem says what to do; the safe repairs are buttons. **Look again** runs it now. At its top, **the box at a glance** (the last start of the box and why, the last repair, what restarts a frozen box) and **how the box looks after itself**: crash watch's snapshots and what restarts a frozen box, chosen and then saved.
 - **Security doctor**: see [Security](security.md).
 - **Updates doctor**: why an update didn't verify or install, and **Install anyway** for a version that fetched but failed its checks (never one that isn't signed as you required).
 

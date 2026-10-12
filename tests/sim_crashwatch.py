@@ -136,14 +136,16 @@ check("  the radio watched, its failure in the last day, nothing to choose here:
       f["crash-radio"]["status"] == "warn" and "wlan0 (AIC8800DC)" in f["crash-radio"]["detail"] and "wlan0 failed" in f["crash-radio"]["detail"]
       and not f["crash-radio"]["actions"] and "Network → The box's access → A failed radio" in f["crash-radio"]["fix"]
       and f["crash-radio"]["go"]["mark"] == "up-wedge", f["crash-radio"])
-check("  a frozen box after a crash, nothing to restart it: a warning, every choice offered as chips, the current marked",
-      f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"]
-      and [(a["group"], a["choice"], a["on"]) for a in f["crash-hang"]["actions"]] == [
-          ("Kernel panic or lockup", "crashwatch-panic:off", True), ("Kernel panic or lockup", "crashwatch-panic:on", False),
-          ("Watchdog", "crashwatch-watchdog:off", True), ("Watchdog", "crashwatch-watchdog:on", False)]
-      and not f["crash-hang"]["actions"][0].get("confirm") and f["crash-hang"]["actions"][1].get("confirm"), f["crash-hang"])
-check("  snapshots: both chips, On marked", [(a["choice"], a["on"]) for a in f["crash-snapshots"]["actions"]]
-      == [("crashwatch-snapshots:off", False), ("crashwatch-snapshots:on", True)], f["crash-snapshots"])
+check("  a frozen box after a crash, nothing to restart it: a warning; the choice is the doctor's settings', linked to its row",
+      f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"] and not f["crash-hang"]["actions"]
+      and f["crash-hang"]["go"] == {"section": "health-settings", "where": "the doctor's settings", "mark": "hs-panic"}, f["crash-hang"])
+check("  snapshots: said, linked to their row", not f["crash-snapshots"]["actions"] and f["crash-snapshots"]["go"]["mark"] == "hs-snapshots", f["crash-snapshots"])
+g = {x["key"]: x for x in health.doctor_settings()["groups"]}
+check("the doctor's settings: snapshots, a panic, and the watchdog where there is one, each with its current choice, the safest first",
+      [k for k in g] == ["snapshots", "panic", "watchdog"] and g["snapshots"]["current"] == "on" and g["panic"]["current"] == "off"
+      and [o["value"] for o in g["panic"]["options"]] == ["off", "on"] and g["panic"]["options"][1]["confirm"]
+      and g["watchdog"]["options"][1]["choice"] == "crashwatch-watchdog:on", g)
+check("  in the report too", health.scan()["settings"]["groups"][0]["key"] == "snapshots")
 for good in ("crashwatch-panic:on", "crashwatch-snapshots:off"):
     check(f"  the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
 for bad in ("crashwatch-preempt:reboot", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
@@ -184,10 +186,10 @@ cw.subprocess = type("S", (), {"run": staticmethod(fake_run), "Popen": staticmet
 cw.shutil = type("W", (), {"which": staticmethod(lambda name: "/usr/bin/dtc" if name == "dtc" else None)})
 check("a switched-off watchdog in the device tree, on Armbian with dtc: offered as one to switch on", cw.watchdog_device() == "switched-off")
 f = {x["id"]: x for x in health.check_crashwatch(now=now)}
-check("  the doctor says so, and offers it with a confirm that says a restart is needed",
-      "switched off in its device tree" in f["crash-hang"]["detail"]
-      and any(a["choice"] == "crashwatch-watchdog:on" and "after a restart" in a["label"] and "next restart" in a["confirm"] for a in f["crash-hang"]["actions"]),
-      f["crash-hang"])
+wdg = {x["key"]: x for x in health.doctor_settings()["groups"]}["watchdog"]
+check("  the doctor says so, and its setting asks with a confirm that says a restart is needed",
+      "switched off in its device tree" in f["crash-hang"]["detail"] and "next restart" in wdg["desc"]
+      and "next restart" in wdg["options"][1]["confirm"], (f["crash-hang"], wdg))
 said = cw.set_option("watchdog", "on")
 env = (BOOTD / "armbianEnv.txt").read_text()
 check("  on: the overlay compiled for the first switched-off node, added to user_overlays, systemd set to feed it",
