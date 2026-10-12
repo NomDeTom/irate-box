@@ -46,6 +46,7 @@ run sim_declared_services.py
 run sim_one_login.py
 run sim_account_nav.py
 run sim_secdoctor_accounts.py
+run sim_secdoctor_sandbox.py
 run sim_helper_busy.py
 run sim_widths.py
 run sim_admin_apps.py
