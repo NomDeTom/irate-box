@@ -266,6 +266,12 @@
 				root * {$HUB_EWT_ROOT:/usr/share/hub/apps/esp-web-tools}
 				file_server
 			}
+			# FreeOCD's WebDebugger (an ARM flasher over WebUSB), in the flashing tools.
+			handle_path /flasher/freeocd/* {
+				header Cache-Control "no-cache"
+				root * {$HUB_FREEOCD_ROOT:/usr/share/hub/apps/freeocd}
+				file_server
+			}
 			handle_path /flasher/firmware/* {
 				header Access-Control-Allow-Origin "*"
 				header Cache-Control "no-cache"

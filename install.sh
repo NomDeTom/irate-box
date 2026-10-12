@@ -245,6 +245,12 @@ EWT_VERSION=10.4.0
 EWT_SHA256=f18da75335d2f0dca044c4bb052848c0696e7b03cc23d61d8530dd6eba0a9008
 EWT_NAME="esp-web-tools-$EWT_VERSION.tgz"
 EWT_URL="https://registry.npmjs.org/esp-web-tools/-/$EWT_NAME"
+# FreeOCD's WebDebugger (BSD-3-Clause, with Arm's DAP.js, MIT): an ARM flasher over WebUSB and a debug probe, its
+# release zip served at /flasher/freeocd/. A new FOCD_VERSION needs its digest: the release's checksums-sha256.txt.
+FOCD_VERSION=0.0.3
+FOCD_SHA256=ddbdeada253922bb2c219fc6db94592e9951902f8b892f8909970fee88156a5a
+FOCD_NAME="freeocd-web-v$FOCD_VERSION.zip"
+FOCD_URL="https://github.com/FreeOCD/freeocd-web/releases/download/v$FOCD_VERSION/$FOCD_NAME"
 
 # Add-ons already on this box stay added on a rerun that does not name them (an update, the
 # doctor's "run the installer again", or a run by hand): from the last record, or, for a box
@@ -463,6 +469,19 @@ ewt_get() {
 	fi
 	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$EWT_SHA256" ] || { rm -f "$1"; return 2; }
 }
+# FreeOCD's release zip ($1), as ewt_get: the download cache, the box's own, or GitHub; checked against FOCD_SHA256.
+focd_get() {
+	local src="" d
+	for d in "$DL_CACHE" "$OWN_CACHE"; do
+		[ -n "$d" ] && [ -s "$d/$FOCD_NAME" ] && { src="$d/$FOCD_NAME"; break; }
+	done
+	if [ -n "$src" ]; then
+		cp "$src" "$1"
+	else
+		curl -fsSL -o "$1" "$FOCD_URL" 2>/dev/null || { rm -f "$1"; return 1; }
+	fi
+	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$FOCD_SHA256" ] || { rm -f "$1"; return 2; }
+}
 own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | armv8l) echo armhf ;; armv6l) echo arm ;; esac; }
 own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac; }
 make_bundle() {
@@ -586,6 +605,14 @@ make_bundle() {
 		die "$EWT_NAME does not match its pinned digest (EWT_SHA256)"
 	else
 		echo "    no ESP Web Tools (not in the download cache, and no internet): the flasher page offers downloads only"
+	fi
+	# FreeOCD, for the flashing tools, the same for every architecture.
+	if [ -s "$KIT_DL/$FOCD_NAME" ] || focd_get "$KIT_DL/$FOCD_NAME"; then
+		echo "    FreeOCD $FOCD_VERSION"
+	elif [ $? = 2 ]; then
+		die "$FOCD_NAME does not match its pinned digest (FOCD_SHA256)"
+	else
+		echo "    no FreeOCD (not in the download cache, and no internet): the flashing tools go without it"
 	fi
 	if [ ${#ZIMS[@]} -gt 0 ]; then
 		echo "==> Books"
@@ -1055,6 +1082,29 @@ if [ "$(cat "$APPS/esp-web-tools/VERSION" 2>/dev/null)" != "$EWT_VERSION" ]; the
 fi
 # Its notices: what the bundle holds and their licences (config/esp-web-tools-NOTICES.txt), current with the code.
 [ ! -d "$APPS/esp-web-tools" ] || install -m 644 "$CODE/config/esp-web-tools-NOTICES.txt" "$APPS/esp-web-tools/THIRD-PARTY-NOTICES.txt"
+# FreeOCD's WebDebugger: its release under $APPS/freeocd, kept while it is the pinned version, as ESP Web Tools.
+if [ "$(cat "$APPS/freeocd/VERSION" 2>/dev/null)" != "$FOCD_VERSION" ]; then
+	tmp="$(mktemp -d)"
+	got=0; focd_get "$tmp/$FOCD_NAME" || got=$?
+	if [ "$got" = 0 ]; then
+		[ -s "$OWN_CACHE/$FOCD_NAME" ] || install -D -m 644 "$tmp/$FOCD_NAME" "$OWN_CACHE/$FOCD_NAME" || true
+		rm -rf "${APPS:?}/.freeocd.new"
+		install -d -m 755 "$APPS/.freeocd.new"
+		unzip -q "$tmp/$FOCD_NAME" -d "$APPS/.freeocd.new"
+		echo "$FOCD_VERSION" >"$APPS/.freeocd.new/VERSION"
+		chown -R root:root "$APPS/.freeocd.new"
+		chmod -R u=rwX,go=rX "$APPS/.freeocd.new"
+		rm -rf "${APPS:?}/freeocd"
+		mv "$APPS/.freeocd.new" "$APPS/freeocd"
+		say "FreeOCD $FOCD_VERSION, for the flashing tools"
+	elif [ "$got" = 2 ]; then
+		problem "FreeOCD was not installed: $FOCD_NAME does not match its pinned digest (FOCD_SHA256)"
+	else
+		echo "    FreeOCD: not in the download cache, and no internet; the flashing tools go without it"
+	fi
+	rm -rf "$tmp"
+fi
+[ ! -d "$APPS/freeocd" ] || install -m 644 "$CODE/config/freeocd-NOTICES.txt" "$APPS/freeocd/THIRD-PARTY-NOTICES.txt"
 # ELIZA was a built-in add-on here (--with-eliza). It is a local add-on now, from
 # /admin's catalogue (addons/eliza.json), installed in $STATE/addons/ with no root. The old copy
 # goes, and so does its librarian source unless the local add-on has taken the name.
@@ -1162,6 +1212,8 @@ HUB_FLASHER_ROOT=$APPS/flasher
 HUB_FIRMWARE_ROOT=$STATE/firmware
 # The light web flasher's engine (ESP Web Tools), served at /flasher/esp-web-tools/.
 HUB_EWT_ROOT=$APPS/esp-web-tools
+# FreeOCD's WebDebugger, served at /flasher/freeocd/.
+HUB_FREEOCD_ROOT=$APPS/freeocd
 # The local add-ons' own origin: the web server's second port (/addons/<id>/ redirects there).
 HUB_ADDON_PORT=$ADDON_PORT
 # The notes' own origin (/notes/ redirects there).
@@ -1404,6 +1456,7 @@ if [ "$WEB" = caddy ]; then
 	Environment=HUB_CODE_DIR=$CODE
 	Environment=HUB_FLASHER_ROOT=$APPS/flasher
 	Environment=HUB_EWT_ROOT=$APPS/esp-web-tools
+	Environment=HUB_FREEOCD_ROOT=$APPS/freeocd
 	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
 	Environment=HUB_ADDON_PORT=$ADDON_PORT
 	Environment=HUB_ADDONS_ROOT=$STATE/addons
