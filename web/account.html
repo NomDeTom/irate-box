@@ -50,8 +50,8 @@
       </div>
       <h3>Who sees what I post</h3>
       <div id="acct-posts"></div>
-      <p class="setting-desc">Never wider than the box's owner lets each app be. Notes is one notebook everyone who can
-        open it shares, so it has nothing of yours alone to hide.</p>
+      <p class="setting-desc">Never wider than the box's owner lets each app be. The shared notes are one notebook everyone
+        who can open them shares, so they have nothing of yours alone to hide; your own notebook is below.</p>
       <label>Email for a password reset <input type="email" name="email" autocomplete="email" placeholder="optional"></label>
       <p class="setting-desc">Only used if the box can send mail; never shown to anyone. New accounts start not shown by name.</p>
       <div class="acct-pref-foot">
@@ -59,6 +59,14 @@
         <button type="submit" class="action-btn primary" id="acct-prefs-save" disabled>Save</button>
       </div>
     </form>
+    <section class="acct-form" id="acct-notebook" hidden>
+      <h2>My notebook</h2>
+      <p class="setting-desc">Your own notes, private to you: no one else can open them. It is separate from the
+        shared notes, which everyone with notes access can read and change.</p>
+      <p class="setting-desc" id="acct-notebook-state" role="status"></p>
+      <p><a class="action-btn" href="/notebook.html" id="acct-notebook-open">Open my notebook</a>
+        <a class="action-btn" href="/api/notebook/download" id="acct-notebook-download" download>Download it (zip)</a></p>
+    </section>
     <p><button type="button" id="acct-logout">Log out</button></p>
   </section>
 

@@ -1457,8 +1457,8 @@ def _nginx_check(src, opts):
         (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
         # The TLS twins' includes: an empty folder (a box with no certificate), their ports as set.
         (Path(tmp) / "tls").mkdir()
-        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_GATES@": f"{tmp}/addon-gates.d", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
-                           "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491",
+        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_GATES@": f"{tmp}/addon-gates.d", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@NOTEBOOK_PORT@": "8094", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
+                           "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491", "@NOTEBOOK_TLS_PORT@": "8494",
                            "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons"),
                            "@PAGELOG@": f"{tmp}/pages.log"}.items():
             text = text.replace(key, value)
@@ -3065,6 +3065,33 @@ def main():
 
 UPDATES = ("update-install", "update-force-install")
 
+# A notebook per login (hub/notebooks.py): the hub lists which should run; this makes it so.
+NOTEBOOK_RE = re.compile(r"^[a-z0-9_-][a-z0-9._-]{2,31}$")
+NOTEBOOK_MAX = 10
+
+
+def notebooks_sync():
+    """Start irate-box-notebook@<name> for each name the hub lists and stop every other. The list
+    is the hub's: read without following a link, its names checked, at most NOTEBOOK_MAX."""
+    wanted = set()
+    try:
+        fd = os.open(STATE / "notebooks" / ".wanted.json", os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd) as fh:
+            names = json.loads(fh.read(1 << 16)).get("run", [])
+        wanted = {n for n in names if isinstance(n, str) and NOTEBOOK_RE.match(n)}
+    except (OSError, ValueError, AttributeError):
+        pass
+    wanted = set(sorted(wanted)[:NOTEBOOK_MAX])
+    out = run("systemctl", "list-units", "irate-box-notebook@*.service", "--state=active,activating",
+              "--plain", "--no-legend", "--no-pager")
+    running = {line.split()[0][len("irate-box-notebook@"):-len(".service")]
+               for line in out.stdout.splitlines() if line.startswith("irate-box-notebook@")}
+    for name in sorted(running - wanted):
+        run("systemctl", "stop", "--no-block", f"irate-box-notebook@{name}.service")
+    for name in sorted(wanted - running):
+        run("systemctl", "start", "--no-block", f"irate-box-notebook@{name}.service")
+    return sorted(wanted)
+
 
 if __name__ == "__main__":
     # NetworkManager's dispatcher (root/ap.py's hook): a link came up; a following hotspot moves.
@@ -3080,6 +3107,12 @@ if __name__ == "__main__":
                 _ap_record_status(None, note)
         except RuntimeError as exc:
             sys.exit(str(_ap_failed(exc)))
+        sys.exit(0)
+    # irate-box-notebooks.path: the hub's list of notebooks to run changed.
+    if sys.argv[1:] == ["notebooks-sync"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        print("notebooks running:", " ".join(notebooks_sync()) or "none")
         sys.exit(0)
     # The boot unit (root/ap.py): the hotspot as it was before the reboot.
     if sys.argv[1:] == ["ap-boot"]:

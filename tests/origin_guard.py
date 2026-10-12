@@ -14,12 +14,12 @@ def check(name, cond, info=""):
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
 tmpl = (REPO / "config" / "irate-box.nginx").read_text()
-text = tmpl.replace("@PORT@", "80").replace("@ADDON_PORT@", "8090").replace("@NOTES_PORT@", "8091").replace("@WIKI_PORT@", "8092").replace("@GIT_PORT@", "8093")
-text = text.replace("@TLS_PORT@", "443").replace("@ADDON_TLS_PORT@", "8490").replace("@NOTES_TLS_PORT@", "8491").replace("@WIKI_TLS_PORT@", "8492").replace("@GIT_TLS_PORT@", "8493")
+text = tmpl.replace("@PORT@", "80").replace("@ADDON_PORT@", "8090").replace("@NOTES_PORT@", "8091").replace("@WIKI_PORT@", "8092").replace("@GIT_PORT@", "8093").replace("@NOTEBOOK_PORT@", "8094")
+text = text.replace("@TLS_PORT@", "443").replace("@ADDON_TLS_PORT@", "8490").replace("@NOTES_TLS_PORT@", "8491").replace("@WIKI_TLS_PORT@", "8492").replace("@GIT_TLS_PORT@", "8493").replace("@NOTEBOOK_TLS_PORT@", "8494")
 servers = secdoctor._nginx_servers(text)
 by_port = {tuple(p): b for p, b in servers}
 hub, notes = by_port.get(("80",), ""), by_port.get(("8091",), "")
-check("five server blocks: the hub, add-ons, notes, books, cgit", sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",)], sorted(by_port))
+check("six server blocks: the hub, add-ons, notes, books, cgit, notebooks", sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",)], sorted(by_port))
 cgit = by_port.get(("8093",), "")
 check("the hub's port runs no cgit, but still serves clones and pushes", "cgit.cgi" not in hub and "git-http-backend" in hub
       and "auth_request /_irate_git_access;" in hub)
@@ -29,11 +29,12 @@ check("cgit's origin: the hub's app bar may frame it", cgit.count("frame-ancesto
 check("cgit's origin: a clone or push sent here goes to the hub's port", re.search(r"git-receive-pack\)\$ \{\s*return 302 \$scheme://\$host:\$irate_box_hub_port\$request_uri;", cgit) is not None)
 # HTTPS: every origin has its TLS twin in the same server
 # block (so the same routes), redirects keep to the scheme they came in on, and never HSTS.
-for (port,), name in ((("80",), "main"), (("8090",), "addons"), (("8091",), "notes"), (("8092",), "wiki"), (("8093",), "git")):
+for (port,), name in ((("80",), "main"), (("8090",), "addons"), (("8091",), "notes"), (("8092",), "wiki"), (("8093",), "git"), (("8094",), "notebook")):
     check(f"TLS twin: the {name} server block includes its own", f"include @TLS@/nginx-{name}.conf*;" in by_port.get((port,), ""))
 maps = {k: (h, d) for k, h, d in re.findall(r"map \$scheme \$(irate_box_\w+_port)\s*\{\s*https (\d+);\s*default (\d+);", text)}
 check("  each origin's port by scheme: http to its own, https to its twin", maps == {"irate_box_hub_port": ("443", "80"), "irate_box_addon_port": ("8490", "8090"),
-      "irate_box_notes_port": ("8491", "8091"), "irate_box_wiki_port": ("8492", "8092"), "irate_box_git_port": ("8493", "8093")}, maps)
+      "irate_box_notes_port": ("8491", "8091"), "irate_box_wiki_port": ("8492", "8092"), "irate_box_git_port": ("8493", "8093"),
+      "irate_box_notebook_port": ("8494", "8094")}, maps)
 check("  no redirect between origins with a fixed port", not re.search(r"\$scheme://\$host:\d", text), re.findall(r"\$scheme://\$host:\d+", text))
 caddy = (REPO / "config" / "Caddyfile").read_text()
 # A baseline CSP on the hub's origin, server-wide and wherever a location sets its own headers.

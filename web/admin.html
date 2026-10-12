@@ -106,6 +106,25 @@
         <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
       </section>
 
+      <section class="admin-pane" id="app-inventory" aria-labelledby="app-inventory-title">
+        <h2 id="app-inventory-title">All apps</h2>
+        <p class="setting-desc">
+          Every app on this box and every one it can add, one line each. Open one for its own page:
+          who can open it, its tile, its settings, updates and installation.
+        </p>
+        <div class="inv-tools">
+          <label>Show <input type="search" id="inv-q" placeholder="name or kind" aria-label="Show apps containing"></label>
+          <div class="view-switch inv-filter" role="group" aria-label="Which apps">
+            <button class="view-switch-btn active" type="button" data-inv="all" aria-pressed="true">All</button>
+            <button class="view-switch-btn" type="button" data-inv="installed" aria-pressed="false">Installed</button>
+            <button class="view-switch-btn" type="button" data-inv="available" aria-pressed="false">Available</button>
+            <button class="view-switch-btn" type="button" data-inv="builtin" aria-pressed="false">Built in</button>
+          </div>
+        </div>
+        <ul class="inv-list" id="inv-list" aria-live="polite"></ul>
+        <p class="setting-desc" id="inv-note"></p>
+      </section>
+
       <section class="admin-pane" id="addons" aria-labelledby="addons-title">
         <h2 id="addons-title">Add-ons</h2>
         <p class="setting-desc">
@@ -248,11 +267,14 @@
           from their forks' GitHub Actions builds, and the calculators from their repository, adapted
           for the hub. Which apps there are is set by the manifests in apps.d/.
         </p>
+        <!-- Each app's updates are on its own page; listed here only an app with no page. -->
         <div id="apps-list"></div>
         <p class="setting-desc">The Debian packages watched on their makers' channels (meshtasticd) are under Updates.</p>
-        <h3>Built into the hub</h3>
-        <p class="setting-desc">Part of the hub itself, so there is nothing to install or update.</p>
-        <div id="builtin-list"></div>
+        <div id="builtin-more" hidden>
+          <h3>Built into the hub</h3>
+          <p class="setting-desc">Part of the hub itself, so there is nothing to install or update.</p>
+          <div id="builtin-list"></div>
+        </div>
         <h3>Who can open each one</h3>
         <p class="setting-desc">
           <strong>Public</strong>: everyone on the box's network can open it.
@@ -629,12 +651,22 @@
       </section>
 
       <section class="admin-pane" id="status-tiles" aria-labelledby="status-tiles-title">
-        <h2 id="status-tiles-title">Status tiles</h2>
+        <h2 id="status-tiles-title">Status widgets</h2>
         <p class="setting-desc">The row of readouts under the apps on the hub page: which show, in what order, and which
           take two cells to say more (People: the different devices seen today and this week; memory and disk in full).</p>
         <div id="status-tiles-box"></div>
         <h3>Names of those signed in</h3>
         <div id="names-to-box"></div>
+      </section>
+
+      <section class="admin-pane" id="folder-index" aria-labelledby="folder-index-title">
+        <h2 id="folder-index-title">Folders</h2>
+        <p class="setting-desc">
+          The hub's folders of tiles. Open one to choose what is in it and in what order; an entry
+          can be in more than one folder. Hiding an entry here hides it from that folder only, not the app.
+          Who sees each folder's own tile is on that folder's page.
+        </p>
+        <ul class="inv-list" id="folder-index-list"></ul>
       </section>
 
       <!-- The shoutbox and the board: apps drawn on the hub page itself, not as tiles,
@@ -786,6 +818,16 @@
         </form>
         <p class="setting-desc action-note" id="accounts-note" role="status" hidden></p>
         <p class="setting-desc" id="accounts-counts"></p>
+        <h3>Notebooks</h3>
+        <p class="setting-desc">
+          The shared notes are one notebook everyone with notes access can read and change. Each login can
+          also have a notebook of its own that no one else can open, running only while its owner uses it:
+          it starts when they open it, and stops when they sign out or half an hour after they last used it.
+          About 40 MB of memory each while running. A notebook's pages stay on the box when it stops, when
+          notebooks are switched off, and when its account is deleted.
+        </p>
+        <div id="notebooks-box"></div>
+        <p class="setting-desc" id="notebooks-state"></p>
         <h3>Make an account</h3>
         <form id="accounts-make" class="library-form">
           <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"

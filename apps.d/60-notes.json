@@ -3,8 +3,8 @@
   "order": 60,
   "tile": {
     "icon": "📝📔",
-    "name": "Notes",
-    "desc": "Shared Markdown notebook",
+    "name": "Shared notes",
+    "desc": "Markdown notes everyone here can read and change",
     "href": "/app.html#/notes/",
     "new_tab": true
   },

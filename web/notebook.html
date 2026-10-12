@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My notebook · Hub</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help account">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📔 My notebook</h1>
+    <p class="subtitle">Private to you. The shared notes, which everyone can change, are separate.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+  <main>
+    <p id="nb-state" role="status" aria-live="polite">Looking…</p>
+    <p id="nb-actions"></p>
+  </main>
+  <script src="/notebook.js"></script>
+</body>
+</html>

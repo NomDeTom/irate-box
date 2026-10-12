@@ -40,7 +40,7 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
 (async () => {
   await wait();
   const groups = [...d.querySelectorAll('.admin-side-group')].map(t);
-  check('a Folders group, after Apps', groups.indexOf('Folders') === groups.indexOf('Apps') + 1, groups.join('|'));
+  check('a Hub layout group, after Apps', groups.indexOf('Hub layout') === groups.indexOf('Apps') + 1, groups.join('|'));
   const page = d.getElementById('page-app-tools-rf');
   check('the RF folder\'s page opens, with what\'s in it', page && !page.hidden && !!block(), page && page.hidden);
   check('  one line per entry, each saying what it is', block().querySelectorAll('.aw-row').length === 3 && /a download/i.test(t(row('Serial download'))));

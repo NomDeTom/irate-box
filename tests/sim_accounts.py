@@ -159,7 +159,7 @@ import re as _re  # noqa: E402
 gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check("  the site: every app location with a login has its gate include",
       all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
-      and site.count("location = /_irate_user") == 5 and site.count("location @irate_box_login") == 5, sorted(gated))
+      and site.count("location = /_irate_user") == 5 and site.count("location @irate_box_login") == 6, sorted(gated))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))
 (T / "etc").mkdir()
 from irate_box.root import hub_control as H  # noqa: E402
