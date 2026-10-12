@@ -22,7 +22,9 @@ import subprocess
 import sys
 import tarfile
 import threading
+import tempfile
 import time
+import zipfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -3053,6 +3055,37 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return False
 
+    def _send_notes(self):
+        """The shared notes (SilverBullet's space) as a zip: its pages and attachments, without its own
+        hidden files (a dot at any level) and never past a link out of the folder."""
+        base = STATE_DIR / "notes"
+        if not base.is_dir():
+            self.send_json(404, {"error": "no notes yet: SilverBullet is not installed, or nothing has been written"})
+            return
+        root = base.resolve()
+        with tempfile.SpooledTemporaryFile(max_size=32 << 20) as buf:
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for dirpath, dirnames, filenames in os.walk(root):
+                    dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and not os.path.islink(os.path.join(dirpath, d)))
+                    for name in sorted(filenames):
+                        full = Path(dirpath) / name
+                        if name.startswith(".") or full.is_symlink() or not full.is_file():
+                            continue
+                        z.write(full, str(full.relative_to(root)))
+            size = buf.tell()
+            buf.seek(0)
+            name = f"notes-{time.strftime('%Y-%m-%d')}.zip"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            try:
+                shutil.copyfileobj(buf, self.wfile, 1 << 20)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
     def _send_kit(self):
         """The offline kit, streamed (with books it runs to gigabytes)."""
         try:
@@ -3288,6 +3321,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/kit/download":
             self._send_kit()
+            return
+
+        if path == "/admin/notes/download":
+            self._send_notes()
             return
 
         if path == "/admin/access":
