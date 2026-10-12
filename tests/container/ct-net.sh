@@ -24,7 +24,7 @@ echo "$s" | j '(d["uplink"]["state"], d["uplink"]["iface"], d["uplink"]["backend
 # The old single level still read: standard is the steady pace, reach reboot; strict, 2 missed checks.
 [ "$(echo "$s" | j 'd["uplink"]["chosen"]["pace"]+","+d["uplink"]["chosen"]["reach"]+","+str(d["uplink"]["chosen"]["sensitivity"])')" = "steady,reboot,2" ] && ok "--uplink standard,strict taken as steady, reboot, sensitivity 2" || bad "settings not taken"
 [ "$(echo "$s" | j 'd["inventory"]["uplink"]["iface"]')" = eth0 ] && ok "inventory written at install" || bad "no inventory"
-[ "$(echo "$s" | j 'd["levels"]["pace"]==["gentle","steady","prompt","urgent"] and d["levels"]["reach"]==["watch","reconnect","restart","radio","reboot"]')" = True ] && ok "both dials offered" || bad "levels"
+[ "$(echo "$s" | j 'd["levels"]["pace"]==["gentle","steady","brisk","urgent"] and d["levels"]["reach"]==["watch","reconnect","restart","radio","reboot"]')" = True ] && ok "both dials offered" || bad "levels"
 
 echo "== scan one device"
 id="$(post '{"action":"scan","iface":"eth0"}' | idof)"; r="$(result "$id")"; echo "    $r"
@@ -33,11 +33,11 @@ id="$(post '{"action":"scan"}' | idof)"; r="$(result "$id")"; [[ "$r" == OK* ]] 
 c="$(post '{"action":"scan","iface":"eth0;rm"}' | tail -1)"; [ "$c" = 400 ] && ok "bad iface refused" || bad "bad iface -> $c"
 
 echo "== settings"
-id="$(post '{"action":"settings","settings":{"pace":"prompt","reach":"radio","sensitivity":5,"iface":"auto","overrides":{"check":20,"steps":{"radio":null}}}}' | idof)"
+id="$(post '{"action":"settings","settings":{"pace":"brisk","reach":"radio","sensitivity":5,"iface":"auto","overrides":{"check":20,"steps":{"radio":null}}}}' | idof)"
 r="$(result "$id")"; echo "    $r"; [[ "$r" == OK* ]] && ok "saved" || bad "save"
-python3 -c "import json; d=json.load(open('/etc/hub/uplink.json')); assert (d['pace'], d['reach'])==('prompt','radio') and d['overrides']=={'check':20,'steps':{'radio':None}}, d" && ok "/etc/hub/uplink.json written" || bad "file"
-for _ in $(seq 30); do e="$(get | j 'd["uplink"]["events"][-1]["text"]')"; [[ "$e" == "Settings changed: prompt pace"* ]] && break; sleep 1; done
-[[ "$e" == "Settings changed: prompt pace"* ]] && ok "watchdog took it: $e" || bad "watchdog event: $e"
+python3 -c "import json; d=json.load(open('/etc/hub/uplink.json')); assert (d['pace'], d['reach'])==('brisk','radio') and d['overrides']=={'check':20,'steps':{'radio':None}}, d" && ok "/etc/hub/uplink.json written" || bad "file"
+for _ in $(seq 30); do e="$(get | j 'd["uplink"]["events"][-1]["text"]')"; [[ "$e" == "Settings changed: brisk pace"* ]] && break; sleep 1; done
+[[ "$e" == "Settings changed: brisk pace"* ]] && ok "watchdog took it: $e" || bad "watchdog event: $e"
 [ "$(get | j 'd["uplink"]["settings"]["check"]')" = 20 ] && ok "effective check 20" || bad "effective"
 c="$(post '{"action":"settings","settings":{"pace":"max"}}' | tail -1)"; [ "$c" = 400 ] && ok "bad pace refused" || bad "bad pace -> $c"
 c="$(post '{"action":"settings","settings":{"reach":"nuke"}}' | tail -1)"; [ "$c" = 400 ] && ok "bad reach refused" || bad "bad reach -> $c"
@@ -53,7 +53,7 @@ for _ in $(seq 20); do [ -e /etc/hub/uplink-now.json ] || break; sleep 1; done
 echo "== hold"
 id="$(post '{"action":"hold","minutes":60}' | idof)"; r="$(result "$id")"; [[ "$r" == OK* ]] && ok "$r" || bad "$r"
 python3 -c "import json,time; d=json.load(open('/etc/hub/uplink.json')); assert d['hold_until']>time.time()+3500" && ok "hold recorded" || bad "hold"
-python3 -c "import json; d=json.load(open('/etc/hub/uplink.json')); assert d['pace']=='prompt' and d['overrides']['check']==20" && ok "hold kept the settings" || bad "hold lost settings"
+python3 -c "import json; d=json.load(open('/etc/hub/uplink.json')); assert d['pace']=='brisk' and d['overrides']['check']==20" && ok "hold kept the settings" || bad "hold lost settings"
 id="$(post '{"action":"hold","minutes":0}' | idof)"; r="$(result "$id")"; [[ "$r" == OK* ]] && ok "$r" || bad "$r"
 c="$(post '{"action":"hold","minutes":5000}' | tail -1)"; [ "$c" = 400 ] && ok "long hold refused" || bad "hold -> $c"
 

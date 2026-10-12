@@ -290,6 +290,49 @@ radio.reset("wlan0", "1-1.1", None, None, run=frun, sleep=lambda s: None, wait=1
 check("  a hotspot that was not up is not started", "systemctl start irate-box-ap.service" not in ran, ran)
 check("  nothing to reset by: said", radio.reset("wlan0", None, "../x", None, run=frun, sleep=lambda s: None) == "no way to reset this radio here")
 
+# A radio on the board's SDIO bus (a Raspberry Pi's brcmfmac): the function rebound, then its SD host, then the driver
+# reloaded with the module that holds it (brcmfmac_cyw) unloaded first and loaded again after.
+def fake_sdio():
+    for d in ("bus", "class", "devices", "module"):
+        shutil.rmtree(SYS / d, ignore_errors=True)
+    host = SYS / "devices/platform/soc/3f300000.mmcnr"
+    func = host / "mmc_host/mmc1/mmc1:0001/mmc1:0001:1"
+    func.mkdir(parents=True)
+    for drv in ("bus/sdio/drivers/brcmfmac", "bus/platform/drivers/mmc-bcm2835", "bus/platform/devices"):
+        (SYS / drv).mkdir(parents=True)
+    (func / "driver").symlink_to(SYS / "bus/sdio/drivers/brcmfmac")
+    (host / "driver").symlink_to(SYS / "bus/platform/drivers/mmc-bcm2835")
+    (SYS / "bus/platform/devices/3f300000.mmcnr").symlink_to(host)
+    (SYS / "class/net/wlan0").mkdir(parents=True)
+    (SYS / "class/net/wlan0/device").symlink_to(func)
+    (SYS / "module/brcmfmac/holders/brcmfmac_cyw").mkdir(parents=True)
+check("SDIO: the radio found on the board's bus, with its driver and its SD host", (fake_sdio() or True)
+      and radio._sdio_target("wlan0") == {"func": "mmc1:0001:1", "driver": "brcmfmac", "host": "3f300000.mmcnr", "host_driver": "mmc-bcm2835"},
+      radio._sdio_target("wlan0"))
+sran = []
+def srun(*cmd, timeout=60):
+    sran.append(" ".join(cmd))
+    if cmd[:3] == ("systemctl", "is-active", "--quiet"):
+        shutil.rmtree(SYS / "class/net/wlan0", ignore_errors=True)   # gone, and not coming back by itself
+        return 0, ""
+    return 0, ""
+said = radio.reset("wlan0", None, "brcmfmac", None, run=srun, sleep=lambda s: None, wait=1)
+check("  not back: the function rebound, then the host, then the driver reloaded with its holder",
+      (SYS / "bus/sdio/drivers/brcmfmac/bind").read_text() == "mmc1:0001:1"
+      and (SYS / "bus/platform/drivers/mmc-bcm2835/bind").read_text() == "3f300000.mmcnr"
+      and said.index("SDIO mmc1:0001:1 (brcmfmac) unbound and bound again") < said.index("SD host 3f300000.mmcnr unbound")
+      < said.index("brcmfmac reloaded (with brcmfmac_cyw)"), said)
+rm = [c for c in sran if c.startswith(("rmmod", "modprobe"))]
+check("  the holder unloaded first, the driver loaded, the holder again", rm == ["rmmod brcmfmac_cyw", "rmmod brcmfmac", "modprobe brcmfmac",
+                                                                               "modprobe brcmfmac_cyw"], rm)
+fake_sdio()
+said = radio.reset("wlan0", None, "brcmfmac", None, run=lambda *c, timeout=60: (0, ""), sleep=lambda s: None, wait=1)
+check("  back after the first rebind: nothing heavier", said.startswith("SDIO mmc1:0001:1 (brcmfmac) unbound and bound again; wlan0 is back")
+      and not (SYS / "bus/platform/drivers/mmc-bcm2835/bind").exists(), said)
+for d in ("class", "devices", "module/brcmfmac"):
+    shutil.rmtree(SYS / d, ignore_errors=True)
+(SYS / "module/aic8800_fdrv").mkdir(parents=True, exist_ok=True)   # as the USB radio's checks below had it
+
 # The port reset (what usbreset does), when the device's node answers it.
 resets = []
 real_port_reset = radio._port_reset
