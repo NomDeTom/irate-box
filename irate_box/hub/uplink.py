@@ -12,7 +12,7 @@ is meant to work offline, and a LAN with no internet is not a fault.
 Its settings, on /admin's Network page (and `install.sh --uplink`), each meaning one thing:
 
   Pace        how soon it first acts once the link is down, how often it reconnects again, and
-              when each heavier step comes: gentle, steady, prompt, urgent
+              when each heavier step comes: gentle, steady, brisk, urgent
   Reach       the heaviest step it may take: watch (log only), reconnect, restart, radio, reboot
               (the default: the highest; a reboot at most 3 a day, never during a build or update)
   Guests      protect (the default): no radio reset or reboot, nor a restart when the hotspot
@@ -117,7 +117,7 @@ STEP_LABEL = {"reconnect": "reconnect", "restart": "restart the network service"
 PACE = {
     "gentle": {"check": 120, "window": 1800, "repeat": 900, "steps": {"reconnect": 300, "restart": 1800, "radio": 3600, "reboot": 7200}},
     "steady": {"check": 60, "window": 600, "repeat": 300, "steps": {"reconnect": 60, "restart": 600, "radio": 1200, "reboot": 3600}},
-    "prompt": {"check": 30, "window": 300, "repeat": 180, "steps": {"reconnect": 0, "restart": 300, "radio": 900, "reboot": 1800}},
+    "brisk": {"check": 30, "window": 300, "repeat": 180, "steps": {"reconnect": 0, "restart": 300, "radio": 900, "reboot": 1800}},
     "urgent": {"check": 30, "window": 120, "repeat": 120, "steps": {"reconnect": 0, "restart": 180, "radio": 480, "reboot": 1800}},
 }
 REACH = ("watch", "reconnect", "restart", "radio", "reboot")   # watch: look and log, never act
@@ -168,14 +168,16 @@ CAUSE_WORDS = {"radio": "the radio has failed",
 RETRY = {"eager": 600, "steady": 3600, "sparing": 21600}
 # How long to keep reconnecting while the network is at fault; then stop, and say so.
 GIVE_UP = {"never": None, "hour": 3600, "day": 86400, "week": 7 * 86400}
+# A pace's old name: settings saved with it still load.
+PACE_WAS = {"prompt": "brisk"}
 # The old single dial, as pace, reach and guests: settings saved with it still load.
 EAGERNESS_WAS = {"off": ("gentle", "watch", "protect"), "patient": ("gentle", "reboot", "protect"),
-                 "standard": ("steady", "reboot", "protect"), "persistent": ("prompt", "reboot", "protect"),
+                 "standard": ("steady", "reboot", "protect"), "persistent": ("brisk", "reboot", "protect"),
                  "stubborn": ("urgent", "reboot", "ignore")}
 DESCRIBE = {
     "gentle": "Waits 5 minutes before the first reconnect and 15 between them; heavier steps after half an hour, an hour, two.",
     "steady": "A reconnect after a minute, again every 5; heavier steps after 10, 20 and 60 minutes down.",
-    "prompt": "A reconnect at once, again every 3 minutes; heavier steps after 5, 15 and 30 minutes down.",
+    "brisk": "A reconnect at once, again every 3 minutes; heavier steps after 5, 15 and 30 minutes down.",
     "urgent": "Everything soonest: heavier steps after 3, 8 and 30 minutes down.",
     "watch": "Watch and log only. NetworkManager (or whatever runs the link) is left to itself.",
     "reconnect": "Reconnect, and nothing heavier.",
@@ -242,6 +244,11 @@ def migrate(raw):
         raw.update(pace=pace, reach=reach)
         raw.setdefault("guests", guests)
     raw.pop("eagerness", None)
+    if raw.get("pace") in PACE_WAS:
+        raw["pace"] = PACE_WAS[raw["pace"]]
+    if isinstance(raw.get("per_iface"), dict):
+        raw["per_iface"] = {i: (dict(o, pace=PACE_WAS[o["pace"]]) if isinstance(o, dict) and o.get("pace") in PACE_WAS else o)
+                            for i, o in raw["per_iface"].items()}
     if "forgiveness" in raw and "sensitivity" not in raw:
         old = raw.pop("forgiveness")
         if old not in FORGIVENESS_WAS:

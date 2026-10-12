@@ -131,7 +131,7 @@ setTimeout(() => {
   const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
   const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
   const pace = tiles('up-pace'), reach = tiles('up-reach');
-  check('pace: four cards, gentle to urgent', vals('up-pace') === 'gentle steady prompt urgent', vals('up-pace'));
+  check('pace: four cards, gentle to urgent', vals('up-pace') === 'gentle steady brisk urgent', vals('up-pace'));
   check('reach: five cards, watch to reboot', vals('up-reach') === 'watch reconnect restart radio reboot', vals('up-reach'));
   check('guests and a wedged driver: two cards each', vals('up-guests') === 'protect ignore' && vals('up-wedge') === 'ladder radio');
   check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2

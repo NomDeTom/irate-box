@@ -96,7 +96,7 @@ Usage: sudo ./install.sh [options]
                         have the port (the captive portal needs it). Recorded, so /admin's
                         Security page can undo it and uninstall.sh starts it again.
   --uplink K=V[,K=V]    how the box works to stay on its network (uplink.py): pace gentle
-                        (default), steady, prompt or urgent; reach watch, reconnect, restart,
+                        (default), steady, brisk or urgent; reach watch, reconnect, restart,
                         radio or reboot (default); sensitivity 1-20 missed checks within the
                         pace's window (default 3); guests protect (default) or ignore; on_wedge ladder (default) or
                         radio. E.g. --uplink pace=steady,reach=radio. (The old single level, e.g.

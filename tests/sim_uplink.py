@@ -20,7 +20,7 @@ def check(name, cond, info=""):
 # The levels by name in these tests: pace/reach (and guests). The old single dial's names map to
 # these where a case is about the same thing (patient: reconnect only; stubborn: everything, guests or not).
 LV = {"off": ("gentle", "watch", "protect"), "patient": ("gentle", "reconnect", "protect"), "standard": ("steady", "restart", "protect"),
-      "persistent": ("prompt", "radio", "protect"), "stubborn": ("urgent", "reboot", "ignore")}
+      "persistent": ("brisk", "radio", "protect"), "stubborn": ("urgent", "reboot", "ignore")}
 def C(e, sens=3, over=None, **kw):
     pace, reach, guests = LV[e] if e in LV else (*e.split("/"), "protect")
     return dict({"pace": pace, "reach": reach, "guests": guests, "sensitivity": sens, "overrides": over or {}}, **kw)
@@ -52,7 +52,7 @@ a, w = outage("standard", 3, 3600)
 check("steady pace: reconnect at 10+60, restart at 10+600", a[0] == (70, "reconnect") and (610, "restart") in a, a)
 check("reach restart: no radio/reboot", not ({"radio", "reboot"} & {x for _, x in a}), a)
 a, w = outage("persistent", 3, 3600)
-check("prompt: reconnect at once, restart at +5 min, radio +15", a[0] == (10, "reconnect") and (310, "restart") in a and (910, "radio") in a, a)
+check("brisk: reconnect at once, restart at +5 min, radio +15", a[0] == (10, "reconnect") and (310, "restart") in a and (910, "radio") in a, a)
 a, w = outage("stubborn", 3, 7200)
 check("urgent: reboot at +30 min", (1810, "reboot") in a, [x for x in a if x[1] != "reconnect"])
 
@@ -213,7 +213,7 @@ def relapses(e, downs, can=NO_PIN, total=None, step=10, sens=3):
             acts.append((t, x))
     return acts, w
 a, w = relapses("persistent", [(0, 120), (360, 480), (960, 1080)])
-check("episode: three relapses climb reconnect → restart → radio (prompt: restart +5 min, radio +15 min from the episode's start)",
+check("episode: three relapses climb reconnect → restart → radio (brisk: restart +5 min, radio +15 min from the episode's start)",
       a == [(20, "reconnect"), (380, "restart"), (980, "radio")], a)
 check("  each relapse names what did not hold", [e["text"].split(":")[1].split(",")[0].strip() for e in w.events if "did not hold" in e["text"]]
       == ["reconnect did not hold", "restart the network service did not hold"], [e["text"] for e in w.events if "did not hold" in e["text"]])
@@ -229,7 +229,7 @@ check("  with NetworkManager, the second one locked to the strongest access poin
 a1, _ = outage("standard", 3, 3600)
 check("episode: a single outage is as it was (reconnect, back-off, restart at +10 min)", (610, "restart") in a1 and a1[0] == (70, "reconnect"), a1[:3])
 a, w = flap(reach="persistent", n=30, every=60)
-check("flapping on: climbs the ladder by the episode's times (prompt: restart at +5 min, radio at +15)",
+check("flapping on: climbs the ladder by the episode's times (brisk: restart at +5 min, radio at +15)",
       [x for _, x in a if x != "pin"][:2] == ["restart", "radio"] and a[0][1] == "pin", a)
 
 # 7d. A wedged driver: the evidence, from a real board's journal lines, and what is done with it.
@@ -358,7 +358,7 @@ check("  crash watch's failure from before the last reset: left behind",
 
 # 7e. Two dials, the restart guard on a shared radio, settings from before carried over.
 def shared(guests, sharing, ignore=False):
-    w = U.Watch(U.effective(C("prompt/radio", guests="ignore" if ignore else "protect")))
+    w = U.Watch(U.effective(C("brisk/radio", guests="ignore" if ignore else "protect")))
     acts = []
     for t in range(0, 1200, 10):
         acts += [(t, x) for x in w.tick(t, {"link": False, "drops": [], "can": ALL, "guests": guests, "shared_radio": sharing})]
@@ -644,7 +644,7 @@ r3 = [{"at": t1, "k": "down", "i": "wlan0"}, {"at": t1 + 5, "k": "cause", "s": "
       {"at": t1 + 60, "k": "repair", "s": "reconnect", "b": "auto", "i": "wlan0"}, {"at": t1 + 4000, "k": "up", "i": "wlan0"}]
 check("  steps taken while the network was gone: not judged", "reconnect" not in HL.step_record(r3, now)["wlan0"]["steps"], HL.step_record(r3, now))
 # The watchdog itself: a link back in the look a drop is seen in starts no flap with no misses.
-w = U.Watch(U.effective(C("prompt/reboot", 3)))
+w = U.Watch(U.effective(C("brisk/reboot", 3)))
 for t in range(0, 300, 30):
     w.tick(t, {"link": False, "drops": [], "can": ALL, "guests": 0})
 w.tick(300, {"link": True, "gateway": True, "drops": [295], "can": ALL, "guests": 0})
@@ -714,5 +714,8 @@ check("a radio reset by the ladder: filed with the kernel's lines and the radio'
       ["[  10.0] aic8800: cmd timed-out", "[  11.0] usb 1-1.1: reset"], "1-1.1")], filed)
 CW.file_radio, U.run = _fr, _run
 
+v, w = U.validate({"pace": "prompt", "reach": "radio"}), U.validate({"pace": "steady", "per_iface": {"wlan0": {"pace": "prompt"}}})
+check("a pace saved by its old name (prompt) loads as brisk, a connection's own too", v["pace"] == "brisk"
+      and w["per_iface"].get("wlan0", {}).get("pace") == "brisk", (v["pace"], w["per_iface"]))
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

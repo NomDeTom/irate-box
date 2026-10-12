@@ -44,7 +44,7 @@ check("  a broken line is passed over", len(watchlog.read()) >= 1)
 watchlog.LOG.unlink()
 
 # The uplink watchdog: its events shared before it acts (a reboot leaves no time after).
-w = uplink.Watch(uplink.effective(dict(uplink.DEFAULT, pace="prompt", reach="reboot", on_wedge="reboot")))
+w = uplink.Watch(uplink.effective(dict(uplink.DEFAULT, pace="brisk", reach="reboot", on_wedge="reboot")))
 for t in range(0, 300, 30):
     acts = w.tick(now + t, {"link": False, "drops": [], "can": {"reconnect", "restart", "radio", "reboot"}, "guests": 0, "uptime": 1e9,
                             "cause": "radio"})
