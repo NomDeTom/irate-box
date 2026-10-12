@@ -1072,17 +1072,6 @@ def check_crashwatch(now=None):
                   "What is done when it fails: Network → The box's access → A failed radio." if failed else "",
                   go=_go("net-watchdog-card", "Network → A failed radio", "up-wedge") if failed else None))
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
-    hang = [_chip("Kernel panic or lockup", "crashwatch-panic:off", "Stay stopped", not s["panic"]),
-            _chip("Kernel panic or lockup", "crashwatch-panic:on", "Restart after 10 s", s["panic"],
-                  "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen?")]
-    wd_words = {"hardware": "the board's", "softdog": "softdog", "switched-off": "the board's, after a restart"}
-    if wd or s["watchdog"]:
-        hang += [_chip("Watchdog", "crashwatch-watchdog:off", "Off", not s["watchdog"]),
-                 _chip("Watchdog", "crashwatch-watchdog:on", f"On ({wd_words.get(wd, 'the board' + chr(39) + 's')})", s["watchdog"],
-                       "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy work that starves "
-                       "systemd for that long would restart too."
-                       + (" The board's watchdog is switched off in its device tree: this switches it on with a boot overlay "
-                          "(Armbian's user_overlays), so it starts working after the next restart." if wd == "switched-off" else ""))]
     on = [w for w, v in (("restarts after a kernel panic or lockup", s["panic"]), ("a watchdog restarts it if it freezes", s["watchdog"])) if v]
     said = "; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug."
     if s["watchdog"] and pending:
@@ -1092,13 +1081,42 @@ def check_crashwatch(now=None):
     elif not wd:
         said += " This kernel has no watchdog (neither the board's nor softdog)."
     out.append(_f("crash-hang", "A frozen box", "warn" if week and not on else "ok", said,
-                  "Each restart is filed as a crash, with what the box was doing, so nothing is lost by allowing it.", hang))
+                  "Each restart is filed as a crash, with what the box was doing, so nothing is lost by allowing it. "
+                  "Set in the doctor's settings, above.", go=_go("health-settings", "the doctor's settings", "hs-panic")))
     out.append(_f("crash-snapshots", "Crash watch's snapshots", "ok" if s["snapshots"] else "warn",
                   f"Every 30 s to {cw.SNAP}, synced: what a crash is explained by." if s["snapshots"] else
-                  "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).", "",
-                  [_chip("Snapshots", "crashwatch-snapshots:off", "Off", not s["snapshots"]),
-                   _chip("Snapshots", "crashwatch-snapshots:on", "On", s["snapshots"])]))
+                  "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).",
+                  "Set in the doctor's settings, above.", go=_go("health-settings", "the doctor's settings", "hs-snapshots")))
     return out
+
+
+WD_WORDS = {"hardware": "the board's", "softdog": "the kernel's softdog", "switched-off": "the board's, from the next restart"}
+
+
+def setting_groups(s, wd):
+    """The doctor's own settings as choice groups for its settings card: {key, label, desc, current, options:
+    [{value, label, choice (health.fix's), confirm?}]}, the safest first. The watchdog only where there is one."""
+    groups = [
+        {"key": "snapshots", "label": "Crash watch's snapshots", "desc": "Every 30 s, what the box was doing, kept on its own storage: what explains a crash.",
+         "current": "on" if s["snapshots"] else "off", "options": [
+             {"value": "on", "label": "On", "choice": "crashwatch-snapshots:on"},
+             {"value": "off", "label": "Off", "choice": "crashwatch-snapshots:off"}]},
+        {"key": "panic", "label": "A kernel panic, oops or lockup", "desc": "Nothing in user space can act on a frozen kernel.",
+         "current": "on" if s["panic"] else "off", "options": [
+             {"value": "off", "label": "Stay stopped", "choice": "crashwatch-panic:off"},
+             {"value": "on", "label": "Restart after 10 s", "choice": "crashwatch-panic:on",
+              "confirm": "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen?"}]}]
+    if wd or s["watchdog"]:
+        groups.append({"key": "watchdog", "label": "A box that stops answering", "desc": f"A watchdog ({WD_WORDS.get(wd, 'the board' + chr(39) + 's')}) "
+                       "that systemd keeps fed: a frozen system stops feeding it, and the box restarts.",
+                       "current": "on" if s["watchdog"] else "off", "options": [
+                           {"value": "off", "label": "Stay stopped", "choice": "crashwatch-watchdog:off"},
+                           {"value": "on", "label": "Restart after a minute", "choice": "crashwatch-watchdog:on",
+                            "confirm": "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy work that "
+                                       "starves systemd for that long would restart too." + (
+                                " The board's watchdog is switched off in its device tree: this switches it on with a boot overlay, so it "
+                                "starts working after the next restart." if wd == "switched-off" else "")}]})
+    return groups
 
 
 def check_watchers(now=None):
@@ -1128,7 +1146,20 @@ def scan():
         except Exception as exc:  # one broken check must not hide the others
             findings.append(_f(f"check:{check.__name__}", check.__name__.replace("check_", "Check: "), "warn",
                                f"The check itself failed: {exc!r}"))
-    return {"at": time.time(), "findings": findings}
+    return {"at": time.time(), "findings": findings, "settings": doctor_settings()}
+
+
+def doctor_settings():
+    """The doctor's own settings, as they are now, for its settings card: crash watch's snapshots, and what
+    restarts a frozen box (a panic, the watchdog), with whether this board has a watchdog to use."""
+    try:
+        from irate_box.root import crashwatch as cw
+        s = cw.load_settings()
+        wd = cw.watchdog_device() if os.geteuid() == 0 or os.environ.get("HUB_SYSFS") else None
+        return {"snapshots": s["snapshots"], "panic": s["panic"], "watchdog": s["watchdog"], "watchdog_device": wd,
+                "groups": setting_groups(s, wd)}
+    except Exception:  # noqa: BLE001 - the report goes out without it
+        return None
 
 
 # --- repairs ---------------------------------------------------------------------------------------

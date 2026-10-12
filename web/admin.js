@@ -1913,6 +1913,10 @@ const hl = {
   search: document.getElementById('health-search'),
   empty: document.getElementById('health-empty'),
   fine: document.getElementById('health-fine'),
+  glance: document.getElementById('health-glance'),
+  setGroups: document.getElementById('health-settings-groups'),
+  setSave: document.getElementById('health-settings-save'),
+  setNote: document.getElementById('health-settings-note'),
   fineFold: document.getElementById('health-fine-fold'),
   fineCount: document.getElementById('health-fine-count'),
   install: document.getElementById('health-install'),
@@ -2003,6 +2007,91 @@ function healthDo(f, busy) {
   return { how, controls };
 }
 let hlShow = 'all';  // the counters double as the list's filter: all, problem, warn
+let hlDrawn = '';    // what the findings were last drawn from: the same again leaves them (and a selection in them) alone
+
+// The box at a glance, at the top: the findings' counts, the link and the radio, the last start of the box and why,
+// the watchdog's last repair, and what crash watch keeps and what restarts a frozen box.
+function renderGlance(data, rep) {
+  const find = (id) => rep && rep.findings.find((f) => f.id === id);
+  const first = (text) => String(text || '').split(/(?<=\.)\s/)[0];
+  const w = data.watchers || {};
+  const st = rep && rep.settings;
+  const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k).length) : null;
+  const ago = (at) => { const s = Date.now() / 1000 - at; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
+  const rows = [
+    ['Health', !rep ? 'Not looked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to look at (below).` : 'Nothing to fix or look at.'],
+    ['Staying on the network', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Why it is down: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
+    ['The WiFi radio', find('crash-radio') ? first(find('crash-radio').detail) : 'No radio watched.'],
+    ['The last start', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
+    ['The last repair', w.last_repair ? `${ago(w.last_repair.at)}: ${w.last_repair.text}` : 'None recorded.'],
+    ['A frozen box', !st ? 'Not known yet.' : st.panic || st.watchdog
+      ? `Restarts by itself (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
+    ['Snapshots', !st ? 'Not known yet.' : st.snapshots ? 'Kept every 30 s.' : 'Off.'],
+  ];
+  const key = JSON.stringify(rows);
+  if (hl.glance.dataset.key === key) return;   // the same again: left alone, a selection in it too
+  hl.glance.dataset.key = key;
+  hl.glance.replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { textContent: k }), el('dd', { textContent: v })]));
+}
+
+// The doctor's own settings: each a row of choices; Save sends the changes to the root helper one after another,
+// says what waits, then what was done, and looks again so the page shows them as they are.
+let hsPick = {}, hsFrom = '', hsSaving = null;
+function renderDoctorSettings(data, rep) {
+  const st = rep && rep.settings;
+  const groups = (st && st.groups) || [];
+  const from = JSON.stringify(groups.map((g) => [g.key, g.current]));
+  if (from !== hsFrom && !hsSaving) {   // a new report: the settings as they are now, unless the owner is mid-change
+    const dirty = Object.keys(hsPick).some((k) => groups.find((g) => g.key === k && g.current !== hsPick[k]));
+    if (!dirty || !hsFrom) { hsPick = Object.fromEntries(groups.map((g) => [g.key, g.current])); }
+    hsFrom = from;
+    hl.setGroups.replaceChildren(...groups.map((g) => {
+      const box = el('div', { id: `hs-${g.key}` });
+      AW.choices(box, `hs-${g.key}`, g.options.map((o) => ({ value: o.value, title: o.label })),
+        { value: hsPick[g.key], onChange: (v) => { hsPick[g.key] = v; showDoctorSave(groups); } });
+      box.setAttribute('aria-label', g.label);
+      return el('div', { className: 'up-group' }, el('span', { className: 'setting-name', textContent: g.label }),
+        el('p', { className: 'setting-desc', textContent: g.desc }), box);
+    }));
+    if (!groups.length) hl.setGroups.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Shown after the next look.' }));
+  }
+  if (hsSaving) {
+    const done = hsSaving.ids.map((id) => (data.results || []).find((r) => r.id === id));
+    if (done.every(Boolean)) {
+      const bad = done.filter((r) => !r.ok);
+      say(bad.length ? bad.map((r) => r.message).join('; ') : `Saved: ${done.map((r) => r.message).join('; ')}.`, !bad.length, hl.setNote);
+      hsSaving = null;
+      hsFrom = '';
+      hlRequest({ action: 'scan' }, 'scan');
+    } else {
+      const ahead = (data.queue && data.queue.waiting || []).length;
+      say(`Saving: ${done.filter(Boolean).length} of ${done.length} done; waiting for the root helper`
+        + (data.queue && data.queue.running ? ` (it is busy with ${data.queue.running.action}${ahead ? `, ${ahead} waiting` : ''})` : '') + '.', true, hl.setNote);
+    }
+  }
+  showDoctorSave(groups);
+}
+function showDoctorSave(groups) {
+  const changed = groups.filter((g) => hsPick[g.key] !== undefined && hsPick[g.key] !== g.current);
+  hl.setSave.disabled = !!hsSaving || !changed.length;
+  hl.setSave.textContent = hsSaving ? 'Saving…' : changed.length ? `Save (${changed.length} not saved yet)` : 'Save';
+  hl.setSave.onclick = async () => {
+    for (const g of changed) {
+      const o = g.options.find((x) => x.value === hsPick[g.key]);
+      if (o.confirm && !confirm(o.confirm)) return;
+    }
+    const ids = [];
+    for (const g of changed) {
+      const o = g.options.find((x) => x.value === hsPick[g.key]);
+      try { ids.push((await postJSON('/admin/health', { action: 'fix', choice: o.choice })).id); }
+      catch (err) { say(err.message, false, hl.setNote); return; }
+    }
+    hsSaving = { ids };
+    showDoctorSave(groups);
+    say('Saving: sent to the root helper.', true, hl.setNote);
+    loadHealth();
+  };
+}
 document.getElementById('health-search').addEventListener('input', () => hlLast && renderHealth(hlLast));
 
 let hlLast = null;
@@ -2081,6 +2170,8 @@ function renderHealth(data) {
     }
   }
   const rep = data.report;
+  renderGlance(data, rep);
+  renderDoctorSettings(data, rep);
   const all = rep ? [...rep.findings].sort((a, b) => RANK[a.status] - RANK[b.status]) : [];
   const shown = new Set(all.map((f) => f.id));
   const noteUnder = (fid) => (hlNote && hlNote.fid === fid
@@ -2107,14 +2198,20 @@ function renderHealth(data) {
     return b;
   })));
   const open = services.filter((f) => f.status !== 'ok' && match(f) && (hlShow === 'all' || f.status === hlShow));
-  hl.findings.replaceChildren(...open.map(item));
+  // Redrawn only when what they show has changed: a poll that brings the same leaves a selection in them alone.
+  const drawn = JSON.stringify([rep && rep.at, all, busy, h.stuck, hlNote, hlShow, needle]);
+  const redraw = drawn !== hlDrawn;
+  hlDrawn = drawn;
+  if (redraw) hl.findings.replaceChildren(...open.map(item));
   hl.empty.hidden = !rep || open.length > 0;
   hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or look at.';
   const fine = services.filter((f) => f.status === 'ok' && match(f));
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
-  hl.fine.replaceChildren(...fine.map(item));
-  hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
+  if (redraw) {
+    hl.fine.replaceChildren(...fine.map(item));
+    hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
+  }
   const loose = hlNote && (hlNote.fid === 'scan' || hlNote.fid === 'clock-scan' || !shown.has(hlNote.fid)) ? hlNote : null;
   const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
   say(loose && !inClock ? loose.text : '', loose ? loose.ok : true, hl.note);

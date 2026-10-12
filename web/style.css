@@ -1448,6 +1448,11 @@ html:has(> body.admin) { background: var(--bg); }
   border-radius: 6px; padding: 0.55rem 0.8rem 0.6rem; font-size: 0.88rem; }
 .finding-problem { --f: var(--bad); } .finding-warn { --f: var(--warn); } .finding-ok, .finding-fixed { --f: var(--ok); }
 .finding-suggest { --f: var(--accent); } .finding-not-here, .finding-accepted { --f: var(--border); }
+/* The Box doctor's overview: a two-column list, one column on a phone. */
+.hl-glance { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.4rem 0 0; }
+.hl-glance dt { font-weight: 600; }
+.hl-glance dd { margin: 0; }
+@media (max-width: 560px) { .hl-glance { grid-template-columns: 1fr; } .hl-glance dd { margin-bottom: 0.4rem; } }
 /* Where a "Go to …" link lands: marked as the setup tour marks a setting (.tour-target). */
 .landed { outline: 3px solid var(--warn) !important; outline-offset: 4px; border-radius: 6px; animation: tour-pulse 1.6s ease-in-out 3; }
 @media (prefers-reduced-motion: reduce) { .landed { animation: none; } }

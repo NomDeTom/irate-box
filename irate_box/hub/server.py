@@ -47,6 +47,7 @@ from irate_box.hub import meshbridge
 from irate_box.hub import store
 from irate_box.hub import svchistory
 from irate_box.hub import uplink
+from irate_box.hub import watchlog
 from irate_box.library import zimcheck
 
 CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/hub/server.py → the checkout
@@ -1947,7 +1948,20 @@ def health_snapshot():
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
             "ladder": load(uplink.LADDER) or [], "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
             "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
-            "progress": update_progress()}
+            "progress": update_progress(), "watchers": watchers_glance()}
+
+
+def watchers_glance():
+    """For the doctor's overview: the box's last start and why, the watchdog's last repair and where the
+    link stands now (the watchers' record, the watchdog's own report)."""
+    boots = watchlog.read(kinds={"boot"})
+    repairs = watchlog.read(kinds={"repair"})
+    try:
+        u = json.loads((CONTROL_DIR / "uplink.json").read_text())
+    except (OSError, ValueError):
+        u = {}
+    return {"last_boot": boots[-1] if boots else None, "last_repair": repairs[-1] if repairs else None,
+            "link": {k: u.get(k) for k in ("at", "state", "iface", "cause")} if u else None}
 
 
 NETINV_STATE = CONTROL_DIR / "netinv.json"
