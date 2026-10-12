@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Hotspot profiles that are not irate-box's (an image's setup hotspot, such as Armbian's
 "armbiansetup-<board>"), at the owner's choice: removed, with the profile kept so undo can bring it
-back, or left as it is and no longer listed among things to look at.
+back (and that copy deleted too, for good), or left as it is and no longer listed among things to look at.
 
 Such a profile shares the client link's radio and interface: started, it takes the box off its own
 network. irate-box's own hotspot runs beside the link, so a second one adds nothing; its password
@@ -97,6 +97,20 @@ def leave(uuid):
     rec[uuid] = {"name": name, "ssid": ssid, "choice": "left", "at": time.time()}
     _save(rec)
     return f"{name} ({ssid}) left as it is, and no longer listed (the doctor still warns if it's set to start by itself)"
+
+
+def forget(uuid):
+    """A deleted profile's kept copy deleted too, for good: nothing left to restore."""
+    rec = record()
+    r = rec.get(uuid)
+    if not r or r.get("choice") != "removed":
+        raise ValueError("no deleted profile with a kept copy for that id")
+    kept = Path(r["kept"])
+    if kept.is_relative_to(KEPT):
+        kept.unlink(missing_ok=True)
+    rec.pop(uuid)
+    _save(rec)
+    return f"{r['name']}'s kept copy deleted: it can't be restored now"
 
 
 def undo(uuid):

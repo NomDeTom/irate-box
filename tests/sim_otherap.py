@@ -61,6 +61,17 @@ check("remove: gone from NetworkManager, its profile kept", SETUP not in loaded 
 check("  the record: names and the choice, nothing else", set(rec[SETUP]) == {"name", "ssid", "choice", "kept", "file", "at"} and rec[SETUP]["choice"] == "removed")
 said = O.undo(SETUP)
 check("undo: brought back and loaded", SETUP in loaded and (T / "nm/Hotspot.nmconnection").exists() and O.record() == {}, said)
+said = O.remove(SETUP)
+kept = Path(O.record()[SETUP]["kept"])
+said = O.forget(SETUP)
+check("forget: a deleted profile's kept copy deleted too, the record cleared", not kept.exists() and O.record() == {}, said)
+try:
+    O.forget(SETUP)
+    check("  forget with nothing deleted: refused", False)
+except ValueError:
+    check("  forget with nothing deleted: refused", True)
+O.undo.__globals__["run"]("nmcli", "con", "load", "x")   # the stand-in: the profile known to NetworkManager again
+(T / "nm/Hotspot.nmconnection").write_text("[connection]\nid=Hotspot\n")
 said = O.leave(SETUP)
 check("leave: kept as it is, recorded as left", SETUP in loaded and O.record()[SETUP]["choice"] == "left", said)
 for bad, why in ((OURS, "irate-box's own"), (HOME, "only another hotspot"), ("x", "not a connection")):

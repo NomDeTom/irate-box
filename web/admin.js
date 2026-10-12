@@ -3085,25 +3085,30 @@ function renderNetwork(data) {
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
   if (change && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Keep retrying was set on ${change.name}, but the profile no longer has it: it was written afresh (netplan does so at every boot). `
-      + 'The box defaults above last whatever writes the profile. ',
+      `Your WiFi connection ${change.name} was set to try for ever, but that was lost when netplan wrote it afresh at boot. `
+      + 'The settings above last whatever writes the connection. ',
       actionButton('Set it again', () => netRequest({ action: 'profile', on: true }, 'up'), { disabled: busy }), ' ',
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
   } else if (change) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Keep retrying is on for ${change.name} (since ${new Date(change.at * 1000).toLocaleDateString()}): NetworkManager never stops trying it. `,
+      `Your WiFi connection ${change.name} is also set, on its own, to try for ever (since ${new Date(change.at * 1000).toLocaleDateString()}). `,
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
   } else if (prof && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Your WiFi profile ${prof} stops trying after a few failed handshakes, and then waits for someone to reconnect it by hand — which a box with no screen cannot ask for, and a flaky link can cause. `
-      + 'Keep retrying sets its connection.autoconnect-retries and connection.auth-retries to 0. Undo, here or by uninstalling, puts the old values back. ',
-      actionButton('Keep retrying', () => {
+      `Your WiFi connection ${prof} stops after a few failures and waits for someone to reconnect it by hand, which a box with no screen can't ask for. `
+      + 'This sets it, on its own, to try for ever; undo, here or by uninstalling, puts it back. ',
+      actionButton('Try for ever', () => {
         if (confirm(`Change two settings of your WiFi profile ${prof}, so it never stops trying? Undo puts them back.`)) netRequest({ action: 'profile', on: true }, 'up');
       }, { disabled: busy })));
   } else {
     net.profile.replaceChildren();
   }
-  document.getElementById('net-changes').hidden = !['up-profile', 'net-handover', 'net-other-ap', 'net-wifisync'].some((id) => document.getElementById(id).childElementCount);
+  document.getElementById('up-retries-group').hidden = !document.getElementById('net-retry-defaults').childElementCount && !net.profile.childElementCount;
+  const changes = ['net-handover', 'net-other-ap', 'net-wifisync'].some((id) => document.getElementById(id).childElementCount);
+  document.getElementById('net-changes').hidden = !changes;
+  const lead = document.getElementById('net-changes-lead');
+  lead.hidden = !(inv && inv.uplink && inv.uplink.backend === 'networkmanager');
+  lead.textContent = 'NetworkManager runs this box\'s WiFi and network connections, and irate-box makes its changes through it.';
   const evs = (u && u.events) || [];
   // One line per event: when, then what.
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
@@ -3133,6 +3138,13 @@ async function loadNetwork() {
 let defaultsDirty = {};
 let defaultsScope = '';   // '' the whole box, else an interface
 const PER_IFACE = ['auth_retries', 'cloned_mac', 'powersave', 'scan_mac'];
+const RETRY_DEFAULTS = ['autoconnect_retries', 'auth_retries'];
+function syncRetryButtons() {
+  document.getElementById('net-retry-save').disabled = net.defaultsSave.disabled;
+  document.getElementById('net-retry-discard').disabled = net.defaultsDiscard.disabled;
+}
+document.getElementById('net-retry-save').addEventListener('click', () => net.defaultsSave.click());
+document.getElementById('net-retry-discard').addEventListener('click', () => net.defaultsDiscard.click());
 function renderDefaults(inv, busy) {
   const d = inv && inv.stacks && inv.stacks.networkmanager && inv.stacks.networkmanager.defaults;
   const card = document.getElementById('net-defaults-card');
@@ -3161,7 +3173,7 @@ function renderDefaults(inv, busy) {
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
     const chosen = name in defaultsDirty ? defaultsDirty[name] : (cur !== null ? cur : 'default');
     sel.value = opts.some(([v]) => v === chosen) ? chosen : 'default';
-    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = net.defaultsDiscard.disabled = false; });
+    sel.addEventListener('change', () => { defaultsDirty[name] = sel.value; net.defaultsSave.disabled = net.defaultsDiscard.disabled = false; syncRetryButtons(); });
     let now;
     if (defaultsScope) {
       const e = d.ifaces[defaultsScope][name];
@@ -3174,9 +3186,15 @@ function renderDefaults(inv, busy) {
     }
     // What each word choice means, said once under them: the box default, NetworkManager's own.
     const means = [defaultsScope ? `the box default is ${boxNow}` : null, s.value !== null || defaultsScope ? `NetworkManager's own is ${s.nm_default}` : null].filter(Boolean);
-    return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
+    const row = el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
       el('span', { className: 'setting-desc', textContent: cap1(now) + (means.length ? `; ${means.join('; ')}` : '') + '.' }));
+    row.dataset.name = name;
+    return row;
   });
+  // The retries go beside the watchdog's own (Staying on the network), for the whole box.
+  const retries = defaultsScope ? [] : rows.filter((r) => RETRY_DEFAULTS.includes(r.dataset.name));
+  document.getElementById('net-retry-defaults').replaceChildren(...retries);
+  document.getElementById('up-retries-group').hidden = !retries.length && !net.profile.childElementCount;
   rows.unshift(el('label', { className: 'net-default net-default-scope' }, el('span', { className: 'setting-name', textContent: 'For' }), scope,
     el('span', { className: 'setting-desc', textContent: defaultsScope
       ? `Only what NetworkManager takes per interface; how long to keep trying to connect is for the whole box.` : 'A connection\'s own setting, or one for its interface, comes first.' })));
@@ -3185,8 +3203,9 @@ function renderDefaults(inv, busy) {
     ...d.scoped.map((x) => `${own(x.file)} sets ${Object.keys(x.keys).join(', ')} for some devices only (${x.match || x.section}).`),
     ...d.broken.map((f) => `${f} could not be read: NetworkManager may not read it either.`),
   ];
-  net.defaults.replaceChildren(...rows, ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
+  net.defaults.replaceChildren(...rows.filter((r) => !retries.includes(r)), ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
   net.defaultsSave.disabled = net.defaultsDiscard.disabled = busy || !Object.keys(defaultsDirty).length;
+  syncRetryButtons();
   const dn = netNotes.defaults;
   say(dn ? dn.text : '', dn ? dn.ok : true, net.defaultsNote);
 }
@@ -3230,24 +3249,30 @@ function renderOtherAp(inv, data, busy) {
   const rows = [];
   for (const p of others) {
     const c = chosen[p.uuid];
+    const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || '') ? ', Armbian\'s setup hotspot' : ''}`;
     if (c && c.choice === 'left') {
-      rows.push(el('p', { className: 'setting-desc' }, `${p.name} (${p.ssid}): another hotspot profile, left as it is. `,
-        actionButton('List it again', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+      rows.push(el('p', { className: 'setting-desc' }, `Ignored: ${what}. `,
+        actionButton('Stop ignoring it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
       continue;
     }
     rows.push(el('p', { className: 'setting-desc' },
-      `${p.name} (${p.ssid}) is another hotspot profile, not irate-box's: probably the image's setup hotspot, often with the image's own password. `
-      + `It is ${p.autoconnect ? 'set to start by itself, and at boot could take the radio and the box off its own network' : 'not set to start by itself'}. `
-      + 'irate-box\'s hotspot runs beside the link, so this one adds nothing. ',
-      actionButton('Remove it', () => {
-        if (confirm(`Remove ${p.name}? Its profile is kept, and undo brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
+      `This box has ${what}. `
+      + (p.autoconnect ? 'It is set to start by itself: at boot it could take over the WiFi and take the box off its network. '
+        : 'It is switched off (it does not start by itself), so irate-box has the WiFi and runs its own hotspot. ')
+      + 'Delete it (a copy is kept, to restore it), or ignore it. ',
+      actionButton('Delete it', () => {
+        if (confirm(`Delete ${p.name}? A copy is kept, and Restore brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
       }, { className: 'small', disabled: busy }), ' ',
-      actionButton('Leave it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
+      actionButton('Ignore it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
   }
   for (const [uuid, c] of Object.entries(chosen)) {
     if (c.choice !== 'removed') continue;
-    rows.push(el('p', { className: 'setting-desc' }, `${c.name} (${c.ssid}) removed on ${new Date(c.at * 1000).toLocaleDateString()}; kept in ${c.kept}. `,
-      actionButton('Bring it back', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+    rows.push(el('p', { className: 'setting-desc' },
+      `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}; a copy is kept. `,
+      actionButton('Restore it', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy }), ' ',
+      actionButton('Delete the copy too', () => {
+        if (confirm(`Delete the kept copy of ${c.name} for good? It can't be restored after.`)) netRequest({ action: 'otherap', uuid, do: 'forget' }, 'otherap');
+      }, { className: 'small', disabled: busy })));
   }
   const n = netNotes.otherap;
   if (n) rows.push(el('p', { className: `setting-desc action-note${n.ok ? '' : ' bad'}`, role: 'status', textContent: n.text }));
@@ -3365,9 +3390,9 @@ function renderHandover(inv, busy) {
       const names = f.connections.map((c) => c.name).join(', ');
       if (f.ok) {
         rows.push(el('p', { className: 'setting-desc' },
-          `${names || 'Its connections'} come${f.connections.length === 1 ? 's' : ''} from netplan (${f.name}), which writes ${f.connections.length === 1 ? 'it' : 'them'} afresh at every boot: a setting made for one of them alone is lost then. `
-          + 'Handing them over makes them NetworkManager\'s own, with the same name, password and settings; the netplan file is kept, and undo puts it back. ',
-          actionButton('Hand over to NetworkManager', () => {
+          `${names || 'Your connection'}: netplan rewrites ${f.connections.length === 1 ? 'it' : 'them'} from its file ${f.name} at every boot, which undoes any change made here. `
+          + 'Hand it to NetworkManager to keep for good, with the same name, password and settings; netplan\'s file is kept aside, so it can be undone. ',
+          actionButton('Hand it to NetworkManager', () => {
             if (confirm(`Hand ${names || f.name} over to NetworkManager? ${f.name} is moved aside (kept), and NetworkManager keeps ${f.connections.length === 1 ? 'the connection' : 'them'} from now on. `
               + 'Nothing is disconnected; if NetworkManager\'s view of a connection changes in any way, everything is put back at once.'
               + (f.regdom ? ` The WiFi country it sets (${f.regdom}) is kept.` : ''))) netRequest({ action: 'handover', name: f.name }, 'handover');
@@ -3377,9 +3402,11 @@ function renderHandover(inv, busy) {
       }
     }
     for (const d of ho.done || []) {
+      const conns = (d.connections || []).map((c) => (c.keyfile || '').split('/').pop().replace(/\.nmconnection$/, '')).filter(Boolean).join(', ');
       rows.push(el('p', { className: 'setting-desc' },
-        `${d.name} handed over to NetworkManager on ${new Date(d.at * 1000).toLocaleDateString()}; kept in ${d.backup}. `,
-        actionButton('Put it back', () => {
+        `${conns ? `Your connection ${conns} is` : 'Your connections are'} kept by NetworkManager itself since ${new Date(d.at * 1000).toLocaleDateString()}. `
+        + `Before, netplan rewrote ${conns ? 'it' : 'them'} from its file ${d.name} at every boot, undoing any change made here; that file is kept aside. `,
+        actionButton('Give it back to netplan', () => {
           if (confirm(`Put ${d.name} back? netplan makes its connections again, written afresh at every boot.`)) netRequest({ action: 'handover', name: d.name, undo: true }, 'handover');
         }, { disabled: busy })));
     }

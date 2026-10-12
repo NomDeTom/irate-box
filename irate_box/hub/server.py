@@ -4269,7 +4269,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "radio-test", "iface": payload["iface"], "exp": payload["exp"]})})
             elif act == "wifisync" and payload.get("do") in ("off", "on", "undo"):
                 self.send_json(202, {"id": control_request({"action": "wifisync", "do": payload["do"]})})
-            elif act == "otherap" and isinstance(payload.get("uuid"), str) and payload.get("do") in ("remove", "leave", "undo") \
+            elif act == "otherap" and isinstance(payload.get("uuid"), str) and payload.get("do") in ("remove", "leave", "undo", "forget") \
                     and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]):
                 self.send_json(202, {"id": control_request({"action": "other-ap", "uuid": payload["uuid"], "do": payload["do"]})})
             elif act == "connection" and isinstance(payload.get("uuid"), str) \

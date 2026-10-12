@@ -1010,7 +1010,7 @@
                 </div>
                 <section class="net-changes" id="net-changes" aria-labelledby="net-changes-h" hidden>
                   <h5 id="net-changes-h">Changes made here to the box's networking</h5>
-                  <div id="up-profile"></div>
+                  <p class="setting-desc" id="net-changes-lead" hidden></p>
                   <div id="net-handover"></div>
                   <div id="net-other-ap"></div>
                   <div id="net-wifisync"></div>
@@ -1065,6 +1065,16 @@
                   <div class="up-group">
                     <span class="setting-name" id="up-giveup-label">The network gone: how long to keep trying</span>
                     <div class="choice-tiles" id="up-giveup" role="radiogroup" aria-labelledby="up-giveup-label"></div>
+                  </div>
+                  <!-- NetworkManager's own retries, beside the watchdog's: a box default each (saved with the box defaults), and
+                       the WiFi connection's own setting where irate-box changed it, with its undo. -->
+                  <div class="up-group up-box-only" id="up-retries-group" hidden>
+                    <span class="setting-name">Joining failing: NetworkManager's own retries</span>
+                    <p class="setting-desc">How often NetworkManager tries a connection that fails to connect, or whose password
+                      check fails, before it stops and waits for someone to reconnect it by hand. For every connection on the box.</p>
+                    <div class="net-defaults" id="net-retry-defaults"></div>
+                    <div id="up-profile"></div>
+                    <span class="library-buttons"><button class="action-btn" type="button" id="net-retry-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-retry-save" disabled>Save these</button></span>
                   </div>
                   <div class="up-group">
                     <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
