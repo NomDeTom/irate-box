@@ -439,16 +439,44 @@ const AW = (() => {
   // its user. Events from
   // people only: a form the page fills from the hub raises none, so it starts quiet; a submit, or a
   // reset, quiets it again. The button is never disabled here: it still works.
+  // Beside it, a Discard (unless the form has its own): the form's values as they were before its user
+  // began changing them (taken as a person first reaches into the form), put back; off until then.
   const isSave = (b) => b.classList.contains('primary') && b.type === 'submit' && /^Save/.test(b.textContent.trim());
+  const fields = (f) => [...f.elements].filter((e) => e.name && !['button', 'submit', 'reset', 'file'].includes(e.type));
   function quietSaves(root) {
     (root || document).querySelectorAll('form').forEach((f) => {
       if (f._quiet) return;
       const btns = () => [...f.querySelectorAll('button')].filter(isSave);
       if (!btns().length) return;
       f._quiet = true;
-      const set = (dirty) => btns().forEach((b) => b.classList.toggle('idle', !dirty));
+      let snap = null, restoring = false;
+      const own = [...f.querySelectorAll('button')].some((b) => /^Discard/.test(b.textContent.trim()));
+      const discard = own ? null : btn('Discard', { class: 'action-btn aw-discard', disabled: true, title: 'Put back what was there before your changes' });
+      if (discard) btns()[0].before(discard);
+      const take = () => { if (!snap) snap = fields(f).map((e) => [e, e.value, e.checked]); };
+      f.addEventListener('pointerdown', take, true);
+      f.addEventListener('focusin', (e) => { if (e.target !== discard) take(); }, true);
+      const set = (dirty) => {
+        btns().forEach((b) => b.classList.toggle('idle', !dirty));
+        if (discard) discard.disabled = !dirty || !snap;
+        if (!dirty) snap = null;
+      };
       set(false);
-      const touch = (e) => { if (e.target.closest && !e.target.closest('button[type=submit]')) set(true); };
+      if (discard) discard.addEventListener('click', () => {
+        const was = snap || [];
+        restoring = true;
+        for (const [e, value, checked] of was) {
+          if (e.value === value && e.checked === checked) continue;
+          e.value = value;
+          e.checked = checked;
+          e.dispatchEvent(new Event('input', { bubbles: true }));
+          e.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        restoring = false;
+        delete f.dataset.dirty;
+        set(false);
+      });
+      const touch = (e) => { if (!restoring && e.target.closest && !e.target.closest('button[type=submit]')) set(true); };
       f.addEventListener('input', touch);
       f.addEventListener('change', touch);
       f.addEventListener('click', (e) => { if (e.target.closest('.chip, .choice-tile')) set(true); });
