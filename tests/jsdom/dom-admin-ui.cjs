@@ -29,7 +29,10 @@ const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500
   apps: { draw: { title: 'Excalidraw', installed: { commit: 'abc1234def', repository: 'NomDeTom/excalidraw', ref: 'main', built: '2026-10-01T00:00:00Z', has_previous: false }, pin: null } } };
 const tilesData = { tiles: [{ id: 'drop', name: 'File drop', icon: '📥' }, { id: 'about', name: 'About', icon: 'ℹ️' }], state: { order: [] } };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
-  { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true }], progress: null, pending: 0, results: [], log: [] };
+  { id: 'term', title: 'Terminal', summary: 'A shell.', added: true, active: true },
+  { id: 'irc', title: 'IRC server (ngIRCd)', summary: 'Chat on :6667.', added: false, active: false, consent: 'Open unencrypted IRC on the network?', needs: 'ngircd' },
+  { id: 'sync', title: 'Syncthing', summary: 'File sync.', added: null, active: false },
+  { id: 'room', title: 'Live collaboration (whiteboard)', summary: 'Drawing together.', added: false, active: false }], progress: null, pending: 0, results: [], log: [] };
 const update = { signing: { level: 'github', keys: [] }, state: { up_to_date: false, available: 'a4aad09', available_date: '2026-10-02', branch: 'main', fetched: 1790950000,
   changes: ['one'], changes_known: true, verified: null,
   checks: [{ name: 'Python files compile', ok: true, warn: false, detail: '' },
@@ -131,7 +134,7 @@ setTimeout(() => {
   const chipsOf = (root, label) => { const r = root && rowOf(root, label); return r ? [...r.querySelectorAll('.chip')] : []; };
   const picked = (root, label) => (chipsOf(root, label).find((c) => c.getAttribute('aria-pressed') === 'true') || {}).textContent;
   const kiwix = d.getElementById('page-app-wiki');
-  check('an app\'s page starts with its access, then its sections', kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-wiki books',
+  check('an app\'s page starts with its access, installation, then its sections', kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' ') === 'app-access-wiki app-install-wiki books',
     kiwix && [...kiwix.querySelectorAll(':scope > .admin-pane')].map((x) => x.id).join(' '));
   check('  its access block: four chips each for who opens it and who sees it, Kiwix (private) at admin', kiwix
     && chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
@@ -214,6 +217,26 @@ setTimeout(() => {
   check('the Notes add-on carries its block, set to off', notes && picked(notes, 'Who can open it') === 'off');
   const term = [...d.querySelectorAll('#addons-list .library-source')].find((r) => r.textContent.includes('Terminal'));
   check('Terminal public still says it asks for the login', term && term.textContent.includes('still asks for the admin login'));
+  const ircInstall = d.getElementById('app-install-irc');
+  check('IRC has installation status, requirements and Add on its own page', ircInstall && ircInstall.closest('.admin-page').id === 'page-app-irc'
+    && /Not added\./.test(ircInstall.textContent) && /Needs: ngircd/.test(ircInstall.textContent) && ircInstall.querySelector('button').textContent === 'Add');
+  check('installed add-ons have Remove and status without duplicate access controls', /Added, but not running/.test(t('#app-install-notes')[0])
+    && d.querySelector('#app-install-notes button').textContent === 'Remove' && !d.querySelector('#app-install-notes .access-block'));
+  check('unknown install state has no unsafe Add or Remove button', /Unknown/.test(t('#app-install-sync')[0]) && !d.querySelector('#app-install-sync button'));
+  check('built-in apps have no installer section', !d.getElementById('app-install-drop'));
+  check('every installable add-on has an installation section, including the relay without a tile', adminApps().filter((app) => app.addon)
+    .every((app) => d.querySelector(`#page-app-${app.id} #app-install-${app.id}`)) && d.querySelector('#app-install-room button').textContent === 'Add');
+  let addonConsent = '';
+  w.confirm = (message) => { addonConsent = message; return false; };
+  ircInstall.querySelector('button').click();
+  check('IRC Add asks its existing consent and cancellation sends nothing', addonConsent === addons.addons[2].consent
+    && !posted.some((post) => post[0] === '/admin/addons'));
+  w.renderAddons({ ...addons, pending: 1, progress: { action: 'addon', steps: 3, step: 2, label: 'Installing packages' } });
+  check('installer busy disables both app and central controls and shows progress on the app page', d.querySelector('#app-install-irc button').disabled
+    && [...d.querySelectorAll('#addons-list .library-buttons > button')].every((button) => button.disabled)
+    && /step 2 of 3/.test(t('#app-install-irc')[0]) && d.querySelector('#app-install-irc a[href="#addons"]'));
+  w.renderAddons(addons);
+  w.confirm = () => true;
   const main = d.querySelector('.admin-main');
   check('background art: the controller for System (Clock)', main.dataset.art === 'controller', main.dataset.art);
   w.location.hash = '#secdoctor'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
@@ -399,6 +422,9 @@ setTimeout(() => {
   }
   chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
   [...[...d.querySelectorAll('#builtin-list .library-source')][0].querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
+  d.querySelector('#app-install-irc button').click();
+  check('Add on the IRC page sends the existing installer request', posted.some((post) => post[0] === '/admin/addons'
+    && post[1].addon === 'irc' && post[1].on === true));
   setTimeout(() => {
     check('the icon and the size saved with the tiles\' state', posted.some((p) => p[0] === '/admin/tiles' && p[1].state.icon && p[1].state.icon.about === 'INFO'
       && p[1].state.size.about === 'wide'), JSON.stringify(posted.filter((p) => p[0] === '/admin/tiles')));
@@ -433,6 +459,18 @@ setTimeout(() => {
     const add = posted.find((p) => p[1].action === 'mirror-add' && p[1].mirror.name === 'fw2');
     check('git: adding a mirror sends its policy', add && add[1].mirror.branches.join() === 'master,develop'
       && JSON.stringify(add[1].mirror.groups) === JSON.stringify([{ kind: 'release', keep: 2 }, { kind: 'prerelease', keep: 2 }]), JSON.stringify(add));
+    const installedAddons = { ...addons, addons: addons.addons.map((addon) => addon.id === 'irc' ? { ...addon, added: true, active: true } : addon),
+      results: [{ id: 'x', ok: true, message: 'IRC installed.' }] };
+    w.renderAddons(installedAddons);
+    check('installation completion updates both views with Remove and the result', /Added, and running/.test(t('#app-install-irc')[0])
+      && /IRC installed\./.test(t('#app-install-irc')[0]) && /IRC installed\./.test(t('#addons-list')[0])
+      && d.querySelector('#app-install-irc button').textContent === 'Remove' && !d.querySelector('#app-install-irc button').disabled);
+    w.renderAddons(installedAddons);
+    check('status refresh retains installation controls without duplicate sections', d.querySelectorAll('#app-install-irc').length === 1
+      && d.querySelector('#app-install-irc button').textContent === 'Remove');
+    d.querySelector('#app-install-irc button').click();
+    check('Remove on the IRC page sends the existing removal request', posted.some((post) => post[0] === '/admin/addons'
+      && post[1].addon === 'irc' && post[1].on === false));
     check('no page errors', !errors.length, errors);
     // A null handed to replaceChildren or append shows as the word itself: no text node on the page may be just that.
     const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);

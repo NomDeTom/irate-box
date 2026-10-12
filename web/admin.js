@@ -4382,8 +4382,31 @@ const ado = {
 let adoWaiting = null; // { id, addon }
 let adoNote = null; // { addon, text, ok }
 let adoPoll = null;
+let lastAddons = null;
+AL.onBuild(() => { if (lastAddons) renderAddons(lastAddons); });
+
+function addonCard(a, busy, withAccess, progressText) {
+  const state = a.added === null ? 'Unknown: this box records no install options.'
+    : a.added ? (a.active ? 'Added, and running.' : 'Added, but not running (see Overview).') : 'Not added.';
+  const note = adoNote && adoNote.addon === a.id
+    ? el('span', { className: `setting-desc action-note${adoNote.ok ? '' : ' bad'}`, role: 'status', textContent: adoNote.text }) : null;
+  return el('div', { className: 'setting library-source' }, el('span', {},
+    el('span', { className: 'setting-name', textContent: a.title }),
+    withAccess ? accessSlot(a.id) : null,
+    el('span', { className: 'setting-desc', textContent: a.summary }),
+    el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
+    !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,
+    a.added === null ? null : el('span', { className: 'library-buttons' }, el('button', {
+      type: 'button', className: 'action-btn', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
+      onclick: () => addonSet(a, !a.added),
+    })),
+    note,
+    !withAccess && progressText ? el('span', { className: 'setting-desc', role: 'status', textContent: progressText }) : null,
+    !withAccess && (progressText || note) ? el('a', { href: '#addons', textContent: 'Installation output' }) : null));
+}
 
 function renderAddons(data) {
+  lastAddons = data;
   const p = data.progress;
   const busy = data.pending > 0 || !!adoWaiting || !!p;
   if (adoWaiting) {
@@ -4394,30 +4417,20 @@ function renderAddons(data) {
       return renderAddons(data);
     }
   }
-  ado.list.replaceChildren(...data.addons.map((a) => {
-    const state = a.added === null ? 'Unknown: this box records no install options.'
-      : a.added ? (a.active ? 'Added, and running.' : 'Added, but not running (see Overview).') : 'Not added.';
-    const note = adoNote && adoNote.addon === a.id
-      ? el('span', { className: `setting-desc action-note${adoNote.ok ? '' : ' bad'}`, role: 'status', textContent: adoNote.text }) : null;
-    return el('div', { className: 'setting library-source' }, el('span', {},
-      el('span', { className: 'setting-name', textContent: a.title }),
-      accessSlot(a.id),
-      el('span', { className: 'setting-desc', textContent: a.summary }),
-      el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
-      !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,
-      a.added === null ? null : el('span', { className: 'library-buttons' }, el('button', {
-        type: 'button', className: 'action-btn', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
-        onclick: () => addonSet(a, !a.added),
-      })),
-      note));
-  }));
+  const steps = p ? Math.max(p.steps, p.step, 1) : 0;
+  const progressText = p ? `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}`
+    + (p.label ? ` — ${p.label}` : '') + '.' : '';
+  ado.list.replaceChildren(...data.addons.map((a) => addonCard(a, busy, true, progressText)));
+  document.querySelectorAll('.addon-block').forEach((block) => {
+    const addon = data.addons.find((a) => a.id === block.dataset.addon);
+    block.replaceChildren(addon ? addonCard(addon, busy, false, progressText)
+      : el('p', { className: 'setting-desc', textContent: 'Installation status is unavailable.' }));
+  });
   // The run in flight: the same bar as Updates, for an add-on's run or an update's.
   ado.progress.hidden = !p;
   if (p) {
-    const steps = Math.max(p.steps, p.step, 1);
     ado.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
-    ado.step.textContent = `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}` +
-      (p.label ? ` — ${p.label}` : '') + '.';
+    ado.step.textContent = progressText;
   }
   ado.output.hidden = !(data.log.length && (busy || adoNote));
   ado.log.textContent = data.log.join('\n');
