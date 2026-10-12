@@ -111,6 +111,14 @@ if [ -f "$ETC/nm-connection-changes.json" ] && [ -f "$CODE/irate_box/root/nmconn
 	say "Putting back the WiFi connections' own settings"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" nmconnection undo-all | sed 's/^/    /' || true
 fi
+# mPWRD-OS's wifisync, if switched here: back as the image had it.
+if [ -f "$STATE/control/wifisync.json" ]; then
+	was=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("was", ""))' "$STATE/control/wifisync.json" 2>/dev/null || true)
+	case "$was" in
+	enabled) systemctl enable --now wifisync.service >/dev/null 2>&1 || true ;;
+	disabled) systemctl disable --now wifisync.service >/dev/null 2>&1 || true ;;
+	esac
+fi
 # Connections handed over from netplan to NetworkManager stay NetworkManager's (the box stays on its
 # network); said how to put the netplan files back.
 if [ -f "$ETC/netplan-handover.json" ] && [ -f "$CODE/irate_box/root/nmhandover.py" ]; then
