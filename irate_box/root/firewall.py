@@ -43,7 +43,7 @@ UNIT_DIRS = (UNIT_DIR,) if "HUB_UNIT_DIR" in os.environ else (UNIT_DIR, Path("/l
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 
 # The hub's own doors on the hotspot: the front, the apps' origins and their TLS twins, DNS, DHCP.
-HUB_TCP = (53, 80, 443, 8090, 8091, 8092, 8093, 8490, 8491, 8492, 8493)
+HUB_TCP = (53, 80, 443, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494)
 HUB_UDP = (53, 67)
 # The floor at "hub": the front, DNS and DHCP only.
 HUB_ONLY_TCP = (53, 80, 443)

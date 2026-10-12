@@ -53,6 +53,7 @@ run sim_helper_busy.py
 run sim_widths.py
 run sim_wifisync.py
 run sim_notes_download.py
+run sim_notebooks.py
 run sim_admin_apps.py
 run sim_visibility.py
 run sim_folders.py

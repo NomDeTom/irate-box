@@ -384,6 +384,12 @@ def session(token):
     return _public(acc)
 
 
+def has_session(name):
+    """Whether this account has a current session anywhere (its notebook runs only while it does)."""
+    k, now = str(name or "").lower(), time.time()
+    return any(s.get("name") == k and s.get("expires", 0) > now for s in _load()["sessions"].values())
+
+
 def logout(token):
     with _lock:
         data = _load()

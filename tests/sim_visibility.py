@@ -35,13 +35,13 @@ try:
         i = page.find(f'<span class="name">{name}</span>')
         return None if i < 0 else page[page.rfind("<a ", 0, i):page.find("</a>", i)]
     _, home = go("GET", "/")
-    check("auto: a users-only app has no tile for a guest", tile(home, "Notes") is None)
+    check("auto: a users-only app has no tile for a guest", tile(home, "Shared notes") is None)
     check("auto: a private one neither", tile(home, "Git") is None)
     st, _ = go("POST", "/admin/visibility", {"app": "notes", "visible": "guests"})
     go("POST", "/admin/visibility", {"app": "git", "visible": "guests"})
     go("POST", "/admin/visibility", {"app": "wiki", "visible": "guests"})
     _, home = go("GET", "/")
-    t = tile(home, "Notes")
+    t = tile(home, "Shared notes")
     check("shown to everyone: the tile, with a lock", st == 200 and t and "locked" in t and "sign in to open" in t, t)
     t = tile(home, "Git")
     check("a private app shown to everyone: locked too", t and "locked" in t, t)
@@ -90,22 +90,22 @@ try:
     go("POST", "/admin/visibility", {"app": "notes", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
     _, home = go("GET", "/")
-    check("offer off (the default): a users-only app has no tile for a guest", tile(home, "Notes") is None)
+    check("offer off (the default): a users-only app has no tile for a guest", tile(home, "Shared notes") is None)
     st, _ = go("POST", "/admin/settings", {"sign_in_offer": True})
     _, home = go("GET", "/")
-    t = tile(home, "Notes")
+    t = tile(home, "Shared notes")
     check("offer on: the tile shows to a guest, with a lock", st == 200 and t and "locked" in t, t)
     check("offer on: a private app still has no tile", tile(home, "Git") is None)
     # The global override of what a seen-but-unopenable tile does.
     st, _ = go("POST", "/admin/settings", {"locked_all": "grey"})
     _, home = go("GET", "/")
-    t = tile(home, "Notes")
+    t = tile(home, "Shared notes")
     check("override: every locked tile greyed, over the per-app choice", st == 200 and t and "greyed" in t, t)
     st, _ = go("POST", "/admin/settings", {"locked_all": "nonsense"})
     check("  refused: an unknown way", st in (200, 400) and json.loads(go("GET", "/admin/settings")[1])["locked_all"] == "grey")
     go("POST", "/admin/settings", {"locked_all": ""})
     _, home = go("GET", "/")
-    check("  cleared: back to each app's own choice", "greyed" not in (tile(home, "Notes") or ""))
+    check("  cleared: back to each app's own choice", "greyed" not in (tile(home, "Shared notes") or ""))
     go("POST", "/admin/settings", {"sign_in_offer": False})
     # The apps row's order: kept by the hub; the rest after the ones named, as before.
     _, home = go("GET", "/")
@@ -142,7 +142,7 @@ try:
     check("admin: the tile for an admin account", jar["ada"] and tile(visit("/", jar["ada"])[0], "Excalidraw") is not None, jar)
     t = tile(visit("/", jar["ada"])[0], "Excalidraw") or ""
     check("admin: the admin's tile carries its pill", "admin-pill" in t and "admin-only" in t, t)
-    t = tile(visit("/", jar["ada"])[0], "Notes") or ""
+    t = tile(visit("/", jar["ada"])[0], "Shared notes") or ""
     check("  a tile others see too has none", t and "admin-pill" not in t, t)
     # The box's own admin login: seen at /admin, a signed cookie; the home page then
     # shows the admin's tiles even with no account at all.
@@ -170,22 +170,22 @@ try:
         end = min(x for x in (page.find("</a>", i), page.find("</div>", i)) if x >= 0)
         return page[start:end]
     go("POST", "/admin/visibility", {"app": "notes", "visible": "guests"})  # notes: for users, seen by everyone
-    t = card(visit("/")[0], "Notes") or ""
+    t = card(visit("/")[0], "Shared notes") or ""
     check("locked, sign in (the default): to the sign-in page, back to the app after", 'href="/account.html?next=' in t and "sign in to open" in t, t)
     st, _ = go("POST", "/admin/visibility", {"app": "notes", "locked": "signup"})
-    t = card(visit("/")[0], "Notes") or ""
+    t = card(visit("/")[0], "Shared notes") or ""
     check("sign up, with accounts open: to the sign-up form", st == 200 and "#signup" in t and "sign up to open" in t, t)
     go("POST", "/admin/accounts", {"action": "settings", "signup": "off"})
-    t = card(visit("/")[0], "Notes") or ""
+    t = card(visit("/")[0], "Shared notes") or ""
     check("  with no accounts to make: sign in instead", "#signup" not in t and "sign in to open" in t, t)
     go("POST", "/admin/accounts", {"action": "settings", "signup": "open"})
     go("POST", "/admin/visibility", {"app": "notes", "locked": "padlock"})
-    t = card(visit("/")[0], "Notes") or ""
+    t = card(visit("/")[0], "Shared notes") or ""
     check("padlock: a padlock, and nothing to follow", t.startswith("<div ") and "padlock" in t and "href" not in t and "🔒" in t, t)
     go("POST", "/admin/visibility", {"app": "notes", "locked": "grey"})
-    t = card(visit("/")[0], "Notes") or ""
+    t = card(visit("/")[0], "Shared notes") or ""
     check("greyed: greyed out, nothing to follow, no padlock", t.startswith("<div ") and "greyed" in t and "href" not in t and "🔒" not in t, t)
-    t = card(visit("/", jar["bea"])[0], "Notes") or ""
+    t = card(visit("/", jar["bea"])[0], "Shared notes") or ""
     check("  a user, who may open it, gets the app as ever", t.startswith("<a ") and "greyed" not in t and "/notes" in t, t)
     st, _ = go("POST", "/admin/visibility", {"app": "notes", "locked": "ajar"})
     check("refused: a way not offered", st == 400, st)

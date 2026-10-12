@@ -51,7 +51,7 @@ check("the hotspot's interface alone is sent to the drop chain; the input policy
       'iifname "ap0" jump hotspot' in lines and "type filter hook input priority filter; policy accept;" in lines)
 hot = text.split("chain hotspot {")[1].split("\n\t}\n")[0]
 check("the hub's doors, DNS and DHCP, MQTT and Syncthing when chosen; drop last",
-      "tcp dport { 53, 80, 443, 1883, 8090, 8091, 8092, 8093, 8490, 8491, 8492, 8493, 22000 } accept" in hot
+      "tcp dport { 53, 80, 443, 1883, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494, 22000 } accept" in hot
       and "udp dport { 53, 67, 21027, 22000 } accept" in hot and hot.strip().endswith("drop") and "established,related accept" in hot, hot)
 check("  SSH only by choice", "22," not in fw.ruleset("ap0", F()) and "{ 22, 53" in fw.ruleset("ap0", F(["ssh"])))
 check("the floor at hub only: the front, DNS and DHCP; the apps' ports closed", "tcp dport { 53, 80, 443 } accept" in fw.ruleset("ap0", F(level="hub"))

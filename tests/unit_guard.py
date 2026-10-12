@@ -30,6 +30,7 @@ ROOT = {
     "irate-box-tailscale-boot.service": "starts tailscaled at boot when the owner chose it",
     "ttyd.service": "the owner's root shell behind the admin login, which is its whole point",
     "irate-box-visitors-switch.service": "starts and stops the visitor-counting helper (systemctl) as the owner's switch says",
+    "irate-box-notebooks.service": "starts and stops the notebooks per login (systemctl) to match the hub's list",
     "irate-box-secdoctor.service": "the daily security doctor: reads /etc/shadow, sudoers, every unit's properties and root-only folders (read-only, sandboxed otherwise)",
 }
 # Lines a unprivileged unit may leave out, and why.

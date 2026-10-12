@@ -73,7 +73,7 @@ check("the hub's copy: the status and the CA's public certificate, never a key",
 # twin written, nginx checked and reloaded; off takes them away; a refused config is undone.
 names = sorted(p.name for p in tls.FRONT.glob("*.conf"))
 check("making the CA turned HTTPS on: each origin's twin written, nginx reloaded", names == ["nginx-addons.conf", "nginx-git.conf", "nginx-main.conf",
-      "nginx-notes.conf", "nginx-wiki.conf"] and reloads and reloads[0] == names and tls.status()["on"], (names, reloads))
+      "nginx-notebook.conf", "nginx-notes.conf", "nginx-wiki.conf"] and reloads and reloads[0] == names and tls.status()["on"], (names, reloads))
 main = (tls.FRONT / "nginx-main.conf").read_text()
 check("  443 for the hub, the certificate and key, TLS 1.2 and 1.3 only", "listen 443 ssl default_server;" in main and f"ssl_certificate {tls.CHAIN};" in main
       and f"ssl_certificate_key {tls.KEY};" in main and "ssl_protocols TLSv1.2 TLSv1.3;" in main and "listen 8491 ssl;" in (tls.FRONT / "nginx-notes.conf").read_text())

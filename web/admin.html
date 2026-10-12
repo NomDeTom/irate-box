@@ -818,6 +818,16 @@
         </form>
         <p class="setting-desc action-note" id="accounts-note" role="status" hidden></p>
         <p class="setting-desc" id="accounts-counts"></p>
+        <h3>Notebooks</h3>
+        <p class="setting-desc">
+          The shared notes are one notebook everyone with notes access can read and change. Each login can
+          also have a notebook of its own that no one else can open, running only while its owner uses it:
+          it starts when they open it, and stops when they sign out or half an hour after they last used it.
+          About 40 MB of memory each while running. A notebook's pages stay on the box when it stops, when
+          notebooks are switched off, and when its account is deleted.
+        </p>
+        <div id="notebooks-box"></div>
+        <p class="setting-desc" id="notebooks-state"></p>
         <h3>Make an account</h3>
         <form id="accounts-make" class="library-form">
           <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"

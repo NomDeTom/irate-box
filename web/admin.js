@@ -5524,6 +5524,29 @@ function renderAccounts(d) {
         act('delete', a.state === 'asked' ? 'Refuse' : 'Delete')));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
 }
+// Notebooks per login (notebooks.py): private or communal, and how many may run at once.
+async function loadNotebooksAdmin() {
+  const box = document.getElementById('notebooks-box');
+  let st, nb;
+  try { [st, nb] = await Promise.all([getJSON('/admin/settings'), getJSON('/admin/notebooks')]); } catch (_) { return; }
+  box.replaceChildren(AW.settings([
+    { key: 'notebooks', label: 'Notebooks', kind: 'choice', value: st.notebooks || '',
+      options: [['communal', 'Shared notes only'], ['', 'By sign-up'], ['private', 'Also one per login']],
+      note: 'Shared notes only: no notebook of anyone\'s own. By sign-up (the default): one per login wherever people may sign up. Also one per login: always, for every account.' },
+    { key: 'notebooks_max', label: 'At most running at once', kind: 'choice', value: st.notebooks_max,
+      options: [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [8, '8'], [10, '10']],
+      note: 'More waits until one stops. Five suits a board with 512 MB.' },
+    { key: 'notebooks_keep_free_mb', label: 'Keep this much memory free', kind: 'choice', value: st.notebooks_keep_free_mb,
+      options: [[48, '48 MB'], [64, '64 MB'], [96, '96 MB'], [128, '128 MB'], [192, '192 MB']],
+      note: 'No notebook starts while the box has less than this free; those running carry on.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); loadNotebooksAdmin(); } }));
+  const words = !nb.supported ? 'This box\'s web server (Caddy) cannot serve notebooks of their own: shared notes only.'
+    : nb.mode !== 'private' ? 'Now: shared notes only.'
+      : `Now: one per login. ${nb.notebooks.length} made${nb.running.length ? `; running: ${nb.running.join(', ')}` : '; none running'}.`;
+  document.getElementById('notebooks-state').textContent = words + (nb.free_mb != null ? ` ${nb.free_mb} MB free now.` : '');
+}
+loadNotebooksAdmin();
+
 // A one-time code shows beside the account it is for, in a box to copy, until the
 // page is reloaded: the hub keeps only its hash.
 const acctCodes = {};

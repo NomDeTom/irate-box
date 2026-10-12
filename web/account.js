@@ -51,6 +51,7 @@ function render(d) {
       $('acct-me-text').append(a);
     }
     showPrefs(d.prefs || {}, d.names_to);
+    loadNotebook();
     return;
   }
   const signup = d.signup === 'open' || d.signup === 'apply';
@@ -153,3 +154,14 @@ $('acct-prefs-form').addEventListener('submit', async (e) => {
   catch (err) { note(err.message, false); }
 });
 load();
+
+// My notebook: shown only where the box gives each login one (notebooks.py).
+const NOTEBOOK_WORDS = { ready: 'Running now.', starting: 'Starting.', stopped: 'Not running: it starts when you open it.',
+  full: 'Not running.', memory: 'Not running.' };
+async function loadNotebook() {
+  let st;
+  try { st = await (await fetch('/api/notebook')).json(); } catch (_) { return; }
+  const shown = ['ready', 'starting', 'stopped'].includes(st.state);
+  $('acct-notebook').hidden = !shown;
+  if (shown) $('acct-notebook-state').textContent = NOTEBOOK_WORDS[st.state];
+}
