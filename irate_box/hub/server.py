@@ -48,6 +48,7 @@ from irate_box.hub import linkhistory
 from irate_box.library import librarian
 from irate_box.hub import manifests
 from irate_box.hub import meshbridge
+from irate_box.hub import memhistory
 from irate_box.hub import store
 from irate_box.hub import pagehistory
 from irate_box.hub import svchistory
@@ -1607,7 +1608,7 @@ def admin_box(proxied):
         services.append(dict(entry, unit=unit, active=active, enabled=enabled,
                              ops=CONTROL_OPS.get(unit, [])))
     now = CLOCK.ticks()
-    return {"system": system_status(), "uptime": now, "online": online_count(now),
+    return {"system": system_status(), "uptime": now, "online": online_count(now), "memory_history": memhistory.snapshot(),
             "joined": joined_count(), "services": services, "version": hub_version(),
             "service_uptime": svchistory.summarize(svchistory.load()), "page_use": pagehistory.summarize(pagehistory.load()),
             "net_uptime": net_uptime_72h(), "meshtasticd": meshtasticd_state(), "first_use": unclaimed(),
@@ -2597,9 +2598,14 @@ def system_status():
     cache Kiwix leans on counts as available, and is the first thing to go."""
     out = {}
     try:
+        out["boot_uptime"] = float(Path("/proc/uptime").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
         with open("/proc/meminfo") as fh:
             mem = {k: int(v.split()[0]) * 1024 for k, v in (l.split(":", 1) for l in fh)}
         out["mem_total"], out["mem_available"] = mem["MemTotal"], mem["MemAvailable"]
+        out["swap_total"], out["swap_free"] = mem.get("SwapTotal", 0), mem.get("SwapFree", 0)
     except (OSError, KeyError, ValueError):
         pass
     try:
@@ -4649,6 +4655,8 @@ if __name__ == "__main__":
     MESH.start()
     # The services' uptime: every unit's state every five minutes, for /admin's grid.
     svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]).start()
+    memory_sampler = memhistory.Sampler()
+    memory_sampler.start()
     # The pages the web server serves itself (no unit to sample): their use, from nginx's log of page loads.
     pagehistory.Sampler(lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
@@ -4659,4 +4667,5 @@ if __name__ == "__main__":
     try:
         server.serve_forever()
     finally:
+        memory_sampler.stopping.set()
         CLOCK.stop()

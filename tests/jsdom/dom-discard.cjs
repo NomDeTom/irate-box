@@ -18,6 +18,11 @@ const discardOf = (f) => [...f.querySelectorAll('button')].find((b) => /^Discard
 const missing = forms.filter((f) => !discardOf(f)).map((f) => f.id || f.className);
 check('every form with a Save has a Discard', forms.length >= 10 && !missing.length, `${forms.length} forms; without: ${missing}`);
 check('  each off to start', forms.every((f) => discardOf(f).disabled));
+check('automatically paired Save and Discard share a horizontal action row', forms.every((f) => {
+  const discard = discardOf(f);
+  return !discard.classList.contains('aw-discard') || (discard.parentElement.classList.contains('library-buttons')
+    && discard.parentElement === [...f.querySelectorAll('button')].find(isSave).parentElement);
+}));
 
 // A plain field: changed, then discarded.
 const f = forms.find((x) => x.querySelector('input[type="number"][name]') && discardOf(x).classList.contains('aw-discard'));

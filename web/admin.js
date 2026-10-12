@@ -867,15 +867,119 @@ function renderOverviewMesh(m, u) {
     el('p', { className: 'setting-desc', textContent: meshWords(m, rec && rec.summary) }));
 }
 
+let memoryHours = 24, memoryHistory = null, memorySystem = {};
+function renderMemoryHistory(history, system = {}) {
+  memoryHistory = history || { now: Date.now() / 1000, every: 300, samples: [] };
+  memorySystem = system;
+  const fold = document.getElementById('memory-history');
+  if (!fold || !fold.open) return;
+  const box = document.getElementById('memory-graph');
+  const now = memoryHistory.now, start = now - memoryHours * 3600;
+  const samples = (memoryHistory.samples || []).filter((sample) => Number.isFinite(sample.at) && sample.at >= start && sample.at <= now
+    && Number.isFinite(sample.total) && sample.total > 0 && Number.isFinite(sample.available));
+  const used = (sample) => Math.max(0, Math.min(100, (sample.total - sample.available) / sample.total * 100));
+  const swap = (sample) => sample.swap_total > 0 ? Math.max(0, Math.min(100, (sample.swap_total - sample.swap_free) / sample.swap_total * 100)) : 0;
+  const latest = samples.at(-1);
+  document.getElementById('memory-current').replaceChildren(
+    el('span', { className: 'memory-used-key', textContent: system.mem_total ? `Memory used: ${Math.round((system.mem_total - system.mem_available) / system.mem_total * 100)}%` : 'Memory used' }),
+    el('span', { className: 'memory-swap-key', textContent: system.swap_total ? `Swap used: ${size(system.swap_total - system.swap_free)} of ${size(system.swap_total)}` : 'No swap configured' }));
+  document.querySelectorAll('[data-memory-hours]').forEach((button) => {
+    const active = Number(button.dataset.memoryHours) === memoryHours;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const note = !latest ? 'No samples in this range. Recording starts when the box clock is trusted.'
+    : `${samples.length} samples; peak memory use ${Math.round(Math.max(...samples.map(used)))}%.`
+      + (now - latest.at > (memoryHistory.every || 300) * 2 ? ' No recent sample.' : '');
+  document.getElementById('memory-history-note').textContent = note;
+  const width = Math.max(280, box.clientWidth || 800), height = 240;
+  const left = 42, right = width - 12, top = 14, bottom = height - 34;
+  const svgNode = (name, attrs, text) => {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+    if (text != null) node.textContent = text;
+    return node;
+  };
+  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, class: 'memory-plot', role: 'img', tabindex: '0',
+    'aria-label': `Memory and swap use, last ${memoryHours === 24 ? '24 hours' : '7 days'}. ${note}` });
+  const x = (at) => left + (at - start) / (now - start) * (right - left);
+  const y = (value) => bottom - value / 100 * (bottom - top);
+  for (const value of [0, 50, 100]) {
+    svg.append(svgNode('line', { x1: left, x2: right, y1: y(value), y2: y(value), class: 'memory-grid' }),
+      svgNode('text', { x: left - 8, y: y(value) + 4, 'text-anchor': 'end', class: 'memory-axis' }, `${value}%`));
+  }
+  for (const [at, label, anchor] of [[start, memoryHours === 24 ? '24 h ago' : '7 d ago', 'start'],
+    [start + (now - start) / 2, memoryHours === 24 ? '12 h ago' : '3.5 d ago', 'middle'], [now, 'Now', 'end']]) {
+    svg.append(svgNode('text', { x: x(at), y: height - 8, 'text-anchor': anchor, class: 'memory-axis' }, label));
+  }
+  const gap = (memoryHistory.every || 300) * 2;
+  for (const [getValue, className] of [[used, 'memory-used-line'], [swap, 'memory-swap-line']]) {
+    const visible = className === 'memory-swap-line' ? samples.filter((sample) => sample.swap_total > 0) : samples;
+    const path = visible.map((sample, index) => `${index && sample.at - visible[index - 1].at <= gap ? 'L' : 'M'}${x(sample.at).toFixed(2)},${y(getValue(sample)).toFixed(2)}`).join(' ');
+    if (path) {
+      svg.append(svgNode('path', { d: path, class: className }));
+      const last = visible.at(-1);
+      svg.append(svgNode('circle', { cx: x(last.at), cy: y(getValue(last)), r: 3, class: className }));
+    }
+  }
+  const readout = document.getElementById('memory-readout');
+  const cursor = svgNode('line', { x1: right, x2: right, y1: top, y2: bottom, class: 'memory-cursor', visibility: 'hidden' });
+  svg.append(cursor);
+  let selected = samples.length - 1;
+  const showSample = (index) => {
+    if (!samples.length) { readout.textContent = 'No recorded samples.'; return; }
+    selected = Math.max(0, Math.min(samples.length - 1, index));
+    const sample = samples[selected];
+    cursor.setAttribute('x1', x(sample.at)); cursor.setAttribute('x2', x(sample.at)); cursor.setAttribute('visibility', 'visible');
+    readout.textContent = `${new Date(sample.at * 1000).toLocaleString()}: ${Math.round(used(sample))}% memory used, ${size(sample.available)} available`
+      + (sample.swap_total ? `; ${Math.round(swap(sample))}% swap used.` : '; no swap.');
+  };
+  svg.addEventListener('pointermove', (event) => {
+    if (!samples.length) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const at = start + ((event.clientX - rect.left) / rect.width * width - left) / (right - left) * (now - start);
+    const index = samples.reduce((best, sample, candidate) => Math.abs(sample.at - at) < Math.abs(samples[best].at - at) ? candidate : best, 0);
+    showSample(index);
+  });
+  svg.addEventListener('focus', () => showSample(selected));
+  svg.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    showSample(event.key === 'Home' ? 0 : event.key === 'End' ? samples.length - 1 : selected + (event.key === 'ArrowRight' ? 1 : -1));
+  });
+  const focused = box.contains(document.activeElement);
+  box.replaceChildren(svg);
+  showSample(selected);
+  if (focused) svg.focus();
+  const processes = memoryHistory.processes || [];
+  document.getElementById('memory-processes').hidden = !processes.length;
+  document.getElementById('memory-processes-at').textContent = memoryHistory.processes_at
+    ? new Date(memoryHistory.processes_at * 1000).toLocaleString() : '';
+  document.getElementById('memory-processes-body').replaceChildren(...processes.map((process) => el('tr', {},
+    el('td', { textContent: process.name }), el('td', { textContent: String(process.pid) }), el('td', { textContent: size(process.resident) }))));
+}
+document.querySelectorAll('[data-memory-hours]').forEach((button) => button.addEventListener('click', () => {
+  memoryHours = Number(button.dataset.memoryHours);
+  renderMemoryHistory(memoryHistory, memorySystem);
+}));
+document.getElementById('memory-history').addEventListener('toggle', () => renderMemoryHistory(memoryHistory, memorySystem));
+window.addEventListener('resize', () => { if (memoryHistory) renderMemoryHistory(memoryHistory, memorySystem); });
+
 function renderBox(data) {
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
+  const bootMinutes = Math.floor((sys.boot_uptime || 0) / 60);
+  const bootTime = sys.boot_uptime == null ? 'Not available'
+    : `${Math.floor(bootMinutes / 1440)} d ${Math.floor(bootMinutes / 60) % 24} h ${bootMinutes % 60} min`;
   document.getElementById('box-tiles').replaceChildren(
     tile('Memory', sys.mem_total ? `${size(sys.mem_available)} free of ${size(sys.mem_total)}` : '—'),
     tile('Card', sys.disk_total ? `${size(sys.disk_free)} free of ${size(sys.disk_total)}` : '—'),
-    tile('Powered on', `${Math.floor(h / 24)} d ${h % 24} h in total`),
+    tile('Since boot', bootTime),
+    tile('Total recorded powered-on time', `${Math.floor(h / 24)} d ${h % 24} h across boots`),
     tile('Guests', `${data.online} on the page${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ''}`),
   );
+  renderMemoryHistory(data.memory_history, sys);
   renderOverviewNet(data.net_uptime);
   document.getElementById('first-use').hidden = !data.first_use;
   renderOverviewMesh(data.meshtasticd, data.service_uptime);

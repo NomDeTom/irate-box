@@ -39,7 +39,14 @@ const netUp = Object.fromEntries(['wlan0', 'eth0'].filter((i) => fixture.uptime[
 const svcWithMesh = JSON.parse(JSON.stringify(fixture.services));
 svcWithMesh.units['meshtasticd.service'] = svcWithMesh.units['kiwix.service'];
 const box = { meshtasticd: { active: 'failed', sub: 'failed', result: 'start-limit-hit', restarts: 5, burst: 5, interval: '3min 20s' },
-  system: {}, uptime: 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: svcWithMesh, net_uptime: netUp,
+  system: { boot_uptime: 7500, mem_total: 1024, mem_available: 512, swap_total: 256, swap_free: 128 },
+  memory_history: { now, every: 300, samples: [
+    { at: now - 2 * 86400, total: 1024, available: 800, swap_total: 256, swap_free: 256 },
+    { at: now - 900, total: 1024, available: 700, swap_total: 256, swap_free: 256 },
+    { at: now - 300, total: 1024, available: 600, swap_total: 256, swap_free: 200 },
+    { at: now, total: 1024, available: 512, swap_total: 256, swap_free: 128 }],
+    processes_at: now, processes: [{ pid: 42, name: '<hub>', resident: 300 }] },
+  uptime: 11 * 86400 + 5 * 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: svcWithMesh, net_uptime: netUp,
   services: [{ name: 'Library (Kiwix)', unit: 'kiwix.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] }] };
@@ -119,6 +126,32 @@ setTimeout(() => {
     check('no page errors', !errors.length, errors.join(' | '));
     const on = d.getElementById('overview-net');
     const tiles = d.getElementById('box-tiles'), table = d.getElementById('service-table');
+    check('Overview separates current boot uptime from the recorded total',
+      /Since boot.*0 d 2 h 5 min/.test(t(tiles)) && /Total recorded powered-on time.*11 d 5 h across boots/.test(t(tiles)), t(tiles));
+    const memory = d.getElementById('memory-graph'), memoryFold = d.getElementById('memory-history');
+    check('Overview memory history is collapsed by default', !memoryFold.open && !memory.querySelector('svg'));
+    memoryFold.open = true;
+    w.renderMemoryHistory(box.memory_history, box.system);
+    check('Overview memory: memory and swap paths, current use and a sample readout', memory.querySelectorAll('path').length === 2
+      && /Memory used: 50%/.test(t(d.getElementById('memory-current'))) && /50% memory used/.test(t(d.getElementById('memory-readout'))));
+    check('Overview memory: 24 hours excludes older samples', /3 samples/.test(t(d.getElementById('memory-history-note'))));
+    d.querySelector('[data-memory-hours="168"]').click();
+    check('Overview memory: seven-day range includes older samples, preference selected', /4 samples/.test(t(d.getElementById('memory-history-note')))
+      && d.querySelector('[data-memory-hours="168"]').getAttribute('aria-pressed') === 'true');
+    check('Overview memory: gaps are not joined', (memory.querySelector('path').getAttribute('d').match(/M/g) || []).length === 2);
+    memory.querySelector('svg').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    check('Overview memory: keyboard selects the first recorded sample', /22% memory used/.test(t(d.getElementById('memory-readout'))));
+    check('Overview memory: largest processes are safely rendered as text', !d.getElementById('memory-processes').hidden
+      && /<hub>/.test(t(d.getElementById('memory-processes-body'))) && !d.querySelector('#memory-processes-body hub'));
+    w.renderMemoryHistory({ now, samples: [] });
+    check('Overview memory: no history is explicit, with no fabricated line', !memory.querySelector('path')
+      && /No samples/.test(t(d.getElementById('memory-history-note'))));
+    w.renderBox(box);
+    check('Overview memory: polling preserves the open state and chosen range', memoryFold.open
+      && d.querySelector('[data-memory-hours="168"]').getAttribute('aria-pressed') === 'true');
+    memoryFold.open = false;
+    w.renderBox(box);
+    check('Overview memory: polling also preserves collapsed state', !memoryFold.open);
     check('Overview: the network\'s 72 hours, below the tiles and above the services', on && (tiles.compareDocumentPosition(on) & 4) && (on.compareDocumentPosition(table) & 4));
     check('  a row per link, the uplink first, 72 cells each', [...on.querySelectorAll('.hm-row:not(.hm-head) .hm-label')].map(t).join(',') === Object.keys(netUp).join(',')
       && [...on.querySelectorAll('.hm-row:not(.hm-head)')].every((r) => r.querySelectorAll('.hm-cell').length === 72), [...on.querySelectorAll('.hm-label')].map(t).join(','));
