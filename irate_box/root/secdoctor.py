@@ -1185,9 +1185,11 @@ def probe_kiwix(ctx, a, show):
 
 
 def _ttyd_runs(argv):
-    """What ttyd runs in its terminal: the words after "--" (or the last word), looking through script(1)'s
-    -c, which gives the command a terminal of its own."""
+    """What ttyd runs in its terminal: the words after "--" (or the last word), looking through setsid(1)
+    (a session of its own) and script(1)'s -c (a terminal of its own)."""
     cmd = argv[argv.index("--") + 1:] if "--" in argv else argv[-1:]
+    while cmd and os.path.basename(cmd[0]) == "setsid":
+        cmd = [w for w in cmd[1:] if not w.startswith("-")] or cmd[1:]
     if cmd and os.path.basename(cmd[0]) == "script":
         for i, w in enumerate(cmd[1:], 1):
             if w.startswith("-") and not w.startswith("--") and "c" in w[1:] and i + 1 < len(cmd):
