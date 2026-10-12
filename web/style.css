@@ -1655,3 +1655,15 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 /* About: its sections' headings stand out above the names in its lists (the shared h2 is small and muted). */
 body.about section > h2 { font-size: 1.3rem; font-weight: 700; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 0.75rem; }
 body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--text); }
+
+/* The WiFi card: with a section open (a network's settings, adding one), its two columns stack so that section has the
+   card's whole width. The networks seen, in columns. */
+.net-wifi-cols:has(details[open]) { grid-template-columns: 1fr; }
+.net-visible-table td, .net-visible-table th { white-space: nowrap; }
+.net-visible-table td.num, .net-visible-table th:nth-child(2), .net-visible-table th:nth-child(4), .net-visible-table th:nth-child(5) { text-align: right; }
+.net-visible-table .info-pill { margin-left: 0.4rem; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+/* A change made here, hidden as old news: its Hide is a quiet link; the section keeps one button to show them. */
+.net-changes .change-hide { font-size: 0.85rem; margin-left: 0.25rem; }
+#net-changes-more { margin-top: 0.4rem; align-self: flex-start; justify-self: start; width: auto; }
+.net-changes [hidden] { display: none !important; }

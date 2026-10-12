@@ -491,6 +491,7 @@ def nm_state():
                 # Made by netplan (/run, written afresh at every boot): a change made with nmcli does not last.
                 if p["file"]:
                     p["netplan"] = p["file"].startswith(NETPLAN_PROFILES)
+                p["active"] = any(d["connection"] == p["name"] for d in devices.values())   # up on a device now
                 profiles.append(p)
     from irate_box.hub import nmconf
     return {"running": True, "version": row[1] if len(row) > 1 else None, "devices": devices,
@@ -895,17 +896,23 @@ def hazards(inv):
     for p in nm.get("wifi_profiles", []) if nm.get("running") else []:
         if p.get("mode") == "ap" and p["name"] != AP_PROFILE:
             left = (inv.get("other_ap") or {}).get(p["uuid"], {}).get("choice") == "left"
-            if p["autoconnect"]:
+            if p.get("active"):
+                out.append(_h(f"other-ap:{p['uuid']}", "problem", f"Another hotspot running: {p['name']}",
+                              f"SSID {p['ssid']!r} on {p.get('iface') or 'a WiFi device'}, up now: probably the image's setup hotspot "
+                              "(a fresh Armbian or Raspberry Pi OS may start one), often with the image's own password. It holds the "
+                              "radio, so the box's own network link and irate-box's hotspot can't have it. Not irate-box's.",
+                              "Network page, Changes made here: delete it (a copy is kept, to restore it)."))
+            elif p["autoconnect"]:
                 out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile set to start by itself: {p['name']}",
                               f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}: at boot it could take the radio, and the "
                               "box off its own network. Not irate-box's.",
-                              "Network page, WiFi: remove it (kept for undo), or set it not to start by itself."))
+                              "Network page, Changes made here: delete it (a copy is kept, to restore it)."))
             elif not left:
                 out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile: {p['name']}",
                               f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}, not set to start by itself. Not irate-box's: "
                               "probably the image's setup hotspot, often with the image's own password. Started, it would take the box "
                               "off its own network; irate-box's hotspot runs beside the link instead.",
-                              "Network page, WiFi: remove it (kept for undo), or leave it and stop listing it."))
+                              "Network page, Changes made here: delete it (a copy is kept, to restore it), or ignore it."))
         if p.get("mode") in (None, "infrastructure"):
             for key, field, gives_up in (
                     ("auth_retries", "auth-retries",

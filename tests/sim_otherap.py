@@ -61,6 +61,17 @@ check("remove: gone from NetworkManager, its profile kept", SETUP not in loaded 
 check("  the record: names and the choice, nothing else", set(rec[SETUP]) == {"name", "ssid", "choice", "kept", "file", "at"} and rec[SETUP]["choice"] == "removed")
 said = O.undo(SETUP)
 check("undo: brought back and loaded", SETUP in loaded and (T / "nm/Hotspot.nmconnection").exists() and O.record() == {}, said)
+said = O.remove(SETUP)
+kept = Path(O.record()[SETUP]["kept"])
+said = O.forget(SETUP)
+check("forget: a deleted profile's kept copy deleted too, the record cleared", not kept.exists() and O.record() == {}, said)
+try:
+    O.forget(SETUP)
+    check("  forget with nothing deleted: refused", False)
+except ValueError:
+    check("  forget with nothing deleted: refused", True)
+O.undo.__globals__["run"]("nmcli", "con", "load", "x")   # the stand-in: the profile known to NetworkManager again
+(T / "nm/Hotspot.nmconnection").write_text("[connection]\nid=Hotspot\n")
 said = O.leave(SETUP)
 check("leave: kept as it is, recorded as left", SETUP in loaded and O.record()[SETUP]["choice"] == "left", said)
 for bad, why in ((OURS, "irate-box's own"), (HOME, "only another hotspot"), ("x", "not a connection")):
@@ -71,17 +82,20 @@ for bad, why in ((OURS, "irate-box's own"), (HOME, "only another hotspot"), ("x"
         check(f"refused: {why}", why in str(exc), str(exc))
 
 
-def found(autoconnect, chosen):
-    p = {"uuid": SETUP, "name": "Hotspot", "ssid": "armbiansetup-lyra", "mode": "ap", "autoconnect": autoconnect, "iface": "wlan0"}
+def found(autoconnect, chosen, active=False):
+    p = {"uuid": SETUP, "name": "Hotspot", "ssid": "armbiansetup-lyra", "mode": "ap", "autoconnect": autoconnect, "iface": "wlan0", "active": active}
     inv = {"radios": [], "country": "GB", "other_ap": chosen, "stacks": {"networkmanager": {"running": True, "wifi_profiles": [p]}}}
     return [h for h in netinv.hazards(inv) if h["id"] == f"other-ap:{SETUP}"]
 
 
 check("inventory: one not chosen for, listed with what to do", [h["status"] for h in found(False, {})] == ["warn"]
-      and "remove it" in found(False, {})[0]["fix"])
+      and "delete it" in found(False, {})[0]["fix"])
 check("  left: no longer listed", found(False, {SETUP: {"choice": "left"}}) == [])
 check("  set to start by itself: warned, left or not", [h["status"] for h in found(True, {SETUP: {"choice": "left"}})] == ["warn"]
       and "start by itself" in found(True, {})[0]["title"])
+check("  running now (a fresh image's setup hotspot): a problem, left or not, said as running",
+      [h["status"] for h in found(True, {SETUP: {"choice": "left"}}, active=True)] == ["problem"]
+      and "running" in found(False, {}, active=True)[0]["title"])
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
