@@ -49,6 +49,7 @@ from irate_box.library import librarian
 from irate_box.hub import manifests
 from irate_box.hub import meshbridge
 from irate_box.hub import memhistory
+from irate_box.hub import jsonlog
 from irate_box.hub import notebooks
 from irate_box.hub import store
 from irate_box.hub import pagehistory
@@ -993,6 +994,9 @@ DEFAULT_SETTINGS = {
     "notebooks": "",
     "notebooks_max": 5,
     "notebooks_keep_free_mb": 96,
+    # How hard the box writes to its card (Recovery and monitoring): what may be lost in a crash or a
+    # power cut in exchange for writing less. Owner data is written as it changes at every stop.
+    "card_writes": "thrifty",
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -1048,6 +1052,8 @@ def valid_setting(key, value):
         return type(value) is int and 1 <= value <= 20
     if key == "notebooks":
         return value in notebooks.MODES
+    if key == "card_writes":
+        return value in CARD_WRITES
     if key == "notebooks_max":
         return type(value) is int and value in notebooks.MAX_CHOICES
     if key == "notebooks_keep_free_mb":
@@ -1055,7 +1061,16 @@ def valid_setting(key, value):
     return type(value) is want and (want is not int or value >= 0)
 
 
+# The write-intensity ladder: seconds between the hub clock's saves and the mesh nodes' saves, per stop.
+# (Crash watch reads the same setting for its snapshots: crashwatch.card_writes.)
+CARD_WRITES = {"everything": (60, 60), "thrifty": (600, 300), "gentle": (1800, 900), "saver": (3600, 1800)}
+
+
 def apply_settings(data):
+    clock_every, mesh_every = CARD_WRITES.get(data.get("card_writes"), CARD_WRITES["thrifty"])
+    if "CLOCK" in globals():
+        CLOCK.flush_interval = clock_every
+    meshbridge.SAVE_EVERY = mesh_every
     store.MAX_TOTAL = max(1, data["store_max_total_mb"]) << 20
     store.SAVE_TTL = data["store_save_ttl_hours"] * 3600
     store.DROP_MAX_TOTAL = max(1, data["drop_max_total_mb"]) << 20
@@ -2048,7 +2063,7 @@ def health_snapshot():
     except OSError:
         log = []
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
-            "ladder": load(uplink.LADDER) or [], "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
+            "ladder": jsonlog.read(uplink.LADDER), "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
             "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
             "progress": update_progress(), "watchers": watchers_glance()}
 
@@ -2059,7 +2074,7 @@ def watchers_glance():
     boots = watchlog.read(kinds={"boot"})
     repairs = watchlog.read(kinds={"repair"})
     try:
-        u = json.loads((CONTROL_DIR / "uplink.json").read_text())
+        u = json.loads(uplink.status_path().read_text())
     except (OSError, ValueError):
         u = {}
     return {"last_boot": boots[-1] if boots else None, "last_repair": repairs[-1] if repairs else None,
@@ -2079,7 +2094,7 @@ def network_snapshot():
             return json.loads(path.read_text())
         except (OSError, ValueError):
             return None
-    status = load(UPLINK_STATE)
+    status = load(uplink.status_path())
     if status:
         # A report the watchdog stopped writing is old news: say so rather than show it as live.
         status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
@@ -2087,7 +2102,7 @@ def network_snapshot():
     # five-minute slots, so the page gets a few KB rather than the slots.
     hist = load(uplink.HISTORY)
     return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(hist),
-            "ladder": load(uplink.LADDER) or [],   # the escalation chart, on the Status tab
+            "ladder": jsonlog.read(uplink.LADDER),   # the escalation chart, on the Status tab
             "ladder_gaps": linkhistory.gaps(hist),   # its spans with no record (a freeze, a reboot)
             "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
             "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
@@ -2616,6 +2631,17 @@ def store_action(payload):
     return 200, store_snapshot()
 
 
+def card_written():
+    """Bytes written to the block device under / since boot (its stat's sectors written), or None."""
+    try:
+        source = next(line.split()[-2] for line in Path("/proc/self/mountinfo").read_text().splitlines()
+                      if line.split()[4] == "/")
+        dev = Path(source).name
+        return int((Path("/sys/class/block") / dev / "stat").read_text().split()[6]) * 512
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
 def system_status():
     """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
     cache Kiwix leans on counts as available, and is the first thing to go."""
@@ -2624,6 +2650,9 @@ def system_status():
         out["boot_uptime"] = float(Path("/proc/uptime").read_text().split()[0])
     except (OSError, ValueError, IndexError):
         pass
+    written = card_written()
+    if written is not None:
+        out["card_written"] = written
     try:
         with open("/proc/meminfo") as fh:
             mem = {k: int(v.split()[0]) * 1024 for k, v in (l.split(":", 1) for l in fh)}
@@ -4736,8 +4765,16 @@ if __name__ == "__main__":
     server = HubServer((BIND, PORT), Handler)
     print(f"Hub running at http://{BIND}:{PORT}")
     print(f"Uptime clock at {hubclock.format_age(CLOCK.ticks())} cumulative")
+    # Stopped (an update, a restart, a shutdown): out through the finally below, so the clock and the
+    # mesh nodes are saved; with the card ladder they are otherwise saved only every few minutes.
+    import signal
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         server.serve_forever()
     finally:
         memory_sampler.stopping.set()
+        try:
+            MESH.heard.prune_and_save(force=True)
+        except Exception as exc:  # noqa: BLE001 - the clock is saved whatever
+            print(f"mesh nodes not saved at stop: {exc}")
         CLOCK.stop()

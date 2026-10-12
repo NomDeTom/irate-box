@@ -287,7 +287,7 @@ def snapshot(kernel, flood, extra=""):
     return "\n".join(lines) + "\n"
 
 
-def append_snapshot(text):
+def append_snapshot(text, sync=True):
     DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(DIR, 0o700)
     if SNAP.exists() and SNAP.stat().st_size > SNAP_MAX:
@@ -295,9 +295,49 @@ def append_snapshot(text):
     fd = os.open(SNAP, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     try:
         os.write(fd, text.encode())
-        os.fdatasync(fd)
+        if sync:
+            os.fdatasync(fd)
     finally:
         os.close(fd)
+
+
+# The owner's write-intensity ladder (the hub's setting, Recovery and monitoring): how snapshots reach the card.
+# everything, thrifty: each one written and synced; gentle: written, left to the filesystem's own commit;
+# saver: held in memory, written every SAVER_EVERY and at once when something goes wrong.
+CARD_STOPS = ("everything", "thrifty", "gentle", "saver")
+SAVER_EVERY = 900
+
+
+def card_writes():
+    """The ladder's stop, from the hub's settings (the hub's file, read as data, never through a link)."""
+    try:
+        from irate_box.root import safeio
+        value = json.loads(safeio.read_request(STATE / "settings.json")).get("card_writes")
+    except (OSError, ValueError, AttributeError, ImportError):
+        return "thrifty"
+    return value if value in CARD_STOPS else "thrifty"
+
+
+class SnapshotKeeper:
+    """Snapshots to the card as the ladder says. trouble: something went wrong (a radio, a flood): written now."""
+
+    def __init__(self, write=append_snapshot, clock=time.time):
+        self.write, self.clock, self.held, self.since = write, clock, [], None
+
+    def add(self, text, stop, trouble=False):
+        if stop != "saver":
+            self.flush()
+            self.write(text, sync=stop != "gentle")
+            return
+        self.held.append(text)
+        self.since = self.since or self.clock()
+        if trouble or self.clock() - self.since >= SAVER_EVERY:
+            self.flush()
+
+    def flush(self):
+        if self.held:
+            self.write("".join(self.held), sync=True)
+            self.held, self.since = [], None
 
 
 # --- a crash, at boot ----------------------------------------------------------------------------
@@ -706,6 +746,13 @@ def run(once=False):
     except (OSError, ValueError) as exc:
         print(f"crashwatch: the old radio setting not carried over: {exc}", file=sys.stderr)
     watch = RadioWatch(log)
+    keeper = SnapshotKeeper()
+    # Stopped (a shutdown, a restart): what the saver stop holds goes to the card first.
+    import signal
+    def _stop(*_):
+        keeper.flush()
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _stop)
     mtime = 0.0
     while True:
         now = time.time()
@@ -728,7 +775,7 @@ def run(once=False):
             if extra:
                 extra += "\n  last kernel lines:\n" + "\n".join(f"    {l}" for l in lines[-60:])
             try:
-                append_snapshot(snapshot(keep, flood, extra))
+                keeper.add(snapshot(keep, flood, extra), card_writes(), trouble=bool(extra or flood))
             except OSError as exc:
                 print(f"crashwatch: snapshot not written: {exc}", file=sys.stderr)
         # For the doctor every 5 minutes: the radios, and the floods counted over the hour so far.

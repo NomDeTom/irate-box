@@ -2309,6 +2309,10 @@ ExecStart=$CODE/irate-box uplink run
 Restart=always
 RestartSec=10
 Nice=5
+# Its report, rewritten at every check, in RAM rather than on the card; kept across its own restarts.
+RuntimeDirectory=irate-box-uplink
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 # No ProtectSystem: its repairs start the network's own tools (ifup and the DHCP client it starts),
 # which write /run, /var/lib and /etc/resolv.conf from inside this unit.
 NoNewPrivileges=yes

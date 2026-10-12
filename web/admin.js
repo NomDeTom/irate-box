@@ -974,6 +974,9 @@ window.addEventListener('resize', () => { if (memoryHistory) renderMemoryHistory
 let lastBox = null;  // /admin/box: the services, for each app page's header
 function renderBox(data) {
   lastBox = data;
+  const rate = cardRate(data.system);
+  const rateEl = document.getElementById('card-writes-rate');
+  if (rateEl) rateEl.textContent = rate ? `Written to the card: ${rate}` : 'The card\'s writes are not known on this system.';
   if (typeof fillHeadBlocks === 'function') fillHeadBlocks();
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
@@ -2287,6 +2290,7 @@ function renderGlance(data, rep) {
     ['A frozen box', !st ? 'Not known yet.' : st.panic || st.watchdog
       ? `Restarts by itself (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
     ['Snapshots', !st ? 'Not known yet.' : st.snapshots ? 'Kept every 30 s.' : 'Off.'],
+    ['Writes to the card', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
   if (hl.glance.dataset.key === key) return;   // the same again: left alone, a selection in it too
@@ -5968,6 +5972,32 @@ async function loadAppearance() {
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadAppearance();
+
+// The write-intensity ladder (Recovery and monitoring), from the most kept to the least written.
+const CARD_STOPS = [
+  ['everything', 'Record everything', 'Crash watch\'s snapshots written and synced every 30 s; the clock saved every minute. Nothing more is lost than now.'],
+  ['thrifty', 'Thrifty', 'Snapshots as above; the clock saved every 10 minutes and when the hub stops: after a crash it may resume up to 10 minutes behind.'],
+  ['gentle', 'Gentle', 'Snapshots written without a sync: a hang loses the last two minutes of them. The clock every 30 minutes.'],
+  ['saver', 'Card saver', 'Snapshots kept in memory and written every quarter of an hour, or at once when crash watch sees trouble; the clock hourly. A hang loses up to 15 minutes of snapshots.'],
+];
+async function loadCardWrites() {
+  const box = document.getElementById('card-writes-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (_) { return; }
+  const stop = st.card_writes || 'thrifty';
+  box.replaceChildren(AW.settings([{ key: 'card_writes', label: 'How hard it writes', kind: 'choice', value: stop,
+    options: CARD_STOPS.map(([v, label]) => [v, label]),
+    note: (CARD_STOPS.find((c) => c[0] === stop) || CARD_STOPS[1])[2] + ' While the box still hangs now and then, stay at Record everything or Thrifty: the lower stops lose what crash watch is for.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); loadCardWrites(); } }));
+}
+loadCardWrites();
+// The card's writes since boot, and per day at that rate: the evidence for the ladder.
+function cardRate(sys) {
+  if (!sys || sys.card_written == null || !sys.boot_uptime) return null;
+  const perDay = sys.card_written / sys.boot_uptime * 86400;
+  return `${size(sys.card_written)} since boot, about ${size(perDay)} a day at that rate.`;
+}
 
 // ---- Folders: each folder's page arranges its entries. The
 // owner may hide an entry from a folder, order a folder's entries, and put an entry in other

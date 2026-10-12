@@ -18,7 +18,7 @@ idof() { head -1 | j 'd["id"]'; }
 echo "== watchdog"
 [ "$(systemctl is-active irate-box-uplink)" = active ] && ok "irate-box-uplink active" || bad "irate-box-uplink $(systemctl is-active irate-box-uplink)"
 [ "$(systemctl is-enabled irate-box-uplink)" = enabled ] && ok "enabled" || bad "not enabled"
-for _ in $(seq 20); do [ -s /var/lib/hub/control/uplink.json ] && break; sleep 1; done
+for _ in $(seq 20); do { [ -s /run/irate-box-uplink/uplink.json ] || [ -s /var/lib/hub/control/uplink.json ]; } && break; sleep 1; done
 s="$(get)"
 echo "$s" | j '(d["uplink"]["state"], d["uplink"]["iface"], d["uplink"]["backend"], d["uplink"]["chosen"]["pace"], d["uplink"]["chosen"]["reach"], d["uplink"]["chosen"]["sensitivity"], d["uplink"]["stale"])' | sed 's/^/    /'
 # The old single level still read: standard is the steady pace, reach reboot; strict, 2 missed checks.

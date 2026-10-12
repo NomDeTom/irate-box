@@ -45,8 +45,8 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   await later(400);
   const glance = [...d.querySelectorAll('#health-glance dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]);
   const g = Object.fromEntries(glance);
-  check('at a glance: health, the link, the radio, the last start and why, the last repair, a frozen box, snapshots',
-    Object.keys(g).join('|') === 'Health|Staying on the network|The WiFi radio|The last start|The last repair|A frozen box|Snapshots', Object.keys(g));
+  check('at a glance: health, the link, the radio, the last start and why, the last repair, a frozen box, snapshots, writes to the card',
+    Object.keys(g).join('|') === 'Health|Staying on the network|The WiFi radio|The last start|The last repair|A frozen box|Snapshots|Writes to the card', Object.keys(g));
   check('  the last start: when, and that the watchdog rebooted it', /^2 h ago: the uplink watchdog rebooted it/.test(g['The last start']), g['The last start']);
   check('  a frozen box stays stopped; snapshots kept', g['A frozen box'].startsWith('Stays stopped') && g.Snapshots === 'Kept every 30 s.', g);
   const save = d.getElementById('health-settings-save');

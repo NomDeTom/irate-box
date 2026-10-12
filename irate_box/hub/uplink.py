@@ -83,7 +83,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from irate_box.hub import linkhistory, netinv, watchlog
+from irate_box.hub import jsonlog, linkhistory, netinv, watchlog
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -96,6 +96,14 @@ RECORD = ETC / "uplink-changes.json"
 # so its guards apply and its log says what happened. Root's folder: the hub cannot plant one.
 NOW = ETC / "uplink-now.json"
 STATUS = STATE / "control" / "uplink.json"
+# On the box the report lives in RAM (the unit's RuntimeDirectory): it is rewritten at every check and
+# rebuilt within seconds of a start, so it need not wear the card. Where that folder isn't (a test, a
+# checkout), it stays in control/.
+RUN_STATUS = Path(os.environ.get("HUB_UPLINK_RUN", "/run/irate-box-uplink")) / "uplink.json"
+
+
+def status_path():
+    return RUN_STATUS if RUN_STATUS.parent.is_dir() else STATUS
 HISTORY = STATE / "control" / "uplink-history.json"   # each link's five-minute history (linkhistory.py)
 LADDER = STATE / "control" / "uplink-ladder.json"     # what the watchdog did, for the box doctor's chart
 # The events that make the escalation chart: whether more patience or more aggression is needed.
@@ -1272,12 +1280,7 @@ class Ladder:
 
     def __init__(self, path=None):
         self.path = path or LADDER
-        try:
-            self.rows = json.loads(self.path.read_text())
-            if not isinstance(self.rows, list):
-                raise ValueError
-        except (OSError, ValueError):
-            self.rows = []
+        self.rows = jsonlog.read(self.path)
 
     def misses(self, now, n, line, iface):
         """The symptoms beside the steps: the most misses within the pace's
@@ -1308,7 +1311,7 @@ class Ladder:
     def add(self, events, iface, now, raw=()):
         if not events and not raw:
             return
-        self.rows += list(raw)
+        new = list(raw)
         for e in events:
             row = {"at": round(e["at"], 1), "k": e["kind"], "i": iface}
             if e.get("step"):
@@ -1316,11 +1319,12 @@ class Ladder:
             if e.get("by"):
                 row["b"] = e["by"]
             row["t"] = e["text"][:200]
-            self.rows.append(row)
-        self.rows = [r for r in self.rows if r.get("at", 0) > now - LADDER_KEEP][-20000:]
-        from irate_box.root import safeio
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        safeio.write(self.path, json.dumps(self.rows, separators=(",", ":")))
+            new.append(row)
+        self.rows = [r for r in self.rows + new if r.get("at", 0) > now - LADDER_KEEP][-20000:]
+        # A line per event on the card; the whole record rewritten only when the file has grown to
+        # twice what is kept (old events dropped), or is in the older form.
+        if not jsonlog.append(self.path, new) or jsonlog.count(self.path) > 2 * len(self.rows) + 100:
+            jsonlog.rewrite(self.path, self.rows)
 
 
 def sort_drops(pairs, eff, same_network):
@@ -1369,10 +1373,18 @@ def history_state(state, link):
 def write_status(data):
     # As root, in control/, which the hub can change: never through a link it planted.
     from irate_box.root import safeio
-    STATUS.parent.mkdir(parents=True, exist_ok=True)
-    safeio.write(STATUS, json.dumps(data, indent=2))
+    path = status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    safeio.write(path, json.dumps(data, indent=2))
+    # The reboot record is root's, on the card: written only when it changed, not at every check.
     if "reboots" in data and os.geteuid() == 0:
-        safeio.write(REBOOTS, json.dumps(data["reboots"]), 0o600)
+        text = json.dumps(data["reboots"])
+        if text != _reboots_written.get("text"):
+            safeio.write(REBOOTS, text, 0o600)
+            _reboots_written["text"] = text
+
+
+_reboots_written = {}
 
 
 def _reboot_history(old):
@@ -1389,7 +1401,8 @@ def _reboot_history(old):
 
 def read_status():
     try:
-        return json.loads(STATUS.read_text())
+        # The last report: in RAM, or (the first start after an update) where it used to be.
+        return json.loads((status_path() if status_path().exists() else STATUS).read_text())
     except (OSError, ValueError):
         return {}
 

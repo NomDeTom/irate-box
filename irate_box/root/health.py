@@ -44,6 +44,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from irate_box.hub import jsonlog
 from irate_box.root import rtc
 from irate_box.library import zimcheck
 
@@ -58,6 +59,12 @@ QUARANTINE = ZIM / "quarantine"
 LIBRARY = ZIM / "library.xml"
 HUB_USER = os.environ.get("HUB_USER", "hub")
 CONTROL = STATE / "control"
+# The uplink watchdog's report: in RAM on the box (uplink.status_path), in control/ elsewhere.
+UPLINK_RUN = Path(os.environ.get("HUB_UPLINK_RUN", "/run/irate-box-uplink")) / "uplink.json"
+
+
+def uplink_report():
+    return UPLINK_RUN if UPLINK_RUN.parent.is_dir() else CONTROL / "uplink.json"
 UNIT_DIR = Path("/etc/systemd/system")
 # Units this page may restart or enable: irate-box's own and the add-ons'.
 OUR_UNIT = re.compile(r"^(irate-box(-[a-z]+)*\.(service|socket|path|timer)|nginx\.service|caddy\.service|kiwix\.service|"
@@ -535,7 +542,7 @@ def check_uplink():
     if not (UNIT_DIR / "irate-box-uplink.service").exists():
         return []
     try:
-        st = json.loads((CONTROL / "uplink.json").read_text())
+        st = json.loads(uplink_report().read_text())
     except (OSError, ValueError):
         return [_f("uplink-report", "Uplink watchdog report", "warn", "The watchdog has not written a report yet.",
                    "journalctl -u irate-box-uplink -n 30", [_act("unit-restart:irate-box-uplink.service", "Start it again")])]
@@ -563,7 +570,7 @@ def check_uplink():
                       go=_go("net-watchdog-card", "Network → Staying on the network", "up-stall" if stall.get("needs") else "up-reach")))
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
     out += metered_findings()
-    out += step_findings(_json_or(CONTROL / "uplink-ladder.json", []), st.get("chosen") or {})
+    out += step_findings(jsonlog.read(CONTROL / "uplink-ladder.json"), st.get("chosen") or {})
     return out
 
 
@@ -931,7 +938,7 @@ def latest_known_time():
             marks.append((st[key], "the last install"))
     # Root's own files only: the hub could touch its clock.json, or plant files of its own.
     for path, what in ((CODE / "VERSION", "the installed code"), (CONTROL / "health.json", "the last health check"),
-                       (CONTROL / "uplink.json", "the watchdog's report")):
+                       (uplink_report(), "the watchdog's report")):
         m = rtc.root_mtime(path)
         if m:
             marks.append((m, what))
