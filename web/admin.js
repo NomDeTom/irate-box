@@ -2917,7 +2917,17 @@ function linkNow(inv, d) {
 }
 // Roaming: on the WiFi card, the access points sharing the network and how often the box
 // moved between them; a lock whose access point has gone, with Unlock. On Hardware, which controls work here.
-const ROAM_SHORT = { roam: 'roams naturally', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
+const ROAM_SHORT = { roam: 'normal', 'no-scan': 'no background scans while the hotspot shares the radio', lock: 'locked to one access point' };
+// A list in words: "1, 6 and 11".
+const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : String(xs[0] ?? ''));
+// wpa_supplicant's background scan ("simple:30:-65:300": short interval, signal threshold, long interval) in words.
+function bgscanWords(v) {
+  if (!v) return 'off: it looks for a stronger access point only when the link drops.';
+  const m = /^simple:(\d+):(-?\d+):(\d+)$/.exec(v);
+  if (!m) return v;
+  const t = (sec) => (sec % 60 === 0 && sec >= 60 ? `${sec / 60} min` : `${sec} s`);
+  return `looks for a stronger access point every ${t(+m[1])} while the signal is weaker than ${m[2]} dBm, every ${t(+m[3])} while it is stronger.`;
+}
 function drawRoaming(inv, u, wifi) {
   const box = document.getElementById('net-roaming'), caps = document.getElementById('net-roam-caps');
   const r = wifi.find((x) => x.roaming), f = r && r.roaming;
@@ -2925,12 +2935,12 @@ function drawRoaming(inv, u, wifi) {
   const chosen = (u && u.chosen) || {};
   const n = f.aps.length, hour = u && !u.stale ? u.roams_hour || 0 : null;
   const lines = [netLine('Roaming', n > 1
-    ? `${n} access points share ${f.ssid} (${f.channels.map((c) => `channel ${c}`).join(', ')}); `
-      + (hour == null ? '' : `${hour} roam${hour === 1 ? '' : 's'} in the last hour; `) + `set to: ${ROAM_SHORT[chosen.roaming || 'roam']}`
-      + (chosen.ignore_roams ? ', short roams not counted' : '') + '.'
-      + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves with each roam.' : '')
+    ? `${n} access points for ${f.ssid}, on channel${f.channels.length === 1 ? '' : 's'} ${andList(f.channels)}. `
+      + (hour == null ? '' : hour ? `The box moved between them ${hour === 1 ? 'once' : `${hour} times`} in the last hour. ` : 'The box hasn\'t moved between them in the last hour. ')
+      + `Roaming: ${ROAM_SHORT[chosen.roaming || 'roam']}${chosen.ignore_roams ? ' (short moves not counted as drops)' : ''}.`
+      + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves too.' : '')
     : `One access point for ${f.ssid}: nothing to roam between.`)];
-  if (f.bgscan != null) lines.push(netLine('Background scan', f.bgscan ? f.bgscan : 'off'));
+  if (f.bgscan != null) lines.push(netLine('Background scan', cap1(bgscanWords(f.bgscan))));
   const lockGone = chosen.roaming === 'lock' && u && u.state !== 'up' && !f.aps.some((a) => a.bssid === chosen.lock_bssid);
   if (lockGone) {
     lines.push(el('p', { className: 'setting-desc bad' }, `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,

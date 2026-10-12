@@ -150,8 +150,10 @@ setTimeout(() => {
   // Roaming: three tiles, roam normally chosen; a checkbox apart to ignore it.
   check('roaming: three tiles, Roam normally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
     && tiles('up-roaming')[0].classList.contains('chosen') && !d.getElementById('up-ignore-roams').checked, vals('up-roaming'));
-  check('  the WiFi card says how many access points share the network, and that the hotspot moves with it', /3 access points share .*channel 6, channel 11/.test(t('#net-roaming')[0])
-    && /hotspot shares this radio/.test(t('#net-roaming')[0]), t('#net-roaming')[0]);
+  check('  the WiFi card says how many access points share the network, and that the hotspot moves with it', /3 access points for .*, on channels 6 and 11\./.test(t('#net-roaming')[0])
+    && /hotspot shares this radio, so it moves too/.test(t('#net-roaming')[0]), t('#net-roaming')[0]);
+  check('  the background scan in words', /Looks for a stronger access point every 30 s while the signal is weaker than -65 dBm, every 5 min while it is stronger/
+    .test(t('#net-roaming')[0]), t('#net-roaming')[0]);
   check('  Hardware lists the access points and the choices that work here', /aa:00:00:00:00:03 ch 11/.test(t('#net-roam-caps')[0]) && /Lock to one access point: yes/.test(t('#net-roam-caps')[0]));
   tiles('up-roaming')[2].querySelector('input').click();
   const lockAps = d.getElementById('up-lock-aps');
