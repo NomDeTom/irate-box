@@ -33,7 +33,7 @@ async function page(url, api, { serial = false, secure } = {}) {
   check('plain HTTP: the HTTPS address offered, linked', /needs this page over HTTPS/.test(t(d.getElementById('flash-can')))
     && d.querySelector('#flash-can a').getAttribute('href') === 'https://box.local/flasher/', t(d.getElementById('flash-can')));
   check('  each build listed with its chip and version, no button', d.querySelectorAll('#flash-list li').length === 2
-    && /Meshtastic for heltec-v3 · ESP32-S3 · 2\.9\.0\.1234567$/.test(t(d.querySelector('#flash-list li'))) && !d.querySelector('esp-web-install-button'),
+    && /Meshtastic for heltec-v3 · ESP32-S3 · 2\.9\.0\.1234567 · release$/.test(t(d.querySelector('#flash-list li'))) && !d.querySelector('esp-web-install-button'),
     t(d.querySelector('#flash-list li')));
   check('  the Meshtastic download hidden when it is not there', d.getElementById('flash-download').hidden);
   d = await page('https://box.local/flasher/', { targets: two, engine: true, download: true }, { secure: true });

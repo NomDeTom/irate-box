@@ -146,9 +146,9 @@ scenario_zim() {
 	local zim=${ZIM:-}
 	[ -n "$zim" ] && [ -f "$zim" ] || { note "skipped: set ZIM to a mermaid-docs.zim file"; return 0; }
 	boot irate-box-ct-zim || return 1
-	install_hub --web nginx || { rc=$((rc + 1)); return; }
-	$DOCKER cp "$zim" "$CID":/var/lib/hub/zim/mermaid-docs.zim >/dev/null
-	cexec chown hub:hub /var/lib/hub/zim/mermaid-docs.zim
+	# Installed with the book, as a box with books is: Kiwix (and kiwix-tools) chosen by it.
+	$DOCKER cp "$zim" "$CID":/root/mermaid-docs.zim >/dev/null
+	install_hub --web nginx --zim /root/mermaid-docs.zim || { rc=$((rc + 1)); return; }
 	run_ct zim 80
 	run_ct kiwix-rerun
 }

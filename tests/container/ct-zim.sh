@@ -72,8 +72,8 @@ print("scan:", [(z["file"], z["zim"], z.get("problem", "")[:30]) for z in usbsti
 print("cut:", imp("cut.zim"))
 # A copy that arrives damaged although the stick's file looked whole.
 real_copy = usbstick._copy
-def bad_copy(src, dest, report=None):
-    real_copy(src, dest, report)
+def bad_copy(src, dest, report=None, out=None):
+    real_copy(src, dest, report, out=out)
     with open(dest, "r+b") as fh: fh.truncate(4000000)
 usbstick._copy = bad_copy
 print("damaged:", imp("whole.zim"))
@@ -84,9 +84,12 @@ echo "== /status says why Kiwix is down"
 why() { sleep 6; curl -s http://127.0.0.1:$P/status | python3 -c "import json,sys; s=[x for x in json.load(sys.stdin)['services'] if x['path']=='/wiki/'][0]; print(s['state'], '|', s.get('why'))"; }
 systemctl stop kiwix; r=$(why); echo "    $r"; [[ "$r" == "stopped | Kiwix is not running"* ]] && ok "stopped, books fine" || bad "$r"
 mv $Z/library.xml $W/lib.bak; r=$(why); echo "    $r"; [[ "$r" == *"library is empty"* ]] && ok "no library" || bad "$r"
+# The guide's own book (installed each run) set aside too: these say what a box with only these books shows.
+GUIDE=$Z/irate-box-guide.zim; [ -f $GUIDE ] && mv $GUIDE $W/guide.zim
 mv $GOOD $W/held.zim; cp $W/cut.zim $Z/cut.zim; r=$(why); echo "    $r"; [[ "$r" == *"None of the 1 book can be read"* ]] && ok "only a damaged book" || bad "$r"
 rm $Z/cut.zim; r=$(why); echo "    $r"; [[ "$r" == "stopped | No books yet"* ]] && ok "no books" || bad "$r"
-mv $W/held.zim $GOOD; mv $W/lib.bak $Z/library.xml; chown hub:hub $GOOD $Z/library.xml; systemctl start kiwix; sleep 6
+mv $W/held.zim $GOOD; [ -f $W/guide.zim ] && mv $W/guide.zim $GUIDE; mv $W/lib.bak $Z/library.xml; chown hub:hub $GOOD $Z/library.xml; systemctl start kiwix; sleep 6
 r=$(curl -s http://127.0.0.1:$P/status | python3 -c "import json,sys; s=[x for x in json.load(sys.stdin)['services'] if x['path']=='/wiki/'][0]; print(s['state'], s.get('why'))"); [ "$r" = "running None" ] && ok "back: running, no reason shown" || bad "back: $r"
 rm -rf $W
 echo "failures: $fails"
+exit $fails
