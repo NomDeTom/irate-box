@@ -14,8 +14,9 @@ sys.path.insert(0, str(REPO))
 from irate_box.root import health  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
+    """info: what a failure looked at, for a debugger; not printed (the doctor's records can hold a unit's own words)."""
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info!r}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name); fails += not cond
 
 units = {"meshtasticd.service": {"LoadState": "loaded", "ActiveState": "failed", "UnitFileState": "enabled", "Result": "start-limit-hit"},
          "ModemManager.service": {"LoadState": "loaded", "ActiveState": "active", "UnitFileState": "enabled"},
