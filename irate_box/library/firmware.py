@@ -241,7 +241,7 @@ def _mirror_board(base, vdir, version, mt, policy):
                                         expected=entry.get("bytes", 0))
                 except LibrarianError as exc:
                     tmp.unlink(missing_ok=True)
-                    if "cannot reach" in str(exc):
+                    if "cannot reach" in str(exc) or "cut short" in str(exc):
                         raise  # the network, not this board: the whole run stops
                     raise _Unavailable(str(exc))
                 if not _have(tmp, entry):
