@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // The Network pane in jsdom; BASE is a hub whose /admin/network answers without a login (a proxy that adds it).
-// Usage: BASE=http://127.0.0.1:PORT [JSDOM=…/jsdom] node dom-net.cjs; the hub at BASE must run this checkout's code
-// (one left running from older code answers with old levels, and the dials' checks fail).
+// Usage: BASE=http://127.0.0.1:PORT [FRONT_SECRET=…] [JSDOM=…/jsdom] node dom-net.cjs; the hub at BASE must run this
+// checkout's code (one left running from older code answers with old levels, and the dials' checks fail). FRONT_SECRET:
+// the hub's HUB_FRONT_SECRET, sent as the web server in front sends it, so a hub started for the test answers as admin.
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
@@ -29,7 +30,8 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/network') return new Response(JSON.stringify({ id: 'x' }), { status: 202 });
   if (u === '/admin/network') {
     // The root helper's answer to what was posted: done, so the page is not left busy.
-    const data = await (await fetch(new URL(u, BASE), opts)).json();
+    const front = process.env.FRONT_SECRET ? { 'X-Irate-Front': process.env.FRONT_SECRET, 'X-Irate-Admin': '1' } : {};
+    const data = await (await fetch(new URL(u, BASE), { ...opts, headers: { ...(opts.headers || {}), ...front } })).json();
     // A real inventory, its network's names taken out.
     data.inventory = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
     // Roaming as the hardware scan reports it: three access points, two channels, the hotspot on the radio.
@@ -47,7 +49,8 @@ w.fetch = async (u, opts = {}) => {
     data.pending = 0;
     return new Response(JSON.stringify(data), { status: 200 });
   }
-  return fetch(new URL(u, BASE), opts);
+  const front = process.env.FRONT_SECRET ? { 'X-Irate-Front': process.env.FRONT_SECRET, 'X-Irate-Admin': '1' } : {};
+  return fetch(new URL(u, BASE), { ...opts, headers: { ...(opts.headers || {}), ...front } });
 };
 w.confirm = () => true;
 w.eval(js);
@@ -66,13 +69,13 @@ setTimeout(() => {
   check('the hotspot: yes, with conditions', /Yes, with conditions \(through networkmanager\)/.test(card));
   const conds = cards[0] ? [...cards[0].querySelectorAll('.net-conditions li')].map((li) => li.className) : [];
   check('its conditions one per line, untested marked', conds.join(' ') === 'cond-how cond-limit cond-untested', conds.join(' '));
-  const own = cards[0] ? [...cards[0].querySelectorAll('.admin-checks li')].length : 0;
-  check('its own warnings on its card (3)', own === 3, own);
+  const own = cards[0] ? [...cards[0].querySelectorAll('.net-facts li')].length : 0;
+  check('its own findings on its card (3): to look at, then what is known', own === 3, own);
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, now, managed by, the hotspot, its warnings', secs.length === 5
-    && secs.every((n) => n.querySelector('.net-line, .admin-checks')) && !cards[0].querySelector('.net-uptime'), secs.length);
+  check('the card in sections: what, now, managed by, the hotspot, to look at, known about it', secs.length === 6
+    && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
   check('four tabs: Status, Hardware, The box\'s access, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|The box\'s access|Hotspot');
@@ -113,8 +116,8 @@ setTimeout(() => {
     && /\.net-device h4 \{[^}]*border-bottom: 1px solid var\(--border\)/.test(css));
   check('labels in a column, above their text on a phone', /\.net-line \{ display: grid; grid-template-columns: 11rem 1fr/.test(css)
     && /max-width: 560px\) \{ \.net-line \{ grid-template-columns: 1fr/.test(css));
-  const general = t('#net-hazards li');
-  check('the rest in the general list, not repeated', general.length === 2 && !general.some((g) => /handshake/.test(g)), general.join(' | '));
+  const general = t('#net-hazards .net-device h4');
+  check('the rest in the general list, a card each, not repeated', general.length === 2 && !general.some((g) => /handshake|retries/i.test(g)), general.join(' | '));
   const evs = [...d.querySelectorAll('#up-events li')];
   check('the event log: one line per event, newest first', evs.length === 3 && /up again/.test(evs[0].textContent)
     && evs.every((li) => li.querySelector('.ev-time') && li.querySelector('.ev-text') && !li.querySelector('.setting-desc')), evs.map((li) => li.innerHTML).join(' | '));
@@ -133,7 +136,8 @@ setTimeout(() => {
   const pace = tiles('up-pace'), reach = tiles('up-reach');
   check('pace: four cards, gentle to urgent', vals('up-pace') === 'gentle steady brisk urgent', vals('up-pace'));
   check('reach: five cards, watch to reboot', vals('up-reach') === 'watch reconnect restart radio reboot', vals('up-reach'));
-  check('guests and a wedged driver: two cards each', vals('up-guests') === 'protect ignore' && vals('up-wedge') === 'ladder radio');
+  check('guests: two cards; a failed radio: three (the ladder, a reset at once, and a reboot if it isn\'t back)', vals('up-guests') === 'protect ignore'
+    && vals('up-wedge') === 'ladder radio reboot', [vals('up-guests'), vals('up-wedge')]);
   check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2
     && r.querySelector('.choice-does').textContent.length > 10));
   check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
@@ -154,7 +158,8 @@ setTimeout(() => {
     && /hotspot shares this radio, so it moves too/.test(t('#net-roaming')[0]), t('#net-roaming')[0]);
   check('  the background scan in words', /Looks for a stronger access point every 30 s while the signal is weaker than -65 dBm, every 5 min while it is stronger/
     .test(t('#net-roaming')[0]), t('#net-roaming')[0]);
-  check('  Hardware lists the access points and the choices that work here', /aa:00:00:00:00:03 ch 11/.test(t('#net-roam-caps')[0]) && /Lock to one access point: yes/.test(t('#net-roam-caps')[0]));
+  check('  Hardware lists the access points and the choices that work here', /aa:00:00:00:00:03\s*Channel 11/.test(t('#net-roam-caps')[0])
+    && /yes\s*Lock to/.test(t('#net-roam-caps')[0]), t('#net-roam-caps')[0]);
   tiles('up-roaming')[2].querySelector('input').click();
   const lockAps = d.getElementById('up-lock-aps');
   check('  choosing the lock shows the access points, the strongest preselected', !lockAps.hidden && lockAps.querySelectorAll('input').length === 3
