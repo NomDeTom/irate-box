@@ -325,7 +325,7 @@
         <progress class="admin-bar library-bar" hidden></progress>
         <p class="setting-desc">
           The librarian keeps the books in <a href="/wiki/">/wiki/</a> current from where they are
-          published, on the schedule under Schedule and token.
+          published, on the schedule on The librarian.
         </p>
         <p class="setting-desc">
           Each book keeps its name across versions, so links into it never break. Books added by
@@ -482,7 +482,7 @@
         <p class="setting-desc">
           Repositories the box keeps from an upstream on the internet, by a policy: which branches,
           how many releases, how much history, and their submodules. The librarian checks them on
-          its schedule (Schedule and token). Each is read-only on the box, and shows on the Git page
+          its schedule (The librarian). Each is read-only on the box, and shows on the Git page
           as a card of its own. New mirrors are public (anyone on the network can browse and clone
           them, as on the internet); choose Private to keep one behind the admin login.
         </p>
@@ -575,7 +575,7 @@
       </section>
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
-        <h2 id="sources-title">Schedule and token</h2>
+        <h2 id="sources-title">The librarian</h2>
         <p class="setting-desc">How the librarian keeps apps and books current, how much room they may take, and the token some
           sources need. Each app and book is updated from its own page.</p>
         <div class="net-card setting" id="library-now">
@@ -587,7 +587,7 @@
           <h3>Apps and books</h3>
           <div data-update-pattern data-often="check_every_hours" data-act="auto_install"
             data-says-0="Said on Apps and Books, and on the badge; update from there."
-            data-says-2="Also put in use."></div>
+            data-says-2="Fetched and put in use."></div>
           <h3>Storage and kept versions</h3>
           <label>Keep old versions of each book
             <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
@@ -600,9 +600,12 @@
         </form>
         <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>
 
-        <h3>Other updates, each set on its own page</h3>
-        <dl class="hl-glance" id="library-others"></dl>
+        <div class="net-card setting lib-card">
+          <h3>Other updates, each set on its own page</h3>
+          <dl class="hl-glance lib-others" id="library-others"></dl>
+        </div>
 
+        <div class="net-card setting lib-card">
         <details class="sec-fold" id="library-access">
           <summary>Source access: the GitHub token and the rate limit <span id="library-access-says"></span></summary>
           <h3>GitHub token</h3>
@@ -633,6 +636,7 @@
           </div>
           <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
         </details>
+        </div>
       </section>
 
       <section class="admin-pane" id="saved" aria-labelledby="saved-title">

@@ -402,6 +402,15 @@ function renderLibrary(snap) {
   });
   badge('apps', busy ? 'working' : '');
   badge('books', busy ? 'working' : '');
+  if (!busy) {
+    // When the librarian last looked (its sources' newest check), and when it looks next by the schedule.
+    const looked = Object.values(snap.status || {}).map((s) => Date.parse(s && s.last_check)).filter((n) => !Number.isNaN(n));
+    const every = Number((snap.policy || {}).check_every_hours) || 0;
+    if (looked.length) {
+      const last = Math.max(...looked), at = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+      parts.push(`Idle. Last looked ${at(last)}${every ? `; next about ${at(Math.max(last + every * 3600e3, Date.now()))}` : '; it looks only when asked'}.`);
+    } else parts.push(every ? 'Idle. Not looked yet.' : 'Idle; it looks only when asked.');
+  }
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
   lib.states.forEach((n) => { n.textContent = parts.join(' '); });

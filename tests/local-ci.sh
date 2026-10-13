@@ -3,7 +3,8 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Run what .github/workflows/ci.yml runs, here, so a branch is green before it is pushed:
 # the licences (REUSE), tests/run.sh, the shell scripts' parse, and the .deb build. This is
-# the "checks" and "deb" jobs of CI, in order; CI then only confirms.
+# the "checks" and "deb" jobs of CI, in order; CI then only confirms. Beyond CI: the pages drawn in a browser
+# (tests/browser: the style audit, the tile rows, the theme picker), where Docker has the irate-chrome image.
 #
 #   tests/local-ci.sh            # everything
 #   tests/local-ci.sh --quick    # skip the .deb build (the slow part)
@@ -63,6 +64,20 @@ for f in install.sh uninstall.sh scripts/*.sh packaging/deb/build.sh tests/run.s
 	bash -n "$f" || { echo "   parse FAILED: $f"; rc=$((rc + 1)); }
 done
 echo "   ok"
+
+# The pages as a browser draws them (beyond CI, which has no browser image): the style audit of every admin pane, the
+# tile rows, the theme picker. Skipped, and said so, without Docker or the irate-chrome image (NO_BROWSER=1 skips them).
+step "Pages in a browser (tests/browser)"
+if [ "${NO_BROWSER:-0}" != 1 ] && [ "${NO_DOCKER:-0}" != 1 ] && command -v docker >/dev/null 2>&1 \
+	&& docker image inspect "${CHROME_IMAGE:-irate-chrome}" >/dev/null 2>&1; then
+	for t in tests/browser/style-audit.sh tests/browser/tile-rows.sh tests/browser/theme-picker.sh; do
+		echo "   $t"
+		out=$(bash "$t" 2>&1) || { printf '%s\n' "$out" | grep -E '^FAIL|^ {7}' | head -20; rc=$((rc + 1)); }
+	done
+	echo "   done"
+else
+	echo "   skipped: no Docker or no ${CHROME_IMAGE:-irate-chrome} image"
+fi
 
 if [ "$QUICK" = 1 ]; then
 	echo; echo "local-ci (--quick, no .deb): $rc failed"; exit $rc

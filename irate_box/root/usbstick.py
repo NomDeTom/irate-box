@@ -217,7 +217,7 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
         free = shutil.disk_usage(zim_dir).free
         if free - size < min_free:
             raise ValueError(f"not enough room: {size >> 20} MB needed, {free >> 20} MB free, "
-                             f"and {min_free >> 20} MB must stay free (Schedule and token)")
+                             f"and {min_free >> 20} MB must stay free (The librarian)")
         tmp = Path(zim_dir) / f".{name}.zim.usb"
         try:
             # In the hub's folder: a new file, never through a link, the hub's through its fd.
