@@ -4,7 +4,7 @@
 fails that source with a LibrarianError, as a refused connection does, so the run goes on to the next source; and a
 mirror whose release listing is cut short is recorded as that mirror's error. The network is stood in for.
 python3 tests/sim_cut_short.py"""
-import http.client, io, json, os, sys, tempfile
+import http.client, io, os, re, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="cutshort-"))
@@ -37,7 +37,7 @@ for label, exc in (("a chunked body that stops", http.client.IncompleteRead(b"{\
         L._api("/repos/a/b/releases")
         check(f"{label}: a LibrarianError", False, "no error")
     except L.LibrarianError as e:
-        check(f"{label}: a LibrarianError, saying it was cut short", "cut short" in str(e) and "api.github.com" in str(e), str(e))
+        check(f"{label}: a LibrarianError, saying it was cut short", re.match(r"the answer from api\.github\.com was cut short: ", str(e)) is not None, str(e))
     except Exception as e:  # noqa: BLE001
         check(f"{label}: a LibrarianError", False, repr(e))
 
