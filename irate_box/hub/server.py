@@ -3309,6 +3309,17 @@ class Handler(BaseHTTPRequestHandler):
                                      prefs=accounts.prefs(me["name"]) if me else None, names_to=settings_snapshot()["names_to"]))
             return
 
+        if path == "/api/trends":
+            # The memory and disk history behind the hub page's box tile: an admin account's session only (a guest,
+            # or a user, is refused here, not merely not shown the triangle), and the samples alone, never the processes.
+            me = accounts.session(self._session_token()) if self._session_token() else None
+            if not me or me.get("role") != "admin":
+                self.send_json(403, {"error": "the trends are the admin's"})
+                return
+            snap = memhistory.snapshot()
+            self.send_json(200, {"now": snap["now"], "every": snap["every"], "samples": snap["samples"]})
+            return
+
         if path == "/admin/accounts":
             self.send_json(200, accounts_view())
             return

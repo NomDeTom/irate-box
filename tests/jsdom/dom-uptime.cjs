@@ -139,6 +139,19 @@ setTimeout(() => {
     check('Overview memory: seven-day range includes older samples, preference selected', /4 samples/.test(t(d.getElementById('memory-history-note')))
       && d.querySelector('[data-memory-hours="168"]').getAttribute('aria-pressed') === 'true');
     check('Overview memory: gaps are not joined', (memory.querySelector('path').getAttribute('d').match(/M/g) || []).length === 2);
+    {
+      // The disk where samples have it: a line of its own, a new stroke where the disk's size changed; none fabricated before.
+      const withDisk = { ...box.memory_history, samples: box.memory_history.samples.map((s, i) => (i === 0 ? s
+        : { ...s, disk_total: i === 3 ? 16000 : 8000, disk_free: i === 3 ? 12000 : 4000 })) };
+      w.renderMemoryHistory(withDisk, { ...box.system, disk_total: 16000, disk_free: 12000 });
+      const dp = memory.querySelector('path.memory-disk-line');
+      check('Overview disk: its own line from the samples that have it, a new stroke where its size changed', dp
+        && (dp.getAttribute('d').match(/M/g) || []).length === 2 && (dp.getAttribute('d').match(/[ML]/g) || []).length === 3, dp && dp.getAttribute('d'));
+      check('  the legend and the last sample\'s readout say it', /Disk used: /.test(t(d.getElementById('memory-current')))
+        && /disk 25% used/.test(t(d.getElementById('memory-readout'))) && /disk 25% used at the last sample/.test(t(d.getElementById('memory-history-note'))), t(d.getElementById('memory-readout')));
+      w.renderMemoryHistory(box.memory_history, box.system);
+      check('  samples without it: no disk line, said as not yet', !memory.querySelector('path.memory-disk-line') && /no disk samples yet/.test(t(d.getElementById('memory-history-note'))));
+    }
     memory.querySelector('svg').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
     check('Overview memory: keyboard selects the first recorded sample', /22% memory used/.test(t(d.getElementById('memory-readout'))));
     check('Overview memory: largest processes are safely rendered as text', !d.getElementById('memory-processes').hidden

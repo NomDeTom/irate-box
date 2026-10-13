@@ -886,6 +886,8 @@ body.about h3 { margin: 1.25rem 0 0.4rem; font-size: 0.95rem; }
 .memory-grid { stroke: var(--border); stroke-width: 1; }
 .memory-used-line, .memory-swap-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .memory-swap-line { stroke: var(--warn); stroke-dasharray: 5 3; }
+.memory-disk-line { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasharray: 1.5 3; stroke-linecap: round; }
+.memory-disk-key { color: var(--ok); }
 .memory-cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .memory-readout { min-height: 2.5em; font-variant-numeric: tabular-nums; }
 .inv-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0.6rem 0; }
@@ -1691,3 +1693,14 @@ body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--tex
 .palette-report ul { margin: 0.3rem 0; padding-left: 1.2rem; }
 .palette-report li.bad { color: var(--warn); }
 .palette-ack { margin: 0.3rem 0; }
+
+/* The box tile's trends (hub.js), for the admin: the triangle on the tile, the panel below the tiles. */
+.system-card .trend-toggle { margin-top: 0.3rem; font: inherit; font-size: 0.8rem; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0.1rem 0.3rem; }
+.box-trends { margin-top: 0.8rem; padding: 0.8rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.box-trends[hidden] { display: none; }
+.trend-plot { width: 100%; height: auto; display: block; }
+.trend-grid { stroke: var(--border); stroke-width: 1; }
+.trend-axis { fill: var(--muted); font-size: 11px; }
+.trend-mem { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.trend-disk { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasharray: 1.5 3; stroke-linecap: round; }
+.trend-legend { margin: 0.4rem 0 0.2rem; }

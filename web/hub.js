@@ -288,3 +288,72 @@ if (helpButton && helpPop) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setHelp(false); });
   window.addEventListener('blur', () => setHelp(false));
 }
+
+// The box tile's trends, for the admin alone: a triangle on the memory and disk tile opens the last day of both in a
+// panel below the tiles, so the tile keeps its place in the grid. /api/trends answers an admin account's session only;
+// for anyone else it refuses and no triangle is drawn. The graph is drawn when opened, and again each time.
+const systemCard = document.getElementById('system-card');
+if (systemCard) {
+  const SVG = 'http://www.w3.org/2000/svg';
+  const svgEl = (name, attrs, text) => {
+    const n = document.createElementNS(SVG, name);
+    Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const drawTrends = (panel, h) => {
+    const now = h.now, start = now - 86400, gap = (h.every || 300) * 2;
+    const samples = (h.samples || []).filter((s) => s.at >= start && s.at <= now && s.total > 0);
+    const W = 600, H = 170, L = 40, R = W - 8, T = 8, B = H - 24;
+    const x = (at) => L + (at - start) / (now - start) * (R - L), y = (v) => B - v / 100 * (B - T);
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'trend-plot', role: 'img', 'aria-label': 'Memory and disk used, the last 24 hours' });
+    for (const v of [0, 50, 100]) svg.append(svgEl('line', { x1: L, x2: R, y1: y(v), y2: y(v), class: 'trend-grid' }), svgEl('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'trend-axis' }, `${v}%`));
+    svg.append(svgEl('text', { x: L, y: H - 6, class: 'trend-axis' }, '24 h ago'), svgEl('text', { x: R, y: H - 6, 'text-anchor': 'end', class: 'trend-axis' }, 'Now'));
+    const hasDisk = (s) => s.disk_total > 0 && s.disk_free >= 0;
+    const series = [
+      ['trend-mem', samples, (s) => (s.total - s.available) / s.total * 100, () => true],
+      ['trend-disk', samples.filter(hasDisk), (s) => (s.disk_total - s.disk_free) / s.disk_total * 100, (s, p) => s.disk_total === p.disk_total],
+    ];
+    for (const [cls, list, val, same] of series) {
+      const d = list.map((s, i) => `${i && s.at - list[i - 1].at <= gap && same(s, list[i - 1]) ? 'L' : 'M'}${x(s.at).toFixed(1)},${y(Math.max(0, Math.min(100, val(s)))).toFixed(1)}`).join(' ');
+      if (d) svg.append(svgEl('path', { d, class: cls }));
+    }
+    const last = samples[samples.length - 1], lastDisk = samples.filter(hasDisk).pop();
+    const say = document.createElement('p');
+    say.className = 'desc trend-legend';
+    say.textContent = !last ? 'Nothing recorded in the last 24 hours yet: recording starts once the box’s clock is trusted.'
+      : `Memory used ${Math.round((last.total - last.available) / last.total * 100)}% at the last sample`
+        + (lastDisk ? `; disk ${Math.round((lastDisk.disk_total - lastDisk.disk_free) / lastDisk.disk_total * 100)}% (dotted).` : '; the disk is not recorded yet.')
+        + (now - last.at > gap ? ' No recent sample.' : '');
+    const more = document.createElement('a');
+    more.href = '/admin/#overview';
+    more.textContent = 'Seven days, and the largest processes: the admin Overview →';
+    panel.replaceChildren(svg, say, more);
+  };
+  fetch('/api/trends').then((r) => (r.ok ? r.json() : null)).then((first) => {
+    if (!first) return;
+    const panel = document.createElement('section');
+    panel.id = 'box-trends';
+    panel.className = 'box-trends';
+    panel.hidden = true;
+    panel.setAttribute('aria-label', 'Memory and disk, the last 24 hours');
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'trend-toggle';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', 'box-trends');
+    toggle.textContent = '▸ Trends';
+    toggle.addEventListener('click', async () => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = `${open ? '▾' : '▸'} Trends`;
+      panel.hidden = !open;
+      if (!open) return;
+      let h = first;
+      try { const r = await fetch('/api/trends'); if (r.ok) h = await r.json(); } catch (_) { /* the first answer stands */ }
+      drawTrends(panel, h);
+    });
+    systemCard.append(toggle);
+    (systemCard.closest('.service-grid') || systemCard).after(panel);
+  }).catch(() => {});
+}

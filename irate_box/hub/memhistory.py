@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""Bounded five-minute memory samples for the admin Overview."""
+"""Bounded five-minute memory and disk samples for the admin Overview."""
 
 import json
 import math
@@ -27,6 +27,23 @@ def memory():
                 "swap_total": mem.get("SwapTotal", 0), "swap_free": mem.get("SwapFree", 0)}
     except (OSError, KeyError, ValueError, IndexError):
         return {}
+
+
+def disk():
+    """The hub's storage, as the disk meter reads it: the filesystem of the state folder."""
+    try:
+        st = os.statvfs(STATE)
+    except OSError:
+        return {}
+    total = st.f_blocks * st.f_frsize
+    return {"disk_total": total, "disk_free": min(st.f_bavail * st.f_frsize, total)} if total else {}
+
+
+def _disk_ok(sample):
+    """A sample's disk fields when they are sound; a sample from before they were kept, or with bad ones, keeps its memory."""
+    t, f = sample.get("disk_total"), sample.get("disk_free")
+    return (isinstance(t, (int, float)) and isinstance(f, (int, float)) and math.isfinite(t) and math.isfinite(f)
+            and t > 0 and 0 <= f <= t)
 
 
 def processes():
@@ -60,11 +77,12 @@ def load():
         return {"samples": []}
     old = _legacy(text)
     samples = old if old is not None else jsonlog.read(FILE)
-    return {"samples": [sample for sample in samples if isinstance(sample, dict)
-                        and all(isinstance(sample.get(key), (int, float)) and math.isfinite(sample[key])
-                                for key in ("at", "total", "available", "swap_total", "swap_free"))
-                        and sample["total"] > 0 and 0 <= sample["available"] <= sample["total"]
-                        and 0 <= sample["swap_free"] <= sample["swap_total"]][-LIMIT:]}
+    kept = [sample for sample in samples if isinstance(sample, dict)
+            and all(isinstance(sample.get(key), (int, float)) and math.isfinite(sample[key])
+                    for key in ("at", "total", "available", "swap_total", "swap_free"))
+            and sample["total"] > 0 and 0 <= sample["available"] <= sample["total"]
+            and 0 <= sample["swap_free"] <= sample["swap_total"]][-LIMIT:]
+    return {"samples": [s if _disk_ok(s) else {k: v for k, v in s.items() if k not in ("disk_total", "disk_free")} for s in kept]}
 
 
 def record(hist, mem, now):
@@ -105,7 +123,8 @@ class Sampler(threading.Thread):
             return False
         now = time.time() if now is None else now
         hist = load()
-        if not record(hist, memory(), now):
+        mem = memory()
+        if not record(hist, {**mem, **disk()} if mem else {}, now):
             return False
         sample = hist["samples"][-1]
         _processes.update(at=sample["at"], list=processes())
