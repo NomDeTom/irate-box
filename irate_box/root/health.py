@@ -115,11 +115,6 @@ def _act(choice, label, confirm=None):
     return {"choice": choice, "label": label, **({"confirm": confirm} if confirm else {})}
 
 
-def _chip(group, choice, label, on, confirm=None):
-    """One choice of a setting, drawn as a chip in its group's row; `on` marks the current one, which does nothing."""
-    return dict(_act(choice, label, None if on else confirm), group=group, on=bool(on))
-
-
 RERUN = _act("rerun-install", "Run the installer again",
              "Run install.sh again with this box's recorded options? Services restart once; nothing else changes.")
 
@@ -645,7 +640,7 @@ def step_record(rows, now=None):
 
 def step_findings(rows, chosen, now=None):
     """For each flaky connection: how well each step has worked, said; and a finding for a step that rarely mends an
-    outage or that a wedged driver tends to follow, with the choice to leave it out there (never done for the owner)."""
+    outage or that a wedged driver tends to follow, linked to where it is left out (Network's own steps setting)."""
     off = (chosen or {}).get("steps_off") or {}
     out = []
     for iface, rec in sorted(step_record(rows, now).items()):
@@ -668,8 +663,6 @@ def step_findings(rows, chosen, now=None):
             out.append(_f(f"uplink-skip-{iface}-{s}", f"{iface}: {STEP_SAID.get(s, s)} isn't helping", "warn",
                           f"{why} (the last {STEP_DAYS} days). The watchdog could leave it out on {iface} and go on to the next step sooner.",
                           f"Network → The box's access → Steps it may take: untick {STEP_TICK.get(s, s)} for {iface}.",
-                          [_act(f"uplink-skip:{iface}:{s}", f"Leave it out on {iface}",
-                                f"Leave {STEP_SAID.get(s, s)} out of the watchdog's ladder on {iface}? It can be ticked again on the Network page.")],
                           go=_go("up-steps", "Network → Steps it may take", f"up-step-{iface}-{s}")))
     return out
 

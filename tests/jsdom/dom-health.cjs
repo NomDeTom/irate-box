@@ -51,6 +51,14 @@ setTimeout(() => {
   d.querySelectorAll('#health-summary .sec-count')[0].click();
   const s = d.getElementById('health-search'); s.value = 'kiwix'; s.dispatchEvent(new w.Event('input'));
   check('the search narrows the list', [...d.querySelectorAll('#health-findings .finding')].every((r) => /kiwix/i.test(r.textContent)) && d.querySelectorAll('#health-findings .finding').length >= 1);
+  // The findings first; the queue, the outages and the last install folded below them.
+  const after = (a, b) => !!(d.getElementById(a).compareDocumentPosition(d.getElementById(b)) & w.Node.DOCUMENT_POSITION_PRECEDING);
+  check('the findings before the helper\'s queue, the outage history and the last install',
+    after('helper-queue', 'health-findings') && after('health-ladder-fold', 'health-findings') && after('health-install-fold', 'health-findings'));
+  check('  each of those folded', ['helper-queue', 'health-ladder-fold', 'health-install-fold'].every((id) => d.getElementById(id).tagName === 'DETAILS'));
+  check('  a clean install stays folded', !d.getElementById('health-install-fold').open);
+  w.renderHealth({ ...JSON.parse(fixture), install: { ...JSON.parse(fixture).install, problems: ['nginx -t failed'] } });
+  check('  one with problems opens by itself', d.getElementById('health-install-fold').open);
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);

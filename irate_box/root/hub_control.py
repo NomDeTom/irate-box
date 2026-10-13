@@ -1834,8 +1834,8 @@ def doctor():
             if core["remaining"] == 0:
                 wait = max(0, core["reset"] - now) / 60
                 findings.append(_finding("GitHub API", "problem", "rate limit used up (60 requests an hour "
-                                         "without a token)", f"Wait about {wait:.0f} min, or set a GitHub token "
-                                         "in Library."))
+                                         "without a token)", f"Wait about {wait:.0f} min, or set a GitHub token on "
+                                         "the librarian's Schedule and token page."))
             else:
                 findings.append(_finding("GitHub API", "ok", f"{core['remaining']} of {core['limit']} requests left this hour"))
         except (OSError, ValueError, KeyError) as exc:
@@ -1990,8 +1990,30 @@ def kits_findings(now=None):
     return out
 
 
+# Where each check's cure is chosen on the admin page: the page's link to it, said by the check, not read from its words.
+DOCTOR_GO = {
+    "DNS": ("network", "Network"), "Connection": ("network", "Network"),
+    "Clock": ("clock", "Clock"), "TLS": ("clock", "Clock"),
+    "GitHub API": ("sources", "The librarian → Schedule and token", "library-token"),
+    "Update cache": ("update-maint", "Updates → Maintenance"),
+    "Last update check": ("updates", "Updates"),
+    "Scheduled updates": ("sources", "The librarian → Schedule and token"),
+    "Toolkits' cache": ("toolkits", "Toolkits"), "Toolkits installed": ("toolkits", "Toolkits"),
+    "Security tools' freshness": ("toolkits", "Toolkits"),
+}
+
+
+def with_go(findings):
+    """Each finding that is not fine, with its check's place on the admin page (go: section, where, mark?)."""
+    for f in findings:
+        to = DOCTOR_GO.get(f["check"])
+        if to and f["status"] != "ok":
+            f["go"] = {"section": to[0], "where": to[1], **({"mark": to[2]} if len(to) > 2 else {})}
+    return findings
+
+
 def update_doctor(req):
-    findings = doctor()
+    findings = with_go(doctor())
     safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
     problems = [f for f in findings if f["status"] == "problem"]
     if not problems:

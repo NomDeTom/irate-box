@@ -938,12 +938,10 @@
       <section class="admin-pane" id="health" aria-labelledby="health-title">
         <h2 id="health-title">Box doctor</h2>
         <p class="setting-desc">
-          The box doctor: is everything the installer set up still there and working — the last
-          install, the root helper, every service, Kiwix and its books, the uplink watchdog, the web
-          server's configuration (the clock is on <a href="#clock">Clock</a>). Each problem says what
-          to do; the safe repairs are buttons. The same
-          report from a terminal on the box: <code>sudo /opt/irate-box/irate-box health</code>, which
-          works even when this page cannot reach the root helper.
+          Is everything the installer set up still there and working: the services, the root helper,
+          Kiwix and its books, the uplink watchdog, the web server (the clock is on <a href="#clock">Clock</a>).
+          Safe repairs are buttons; settings are changed on their own pages. From a terminal, even when this
+          page cannot reach the root helper: <code>sudo /opt/irate-box/irate-box health</code>.
         </p>
         <p class="setting-desc" id="health-when">Not looked yet.</p>
         <p class="setting-desc" id="helper-busy-log" hidden></p>
@@ -963,17 +961,6 @@
           <progress class="admin-bar" id="health-bar" max="1" value="0"></progress>
           <p class="setting-desc" id="health-step"></p>
         </div>
-        <div class="helper-queue" id="helper-queue">
-          <h3>The root helper's queue</h3>
-          <p class="setting-desc">Everything on these pages that needs root goes to one helper, which does one job at a time:
-            a long one (a toolkit's download, an update) holds the rest back until it ends.</p>
-          <p class="setting-desc" id="hq-running">Nothing running.</p>
-          <ol class="admin-checks" id="hq-waiting" hidden></ol>
-          <details class="sec-fold" id="hq-done-fold" hidden>
-            <summary>Finished lately</summary>
-            <ol class="admin-checks" id="hq-done"></ol>
-          </details>
-        </div>
         <div class="sec-counts" id="health-summary" role="group" aria-label="Show"></div>
         <input type="search" class="sec-search" id="health-search" placeholder="Search the findings…" aria-label="Search the findings">
         <div class="findings" id="health-findings"></div>
@@ -982,16 +969,29 @@
           <summary>Fine <span id="health-fine-count"></span>: what the doctor looked at and found as it should be</summary>
           <div class="findings compact" id="health-fine"></div>
         </details>
-        <h3>Staying on the network: how far the watchdog went</h3>
-        <p class="setting-desc">Each outage of the box's link and the steps the uplink watchdog took, over time. Many outages
+        <details class="sec-fold helper-queue" id="helper-queue">
+          <summary>The root helper's queue: <span id="hq-running">Nothing running.</span></summary>
+          <p class="setting-desc">Everything on these pages that needs root goes to one helper, which does one job at a time:
+            a long one (a toolkit's download, an update) holds the rest back until it ends.</p>
+          <ol class="admin-checks" id="hq-waiting" hidden></ol>
+          <details class="sec-fold" id="hq-done-fold" hidden>
+            <summary>Finished lately</summary>
+            <ol class="admin-checks" id="hq-done"></ol>
+          </details>
+        </details>
+        <details class="sec-fold" id="health-ladder-fold">
+          <summary>Staying on the network: how far the watchdog went</summary>
+          <p class="setting-desc">Each outage of the box's link and the steps the uplink watchdog took, over time. Many outages
           ending at the first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace
           could go further (<a href="#network/access">Network → The box's access</a>).</p>
-        <div id="health-ladder"></div>
-        <h3>The last install</h3>
-        <p class="setting-desc" id="health-install">No record yet.</p>
-        <details class="admin-output" id="health-output">
-          <summary>Its output (the end of /var/log/irate-box/install.log)</summary>
-          <pre class="admin-log" id="health-log"></pre>
+          <div id="health-ladder"></div>
+        </details>
+        <details class="sec-fold" id="health-install-fold">
+          <summary>The last install: <span id="health-install">No record yet.</span></summary>
+          <details class="admin-output" id="health-output">
+            <summary>Its output (the end of /var/log/irate-box/install.log)</summary>
+            <pre class="admin-log" id="health-log"></pre>
+          </details>
         </details>
       </section>
 
@@ -1450,6 +1450,7 @@
             <span class="setting-name">Debian's security updates</span>
             <span class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</span>
             <div class="findings" id="updates-security"></div>
+            <div class="sec-pending" hidden></div>
             <form id="debian-pattern" class="library-form">
               <div data-update-pattern data-often="often" data-act="act"
                 data-says-0="Said here and on the badge; only apt's lists of what is new are downloaded. You fetch or install them."
@@ -1589,11 +1590,9 @@
       <section class="admin-pane" id="secdoctor" aria-labelledby="secdoctor-title">
         <h2 id="secdoctor-title">Security doctor</h2>
         <p class="setting-desc">
-          Everything the box's checks found that is not fine, said once, worst first: the doctor's own audit of
-          how the hub and the system underneath are set up, the Security page's scan, Debian's security tracker
-          (debsecan), and the weekly deep audit (the CIS benchmark and Lynis). Each ends in one thing to do: a
-          button that does it here, a link to where it is chosen, or a command to type. What you have looked at
-          and are happy to leave, accept: it moves to its own list and stops counting. Also from a shell:
+          What the security checks found that is not fine, said once, worst first: the doctor's own audit, the
+          Security page's scan, Debian's security tracker and the weekly deep audit. Each ends in one thing to do;
+          what you are happy to leave, accept, and it stops counting. From a shell:
           <code>sudo /opt/irate-box/irate-box secdoctor</code>.
         </p>
         <div class="sec-head">
