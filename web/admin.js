@@ -409,7 +409,7 @@ function renderLibrary(snap) {
     if (looked.length) {
       const last = Math.max(...looked), at = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
       parts.push(`Idle. Last looked ${at(last)}${every ? `; next about ${at(Math.max(last + every * 3600e3, Date.now()))}` : '; it looks only when asked'}.`);
-    } else parts.push(every ? 'Idle. Not looked yet.' : 'Idle; it looks only when asked.');
+    } else parts.push(every ? 'Idle. Not checked yet.' : 'Idle; it looks only when asked.');
   }
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
@@ -592,7 +592,7 @@ function renderBooks(d) {
       el('td', { className: b.state === 'ok' ? '' : 'bad', textContent: STATE_WORDS[b.state] || b.state })));
     if (open) {
       rows.push(el('tr', { className: 'book-card' }, el('td', { colSpan: 7 }, b.source ? sourceRow(b.source, b.status || {}, libBusy)
-        : el('p', { className: 'setting-desc', textContent: `${b.name}.zim was put here by hand or from a USB stick: the librarian leaves it alone. `
+        : el('p', { className: 'setting-desc', textContent: `${b.name}.zim was put here by hand or from a USB drive: the librarian leaves it alone. `
           + (b.description ? `“${b.description}”` : '') }))));
     }
   }
@@ -661,7 +661,7 @@ async function searchCatalogue(more) {
       return el('div', { className: 'admin-item' },
         el('span', { className: 'setting-name', textContent: e.title }),
         el('span', { className: 'setting-desc', textContent: ` ${e.language}, ${size(e.size)}, ${e.updated}${e.flavour ? `, ${e.flavour}` : ''}; ${e.articles} articles. ${e.summary}` }),
-        el('span', { className: 'library-buttons' }, actionButton('Keep current here', async () => {
+        el('span', { className: 'library-buttons' }, actionButton('Track releases', async () => {
           try {
             await libPost({ action: 'add', source: { name: e.flavour ? `${name}_${e.flavour}`.slice(0, 64) : name, type: 'kiwix', kiwix_name: e.name, flavour: e.flavour } });
             say(`Added ${e.title}: Update in the table above fetches it (${size(e.size)}).`, true, cat.note);
@@ -693,7 +693,7 @@ function drawSuggested(sources) {
       el('span', { className: 'setting-name', textContent: b.title }),
       el('span', { className: 'setting-desc', textContent: ` About ${size(b.mb * 2 ** 20)}${b.flavour === 'nopic' ? ', without pictures' : ''}: ${b.why}.` }),
       el('span', { className: 'library-buttons' }, have ? el('span', { className: 'setting-desc', textContent: 'Kept here already.' })
-        : actionButton('Keep current here', async () => {
+        : actionButton('Track releases', async () => {
           try {
             await libPost({ action: 'add', source: { name, type: 'kiwix', kiwix_name: b.name, flavour: b.flavour } });
             say(`Added ${b.title}: Update in the table above fetches it (about ${size(b.mb * 2 ** 20)}).`, true, cat.note);
@@ -2398,7 +2398,7 @@ function renderGlance(data, rep) {
   const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k).length) : null;
   const ago = (at) => { const s = Date.now() / 1000 - at; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
   const rows = [
-    ['Health', !rep ? 'Not looked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to look at (below).` : 'Nothing to fix or look at.'],
+    ['Health', !rep ? 'Not checked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to look at (below).` : 'Nothing to fix or look at.'],
     ['Staying on the network', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Why it is down: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
     ['The WiFi radio', find('crash-radio') ? first(find('crash-radio').detail) : 'No radio watched.'],
     ['The last start', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
@@ -2406,7 +2406,7 @@ function renderGlance(data, rep) {
     ['A frozen box', !st ? 'Not known yet.' : st.panic || st.watchdog
       ? `Restarts by itself (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
     ['Snapshots', !st ? 'Not known yet.' : st.snapshots ? 'Kept every 30 s.' : 'Off.'],
-    ['Status light', find('led') ? first(find('led').detail) : 'Not looked yet.'],
+    ['Status light', find('led') ? first(find('led').detail) : 'Not checked yet.'],
     ['Writes to the card', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
@@ -2492,9 +2492,9 @@ const HELPER_WORDS = {
   'wifi-forget': 'Network: forget', 'ap-on': 'Hotspot: on', 'ap-off': 'Hotspot: off', 'ap-try': 'Hotspot: try', 'ap-confirm': 'Hotspot: keep',
   'share-set': 'Guests\' internet', 'share-allow': 'Guests\' internet', 'service': 'A service', 'password': 'The password', 'access': 'Who may open an app',
   'admin-gate': 'The admin login', 'admin-login': 'The admin login', 'tls-switch': 'HTTPS', 'tls-make': 'HTTPS: a certificate',
-  'tls-renew': 'HTTPS: renew', 'tls-import': 'HTTPS: import', 'tls-box': 'HTTPS', 'tls-admin-only': 'HTTPS', 'usb-scan': 'USB stick: look',
-  'usb-import': 'USB stick: import', 'usb-export': 'USB stick: export', 'usb-export-many': 'USB stick: export', 'usb-kit-import': 'USB stick: a toolkit in',
-  'usb-kit-export': 'USB stick: a toolkit out', 'offline-kit': 'Backup: an offline kit', 'content-export': 'Backup: content export',
+  'tls-renew': 'HTTPS: renew', 'tls-import': 'HTTPS: import', 'tls-box': 'HTTPS', 'tls-admin-only': 'HTTPS', 'usb-scan': 'USB drive: look',
+  'usb-import': 'USB drive: import', 'usb-export': 'USB drive: export', 'usb-export-many': 'USB drive: export', 'usb-kit-import': 'USB drive: a toolkit in',
+  'usb-kit-export': 'USB drive: a toolkit out', 'offline-kit': 'Backup: an offline kit', 'content-export': 'Backup: content export',
   'backup-image': 'Backup: an image',
 };
 const helperWords = (r) => `${HELPER_WORDS[r.action] || r.action.replace(/-/g, ' ')}${r.detail ? ` (${r.detail})` : ''}`;
@@ -2600,7 +2600,7 @@ function renderHealth(data) {
   say(loose && !inClock ? loose.text : '', loose ? loose.ok : true, hl.note);
   say(inClock ? loose.text : '', loose ? loose.ok : true, hl.clockNote);
   hl.when.textContent = rep ? `Looked ${new Date(rep.at * 1000).toLocaleString()}${agoText(rep.at)}.` + (busy ? ' Working…' : '')
-    : busy ? 'Looking…' : 'Not looked yet.';
+    : busy ? 'Looking…' : 'Not checked yet.';
   hl.clockWhen.textContent = hl.when.textContent;
   hl.scan.disabled = hl.clockScan.disabled = busy || h.stuck;
   hl.progress.hidden = !p;
@@ -3311,7 +3311,7 @@ function drawRoaming(inv, u, wifi) {
 function drawNetTabs(data, inv, u) {
   const up = inv && inv.uplink;
   // Status: one line for the whole, then a card per link the box could reach a network by.
-  netTabs.overview.textContent = !inv ? 'Not looked yet.' : !up || !up.iface ? 'The box has no link to a network right now.'
+  netTabs.overview.textContent = !inv ? 'Not checked yet.' : !up || !up.iface ? 'The box has no link to a network right now.'
     : `The box reaches your network through ${up.iface} (${up.kind === 'wifi' ? 'WiFi' : 'wired'}). ${upStatusText(u)}`;
   const links = inv ? [...inv.radios.filter((r) => r.type !== 'AP'), ...inv.wired] : [];
   netTabs.statusCards.replaceChildren(...links.map((d) => el('div', { className: 'net-card setting' },
@@ -3330,7 +3330,7 @@ function drawNetTabs(data, inv, u) {
     r.profile ? netLine('Profile', `${r.profile.name}${r.profile.autoconnect ? '' : ', autoconnect off'}`) : null,
     meteredNow && meteredNow.iface === r.iface ? netLine('Metered', meteredNow.metered
       ? `yes (${meteredNow.how}): scheduled updates and downloads wait for another network` : `no (${meteredNow.how})`) : null))
-    : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here: the box reaches its network another way.' : 'Not looked yet.' })]));
+    : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here: the box reaches its network another way.' : 'Not checked yet.' })]));
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== 'ap');
   const current = new Set(wifi.map((r) => r.profile && r.profile.uuid).filter(Boolean));
@@ -3357,7 +3357,7 @@ function drawNetTabs(data, inv, u) {
     const n = (a.stations || []).length;
     return [netLine(a.iface, `Up${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}; ${n} guest device${n === 1 ? '' : 's'} joined.`),
       shared ? netLine('Its radio', `Shared with the box's WiFi (${shared.iface}): it follows that network's channel, so a roam or a reconnect there moves guests too.`) : null];
-  }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not looked yet.' })]));
+  }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not checked yet.' })]));
 }
 
 function renderNetwork(data) {
@@ -3378,7 +3378,7 @@ function renderNetwork(data) {
   const levels = data.levels;
   // What the box has
   net.when.textContent = inv ? `Looked ${new Date(inv.at * 1000).toLocaleString()}${agoText(inv.at)}${inv.focus ? ` at ${inv.focus} only` : ''}.`
-    + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not looked yet.';
+    + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not checked yet.';
   net.scan.disabled = busy;
   // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
   // can run the hotspot and on what conditions, and the warnings that are about it.
@@ -4089,7 +4089,7 @@ let bkPlan = null, bkLevel = 'data', bkWaiting = null, bkPoll = null, usbSticks 
 const BK_WORDS = {
   settings: ['Settings only', 'What was chosen: the hub\'s settings, accounts, the apps\' and add-ons\' settings, the library\'s and mirrors\' sources. Nothing that was made on the box.'],
   data: ['Settings and data', 'Also what was made on the box: notes, saved work, the board, the shoutbox, dropped files, the box\'s own git repositories.'],
-  image: ['Full image', 'The whole card, onto a USB stick: the system, the hub, books and all. Taken while the box runs, so as after a power cut; written back with any image writer.'],
+  image: ['Full image', 'The whole card, onto a USB drive: the system, the hub, books and all. Taken while the box runs, so as after a power cut; written back with any image writer.'],
 };
 function drawBackup() {
   const p = bkPlan;
@@ -4115,7 +4115,7 @@ function drawBackupGo() {
     bku.go.textContent = `Download the backup (about ${size(bkPlan.levels[bkLevel] + (bku.keys.checked ? bkPlan.syncthing : 0))})`;
   }
   bku.stick.replaceChildren(...(usbSticks.length ? usbSticks.map((d) => el('option', { value: d.name, textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }))
-    : [el('option', { value: '', textContent: 'No stick found yet' })]));
+    : [el('option', { value: '', textContent: 'No drive found yet' })]));
   bku.imageGo.disabled = !usbSticks.length || !!bkWaiting;
   for (const s of [document.getElementById('offline-stick')]) {
     const keep = s.value;
@@ -4202,7 +4202,7 @@ function drawKitTotal() {
     + (f.hub.checked ? ' The hub program is in it.' : '') + (moved ? ' With the hub program it goes as a download.' : '');
   kitEl.total.classList.toggle('bad', !!over);
   kitEl.make.dataset.over = over ? '1' : '';
-  kitEl.make.textContent = stick ? 'Copy to the stick' : 'Make the export';
+  kitEl.make.textContent = stick ? 'Copy to the drive' : 'Make the export';
   kitEl.make.disabled = kitBusy || !total || (stick && (!usbSticks.length || !!bkWaiting));
 }
 kitEl.form.addEventListener('change', drawKitTotal);
@@ -4559,7 +4559,7 @@ function drawTileOrder(openId) {
         el('p', { className: 'setting-desc', textContent: seenWords(seen, a ? a.mode : 'public') + ' Hidden, its address still works for whoever may open it.' }),
         a && a.mode !== 'public' ? chipRow('When seen but not opened', LOCK_CHIPS, lock, setLock, (v) => !!lockAll || (v === 'signup' && a.mode !== 'users')) : null,
         a && a.mode !== 'public' ? el('p', { className: 'setting-desc', textContent: lockAll
-          ? `Every tile is set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one (All apps, under "Who can open each one").`
+          ? `Every tile is set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one (All apps, under "App access").`
           : `Seen but not opened: ${LOCK_WORDS[lock]}.` }) : null,
         iconField(iconDraft, t, iconNow, setIcon),
         document.getElementById('page-app-' + id) ? AW.h('a', { href: '#page-app-' + id, class: 'action-btn' }, folderIds.has(id) ? 'Its folder page →' : 'Its page: who can open it, its settings →') : null,
@@ -4931,7 +4931,7 @@ async function setSetupDone(done) {
 document.getElementById('setup-finish').addEventListener('click', () => setSetupDone(true));
 document.getElementById('setup-again').addEventListener('click', (e) => { e.preventDefault(); setSetupDone(false); });
 
-// --- books on a USB stick ---------------------------------------------------------------
+// --- books on a USB drive ---------------------------------------------------------------
 // The root helper mounts a stick only for a scan or a copy (usbstick.py); this lists what the
 // last scan found, offers Import for each book and Export of the hub's books, and shows the
 // copy's bar.
@@ -4976,14 +4976,14 @@ function renderUsb(data) {
           onclick: () => usbRequest({ action: 'import', device: d.name, file: z.file }, `${d.name}:${z.file}`,
             `Copy ${z.file} into the library (${size(z.size)})?`) }) : null,
         noteAt(`${d.name}:${z.file}`)))
-        : [el('span', { className: 'setting-desc', textContent: d.error ? '' : 'No books on this stick.' })]),
+        : [el('span', { className: 'setting-desc', textContent: d.error ? '' : 'No books on this drive.' })]),
       data.books.length ? el('span', { className: 'library-buttons' }, pick,
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Export to this stick', disabled: busy,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Export to this drive', disabled: busy,
           onclick: () => usbRequest({ action: 'export', device: d.name, book: pick.value }, `export:${d.name}`,
             `Copy ${pick.value}.zim onto ${d.label || d.name}?`) })) : null,
       noteAt(`export:${d.name}`)));
   }));
-  if (data.scan && !devs.length) usb.devices.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No USB stick found. Plug one into the box and scan again.' }));
+  if (data.scan && !devs.length) usb.devices.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No USB drive found. Connect one to the box and scan again.' }));
   usb.progress.hidden = !p;
   if (p) {
     usb.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
@@ -5696,8 +5696,8 @@ kitsEl.add.addEventListener('submit', (e) => {
 });
 kitsEl.addCancel.addEventListener('click', resetKitForm);
 
-// Kits by USB stick (usbstick.py, kits.py): the root helper's last stick scan, Import for each kit
-// found for this box's architecture, and a cached kit to copy onto each stick.
+// Kits by USB drive (usbstick.py, kits.py): the root helper's last stick scan, Import for each kit
+// found for this box's architecture, and a cached kit to copy onto each drive.
 let kitsUsbWaiting = null;
 async function loadKitsUsb() {
   let data;
@@ -5714,7 +5714,7 @@ async function loadKitsUsb() {
   const cached = Object.entries(st.kits || {}).filter(([, v]) => v.cached);
   const here = (cached[0] && cached[0][1].cached.arch) || '';
   const devs = (data.scan && data.scan.devices) || [];
-  noteEl('kits-usb').replaceChildren(...(data.scan && !devs.length ? [el('p', { className: 'setting-desc', textContent: 'No USB stick found. Plug one into the box and look again.' })] : []),
+  noteEl('kits-usb').replaceChildren(...(data.scan && !devs.length ? [el('p', { className: 'setting-desc', textContent: 'No USB drive found. Plug one into the box and look again.' })] : []),
     ...devs.map((d) => {
       const pick = el('select', { disabled: busy || !cached.length }, ...cached.map(([kid]) => el('option', { value: kid, textContent: ((kitsData.kits || {})[kid] || {}).title || kid })));
       return el('div', { className: 'setting library-source' }, el('span', {},
@@ -5724,9 +5724,9 @@ async function loadKitsUsb() {
           el('span', { className: 'setting-desc', textContent: `${k.title}: ${k.packages} packages, ${size(k.bytes)}, ${k.arch}` +
             (here && k.arch !== here ? ` (for another kind of board: this one is ${here})` : '') }),
           !here || k.arch === here ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
-            onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the stick? Every package is checked against Debian's signatures first.`) }) : null))
-          : [el('span', { className: 'setting-desc', textContent: 'No toolkits on this stick.' })]),
-        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this stick', disabled: busy,
+            onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the drive? Every package is checked against Debian's signatures first.`) }) : null))
+          : [el('span', { className: 'setting-desc', textContent: 'No toolkits on this drive.' })]),
+        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this drive', disabled: busy,
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
     // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).

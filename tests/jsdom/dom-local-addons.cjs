@@ -73,7 +73,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('Add asks the consent text first', asked.length === 1 && asked[0].startsWith('This downloads MQTTX.') && /starts off/.test(asked[0]), asked[0]);
   const add = posted.find(([u, b]) => u === '/admin/local-addons' && b.action === 'add');
   check('Add posts the id, agreed, with the admin header', add && add[1].id === 'mqttx' && add[1].agree === true && add[2]['X-Irate-Admin'] === '1', JSON.stringify(add));
-  check('the paste warning is there', /Only do this with a manifest you have read/.test(d.querySelector('#local-paste .danger-box').textContent));
+  check('the paste warning is there', /Add a pasted manifest only if you have read it/.test(d.querySelector('#local-paste .danger-box').textContent));
   d.getElementById('local-paste-text').value = JSON.stringify({ id: 'x', addon: { title: 'X', consent: 'Take it?' } });
   d.getElementById('local-paste-go').click(); await sleep(50);
   check('paste refused until the box is ticked', !posted.some(([, b]) => b.action === 'paste') && /tick the box/.test(d.getElementById('local-paste-note').textContent));

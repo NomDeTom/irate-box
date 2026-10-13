@@ -388,7 +388,7 @@ setTimeout(() => {
   check('  Bring a box level: every repository and the settings ticked, still no hub program', kf.elements.state.value === 'settings'
     && [...d.querySelectorAll('#kit-repos input')].every((i) => i.checked) && !kf.elements.hub.checked, kf.elements.state.value);
   kf.elements.dest.value = 'stick'; kf.dispatchEvent(new w.Event('change'));
-  check('  onto a stick: the stick offered, the button says so', !d.getElementById('offline-stick-box').hidden && t('#kit-make')[0] === 'Copy to the stick', t('#kit-make')[0]);
+  check('  onto a stick: the stick offered, the button says so', !d.getElementById('offline-stick-box').hidden && t('#kit-make')[0] === 'Copy to the drive', t('#kit-make')[0]);
   preset('new').click();
   check('A new box: the hub program in, and so a download', kf.elements.hub.checked && kf.elements.dest.value === 'download' && d.getElementById('offline-stick-box').hidden
     && /hub program is in it/.test(t('#kit-total')[0]), t('#kit-total')[0]);
@@ -453,11 +453,11 @@ setTimeout(() => {
     check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
     w.AL.badge('apps', '');
   }
-  // The books' sources as tabs: Kiwix library, Other source, USB stick.
+  // The books' sources as tabs: Kiwix library, Other source, USB drive.
   {
     const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
     const panel = (id) => d.getElementById(id);
-    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB stick'
+    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB drive'
       && tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden && panel('books-other').hidden && panel('books-usb').hidden);
     tabs[2].click();
     check('  a tab opens its panel and closes the rest', !panel('books-usb').hidden && panel('books-kiwix').hidden && tabs[2].classList.contains('active'));

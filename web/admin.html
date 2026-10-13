@@ -13,8 +13,8 @@
 <body class="admin">
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>Admin</h1>
-    <p class="subtitle">Options for whoever owns the box.</p>
+    <h1>Administration</h1>
+    <p class="subtitle">Settings and services for this box.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
@@ -31,17 +31,17 @@
       <!-- The first use (server.py unclaimed(): /admin/box says first_use): these pages free to anyone on
            the network until the owner's admin account is made. -->
       <div class="settings-note admin-note bad first-use-banner" id="first-use" role="alert" hidden>
-        <strong>This box is not set up yet:</strong> anyone on this network can use these pages until its admin
-        account is made. <a href="/admin/setup">Set up this box</a> (over HTTPS, or at the console over SSH).
+        <strong>This box has no administrator account.</strong> Anyone on this network can use these pages until
+        you create one. <a href="/admin/setup">Set up this box</a> over HTTPS, or at the console over SSH.
       </div>
       <!-- Background art by side-bar group (admin.js sets data-art on main). The controller's
            desk lit, and the Firmware Factory's, are WebM loops played by krab-loop.js (made by tools/make-krab-loops.cjs). -->
       <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
       <div class="helper-banner" id="helper-banner" role="alert" hidden>
-        <strong>The box's root helper is not answering.</strong>
+        <strong>The box's root helper is not responding.</strong>
         <span id="helper-banner-detail"></span>
-        Buttons that need root (services, updates, add-ons, the doctor) will wait until it is back.
-        From a terminal on the box (SSH, or Terminal if it is on):
+        Actions that need root access are unavailable. Open a terminal on the box (SSH, or Terminal if it is on).
+        Run these commands:
         <pre class="admin-log" id="helper-banner-cmds"></pre>
       </div>
       <p class="setting-desc helper-busy" id="helper-busy" role="status" hidden></p>
@@ -73,12 +73,11 @@
         <!-- meshtasticd's last 72 hours, where it is installed (svchistory.py), and its state in words. -->
         <div class="overview-net" id="overview-mesh"></div>
         <p class="setting-desc">
-          Optional services can be started, stopped, or set to start at boot. The web server and the hub
-          can only be restarted. Each change is carried out by a small root helper on the box, so
-          it takes a second or two to show here.
+          You can start or stop optional services. You can also enable them at boot. You can only restart the web
+          server and the hub server. A root helper makes each change. Changes can take a few seconds to appear.
         </p>
         <table class="admin-table" id="service-table">
-          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th>Up, last 72 hours and 72 days</th><th></th></tr></thead>
+          <thead><tr><th>Service</th><th>State</th><th>At boot</th><th>Service history: 72 hours, 72 days</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="setting-desc action-note" id="control-note" role="status" hidden></p>
@@ -86,15 +85,14 @@
              the legend and the week in words below, redrawn by admin.js. -->
         <div class="svc-uptime" id="svc-uptime"><div id="svc-uptime-body"></div></div>
         <div id="control-results"></div>
-        <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps again</a></p>
+        <p class="setting-desc"><a href="#welcome" id="setup-again">Show the setup steps</a></p>
       </section>
 
       <section class="admin-pane" id="welcome" aria-labelledby="welcome-title">
         <h2 id="welcome-title">Setup steps</h2>
         <p class="setting-desc">
-          The password is set; these are the rest of the box's setup. Each step opens its own page,
-          and any can be skipped and come back to later: this page stays in the sidebar until you
-          finish it, and Overview can bring it back.
+          The administrator password is set. Select a step to open its settings. You can skip a step and return
+          later. Select Hide this setup page when you finish. You can reopen it from Overview.
         </p>
         <!-- One list, every step in the same form: the setup's own steps, the
              decisions that touch security, and a backup last; the tour walks all of it. Drawn by admin-tour.js. -->
@@ -102,18 +100,17 @@
         <p class="setting-desc" id="setup-left"></p>
         <ol class="setup-steps" id="setup-steps"></ol>
         <p class="library-buttons"><button class="action-btn" type="button" id="setup-finish">Hide this setup page</button>
-          <span class="setting-desc">It can be reopened from the Overview page.</span></p>
+          <span class="setting-desc">You can reopen it from Overview.</span></p>
         <p class="setting-desc action-note" id="setup-note" role="status" hidden></p>
       </section>
 
       <section class="admin-pane" id="app-inventory" aria-labelledby="app-inventory-title">
         <h2 id="app-inventory-title">All apps</h2>
         <p class="setting-desc">
-          Every app on this box and every one it can add, one line each. Open one for its own page:
-          who can open it, its tile, its settings, updates and installation.
+          View installed and available apps. Select an app to change its access, tile, settings, updates or installation.
         </p>
         <div class="inv-tools">
-          <label>Show <input type="search" id="inv-q" placeholder="name or kind" aria-label="Show apps containing"></label>
+          <label>Search apps <input type="search" id="inv-q" placeholder="name or type" aria-label="Search apps"></label>
           <div class="view-switch inv-filter" role="group" aria-label="Which apps">
             <button class="view-switch-btn active" type="button" data-inv="all" aria-pressed="true">All</button>
             <button class="view-switch-btn" type="button" data-inv="installed" aria-pressed="false">Installed</button>
@@ -128,10 +125,10 @@
       <section class="admin-pane" id="addons" aria-labelledby="addons-title">
         <h2 id="addons-title">Add-ons</h2>
         <p class="setting-desc">
-          The hub works without any of these. Adding one installs it and starts it; removing one
-          stops it and takes its service away, and keeps its data, so adding it back finds
-          everything where it was. Each runs the installer, which takes a few minutes on this
-          board and restarts the hub part-way through.
+          The hub works without these add-ons. Install an add-on to start its service. Remove it to stop its
+          service and uninstall the service. Removal keeps its data. Install the add-on again to use that data.
+          Installation can take several minutes on this board. The installer restarts the hub server during the
+          installation.
         </p>
         <div id="addons-list"></div>
         <div class="admin-progress" id="addons-progress" hidden>
@@ -145,30 +142,30 @@
 
         <h3>Web add-ons</h3>
         <p class="setting-desc">
-          Apps that run in the visitor's browser, added here in a minute with no installer and no
-          restart. Each is served on its own address (this box, port <span id="local-port">8090</span>),
-          so it cannot reach this page, the hub's settings or anything else on the box. An added one
-          starts <strong>off</strong>: open it to everyone, to users or to the admin when you are ready. The
-          Apps list on this page keeps it current, at the commit the hub's code checked unless you choose the newest.
+          Web add-ons run in the visitor's browser. The box adds them without an installer and without a restart.
+          Each add-on has its own address (this box, port <span id="local-port">8090</span>). The hub prevents an
+          add-on from opening this page or the hub settings. An add-on can reach the services that its manifest
+          declares, such as the MQTT broker. A new add-on is <strong>disabled</strong>. Select Access to give it
+          to guests, users or administrators. The Apps list on this page keeps the add-on current, at the commit
+          that the box's code checked, unless you select the newest.
         </p>
         <div id="local-added"></div>
         <h4>The catalogue</h4>
-        <p class="setting-desc">Add-ons this hub's code offers, each pinned to a commit that was checked.</p>
+        <p class="setting-desc">The box offers these add-ons. Each add-on is pinned to a commit that the box checked.</p>
         <div id="local-catalogue"></div>
         <details class="admin-output" id="local-paste">
           <summary>Add one by pasting its manifest</summary>
           <div class="danger-box" role="note">
-            <p><strong>⚠️ Only do this with a manifest you have read and from someone you trust.</strong></p>
-            <p>A pasted manifest is not checked by anyone but you. It downloads someone else's code and
-            serves it to everyone on this box's network who opens it, under this box's name. That code
-            can show them anything, ask them for anything, and send what they type to wherever its
-            manifest lets it connect. It cannot reach this page or the box itself: that much the hub
-            enforces. If you are not sure, use the catalogue instead.</p>
+            <p><strong>⚠️ Add a pasted manifest only if you have read it and you trust its author.</strong></p>
+            <p>Nobody else checks a pasted manifest. The box downloads someone else's code. The box serves that code
+            under its own name to everyone on the box's network who opens it. The code can show anything and ask
+            for anything. It can send what people type to the services that its manifest declares. The hub
+            prevents it from opening this page or the box itself. If you are not sure, use the catalogue.</p>
           </div>
           <textarea id="local-paste-text" rows="10" spellcheck="false" placeholder='{"id": "...", "order": 70, "tile": {...}, "source": {...}, "needs": "index.html", "addon": {...}}'></textarea>
           <label class="setting"><input type="checkbox" id="local-paste-ok">
-            <span class="setting-desc">I understand this runs someone else's code on this box's address</span></label>
-          <span class="library-buttons"><button class="action-btn" type="button" id="local-paste-go">Add it</button></span>
+            <span class="setting-desc">I understand that this runs someone else's code on this box's address</span></label>
+          <span class="library-buttons"><button class="action-btn" type="button" id="local-paste-go">Add web add-on</button></span>
           <span class="setting-desc" id="local-paste-note" role="status"></span>
         </details>
         <div id="local-errors"></div>
@@ -176,14 +173,14 @@
 
       <section class="admin-pane" id="access" aria-labelledby="access-title">
         <h2 id="access-title">Access</h2>
-        <h3>Admin password</h3>
+        <h3>Administrator password</h3>
         <p class="setting-desc">
-          The one login for /admin, /sync and /term (user <code>admin</code>), and Syncthing's own.
-          After changing it, the browser asks for the new one.
+          User <code>admin</code> and this password open /admin, /sync and /term. Syncthing uses them too.
+          After you change the password, the browser asks for the new one.
         </p>
         <form id="password-form" class="library-form">
           <label>New password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
-          <label>Again <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+          <label>Confirm password <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
           <button class="action-btn primary" type="submit">Change password</button>
         </form>
         <p class="setting-desc action-note" id="password-note" role="status" hidden></p>
@@ -191,8 +188,8 @@
         <div id="remote-section" hidden>
           <h3>Remote access</h3>
         <p class="setting-desc">
-          Tailscale lets you reach the box from anywhere. While it is off, it can only be
-          switched back on from here — so from the hub's own WiFi or LAN, not remotely.
+          Tailscale provides remote access to the box after setup. If you turn it off, you can turn it on again
+          only from here. Use the box's hotspot or local network. A remote connection does not work.
         </p>
         <div class="remote-choices">
           <label class="setting">
@@ -203,7 +200,7 @@
             <input type="radio" name="remote" value="on">
             <span>
               <span class="setting-name">On</span>
-              <span class="setting-desc">Stays on, including after a reboot.</span>
+              <span class="setting-desc">Stays on after a reboot.</span>
             </span>
           </label>
           <label class="setting">
@@ -211,7 +208,7 @@
             <span>
               <span class="setting-name">On for
                 <input type="number" id="remote-hours" min="1" max="72" value="2"> hours</span>
-              <span class="setting-desc">Then off by itself. A reboot also ends it.</span>
+              <span class="setting-desc">Remote access stops after this time, or when the box reboots.</span>
             </span>
           </label>
         </div>
@@ -224,24 +221,24 @@
       <section class="admin-pane" id="recovery" aria-labelledby="recovery-title">
         <h2 id="recovery-title">Recovery and monitoring</h2>
         <p class="setting-desc">
-          How the box notices trouble and comes back from it: what crash watch keeps, and what restarts
-          a box that froze. What it found is the <a href="#health">Box doctor</a>'s to show.
+          Set how long crash snapshots are kept and when the box restarts after a freeze. The
+          <a href="#health">Box doctor</a> shows the results.
         </p>
         <!-- How hard the box writes to its card: the hub's setting card_writes (server.CARD_WRITES, crashwatch.card_writes). -->
         <div class="net-card setting" id="card-writes">
-          <h3>Writing to the card</h3>
-          <p class="setting-desc">An SD card wears with every write. The box always writes a file only when it changed,
-            keeps its live reports in memory and adds to its histories rather than rewriting them. Beyond that, choose
-            how much it may lose in a crash or a power cut to write less. What people made (posts, notes, drawings,
-            settings) is written as it changes at every stop.</p>
+          <h3>SD card writes</h3>
+          <p class="setting-desc">An SD card wears with every write. The box writes a file only when it changes. It keeps live
+            reports in memory. It adds to histories and does not rewrite them. The box can write less often. A crash
+            or power failure can then lose changes made since the last write. Select how many changes the box can
+            lose. At every level, the box writes user data and settings as they change.</p>
           <div id="card-writes-box"></div>
           <p class="setting-desc" id="card-writes-rate"></p>
         </div>
         <!-- Crash watch's and the restarts' settings: set, then saved (each change goes to the root helper in turn). -->
         <div class="net-card setting" id="health-settings">
-          <h3>How the box looks after itself</h3>
-          <p class="setting-desc">What crash watch keeps, and what restarts a frozen box. Repairs to the box's network
-            connection, and reboots for it, are the uplink watchdog's: <a href="#net-watchdog-card">Network → Staying on the network</a>.</p>
+          <h3>Automatic recovery</h3>
+          <p class="setting-desc">Set crash snapshot retention and frozen-system restart. The uplink watchdog repairs the box's network
+            connection and reboots the box for it: <a href="#net-watchdog-card">Network → Staying on the network</a>.</p>
           <div id="health-settings-groups"></div>
           <div class="library-buttons">
             <button class="action-btn" type="button" id="health-settings-discard" disabled>Discard</button>
@@ -254,15 +251,14 @@
       <section class="admin-pane" id="clock" aria-labelledby="clock-title">
         <h2 id="clock-title">Clock</h2>
         <p class="setting-desc">
-          What keeps the box's time, what happened to it at this boot, and a clock module on I2C if
-          there is one. Boards like this one have no clock of their own: without the network or a
-          module, the time comes back wrong after a power cut. Looking for a module only reads the
-          I2C buses; setting one up uses the kernel's driver where there is one, and never switches
-          on charging.
+          This page shows what keeps the box's time, what happened to the time at this boot, and the clock
+          module on I2C, if there is one. This board has no clock of its own. Without the network or a clock
+          module, the time is wrong after a power cut. A scan only reads the I2C buses. Setup of a module uses the
+          kernel driver where one exists. Setup never turns on charging.
         </p>
-        <p class="setting-desc" id="clock-when">Not looked yet.</p>
+        <p class="setting-desc" id="clock-when">Not checked yet.</p>
         <div class="library-buttons">
-          <button class="action-btn" type="button" id="clock-scan">Look again</button>
+          <button class="action-btn" type="button" id="clock-scan">Scan for clock modules</button>
         </div>
         <p class="setting-desc action-note" id="clock-note" role="status" hidden></p>
         <div class="findings" id="clock-findings"></div>
@@ -271,10 +267,9 @@
       <section class="admin-pane" id="appearance" aria-labelledby="appearance-title">
         <h2 id="appearance-title">Appearance</h2>
         <p class="setting-desc">
-          The hub's name, the line under it and its colours; then how wide the pages are, for
-          everyone: the hub's pages, these admin pages, and the shoutbox and the forum on the hub page,
-          each its own. Text stays at reading width whatever you choose,
-          and on a phone everything fits the screen anyway. Below them, which emoji the pickers offer.
+          Set the hub name, subtitle and colours. Set page widths separately for the hub, administration, Shoutbox
+          and Board. Text keeps its reading width at every page width setting. On a phone, the page always fits
+          the screen. Select the emoji sets below.
         </p>
         <div id="appearance-box"></div>
       </section>
@@ -282,9 +277,8 @@
       <section class="admin-pane" id="tile-order" aria-labelledby="tile-order-title">
         <h2 id="tile-order-title">Home tiles</h2>
         <p class="setting-desc">
-          The home page's tiles, apps and folders, first to last. Open one to move it, size it,
-          choose who sees it and what it does for someone who may not open it, or give it its own
-          icon; or go to its page. Who can open an app is on the app's own page.
+          Select a tile to change its order, size, visibility, icon or locked-tile action. Change app access on the
+          app's page.
         </p>
         <div id="tile-order-box"></div>
       </section>
@@ -294,9 +288,9 @@
         <p class="setting-desc library-state"></p>
         <progress class="admin-bar library-bar" hidden></progress>
         <p class="setting-desc">
-          The whiteboard, the Mermaid editor, the serial terminal and the collaboration relay come
-          from their forks' GitHub Actions builds, and the calculators from their repository, adapted
-          for the hub. Which apps there are is set by the manifests in apps.d/.
+          The whiteboard, the Mermaid editor, the serial terminal and the collaboration relay come from GitHub
+          Actions builds of their forks. The calculators come from their repository, adapted for the hub. The
+          manifests in apps.d/ set which apps exist.
         </p>
         <!-- Each app's updates are on its own page; listed here only an app with no page. -->
         <div id="apps-list"></div>
@@ -306,15 +300,15 @@
           <p class="setting-desc">Part of the hub itself, so there is nothing to install or update.</p>
           <div id="builtin-list"></div>
         </div>
-        <h3>Who can open each one</h3>
+        <h3>App access</h3>
         <p class="setting-desc">
-          <strong>Public</strong>: everyone on the box's network can open it.
-          <strong>Users</strong>: anyone signed in to an account can open it; anyone else is asked to sign in.
-          <strong>Private</strong>: only the admin; its address asks for the admin login.
-          <strong>Off</strong>: its address answers "not found"; an add-on's service is stopped too.
-          <strong>Tile shown to</strong> is apart from that: a tile can show to everyone with a lock, so
-          guests see what is on the box, or to nobody while its address still works. Who can open an
-          app is set on its own page under Apps; who sees its tile, on Home tiles.
+          <strong>Guests</strong>: every device on the box's network can open the app.
+          <strong>Users</strong>: signed-in accounts can open it. Other visitors must sign in first.
+          <strong>Administrators</strong>: only an administrator can open it. Its address asks for the administrator sign-in.
+          <strong>Disabled</strong>: its address answers "Not found". The service of an add-on stops too.
+          <strong>Visibility</strong> is a separate setting. A tile can show to everyone with a lock, or to nobody
+          while the app address still works. Tile visibility does not change app access. Set access on the page
+          of each app under Apps. Set tile visibility on Home tiles.
         </p>
         <div id="sign-in-offer-box"></div>
       </section>
@@ -324,22 +318,20 @@
         <p class="setting-desc library-state"></p>
         <progress class="admin-bar library-bar" hidden></progress>
         <p class="setting-desc">
-          The librarian keeps the books in <a href="/wiki/">/wiki/</a> current from where they are
-          published, on the schedule on The librarian.
+          The librarian updates the books in <a href="/wiki/">/wiki/</a> from their publishers, on the schedule in The librarian.
         </p>
         <p class="setting-desc">
-          Each book keeps its name across versions, so links into it never break. Books added by
-          hand, or by <code>install.sh --zim</code>, are left alone unless a source here has the same
-          name.
+          Each book keeps its name across versions. Links into the book keep working. The librarian does not change
+          books that you add by hand or with <code>install.sh --zim</code>, unless a source here has the same name.
         </p>
         <!-- The books, a page at a time (/admin/books); a book's card opens from its row. -->
         <p class="setting-desc" id="books-summary"></p>
         <div class="books-tools">
-          <label>Show <input type="search" id="books-q" placeholder="title or name" aria-label="Show books containing"></label>
+          <label>Search books <input type="search" id="books-q" placeholder="title or name" aria-label="Search books"></label>
           <label>Language <select id="books-language"><option value="">any</option></select></label>
           <label>State <select id="books-state"><option value="">any</option><option value="newer">newer available</option>
             <option value="failed">check failed</option><option value="not installed">not installed</option><option value="unreadable">unreadable</option><option value="ok">up to date</option></select></label>
-          <label>Kept current <select id="books-kept"><option value="">either</option><option value="yes">yes</option><option value="no">no (by hand, or USB)</option></select></label>
+          <label>Managed updates <select id="books-kept"><option value="">either</option><option value="yes">enabled</option><option value="no">disabled (added by hand, or by USB)</option></select></label>
           <label>Sort <select id="books-sort"><option value="title">by title</option><option value="size">largest first</option><option value="date">newest first</option></select></label>
         </div>
         <div class="books-bulk" id="books-bulk" hidden>
@@ -352,7 +344,7 @@
         </div>
         <div class="scroll-x">
           <table class="admin-table books-table" id="books-table">
-            <thead><tr><th><input type="checkbox" id="books-page-all" aria-label="Select this page"></th><th>Book</th><th>Language</th><th>Size</th><th>Date</th><th>Kept current</th><th>State</th></tr></thead>
+            <thead><tr><th><input type="checkbox" id="books-page-all" aria-label="Select this page"></th><th>Book</th><th>Language</th><th>Size</th><th>Date</th><th>Managed updates</th><th>State</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -360,7 +352,7 @@
         <div id="library-sources" hidden></div>
         <div class="library-actions">
           <button class="action-btn" type="button" data-all="check">Check all now</button>
-          <button class="action-btn" type="button" data-all="fetch">Fetch all</button>
+          <button class="action-btn" type="button" data-all="fetch">Download all</button>
           <button class="action-btn" type="button" data-all="update">Install all</button>
         </div>
         <p class="setting-desc action-note" id="library-all-note" role="status" hidden></p>
@@ -371,18 +363,18 @@
           <div class="view-switch" role="tablist" aria-label="Where new books come from">
             <button type="button" class="view-switch-btn" role="tab" id="tab-books-kiwix" aria-controls="books-kiwix">Kiwix library</button>
             <button type="button" class="view-switch-btn" role="tab" id="tab-books-other" aria-controls="books-other">Other source</button>
-            <button type="button" class="view-switch-btn" role="tab" id="tab-books-usb" aria-controls="books-usb">USB stick</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-books-usb" aria-controls="books-usb">USB drive</button>
           </div>
           <div role="tabpanel" id="books-kiwix" aria-labelledby="tab-books-kiwix">
           <p class="setting-desc">
-            Kiwix's own library (library.kiwix.org): Wikipedia and its sisters, Stack Exchange sites,
-            manuals, courses, in many languages. Needs the internet. "Keep current here" adds the book
-            as a source that follows its newest release; Update fetches it.
+            Kiwix's own library (library.kiwix.org) has Wikipedia and related projects, Stack Exchange sites,
+            manuals and courses, in many languages. An internet connection is required. Select Track releases to
+            add a book as a source that follows its newest release. Update downloads the book.
           </p>
           <details class="sec-fold" id="suggested-fold" open>
             <summary>Suggested for an offline box</summary>
-            <p class="setting-desc">Books worth having where there is no internet, from the same catalogue, checked against its
-              published sha256 when fetched. Sizes are about what the catalogue gives; mind the card's room (Backup says it).</p>
+            <p class="setting-desc">Books for a box without internet access, from the same catalogue. The box checks each download against the
+              published sha256. Sizes are approximate. Check the free storage space before you download (see Backup).</p>
             <div id="suggested-books" class="admin-list"></div>
           </details>
           <form id="catalogue-form" class="books-tools">
@@ -396,7 +388,7 @@
           </div>
           <div role="tabpanel" id="books-other" aria-labelledby="tab-books-other" hidden>
           <p class="setting-desc">
-            Quick fill:
+            Source templates:
             <button type="button" class="link-button" data-preset="release">a project's releases</button> ·
             <button type="button" class="link-button" data-preset="actions">a fork's Actions builds</button> ·
             <button type="button" class="link-button" data-preset="nightly-link">Actions builds via nightly.link</button>
@@ -408,7 +400,7 @@
                 <option value="release">GitHub releases</option>
                 <option value="actions">GitHub Actions artifacts (token)</option>
                 <option value="nightly-link">GitHub Actions artifacts via nightly.link</option>
-                <option value="url">A URL</option>
+                <option value="url">Direct download URL</option>
               </select>
             </label>
             <p class="setting-desc" id="library-type-help"></p>
@@ -416,7 +408,7 @@
             <label data-for="actions nightly-link">Workflow file <input name="workflow" placeholder="docs-zim.yml"></label>
             <label data-for="actions nightly-link">Branch <input name="branch" placeholder="any"></label>
             <label data-for="release actions nightly-link">Asset or artifact name <input name="pattern" placeholder="*.zim"></label>
-            <label data-for="url">URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
+            <label data-for="url">Download URL <input name="url" type="url" placeholder="https://…/book.zim"></label>
             <label data-for="release" class="inline"><input name="prerelease" type="checkbox"> include pre-releases</label>
             <button class="action-btn primary" type="submit">Add source</button>
           </form>
@@ -424,11 +416,11 @@
           </div>
           <div role="tabpanel" id="books-usb" aria-labelledby="tab-books-usb" hidden>
           <p class="setting-desc">
-            Plug a stick into the box, then scan. Books on it can be copied into the library, and the
-            hub's books copied onto it to carry to another box. The stick is only mounted for the
-            scan or the copy, read-only unless something is being copied to it.
+            Connect a USB drive to the box. Select Scan for USB drives. Copy books from the drive to the library, or
+            copy the hub's books to the drive. The box mounts the drive only during a scan or a copy. The mount is
+            read-only, except while the box copies to the drive.
           </p>
-          <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB sticks</button></div>
+          <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB drives</button></div>
           <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
           <div class="admin-progress" id="usb-progress" hidden>
             <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>

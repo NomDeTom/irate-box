@@ -101,7 +101,7 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   check('a kept book\'s card opens under its row, with its buttons', card && /book-001\.zim/.test(t(card)) && [...card.querySelectorAll('button')].some((b) => t(b) === 'Install'));
   const hand = rows().find((r) => /book-050/.test(t(r)));
   hand.querySelector('.link-button').click(); await wait(50);
-  check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB stick: the librarian leaves it alone/.test(t(d.querySelector('#books-table tr.book-card'))));
+  check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB drive: the librarian leaves it alone/.test(t(d.querySelector('#books-table tr.book-card'))));
   // Kiwix's catalogue.
   const cf = d.getElementById('catalogue-form');
   cf.elements.q.value = 'raspberry'; cf.elements.language.value = 'eng';
@@ -110,9 +110,9 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   const hit = d.querySelector('#catalogue-results .admin-item');
   check('  a result: title, language, size, date, articles, summary', /Raspberry Pi Q&A eng, 284\.6 MB, 2026-08-04; 77213 articles\. Stack Exchange/.test(t(hit)), t(hit));
   check('  and More, as there are more', !d.getElementById('catalogue-pager').hidden);
-  [...hit.querySelectorAll('button')].find((b) => t(b) === 'Keep current here').click(); await wait();
+  [...hit.querySelectorAll('button')].find((b) => t(b) === 'Track releases').click(); await wait();
   const added = posted.find((b) => b.action === 'add');
-  check('Keep current here: a kiwix source by its catalogue name', added && added.source.type === 'kiwix' && added.source.kiwix_name === 'raspberrypi.stackexchange.com_en_all'
+  check('Track releases: a kiwix source by its catalogue name', added && added.source.type === 'kiwix' && added.source.kiwix_name === 'raspberrypi.stackexchange.com_en_all'
     && added.source.name === 'raspberrypi.stackexchange.com_en_all', JSON.stringify(added));
   check('  and says how to fetch it', /Added Raspberry Pi Q&A: Update in the table above fetches it \(284\.6 MB\)\./.test(t(d.getElementById('catalogue-note'))));
   cf.elements.q.value = 'offline'; cf.dispatchEvent(new w.Event('submit', { cancelable: true })); await wait();
@@ -126,7 +126,7 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   posted.length = 0;
   sug()[3].querySelector('button').click(); await wait();
   const sAdd = posted.find((b) => b.action === 'add');
-  check('  Keep current here: a kiwix source by its catalogue name and flavour', sAdd && sAdd.source.kiwix_name === 'ham.stackexchange.com_en_all'
+  check('  Track releases: a kiwix source by its catalogue name and flavour', sAdd && sAdd.source.kiwix_name === 'ham.stackexchange.com_en_all'
     && sAdd.source.type === 'kiwix' && sAdd.source.flavour === '' && sAdd.source.name === 'ham.stackexchange.com_en_all', JSON.stringify(sAdd));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
