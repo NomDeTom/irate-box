@@ -252,7 +252,7 @@ function sourceRow(src, st, busy) {
     type: 'button', className: 'action-btn', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
     onclick: () => { if (['fetch', 'update'].includes(body.action) && !meteredOk(`${label}: the download`)) return; libAct(key, body, confirmText); },
   });
-  // Check finds a newer version; Fetch downloads and checks it beside the book in use;
+  // Check finds a newer version; Download downloads and checks it beside the book in use;
   // Update swaps it in (fetching first if that has not happened).
   const newer = !!latest.version && latest.version !== cur.version;
   const fetched = st.fetched && st.fetched.version === latest.version ? st.fetched : null;
@@ -270,7 +270,7 @@ function sourceRow(src, st, busy) {
       st.error ? el('span', { className: 'setting-desc bad', textContent: st.error }) : null,
       el('span', { className: 'library-buttons' },
         button('Check now', { action: 'check', names: [src.name] }),
-        button('Fetch', { action: 'fetch', names: [src.name] }, null, {
+        button('Download', { action: 'fetch', names: [src.name] }, null, {
           off: !newer || fetched, title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '' }),
         button('Install', { action: 'update', names: [src.name] }),
         archive.length ? button('Roll back', { action: 'rollback', name: src.name },
@@ -320,7 +320,7 @@ function renderApps(snap, busy) {
       ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Fetch', disabled: busy || !newer || !!fetched,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Download', disabled: busy || !newer || !!fetched,
           title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
         el('button', { type: 'button', className: 'action-btn', textContent: 'Install', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
@@ -331,7 +331,7 @@ function renderApps(snap, busy) {
             follow === 'pinned' ? `Install the newest ${a.title} from now on, rather than the pinned commit the hub's maintainers checked? Nobody will have looked at it first.` : null) }) : null)
         : el('span', { className: 'library-buttons' },
           el('button', { type: 'button', className: 'action-btn', textContent: 'Keep current', disabled: busy,
-            title: `Track ${a.title}'s published builds, so Check, Fetch and Update work for it`,
+            title: `Track ${a.title}'s published builds, so Check, Download and Update work for it`,
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
   };
@@ -488,7 +488,7 @@ lib.add.addEventListener('submit', async (e) => {
   }
   try {
     renderLibrary(await libPost({ action: 'add', source }));
-    say(`Added ${source.name}. Use Check now, then Fetch or Install.`, true, noteEl('library-add-note'));
+    say(`Added ${source.name}. Use Check now, then Download or Install.`, true, noteEl('library-add-note'));
     lib.add.reset();
     showTypeFields();
   } catch (err) { say(`Could not add the source: ${err.message}`, false, noteEl('library-add-note')); }
@@ -769,7 +769,7 @@ function pkgCard(id, p) {
       : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
         : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
     newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}`
-      + (newest.flagged ? ' (not downloaded: Fetch keeps it here, Install fetches it first).' : '.') : 'Not checked yet.',
+      + (newest.flagged ? ' (not downloaded: Download keeps it here, Install fetches it first).' : '.') : 'Not checked yet.',
     p.due ? `Due: ${p.due}` + (looking ? ' (nothing installs by itself: press Install to install it).' : ', at the next check.')
       : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
         + (looking ? '' : 'nothing installs by itself until that channel passes it; ') + 'Install installs it anyway.' : null,
@@ -778,7 +778,7 @@ function pkgCard(id, p) {
   ];
   const keptList = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
     el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
-  // The update pattern's three steps: Flag (mode flag), Fetch (mode watch: each build kept when first seen),
+  // The update pattern's three steps: Flag (mode flag), Download (mode watch: each build kept when first seen),
   // Install at once (auto) or after a wait (aged).
   const act = { flag: 0, watch: 1 }[s.mode] ?? 2, wait = s.mode === 'aged' ? s.days : 0;
   const pat = (list) => list.map(([v, t]) => [Number(v), t]);
@@ -786,7 +786,7 @@ function pkgCard(id, p) {
     { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
     { key: 'every', label: 'How often to look', kind: 'choice', value: s.every ?? 24, options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]) },
     { key: 'act', label: 'When something newer is found', kind: 'choice', value: act, options: pat(AW.UPDATE_ACT),
-      note: 'Flag shows the new version and downloads nothing. Fetch downloads and keeps each new build, so Roll back works offline. Install also installs the build.' },
+      note: 'Flag shows the new version and downloads nothing. Download downloads and keeps each new build, so Roll back works offline. Install also installs the build.' },
     { key: 'wait', label: 'Install', kind: 'choice', value: wait, options: [[0, 'at once']].concat((p.days || [1, 3, 7, 14, 30]).map((n) => [n, `after ${n} day${n === 1 ? '' : 's'}`])),
       note: 'With Install: a build waits until it has been out this long (alpha and nightly builds are untested)' },
   ], { save: (v) => {
@@ -807,7 +807,7 @@ function pkgCard(id, p) {
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
     el('span', { className: 'library-buttons' },
       actionButton('Check now', () => pkgAct({ action: 'check', package: id })),
-      flag ? actionButton(`Fetch ${flag.version}`, () => pkgAct({ action: 'fetch', package: id })) : null,
+      flag ? actionButton(`Download ${flag.version}`, () => pkgAct({ action: 'fetch', package: id })) : null,
       newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
       p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null),
@@ -1469,7 +1469,7 @@ function renderUpdate(data) {
         (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
         `. Checked ${when}. ` + (ready ? 'Fetched and verified, and its downloads are cached: ready to install.'
           : fetched ? 'It did not pass verification (below), so it cannot be installed.'
-          : 'Fetch it to verify it and download what it needs.'));
+          : 'Download it to verify it and download what it needs.'));
   }
   const checks = (fetched && s.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
@@ -2167,7 +2167,7 @@ async function secRequest(body, fid) {
 }
 
 // Debian's security updates as the update pattern: how often apt looks, what it does with what
-// it finds (apt's periodic work, unattended-upgrades to install), and Check now / Fetch / Install by hand.
+// it finds (apt's periodic work, unattended-upgrades to install), and Check now / Download / Install by hand.
 const deb = { form: document.getElementById('debian-pattern'), note: noteEl('debian-pattern-note'), box: document.getElementById('debian-buttons'),
   says: document.getElementById('debian-auto-says') };
 deb.buttons = AW.updateButtons({
@@ -2336,7 +2336,7 @@ function installText(st) {
 const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Staying|Hold|The box's access)/, 'network/access', 'Network → The box\'s access'],
   [/\bNetwork → (the )?[Hh]otspot/, 'network/hotspot', 'Network → Hotspot'], [/\bNetwork → (Look|Hardware)/, 'network/hardware', 'Network → Hardware'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
   [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
-  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts & users'],
+  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts'],
   [/\bFirmware Factory\b/, 'factory', 'Firmware Factory']];
 // A command in a finding's words: where it starts, up to the end of its sentence (or before "  (").
 // Not prose that begins like one ("journalctl -u NAME says why"), nor one with a NAME to fill in.
@@ -5244,7 +5244,7 @@ function renderMirrors(data) {
         st.tags_error ? el('span', { className: 'setting-desc bad', textContent: `The tags: ${st.tags_error}` }) : null),
       el('span', { className: 'library-buttons' },
         actionButton('Check now', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
-        actionButton('Fetch', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Fetching is a mirror\'s update' }),
+        actionButton('Download', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Fetching is a mirror\'s update' }),
         actionButton(m.submodules ? 'Without submodules' : 'With submodules', act({ action: 'mirror-change',
           mirror: Object.assign({}, m, { status: undefined, submodules: !m.submodules }) }), { className: 'small' }),
         relGroups.length ? actionButton(skipping ? 'Keep revoked' : 'Leave revoked out', act({ action: 'mirror-change',
@@ -5557,7 +5557,7 @@ function renderKits(data) {
     kitsBudgetSync();
   }
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
-    'Fetch the kit again while online; nothing installs from a cache that fails its check.')));
+    'Download the kit again while online; nothing installs from a cache that fails its check.')));
   // A card per kit, its details in a drawer inside the card; not redrawn
   // under an open drawer with changes not saved.
   const open = kitsEl.grid.querySelector('.aw-card.open');

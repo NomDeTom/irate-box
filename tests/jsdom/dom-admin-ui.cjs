@@ -363,11 +363,11 @@ setTimeout(() => {
   check('  the hub card holds what an update must carry, folded; the doctors\' places still there', !!d.querySelector('#update-hub-card details #update-signing-form')
     && !!d.getElementById('pkg-makers') && d.getElementById('updates-debian').classList.contains('update-card'));
   const pkChips = pk ? [...pk.querySelectorAll('.chip')].map((c) => c.textContent + (c.classList.contains('selected') || c.getAttribute('aria-pressed') === 'true' ? '*' : '')) : [];
-  check('packages: Flag, Fetch and Install offered, Flag chosen', ['Flag*', 'Fetch', 'Install'].every((x) => pkChips.includes(x)), pkChips);
-  check('  the flagged build said as not downloaded; Fetch and Install offered for it', pk && /2\.8\.1\.9, first seen .*not downloaded/.test(pk.textContent)
-    && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Fetch 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
-  [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Fetch 2.8.1.9')?.click();
-  check('  Fetch asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
+  check('packages: Flag, Download and Install offered, Flag chosen', ['Flag*', 'Download', 'Install'].every((x) => pkChips.includes(x)), pkChips);
+  check('  the flagged build said as not downloaded; Download and Install offered for it', pk && /2\.8\.1\.9, first seen .*not downloaded/.test(pk.textContent)
+    && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Download 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
+  [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Download 2.8.1.9')?.click();
+  check('  Download asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
   {
     // The card: its state and buttons first; channel and policy folded under what is saved; a draft kept through a reload.
     const pol = pk && pk.querySelector('.pkg-policy');
@@ -375,7 +375,7 @@ setTimeout(() => {
     check('packages: the buttons before the policy, which is folded under what is saved', !!pol && pol.tagName === 'DETAILS'
       && !!(btns.compareDocumentPosition(pol) & w.Node.DOCUMENT_POSITION_FOLLOWING) && /^.+: (Looks|Only)/.test(t('.pkg-policy-says')[0]), t('.pkg-policy-says')[0]);
     pol.open = true;
-    [...pol.querySelectorAll('.chip')].find((c) => c.textContent === 'Fetch').click();
+    [...pol.querySelectorAll('.chip')].find((c) => c.textContent === 'Download').click();
     w.loadPackages();
   }
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
@@ -409,7 +409,7 @@ setTimeout(() => {
     && d.querySelector('#git-mirrors .setting-desc.warn'), t('#git-mirrors')[0]);
   w.confirm = () => true;
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Fetch').click();
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Download').click();
   // The repository cards are dom-git.cjs's; the mirrors' list is now Library → Mirrors.
   // A section headed with its page's title doesn't repeat it; a page of one section keeps it.
   check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
@@ -559,15 +559,15 @@ setTimeout(() => {
     [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
     setTimeout(() => {
     {
-      // The Fetch pressed earlier: its answer on meshtasticd's own card, not the list's line, and kept through the reload.
+      // The Download pressed earlier: its answer on meshtasticd's own card, not the list's line, and kept through the reload.
       const ans = d.querySelector('#pkg-list [data-pkg="meshtasticd"] .pkg-answer');
       check('packages: the answer on its own card, kept through a reload', ans && !ans.hidden && /Asked: queued/.test(ans.textContent)
         && d.getElementById('pkg-note').hidden, ans && ans.textContent);
     }
     {
       const pol = d.querySelector('#pkg-list .pkg-policy');
-      check('  after a reload: the fold still open, the unsaved Fetch still chosen', pol && pol.open
-        && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Fetch'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
+      check('  after a reload: the fold still open, the unsaved Download still chosen', pol && pol.open
+        && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Download'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
     }
       check('git: Flush asks the hub, and the cache is gone from the page', posted.some((p) => p[0] === '/admin/firmware' && p[1].action === 'flush-cache')
         && !/Kept:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);

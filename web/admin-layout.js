@@ -30,7 +30,7 @@ const AL = (() => {
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'User data', sections: ['made'] }] },
     { name: 'System', art: 'controller', pages: [
-      { title: 'Accounts & users', sections: ['accounts', 'access'] },
+      { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security'] },
       { title: 'The librarian', sections: ['sources'] },

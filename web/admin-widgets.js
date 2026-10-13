@@ -57,12 +57,12 @@ const AW = (() => {
   // ---- One pattern for every update: how often to look, and how far to take what it finds. The same two choices, the
   // same words and the same three buttons wherever something is updated: Debian's security updates, the
   // hub's own, apps and books, packages, the toolkits' cache, the mirrors. Values are the librarian's:
-  // hours (0 Manual) and 0 Flag / 1 Fetch / 2 Install. Selects underneath, so forms read them and
+  // hours (0 Manual) and 0 Flag / 1 Download / 2 Install. Selects underneath, so forms read them and
   // chipSelect draws them as chips.
   const OFTEN = [['0', 'Manual', 'The box looks only when you select Check now. It then does what the setting below says.'],
     ['6', '6 hours', 'The box looks every 6 hours.'], ['24', '24 hours', 'The box looks once a day.'], ['168', 'Weekly', 'The box looks once a week.']];
   const ACT = [['0', 'Flag', 'The box shows that a newer version exists, here and on the badge. It downloads nothing.'],
-    ['1', 'Fetch', 'The box shows that a newer version exists. It downloads and checks the version. You install it.'],
+    ['1', 'Download', 'The box shows that a newer version exists. It downloads and checks the version. You install it.'],
     ['2', 'Install', 'The box shows that a newer version exists. It downloads, checks and installs the version.']];
   const PATTERN_LABELS = { often: 'How often to look', act: 'When something newer is found' };
   // The saved pattern in one sentence, for a folded policy's title: what the box will actually do.
@@ -101,7 +101,7 @@ const AW = (() => {
         says, oftenSays, why: box.dataset.why || null }));
     });
   }
-  // The three buttons beside them: Check now, Fetch (greyed with why when nothing newer is known or it is
+  // The three buttons beside them: Check now, Download (greyed with why when nothing newer is known or it is
   // fetched already), Install (fetching first if needed). Each: {onclick, disabled, why, label}; null leaves
   // one out (Install where fetching is the update). The badge (updatePill) goes first.
   function updateButtons(b) {
@@ -109,7 +109,7 @@ const AW = (() => {
     const why = h('p', { class: 'setting-desc update-why', hidden: true });
     row.update = (state) => {
       const whys = [];
-      for (const [k, label] of [['check', 'Check now'], ['fetch', 'Fetch'], ['install', 'Install']]) {
+      for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
         const s = { ...(b[k] || {}), ...((state || {})[k] || {}) }, node = row.querySelector(`[data-update="${k}"]`);
         if (!node) continue;
         node.disabled = !!s.disabled;
@@ -119,7 +119,7 @@ const AW = (() => {
       why.textContent = whys.join(' ');
       why.hidden = !whys.length;
     };
-    for (const [k, label] of [['check', 'Check now'], ['fetch', 'Fetch'], ['install', 'Install']]) {
+    for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
       if (!b[k]) continue;
       row.append(btn(b[k].label || label, { 'data-update': k, class: 'action-btn' + (k === 'install' ? ' primary' : ''), onclick: b[k].onclick }));
     }

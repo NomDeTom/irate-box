@@ -434,20 +434,20 @@
       <section class="admin-pane" id="firmware" aria-labelledby="firmware-title">
         <h2 id="firmware-title">Firmware</h2>
         <p class="setting-desc">
-          Meshtastic's release files kept on the box for the web flasher, so a radio can be flashed
-          with no internet. Every board is kept unless you choose (about 600 MB a release); untick
-          "All boards" and tick yours to keep only those (a few MB each, per release). Looked for as often as chosen below, whenever the box has
-          internet. The firmware's source code is a mirror like any other repository (Git → Mirrors);
-          the build cache is with the builds (Git → Builds). To build your own from the mirror, for
-          boards a release doesn't cover or from a fork: the <a href="#factory">Firmware Factory</a>.
+          Store Meshtastic releases on the box for the web flasher. You can then flash a radio without internet access.
+          The box stores every board unless you select boards (about 600 MB for each release). Clear All boards and
+          select your boards to store only those (a few MB each, for each release). The box looks for new releases as
+          often as you set below, when it has internet access. The firmware source code is a mirror like any other
+          repository (Git → Mirrors). The build cache is with the builds (Git → Builds). To build your own firmware
+          for boards that a release does not cover, or from a fork, use the <a href="#factory">Firmware Factory</a>.
         </p>
         <p class="setting-desc" id="fw-source"></p>
         <p class="setting-desc" id="fw-status"></p>
         <form id="fw-form" class="library-form">
-          <label class="inline"><input type="checkbox" name="enabled"> Keep firmware on this box</label>
-          <label class="inline"><input type="checkbox" name="configs"> Keep meshtasticd's board configs (<code>bin/config.d</code>, a few hundred KB), so the calculators' pinout map lists them with no internet — even with no firmware kept</label>
-          <label>Alphas to keep <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
-          <label>Betas to keep <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
+          <label class="inline"><input type="checkbox" name="enabled"> Store firmware on this box</label>
+          <label class="inline"><input type="checkbox" name="configs"> Store meshtasticd's board configs (<code>bin/config.d</code>, a few hundred KB). The calculators' pinout map then lists them without internet access, also when the box stores no firmware</label>
+          <label>Alpha releases to retain <input name="keep_alpha" type="number" min="0" max="5" step="1"></label>
+          <label>Beta releases to retain <input name="keep_beta" type="number" min="0" max="5" step="1"></label>
           <label class="inline"><input type="checkbox" name="all_boards"> All boards</label>
           <label>Boards <input id="fw-filter" type="search" placeholder="filter: rak, heltec, t-deck…"></label>
           <div id="fw-boards" class="fw-boards"></div>
@@ -457,52 +457,52 @@
         <form id="fw-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="firmware_every_hours" data-act="firmware_auto" data-acts="0,1"
             data-says-1="The box downloads the release files for the web flasher."
-            data-why="Fetching the release files is their update: nothing on the box itself is installed."></div>
+            data-why="Downloading the release files is their update. The box installs nothing."></div>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" role="status" hidden></p>
         <p class="library-buttons update-buttons">
           <button class="action-btn" type="button" id="fw-check" data-update="check">Check now</button>
-          <button class="action-btn" type="button" id="fw-update" data-update="fetch">Fetch</button>
+          <button class="action-btn" type="button" id="fw-update" data-update="fetch">Download</button>
         </p>
-        <h3>Kept</h3>
+        <h3>Stored releases</h3>
         <div id="fw-kept" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="mirrors" aria-labelledby="mirrors-title">
         <h2 id="mirrors-title">Mirrors</h2>
         <p class="setting-desc">
-          Repositories the box keeps from an upstream on the internet, by a policy: which branches,
-          how many releases, how much history, and their submodules. The librarian checks them on
-          its schedule (The librarian). Each is read-only on the box, and shows on the Git page
-          as a card of its own. New mirrors are public (anyone on the network can browse and clone
-          them, as on the internet); choose Private to keep one behind the admin login.
+          The box keeps repositories from an upstream on the internet. A policy sets which branches, how many
+          releases, how much history, and which submodules. The librarian checks the mirrors on its schedule (The
+          librarian). Each mirror is read-only on the box and shows on the Git page as a card of its own. A new
+          mirror lets guests browse and clone it. Select Administrators to put a mirror behind the administrator
+          sign-in.
         </p>
         <form id="mirrors-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="mirrors_every_hours" data-act="mirrors_auto" data-acts="0,1"
-            data-says-0="The box shows on each mirror that it is out of date. Select Fetch to update a mirror."
-            data-says-1="The box shows that a mirror is out of date. It also fetches the update."
-            data-why="Fetching is a mirror's update: there is nothing to install."></div>
+            data-says-0="The box shows on each mirror that it is out of date. Select Update to update a mirror."
+            data-says-1="The box shows that a mirror is out of date. It also downloads the update."
+            data-why="Downloading is the update of a mirror. There is nothing to install."></div>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" role="status" hidden></p>
         <p class="library-buttons update-buttons">
           <button class="action-btn" type="button" data-update="check" data-mirrors-all="check">Check all now</button>
-          <button class="action-btn" type="button" data-update="fetch" data-mirrors-all="fetch">Fetch all</button>
+          <button class="action-btn" type="button" data-update="fetch" data-mirrors-all="fetch">Update all mirrors</button>
         </p>
         <div id="git-mirrors" class="admin-list"></div>
         <h3>Add a mirror</h3>
         <form id="git-mirror-add" class="library-form">
           <label>Upstream <input name="upstream" type="url" required placeholder="https://github.com/meshtastic/firmware"></label>
           <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" placeholder="firmware"></label>
-          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Access <select name="area"><option value="public">Guests (/git/)</option><option value="private">Administrators (/git-private/)</option></select></label>
           <label>Branches <input name="branches" value="main" placeholder="main develop"></label>
           <label>Releases to keep <input name="releases" type="number" min="0" max="20" value="2" title="GitHub releases (github.com upstreams)"></label>
           <label>Pre-releases to keep <input name="prereleases" type="number" min="0" max="20" value="0" title="GitHub pre-releases (github.com upstreams)"></label>
           <label>Or tags matching <input name="pattern" placeholder="v*.*.*" title="For other upstreams: a tag glob, the newest kept"></label>
-          <label>History <select name="history"><option value="shallow">Shallow (each kept tip only)</option><option value="full">Full</option></select></label>
-          <label>Budget, MB <input name="budget" type="number" min="1" value="2048"></label>
-          <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too (so builds here need no internet)</label>
+          <label>History <select name="history"><option value="shallow">Shallow (latest commits only)</option><option value="full">Full</option></select></label>
+          <label>Storage limit (MB) <input name="budget" type="number" min="1" value="2048"></label>
+          <label class="inline-check"><input name="submodules" type="checkbox"> Mirror its submodules too, so builds here need no internet access</label>
           <button class="action-btn primary" type="submit">Add mirror</button>
         </form>
         <p class="setting-desc action-note" id="git-mirror-note" role="status" hidden></p>
@@ -511,39 +511,38 @@
       <section class="admin-pane" id="toolkits" aria-labelledby="toolkits-title">
         <h2 id="toolkits-title">Toolkits</h2>
         <p class="setting-desc">
-          Sets of tools the box keeps in a local repository of its own, fetched while it has
-          internet and installed from there with none: for debugging, building, capturing traffic
-          and checking its security. Each installs only when you ask, with its services left
-          stopped, and is removed again after the time you choose (a day, unless you change it).
-          The library keeps each one current as often as chosen here.
+          A toolkit is a set of tools for debugging, building, capturing traffic and checking security. Download
+          toolkits while the box has internet access. Install cached toolkits without internet access. Installation
+          needs your approval, and its services stay stopped. The box removes an installed toolkit after the removal
+          period (default: 24 hours). The librarian keeps each toolkit current as often as you set here.
         </p>
         <form id="kits-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="kits_every_hours" data-act="kits_act" data-acts="1"
-            data-says-1="The box downloads the kits that it keeps current again. It installs nothing until you ask."
-            data-why="A cache is looked at by fetching it, so Fetch is its only answer."></div>
+            data-says-1="The box downloads the toolkits that it keeps current again. It installs nothing until you ask."
+            data-why="The box checks a cache by downloading it. Download is the only choice."></div>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" role="status" hidden></p>
         <p class="setting-desc" id="kits-summary"></p>
         <form id="kits-budget" class="library-form">
-          <label for="kits-budget-mb">The cache's budget, MB</label>
+          <label for="kits-budget-mb">Cache storage limit (MB)</label>
           <div class="input-row">
             <input id="kits-budget-mb" name="budget" type="number" min="10" max="65536" step="10">
             <button class="action-btn" type="button" id="kits-budget-discard" disabled>Discard</button>
             <button class="action-btn primary" type="submit" disabled>Save</button>
           </div>
         </form>
-        <p class="library-buttons"><button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Fetch all now</button></p>
+        <p class="library-buttons"><button class="action-btn" type="button" id="kits-refresh-all" data-update="fetch">Refresh toolkit cache</button></p>
         <p class="setting-desc action-note" id="kits-note" role="status" hidden></p>
         <ul class="admin-checks" id="kits-problems"></ul>
         <div id="kits-grid"></div>
-        <h3>By USB stick</h3>
+        <h3>By USB drive</h3>
         <p class="setting-desc">
-          Carry kits to a box that never goes online: copy a cached kit onto a stick here, then import
-          it there. The stick also carries Debian's signed indexes for its packages, and an import
-          checks every package against them with the box's own keys before anything is kept.
+          Use a USB drive to move toolkits to a box that is never online. Copy a cached toolkit to the drive here.
+          Import it on the other box. The drive also holds the signed Debian indexes for the toolkit packages. An
+          import checks every package against them with the box's own keys before the box keeps anything.
         </p>
-        <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Look for USB sticks</button></p>
+        <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Scan for USB drives</button></p>
         <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
         <div id="kits-usb"></div>
         <!-- The form for a toolkit of your own: opened in the "+ Custom toolkit" card, kept here
@@ -568,8 +567,8 @@
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
         <h2 id="sources-title">The librarian</h2>
-        <p class="setting-desc">How the librarian keeps apps and books current, how much room they may take, and the token some
-          sources need. Each app and book is updated from its own page.</p>
+        <p class="setting-desc">Set how the librarian updates apps and books, how much storage they can use, and the token that some
+          sources need. Update each app and book on its own page.</p>
         <div class="net-card setting" id="library-now">
           <h3>Now</h3>
           <p class="setting-desc library-state" id="library-now-state"></p>
@@ -580,31 +579,31 @@
           <div data-update-pattern data-often="check_every_hours" data-act="auto_install"
             data-says-0="The box shows newer versions on Apps and Books, and on the badge. Update from there."
             data-says-2="The box downloads each newer version and puts it in use."></div>
-          <h3>Storage and kept versions</h3>
-          <label>Keep old versions of each book
+          <h3>Storage and retained versions</h3>
+          <label>Old versions to retain for each book
             <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
-            <span class="setting-desc">What Roll back on a book goes back to; 0 deletes the old one when the new is in use.</span>
+            <span class="setting-desc">Roll back restores the retained version. 0 deletes the old version when the new version is in use.</span>
           </label>
-          <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
-          <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256">
-            <span class="setting-desc">With no cap, the free space above still holds.</span></label>
+          <label>Minimum free storage (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
+          <label>Book storage limit (MB, 0 = no limit) <input name="books_budget_mb" type="number" min="0" step="256">
+            <span class="setting-desc">Without a limit, the minimum free storage still applies.</span></label>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>
 
         <div class="net-card setting lib-card">
-          <h3>Other updates, each set on its own page</h3>
+          <h3>Other updates (set on each page)</h3>
           <dl class="hl-glance lib-others" id="library-others"></dl>
         </div>
 
         <div class="net-card setting lib-card">
         <details class="sec-fold" id="library-access">
-          <summary>Source access: the GitHub token and the rate limit <span id="library-access-says"></span></summary>
+          <summary>Source access: GitHub token and rate limit <span id="library-access-says"></span></summary>
           <h3>GitHub token</h3>
           <p class="setting-desc">
-            Only for "GitHub Actions artifacts": GitHub requires a login to download those, even from
-            public repositories. A fine-grained token with read-only access to public repositories is
-            enough. Stored on the box, readable only by the hub; never shown again.
+            Use a token only for "GitHub Actions artifacts". GitHub requires a sign-in to download them, also from
+            public repositories. A fine-grained token with read-only access to public repositories is enough. The
+            box stores the token. Only the hub can read it. The page never shows it again.
             <span id="library-token-state"></span>
           </p>
           <form id="library-token" class="library-form">
@@ -616,10 +615,10 @@
           </form>
           <h4>Adapt to the rate limit</h4>
           <p class="setting-desc">
-            GitHub lets this box make 60 requests an hour without a token (5000 with one). Adapt asks
-            GitHub what it really allows, then keeps the librarian's scheduled checks to a budget just under it:
-            when the budget for the hour is spent, they wait. If GitHub refuses requests several times in a row, the
-            budget is halved, so it asks less often; a clean run gives some back. With or without a token.
+            GitHub allows this box 60 requests an hour without a token and 5000 with a token. Adapt asks GitHub what
+            it allows. The librarian then keeps its scheduled checks to a budget just under that limit. When the
+            hourly budget is spent, the checks wait. If GitHub refuses several requests in a row, the box halves the
+            budget. A clean run gives some budget back. Adapt works with or without a token.
             <span id="library-pace-state"></span>
           </p>
           <div class="library-buttons">
@@ -636,8 +635,8 @@
         <p class="setting-desc" id="store-usage"></p>
         <div class="admin-meter"><div id="store-meter"></div></div>
         <p class="setting-desc">
-          Shared Excalidraw drawings, collaboration rooms and pasted images count against the same
-          cap as the gallery; the oldest is evicted first when it is full.
+          Shared Excalidraw drawings, collaboration rooms and pasted images use the same storage limit as the
+          gallery. When the storage limit is reached, the box deletes the oldest stored item.
           <span class="library-buttons" id="store-clear"></span>
         </p>
         <p class="setting-desc action-note" id="store-note" role="status" hidden></p>
@@ -645,14 +644,14 @@
         <div id="store-saves" class="admin-list"></div>
         <h3>File drop</h3>
         <p class="setting-desc" id="drop-usage"></p>
-        <h3>Cap and expiry</h3>
+        <h3>Storage limits and retention</h3>
         <form id="store-settings" class="library-form">
-          <label>Store size cap (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
-          <label>Gallery saves expire after (hours of powered-on time, 0 = never)
+          <label>Store storage limit (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
+          <label>Gallery retention period (hours of powered-on time, 0 = never delete)
             <input name="store_save_ttl_hours" type="number" min="0" step="1"></label>
-          <label>File drop size cap (MB)
+          <label>File drop storage limit (MB)
             <input name="drop_max_total_mb" type="number" min="1" step="1"></label>
-          <label>Dropped files expire after (hours of powered-on time, 0 = only when the cap is reached)
+          <label>Dropped files retention period (hours of powered-on time, 0 = delete only at the storage limit)
             <input name="drop_ttl_hours" type="number" min="0" step="1"></label>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
@@ -665,47 +664,45 @@
           Manage shared user data on each app's page. Review reports on the same page.
         </p>
         <ul class="admin-list made-list" id="made-list">
-          <li><a href="#saved">Saved work</a> <span class="setting-desc" id="made-saved">— the gallery and shared drawings, on Excalidraw's page</span></li>
-          <li><a href="#drop-mod">File drop</a> <span class="setting-desc" id="made-drop">— files left for each other, on the drop's page</span></li>
-          <li><a href="#shoutbox-mod">Shoutbox messages</a> <span class="setting-desc">— on the Shoutbox's page</span></li>
-          <li><a href="#board-mod">Board threads</a> <span class="setting-desc">— on the Board's page</span></li>
-          <li><a href="#git">Git repositories</a> <span class="setting-desc" id="made-git">— pushed here, on Git's page</span></li>
-          <li><a href="/admin/notes/download" download>Notes (SilverBullet)</a> <span class="setting-desc">— the shared notebook: every page and attachment, as a zip</span></li>
+          <li><a href="#saved">Saved work</a> <span class="setting-desc" id="made-saved">The gallery and shared drawings, on the Excalidraw page</span></li>
+          <li><a href="#drop-mod">File drop</a> <span class="setting-desc" id="made-drop">Files that people upload, on the File drop page</span></li>
+          <li><a href="#shoutbox-mod">Shoutbox messages</a> <span class="setting-desc">On the Shoutbox page</span></li>
+          <li><a href="#board-mod">Board threads</a> <span class="setting-desc">On the Board page</span></li>
+          <li><a href="#git">Git repositories</a> <span class="setting-desc" id="made-git">Pushed to the box, on the Git page</span></li>
+          <li><a href="/admin/notes/download" download>Notes (SilverBullet)</a> <span class="setting-desc">The shared notebook: every page and attachment, as a zip</span></li>
         </ul>
       </section>
 
       <section class="admin-pane" id="moderation" aria-labelledby="moderation-title">
         <h2 id="moderation-title">Moderation</h2>
         <p class="setting-desc">
-          Everything here also ages out by itself: shoutbox messages after 24 hours, board threads
-          7 days after their last reply (powered-on time). Deleting is immediate and permanent.
+          The box deletes shoutbox messages after 24 hours of powered-on time. It deletes board threads 7 days after
+          their last reply, measured in powered-on time. Manual deletion is immediate and permanent.
         </p>
         <p class="setting-desc action-note" id="mod-note" role="status" hidden></p>
-        <h3>Reported</h3>
-        <p class="setting-desc">Anyone on the box can report a shoutbox message or a forum post, with one of the reasons you
-          offer below; each visitor once per post. What you keep leaves the queue (and shows again, if it was hidden).</p>
+        <h3>Reports</h3>
+        <p class="setting-desc">Any visitor can report a shoutbox message or a board post with one of the reasons below. Each visitor can
+          report a post once. When you select Keep, the report leaves the queue and the box shows hidden content again.</p>
         <div id="mod-queue"></div>
-        <h3>What counts as reported</h3>
+        <h3>Report settings</h3>
         <div id="report-settings"></div>
-        <p class="setting-desc">Each app's own page has what people made with it: the shoutbox's messages, the board's
-          threads, the files in the drop.</p>
+        <p class="setting-desc">Each app page lists the user data of that app: Shoutbox messages, Board threads and File drop files.</p>
       </section>
 
       <section class="admin-pane" id="status-tiles" aria-labelledby="status-tiles-title">
         <h2 id="status-tiles-title">Status widgets</h2>
-        <p class="setting-desc">The row of readouts under the apps on the hub page: which show, in what order, and which
-          take two cells to say more (People: the different devices seen today and this week; memory and disk in full).</p>
+        <p class="setting-desc">Select the status widgets for the hub page. Set their order and size. A widget can take two cells to show
+          more: People shows the different devices seen today and this week, and memory and disk show in full.</p>
         <div id="status-tiles-box"></div>
-        <h3>Names of those signed in</h3>
+        <h3>Signed-in name visibility</h3>
         <div id="names-to-box"></div>
       </section>
 
       <section class="admin-pane" id="folder-index" aria-labelledby="folder-index-title">
         <h2 id="folder-index-title">Folders</h2>
         <p class="setting-desc">
-          The hub's folders of tiles. Open one to choose what is in it and in what order; an entry
-          can be in more than one folder. Hiding an entry here hides it from that folder only, not the app.
-          Who sees each folder's own tile is on that folder's page.
+          Select a folder to edit its contents and order. A tile can appear in more than one folder. Hiding a tile
+          here removes it from this folder only. Change the visibility of the folder tile on its page.
         </p>
         <ul class="inv-list" id="folder-index-list"></ul>
       </section>
@@ -716,19 +713,19 @@
         <h2 id="shoutbox-settings-title">Posting</h2>
         <div class="seen-block" data-app="shoutbox"></div>
         <form id="shout-posting" class="library-form posting-form" data-note="shout-posting-note">
-          <label>Who may post
-            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          <label>Post permission
+            <select name="shout_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">Nobody (closed)</option></select>
           </label>
-          <label class="inline"><input type="checkbox" name="shout_marks"> A user's name marked ✓</label>
+          <label class="inline"><input type="checkbox" name="shout_marks"> Show ✓ beside signed-in users' names</label>
         </form>
-        <p class="setting-desc">A logged-in user always posts under their account's name, and a guest can't use an account's name.</p>
+        <p class="setting-desc">A signed-in user always posts under the account name. A guest cannot use an account name.</p>
         <p class="setting-desc action-note" id="shout-posting-note" role="status" hidden></p>
         <div class="settings" data-note="shout-fresh-note">
           <label class="setting">
             <input type="checkbox" id="shout_reset_on_boot">
             <span>
-              <span class="setting-name">Clear the shoutbox when the box starts</span>
-              <span class="setting-desc">For an event box: each day starts empty. Only a real boot clears it, not the hub restarting for an update.</span>
+              <span class="setting-name">Delete all shoutbox messages at boot</span>
+              <span class="setting-desc">The box deletes all shoutbox messages when it boots. Restarting the hub server does not delete them.</span>
             </span>
           </label>
         </div>
@@ -736,7 +733,7 @@
       </section>
       <section class="admin-pane" id="shoutbox-mod" aria-labelledby="shoutbox-mod-title">
         <h2 id="shoutbox-mod-title">Messages</h2>
-        <p class="setting-desc">They age out by themselves after 24 hours of powered-on time. Deleting is immediate and permanent.</p>
+        <p class="setting-desc">The box deletes messages after 24 hours of powered-on time. Manual deletion is immediate and permanent.</p>
         <div id="mod-messages" class="admin-list"></div>
       </section>
 
@@ -744,18 +741,18 @@
         <h2 id="board-settings-title">Posting</h2>
         <div class="seen-block" data-app="board"></div>
         <form id="board-posting" class="library-form posting-form" data-note="board-posting-note">
-          <label>Who may post
-            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">No one (closed)</option></select>
+          <label>Post permission
+            <select name="board_who"><option value="guests">Guests and users</option><option value="users">Users only</option><option value="off">Nobody (closed)</option></select>
           </label>
-          <label class="inline"><input type="checkbox" name="board_marks"> A user's name marked ✓</label>
+          <label class="inline"><input type="checkbox" name="board_marks"> Show ✓ beside signed-in users' names</label>
         </form>
         <p class="setting-desc action-note" id="board-posting-note" role="status" hidden></p>
         <div class="settings" data-note="board-fresh-note">
           <label class="setting">
             <input type="checkbox" id="board_reset_on_boot">
             <span>
-              <span class="setting-name">Clear the board when the box starts</span>
-              <span class="setting-desc">Every thread goes at boot, the same way.</span>
+              <span class="setting-name">Delete all threads at boot</span>
+              <span class="setting-desc">The box deletes all forum threads when it boots. Restarting the hub server does not delete them.</span>
             </span>
           </label>
         </div>
@@ -763,36 +760,35 @@
       </section>
       <section class="admin-pane" id="board-mod" aria-labelledby="board-mod-title">
         <h2 id="board-mod-title">Threads</h2>
-        <p class="setting-desc">A thread ages out 7 days after its last reply (powered-on time). Deleting is immediate and permanent.</p>
+        <p class="setting-desc">The box deletes a thread 7 days after its last reply, measured in powered-on time. Manual deletion is immediate and permanent.</p>
         <div id="mod-threads" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="drop-mod" aria-labelledby="drop-mod-title">
-        <h2 id="drop-mod-title">Files in the drop</h2>
+        <h2 id="drop-mod-title">Uploaded files</h2>
         <div id="mod-drops" class="admin-list"></div>
       </section>
 
       <section class="admin-pane" id="git" aria-labelledby="git-title">
         <h2 id="git-title">Git</h2>
         <p class="setting-desc">
-          The repositories on this box, a card each. <a href="/git/">/git/</a> is public: anyone on
-          the network can browse and clone. <a href="/git-private/">/git-private/</a> is behind the
-          admin login. Who may push, and whether a push is built, is each repository's own: Manage
-          on its card. Clone with <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>; git
-          asks for the login when it is needed.
+          The box keeps these repositories, one card each. <a href="/git/">/git/</a> lets guests browse and clone.
+          <a href="/git-private/">/git-private/</a> needs the administrator sign-in. Each repository sets who can push and
+          whether a push starts a build: select Manage on its card. To clone, run
+          <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>. Git asks for a sign-in when it needs one.
         </p>
         <details class="git-glossary" id="git-glossary">
-          <summary>What the words mean</summary>
+          <summary>Repository terms</summary>
           <dl>
-            <dt>Public, Private</dt><dd>Where it lives: /git/ (anyone on the network sees it) or /git-private/ (only with the admin login). Moving it changes its clone URL.</dd>
-            <dt>Who pushes</dt><dd>Anyone; only the admin; or nobody (read-only). The hub decides each push; git's own setting is the backstop.</dd>
-            <dt>Mirror</dt><dd>A copy of a repository on the internet, kept to a policy by the librarian (Mirrors, below). Read-only here.</dd>
-            <dt>Builds</dt><dd>A push to a private repository that only the admin pushes to, whose commit has a .irate-ci.sh, is built on the box (Builds, below), if its switch is on.</dd>
+            <dt>Guests, Administrators</dt><dd>Where the repository lives: /git/ (guests can browse and clone it) or /git-private/ (the administrator sign-in is required). Moving a repository changes its clone URL.</dd>
+            <dt>Push permission</dt><dd>Guests, administrators only, or nobody (read-only). The hub decides each push. Git also enforces the setting.</dd>
+            <dt>Mirror</dt><dd>A copy of a repository on the internet. The librarian keeps it to a policy (Mirrors, below). It is read-only here.</dd>
+            <dt>Builds</dt><dd>A push starts a build on the box (Builds, below) when the build switch is on, the repository is private, only an administrator pushes to it, and the commit has a .irate-ci.sh file.</dd>
           </dl>
         </details>
         <p class="setting-desc" id="git-usage"></p>
         <p class="setting-desc action-note" id="git-note" role="status" hidden></p>
-        <div class="git-filter" role="group" aria-label="Show">
+        <div class="git-filter" role="group" aria-label="Filter repositories">
           <input id="git-search" type="search" placeholder="Search names and descriptions" aria-label="Search">
           <span class="chips" id="git-chips-kind"></span>
           <span class="chips" id="git-chips-area"></span>
@@ -803,7 +799,7 @@
         <div hidden id="git-forms">
         <form id="git-create" class="library-form git-create">
           <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
-          <label>Where <select name="area"><option value="public">Public (/git/)</option><option value="private">Private (/git-private/)</option></select></label>
+          <label>Access <select name="area"><option value="public">Guests (/git/)</option><option value="private">Administrators (/git-private/)</option></select></label>
           <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
           <button class="action-btn primary" type="submit">Create</button>
         </form>
@@ -813,10 +809,10 @@
         <p class="setting-desc" id="ci-about"></p>
         <form id="ci-cache-form" class="library-form">
           <fieldset class="choice-tiles">
-            <legend>Firmware build cache: PlatformIO's packages for the newest Meshtastic release, so firmware builds here need no internet</legend>
-            <label class="choice-tile"><input type="radio" name="cache" value="discard"><span class="choice-text"><span class="setting-name">Don't keep it</span><span class="setting-desc">Builds fetch what they need from the internet each time.</span></span></label>
-            <label class="choice-tile"><input type="radio" name="cache" value="native"><span class="choice-text"><span class="setting-name">Keep what a headless build needs</span><span class="setting-desc">About 215 MB.</span></span></label>
-            <label class="choice-tile"><input type="radio" name="cache" value="whole"><span class="choice-text"><span class="setting-name">Keep all of it</span><span class="setting-desc">About 700 MB; includes the touchscreen UI.</span></span></label>
+            <legend>Firmware build cache: PlatformIO packages for the newest Meshtastic release. With the cache, firmware builds here need no internet access.</legend>
+            <label class="choice-tile"><input type="radio" name="cache" value="discard"><span class="choice-text"><span class="setting-name">No cache</span><span class="setting-desc">Each build downloads what it needs from the internet.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="cache" value="native"><span class="choice-text"><span class="setting-name">Headless build cache</span><span class="setting-desc">About 215 MB.</span></span></label>
+            <label class="choice-tile"><input type="radio" name="cache" value="whole"><span class="choice-text"><span class="setting-name">Full build cache</span><span class="setting-desc">About 700 MB. It includes the touchscreen UI.</span></span></label>
           </fieldset>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
@@ -824,7 +820,7 @@
         <p class="setting-desc action-note" id="ci-cache-note" role="status" hidden></p>
         <p class="setting-desc" id="ci-limits"></p>
         <form id="ci-keep-form" class="library-form inline-form">
-          <label>Runs kept per repository <input name="keep" type="number" min="1" max="50"></label>
+          <label>Build runs to retain for each repository <input name="keep" type="number" min="1" max="50"></label>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc" id="ci-offline"></p>
@@ -833,26 +829,26 @@
       </section>
 
       <section class="admin-pane" id="accounts" aria-labelledby="accounts-title">
-        <h2 id="accounts-title">Accounts &amp; users</h2>
+        <h2 id="accounts-title">Accounts</h2>
         <p class="setting-desc">
-          Who may have an account on the box. A user logs in at <a href="/account.html">/account.html</a>;
-          an admin account can do what this page does. Off, the box has guests and its admin only,
-          as before.
+          Set who can have an account on the box. A user signs in at <a href="/account.html">/account.html</a>. An
+          administrator account can do what this page does. If registration is off, the box has guests and its
+          administrator only.
         </p>
         <form id="accounts-settings" class="library-form">
-          <label>Sign-up
+          <label>Account registration
             <select name="signup">
-              <option value="off" data-says="No accounts: the box has guests and its admin only.">Off</option>
-              <option value="open" data-says="Anyone can make an account, usable at once.">Open</option>
-              <option value="apply" data-says="Anyone can ask for one; an admin accepts or refuses.">Application</option>
-              <option value="assigned" data-says="Only an admin makes accounts.">Admin assigned</option>
+              <option value="off" data-says="No accounts. The box has guests and its administrator only.">Off</option>
+              <option value="open" data-says="Anyone can create an account. The account works at once.">Open</option>
+              <option value="apply" data-says="Anyone can apply for an account. An administrator accepts or refuses the application.">Approval</option>
+              <option value="assigned" data-says="Only an administrator creates accounts.">Administrator creates</option>
             </select>
           </label>
-          <label>Over plain HTTP
+          <label>Password submission over HTTP
             <select name="http">
-              <option value="prevented" data-says="Passwords only over HTTPS.">Prevented</option>
-              <option value="warning" data-says="Allowed, and the page says it can be read off the air.">Warning</option>
-              <option value="permitted" data-says="Allowed, nothing said.">Permitted</option>
+              <option value="prevented" data-says="The box accepts passwords only over HTTPS.">Blocked</option>
+              <option value="warning" data-says="The box accepts passwords over HTTP. The page warns that others on the network can read them.">Warning</option>
+              <option value="permitted" data-says="The box accepts passwords over HTTP. The page shows no warning.">Allowed</option>
             </select>
           </label>
           <button class="action-btn primary" type="submit">Save</button>
@@ -861,48 +857,48 @@
         <p class="setting-desc" id="accounts-counts"></p>
         <h3>Notebooks</h3>
         <p class="setting-desc">
-          The shared notes are one notebook everyone with notes access can read and change. Each login can
-          also have a notebook of its own that no one else can open, running only while its owner uses it:
-          it starts when they open it, and stops when they sign out or half an hour after they last used it.
-          About 40 MB of memory each while running. A notebook's pages stay on the box when it stops, when
-          notebooks are switched off, and when its account is deleted.
+          Users with Notes access can read and change the shared notebook. Each account can also have a private
+          notebook. It starts when its owner opens it. It stops when the owner signs out, or 30 minutes after the
+          last use. A running notebook uses about 40 MB of memory. The pages of a notebook stay on the box when the
+          notebook stops, when notebooks are switched off, and when its account is deleted.
         </p>
         <div id="notebooks-box"></div>
         <p class="setting-desc" id="notebooks-state"></p>
-        <h3>Make an account</h3>
+        <h3>Create account</h3>
         <form id="accounts-make" class="library-form">
-          <label>Name <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"
+          <label>Username <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"
             title="3 to 32 characters: letters, digits, dots, dashes or underscores; no spaces">
-            <small class="setting-desc">3 to 32 characters: letters, digits, dots (.), dashes (-) or underscores (_); no spaces.</small></label>
-          <div class="library-buttons" role="group" aria-label="Make it as">
-            <button class="action-btn primary big" type="submit" name="role" value="user">Make user</button>
-            <button class="action-btn primary big" type="submit" name="role" value="admin">Make admin</button>
+            <small class="setting-desc">3 to 32 characters: letters, digits, dots (.), dashes (-) or underscores (_). No spaces.</small></label>
+          <div class="library-buttons" role="group" aria-label="Account type">
+            <button class="action-btn primary big" type="submit" name="role" value="user">Create user account</button>
+            <button class="action-btn primary big" type="submit" name="role" value="admin">Create administrator account</button>
           </div>
         </form>
-        <p class="setting-desc">Each comes with a one-time code, for a day, for its person to set their password at /account.html.</p>
+        <p class="setting-desc">Each account gets a one-time activation code that works for one day. Give the code to the user. The user sets a password at /account.html.</p>
         <p class="acct-code" id="accounts-code" hidden></p>
-        <h3>The accounts</h3>
+        <h3>Existing accounts</h3>
         <div id="accounts-list" class="admin-list"></div>
-        <h3>The box's own login, for scripts</h3>
-        <p class="setting-desc">A login apart from the accounts (user <code>admin</code>), for scripts that call the admin pages
-          (<code>curl -u admin:…</code>). Its password is set only at the box's console, over SSH:
-          <code>sudo /opt/irate-box/irate-box hub_control script-login</code>. Here, how far it reaches.</p>
+        <h3>Script authentication</h3>
+        <p class="setting-desc">Scripts can use a separate administrator sign-in (user <code>admin</code>), for example
+          <code>curl -u admin:…</code>. Set its password at the box console or over SSH:
+          <code>sudo /opt/irate-box/irate-box hub_control script-login</code>. The choices below set how far this
+          sign-in reaches.</p>
         <div id="accounts-admin-login-choices"></div>
-        <p class="setting-desc" id="accounts-admin-login">Looking…</p>
-        <h3>Saves across devices</h3>
+        <p class="setting-desc" id="accounts-admin-login">Checking…</p>
+        <h3>Saves on other devices</h3>
         <div id="saves-cross-device-box"></div>
       </section>
 
       <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">
         <h2 id="mesh-title">Mesh</h2>
         <p class="setting-desc">
-          The Meshtastic packets nodes and phones send to the box's MQTT broker, decoded here with
-          the channel keys below: which nodes there are, where, how they're doing, and what they
-          said. Without a channel's key its packets stay encrypted, and only that they were sent is
-          shown. Messages appear only on this page; <a href="/mesh.html">/mesh.html</a> shows
-          guests the nodes and the traffic, while the MQTT broker is public (Access).
+          Nodes and phones send Meshtastic packets to the box's MQTT broker. This page decodes the packets with the
+          channel keys below. It shows the nodes, their positions, their status and their messages. Without the
+          key of a channel, its packets stay encrypted and the page shows only that they were sent. Messages
+          appear only on this page. <a href="/mesh.html">/mesh.html</a> shows guests the nodes and the traffic when
+          the MQTT broker is open to guests (Access).
         </p>
-        <p class="setting-desc" id="mesh-admin-state">Looking…</p>
+        <p class="setting-desc" id="mesh-admin-state">Checking…</p>
         <h3>Channels</h3>
         <div id="mesh-channels" class="admin-list"></div>
         <form id="mesh-channel-form" class="library-form">
@@ -912,9 +908,9 @@
           <button type="button" id="mesh-longfast" class="link-button">Add Meshtastic's public LongFast</button>
         </form>
         <p class="setting-desc action-note" id="mesh-note" role="status" hidden></p>
-        <h3>Heard</h3>
-        <p class="setting-desc">What the box decoded, the messages too, on a page of its own for the admin.</p>
-        <p class="library-buttons"><a class="action-btn primary" href="/admin/mesh.html" id="mesh-open">Open what the mesh said →</a></p>
+        <h3>Received packets</h3>
+        <p class="setting-desc">This page shows what the box decoded, with the messages. Only administrators can open it.</p>
+        <p class="library-buttons"><a class="action-btn primary" href="/admin/mesh.html" id="mesh-open">Open mesh messages →</a></p>
       </section>
 
       <section class="admin-pane" id="factory" aria-labelledby="factory-title">
@@ -1399,7 +1395,7 @@
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
         <p class="setting-desc">One card for each thing the box updates: what it is and where it stands, how often it looks and
-          what it does with what it finds, and Check now, Fetch and Install. When an update fails, the
+          what it does with what it finds, and Check now, Download and Install. When an update fails, the
           <a href="#updoctor">Updates doctor</a> can say why.</p>
         <div class="update-cards">
         <div class="setting library-source update-card" id="update-hub-card">
@@ -1410,7 +1406,7 @@
             <p class="setting-desc warn-note" id="update-metered" hidden></p>
             <div class="library-buttons">
               <button class="action-btn" type="button" id="update-check" data-update="check">Check now</button>
-              <button class="action-btn" type="button" id="update-fetch" data-update="fetch" disabled>Fetch</button>
+              <button class="action-btn" type="button" id="update-fetch" data-update="fetch" disabled>Download</button>
               <button class="action-btn primary" type="button" id="update-install" data-update="install" disabled>Install</button>
             </div>
             <div class="admin-progress" id="update-progress" hidden>

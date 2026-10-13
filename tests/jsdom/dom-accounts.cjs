@@ -116,7 +116,7 @@ function page(file, url, fetcher, scripts) {
   check('  Accept asks the hub', aposted.some((b) => b.action === 'accept' && b.name === 'bob'));
   const mf = d.getElementById('accounts-make');
   mf.elements.name.value = 'dave';
-  check('  Role: two bigger buttons, Make user and Make admin, no second button', [...mf.querySelectorAll('button')].map((b) => t(b)).join() === 'Make user,Make admin');
+  check('  Role: two bigger buttons, Create user account and Create administrator account, no second button', [...mf.querySelectorAll('button')].map((b) => t(b)).join() === 'Create user account,Create administrator account');
   mf.querySelector('button[value="user"]').click(); await wait();
   // The code beside the account it is for, in a box to copy; a line by the form says so.
   const daveRow = [...d.querySelectorAll('#accounts-list .admin-item')].find((r) => / dave /.test(` ${t(r)} `));
@@ -124,7 +124,7 @@ function page(file, url, fetcher, scripts) {
     && (!daveRow || (daveRow.querySelector('.code-box') || {}).value === 'ABCD-EFGH-JKLM-NPQR'));
   check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('no spaces'));
   const sform = d.getElementById('accounts-settings');
-  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Application/Admin assigned | Prevented/Warning/Permitted'
+  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Allowed'
     && [...sform.querySelectorAll('.chip-says')].length === 2);
   sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
   sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();
