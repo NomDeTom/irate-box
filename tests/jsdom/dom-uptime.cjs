@@ -49,7 +49,10 @@ const box = { meshtasticd: { active: 'failed', sub: 'failed', result: 'start-lim
   uptime: 11 * 86400 + 5 * 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: svcWithMesh, net_uptime: netUp,
   services: [{ name: 'Library (Kiwix)', unit: 'kiwix.service', state: 'running', active: true, enabled: true, ops: [] },
     { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: [] },
-    { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] }] };
+    { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] },
+    { name: 'Remote access (Tailscale)', unit: 'tailscaled.service', state: 'stopped', active: false, enabled: false, ops: [] }] };
+// Tailscale ran most of the week and is switched off now: its record says up, and the page must say off.
+box.service_uptime.units['tailscaled.service'] = JSON.parse(JSON.stringify(box.service_uptime.units['mosquitto.service']));
 w.fetch = async (u) => (u === '/admin/network' ? new Response(JSON.stringify(data), { status: 200 })
   : u === '/admin/box' ? new Response(JSON.stringify(box), { status: 200 }) : new Response('{}', { status: 404 }));
 // A page's scripts share their top-level consts; separate evals do not, so heatmap.js comes in as a var.
@@ -107,7 +110,7 @@ setTimeout(() => {
   w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   w.eval('loadBox()');
   setTimeout(() => {
-    check('services: no fold; the strips are in the table', !d.getElementById('svc-uptime').closest('details') && !d.querySelector('#svc-uptime summary')
+    check('services: the strips not folded, in the table', !d.getElementById('svc-uptime').closest('details') && !d.getElementById('service-table').closest('details')
       && d.querySelectorAll('#service-table .svc-strips').length >= 2);
     const rowOf = (name) => [...d.querySelectorAll('#service-table tbody tr')].find((r) => t(r.querySelector('.svc-name .setting-name')) === name);
     const kiwix = rowOf('Library (Kiwix)');
@@ -122,7 +125,25 @@ setTimeout(() => {
     check('  72 days by day too, with the hub\'s dates', smonth && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-cell')].pop().dataset.words));
     check('  a service never recorded: a dash, no strip', [...d.querySelectorAll('#service-table tbody tr')].some((r) => !r.querySelector('.heatmap')));
     const body = d.getElementById('svc-uptime-body');
-    check('  the week in a line, and the legend, under the table', /Library \(Kiwix\): up 99\.\d %, started 1 time; MQTT broker: up 100 %\./.test(t(d.querySelector('#svc-uptime-body > p'))) && body.querySelectorAll('.hm-legend .hm-key').length === 6, t(d.querySelector('#svc-uptime-body > p')));
+    const line = t(d.querySelector('#svc-uptime-body > p'));
+    check('  one line: all up (Kiwix at 99.x % is up all the time, as the key says), no restart counts (the strips\' dots)',
+      /^All up over the last 72 hours\./.test(line) && !/MQTT|Kiwix|started/.test(line), line);
+    const worse = JSON.parse(JSON.stringify(box.service_uptime));
+    worse.units['kiwix.service'].summary.up = 0.9;
+    w.renderServiceUptime(box.services, worse, null);
+    check('  a service down part of the time: only it named, with its share', /^Over the last 72 hours, all up but: Library \(Kiwix\) up 90\.0 %\./.test(t(d.querySelector('#svc-uptime-body > p'))),
+      t(d.querySelector('#svc-uptime-body > p')));
+    w.renderServiceUptime(box.services, box.service_uptime, null);
+    // Remote access in words: off; running but never logged in to a Tailscale network (not reachable); connected.
+    const rt = (d2) => w.remoteText(d2);
+    check('Tailscale off: said off', rt({ state: 'stopped' }) === 'Tailscale is off.');
+    check('  running, never logged in: said, with how to log in or switch it off', /not logged in to a Tailscale network yet.*sudo tailscale up.*Or switch it off here\./.test(rt({ state: 'running', backend: { state: 'needs-login' } })));
+    check('  connected: its name, its tailnet and its address', rt({ state: 'running', backend: { state: 'connected', name: 'lyra.tail1.ts.net', tailnet: 'owner@', ip: '100.64.0.5' } })
+      === 'Tailscale is on: this box is lyra.tail1.ts.net on owner@ (100.64.0.5).');
+    check('  a service switched off now: said as off, not as its past uptime, with where to switch it', /Remote access \(Tailscale\) is switched off\./.test(line)
+      && !/Tailscale\) up/.test(line) && d.querySelector('#svc-uptime-body > p a.go-btn') && d.querySelector('#svc-uptime-body > p a.go-btn').getAttribute('href') === '#access', line);
+    const key = body.querySelector('details.svc-key');
+    check('  the colours\' key folded under the line, closed', key && !key.open && t(key.querySelector('summary')) === 'What the colours mean' && key.querySelectorAll('.hm-legend .hm-key').length === 6);
     check('no page errors', !errors.length, errors.join(' | '));
     const on = d.getElementById('overview-net');
     const tiles = d.getElementById('box-tiles'), table = d.getElementById('service-table');

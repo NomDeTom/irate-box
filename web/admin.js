@@ -109,8 +109,18 @@ const remoteState = document.getElementById('remote-state');
 const remoteNote = noteEl('remote-note');
 const STATE_TEXT = {
   running: 'Tailscale is running.',
-  stopped: 'Tailscale is not running.',
+  stopped: 'Tailscale is off.',
 };
+// Running is not the same as reachable: what Tailscale itself says while it runs.
+function remoteText(data) {
+  const b = data.backend;
+  if (data.state !== 'running' || !b) return STATE_TEXT[data.state] || '';
+  if (b.state === 'connected') return `Tailscale is on: this box is ${b.name || 'on your Tailscale network'}${b.tailnet ? ` on ${b.tailnet}` : ''}${b.ip ? ` (${b.ip})` : ''}.`;
+  if (b.state === 'needs-login') return 'Tailscale is running, but this box is not logged in to a Tailscale network yet, so nothing can reach it '
+    + 'through Tailscale. To log in: run sudo tailscale up in the box\'s terminal, open the link it prints, and sign in with your '
+    + 'Tailscale account. Or switch it off here.';
+  return `Tailscale is running (it says: ${b.state}).`;
+}
 
 function showRemote(data) {
   remote.hidden = data.state === 'missing';
@@ -118,7 +128,7 @@ function showRemote(data) {
   radios.forEach((r) => { r.checked = r.value === data.want.mode; });
   if (data.want.mode === 'timed') hours.value = data.want.hours;
   hours.max = data.max_hours;
-  remoteState.textContent = STATE_TEXT[data.state] || '';
+  remoteState.textContent = remoteText(data);
 }
 
 async function loadRemote() {
@@ -868,16 +878,27 @@ function renderServiceUptime(services, u, pages) {
       + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
     return;
   }
-  const said = (s) => { const sm = units[s.unit].summary;
-    return sm.up == null ? `${s.name}: no data lately` : `${s.name}: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}`; };
+  // One line: what was not up all the time over the last 72 hours, and what is switched off now (said as off, not as
+  // a past uptime); the restarts are the strips' dots. The colours' key and the web pages' strips folded below it.
+  const off = (s) => s.state === 'stopped' && s.enabled === false;
+  const worse = mine.filter((s) => !off(s) && units[s.unit].summary.up != null && units[s.unit].summary.up < 0.995);
+  const offNow = services.filter((s) => s.unit && off(s));
+  const quiet = mine.filter((s) => units[s.unit].summary.up == null && !off(s));
+  const parts = [...worse.map((s) => `${s.name} up ${Heatmap.percent(units[s.unit].summary.up)}`),
+    ...quiet.map((s) => `${s.name} not recorded lately`)];
+  const line = el('p', { className: 'setting-desc' }, parts.length ? `Over the last 72 hours, all up but: ${parts.join('; ')}.` : 'All up over the last 72 hours.');
+  for (const s of offNow) {
+    line.append(` ${s.name} is switched off.`);
+    if (s.unit === 'tailscaled.service') line.append(' ', goLink({ section: 'access', where: 'System → Access', mark: 'remote-section' }));
+  }
   const usedSaid = (s) => { const sm = pages.pages[s.path].summary;
     return `${s.name}: ${sm.uses ? `loaded ${sm.uses} time${sm.uses === 1 ? '' : 's'}${sm.errors ? `, ${sm.errors} failed` : ''}` : 'not used'} in the last 72 hours`; };
-  body.replaceChildren(
-    el('p', { className: 'setting-desc', textContent: mine.map(said).join('; ') + '.' }),
-    Heatmap.legend(),
-    el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }),
-    ...(used.length ? [el('p', { className: 'setting-desc', textContent: 'The pages the web server serves itself have no service to watch: '
-      + 'their strips show use instead. Blank, not used; green, every load answered; red, a load failed. ' + used.map(usedSaid).join('; ') + '.' })] : []));
+  body.replaceChildren(line,
+    el('details', { className: 'svc-key' }, el('summary', { textContent: 'What the colours mean' }),
+      Heatmap.legend(),
+      el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }),
+      ...(used.length ? [el('p', { className: 'setting-desc', textContent: 'The pages the web server serves itself have no service to watch: '
+        + 'their strips show use instead. Blank, not used; green, every load answered; red, a load failed. ' + used.map(usedSaid).join('; ') + '.' })] : [])));
 }
 
 // The network on the Overview: each link's last 72 hours by hour, the box's link to the network

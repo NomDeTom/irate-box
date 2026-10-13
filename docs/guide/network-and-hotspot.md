@@ -47,6 +47,29 @@ says), restart the network service, or reboot; it never goes past the reach abov
 
 The **Status** tab shows the link now and the last 72 hours; the Box doctor's chart shows how far the watchdog went.
 
+## Reaching the box from anywhere (Tailscale)
+
+Tailscale is a private network between your own devices, over the internet. With it, you can open the box's pages from
+your phone or laptop wherever you are, as if you were on its WiFi. The box needs the internet for this; nothing else on
+the box does.
+
+**Set it up** (once):
+
+1. Make a Tailscale account at tailscale.com, and install Tailscale on the phone or laptop you will use. Sign in there.
+2. On the box: **Admin → Access → Remote access**, choose **On**.
+3. Open the box's **Terminal** (its tile on the hub page, as the admin; or a shell over SSH) and run `sudo tailscale up`. It prints a link.
+4. Open that link and sign in with the same Tailscale account. The box joins your Tailscale network.
+5. **Remote access** now says "Tailscale is on: this box is …", with its name and address on your Tailscale network.
+
+**Use it:** on your device, with Tailscale on, open `http://` and the box's Tailscale name or address. Everything works
+as on the box's WiFi, the admin pages included.
+
+**Switch it off** when you don't need it: **Remote access → Off**, or **On for** a few hours so it ends by itself. While
+it is off, it can only be switched on again from the box's own network.
+
+If Remote access says "running, but not logged in to a Tailscale network", step 3 hasn't been done: nothing can reach
+the box through Tailscale until it is. Switch it off if you don't use it.
+
 ## The hotspot
 
 The box's own WiFi, for people with no other network (name **Irate-Box** to start). Every web address on it leads to the hub. It's off until you switch it on (Network → Hotspot); the page fits it to the box's radios.

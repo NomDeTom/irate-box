@@ -1277,6 +1277,11 @@ def service_status(proxied):
                  "up": proxied and running}
         if "note" in svc:
             entry["note"] = svc["note"]
+        if svc["name"] == TAILSCALE_NAME and running:
+            # Running is not reachable: a box never logged in to a Tailscale network can't be reached through it.
+            ts = tailscale_backend()
+            if ts and ts["state"] == "needs-login":
+                entry["note"] = "running, but not logged in to a Tailscale network: nothing reaches the box through it (System → Access)"
         if state == "stopped" and svc.get("unit") == "kiwix.service":
             why = _status_cache.setdefault("why", {})
             if "kiwix" not in why:
@@ -1320,6 +1325,32 @@ def visitor_counts():
 #   off | on | on <seconds>   -- a timed session ends by itself, and at the next boot.
 TAILSCALE_WANT = STATE_DIR / "tailscale.want"
 TAILSCALE_MAX_HOURS = 72
+
+
+_tailscale_cache = {"at": -1e9, "val": None}
+
+
+def tailscale_backend(run=subprocess.run):
+    """Tailscale's own state while tailscaled runs, from `tailscale status --json` (the hub may ask: it is only read):
+    {"state": "connected" | "needs-login" | another of its states, lowercased, "name", "tailnet", "ip"}; None when it
+    can't be asked (not running, no CLI). Cached as the services' states are."""
+    now = time.monotonic()
+    if now - _tailscale_cache["at"] < STATUS_CACHE_S:
+        return _tailscale_cache["val"]
+    val = None
+    try:
+        r = run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5)
+        d = json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        d = None
+    if isinstance(d, dict) and isinstance(d.get("BackendState"), str):
+        me, net = d.get("Self") or {}, d.get("CurrentTailnet") or {}
+        bs = d["BackendState"]
+        val = {"state": {"Running": "connected", "NeedsLogin": "needs-login"}.get(bs, bs.lower()),
+               "name": me.get("DNSName", "").rstrip(".") or me.get("HostName"), "tailnet": net.get("Name"),
+               "ip": next(iter(me.get("TailscaleIPs") or []), None)}
+    _tailscale_cache.update(at=now, val=val)
+    return val
 
 
 def read_tailscale_want():
@@ -2888,8 +2919,8 @@ class Handler(BaseHTTPRequestHandler):
         proxied = "X-Forwarded-For" in self.headers
         state = next((s["state"] for s in service_status(proxied)
                       if s["name"] == TAILSCALE_NAME), "missing")
-        self.send_json(200, {"want": read_tailscale_want(), "state": state,
-                             "max_hours": TAILSCALE_MAX_HOURS})
+        self.send_json(200, {"want": read_tailscale_want(), "state": state, "max_hours": TAILSCALE_MAX_HOURS,
+                             "backend": tailscale_backend() if state == "running" else None})
 
     def send_empty(self, code):
         # Under HTTP/1.1 keep-alive every response needs a length, or the client
