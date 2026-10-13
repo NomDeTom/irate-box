@@ -63,7 +63,7 @@
           rm.type = 'button';
           rm.className = 'small';
           rm.textContent = 'Remove';
-          rm.title = 'This device locked it, so it can remove it before it expires.';
+          rm.title = 'This device holds the key, so it can delete the file before it expires.';
           rm.addEventListener('click', () => removeMine(f, rm));
           row.append(' ', rm);
         }

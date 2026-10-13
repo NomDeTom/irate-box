@@ -122,8 +122,9 @@ Usage: sudo ./install.sh [options]
                         fetched and checked as the librarian does; with --apps DIR, those too,
                         e.g. a flasher you built), ttyd and SilverBullet for each --arch,
                         Caddy's .deb with --web caddy, any --zim, checksums, and setup.sh, which
-                        runs this installer from the kit (sudo DIR/setup.sh [options]). No root
-                        needed, nothing on this machine changes. Debian's own packages (nginx,
+                        runs this installer from the kit (sudo DIR/setup.sh [options]). It needs no root
+                        access and installs nothing on this machine. It writes files to DIR and
+                        downloads the items above. Debian's own packages (nginx,
                         cgit, ...) still come from the box's apt.
   --arch LIST           with --make-offline-bundle: the boxes' architectures, comma-separated
                         (aarch64, armv7l, armv6l, x86_64; default aarch64,armv7l)

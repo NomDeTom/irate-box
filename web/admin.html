@@ -1360,8 +1360,9 @@
         <p class="setting-desc">
           The box can serve every page over HTTPS too, with a certificate of its own: phones and
           computers that install the box's certificate (from <a href="/certificate">/certificate</a>)
-          then talk to it privately, and the admin login can't be read off the WiFi. It can vouch
-          only for this box. Plain HTTP stays as it is, for everyone else and the hotspot's sign-in.
+          then use HTTPS when they connect. Other people on the WiFi cannot read the administrator
+          password. The box's certificate authority is limited to this box's names. A device that enforces the
+          limit rejects other sites. Plain HTTP stays on, for other devices and the hotspot's sign-in.
         </p>
         <p class="setting-desc" id="tls-state">Looking…</p>
         <p class="library-buttons">
@@ -1457,7 +1458,7 @@
                 <fieldset class="choice-tiles">
                   <legend>Updates must be</legend>
                   <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
-                  <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does; anything pushed straight to the branch is refused.</span></span></label>
+                  <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does. The box refuses a commit that GitHub did not sign.</span></span></label>
                   <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
                 </fieldset>
                 <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)

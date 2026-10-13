@@ -855,25 +855,25 @@ def root_findings(rec):
     out, ours = [], rec.get("root", {})
     state, firstrun, admins = _root_password(), FIRSTRUN.exists(), _sudoers()
     lock = [{"choice": "root-lock", "label": "Lock root's password",
-             "confirm": f"Lock root's password? Root is then reached only through sudo ({', '.join(admins)}); "
-                        "the console's root login stops working."}] if admins else []
-    no_lock = "" if admins else " No other account here can use sudo, so it isn't locked from here: add one first."
+             "confirm": f"Lock root's password? Root can then no longer sign in with a password, at the console or over SSH. "
+                        f"These accounts keep sudo: {', '.join(admins)}. SSH keys and open root sessions do not change."}] if admins else []
+    no_lock = "" if admins else " No other account here can use sudo, so the password is not locked from here. Add one first."
     undo = [{"choice": "root-lock-undo", "label": "Undo"}] if "lock" in ours else []
     if state == "L":
-        out.append(_finding("root-password", "Root's password", "ok", "Locked: root is reached through sudo.", "", undo))
+        out.append(_finding("root-password", "Root's password", "ok", "Locked: root cannot sign in with a password.", "", undo))
     elif state == "NP":
         out.append(_finding("root-password", "Root's password", "problem",
-                            "Root has no password: anyone at the console, or wherever root may log in, is root.",
-                            "Lock it, so root is reached only through sudo." + no_lock, lock))
+                            "Root has no password. Anyone at the console, or wherever root can sign in, is root.",
+                            "Lock the password, so root cannot sign in with a password." + no_lock, lock))
     elif state == "P" and firstrun:
         out.append(_finding("root-password", "Root's password", "problem",
-                            "Root still has the image's own password: Armbian's first-login setup never ran, so it's "
-                            "the one every image of this kind ships with (usually 1234), and anyone who knows it is root.",
-                            "Lock it, so root is reached only through sudo." + no_lock, lock))
+                            "Root still has the image's own password: Armbian's first-login setup never ran, so it is "
+                            "the one every image of this kind ships with (usually 1234). Anyone who knows it is root.",
+                            "Lock the password, so root cannot sign in with a password." + no_lock, lock))
     elif state == "P":
         out.append(_finding("root-password", "Root's password", "warn",
-                            "Root has a password of its own: fine if you chose it, and know it's strong.",
-                            "Or lock it, so root is reached only through sudo." + no_lock, lock))
+                            "Root has a password of its own. This is acceptable if you chose it and know that it is strong.",
+                            "Or lock the password, so root cannot sign in with a password." + no_lock, lock))
     if firstrun:
         out.append(_finding("root-firstrun", "First-login setup", "problem",
                             "Armbian's first-login setup never ran (/root/.not_logged_in_yet): the image's defaults "

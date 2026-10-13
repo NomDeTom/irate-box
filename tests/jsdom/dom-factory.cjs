@@ -102,20 +102,20 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
     t(built[0]));
   check('  a failed one says so', /^failed T-Beam \(tbeam\)/.test(t(built[1])));
   const fold = [...d.querySelectorAll('.factory-family')].find((f) => t(f.querySelector('summary strong')) === 'nrf52840');
-  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Fetch tools').click();
+  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Download build dependencies').click();
   await wait();
   const tq = posted.find((b) => b.action === 'tools');
-  check('Fetch tools: the family asked for at this source and ref, with its test target, and said', tq && tq.family === 'nrf52840' && tq.env === 'rak4631' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
-    && /Fetching nrf52840's tools \(by rak4631\): queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
-  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
+  check('Download build dependencies: the family asked for at this source and ref, with its test target, and said', tq && tq.family === 'nrf52840' && tq.env === 'rak4631' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
+    && /Downloading build dependencies for rak4631, a nrf52840 target: queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
+  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Test target offline').click();
   await wait();
-  check('Test offline: asked for the family, and said', posted.some((b) => b.action === 'offline' && b.family === 'nrf52840')
-    && /Building rak4631 with no network at all: queued\. If it passes, nrf52840 is offline ready\./.test(t(d.getElementById('factory-note'))));
+  check('Test target offline: asked for the family, and said', posted.some((b) => b.action === 'offline' && b.family === 'nrf52840')
+    && /Building rak4631 with the network disabled: queued\. A pass shows that rak4631 builds offline/.test(t(d.getElementById('factory-note'))));
   const s3 = [...d.querySelectorAll('.factory-family')].find((x) => t(x.querySelector('summary strong')) === 'esp32s3');
   const sel = s3.querySelector('.factory-test-target select');
   check('the test target: the suggested board to start with, any of the family to choose', sel.value === 'heltec-v3' && sel.options.length === 2);
   sel.value = [...sel.options].find((o) => o.value !== 'heltec-v3').value; sel.dispatchEvent(new w.Event('change'));
-  [...s3.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
+  [...s3.querySelectorAll('button')].find((b) => t(b) === 'Test target offline').click();
   await wait();
   check('  the one chosen is the one asked for', posted.some((b) => b.action === 'offline' && b.family === 'esp32s3' && b.env === sel.value), JSON.stringify(posted.slice(-1)));
   d.getElementById('factory-pause').click();

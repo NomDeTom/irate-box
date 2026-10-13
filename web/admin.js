@@ -1967,7 +1967,7 @@ function jointDo(i, data, busy) {
   const d = i.do || {};
   if (d.repair === 'rerun-install') {
     controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the installer again', disabled: busy,
-      onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run install.sh again with this box\'s recorded options? Services restart once; nothing else changes.') }));
+      onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run install.sh again with this box\'s recorded options? The installer can repair, upgrade and restart services.') }));
   }
   if (d.act === 'deep') controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the deep audit', disabled: busy, onclick: () => sec.auditDeep.click() }));
   if (d.go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${d.go}`, textContent: `Go to ${d.where} →` }));

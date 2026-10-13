@@ -15,4 +15,6 @@ The hub is the box's front page. It needs no internet: everything here stays on 
 
 ## Privacy
 
-Pick any name a page asks for. Nothing is sent anywhere else. Without the padlock (HTTPS), anything you type can be read by others on the same WiFi: the box's certificate page (`/certificate`) shows how to get the padlock.
+Without an account, a page asks for any name. The box does not check that name. With an account, your username identifies you.
+
+HTTP does not encrypt traffic. Others on the same WiFi can read what you type. Use HTTPS for passwords and private information. The box's certificate page (`/certificate`) shows how to trust the box. Check that page before you trust the box.

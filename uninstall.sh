@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# Removes what install.sh set up, so the box is as it was before (or ready for a clean
-# reinstall). Tailscale is not irate-box's: it is handed back as an ordinary boot service,
-# in whatever state it is in now.
+# Uninstall Irate-Box: remove the services, code, apps, configuration, state and the hub user
+# that install.sh set up. This leaves the box close to its state before the install, or ready
+# for a clean reinstall. Tailscale is not part of Irate-Box. The uninstaller hands it back as
+# an ordinary boot service, in its current state.
 #
-#   sudo ./uninstall.sh                     units, code, apps, config, state, the hub user
-#   sudo ./uninstall.sh --keep-state        ... but leave /var/lib/hub (notes, saves, ZIMs)
-#   sudo ./uninstall.sh --purge-packages    ... and the apt packages install.sh added:
+#   sudo ./uninstall.sh                     remove units, code, apps, config, state and the hub user
+#   sudo ./uninstall.sh --keep-state        keep /var/lib/hub (notes, saves, ZIM books, git repositories)
+#   sudo ./uninstall.sh --purge-packages    also purge the apt packages that install.sh added:
 #                                           nginx (if irate-box installed it), caddy (and
 #                                           its apt repo), kiwix-tools, syncthing,
 #                                           mosquitto, ngircd, nodejs, cgit, fcgiwrap
 #
-# State goes too unless --keep-state (the git repositories are state): back it up
-# first. -y skips the confirmation.
+# Without --keep-state, the uninstaller deletes the state: shared and private notebooks, accounts,
+# files, posts, books, and git and build data. Back up first. The packages that --purge-packages
+# purges can include packages that were on the box before the install. -y skips the confirmation.
 set -euo pipefail
 
 KEEP_STATE=0 PURGE_PKGS=0 YES=0
@@ -22,7 +24,7 @@ while [ $# -gt 0 ]; do
 	--keep-state) KEEP_STATE=1; shift ;;
 	--purge-packages) PURGE_PKGS=1; shift ;;
 	-y | --yes) YES=1; shift ;;
-	-h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	-h | --help) sed -n '4,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
 done

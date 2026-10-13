@@ -146,7 +146,7 @@ check("root with a password of its own (first login done): a warning, lock offer
 check("root with no password: a problem", rootf()["root-password"]["status"] == "problem" and "no password" in rootf()["root-password"]["detail"])
 grp = (T / "group").read_text(); (T / "group").write_text(grp.replace("sudo:x:27:lyra", "sudo:x:27:"))
 check("  nobody else with sudo: no lock offered, and said why", rootf()["root-password"]["actions"] == []
-      and "add one first" in rootf()["root-password"]["fix"])
+      and "Add one first" in rootf()["root-password"]["fix"])
 try:
     security.fix("root-lock", None); refused_ = False
 except ValueError:

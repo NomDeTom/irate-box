@@ -1912,18 +1912,18 @@ def security_snapshot():
               "do": to_https}
     hub = [{"id": "admin-password", "title": "Admin password", **pw}, {
         "id": "plain-http", "title": "HTTPS" if https else "Plain HTTP only",
-        **({"status": "ok", "detail": "On: devices that installed the box's certificate (from /certificate) talk to it privately. "
+        **({"status": "ok", "detail": "On: devices that installed the box's certificate (from /certificate) use HTTPS when they connect. "
             "Plain HTTP still answers, for the hotspot's sign-in sheet and devices without the certificate."} if https else
-           {"status": "warn", "detail": "The box has no certificate in use, so everything a browser and the box say to each other "
-            "(pages, messages, uploads) can be read by anyone on the same open network, and changed by anyone who sets out to.",
+           {"status": "warn", "detail": "The box has no certificate in use. Other people on the same network can read and change what a browser "
+            "and the box send to each other: pages, messages and uploads.",
             "fix": "Make the box's certificate, then install it on your own devices from /certificate.", "do": to_https}),
     }, {
         "id": "one-origin", "title": "Apps share the admin page's address", "status": "warn",
-        "detail": "Notes, the books, git and the add-ons have addresses of their own; the drawing editors (Excalidraw, Mermaid) "
-                  "and the hub's other apps still run on /admin's, so a hostile page among them could act with your login "
-                  "while you are logged in.",
-        "fix": "Log out (close the browser) after admin work. Giving the editors an address of their own is on irate-box's plan.",
-        "do": {"hub": "The hub's own work: nothing to set here. Accept it if logging out after admin work suits you."},
+        "detail": "Notes, the books, git and the add-ons have addresses of their own. The drawing editors (Excalidraw, Mermaid) "
+                  "and the hub's other apps run on the administration address. A hostile page among them can act with your "
+                  "sign-in while you are signed in.",
+        "fix": "Select Sign out after administration work. Signing out does not remove this risk. Giving the editors an address of their own is on the plan.",
+        "do": {"hub": "This is the design of the hub. Nothing to set here. Accept the risk, or sign out after administration work."},
     }]
     for f in hub:
         f.setdefault("actions", [])

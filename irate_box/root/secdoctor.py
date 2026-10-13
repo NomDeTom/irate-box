@@ -2202,8 +2202,8 @@ def step_tls(ctx):
     except (RuntimeError, OSError):
         pass
     out.append(F("tls-constraints", "The CA can vouch only for the box", "ok" if "X509v3 Name Constraints: critical" in text else "problem",
-                 "Its name constraints are in place: installed, it is trusted for nothing else." if "X509v3 Name Constraints: critical" in text
-                 else "The CA has no name constraints: a device that installs it would trust it for any site.",
+                 "Name constraints limit the CA to this box's names. A device that enforces them rejects other sites." if "X509v3 Name Constraints: critical" in text
+                 else "The CA has no name constraints. A device that installs it trusts it for any site.",
                  "" if "X509v3 Name Constraints: critical" in text else "Make a new CA (/admin → Security → HTTPS).", "", about=about))
     private = st.get("keys_private") and tls.KEY.exists() and (tls.KEY.stat().st_mode & 0o007) == 0
     out.append(F("tls-keys", "The certificate keys", "ok" if private else "problem",
@@ -2217,7 +2217,7 @@ def step_tls(ctx):
         else:
             hsts = any(k.lower() == "strict-transport-security" for k in got[1])
             out.append(F("tls-hsts", "No HSTS", "problem" if hsts else "ok",
-                         "The front sends Strict-Transport-Security: a phone that saw it could never reach the plain pages again, the captive portal's among them."
+                         "The front sends Strict-Transport-Security. A device that received it uses only HTTPS for this box's name until the header expires. Plain pages, such as the captive portal, then do not open on that device."
                          if hsts else "The front sends no Strict-Transport-Security, so plain HTTP keeps working.",
                          "Remove the Strict-Transport-Security header from the web server's config." if hsts else "", "", about=about))
         plain = _local_headers("http://127.0.0.1/")

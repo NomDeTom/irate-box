@@ -50,9 +50,9 @@ WHAT = {
 }
 WARNINGS = {
     "open": [
-        "Anyone nearby can read everything guests send and receive on the hub: pages, messages, uploads, and "
-        "the admin login if you log in over the hotspot.",
-        "Device locks on saves and files still work, but anyone listening can see what guests do.",
+        "An open hotspot does not encrypt the WiFi link. Anyone nearby can read what guests send and receive over plain HTTP: "
+        "pages, messages, uploads, and the administrator password if an administrator signs in over the hotspot.",
+        "Device locks on saves and files still work. Anyone who listens can see what guests do over plain HTTP.",
     ],
     "owe": [
         "Older devices cannot join: roughly Android before 10, iPhones and iPads before iOS 16, Windows 10 "
@@ -75,8 +75,7 @@ WARNINGS = {
 WPA2_WARNING = ("Letting WPA2 devices join (WPA3 transition mode) brings older devices back, but they get "
                 "no protection: anyone who knows the password can read their traffic.")
 ALWAYS = ("Whatever the mode, someone with the right equipment can impersonate the hotspot or tamper with "
-          "pages in transit. Only HTTPS (planned, with a certificate guests install on first use) protects "
-          "against that.")
+          "pages in transit. HTTPS prevents this on devices that trust the box's certificate.")
 
 
 def load():

@@ -23,12 +23,12 @@ Programs the box watches for its makers' updates (meshtasticd, for one), with **
 
 ## Backup
 
-**Back up this box** makes a file to download:
+**Back up this box** makes a backup at one of three levels. The first two levels make a file to download:
 
 - **Settings only**: the hub's settings, accounts, the apps' and add-ons' settings, the library's and mirrors' sources, mesh channels.
 - **Settings and data**: also the shared notes, saved work, the board and shoutbox, dropped files, the box's own git repositories. People's own notebooks are not included: each keeps theirs with **My notebook**'s download.
-- **Full image**: the whole card, written to a USB stick in parts.
+- **Full image**: a copy of the whole card, written to a USB stick in parts. The image contains everything on the card, including books, firmware and private data. The box keeps running while it writes the image, so the files can differ in time.
 
-Books, firmware, mirrors, builds and caches are never in a backup: they're fetched again. Syncthing's private keys go in only if you tick it; whoever holds that file can pose as the box, so keep it like a password.
+The first two levels leave out books, firmware, mirrors, builds and caches. The box downloads them again. Syncthing's private keys are included only if you select them. A person who holds that file can pose as the box. Keep the file as you keep a password.
 
 **Content export** makes a set for another box (books, toolkits, repositories, and this box's settings if you want), to download or write to a USB stick: to bring a box level, or start a new one.

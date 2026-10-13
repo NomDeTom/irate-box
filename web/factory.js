@@ -167,20 +167,20 @@
         el('summary', {}, el('strong', { textContent: f }),
           el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}${picked ? `, ${picked} chosen` : ''}; ${facReady(f)}; ${facEst(f)}.` })),
         el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(f)),
-        actionButton('Fetch tools', async () => {
+        actionButton('Download build dependencies', async () => {
           try {
             const r = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-            say(`Fetching ${f}'s tools (by ${r.env}): queued. Nothing is compiled; once fetched, its builds need no internet.`, true, fac.note);
+            say(`Downloading build dependencies for ${r.env}, a ${f} target: queued. The box compiles nothing. After the download, a build of ${r.env} needs no internet access. Other ${f} targets can need more downloads.`, true, fac.note);
             renderFactory(r.snapshot);
           } catch (err) { say(err.message, false, fac.note); }
-        }, { title: 'Install what this family needs (toolchain, framework, libraries) without building: a later build needs no internet' }),
-        actionButton('Test offline', async () => {
+        }, { title: 'Download the toolchain, framework and libraries for the test target, without a build. A later build of that target needs no internet access. Other targets in the family can need more downloads.' }),
+        actionButton('Test target offline', async () => {
           try {
             const r = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-            say(`Building ${r.env} with no network at all: queued. If it passes, ${f} is offline ready.`, true, fac.note);
+            say(`Building ${r.env} with the network disabled: queued. A pass shows that ${r.env} builds offline with the cached dependencies. It does not show that every ${f} target builds offline.`, true, fac.note);
             renderFactory(r.snapshot);
           } catch (err) { say(err.message, false, fac.note); }
-        }, { title: 'Build one target of this family with the network cut off: proves the box can build it offline' })),
+        }, { title: 'Build the test target with the network disabled. A pass applies to that target, that revision and the cached dependencies only.' })),
         el('div', { className: 'factory-boards' }, ...list.map((t) => el('label', { title: [t.file, t.level ? `board_level ${t.level}` : '', t.support ? `support level ${t.support}` : ''].filter(Boolean).join(', ') },
           el('input', { type: 'checkbox', value: t.env, checked: facChosen.has(t.env),
             onchange: (e) => { if (e.target.checked) facChosen.add(t.env); else facChosen.delete(t.env); factoryChosen(); } }),

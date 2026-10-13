@@ -158,13 +158,13 @@ def check_commits(src, revs, key_file):
             sig, payload = _split_commit(raw)
             short = rev[:7]
             if not sig:
-                return False, f"{short} is not signed: pushed straight to the branch, not merged on GitHub"
+                return False, f"Commit {short} is not signed"
             (Path(tmp) / "sig").write_bytes(sig)
             (Path(tmp) / "payload").write_bytes(payload)
             out = subprocess.run(["gpgv", "--status-fd", "1", "--keyring", str(ring), str(Path(tmp) / "sig"), str(Path(tmp) / "payload")],
                                  capture_output=True, text=True, timeout=60, env=dict(os.environ, GNUPGHOME=tmp))
             if out.returncode != 0 or "[GNUPG:] VALIDSIG" not in out.stdout:
-                return False, f"{short} is not signed by GitHub's key: not merged on GitHub"
+                return False, f"Commit {short} is not signed by GitHub's key"
     return True, f"{len(revs)} commit{'s' if len(revs) != 1 else ''} signed by GitHub"
 
 

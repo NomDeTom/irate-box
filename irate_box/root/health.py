@@ -116,7 +116,7 @@ def _act(choice, label, confirm=None):
 
 
 RERUN = _act("rerun-install", "Run the installer again",
-             "Run install.sh again with this box's recorded options? Services restart once; nothing else changes.")
+             "Run install.sh again with this box's recorded options? The installer can repair, upgrade and restart services.")
 
 
 def install_options():
@@ -1233,8 +1233,8 @@ def check_crashwatch(now=None):
     elif not wd:
         said += " This kernel has no watchdog (neither the board's nor softdog)."
     out.append(_f("crash-hang", "A frozen box", "warn" if week and not on else "ok", said,
-                  "Each restart is filed as a crash, with what the box was doing, so nothing is lost by allowing it. "
-                  "Set on Recovery and monitoring.", go=_go("health-settings", "Recovery and monitoring", "hs-panic")))
+                  "Each restart is filed as a crash, with what the box was doing, as far as the box can record it. "
+                  "An automatic restart can lose unsaved data and stop running jobs. Set on Recovery and monitoring.", go=_go("health-settings", "Recovery and monitoring", "hs-panic")))
     out.append(_f("crash-snapshots", "Crash watch's snapshots", "ok" if s["snapshots"] else "warn",
                   f"Every 30 s to {cw.SNAP}, synced: what a crash is explained by." if s["snapshots"] else
                   "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).",
