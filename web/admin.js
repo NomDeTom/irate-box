@@ -769,7 +769,7 @@ function pkgCard(id, p) {
   } });
   // What it does by itself, as saved: the fold's title; the editor inside it.
   const says = `${label(s.channel)}: ${AW.patternSays(s.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? '' : 's'}.` : 'installs it.')}`;
-  const policy = el('details', { className: 'sec-fold update-auto pkg-policy' },
+  const policy = el('details', { className: 'field-help update-auto pkg-policy' },
     el('summary', {}, 'Channel and automatic updates: ', el('span', { className: 'pkg-policy-says', textContent: says })), settings);
   return el('div', { className: 'setting library-source update-card', dataset: { pkg: id } }, el('span', { className: 'update-card-body' },
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
