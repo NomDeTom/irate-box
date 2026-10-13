@@ -189,6 +189,7 @@ RADIO_WAIT = 180
 # and for as long as `give_up` says.
 NET_CAUSES = ("absent", "join", "gateway")
 CAUSE_WORDS = {"radio": "the radio has failed", "cable": "no cable is plugged in, or the other end is off",
+               "plugged": "the cable is back, but the link hasn't come up with it",
                "absent": "the network is not in range (the radio scans, and does not see it)",
                "join": "the network is in range, but joining it fails",
                "gateway": "joined, but the gateway does not answer"}
@@ -619,10 +620,16 @@ class Watch:
         o, cause = self.outage, obs.get("cause")
         if obs.get("wedged") and cause is None:
             cause = "radio"
+        if cause == "plugged" and o.get("cause") == "cable":
+            # Plugged back in, and the link didn't come up with it (a headless box would otherwise need a reboot to get
+            # its cable back): the steps count afresh from now, and the first, a reconnect, is due at once.
+            o.update(declared=now, done=[], held=[], skipped=[], next_reconnect=None, gap=self.eff["repeat"], replugged=now)
+            if self.episode:
+                self.episode.update(since=now, failed=[])
         if cause and cause != o.get("cause"):
             o["cause"] = cause
             says = (f"{'an adapter' if self.labels['radio'] != STEP_LABEL['radio'] else 'a radio'} reset, then a reboot if it isn't back"
-                    if cause == "radio" else {"wait": "plugging it in, or switching the other end on; the box waits",
+                    if cause == "radio" else "reconnecting now, then the steps as the pace says" if cause == "plugged" else {"wait": "plugging it in, or switching the other end on; the box waits",
                                               "reconnect": "plugging it in; meanwhile the box reconnects now and then",
                                               "ladder": "plugging it in; meanwhile the box takes its steps"}[self.eff.get("cable_out", "wait")]
                     if cause == "cable" else "reconnecting" + (" (and once a restart of the network service)" if cause == "join" else "")
@@ -707,6 +714,19 @@ class Watch:
                 o["held"].append("reboot")
                 self.log(now, "held", f"Would reboot, but {why}.", "reboot")
         allowed = self._allowed(o)
+        if o.get("replugged") and "reconnect" not in o["done"] and "reconnect" in can and "reconnect" in eff["steps"] and not self._held(now, obs, "reconnect"):
+            o["done"].append("reconnect")
+            o["next_reconnect"] = now + max(o["gap"], 30) if eff["repeat"] else None
+            self.log(now, "repair", "Reconnect: the cable is back, and the link didn't come up with it.", "reconnect", "auto")
+            return ["reconnect"]
+        if (o.get("replugged") and now - o["replugged"] >= RADIO_WAIT and "radio" not in o["done"] and "radio" in can
+                and "radio" in eff["steps"] and not self._held(now, obs, "radio")):
+            # Still not up a few minutes after the reconnect: the adapter reset, before anything heavier, as a stuck port
+            # or PHY is the likeliest reason a cable that is back gives no link.
+            o["done"].append("radio")
+            o["radio_at"] = now
+            self.log(now, "repair", f"{self.labels['radio'].capitalize()}: the cable is back, and a reconnect didn't bring the link up.", "radio", "auto")
+            return ["radio"]
         # Each step's time counts from the episode's start, so relapses climb as one long outage
         # would; a step that did not hold earlier in it is passed over (_passed).
         t = now - (self.episode["since"] if self.episode else o["declared"])
@@ -1080,6 +1100,8 @@ def outage_cause(iface, up, answers, wifi, exists, wedged, own, ssids, run=run, 
             return "radio"
         if carrier is False:
             return "cable"
+        if carrier and not up:
+            return "plugged"
         return "gateway" if up and answers is False else None
     if up:
         return "gateway" if answers is False else None
