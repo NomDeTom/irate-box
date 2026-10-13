@@ -692,6 +692,16 @@ loadLibrary();
 // --- packages from their makers (root/pkgwatch.py: meshtasticd on its channel) ------------------------
 // On mPWRD-OS the channel is the one mpwrd-menu keeps, and choosing one here sets it there.
 let pkgWaiting = null;
+// Each package's last answer, on its own card (kept through redraws); one with no package (Check now with none yet) in
+// the list's note. Asked is not done: the root helper takes jobs one at a time.
+const pkgAnswer = {};
+function pkgSay(id, text, ok) {
+  if (!id) { say(text, ok, noteEl('pkg-note')); return; }
+  pkgAnswer[id] = { text, ok };
+  const card = [...document.querySelectorAll('#pkg-list [data-pkg]')].find((c) => c.dataset.pkg === id);
+  const at = card && card.querySelector('.pkg-answer');
+  if (at) say(text, ok, at);
+}
 async function loadPackages() {
   const box = document.getElementById('pkg-list');
   if (!box) return;
@@ -699,7 +709,7 @@ async function loadPackages() {
   try { d = await getJSON('/admin/packages'); } catch (_) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Could not read the watched packages.' })); return; }
   if (pkgWaiting) {
     const done = (d.results || []).find((r) => r.id === pkgWaiting.id);
-    if (done) { say(done.ok ? done.message : done.error || done.message, done.ok, noteEl('pkg-note')); pkgWaiting = null; }
+    if (done) { pkgSay(pkgWaiting.pkg, done.ok ? done.message : done.error || done.message, done.ok); pkgWaiting = null; }
     else if (Date.now() - pkgWaiting.at < 600000) setTimeout(loadPackages, 3000);
   }
   const pkgs = Object.entries(d.packages || {});
@@ -719,10 +729,10 @@ async function loadPackages() {
 async function pkgAct(body, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
   try {
-    pkgWaiting = { id: (await postJSON('/admin/packages', body)).id, at: Date.now() };
-    say('Asked: the root helper is on it.', true, noteEl('pkg-note'));
+    pkgWaiting = { id: (await postJSON('/admin/packages', body)).id, at: Date.now(), pkg: body.package || '' };
+    pkgSay(body.package, 'Asked: queued with the root helper; it runs when the jobs before it are done.', true);
     setTimeout(loadPackages, 2000);
-  } catch (err) { say(err.message, false, noteEl('pkg-note')); }
+  } catch (err) { pkgSay(body.package, err.message, false); }
 }
 function pkgCard(id, p) {
   const s = p.settings, label = (ch) => (p.labels || {})[ch] || ch;
@@ -767,6 +777,8 @@ function pkgCard(id, p) {
       mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
         + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
   } });
+  const answer = el('p', { className: 'setting-desc action-note pkg-answer', role: 'status' });
+  if (pkgAnswer[id]) say(pkgAnswer[id].text, pkgAnswer[id].ok, answer); else answer.hidden = true;
   // What it does by itself, as saved: the fold's title; the editor inside it.
   const says = `${label(s.channel)}: ${AW.patternSays(s.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? '' : 's'}.` : 'installs it.')}`;
   const policy = el('details', { className: 'field-help update-auto pkg-policy' },
@@ -780,7 +792,7 @@ function pkgCard(id, p) {
       newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
       p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null),
-    policy, keptList));
+    answer, policy, keptList));
 }
 loadPackages();
 loadBooks();
