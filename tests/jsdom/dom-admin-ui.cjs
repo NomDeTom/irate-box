@@ -559,6 +559,12 @@ setTimeout(() => {
     [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
     setTimeout(() => {
     {
+      // The Fetch pressed earlier: its answer on meshtasticd's own card, not the list's line, and kept through the reload.
+      const ans = d.querySelector('#pkg-list [data-pkg="meshtasticd"] .pkg-answer');
+      check('packages: the answer on its own card, kept through a reload', ans && !ans.hidden && /Asked: queued/.test(ans.textContent)
+        && d.getElementById('pkg-note').hidden, ans && ans.textContent);
+    }
+    {
       const pol = d.querySelector('#pkg-list .pkg-policy');
       check('  after a reload: the fold still open, the unsaved Fetch still chosen', pol && pol.open
         && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Fetch'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
