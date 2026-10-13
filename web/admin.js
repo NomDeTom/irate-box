@@ -5996,6 +5996,12 @@ function paletteEditor(st, onSaved) {
         b.setAttribute('aria-pressed', String(on));
         return b;
       }));
+    // Colours that match no preset: said as the owner's own, so the row always shows where it stands.
+    if (!PALETTE_PRESETS.some(([, , pal]) => JSON.stringify(pal) === JSON.stringify(draft))) {
+      const own = el('button', { type: 'button', className: 'chip selected', textContent: 'Your own', title: 'Colours of your own: change them below' });
+      own.setAttribute('aria-pressed', 'true');
+      presets.append(own);
+    }
     const roles = PALETTE_ROLES.map(([role, label]) => {
       const own = ((draft[mode] || {})[role]);
       const pick = el('input', { type: 'color', value: c[role] });

@@ -43,6 +43,8 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const accentPick = () => ed().querySelector('input[type=color][data-role="accent"]');
   check('  the old accent taken in: the light accent shows it, and nothing waits to be saved', accentPick().value === '#ffd400'
     && saveB().disabled && /wait for Save/.test(t(ed().querySelector('.aw-foot .note'))), accentPick().value);
+  check('  matching no preset: said as Your own, marked', chip('Your own') && chip('Your own').getAttribute('aria-pressed') === 'true'
+    && ed().querySelectorAll('.chip-group')[0].querySelectorAll('.selected').length === 1);
   check('  and its shortfall named: a yellow link on a white tile', /Light: A link on a tile, 1\.\d:1 \(4\.5:1 asked\)/.test(t(ed().querySelector('.palette-report'))), t(ed().querySelector('.palette-report')));
   // Standard: the theme as it comes, its dark pairs that fall short said honestly.
   chip('Standard').click();
@@ -54,6 +56,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  ticked, Save is offered', !saveB().disabled);
   // A preset that passes: nothing to acknowledge.
   chip('Teal').click();
+  check('a preset chosen: Your own gone', !chip('Your own'));
   check('Teal: every pair passes in both modes, Save offered at once', /4\.5:1 or more in both modes/.test(t(ed().querySelector('.palette-report')))
     && !ed().querySelector('.palette-ack') && !saveB().disabled);
   check('  each mode its own accent: light deeper than dark', accentPick().value === '#0f766e');
