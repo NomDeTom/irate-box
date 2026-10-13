@@ -58,8 +58,9 @@ check("every 🏠 link says Hub", not bare, bare)
 # tests/browser/tile-rows.sh.
 css = (WEB / "style.css").read_text(encoding="utf-8")
 grid = re.search(r"\.service-grid \{[^}]*\}", css)
-check("the tile grid has a floor under every row (grid-auto-rows: minmax(..., auto))",
-      bool(grid) and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*auto\);", grid.group(0)) is not None, grid and grid.group(0))
+check("the tile grid's rows all alike, the tallest tile's, with a floor (grid-auto-rows: minmax(..., 1fr))",
+      bool(grid) and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*1fr\);", grid.group(0)) is not None, grid and grid.group(0))
+check("  and on a phone, rows back to their own height", re.search(r"@media \(max-width: 480px\) \{ \.service-grid \{ grid-auto-rows: minmax\(.+, auto\); \}", css) is not None)
 check("  and a large tile spans two rows", re.search(r"\.service-card\.large \{[^}]*grid-row: span 2", css) is not None)
 
 print("ok" if not fails else f"{fails} failure(s)")
