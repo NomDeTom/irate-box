@@ -19,7 +19,7 @@ What is waiting and its three buttons first; the same **Automatic updates** choi
 
 ## Packages from their makers
 
-Programs the box watches for its makers' updates (meshtasticd, for one), with **Roll back** to the version before.
+Programs the box watches for its makers' updates (meshtasticd, for one), with **Roll back** to the version before. Each card's channel and automatic updates are folded under one line saying what is saved. When a step fails, a link beside it leads to the Updates doctor.
 
 ## Backup
 

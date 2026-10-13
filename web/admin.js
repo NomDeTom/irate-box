@@ -337,6 +337,27 @@ function renderApps(snap, busy) {
   renderInventory();
 }
 
+// The other update policies the librarian runs, as saved, each with a link to the one place it is changed.
+function drawLibraryOthers(pol) {
+  const box = document.getElementById('library-others');
+  if (!box) return;
+  const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+  const fetchOnly = (often, act, what) => (Number(often) ? `${AW.patternSays(often, 0).replace(/; .*$/, '')}; ${Number(act) ? `fetches ${what}` : 'flags what is newer'}.` : AW.patternSays(0));
+  const rows = [
+    ['This hub', AW.patternSays(pol.hub_check_every_hours, pol.hub_auto).replace(/\.$/, '')
+      + (Number(pol.hub_check_every_hours) && Number(pol.hub_auto) === 2 ? `, between ${hh(pol.hub_window_start)} and ${hh(pol.hub_window_end)}.` : '.'), 'update-hub-card', 'Updates'],
+    ['Git mirrors', fetchOnly(pol.mirrors_every_hours, pol.mirrors_auto, 'what is newer (fetching is the update)'), 'mirrors', 'Mirrors'],
+    ['Firmware mirror', fetchOnly(pol.firmware_every_hours, pol.firmware_auto, 'new releases'), 'firmware', 'Firmware'],
+    ['Toolkits\' cache', Number(pol.kits_every_hours) ? `${AW.patternSays(pol.kits_every_hours, 0).replace(/; .*$/, '')}; refreshes the cache (installs nothing).` : AW.patternSays(0), 'toolkits', 'Toolkits'],
+    ['Debian\'s security updates', 'Set with the box\'s scan.', 'updates-debian', 'Updates'],
+  ];
+  const key = JSON.stringify(rows);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren(...rows.flatMap(([k, v, to, where]) => [el('dt', { textContent: k }),
+    el('dd', {}, `${v} `, el('a', { href: `#${to}`, textContent: `Change on ${where} →` }))]));
+}
+
 // Adapting to GitHub's allowance: attached once, so one press is one request however often the page redraws.
 document.getElementById('library-adapt').addEventListener('click', async () => {
   const at = noteEl('library-token-note');
@@ -405,6 +426,9 @@ function renderLibrary(snap) {
     ? `Adapted: a budget of ${pc.budget} requests an hour (GitHub allows ${pc.limit}), ${pc.left} left this hour${pc.backed_off ? '; it has backed off after refusals' : ''}.`
     : 'Not adapted: the librarian asks as it likes, and stops only when GitHub says it is nearly out.';
   document.getElementById('library-adapt-off').hidden = !pc.budget;
+  const access = document.getElementById('library-access-says');
+  if (access) access.textContent = `(${snap.token_set ? 'a token is set' : 'no token'}; ${pc.budget ? 'adapting' : 'not adapting'})`;
+  drawLibraryOthers(snap.policy || {});
 
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.
@@ -679,7 +703,16 @@ async function loadPackages() {
     else if (Date.now() - pkgWaiting.at < 600000) setTimeout(loadPackages, 3000);
   }
   const pkgs = Object.entries(d.packages || {});
-  box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => pkgCard(id, p))
+  // A redraw keeps an open policy fold open, and one with changes not saved keeps them (its fold carried over).
+  const before = new Map([...box.querySelectorAll('[data-pkg]')].map((c) => [c.dataset.pkg, c.querySelector('.pkg-policy')]));
+  const carry = (card) => {
+    const old = before.get(card.dataset.pkg), now = card.querySelector('.pkg-policy');
+    if (!old || !now) return card;
+    if (old.querySelector('.aw-foot .action-btn.primary:not([disabled])')) now.replaceWith(old);
+    else now.open = old.open;
+    return card;
+  };
+  box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => carry(pkgCard(id, p)))
     : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
       el('p', { className: 'library-buttons' }, actionButton('Check now', () => pkgAct({ action: 'check', package: '' })))]));
 }
@@ -734,16 +767,20 @@ function pkgCard(id, p) {
       mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
         + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
   } });
-  return el('div', { className: 'setting library-source update-card' }, el('span', { className: 'update-card-body' },
+  // What it does by itself, as saved: the fold's title; the editor inside it.
+  const says = `${label(s.channel)}: ${AW.patternSays(s.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? '' : 's'}.` : 'installs it.')}`;
+  const policy = el('details', { className: 'sec-fold update-auto pkg-policy' },
+    el('summary', {}, 'Channel and automatic updates: ', el('span', { className: 'pkg-policy-says', textContent: says })), settings);
+  return el('div', { className: 'setting library-source update-card', dataset: { pkg: id } }, el('span', { className: 'update-card-body' },
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
-    keptList, settings,
     el('span', { className: 'library-buttons' },
       actionButton('Check now', () => pkgAct({ action: 'check', package: id })),
       flag ? actionButton(`Fetch ${flag.version}`, () => pkgAct({ action: 'fetch', package: id })) : null,
       newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
-      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));
+      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null),
+    policy, keptList));
 }
 loadPackages();
 loadBooks();
@@ -1293,10 +1330,10 @@ let updWaiting = null; // { id, action }
 let updPoll = null;
 
 // Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
-function updSay(action, text, ok) {
+function updSay(action, text, ok, extra) {
   const node = action === 'force-install' ? upd.forceNote : action === 'clear-cache' ? upd.clearNote
     : action === 'doctor' ? upd.doctorNote : upd.note;
-  node.textContent = text;
+  node.replaceChildren(text || '', ...(extra ? [' ', extra] : []));
   node.classList.toggle('bad', !ok);
   node.hidden = !text;
 }
@@ -1408,8 +1445,9 @@ function renderUpdate(data) {
     const done = (data.results || []).find((r) => r.id === updWaiting.id);
     if (done) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
-      updSay(updWaiting.action, failed && updWaiting.action !== 'doctor'
-        ? `${done.message} — the Updates doctor (under Doctors) can say why.` : done.message, !failed);
+      // A failure says itself, with the way to its diagnosis beside it.
+      updSay(updWaiting.action, done.message, !failed, failed && updWaiting.action !== 'doctor'
+        ? el('a', { className: 'action-btn go-btn', href: '#updoctor', textContent: 'Why: the Updates doctor →' }) : null);
       updWaiting = null;
       renderUpdate(data);
       return;

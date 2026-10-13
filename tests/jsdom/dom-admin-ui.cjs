@@ -23,7 +23,7 @@ const accessData = { apps: [
   { id: 'term', title: 'Terminal', mode: 'public', login: true, kind: 'addon', unit: true },
 ], results: [], seen: { about: 'auto', 'tools-rf': 'hidden' } };
 // The librarian's snapshot, with Excalidraw kept current (its own updates on its page).
-const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1 }, token_set: false, running: false, types: [],
+const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1, hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5 }, token_set: false, running: false, types: [],
   progress: null, free_mb: 51000, job: {}, status: { draw: { last_check: '2026-10-08 03:00', outcome: 'up to date' } },
   sources: [{ kind: 'app', name: 'draw', type: 'bundle', repo: 'NomDeTom/excalidraw', workflow: 'irate-box-bundle.yml', branch: 'main' }],
   apps: { draw: { title: 'Excalidraw', installed: { commit: 'abc1234def', repository: 'NomDeTom/excalidraw', ref: 'main', built: '2026-10-01T00:00:00Z', has_previous: false }, pin: null } } };
@@ -331,6 +331,17 @@ setTimeout(() => {
     w.renderLibrary(library);
   }
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
+  {
+    // The librarian: its own work at the top; apps and books, then storage; the others' policies linked, not edited here.
+    const others = [...d.querySelectorAll('#library-others dt')].map((x) => x.textContent);
+    check('the librarian: the other updates listed, each linked to its own page', others.join('|') === 'This hub|Git mirrors|Firmware mirror|Toolkits\' cache|Debian\'s security updates'
+      && ['#update-hub-card', '#mirrors', '#firmware', '#toolkits', '#updates-debian'].every((h) => d.querySelector(`#library-others a[href="${h}"]`)), others);
+    check('  the hub\'s line is what is saved', /^Looks once a day; installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
+    check('  no editor for them here', !d.querySelector('#sources [name="hub_auto"], #sources [name="mirrors_auto"]'));
+    check('  source access folded, its title saying token and pacing', d.getElementById('library-token').closest('details').id === 'library-access'
+      && t('#library-access-says')[0] === '(no token; not adapting)', t('#library-access-says')[0]);
+    check('  the work now: a state line at the top', !!d.querySelector('#library-now .library-state'));
+  }
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
   // Backup: settings only, settings and data, or a full image, each with an estimated size.
   const lv = [...d.querySelectorAll('#backup-level .choice-tile')];
@@ -357,6 +368,16 @@ setTimeout(() => {
     && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Fetch 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
   [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Fetch 2.8.1.9')?.click();
   check('  Fetch asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
+  {
+    // The card: its state and buttons first; channel and policy folded under what is saved; a draft kept through a reload.
+    const pol = pk && pk.querySelector('.pkg-policy');
+    const btns = pk && pk.querySelector('.library-buttons');
+    check('packages: the buttons before the policy, which is folded under what is saved', !!pol && pol.tagName === 'DETAILS'
+      && !!(btns.compareDocumentPosition(pol) & w.Node.DOCUMENT_POSITION_FOLLOWING) && /^.+: (Looks|Only)/.test(t('.pkg-policy-says')[0]), t('.pkg-policy-says')[0]);
+    pol.open = true;
+    [...pol.querySelectorAll('.chip')].find((c) => c.textContent === 'Fetch').click();
+    w.loadPackages();
+  }
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
   check('new box: books, toolkits and repositories offered with their sizes, mirrors marked', kb.querySelectorAll('input').length === 2 && /wikipedia_en \(2\.6 GB\)/.test(kb.textContent)
     && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);
@@ -537,6 +558,11 @@ setTimeout(() => {
     check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
     [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
     setTimeout(() => {
+    {
+      const pol = d.querySelector('#pkg-list .pkg-policy');
+      check('  after a reload: the fold still open, the unsaved Fetch still chosen', pol && pol.open
+        && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Fetch'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
+    }
       check('git: Flush asks the hub, and the cache is gone from the page', posted.some((p) => p[0] === '/admin/firmware' && p[1].action === 'flush-cache')
         && !/Kept:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);
       console.log('\nfailures:', fails);

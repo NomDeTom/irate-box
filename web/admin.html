@@ -576,48 +576,63 @@
 
       <section class="admin-pane" id="sources" aria-labelledby="sources-title">
         <h2 id="sources-title">Schedule and token</h2>
-        <p class="setting-desc">For apps and books alike: how often the librarian looks for new versions, how many old ones it keeps, and the token some sources need.</p>
-        <h3>Schedule and versions</h3>
+        <p class="setting-desc">How the librarian keeps apps and books current, how much room they may take, and the token some
+          sources need. Each app and book is updated from its own page.</p>
+        <div class="net-card setting" id="library-now">
+          <h3>Now</h3>
+          <p class="setting-desc library-state" id="library-now-state"></p>
+          <progress class="admin-bar library-bar" max="1" hidden></progress>
+        </div>
         <form id="library-policy" class="library-form">
-          <label>Keep old versions
-            <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
-          </label>
+          <h3>Apps and books</h3>
           <div data-update-pattern data-often="check_every_hours" data-act="auto_install"
             data-says-0="Said on Apps and Books, and on the badge; update from there."
             data-says-2="Also put in use."></div>
+          <h3>Storage and kept versions</h3>
+          <label>Keep old versions of each book
+            <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+            <span class="setting-desc">What Roll back on a book goes back to; 0 deletes the old one when the new is in use.</span>
+          </label>
           <label>Always leave free (MB) <input name="min_free_mb" type="number" min="0" step="64"></label>
-          <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256"></label>
+          <label>All the books together at most (MB, 0 for no cap) <input name="books_budget_mb" type="number" min="0" step="256">
+            <span class="setting-desc">With no cap, the free space above still holds.</span></label>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
         <p class="setting-desc action-note" id="library-policy-note" role="status" hidden></p>
 
-        <h3>GitHub token</h3>
-        <p class="setting-desc">
-          Only for "GitHub Actions artifacts": GitHub requires a login to download those, even from
-          public repositories. A fine-grained token with read-only access to public repositories is
-          enough. Stored on the box, readable only by the hub; never shown again.
-          <span id="library-token-state"></span>
-        </p>
-        <form id="library-token" class="library-form">
-          <label>Token <input name="value" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+        <h3>Other updates, each set on its own page</h3>
+        <dl class="hl-glance" id="library-others"></dl>
+
+        <details class="sec-fold" id="library-access">
+          <summary>Source access: the GitHub token and the rate limit <span id="library-access-says"></span></summary>
+          <h3>GitHub token</h3>
+          <p class="setting-desc">
+            Only for "GitHub Actions artifacts": GitHub requires a login to download those, even from
+            public repositories. A fine-grained token with read-only access to public repositories is
+            enough. Stored on the box, readable only by the hub; never shown again.
+            <span id="library-token-state"></span>
+          </p>
+          <form id="library-token" class="library-form">
+            <label>Token <input name="value" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+            <div class="library-buttons">
+              <button class="action-btn primary" type="submit">Save</button>
+              <button class="action-btn" type="button" id="library-token-clear">Clear</button>
+            </div>
+          </form>
+          <h4>Adapt to the rate limit</h4>
+          <p class="setting-desc">
+            GitHub lets this box make 60 requests an hour without a token (5000 with one). Adapt asks
+            GitHub what it really allows, then keeps the librarian's scheduled checks to a budget just under it:
+            when the budget for the hour is spent, they wait. If GitHub refuses requests several times in a row, the
+            budget is halved, so it asks less often; a clean run gives some back. With or without a token.
+            <span id="library-pace-state"></span>
+          </p>
           <div class="library-buttons">
-            <button class="action-btn primary" type="submit">Save</button>
-            <button class="action-btn" type="button" id="library-token-clear">Clear</button>
+            <button class="action-btn" type="button" id="library-adapt">Adapt to rate limit</button>
+            <button class="action-btn" type="button" id="library-adapt-off">Stop adapting</button>
           </div>
-        </form>
-        <h4>Adapt to the rate limit</h4>
-        <p class="setting-desc">
-          GitHub lets this box make 60 requests an hour without a token (5000 with one). Adapt asks
-          GitHub what it really allows, then keeps the librarian's scheduled checks to a budget just under it:
-          when the budget for the hour is spent, they wait. If GitHub refuses requests several times in a row, the
-          budget is halved, so it asks less often; a clean run gives some back. With or without a token.
-          <span id="library-pace-state"></span>
-        </p>
-        <div class="library-buttons">
-          <button class="action-btn" type="button" id="library-adapt">Adapt to rate limit</button>
-          <button class="action-btn" type="button" id="library-adapt-off">Stop adapting</button>
-        </div>
-        <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
+          <p class="setting-desc action-note" id="library-token-note" role="status" hidden></p>
+        </details>
       </section>
 
       <section class="admin-pane" id="saved" aria-labelledby="saved-title">
