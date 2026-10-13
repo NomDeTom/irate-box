@@ -101,6 +101,7 @@ class Heard:
         self.started = now()
         try:
             self.nodes = json.loads(NODES.read_text()).get("nodes", {})
+            self._written = json.dumps({"nodes": self.nodes})   # what the card has already
         except (OSError, ValueError, AttributeError):
             self.nodes = {}
         self.saved = 0
@@ -134,11 +135,15 @@ class Heard:
             for k in [k for k, n in self.nodes.items() if t - n.get("last", 0) > NODE_DAYS * 86400]:
                 del self.nodes[k]
             data = json.dumps({"nodes": self.nodes})
+        self.saved = t
+        # Unchanged since the last save (no node heard): nothing to write to the card.
+        if data == getattr(self, "_written", None):
+            return
         DIR.mkdir(parents=True, exist_ok=True)
         tmp = NODES.with_name(".nodes.json.tmp")
         tmp.write_text(data)
         os.replace(tmp, NODES)
-        self.saved = t
+        self._written = data
 
     def view(self, texts=False):
         """What the traffic page shows. texts: the messages too (/admin only)."""

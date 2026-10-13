@@ -138,7 +138,7 @@ check("  the radio watched, its failure in the last day, nothing to choose here:
       and f["crash-radio"]["go"]["mark"] == "up-wedge", f["crash-radio"])
 check("  a frozen box after a crash, nothing to restart it: a warning; the choice is the doctor's settings', linked to its row",
       f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"] and not f["crash-hang"]["actions"]
-      and f["crash-hang"]["go"] == {"section": "health-settings", "where": "the doctor's settings", "mark": "hs-panic"}, f["crash-hang"])
+      and f["crash-hang"]["go"] == {"section": "health-settings", "where": "Recovery and monitoring", "mark": "hs-panic"}, f["crash-hang"])
 check("  snapshots: said, linked to their row", not f["crash-snapshots"]["actions"] and f["crash-snapshots"]["go"]["mark"] == "hs-snapshots", f["crash-snapshots"])
 g = {x["key"]: x for x in health.doctor_settings()["groups"]}
 check("the doctor's settings: snapshots, a panic, and the watchdog where there is one, each with its current choice, the safest first",
@@ -394,6 +394,33 @@ dr3.act(2060, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])}, [], ("aic8800_f
 check("  the same count again: not said again", [x[0] for x in logged] == ["driver-reset"], logged)
 dr3.act(2200, {"wlan0": ([], []), "ap0": (["ap0 is gone"], [])}, [], ("aic8800_fdrv:1:1990", 188.0))
 check("  after the grace, a radio still gone is a failure", ("failed", "ap0 is gone") in logged, logged)
+
+# The write-intensity ladder: how snapshots reach the card at each stop.
+written = []
+now = [1000.0]
+k = cw.SnapshotKeeper(write=lambda text, sync=True: written.append((text, sync)), clock=lambda: now[0])
+k.add("a", "everything"); k.add("b", "thrifty")
+check("ladder: everything and thrifty: each snapshot written and synced", written == [("a", True), ("b", True)], written)
+written.clear(); k.add("c", "gentle")
+check("  gentle: written, not synced", written == [("c", False)], written)
+written.clear(); k.add("d", "saver"); now[0] += 60; k.add("e", "saver")
+check("  saver: held in memory", written == [], written)
+k.add("f", "saver", trouble=True)
+check("  saver: written at once, all held, when something goes wrong", written == [("def", True)], written)
+written.clear(); k.add("g", "saver"); now[0] += cw.SAVER_EVERY; k.add("h", "saver")
+check("  saver: and every quarter of an hour", written == [("gh", True)], written)
+written.clear(); k.add("i", "saver"); k.flush()
+check("  saver: what is held goes to the card when crash watch stops", written == [("i", True)], written)
+written.clear(); k.add("j", "saver"); k.add("k", "thrifty")
+check("  moving off saver: what was held first, then the new one", written == [("j", True), ("k", True)], written)
+(T / "settings.json").write_text(json.dumps({"card_writes": "gentle"}))
+cw.STATE = T
+check("ladder: crash watch reads the stop from the hub's settings", cw.card_writes() == "gentle")
+(T / "settings.json").write_text(json.dumps({"card_writes": "everything!"}))
+check("  an unknown stop is thrifty", cw.card_writes() == "thrifty")
+(T / "settings.json").unlink(); (T / "settings.json").symlink_to(T / "elsewhere.json")
+(T / "elsewhere.json").write_text(json.dumps({"card_writes": "saver"}))
+check("  never through a link: thrifty", cw.card_writes() == "thrifty")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

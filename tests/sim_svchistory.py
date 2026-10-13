@@ -91,6 +91,27 @@ with mock.patch.object(M, "memory", return_value=mem), mock.patch.object(M, "pro
           and M.snapshot(D0)["processes"][0]["name"] == "hub")
     check("memory: restart does not duplicate the last sample", not sampler.tick(D0 + 1))
 check("memory: stale process snapshots are not presented as current", not M.snapshot(D0 + 3 * M.EVERY)["processes"])
+with mock.patch.object(M, "memory", return_value=mem), mock.patch.object(M, "processes", return_value=[]):
+    sampler.tick(D0 + M.EVERY)
+check("memory: a sample is a line added, not the file rewritten", M.FILE.read_text().count("\n") == 2 and len(M.load()["samples"]) == 2)
+M.FILE.write_text(json.dumps({"samples": [dict(mem, at=D0)]}))
+with mock.patch.object(M, "memory", return_value=mem), mock.patch.object(M, "processes", return_value=[]):
+    sampler.tick(D0 + M.EVERY)
+check("memory: the older single-object file turned into lines at the next sample", M.FILE.read_text().count("\n") == 2
+      and [x["at"] for x in M.load()["samples"]] == [D0, D0 + M.EVERY])
+from irate_box.hub import jsonlog as J
+jl = T / "log.jsonl"
+check("jsonlog: nothing to append to: the caller writes it whole", not J.append(jl, [{"a": 1}]))
+J.rewrite(jl, [{"a": 1}])
+check("jsonlog: appended a line, read back in order", J.append(jl, [{"a": 2}]) and J.read(jl) == [{"a": 1}, {"a": 2}] and J.count(jl) == 2)
+jl.write_text(jl.read_text() + '{"a": 3')
+check("jsonlog: a line cut short by a power cut is left out", J.read(jl) == [{"a": 1}, {"a": 2}])
+old = T / "old.json"
+old.write_text(json.dumps([{"a": 1}]))
+check("jsonlog: the older JSON array is read, and not appended to", J.read(old) == [{"a": 1}] and not J.append(old, [{"a": 2}]) and J.count(old) > 1000)
+link = T / "link.jsonl"
+link.symlink_to(jl)
+check("jsonlog: never appended through a link", not J.append(link, [{"a": 9}]) and J.read(jl)[-1] != {"a": 9})
 proc = T / "proc"
 proc.mkdir()
 (proc / "meminfo").write_text("MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 200 kB\nSwapFree: 150 kB\n")

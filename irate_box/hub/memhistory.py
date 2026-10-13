@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box.hub import svchistory
+from irate_box.hub import jsonlog, svchistory
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 FILE = STATE / "memory-history.json"
@@ -41,19 +41,30 @@ def processes():
     return sorted(found, key=lambda entry: entry["resident"], reverse=True)[:5]
 
 
-def load():
+def _legacy(text):
+    """The older form's samples (one JSON object holding them all), or None for lines of samples."""
     try:
-        hist = json.loads(FILE.read_text())
-        if not isinstance(hist, dict) or not isinstance(hist.get("samples"), list):
-            return {"samples": []}
-        hist["samples"] = [sample for sample in hist["samples"] if isinstance(sample, dict)
-                           and all(isinstance(sample.get(key), (int, float)) and math.isfinite(sample[key])
-                                   for key in ("at", "total", "available", "swap_total", "swap_free"))
-                           and sample["total"] > 0 and 0 <= sample["available"] <= sample["total"]
-                           and 0 <= sample["swap_free"] <= sample["swap_total"]][-LIMIT:]
-        return hist
+        whole = json.loads(text)
+    except ValueError:
+        return None
+    if isinstance(whole, dict) and "samples" in whole:
+        return whole["samples"] if isinstance(whole["samples"], list) else []
+    return None
+
+
+def load():
+    """The samples kept: a line each (jsonlog), or the older single JSON object."""
+    try:
+        text = FILE.read_text()
     except (OSError, ValueError):
         return {"samples": []}
+    old = _legacy(text)
+    samples = old if old is not None else jsonlog.read(FILE)
+    return {"samples": [sample for sample in samples if isinstance(sample, dict)
+                        and all(isinstance(sample.get(key), (int, float)) and math.isfinite(sample[key])
+                                for key in ("at", "total", "available", "swap_total", "swap_free"))
+                        and sample["total"] > 0 and 0 <= sample["available"] <= sample["total"]
+                        and 0 <= sample["swap_free"] <= sample["swap_total"]][-LIMIT:]}
 
 
 def record(hist, mem, now):
@@ -67,14 +78,20 @@ def record(hist, mem, now):
     return True
 
 
+# The largest processes at the last sample: shown while fresh, kept in memory only (a table that is
+# replaced every five minutes has no need to be on the card).
+_processes = {"at": None, "list": []}
+
+
 def snapshot(now=None):
     now = time.time() if now is None else now
     hist = load()
     samples = [sample for sample in hist["samples"] if now - KEEP <= sample["at"] <= now]
     fresh = bool(samples) and now - samples[-1]["at"] <= EVERY * 2
+    shown = fresh and _processes["at"] == samples[-1]["at"]
     return {"now": int(now), "every": EVERY,
-            "samples": samples, "processes": hist.get("processes", []) if fresh else [],
-            "processes_at": samples[-1]["at"] if fresh else None}
+            "samples": samples, "processes": _processes["list"] if shown else [],
+            "processes_at": samples[-1]["at"] if shown else None}
 
 
 class Sampler(threading.Thread):
@@ -90,11 +107,16 @@ class Sampler(threading.Thread):
         hist = load()
         if not record(hist, memory(), now):
             return False
-        hist["processes"] = processes()
-        FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = FILE.with_name(FILE.name + ".tmp")
-        tmp.write_text(json.dumps(hist, separators=(",", ":")))
-        os.replace(tmp, FILE)
+        sample = hist["samples"][-1]
+        _processes.update(at=sample["at"], list=processes())
+        # A line a sample; the whole file rewritten only from the older form or once it holds twice
+        # what is kept.
+        try:
+            legacy = _legacy(FILE.read_text()) is not None
+        except OSError:
+            legacy = False
+        if legacy or not jsonlog.append(FILE, [sample]) or jsonlog.count(FILE) > 2 * LIMIT:
+            jsonlog.rewrite(FILE, hist["samples"])
         return True
 
     def run(self):

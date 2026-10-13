@@ -974,6 +974,9 @@ window.addEventListener('resize', () => { if (memoryHistory) renderMemoryHistory
 let lastBox = null;  // /admin/box: the services, for each app page's header
 function renderBox(data) {
   lastBox = data;
+  const rate = cardRate(data.system);
+  const rateEl = document.getElementById('card-writes-rate');
+  if (rateEl) rateEl.textContent = rate ? `Written to the card: ${rate}` : 'The card\'s writes are not known on this system.';
   if (typeof fillHeadBlocks === 'function') fillHeadBlocks();
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
@@ -1266,6 +1269,7 @@ const upd = {
   doctor: document.getElementById('update-doctor'),
   clear: document.getElementById('update-clear'),
   doctorNote: document.getElementById('doctor-note'),
+  clearNote: document.getElementById('update-clear-note'),
   doctorWhen: document.getElementById('doctor-when'),
   findings: document.getElementById('doctor-findings'),
   udSummary: document.getElementById('updoctor-summary'), udEmpty: document.getElementById('updoctor-empty'),
@@ -1284,10 +1288,10 @@ const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update',
 let updWaiting = null; // { id, action }
 let updPoll = null;
 
-// Each answer goes under the buttons that asked: the doctor's and the cache's under theirs.
+// Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
 function updSay(action, text, ok) {
-  const node = action === 'force-install' ? upd.forceNote
-    : action === 'doctor' || action === 'clear-cache' ? upd.doctorNote : upd.note;
+  const node = action === 'force-install' ? upd.forceNote : action === 'clear-cache' ? upd.clearNote
+    : action === 'doctor' ? upd.doctorNote : upd.note;
   node.textContent = text;
   node.classList.toggle('bad', !ok);
   node.hidden = !text;
@@ -1321,9 +1325,15 @@ function renderUpdoctor(d) {
     b.setAttribute('aria-pressed', String(udShow === key));
     return b;
   })));
-  const item = (f, i) => {
+  // Each row named by its check, not its place in the list, so a link to it survives a new report.
+  const slug = (f) => `ud-${String(f.id || f.check).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  const item = (f) => {
     const x = healthDo(f, false);
-    return findingRow({ id: `ud-${i}`, state: f.status, title: f.check, detail: f.detail, how: x.how, controls: x.controls });
+    // The cache and a failed verification are dealt with in Updates' Maintenance, where their buttons are.
+    if (f.status !== 'ok' && /cache|cached copy|verif/i.test(`${f.check} ${f.fix || ''}`) && !x.controls.some((c) => c.getAttribute && c.getAttribute('href') === '#update-maint')) {
+      x.controls.push(el('a', { className: 'action-btn go-btn', href: '#update-maint', textContent: 'Go to Updates → Maintenance →' }));
+    }
+    return findingRow({ id: slug(f), state: f.status, title: f.check, detail: f.detail, how: x.how, controls: x.controls });
   };
   const open = all.filter((f) => f.status !== 'ok' && (udShow === 'all' || f.status === udShow));
   upd.findings.replaceChildren(...open.map(item));
@@ -1332,7 +1342,7 @@ function renderUpdoctor(d) {
   const fine = all.filter((f) => f.status === 'ok');
   upd.udFineFold.hidden = !fine.length;
   upd.udFineCount.textContent = `(${fine.length})`;
-  upd.udFine.replaceChildren(...fine.map((f, i) => item(f, `fine-${i}`)));
+  upd.udFine.replaceChildren(...fine.map(item));
 }
 // On a metered network (a phone's hotspot, say): scheduled updates and downloads wait, and one
 // started by hand asks first (meteredOk).
@@ -1487,8 +1497,6 @@ const sec = {
   counts: document.getElementById('security-counts'),
   findings: document.getElementById('security-findings'),
   hub: document.getElementById('security-hub'),
-  set: document.getElementById('security-set'),
-  setCount: document.getElementById('security-set-count'),
   listeners: document.querySelector('#security-listeners tbody'),
   output: document.getElementById('security-output'),
   log: document.getElementById('security-log'),
@@ -1572,14 +1580,19 @@ function drawSecPending(busy) {
   });
 }
 async function secSavePending() {
-  const list = [...secPending.values()];
+  const list = [...secPending.entries()];
   const ids = [];
-  for (const { a } of list) {
-    try { ids.push((await postJSON('/admin/security', { action: 'fix', choice: a.choice })).id); }
-    catch (err) { secNote = { fid: 'scan', text: err.message, ok: false }; break; }
+  let failed = null;
+  // Each change sent in turn; one the hub refuses, and those after it, stay chosen (and shown) for another Save.
+  for (const [key, { a }] of list) {
+    try { ids.push((await postJSON('/admin/security', { action: 'fix', choice: a.choice })).id); secPending.delete(key); }
+    catch (err) { failed = err.message; break; }
   }
-  secPending.clear();
   if (ids.length) { secWaiting = { id: ids[ids.length - 1], ids, fid: 'scan' }; secNote = null; }
+  if (failed) {
+    secNote = { fid: 'scan', text: `${ids.length} of ${list.length} sent; then: ${failed} The rest are still chosen, not saved.`, ok: false };
+    if (ids.length) secWaiting.keepNote = secNote;
+  }
   loadSecurity();
 }
 
@@ -1634,12 +1647,28 @@ async function secAccept(key, title, yes) {
     if (secData) { secData.accepted = r.accepted; renderSecurity(secData); }
   } catch (err) { say(err.message, false, sec.auditNote); }
 }
+let secRepair = null;  // { id, label }: a repair asked from the Security doctor, answered there
 async function healthRepair(choice, label, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
   try {
-    await postJSON('/admin/health', { action: 'fix', choice });
-    say(`${label}: asked; the Box doctor shows its progress and answer.`, true, sec.auditNote);
+    secRepair = { id: (await postJSON('/admin/health', { action: 'fix', choice })).id, label };
+    say(`${label}: waiting for the root helper.`, true, sec.auditNote);
+    loadHealth();
   } catch (err) { say(err.message, false, sec.auditNote); }
+}
+// Told by each health report: the repair's place in the queue, then its answer, where it was asked.
+function secRepairFollow(data) {
+  if (!secRepair) return;
+  const done = (data.results || []).find((r) => r.id === secRepair.id);
+  const q = data.queue || {};
+  if (done) {
+    say(`${secRepair.label}: ${done.message}`, done.ok, sec.auditNote);
+    secRepair = null;
+    return;
+  }
+  // Still a request file: queued (oldest first); gone but not answered: the helper has it.
+  const ahead = (q.waiting || []).findIndex((x) => x.id === secRepair.id);
+  say(`${secRepair.label}: ${ahead < 0 ? 'running' : ahead ? `queued, ${ahead} ahead of it` : 'next in the queue'}. The full queue is on the Box doctor.`, true, sec.auditNote);
 }
 
 // A choice on the Security page, as a setting rather than a finding: its name, what it means, its options as
@@ -1659,12 +1688,24 @@ function secChipRows(f, busy) {
       return b;
     }))));
 }
+// The Security page's subjects: where each of the box's choices lives.
+const SEC_SUBJECTS = [
+  ['exposure', 'What guests can reach', 'The ports that answer, the floor between guests and the box, and what is shared onward.'],
+  ['login', 'Logging in and root', 'Who can log in to the box itself, how, and what they may do as root.'],
+  ['system', 'The system', 'How the system underneath is set up: its kernel, its package sources, its logs and its services.'],
+];
+function secSubject(f) {
+  if (/^(port-|listen-|firewall|guest-net|cockpit|llmnr|share)/.test(f.id)) return 'exposure';
+  if (/^(ssh|sudo|root-|group-)/.test(f.id)) return 'login';
+  return 'system';
+}
 function secChoiceCard(f, busy, note) {
   const rows = secChipRows(f, busy);
   const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
   const buttons = rest.actions.length ? el('div', { className: 'library-buttons' }, ...scanButtons(rest, busy)) : null;
   return el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
-    el('span', { className: 'setting-name', textContent: f.title }),
+    el('span', { className: 'setting-name' }, f.title, ' ',
+      el('span', { className: `fstate fstate-${f.status === 'ok' ? 'ok' : f.status}`, textContent: f.status === 'ok' ? 'Set' : 'Waiting for your choice' })),
     el('span', { className: 'setting-desc', textContent: f.detail }),
     f.status !== 'ok' && f.fix && !rows.length && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     ...rows, buttons, note);
@@ -1678,7 +1719,8 @@ function renderSecurity(data) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
       const all = (secWaiting.ids || [secWaiting.id]).map((id) => (data.results || []).find((r) => r.id === id)).filter(Boolean);
-      secNote = { fid: secWaiting.fid, text: all.map((r) => r.message).join(' '), ok: all.every((r) => r.ok) };
+      secNote = { fid: secWaiting.fid, text: [all.map((r) => r.message).join(' '), secWaiting.keepNote ? secWaiting.keepNote.text : ''].filter(Boolean).join(' '),
+        ok: all.every((r) => r.ok) && !secWaiting.keepNote };
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -1689,13 +1731,17 @@ function renderSecurity(data) {
   const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
     how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Nothing to press: it is said so you know.'),
     controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
-  // The real choices: what waits for one first, what is set (with its Undo) in a fold.
-  const waiting = by('choice').filter((f) => f.status !== 'ok'), set = by('choice').filter((f) => f.status === 'ok');
+  // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
+  // choice or is set, so a setting can always be found and changed back.
+  const choices = lines.filter((f) => secKind(f) === 'choice');
+  const waiting = choices.filter((f) => f.status !== 'ok'), set = choices.filter((f) => f.status === 'ok');
   const card = (f) => secChoiceCard(f, busy, noteUnder(f.id));
-  sec.findings.replaceChildren(...(waiting.length ? waiting.map(card)
-    : [el('p', { className: 'setting-desc', textContent: scan ? 'Nothing: every choice here is made.' : 'Not scanned yet.' })]));
-  sec.set.replaceChildren(...set.map(card));
-  sec.setCount.textContent = `(${set.length})`;
+  sec.findings.replaceChildren(...(!scan ? [el('p', { className: 'setting-desc', textContent: 'Not scanned yet.' })]
+    : SEC_SUBJECTS.map(([key, title, words]) => {
+      const mine = choices.filter((f) => secSubject(f) === key);
+      return mine.length ? el('div', { className: 'sec-subject', id: `security-${key}` }, el('h3', { textContent: title }),
+        el('p', { className: 'setting-desc', textContent: words }), el('div', { className: 'findings' }, ...mine.map(card))) : null;
+    }).filter(Boolean)));
   // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
   sec.hub.replaceChildren(...data.hub.map((f) => el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
     el('span', { className: 'setting-name', textContent: f.title }),
@@ -1720,8 +1766,10 @@ function renderSecurity(data) {
   const auditSaid = secNote && secNote.fid === 'audit' ? secNote : null;
   say(auditSaid ? auditSaid.text : '', auditSaid ? auditSaid.ok : true, sec.auditNote);
 
-  sec.when.textContent = scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` + (busy ? ' Scanning…' : '')
-    : busy ? 'Scanning…' : 'Not scanned yet.';
+  // Scanning only while a scan asked from here is out; anything else the helper has is said as such.
+  const doing = secWaiting && secWaiting.fid === 'scan' && !secWaiting.ids ? 'Scanning…'
+    : secWaiting ? 'Saving: waiting for the root helper…' : busy ? 'The root helper is busy with other work; this report is from before it.' : '';
+  sec.when.textContent = (scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` : 'Not scanned yet.') + (doing ? ` ${doing}` : '');
   sec.scan.disabled = busy;
   sec.auditRun.disabled = busy;
   sec.auditDeep.disabled = busy;
@@ -1756,7 +1804,7 @@ function renderSecurity(data) {
   sec.counts.replaceChildren(...[
     [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
     [ports, `port${ports === 1 ? '' : 's'} worth a look`, ports ? 'warn' : 'ok', 'security-ports'],
-    [set.length, 'set', 'ok', 'security-set-fold']].map(([n, word, st, to]) =>
+    [set.length, 'set', 'ok', 'security-findings']].map(([n, word, st, to]) =>
     el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
   badge('security', problems ? String(problems) : '');
   const updProblems = by('update').filter((f) => f.status === 'problem').length;
@@ -1787,7 +1835,15 @@ function jointDo(i, data, busy) {
   const page = (i.page || []).map((id) => scanBy.get(id)).filter(Boolean);
   const seen = new Set(), controls = [];
   for (const f of page) {
-    if (f.id === 'sudo-nopasswd') { controls.push(...sudoToggle(f, busy)); continue; }
+    // A repair with one right answer is done here; an ongoing choice is the Security page's (or Updates'),
+    // where it can be seen and changed back: the doctor links to it rather than changing it itself.
+    if (secKind(f) !== 'cure') {
+      if ((f.actions || []).length || f.status !== 'ok') {
+        const [to, where] = secKind(f) === 'update' ? ['updates-security', 'Updates'] : [`sec-${f.id}`, 'Security'];
+        if (!seen.has(to)) { seen.add(to); controls.push(el('a', { className: 'action-btn go-btn', href: `#${to}`, textContent: `Choose on ${where} →` })); }
+      }
+      continue;
+    }
     for (const a of f.actions || []) {
       if (seen.has(a.choice)) continue;
       seen.add(a.choice);
@@ -2234,6 +2290,7 @@ function renderGlance(data, rep) {
     ['A frozen box', !st ? 'Not known yet.' : st.panic || st.watchdog
       ? `Restarts by itself (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
     ['Snapshots', !st ? 'Not known yet.' : st.snapshots ? 'Kept every 30 s.' : 'Off.'],
+    ['Writes to the card', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
   if (hl.glance.dataset.key === key) return;   // the same again: left alone, a selection in it too
@@ -2340,6 +2397,7 @@ function renderHelperQueue(q) {
 function renderHealth(data) {
   hlLast = data;
   renderHelperQueue(data.queue);
+  secRepairFollow(data);
   const h = data.helper || {};
   // The watchdog's escalations (ladder-chart.js), drawn again only when the record changed.
   const lad = document.getElementById('health-ladder');
@@ -5914,6 +5972,32 @@ async function loadAppearance() {
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadAppearance();
+
+// The write-intensity ladder (Recovery and monitoring), from the most kept to the least written.
+const CARD_STOPS = [
+  ['everything', 'Record everything', 'Crash watch\'s snapshots written and synced every 30 s; the clock saved every minute. Nothing more is lost than now.'],
+  ['thrifty', 'Thrifty', 'Snapshots as above; the clock saved every 10 minutes and when the hub stops: after a crash it may resume up to 10 minutes behind.'],
+  ['gentle', 'Gentle', 'Snapshots written without a sync: a hang loses the last two minutes of them. The clock every 30 minutes.'],
+  ['saver', 'Card saver', 'Snapshots kept in memory and written every quarter of an hour, or at once when crash watch sees trouble; the clock hourly. A hang loses up to 15 minutes of snapshots.'],
+];
+async function loadCardWrites() {
+  const box = document.getElementById('card-writes-box');
+  if (!box) return;
+  let st;
+  try { st = await getJSON('/admin/settings'); } catch (_) { return; }
+  const stop = st.card_writes || 'thrifty';
+  box.replaceChildren(AW.settings([{ key: 'card_writes', label: 'How hard it writes', kind: 'choice', value: stop,
+    options: CARD_STOPS.map(([v, label]) => [v, label]),
+    note: (CARD_STOPS.find((c) => c[0] === stop) || CARD_STOPS[1])[2] + ' While the box still hangs now and then, stay at Record everything or Thrifty: the lower stops lose what crash watch is for.' }],
+  { save: async (changed) => { await postJSON('/admin/settings', changed); loadCardWrites(); } }));
+}
+loadCardWrites();
+// The card's writes since boot, and per day at that rate: the evidence for the ladder.
+function cardRate(sys) {
+  if (!sys || sys.card_written == null || !sys.boot_uptime) return null;
+  const perDay = sys.card_written / sys.boot_uptime * 86400;
+  return `${size(sys.card_written)} since boot, about ${size(perDay)} a day at that rate.`;
+}
 
 // ---- Folders: each folder's page arranges its entries. The
 // owner may hide an entry from a folder, order a folder's entries, and put an entry in other

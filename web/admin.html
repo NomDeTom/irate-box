@@ -221,6 +221,36 @@
 
       </section>
 
+      <section class="admin-pane" id="recovery" aria-labelledby="recovery-title">
+        <h2 id="recovery-title">Recovery and monitoring</h2>
+        <p class="setting-desc">
+          How the box notices trouble and comes back from it: what crash watch keeps, and what restarts
+          a box that froze. What it found is the <a href="#health">Box doctor</a>'s to show.
+        </p>
+        <!-- How hard the box writes to its card: the hub's setting card_writes (server.CARD_WRITES, crashwatch.card_writes). -->
+        <div class="net-card setting" id="card-writes">
+          <h3>Writing to the card</h3>
+          <p class="setting-desc">An SD card wears with every write. The box always writes a file only when it changed,
+            keeps its live reports in memory and adds to its histories rather than rewriting them. Beyond that, choose
+            how much it may lose in a crash or a power cut to write less. What people made (posts, notes, drawings,
+            settings) is written as it changes at every stop.</p>
+          <div id="card-writes-box"></div>
+          <p class="setting-desc" id="card-writes-rate"></p>
+        </div>
+        <!-- Crash watch's and the restarts' settings: set, then saved (each change goes to the root helper in turn). -->
+        <div class="net-card setting" id="health-settings">
+          <h3>How the box looks after itself</h3>
+          <p class="setting-desc">What crash watch keeps, and what restarts a frozen box. Repairs to the box's network
+            connection, and reboots for it, are the uplink watchdog's: <a href="#net-watchdog-card">Network → Staying on the network</a>.</p>
+          <div id="health-settings-groups"></div>
+          <div class="library-buttons">
+            <button class="action-btn" type="button" id="health-settings-discard" disabled>Discard</button>
+            <button class="action-btn primary" type="button" id="health-settings-save" disabled>Save</button>
+          </div>
+          <p class="setting-desc action-note" id="health-settings-note" role="status" hidden></p>
+        </div>
+      </section>
+
       <section class="admin-pane" id="clock" aria-labelledby="clock-title">
         <h2 id="clock-title">Clock</h2>
         <p class="setting-desc">
@@ -927,18 +957,8 @@
           <h3>The box at a glance</h3>
           <dl class="hl-glance" id="health-glance"></dl>
         </div>
-        <!-- The doctor's own settings: set, then saved (each change goes to the root helper in turn). -->
-        <div class="net-card setting" id="health-settings">
-          <h3>How the box looks after itself</h3>
-          <p class="setting-desc">What crash watch keeps, and what restarts a frozen box. Repairs to the box's network
-            connection, and reboots for it, are the uplink watchdog's: <a href="#net-watchdog-card">Network → Staying on the network</a>.</p>
-          <div id="health-settings-groups"></div>
-          <div class="library-buttons">
-            <button class="action-btn" type="button" id="health-settings-discard" disabled>Discard</button>
-            <button class="action-btn primary" type="button" id="health-settings-save" disabled>Save</button>
-          </div>
-          <p class="setting-desc action-note" id="health-settings-note" role="status" hidden></p>
-        </div>
+        <p class="setting-desc" id="health-recovery-summary">How the box looks after itself (what crash watch keeps, what restarts
+          a frozen box) is set on <a href="#recovery">System → Recovery and monitoring</a>.</p>
         <div class="admin-progress" id="health-progress" hidden>
           <progress class="admin-bar" id="health-bar" max="1" value="0"></progress>
           <p class="setting-desc" id="health-step"></p>
@@ -1269,15 +1289,10 @@
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <p class="sec-counts" id="security-counts"></p>
         <div class="sec-pending" hidden></div>
-        <!-- Each line: what it is, what it means, and one thing to do. -->
-        <h3>Waiting for your choice</h3>
-        <div class="findings" id="security-findings"></div>
+        <!-- The box's choices by subject, each in its place whether it waits for a choice or is set. -->
+        <div id="security-findings"></div>
         <h3>What the hub itself can and can't protect</h3>
         <div class="findings" id="security-hub"></div>
-        <details class="sec-fold" id="security-set-fold">
-          <summary>Already chosen <span id="security-set-count"></span>: each can be changed back here</summary>
-          <div class="findings compact" id="security-set"></div>
-        </details>
         <p class="setting-desc" id="security-elsewhere">
           Elsewhere: fixes with one right answer are offered by the <a href="#secdoctor">Security doctor</a>,
           beside what it found; Debian's security updates are on <a href="#updates-debian">Updates</a>; the
@@ -1457,6 +1472,31 @@
         <div id="pkg-list"><p class="setting-desc">Looking…</p></div>
         <p class="setting-desc action-note" id="pkg-note" role="status" hidden></p>
 
+        <!-- Maintenance: what is done rarely and on purpose, not routine updating. -->
+        <details class="sec-fold" id="update-maint">
+          <summary>Maintenance: clear the cache, install anyway</summary>
+          <h3>The update cache</h3>
+          <p class="setting-desc">The cached copy of the hub's code and the downloads kept for updates. Clearing it makes
+            the next check start afresh: for a cache the Updates doctor finds broken.</p>
+          <div class="library-buttons">
+            <button class="action-btn" type="button" id="update-clear">Clear the update cache</button>
+          </div>
+          <p class="setting-desc action-note" id="update-clear-note" role="status" hidden></p>
+        <h3>Install anyway</h3>
+        <p class="setting-desc">
+          When the fetched version did not pass verification and you know why — the check itself
+          can be what is wrong, as when an update changes how the code is laid out — it can be
+          installed regardless. The installer runs as it always does and stops on its own errors;
+          the checks that failed are skipped. Only for a version you trust: the one fetched from
+          the repository this box was installed from.
+        </p>
+        <div class="findings" id="force-failed" hidden></div>
+        <div class="library-buttons">
+          <button class="action-btn" type="button" id="update-force" disabled>Install the fetched version anyway</button>
+        </div>
+        <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
+        </details>
+
       </section>
 
       <section class="admin-pane" id="backup" aria-labelledby="backup-title">
@@ -1620,7 +1660,6 @@
         </p>
         <div class="library-buttons">
           <button class="action-btn" type="button" id="update-doctor">Run the update doctor</button>
-          <button class="action-btn" type="button" id="update-clear">Clear the update cache</button>
         </div>
         <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
         <p class="setting-desc" id="doctor-when">Not run yet: it runs when you press the button, or by itself when a check
@@ -1633,19 +1672,8 @@
           <div class="findings compact" id="updoctor-fine"></div>
         </details>
 
-        <h3>Install anyway</h3>
-        <p class="setting-desc">
-          When the fetched version did not pass verification and you know why — the check itself
-          can be what is wrong, as when an update changes how the code is laid out — it can be
-          installed regardless. The installer runs as it always does and stops on its own errors;
-          the checks that failed are skipped. Only for a version you trust: the one fetched from
-          the repository this box was installed from.
-        </p>
-        <div class="findings" id="force-failed" hidden></div>
-        <div class="library-buttons">
-          <button class="action-btn" type="button" id="update-force" disabled>Install the fetched version anyway</button>
-        </div>
-        <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
+        <p class="setting-desc">Clearing the update cache and installing a fetched version that failed its checks are on
+          <a href="#update-maint">Updates → Maintenance</a>.</p>
       </section>
 
     </main>

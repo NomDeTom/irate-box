@@ -403,20 +403,20 @@ import irate_box.root.safeio as _sio  # noqa: E402
 _sio.write = lambda path, text, mode=0o644: Path(path).write_text(text)
 L = U.Ladder(Path(_tf2.mkdtemp()) / "uplink-ladder.json")
 L.add(w.ladder, "wlan0", 100000)
-rows = __import__("json").loads(L.path.read_text())
+rows = __import__("irate_box.hub.jsonlog", fromlist=["read"]).read(L.path)
 check("the record: compact rows, the interface, the text kept short", rows[0] == {"at": 60, "k": "down", "i": "wlan0", "t": "Link lost (3 missed checks within 30 min)."}
       and any(r.get("s") == "radio" and r.get("b") == "auto" for r in rows), rows[:3])
 L.add([{"at": 100000 + 73 * 86400, "kind": "down", "text": "Link lost."}], "wlan0", 100000 + 73 * 86400)
-check("  72 days kept, older ones dropped", [r["at"] for r in __import__("json").loads(L.path.read_text())] == [100000 + 73 * 86400])
+check("  72 days kept, older ones dropped", [r["at"] for r in L.rows] == [100000 + 73 * 86400])
 check("  nothing to add: nothing written", L.add([], "wlan0", 0) is None)
 L2 = U.Ladder(Path(_tf2.mkdtemp()) / "uplink-ladder.json")
 for at, n in ((1000, 0), (1010, 1), (1100, 2), (1250, 1), (1320, 0), (1500, 0), (1650, 0)):
     L2.misses(at, n, 3, "wlan0")
-rows2 = __import__("json").loads(L2.path.read_text()) if L2.path.exists() else []
+rows2 = __import__("irate_box.hub.jsonlog", fromlist=["read"]).read(L2.path) if L2.path.exists() else []
 check("the symptoms: the most misses in each five-minute slot, with the line (the sensitivity) then; quiet slots not kept",
       [(r["at"], r["n"], r["th"]) for r in rows2 if r["k"] == "m"] == [(900, 2, 3), (1200, 1, 3)], rows2)
 L2.misses(1800, 0, 5, "wlan0"); L2.misses(2100, 0, 5, "wlan0")
-check("  a quiet slot is kept when the line moved", [(r["at"], r["n"], r["th"]) for r in __import__("json").loads(L2.path.read_text())][-1] == (1800, 0, 5))
+check("  a quiet slot is kept when the line moved", [(r["at"], r["n"], r["th"]) for r in __import__("irate_box.hub.jsonlog", fromlist=["read"]).read(L2.path)][-1] == (1800, 0, 5))
 
 # 8. validate()
 for bad in [{"eagerness": "max"}, {"forgiveness": "lax"}, {"sensitivity": 21}, {"sensitivity": "many"}, {"overrides": {"check": 5}},
@@ -569,7 +569,7 @@ L3 = U.Ladder(Path(_tf2.mkdtemp()) / "uplink-ladder.json")
 L3.started(10000, 8000.04, 120)
 L3.started(20000, None, 5000)
 L3.started(30000, 31000, 5000)
-rows3 = __import__("json").loads(L3.path.read_text())
+rows3 = __import__("irate_box.hub.jsonlog", fromlist=["read"]).read(L3.path)
 check("a start: its last check, and whether the box had just started", rows3[0] == {"at": 10000, "k": "start", "t": "Watching again after the box started.", "last": 8000.0}, rows3[0])
 check("  the watchdog restarted alone; no last check known, none said", rows3[1] == {"at": 20000, "k": "start", "t": "Watching again (the watchdog restarted)."}, rows3[1])
 check("  a last check after the start (the clock stepped) left out", "last" not in rows3[2], rows3[2])
