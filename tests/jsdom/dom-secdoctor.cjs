@@ -189,7 +189,13 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     && sudo2.classList.contains('pending') && asked === 0, t(sudo2));
   check('  the bar at the top lists it, with Discard and Save', !bar.hidden && /1 change not saved yet/.test(t(bar))
     && /Passwordless sudo/.test(t(bar)) && [...bar.querySelectorAll('button')].map(t).join('|') === 'Discard|Save it', t(bar));
-  check('  the Security doctor\'s page shows the same bar', !d.querySelector('#secdoctor .sec-pending').hidden);
+  {
+    // Saved only from the page it was chosen on: the Security doctor's bar points there and offers no Save of it.
+    const other = d.querySelector('#secdoctor .sec-pending');
+    check('  the Security doctor\'s bar points to it on Security, with no Save of its own', !other.hidden
+      && !!other.querySelector('a[href="#security"]') && /1 on Security/.test(t(other)) && !other.querySelectorAll('button').length, t(other));
+    check('  Updates\' bar the same', !!d.querySelector('#updates .sec-pending a[href="#security"]'));
+  }
   [...bar.querySelectorAll('button')].find((b) => t(b) === 'Discard').click();
   await wait();
   check('  Discard: back to On, the bar gone, nothing posted', !sent() && d.querySelector('#security .sec-pending').hidden

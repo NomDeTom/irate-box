@@ -4,7 +4,7 @@
 
 *What is and isn't protected, and the choices. On the admin pages: System → Security, and the Security doctor.*
 
-The **Security** page says plainly what's protected and what isn't, and holds the choices that are yours, by subject: **what guests can reach**, **logging in and root**, and **the system**. Each stays in its place whether it waits for a choice or is set, so it can always be changed back. Nothing that opens the box further is done without your yes.
+The **Security** page says plainly what's protected and what isn't, and holds the choices that are yours, by subject: **what guests can reach**, **logging in and root**, and **the system**. Each stays in its place whether it waits for a choice or is set, so it can always be changed back. Nothing that opens the box further is done without your yes. A choice is marked when you press it and done when you **Save**; each page's Save sends only what was chosen on that page, and a page says when something chosen elsewhere is still waiting.
 
 - **HTTPS**: the box makes its own certificate; install it on your devices from `/certificate` and the padlock appears. Or use a certificate of your own. Without HTTPS, anything typed into a page can be read by anyone on the same WiFi.
 - **What the box keeps about visitors**: whether it counts unique visitors (by a salted fingerprint, never kept as is).

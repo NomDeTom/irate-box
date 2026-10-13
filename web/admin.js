@@ -1536,7 +1536,7 @@ function sudoToggle(f, busy) {
     const file = a.choice.split(':')[1];
     const on = /^sudo-drop:/.test(a.choice) !== secChosen(f.id, a);   // as it would be after Save
     const b = el('button', { type: 'button', className: 'chip-btn' + (on ? ' active' : '') + (secChosen(f.id, a) ? ' pending' : ''), disabled: busy,
-      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: () => secChoose(f, a) });
+      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ''}: ${on ? 'On' : 'Off'}`, title: a.label, onclick: (ev) => secChoose(f, a, ev.currentTarget) });
     b.setAttribute('aria-pressed', String(on));
     return b;
   });
@@ -1547,40 +1547,51 @@ function scanButtons(f, busy) {
   if ((f.actions || []).some((a) => a.group)) return [...secChipRows(f, busy), ...scanButtons({ ...f, actions: f.actions.filter((a) => !a.group) }, busy)];
   return (f.actions || []).map((a) => {
     const b = el('button', { type: 'button', className: 'action-btn' + (secChosen(f.id, a) ? ' pending' : ''), textContent: a.label, disabled: busy,
-      title: secChosen(f.id, a) ? 'Chosen: waits for Save. Press again to leave it out.' : '', onclick: () => secChoose(f, a) });
+      title: secChosen(f.id, a) ? 'Chosen: waits for Save. Press again to leave it out.' : '', onclick: (ev) => secChoose(f, a, ev.currentTarget) });
     b.setAttribute('aria-pressed', String(secChosen(f.id, a)));
     return b;
   });
 }
-// The Security page's and the Security doctor's choices are set, then saved: each chosen thing waits, marked, with
-// what it does said in the bar at the top (no pop-up per switch); Save sends them all, Discard forgets them.
-const secPending = new Map();   // finding id -> {f, a}
+// The Security page's, the Security doctor's and Updates' choices are set, then saved: each chosen thing waits, marked,
+// with what it does said in its page's bar (no pop-up per switch). Each page's Save sends only what was chosen on
+// that page, and its Discard forgets only those: a choice left waiting elsewhere is never sent unseen.
+const SEC_PAGES = ['security', 'secdoctor', 'updates'];
+const SEC_PAGE_NAME = { security: 'Security', secdoctor: 'the Security doctor', updates: 'Updates' };
+const secPending = new Map();   // finding id -> {f, a, page}
 const secChosen = (fid, a) => secPending.has(fid) && secPending.get(fid).a.choice === a.choice;
-function secChoose(f, a) {
+const secPageOf = (node) => (node && node.closest && node.closest('.admin-pane') ? node.closest('.admin-pane').id : 'security');
+const secOnPage = (page) => [...secPending.entries()].filter(([, v]) => v.page === page);
+function secChoose(f, a, from) {
   // Chosen again, or the choice it has now: nothing to save for it.
   if (secChosen(f.id, a) || a.on) secPending.delete(f.id);
-  else secPending.set(f.id, { f, a });
+  else secPending.set(f.id, { f, a, page: secPageOf(from) });
   if (secData) renderSecurity(secData);
 }
 function drawSecPending(busy) {
-  const list = [...secPending.values()];
   document.querySelectorAll('.sec-pending').forEach((bar) => {
-    bar.hidden = !list.length;
-    if (!list.length) { bar.replaceChildren(); return; }
+    const page = secPageOf(bar);
+    const list = secOnPage(page).map(([, v]) => v);
+    // Chosen on another page: said here with a way there, never saved from here.
+    const elsewhere = SEC_PAGES.filter((p) => p !== page).map((p) => [p, secOnPage(p).length]).filter(([, n]) => n);
+    const away = elsewhere.length ? el('p', { className: 'setting-desc' }, 'Also waiting, saved from their own page: ',
+      ...elsewhere.flatMap(([p, n], i) => [i ? ', ' : '', el('a', { href: `#${p}`, textContent: `${n} on ${SEC_PAGE_NAME[p]}` })])) : null;
+    bar.hidden = !list.length && !away;
+    if (!list.length) { bar.replaceChildren(...(away ? [away] : [])); return; }
     bar.replaceChildren(
       el('p', { className: 'setting-name', textContent: `${list.length} change${list.length === 1 ? '' : 's'} not saved yet` }),
+      ...(away ? [away] : []),
       el('ul', { className: 'sec-pending-list' }, ...list.map(({ f, a }) => el('li', {},
         el('strong', { textContent: `${f.title}: ` }), a.label,
         a.confirm ? el('span', { className: 'setting-desc', textContent: ` ${a.confirm.replace(/\?$/, '.')}` }) : null))),
       el('div', { className: 'library-buttons' },
         el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: busy,
-          onclick: () => { secPending.clear(); if (secData) renderSecurity(secData); } }),
+          onclick: () => { secOnPage(page).forEach(([k]) => secPending.delete(k)); if (secData) renderSecurity(secData); } }),
         el('button', { type: 'button', className: 'action-btn primary', textContent: `Save ${list.length === 1 ? 'it' : `all ${list.length}`}`, disabled: busy,
-          onclick: secSavePending })));
+          onclick: () => secSavePending(page) })));
   });
 }
-async function secSavePending() {
-  const list = [...secPending.entries()];
+async function secSavePending(page) {
+  const list = secOnPage(page);
   const ids = [];
   let failed = null;
   // Each change sent in turn; one the hub refuses, and those after it, stay chosen (and shown) for another Save.
@@ -1683,7 +1694,7 @@ function secChipRows(f, busy) {
       const pend = secPending.get(f.id);
       const sel = pend ? pend.a.choice === a.choice : !!a.on;
       const b = el('button', { type: 'button', className: 'chip' + (sel ? ' selected' : '') + (pend && sel ? ' pending' : ''), textContent: a.label, disabled: busy,
-        onclick: () => secChoose(f, a) });
+        onclick: (ev) => secChoose(f, a, ev.currentTarget) });
       b.setAttribute('aria-pressed', String(sel));
       return b;
     }))));
@@ -2493,6 +2504,9 @@ function renderHealth(data) {
     hl.step.textContent = `Running the installer again, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}${p.label ? ` — ${p.label}` : ''}.`;
   }
   hl.install.textContent = installText(data.install);
+  // A cut-off or troubled install is no history to fold away: shown open.
+  const inst = data.install;
+  if (inst && (inst.running || inst.aborted || (inst.problems || []).length)) document.getElementById('health-install-fold').open = true;
   hl.log.textContent = (data.log || []).join('\n');
   hl.output.hidden = !(data.log || []).length;
   const problems = all.filter((f) => f.status === 'problem' && !isClock(f)).length;

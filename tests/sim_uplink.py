@@ -620,8 +620,8 @@ fs = {f["id"]: f for f in HL.step_findings(rows, {}, now)}
 check("  said for the flaky connection", "uplink-steps-wlan0" in fs and "restarting the network service mended 0 of 4" in fs["uplink-steps-wlan0"]["detail"],
       fs.get("uplink-steps-wlan0"))
 sk = fs.get("uplink-skip-wlan0-restart")
-check("  a finding for the restart, with the wedges, and the choice to leave it out there", sk and sk["status"] == "warn"
-      and "wedged right after it 2 times" in sk["detail"] and sk["actions"][0]["choice"] == "uplink-skip:wlan0:restart", sk)
+check("  a finding for the restart, with the wedges, and a link to where it is left out", sk and sk["status"] == "warn"
+      and "wedged right after it 2 times" in sk["detail"] and not sk["actions"] and sk["go"]["section"] == "up-steps" and sk["go"]["mark"] == "up-step-wlan0-restart", sk)
 check("  none for the steps that work", "uplink-skip-wlan0-reconnect" not in fs and "uplink-skip-wlan0-radio" not in fs)
 check("  none once it is left out", "uplink-skip-wlan0-restart" not in {f["id"] for f in HL.step_findings(rows, {"steps_off": {"wlan0": ["restart"]}}, now)})
 check("  its words name the tick to untick", "untick Restart the network service for wlan0" in sk["fix"], sk["fix"])
