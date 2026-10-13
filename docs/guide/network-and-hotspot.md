@@ -23,19 +23,27 @@ It also tells **why** the link is down. When the **radio itself has failed** (it
 
 **Which links it watches.** Each link (the WiFi, the cable, a USB adapter) can have a watchdog of its own. Set each one to
 **Watched**, **Not watched**, or **As any other link**, and choose what any other link does: watched **while it holds the
-route** (the default: the link the box reaches its network by), **watched**, or **not watched**. A link nobody watches is
-on its own: if it fails, nothing notices or tries again. The Box doctor says so, and when such a link is down it offers
+route** (the default: the link the box reaches its network by), **looked at** (the route's link watched, every other one
+looked at and its trouble said, nothing done for it), **watched**, or **not watched**. A link nobody watches is on its own:
+if it fails, nothing notices or tries again. A link is known by its name, then by its hardware: a USB adapter that comes
+back under another name (plugged into another port, or after another one) keeps its setting. The Box doctor says so, and when such a link is down it offers
 **Reconnect it** (NetworkManager stops trying a WiFi network after its password check fails a few times, and waits for
 someone).
 
 **Steps that reach every link.** Restarting the network service drops every link, and a reboot drops everything, so by
-default they are taken **only when nothing works**: a WiFi that fails on a box whose cable works is reconnected and its
+default they are taken **only when no path to the network is left**: a WiFi that fails on a box whose cable works is reconnected and its
 radio reset, but the box isn't rebooted for it. You can allow them **for the route's link** even with another up, or **for
 any link**. A step you press yourself is always yours to take.
 
 **A cable unplugged.** No carrier on a wired link means no cable, or the other end is off, and nothing the box does mends
-that: by default it **waits, and says so**. It can instead **reconnect now and then**, or take **the whole ladder**. On a
-cable, the third step resets the network adapter instead of a radio.
+that: by default it **waits, and says so**. It can instead **reconnect now and then**, or take **the whole ladder**. It
+watches for the cable coming back: if the link doesn't come up with it, the box reconnects at once, so a box with no
+screen gets its cable back without a reboot.
+
+**How far it goes on a cable by itself** is reconnecting, by default: a lost wired link is most often a cable pulled or
+the other end off, which no step mends, and when the carrier can't be read the box assumes the cable is out. Raise it to
+let the box also reset the network adapter (three minutes after a cable comes back without a link, then as the pace
+says), restart the network service, or reboot; it never goes past the reach above.
 
 The **Status** tab shows the link now and the last 72 hours; the Box doctor's chart shows how far the watchdog went.
 

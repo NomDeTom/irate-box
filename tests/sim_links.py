@@ -42,7 +42,7 @@ check("carrier read as it is", U.carrier("eth0") is True and U.carrier("wlan0") 
 # --- which are watched ---
 def S(**kw):
     return U.validate(kw)
-W = U.watched_links
+W = lambda *a, **k: set(U.watched_links(*a, **k))  # noqa: E731  which links, whatever how
 check("the route's link (the default): eth0 holds the route, so eth0 only: the Pi's case, wlan0 unwatched",
       W(S(), "eth0", c) == {"eth0"})
 check("  wlan0 set to be watched too: both", W(S(watch={"wlan0": True}), "eth0", c) == {"eth0", "wlan0"})
@@ -52,6 +52,35 @@ check("  no route, nothing watched yet: the first WiFi client", W(S(), None, c) 
 check("every link: all of them but one set not to be", W(S(watch_new="all", watch={"wwan0": False}), "eth0", c) == {"eth0", "usb0", "wlan0"})
 check("none: only those set", W(S(watch_new="none", watch={"wlan0": True}), "eth0", c) == {"wlan0"} and W(S(watch_new="none"), "eth0", c) == set())
 check("  one set but not there now (a radio gone with its driver) is still watched", W(S(watch_new="none", watch={"wlan1": True}), "eth0", c) == {"wlan1"})
+
+H = U.watched_links
+check("looked at only: the route's link in full, every other looked at, one set not to be left out",
+      H(S(watch_new="look", watch={"wwan0": False}), "eth0", c) == {"eth0": "full", "usb0": "look", "wlan0": "look"})
+check("  one set to be watched is watched in full, whatever the rest", H(S(watch_new="look", watch={"wlan0": True}), "eth0", c)["wlan0"] == "full")
+check("  a link in trouble keeps how it was watched when the route moves off it", H(S(), "usb0", c, troubled={"eth0": "full"}) == {"usb0": "full", "eth0": "full"}
+      and H(S(watch_new="look"), "eth0", c, troubled={"wlan0": "look"})["wlan0"] == "look")
+
+# --- a link known by its name, then by its hardware ---
+hw = {"enx001122334455": {"mac": "00:11:22:33:44:55", "path": "usb:1-1.3:1.0"}, "eth1": {"mac": None, "path": "usb:1-1.2:1.0"},
+      "usb0": {"mac": "aa:aa:aa:aa:aa:aa", "path": "usb:1-1.4:1.0"}}
+saved = S(watch={"enx0": True, "eth9": False}, watch_hw={"enx0": {"mac": "00:11:22:33:44:55", "path": "usb:1-1.1:1.0"},
+                                                           "eth9": {"mac": None, "path": "usb:1-1.2:1.0"}})
+cc = {"eth0": "ethernet", "enx001122334455": "ethernet", "eth1": "ethernet", "usb0": "ethernet"}
+al = U.aliases(saved, cc, hw=lambda i: hw.get(i, {}))
+check("a USB adapter back under another name: known by its own address first, then by its place on the bus",
+      al == {"enx001122334455": "enx0", "eth1": "eth9"}, al)
+check("  its settings follow it: watched, or not, as it was set", H(saved, "eth0", cc, alias=al) == {"eth0": "full", "enx001122334455": "full"})
+check("  while the old name is there, nothing is taken for it", U.aliases(saved, {**cc, "enx0": "ethernet"}, hw=lambda i: hw.get(i, {})) == {"eth1": "eth9"})
+check("  no hardware recorded: names only", U.aliases(S(watch={"enx0": True}), cc, hw=lambda i: hw.get(i, {})) == {})
+for bad in ({"watch_hw": {"x": {"mac": "zz"}}}, {"watch_hw": {"x": {"path": "no spaces allowed"}}}, {"watch_hw": {"a;b": {}}}):
+    try:
+        U.validate(bad); check("  bad hardware refused", False)
+    except ValueError:
+        check("  bad hardware refused", True)
+(U.SYS_NET / "eth0" / "address").write_text("b8:27:eb:1e:3a:13\n"); (U.SYS_NET / "eth0" / "addr_assign_type").write_text("0\n")
+check("a link's hardware read: its own address", U.link_hw("eth0", run=lambda *a, **k: (1, ""))["mac"] == "b8:27:eb:1e:3a:13")
+(U.SYS_NET / "wlan0" / "address").write_text("12:34:56:78:9a:bc\n"); (U.SYS_NET / "wlan0" / "addr_assign_type").write_text("3\n")
+check("  an address given to it: its own asked for (ethtool -P)", U.link_hw("wlan0", run=lambda *a, **k: (0, "Permanent address: b8:27:eb:4b:6f:46"))["mac"] == "b8:27:eb:4b:6f:46")
 
 # --- the old "Watch" choice carried over ---
 check("an interface chosen before: that one watched, no other", (S(iface="wlan0")["watch"], S(iface="wlan0")["watch_new"]) == ({"wlan0": True}, "none"))
@@ -106,12 +135,38 @@ check("  reconnect: only reconnects, now and then", a and {x for _, x in a} == {
 a, w = run_outage(others=(), cause="cable", cable_out="ladder", labels=cable)
 check("  the ladder: every step", {x for _, x in a} == ALL, a)
 check("  a cable link's words: the adapter reset, not the radio", any(e["text"].startswith("Reset the adapter") for e in w.events), [e["text"] for e in w.events][:8])
+# A cable plugged back in, and the link not up with it: reconnected at once, the adapter reset soon after, the steps
+# counted from the re-plug (not all due at once after a long unplug).
+def replug(others=()):
+    w = U.Watch(U.effective(S()), labels=cable)
+    acts = []
+    for t in range(0, 3600 + 8000, 60):
+        obs = {"link": False, "gateway": None, "drops": [], "guests": 0, "uptime": 1e9, "can": ALL, "others_up": list(others),
+               "cause": "cable" if t < 3600 else "plugged"}
+        acts += [(t - 3600, a) for a in w.tick(1000 + t, obs)]
+    return acts, w
+a, w = replug()
+check("a cable back after an hour, no link: a reconnect at once, the adapter reset 3 min later, the rest from the re-plug",
+      a[:2] == [(0, "reconnect"), (180, "radio")] and [x for x in a if x[1] not in ("reconnect", "radio")] == [(1800, "restart"), (7200, "reboot")], a)
+check("  said why", any("the cable is back" in e["text"] for e in w.events if e["kind"] == "repair"))
+a, w = replug(others=["wlan0"])
+check("  with another link up: never restarted or rebooted for", {x for _, x in a} == {"reconnect", "radio"}, a)
+# --- a cable link's own reach: by default it only reconnects ---
+steps = lambda s: sorted(U.Link("eth0", s, None, []).w.eff["steps"])  # noqa: E731
+check("a cable link by default: reconnects only (a lost cable is most often pulled, which no step mends)", steps(S()) == ["reconnect"])
+check("  the WiFi beside it keeps the whole ladder", sorted(U.Link("wlan0", S(), None, []).w.eff["steps"]) == ["radio", "reboot", "reconnect", "restart"])
+check("  how far on a cable, raised: as far as that, and never past the box's reach", steps(S(cable_reach="radio")) == ["radio", "reconnect", "restart"]
+      and steps(S(reach="reconnect", cable_reach="reboot")) == ["reconnect"])
+check("  a reach set for that cable alone wins", steps(S(reach="reboot", per_iface={"eth0": {"reach": "radio"}})) == ["radio", "reconnect", "restart"])
+check("  said in the settings' words when not the default", "on a cable as far as to reset the adapter" in U.words(S(cable_reach="radio")))
 O = U.outage_cause
+check("the cause: carrier back and the link not up, plugged", O("eth0", False, None, False, True, None, None, None, carrier=True) == "plugged")
 check("the cause on a cable: no carrier, no cable; gone, a failed adapter; up with the gateway silent, the gateway",
       O("eth0", False, None, False, True, None, None, None, carrier=False) == "cable"
       and O("eth0", False, None, False, False, None, None, None, carrier=False) == "radio"
       and O("eth0", True, False, False, True, None, None, None, carrier=True) == "gateway"
       and O("eth0", False, None, False, True, None, None, None) is None)
+
 
 # --- what an unwatched link would carry ---
 def nm(*cmd, timeout=60):
@@ -178,10 +233,31 @@ two = dict(pi, links={**pi["links"], "wlan0": {"watched": True, "kind": "wifi", 
            inventory={**pi["inventory"], "wlan0": dict(pi["inventory"]["wlan0"], watched=True)})
 f = health.link_findings(two)
 check("a second watched link stalled: said for it, as the first link's is", [x["id"] for x in f] == ["uplink-stalled-wlan0"] and "reboot" in f[0]["fix"], f)
+look = dict(pi, inventory={**pi["inventory"], "wlan0": dict(pi["inventory"]["wlan0"], watched=True, look=True)})
+f = health.link_findings(look)
+check("looked at only and down: said, with a reconnect, and the way to watch it in full", [x["id"] for x in f] == ["uplink-look-wlan0"]
+      and f[0]["status"] == "warn" and f[0]["actions"][0]["choice"] == "uplink-reconnect:wlan0", f)
+renamed = dict(pi, chosen=S(watch={"wlan9": False}), inventory={**pi["inventory"], "wlan0": dict(pi["inventory"]["wlan0"], **{"as": "wlan9"})})
+check("  set not to be watched under the name it had (the same hardware): not said", health.link_findings(renamed) == [])
 for good in ("uplink-reconnect:wlan0", "uplink-reconnect:enx00e04c680001"):
     check(f"the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
 for bad in ("uplink-reconnect:a;b", "uplink-reconnect:", "uplink-reconnect:-x"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
+
+# --- saved on /admin: each named link's hardware recorded ---
+from irate_box.root import hub_control as HC  # noqa: E402
+from irate_box.hub import roaming  # noqa: E402
+kept = {}
+HC.uplink.load_settings = lambda: S(watch_hw={"gone0": {"mac": "aa:bb:cc:dd:ee:01", "path": None}}, watch={"gone0": True})
+HC.uplink.save_settings = lambda s: kept.update(s) or s
+HC._uplink_running = lambda: None
+roaming.apply = lambda s, old, iface: ""
+U.link_hw = lambda i, run=None: {"mac": {"eth0": "b8:27:eb:1e:3a:13"}.get(i), "path": f"usb:{i}"}
+said = HC.uplink_set({"settings": dict(S(), watch={"eth0": True, "gone0": True, "wlan0": False})})
+check("saved: each link named, its hardware as it is now; one not here keeps what was recorded",
+      kept["watch_hw"] == {"eth0": {"mac": "b8:27:eb:1e:3a:13", "path": "usb:eth0"}, "gone0": {"mac": "aa:bb:cc:dd:ee:01", "path": None},
+                           "wlan0": {"mac": None, "path": "usb:wlan0"}} and "watching the link holding the box's route, eth0 and gone0 (never wlan0)" in said,
+      (kept.get("watch_hw"), said))
 
 # --- resetting a PCI card and a device on the SoC (root/radio.py) ---
 from irate_box.root import radio  # noqa: E402

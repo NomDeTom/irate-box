@@ -2659,6 +2659,7 @@ const net = {
   watchNew: document.getElementById('up-watchnew'),
   boxSteps: document.getElementById('up-boxsteps'),
   cable: document.getElementById('up-cable'),
+  cableReach: document.getElementById('up-cablereach'),
   custom: document.getElementById('up-custom'),
   fields: document.getElementById('up-fields'),
   save: document.getElementById('up-save'),
@@ -2692,14 +2693,15 @@ let upDirty = false;
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach, guests,
 // a wedged driver, and the sensitivity, a number of missed checks within the pace's window.
 const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', retry: 'steady', give_up: 'never', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false,
-  watch_new: 'uplink', box_steps: 'nothing-works', cable_out: 'wait' };
+  watch_new: 'uplink', box_steps: 'nothing-works', cable_out: 'wait', cable_reach: 'reconnect' };
 const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['retry', 'retry'], ['giveUp', 'give_up'], ['roaming', 'roaming'],
-  ['watchNew', 'watch_new'], ['boxSteps', 'box_steps'], ['cable', 'cable_out']];
+  ['watchNew', 'watch_new'], ['boxSteps', 'box_steps'], ['cable', 'cable_out'], ['cableReach', 'cable_reach']];
 // Each link the owner set: watched (true) or not (false); one not set follows watch_new (uplink.py watch).
 let upWatch = {};
 const WATCHNEW_WORDS = { uplink: ['While it holds the route', 'Watched while it is the box\'s way to its network (and while it is in trouble).'],
+  look: ['Looked at', 'The route\'s link watched; every other link looked at and its trouble said, nothing done for it.'],
   all: ['Watched', 'Every link the box has, each with a watchdog of its own.'], none: ['Not watched', 'Only the links set above are watched.'] };
-const BOXSTEPS_WORDS = { 'nothing-works': ['Only when nothing works', 'Never while another link is up: a dead WiFi on a box whose cable works is reconnected and reset, not rebooted for.'],
+const BOXSTEPS_WORDS = { 'nothing-works': ['Only when no path is left', 'Only when no link reaches the network: a dead WiFi on a box whose cable works is reconnected and reset, not rebooted for.'],
   uplink: ['For the route\'s link', 'For the link that holds the box\'s route, even with another up.'],
   any: ['For any link', 'For any watched link, as the reach allows, whatever else works.'] };
 const CABLE_WORDS = { wait: ['Wait, and say so', 'Nothing the box does mends a missing cable: it waits for it.'],
@@ -2884,6 +2886,8 @@ function buildUpChoices(levels) {
   rungs(net.watchNew, 'watch_new', (levels.watch_new || Object.keys(WATCHNEW_WORDS)).map((n) => ({ value: n, title: WATCHNEW_WORDS[n][0], desc: WATCHNEW_WORDS[n][1] })));
   rungs(net.boxSteps, 'box_steps', (levels.box_steps || Object.keys(BOXSTEPS_WORDS)).map((n) => ({ value: n, title: BOXSTEPS_WORDS[n][0], desc: BOXSTEPS_WORDS[n][1] })));
   rungs(net.cable, 'cable_out', (levels.cable_out || Object.keys(CABLE_WORDS)).map((n) => ({ value: n, title: CABLE_WORDS[n][0], desc: CABLE_WORDS[n][1] })));
+  rungs(net.cableReach, 'cable_reach', levels.reach.map((n) => ({ value: n, title: cap1(n),
+    desc: n === 'watch' ? 'Looks and logs.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : n === 'radio' ? 'resetting the network adapter' : STEP_DOES[n]}.` })));
   drawRoamTiles(levels);
   net.ignoreRoams.addEventListener('change', () => upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels));
   net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
@@ -2925,7 +2929,7 @@ function fillUpForm(chosen, levels) {
   upPick.roaming = chosen.roaming || 'roam';
   upPick.ignore_roams = !!chosen.ignore_roams;
   net.ignoreRoams.checked = upPick.ignore_roams;
-  for (const k of ['watch_new', 'box_steps', 'cable_out']) upPick[k] = chosen[k] || levels.default[k];
+  for (const k of ['watch_new', 'box_steps', 'cable_out', 'cable_reach']) upPick[k] = chosen[k] || levels.default[k];
   upWatch = { ...(chosen.watch || {}) };
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll('[data-key]')) {
@@ -3031,7 +3035,8 @@ function renderUpWatch(inv, u) {
     });
     const now = watching[iface];
     const l = known[iface] || {};
-    const said = now && now.watched ? `watched now: ${now.state}` : 'not watched now' + (l.up === false ? ', and down' : l.up ? ', up' : '');
+    const said = (now && now.watched ? `${now.look ? 'looked at only' : 'watched'} now: ${now.state}` : 'not watched now' + (l.up === false ? ', and down' : l.up ? ', up' : ''))
+      + (l.as ? `; known before as ${l.as} (the same hardware), whose setting it follows` : '');
     return el('div', { className: 'up-watch-row' }, el('label', { className: 'setting-name', htmlFor: `up-watch-${iface}`, textContent: `${iface} (${kind})` }), sel,
       el('span', { className: 'setting-desc', textContent: said + ((l.autoconnect || []).length ? `; starts ${l.autoconnect.join(', ')} by itself` : '') }));
   }));

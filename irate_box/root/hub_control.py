@@ -2782,6 +2782,12 @@ def uplink_set(req):
     new = dict(req.get("settings") or {})
     new.setdefault("hold_until", s.get("hold_until", 0))
     old, s = s, uplink.validate(new)
+    # Each link the settings name: its hardware as it is now, so its settings follow it under another name later;
+    # one not here now keeps what was recorded for it.
+    named = set(s["watch"]) | set(s.get("per_iface") or {}) | set(s.get("steps_off") or {})
+    s["watch_hw"] = {n: (uplink.link_hw(n) if (uplink.SYS_NET / n).exists() else (old.get("watch_hw") or {}).get(n))
+                     for n in sorted(named) if (uplink.SYS_NET / n).exists() or (old.get("watch_hw") or {}).get(n)}
+    s = uplink.validate(s)
     # Roaming's lock and its no-scan change the owner's WiFi: done first, and the setting kept as
     # it was if they fail, so the page never says one is in force that is not.
     iface = uplink.main_link(s)

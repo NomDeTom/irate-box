@@ -55,9 +55,10 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
     /not watched now, and down; starts netplan-wlan0-SKYTB1H1 by itself/.test(rows[0].textContent) && /watched now: up/.test(rows[1].textContent),
     rows.map((r) => r.textContent).join(' / '));
   const tiles = (id) => [...d.querySelectorAll(`#${id} input`)].map((i) => `${i.value}${i.checked ? '*' : ''}`).join(',');
-  check('a link not set here: while it holds the route (chosen), every link, none', tiles('up-watchnew') === 'uplink*,all,none', tiles('up-watchnew'));
+  check('a link not set here: while it holds the route (chosen), looked at, every link, none', tiles('up-watchnew') === 'uplink*,look,all,none', tiles('up-watchnew'));
   check('steps that reach every link: only when nothing works (chosen), for the route\'s link, for any', tiles('up-boxsteps') === 'nothing-works*,uplink,any', tiles('up-boxsteps'));
   check('a cable unplugged: wait (chosen), reconnect now and then, the whole ladder', tiles('up-cable') === 'wait*,reconnect,ladder', tiles('up-cable'));
+  check('how far on a cable: reconnect chosen by default, each reach offered', tiles('up-cablereach') === 'watch,reconnect*,restart,radio,reboot', tiles('up-cablereach'));
   check('the old single "Watch" field is gone', !d.getElementById('up-iface'));
   // Watch the WiFi, and let a cable be met with the ladder.
   wl.value = 'on';
@@ -70,10 +71,11 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   const sent = posted.find((p) => p.body.action === 'settings');
   check('Save sends the links watched and the new choices', sent && JSON.stringify(sent.body.settings.watch) === '{"wlan0":true}'
     && sent.body.settings.cable_out === 'ladder' && sent.body.settings.watch_new === 'uplink' && sent.body.settings.box_steps === 'nothing-works'
-    && sent.body.settings.iface === 'auto', JSON.stringify(sent && sent.body.settings));
+    && sent.body.settings.iface === 'auto' && sent.body.settings.cable_reach === 'reconnect', JSON.stringify(sent && sent.body.settings));
   // The watchdog now watches both: the status names the other, and the log each line's link.
   answer = { ...answer, results: [{ id: 'x', ok: true, message: 'Saved.' }], uplink: { ...uplink, at: now + 5, chosen: { ...chosen, watch: { wlan0: true }, cable_out: 'ladder' },
     links: { ...uplink.links, wlan0: { watched: true, kind: 'wifi', state: 'stalled', stall: { text: 'Stalled: nothing the box can do from here could help.' } } },
+    inventory: { ...uplink.inventory, wlan0: { ...uplink.inventory.wlan0, as: 'wlan9' } },
     events: [...uplink.events, { at: now, text: 'Now watching wlan0 too.', iface: 'wlan0' }] } };
   w.loadNetwork();
   await later(500);
@@ -82,6 +84,8 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = [...d.querySelectorAll('#up-events li .ev-text')].map((n) => n.textContent);
   check('  the log: each line with its link, now that two are watched', log[0] === 'wlan0: Now watching wlan0 too.' && log[1] === 'eth0: Watching eth0.', log);
   check('  the WiFi\'s row: set to be watched', d.getElementById('up-watch-wlan0').value === 'on');
+  const wrow = d.getElementById('up-watch-wlan0').closest('.up-watch-row').textContent;
+  check('  a link known before under another name: said, and whose setting it follows', /known before as wlan9 \(the same hardware\)/.test(wrow), wrow);
   check('no errors on the page', !errors.length, errors);
   console.log(fails ? `${fails} failure(s)` : 'ok');
   process.exit(fails ? 1 : 0);

@@ -592,9 +592,16 @@ def link_findings(st):
                       f"The watchdog is watching {st.get('watching') or 'nothing'}. If the box's network fails, nothing will notice or "
                       "try again.", "Network → Staying on the network: choose which links it watches.", go=go("up-watch")))
     for i, lk in sorted(inv.items()):
-        if lk.get("watched") or i in off or not lk.get("autoconnect"):
+        what = f"{i} ({LINK_KIND.get(lk.get('kind'), lk.get('kind'))}, {', '.join(lk.get('autoconnect') or []) or 'no connection set to start'})"
+        if lk.get("look") and not lk.get("up") and lk.get("autoconnect"):
+            out.append(_f(f"uplink-look-{i}", f"{i} is down, and only looked at", "warn",
+                          f"{what} is down. The watchdog looks at it but does nothing for it, as set (every other link looked at "
+                          "only). After a password check fails, NetworkManager stops and waits for someone.",
+                          f"Reconnect it now; or on Network → Staying on the network, watch {i} in full.",
+                          [_act(f"uplink-reconnect:{i}", "Reconnect it")], go=go(f"up-watch-{i}")))
             continue
-        what = f"{i} ({LINK_KIND.get(lk.get('kind'), lk.get('kind'))}, {', '.join(lk['autoconnect'])})"
+        if lk.get("watched") or (lk.get("as") or i) in off or not lk.get("autoconnect"):
+            continue
         if lk.get("up"):
             out.append(_f(f"uplink-uncovered-{i}", f"{i} is not watched", "warn",
                           f"{what} is up, but nothing watches it: if it fails, nothing will notice or try again.",
