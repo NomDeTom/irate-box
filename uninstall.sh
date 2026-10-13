@@ -51,7 +51,7 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-git.socket irate-box-git.service irate-box-ci.path irate-box-ci.service \
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service irate-box-firewall.service \
-	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service \
+	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service \
 	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
@@ -134,12 +134,16 @@ fi
 if [ -f "$CODE/irate_box/root/crashwatch.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" crashwatch undo-all | sed 's/^/    /' || true
 fi
+# The status light: each LED it took back to its trigger and brightness from before.
+if [ -f "$CODE/irate_box/root/led.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" led undo-all | sed 's/^/    /' || true
+fi
 if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/irate_box/root/rtc.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" rtc remove | sed 's/^/    /' || true
 fi
 
 say "Removing unit files and drop-ins"
-rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch}.service \
+rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch,irate-box-led}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} \

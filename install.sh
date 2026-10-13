@@ -32,6 +32,8 @@
 #   irate-box-crashwatch.service  crash watch (crashwatch.py, root): snapshots to the box's storage,
 #                             a crash filed at the next boot, a failing radio noted and filed
 #                             (the uplink watchdog does the repairing)
+#   irate-box-led.service     the status light (led.py, root): one of the board's LEDs blinking
+#                             while the box is well, as chosen on /admin (Recovery and monitoring)
 #   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
 #                             hashed with daily and weekly salts held in memory, only the counts
 #                             written; runs only while counting is on (irate-box-visitors-switch.path)
@@ -2297,6 +2299,35 @@ ReadWritePaths=$STATE $ETC -/etc/sysctl.d -/etc/modules-load.d -/etc/systemd/sys
 WantedBy=multi-user.target
 EOF
 
+# The status light (led.py): one of the board's LEDs blinking while the box is well, as chosen on
+# Recovery and monitoring. Always running and small; on a board with no LED to use, it only looks.
+cat >/etc/systemd/system/irate-box-led.service <<EOF
+[Unit]
+Description=Irate-Box status light: an LED that blinks while the box is well (led.py; /admin, Recovery and monitoring)
+After=local-fs.target
+
+[Service]
+Type=simple
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStart=$CODE/irate-box led run
+Restart=always
+RestartSec=10
+Nice=5
+RuntimeDirectory=irate-box-led
+RuntimeDirectoryMode=0755
+$ROOT_SANDBOX
+ReadWritePaths=$ETC
+# /sys stays writable (its LEDs), so not ProtectKernelTunables; the rest it doesn't need.
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat >/etc/systemd/system/irate-box-uplink.service <<EOF
 [Unit]
 Description=Irate-Box uplink watchdog: keep the box on its network (uplink.py; /admin, Network)
@@ -2594,12 +2625,13 @@ if [ "$WITH_NOTES" = 1 ] && systemctl is-active --quiet silverbullet; then
 	fi
 	rm -rf "$tmp"
 fi
-for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.
 systemctl try-restart irate-box-uplink.service || problem "irate-box-uplink did not restart: journalctl -u irate-box-uplink -n 30"
 systemctl try-restart irate-box-crashwatch.service || problem "irate-box-crashwatch did not restart: journalctl -u irate-box-crashwatch -n 30"
+systemctl try-restart irate-box-led.service || problem "irate-box-led did not restart: journalctl -u irate-box-led -n 30"
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled

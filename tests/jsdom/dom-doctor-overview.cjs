@@ -12,6 +12,7 @@ const fixture = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, '
 fixture.helper = { waiting: 0, oldest: 0, stuck: false, commands: [] };
 fixture.report.at = Date.now() / 1000;   // fresh: the page doesn't ask for a look of its own
 fixture.report.findings.push({ id: 'uplink-report', check: 'Uplink watchdog report', status: 'ok', detail: 'up on wlan0, steady pace. More.', fix: '', actions: [] });
+fixture.report.findings.push({ id: 'led', check: 'Status light', status: 'ok', detail: 'work-led: alive and on its network; now 1 s on, 1 s off: well (driven by the box: this kernel has no LED triggers, so nothing else can blink it).', fix: '', actions: [] });
 fixture.report.findings.push({ id: 'crash-radio', check: 'The WiFi radio', status: 'ok', detail: 'Watching: wlan0 (AIC8800DC). Crash watch notes.', fix: '', actions: [] });
 fixture.report.settings = { snapshots: true, panic: false, watchdog: false, watchdog_device: 'hardware', groups: [
   { key: 'snapshots', label: "Crash watch's snapshots", desc: 'Every 30 s.', current: 'on', options: [
@@ -45,8 +46,9 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   await later(400);
   const glance = [...d.querySelectorAll('#health-glance dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]);
   const g = Object.fromEntries(glance);
-  check('at a glance: health, the link, the radio, the last start and why, the last repair, a frozen box, snapshots, writes to the card',
-    Object.keys(g).join('|') === 'Health|Staying on the network|The WiFi radio|The last start|The last repair|A frozen box|Snapshots|Writes to the card', Object.keys(g));
+  check('at a glance: health, the link, the radio, the last start and why, the last repair, a frozen box, snapshots, the status light, writes to the card',
+    Object.keys(g).join('|') === 'Health|Staying on the network|The WiFi radio|The last start|The last repair|A frozen box|Snapshots|Status light|Writes to the card', Object.keys(g));
+  check('  the status light: its finding\'s first sentence', g['Status light'] === 'work-led: alive and on its network; now 1 s on, 1 s off: well (driven by the box: this kernel has no LED triggers, so nothing else can blink it).', g['Status light']);
   check('  the last start: when, and that the watchdog rebooted it', /^2 h ago: the uplink watchdog rebooted it/.test(g['The last start']), g['The last start']);
   check('  a frozen box stays stopped; snapshots kept', g['A frozen box'].startsWith('Stays stopped') && g.Snapshots === 'Kept every 30 s.', g);
   const save = d.getElementById('health-settings-save');
