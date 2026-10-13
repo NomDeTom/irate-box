@@ -72,7 +72,9 @@ STATUS = ROOT / "status.json"
 INDEX = ROOT / "index.json"
 REPO = "meshtastic/firmware"
 RELEASE_BASE = "https://release.meshtastic.org"
-DEFAULTS = {"enabled": False, "boards": [], "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True}
+# Kept by default, every board (about 600 MB a release), so a radio can be flashed from a new box with no internet; the
+# librarian's space guard (min_free_mb) still stops a download the card can't take.
+DEFAULTS = {"enabled": True, "boards": "all", "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True}
 CONFIGS = ROOT / "config.d.json"
 CONFIGS_MAX = 4 << 20  # the whole folder's text; a few hundred KB in 2026
 CACHES = ("discard", "native", "whole")
