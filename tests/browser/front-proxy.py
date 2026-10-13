@@ -8,18 +8,23 @@ from pathlib import Path
 
 listen, hub_host, hub_port, test_dir = int(sys.argv[1]), sys.argv[2], int(sys.argv[3]), Path(sys.argv[4])
 SECRET = os.environ["FRONT_SECRET"]
+# The test's own pages, by name, read once: a request names one of these, never a path.
+PAGES = {f.name: f.read_bytes() for f in test_dir.iterdir() if f.is_file() and f.suffix in (".html", ".js")}
+# The hub's response headers passed on, by name; their values without line breaks.
+PASSED = ("Content-Type", "Cache-Control", "Location", "Set-Cookie", "Content-Encoding", "ETag", "Last-Modified",
+          "Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy", "Vary")
 
 
 class Front(http.server.BaseHTTPRequestHandler):
     def _go(self):
         if self.path.startswith("/__test/"):
-            f = test_dir / self.path[len("/__test/"):].split("?")[0]
-            if not f.is_file() or test_dir not in f.resolve().parents:
+            name = self.path[len("/__test/"):].split("?")[0]
+            data = PAGES.get(name)
+            if data is None:
                 self.send_error(404)
                 return
-            data = f.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8" if f.suffix == ".html" else "application/javascript")
+            self.send_header("Content-Type", "text/html; charset=utf-8" if name.endswith(".html") else "application/javascript")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -36,9 +41,9 @@ class Front(http.server.BaseHTTPRequestHandler):
             self.send_error(502, str(exc))
             return
         self.send_response(r.status)
-        for k, v in r.getheaders():
-            if k.lower() not in ("transfer-encoding", "connection", "content-length"):
-                self.send_header(k, v)
+        for name in PASSED:
+            for v in r.headers.get_all(name) or ():
+                self.send_header(name, v.replace("\r", "").replace("\n", ""))
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
