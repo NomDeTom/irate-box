@@ -75,6 +75,27 @@ try:
     go("POST", "/admin/settings", page, json.dumps({"accent": "#1a237e"}).encode())
     _, _, css = go("GET", "/layout.css")
     check("  white ink on a dark accent", "--accent-ink: #fff;" in css, css)
+    # The light and dark palettes: each mode its own, as rules for the main themes; the old accent cleared on Save.
+    pal = {"light": {"accent": "#0f766e", "muted": "#5f6380"}, "dark": {"accent": "#2dd4bf", "bg": "#101418"}}
+    st, _, _ = go("POST", "/admin/settings", page, json.dumps({"palette": pal, "accent": ""}).encode())
+    _, _, css = go("GET", "/layout.css")
+    dark_rule = 'html:root[data-theme="dark"] { --accent: #2dd4bf; --bg: #101418; --accent-ink: #0f1117; }'
+    light_rule = 'html:root[data-theme="light"] { --accent: #0f766e; --muted: #5f6380; --accent-ink: #fff; }'
+    check("palettes: a rule per mode, with its own accent's ink; the old accent gone", st == 200
+          and dark_rule in css and light_rule in css and "#1a237e" not in css, css)
+    check("  Auto: the dark one only where the device does not ask for light, the light one where it does",
+          "@media not all and (prefers-color-scheme: light) { html:root:not([data-theme]) { --accent: #2dd4bf;" in css
+          and "@media (prefers-color-scheme: light) { html:root:not([data-theme]) { --accent: #0f766e;" in css, css)
+    check("  the other themes untouched", "eink" not in css and "cyber" not in css)
+    for bad in ({"sepia": {"accent": "#000000"}}, {"dark": {"font": "#000000"}}, {"dark": {"accent": "#FFD400"}},
+                {"dark": {"accent": "#000000; } body { display: none"}}, {"dark": "#000000"}, ["dark"]):
+        go("POST", "/admin/settings", page, json.dumps({"palette": bad}).encode())
+    _, _, css = go("GET", "/layout.css")
+    check("  a mode, a role or a colour not allowed, or not as written: refused, the saved one kept",
+          dark_rule in css and "display: none" not in css and "sepia" not in css and "font" not in css, css)
+    go("POST", "/admin/settings", page, json.dumps({"palette": {}}).encode())
+    _, _, css = go("GET", "/layout.css")
+    check("  {}: the standard theme again", "--accent" not in css, css)
     # The favicon: none until uploaded; a PNG or an icon file by its first bytes; not SVG; removed again.
     import base64
     st, _, _ = go("GET", "/favicon.ico")
