@@ -31,11 +31,23 @@ Over SSH, on the box:
 ## Logs
 
 - The installer: `/var/log/irate-box/install.log`
-- A service: `journalctl -u irate-box -n 50` (the hub), `journalctl -u irate-box-uplink -n 50` (the network watchdog)
+- A service: `journalctl -u irate-box -n 50` (the hub), `journalctl -u irate-box-uplink -n 50` (the network watchdog), `journalctl -u irate-box-led -n 50` (the status light)
 
 ## If the box stops answering
 
 Its crash watch keeps notes on the card, and the Box doctor says after a restart when the box stopped without shutting down, with its last record.
+
+## The status light
+
+The box can blink one of the board's LEDs so you can tell from across the room how it is: **1 s on, 1 s off** while all
+it reports is well; **off** when not (the network is down, or the hub isn't running); **quick flashes** while the network
+is being repaired; **two short flashes** when the Box doctor has a problem to read; **steady on** while the box starts or
+updates. A light stuck on or off, not changing, is a box that has frozen.
+
+**Recovery and monitoring → The status light** chooses what it reports: **Leave it** (the light stays as the image set
+it), **The box is alive**, **Alive and on its network**, or **Alive, on its network, nothing wrong**. Where the board has
+more than one, **Which light** chooses it, and the Box doctor's **Flash** buttons blink each one fast to find it. A power
+LED is never used. On a Raspberry Pi the green light is left showing the SD card working until you choose otherwise.
 
 ## The card
 

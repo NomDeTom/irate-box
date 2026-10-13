@@ -199,6 +199,8 @@ def expected_units():
         units.append(("irate-box-uplink.service", "the uplink watchdog"))
     if (UNIT_DIR / "irate-box-crashwatch.service").exists() or "irate-box-crashwatch" in _installed_text():
         units.append(("irate-box-crashwatch.service", "crash watch"))
+    if (UNIT_DIR / "irate-box-led.service").exists() or "irate-box-led" in _installed_text():
+        units.append(("irate-box-led.service", "the status light"))
     from irate_box.hub import services
     declared = {s["option"]: s["unit"] for s in services.declared() if s["option"] and s["unit"]}
     for opt, unit in {**declared, **ADDON_UNITS}.items():
@@ -1212,6 +1214,85 @@ def setting_groups(s, wd):
     return groups
 
 
+LED_SHOW_LABEL = {"leave": "Leave it", "alive": "The box is alive", "network": "Alive and on its network",
+                  "all": "Alive, on its network, nothing wrong"}
+ARMBIAN_LED = "armbian-led-state.service"
+
+
+def led_groups(ls, armbian=None):
+    """The status light's choices for the settings card: what it shows, and which LED (when there is a choice).
+    armbian: the image's LED state service ("failed", "masked", or None when it is fine or not there)."""
+    if not ls or not ls.get("found"):
+        return []
+    found, chosen = ls["found"], ls["settings"]
+    show = ls["settings"].get("show") or ls.get("suggested") or "leave"
+    groups = [{"key": "led-show", "label": "The status light",
+               "desc": f"What {ls.get('led') or 'the light'} shows: 1 s on, 1 s off while all it reports is well; off when not; "
+                       "quick flashes while the network is being repaired; two short flashes when the Box doctor has a problem "
+                       "to read; steady on while the box starts or updates."
+                       + (" Left alone by default: on this board it shows the SD card working." if ls.get("suggested") == "leave" else ""),
+               "current": show, "options": [{"value": v, "label": LED_SHOW_LABEL[v], "choice": f"led-show:{v}"}
+                                            for v in ("leave", "alive", "network", "all")]}]
+    if len(found) > 1 or chosen.get("led", "auto") != "auto":
+        groups.append({"key": "led-which", "label": "Which light", "desc": "The board's LEDs that could be the status light "
+                       "(never a power LED). The Box doctor's \"Flash it\" shows which is which.",
+                       "current": chosen.get("led", "auto"),
+                       "options": [{"value": "auto", "label": f"The box's pick ({ls.get('led') or 'none'})" if chosen.get("led", "auto") == "auto"
+                                    else "The box's pick", "choice": "led-led:auto"}]
+                       + [{"value": n, "label": n, "choice": f"led-led:{n}"} for n in found]})
+    if armbian:
+        groups.append({"key": "armbian-led", "label": "The image's LED service",
+                       "desc": f"{ARMBIAN_LED} puts the LEDs back as they were at the last shutdown. On this board it "
+                               "fails at every start: the light has no trigger file, so the state it saved is one it then refuses. "
+                               "Switching it off stops the failure; switching it on again undoes that.",
+                       "current": "off" if armbian == "masked" else "on", "options": [
+                           {"value": "on", "label": "As the image has it", "choice": "armbian-led:on"},
+                           {"value": "off", "label": "Switched off", "choice": "armbian-led:off"}]})
+    return groups
+
+
+def armbian_led_state():
+    """The image's LED state service: "failed" or "masked" (worth a choice), else None."""
+    if not (Path("/usr/lib/systemd/system") / ARMBIAN_LED).exists() and not (UNIT_DIR / ARMBIAN_LED).exists():
+        return None
+    props = unit_props(ARMBIAN_LED)
+    if props.get("LoadState") == "masked":
+        return "masked"
+    return "failed" if props.get("ActiveState") == "failed" else None
+
+
+def led_status():
+    try:
+        from irate_box.root import led
+        return led.status()
+    except Exception:  # noqa: BLE001 - the report goes out without it
+        return None
+
+
+def check_led(ls=None, active=None):
+    """The status light: which LED, what it shows and how; a light the owner asked for that isn't driven."""
+    ls = led_status() if ls is None else ls
+    if not ls:
+        return []
+    if not ls.get("found"):
+        return [_f("led", "Status light", "ok", "This board has no LED the box could use as a status light (power LEDs are "
+                   "never taken).")]
+    name, show, run_ = ls.get("led"), ls.get("show"), ls.get("running") or {}
+    flash = [_act(f"led-flash:{n}", f"Flash {n}") for n in list(ls["found"])[:4]]
+    if show == "leave":
+        return [_f("led", "Status light", "ok", f"Left as the image set it ({name or 'no LED picked'}). The box can blink it while "
+                   "it is well instead.", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"))]
+    unit_on = (active or unit_props)("irate-box-led.service").get("ActiveState") == "active"
+    if not unit_on:
+        return [_f("led", "Status light", "problem", f"{name} should be showing how the box is, but its service isn't running: the "
+                   "light says nothing.", "journalctl -u irate-box-led -n 30",
+                   [_act("unit-restart:irate-box-led.service", "Start it again")])]
+    how = ("driven by the box: this kernel has no LED triggers, so nothing else can blink it" if not (ls["found"].get(name) or {}).get("triggers")
+           else "driven by the box, so it stops when the box does")
+    return [_f("led", "Status light", "ok", f"{name}: {LED_SHOW_LABEL.get(show, show).lower()}; now {run_.get('words', 'not reported yet')} "
+               f"({how}).", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"))]
+
+
 def check_watchers(now=None):
     """What the watchers saw and did in the last day, in one time line (watchlog): the uplink
     watchdog's outages, causes and steps, crash watch's radio failures, the driver's own resets, and
@@ -1233,7 +1314,7 @@ def check_watchers(now=None):
 def scan():
     findings = []
     for check in (check_install, check_hub, check_clock, check_units, check_kiwix, check_web, check_uplink, check_inventory,
-                  check_hotspot, check_space, check_builds, check_crashwatch, check_watchers, check_idle, check_usb_filesystems):
+                  check_hotspot, check_space, check_builds, check_crashwatch, check_led, check_watchers, check_idle, check_usb_filesystems):
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
@@ -1249,8 +1330,10 @@ def doctor_settings():
         from irate_box.root import crashwatch as cw
         s = cw.load_settings()
         wd = cw.watchdog_device() if os.geteuid() == 0 or os.environ.get("HUB_SYSFS") else None
+        ls = led_status()
         return {"snapshots": s["snapshots"], "panic": s["panic"], "watchdog": s["watchdog"], "watchdog_device": wd,
-                "groups": setting_groups(s, wd)}
+                "led": {"name": ls["led"], "show": ls["show"]} if ls else None,
+                "groups": setting_groups(s, wd) + led_groups(ls, armbian_led_state() if ls else None)}
     except Exception:  # noqa: BLE001 - the report goes out without it
         return None
 
@@ -1262,7 +1345,8 @@ CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9
                        r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
                        r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
-                       r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$")
+                       r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
+                       r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$")
 
 
 def fix(choice):
@@ -1272,6 +1356,21 @@ def fix(choice):
     if kind.startswith("crashwatch-"):
         from irate_box.root import crashwatch
         return crashwatch.set_option(kind[len("crashwatch-"):], arg)
+    if kind in ("led-show", "led-led"):
+        from irate_box.root import led
+        return led.set_option(kind[len("led-"):], arg)
+    if kind == "led-flash":
+        from irate_box.root import led
+        return led.flash(arg)
+    if kind == "armbian-led":
+        if not armbian_led_state() and arg == "off":
+            raise ValueError(f"{ARMBIAN_LED} isn't failing here: nothing to switch off")
+        r = run("systemctl", "mask" if arg == "off" else "unmask", ARMBIAN_LED)
+        if r.returncode:
+            raise ValueError(f"{ARMBIAN_LED}: {r.stderr.strip()[-200:]}")
+        if arg == "off":
+            run("systemctl", "reset-failed", ARMBIAN_LED)
+        return f"{ARMBIAN_LED}: " + ("switched off (masked); unmasked again from the same place" if arg == "off" else "as the image has it again")
     if kind == "other-restart":
         failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]
         if arg not in failed or ours(arg) or not re.match(r"^[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]*\.(service|socket|timer|mount)$", arg):

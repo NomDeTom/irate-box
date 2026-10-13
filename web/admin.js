@@ -2376,6 +2376,7 @@ function renderGlance(data, rep) {
     ['A frozen box', !st ? 'Not known yet.' : st.panic || st.watchdog
       ? `Restarts by itself (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
     ['Snapshots', !st ? 'Not known yet.' : st.snapshots ? 'Kept every 30 s.' : 'Off.'],
+    ['Status light', find('led') ? first(find('led').detail) : 'Not looked yet.'],
     ['Writes to the card', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
