@@ -12,6 +12,11 @@
 //
 // Saved as two keys: "theme" is the base (light, dark, or none for auto), which Docusaurus
 // books read as well, so it never holds anything else; "hub-theme" is another theme's id.
+//
+// The main theme's colours: the box's (chosen on Appearance, from /layout.css) unless the visitor
+// picks a palette of their own, saved as "hub-palette" and drawn as data-palette on the page:
+// "standard" (the hub's colours as they ship) or "contrast" (palette.css). The box's rules apply
+// only without data-palette.
 (function () {
   'use strict';
   var THEMES = [
@@ -24,6 +29,26 @@
     { id: 'cybercore', label: 'Cybercore', emoji: '🏴‍☠️', base: 'dark', css: '/themes/cybercore.css',
       desc: 'Neon on black, from the PirateBox skin' },
   ];
+
+  var PALETTES = [
+    { id: 'box', label: 'Box preset', emoji: '🏠', desc: 'The colours chosen for this box' },
+    { id: 'standard', label: 'Standard', emoji: '🎨', desc: 'The hub\'s own colours, as it ships' },
+    { id: 'contrast', label: 'Increased contrast', emoji: '🔆', desc: 'Quieter words and links stronger, easier to read' },
+  ];
+  function paletteById(id) {
+    for (var i = 0; i < PALETTES.length; i++) if (PALETTES[i].id === id) return PALETTES[i];
+    return null;
+  }
+  // The visitor's palette: box (none saved), standard or contrast.
+  function palette() {
+    var p = paletteById(read('hub-palette'));
+    return p ? p.id : 'box';
+  }
+  function showPalette(id) {
+    var root = document.documentElement;
+    if (id && id !== 'box' && paletteById(id)) root.setAttribute('data-palette', id);
+    else root.removeAttribute('data-palette');
+  }
 
   function byId(id) {
     for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return THEMES[i];
@@ -89,12 +114,25 @@
     document.dispatchEvent(new CustomEvent('hub-theme', { detail: id }));
   }
 
+  // A palette chosen: saved and drawn; a theme of its own colours (E-ink, Cybercore) left for the main theme, whose
+  // light, dark or auto is kept.
+  function choosePalette(id) {
+    var p = paletteById(id);
+    write('hub-palette', p && p.id !== 'box' ? p.id : null);
+    var cur = current();
+    if (byId(cur) && !byId(cur).main) choose(byId(cur).base === 'dark' ? 'dark' : 'light');
+    showPalette(palette());
+    document.dispatchEvent(new CustomEvent('hub-theme', { detail: current() }));
+  }
+
   // The base the apps are told: light, dark or auto.
   function base(id) {
     var theme = byId(id === undefined ? current() : id);
     return theme ? theme.base : 'auto';
   }
 
-  window.HubThemes = { list: THEMES, byId: byId, current: current, show: show, choose: choose, base: base };
+  window.HubThemes = { list: THEMES, byId: byId, current: current, show: show, choose: choose, base: base,
+    palettes: PALETTES, palette: palette, showPalette: showPalette, choosePalette: choosePalette };
   show(current());
+  showPalette(palette());
 })();

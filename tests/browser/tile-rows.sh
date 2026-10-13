@@ -30,11 +30,15 @@ for width in 900 600; do
 <script>
 const g = document.getElementById('g'), gap = parseFloat(getComputedStyle(g).rowGap);
 const hs = [...g.children].map((c) => [c.classList.contains('large'), c.getBoundingClientRect().height]);
+// The QR on a large tile: as big as the tile lets it be, square, inside the tile (its height less the name and the address).
+const qrCard = g.querySelector('.qr-card'), qrSvg = qrCard && qrCard.querySelector('svg');
+const qr = qrSvg && (() => { const c = qrCard.getBoundingClientRect(), s = qrSvg.getBoundingClientRect();
+  return { fill: +(s.height / c.height).toFixed(2), square: Math.abs(s.width - s.height) <= 1, inside: s.top >= c.top && s.bottom <= c.bottom && s.right <= c.right }; })();
 // Every normal tile one row's height (the tallest one's), and every large tile two of those rows and the gap.
 const normals = hs.filter(([l]) => !l).map(([, h]) => h), larges = hs.filter(([l]) => l).map(([, h]) => h);
 const normal = Math.max(...normals);
-document.body.dataset.out = JSON.stringify({ normal, larges, ok: normals.every((h) => Math.abs(h - normal) <= 1)
-  && larges.every((h) => Math.abs(h - (2 * normal + gap)) <= 2) });
+document.body.dataset.out = JSON.stringify({ normal, larges, qr, ok: normals.every((h) => Math.abs(h - normal) <= 1)
+  && larges.every((h) => Math.abs(h - (2 * normal + gap)) <= 2) && (!qr || (qr.fill >= 0.6 && qr.square && qr.inside)) });
 </script></body></html>
 HTMLEND
 		out=$(docker run --rm -v "$work":/p "$image" chromium --headless=new --no-sandbox --disable-gpu --window-size=$((width + 40)),1200 \

@@ -6076,7 +6076,7 @@ function paletteEditor(st, onSaved) {
       pick.setAttribute('aria-label', `${label}, ${mode}`);
       pick.dataset.role = role;
       pick.addEventListener('change', () => { draft[mode] = { ...(draft[mode] || {}), [role]: pick.value.toLowerCase() }; draw(); });
-      const back = el('button', { type: 'button', className: 'action-btn small', textContent: 'The theme\'s own', disabled: !own,
+      const back = el('button', { type: 'button', className: 'action-btn small', textContent: 'Reset to default theme', disabled: !own,
         onclick: () => { const m = { ...(draft[mode] || {}) }; delete m[role]; if (Object.keys(m).length) draft[mode] = m; else delete draft[mode]; draw(); } });
       return el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: label }),
         el('span', { className: 'aw-colour' }, pick, back));
@@ -6091,7 +6091,7 @@ function paletteEditor(st, onSaved) {
     const short = [...paletteShort('light', draft), ...paletteShort('dark', draft)];
     const ack = el('input', { type: 'checkbox' });
     const report = el('div', { className: 'palette-report', role: 'status' }, short.length
-      ? el('ul', {}, ...short.map((x) => el('li', { className: 'bad', textContent: `${x.mode === 'light' ? 'Light' : 'Dark'}: ${x.words}, ${x.ratio.toFixed(1)}:1 (4.5:1 asked)` })))
+      ? el('ul', {}, ...short.map((x) => el('li', { className: 'bad', textContent: `${x.mode === 'light' ? 'Light' : 'Dark'}: ${x.words}, ${x.ratio.toFixed(1)}:1 (4.5:1 recommended)` })))
       : el('p', { className: 'setting-desc', textContent: 'Every pair reads at 4.5:1 or more in both modes (WCAG AA for text). Focus, layout and the other themes are not checked here.' }));
     const ackLine = short.length ? el('label', { className: 'inline palette-ack' }, ack,
       ' Keep it anyway: I know these words will be hard to read for some.') : null;
@@ -6107,7 +6107,7 @@ function paletteEditor(st, onSaved) {
       el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'Presets' }), presets,
         el('small', { className: 'setting-desc', textContent: 'each sets both modes; Standard is the theme as it comes' })),
       el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'Mode' }), modeChips,
-        el('small', { className: 'setting-desc', textContent: 'each mode keeps its own colours; Auto follows the visitor\'s device, and their own theme choice is theirs' })),
+        el('small', { className: 'setting-desc', textContent: 'each mode keeps its own colours; Auto follows the visitor\'s device. Visitors see these as the Box preset, unless they choose Standard, Increased contrast or another theme in the 🎨 menu' })),
       ...roles, preview, report, ...(ackLine ? [ackLine] : []),
       el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: same() ? 'Settings wait for Save.' : 'Changed, not saved.' }), discard, save), note);
   };
