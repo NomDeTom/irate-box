@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- The style audit's page (tests/browser/style-audit.sh): /admin in a frame as wide as ?w= says, every pane shown in
+     turn and looked over for what makes a page look broken. Its findings go in body[data-out] as JSON. -->
+<html><head><meta charset="utf-8"><title>style audit</title><style>body{margin:0}</style></head>
+<body><iframe id="f" src="/admin/" style="border:0;height:2400px"></iframe>
+<script>
+const W = Number(new URLSearchParams(location.search).get('w') || 1280);
+const f = document.getElementById('f');
+f.style.width = `${W}px`;
+const DEFAULT_LINKS = ['rgb(0, 0, 238)', 'rgb(85, 26, 139)', 'rgb(0, 0, 255)'];
+// Where text may be as big as the page's own: headings, controls, and the names of things.
+const BIG_OK = 'h1, h2, h3, h4, h5, summary, legend, button, input, select, textarea, label, .setting-name, .chip, .choice-tile, '
+  + '.action-btn, .info-pill, .ok-pill, .warn-pill, .bad-pill, .admin-side, .admin-nav, .theme-picker, .tabs, [role="tab"], .aw-label, '
+  + '.admin-tile, .hm-cell, code, kbd, pre, .tour-list, .krab, .admin-art, svg, .setup-steps, .net-line .net-label, .svc-name, '
+  + '.inv-name, .palette-preview, .stat, strong, .admin-list';
+const CARDS = '.net-card, .setting, .findings, form, details, .admin-tile, .item-list, .net-device, .up-group, .attention';
+const said = (el) => {
+  const id = el.id ? `#${el.id}` : '';
+  const cls = el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).slice(0, 2).join('.')}` : '';
+  return `${el.tagName.toLowerCase()}${id}${cls}: "${(el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60)}"`;
+};
+const ownText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+const shown = (el, win) => el.getClientRects().length && win.getComputedStyle(el).visibility !== 'hidden';
+function audit(win, doc, pane) {
+  const out = [];
+  const add = (rule, el, extra = '') => out.push({ pane: pane.id, rule, what: said(el) + extra });
+  const base = parseFloat(win.getComputedStyle(doc.body).fontSize) || 16;
+  const box = pane.getBoundingClientRect();
+  for (const el of pane.querySelectorAll('*')) {
+    if (!shown(el, win)) continue;
+    const st = win.getComputedStyle(el);
+    if (el.matches('a[href]') && DEFAULT_LINKS.includes(st.color)) add('a link in the browser\'s default colour', el);
+    // Loose text (in no card) at the page's full size: what the librarian's list of other updates was.
+    if (ownText(el) && !el.closest(BIG_OK) && !el.closest(CARDS) && parseFloat(st.fontSize) >= base - 0.5) add('text at the page\'s full size, loose in the pane', el, ` (${st.fontSize})`);
+    const r = el.getBoundingClientRect();
+    if (r.width && r.right > box.right + 2 && st.position !== 'fixed' && !el.closest('.admin-art, [data-art]')) add('wider than its pane', el, ` (${Math.round(r.right - box.right)} px over)`);
+    if (el.matches('dl') && !el.parentElement.closest(CARDS)) add('a list of terms loose in the pane, in no card', el);
+  }
+  for (const card of pane.querySelectorAll('.net-card, .setting')) {
+    const first = [...card.children].find((c) => shown(c, win));
+    if (!first) continue;
+    const gap = first.getBoundingClientRect().top - card.getBoundingClientRect().top - parseFloat(win.getComputedStyle(card).paddingTop);
+    if (gap > 12) add('a gap above a card\'s first line', first, ` (${Math.round(gap)} px)`);
+  }
+  return out;
+}
+f.addEventListener('load', async () => {
+  const win = f.contentWindow, doc = f.contentDocument;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await wait(1500);
+  const panes = [...doc.querySelectorAll('.admin-pane[id]')];
+  const findings = [];
+  for (const pane of panes) {
+    win.location.hash = `#${pane.id}`;
+    await wait(900);
+    if (!shown(pane, win)) { findings.push({ pane: pane.id, rule: 'not shown by its own link', what: pane.id }); continue; }
+    findings.push(...audit(win, doc, pane));
+  }
+  document.body.dataset.out = JSON.stringify({ width: W, panes: panes.length, findings });
+});
+</script></body></html>
