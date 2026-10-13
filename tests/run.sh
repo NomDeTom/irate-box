@@ -25,6 +25,7 @@ run() {
 	[ "$rc" = 0 ] || failed=$((failed + 1))
 }
 run sim_uplink.py
+run sim_links.py
 run sim_crashwatch.py
 run sim_led.py
 run sim_watchlog.py

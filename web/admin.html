@@ -1185,9 +1185,23 @@
                     <label class="inline"><input type="checkbox" id="up-ignore-roams"> Don't count short roams as missed checks: a drop that is
                       back within 20 s on the same network is drawn on the chart, never counted (failed gateway checks still count)</label>
                   </div>
+                  <!-- Which links have a watchdog of their own (uplink.py watch, watch_new), and the steps that reach every
+                       link (box_steps) or meet a cable unplugged (cable_out). -->
+                  <div class="up-group up-box-only" id="up-watch">
+                    <span class="setting-name">Which links it watches</span>
+                    <p class="setting-desc">Each link watched has a watchdog of its own, with the settings above. A link nobody
+                      watches is on its own: if it fails, nothing notices or tries again, and the Box doctor says so.</p>
+                    <div class="up-watch-rows" id="up-watch-rows"></div>
+                    <span class="setting-name" id="up-watchnew-label">A link not set here (a new one, too)</span>
+                    <div class="choice-tiles" id="up-watchnew" role="radiogroup" aria-labelledby="up-watchnew-label"></div>
+                  </div>
                   <div class="up-group up-box-only">
-                    <label class="setting-name" for="up-iface">Watch</label>
-                    <select id="up-iface"><option value="auto">The box's route to its network</option></select>
+                    <span class="setting-name" id="up-boxsteps-label">Steps that reach every link: restarting the network service, rebooting</span>
+                    <div class="choice-tiles" id="up-boxsteps" role="radiogroup" aria-labelledby="up-boxsteps-label"></div>
+                  </div>
+                  <div class="up-group up-box-only">
+                    <span class="setting-name" id="up-cable-label">A cable unplugged (or its other end off)</span>
+                    <div class="choice-tiles" id="up-cable" role="radiogroup" aria-labelledby="up-cable-label"></div>
                   </div>
                   <!-- The steps the watchdog may take, per connection: unticked, it never takes that one there
                        (admin.js renderUpSteps; uplink.py steps_off). -->

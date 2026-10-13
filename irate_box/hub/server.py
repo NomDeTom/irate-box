@@ -1935,7 +1935,8 @@ HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-
                               r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
                               r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
                               r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
-                              r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$")
+                              r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
+                              r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
 # Busy spells logged, so that patterns in false alarms can be seen:
@@ -2144,14 +2145,7 @@ def network_snapshot():
             "metered": _metered_view(),
             "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
             "wifisync": load(CONTROL_DIR / "wifisync.json") or {},   # mPWRD-OS's wifisync: as the image had it, if changed here
-            "levels": {"pace": list(uplink.PACE), "reach": list(uplink.REACH), "sensitivity": list(uplink.SENSITIVITY),
-                       "guests": list(uplink.GUESTS), "on_wedge": list(uplink.ON_WEDGE), "steps": list(uplink.STEPS),
-                       "retry": uplink.RETRY, "give_up": uplink.GIVE_UP,
-                       "roaming": list(uplink.ROAMING),
-                       "describe": uplink.DESCRIBE, "default": uplink.DEFAULT,
-                       "presets": {"pace": uplink.PACE, "common": uplink.COMMON},
-                       "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()}
-                                  for k, v in uplink.FIELDS.items()}},
+            "levels": uplink.levels(),
             "pending": _pending_actions("net-") + _pending_actions("uplink-") + _pending_actions("wifi-"), "results": control_results(5)}
 
 
