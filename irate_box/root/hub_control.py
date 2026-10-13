@@ -1835,7 +1835,7 @@ def doctor():
                 wait = max(0, core["reset"] - now) / 60
                 findings.append(_finding("GitHub API", "problem", "rate limit used up (60 requests an hour "
                                          "without a token)", f"Wait about {wait:.0f} min, or set a GitHub token on "
-                                         "the librarian's Schedule and token page."))
+                                         "the librarian's page."))
             else:
                 findings.append(_finding("GitHub API", "ok", f"{core['remaining']} of {core['limit']} requests left this hour"))
         except (OSError, ValueError, KeyError) as exc:
@@ -1994,10 +1994,10 @@ def kits_findings(now=None):
 DOCTOR_GO = {
     "DNS": ("network", "Network"), "Connection": ("network", "Network"),
     "Clock": ("clock", "Clock"), "TLS": ("clock", "Clock"),
-    "GitHub API": ("sources", "The librarian → Schedule and token", "library-token"),
+    "GitHub API": ("sources", "The librarian → Source access", "library-token"),
     "Update cache": ("update-maint", "Updates → Maintenance"),
     "Last update check": ("updates", "Updates"),
-    "Scheduled updates": ("sources", "The librarian → Schedule and token"),
+    "Scheduled updates": ("sources", "The librarian"),
     "Toolkits' cache": ("toolkits", "Toolkits"), "Toolkits installed": ("toolkits", "Toolkits"),
     "Security tools' freshness": ("toolkits", "Toolkits"),
 }

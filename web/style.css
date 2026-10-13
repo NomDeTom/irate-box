@@ -1503,6 +1503,12 @@ html:has(> body.admin) { background: var(--bg); }
 .hl-glance { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.4rem 0 0; }
 .hl-glance dt { font-weight: 600; }
 .hl-glance dd { margin: 0; }
+.hl-glance a { color: var(--accent); }
+/* The librarian's cards: a heading at a card's top has no gap above it; the list at the form's size. */
+.net-card > h3:first-child, .net-card > details > summary { margin-top: 0; }
+.lib-card { margin-top: 1rem; cursor: default; }
+.lib-others { font-size: 0.85rem; }
+.lib-card .sec-fold { margin: 0; }
 @media (max-width: 560px) { .hl-glance { grid-template-columns: 1fr; } .hl-glance dd { margin-bottom: 0.4rem; } }
 /* Where a "Go to …" link lands: marked as the setup tour marks a setting (.tour-target). */
 .landed { outline: 3px solid var(--warn) !important; outline-offset: 4px; border-radius: 6px; animation: tour-pulse 1.6s ease-in-out 3; }
