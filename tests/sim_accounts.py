@@ -390,6 +390,14 @@ try:
     req("/api/account", {"action": "code", "code": d["code"], "password": "password9"}, https=True)  # an admin's: over HTTPS only
     _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
     code, _, _ = req("/_irate/admin", headers={"Cookie": h.get("Set-Cookie", "").split(";")[0]})
+    # The box tile's trends: an admin account's session only, and never the processes.
+    gina = h.get("Set-Cookie", "").split(";")[0]
+    t_guest = req("/api/trends")[0]
+    t_user = req("/api/trends", headers={"Cookie": tok})[0]
+    t_code, t_body, _ = req("/api/trends", headers={"Cookie": gina})
+    check("the trends: a guest and a user refused (403); the admin given the samples, no processes",
+          t_guest == 403 and t_user == 403 and t_code == 200 and isinstance(t_body.get("samples"), list)
+          and "processes" not in t_body and "processes_at" not in t_body, (t_guest, t_user, t_code, t_body))
     _, d, _ = req("/admin/accounts")
     r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/admin", data=b"", method="POST",
                                headers={"Cookie": h.get("Set-Cookie", "").split(";")[0], "Content-Length": "40"})
