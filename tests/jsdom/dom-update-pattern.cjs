@@ -25,8 +25,8 @@ const actOf = (form) => words(chipsOf(d.getElementById(form).querySelector('.upd
 check('what to do: Flag, Download, Install (apps and books, the hub, Debian)', ['library-policy', 'auto-form', 'debian-pattern'].every((f) => actOf(f) === 'Flag|Download|Install'));
 check('  Flag or Download where fetching is the update (the mirrors, the firmware), with why', actOf('mirrors-policy') === 'Flag|Download' && actOf('fw-policy') === 'Flag|Download'
   && /nothing to install/.test(d.getElementById('mirrors-policy').textContent));
-check('  the toolkits\' cache: Download only, said why', actOf('kits-policy') === 'Download' && /only answer/.test(d.getElementById('kits-policy').textContent));
-check('every update button in the page says Check now / Download / Install (or all)', [...d.querySelectorAll('button[data-update]')].every((b) => /^(Check (all )?now|Download( all)?( now)?|Install)$/.test(b.textContent)),
+check('  the toolkits\' cache: Download only, said why', actOf('kits-policy') === 'Download' && /only choice/.test(d.getElementById('kits-policy').textContent));
+check('every update button in the page says Check now / Download / Install (or all)', [...d.querySelectorAll('button[data-update]')].every((b) => /^(Check (all )?now|Download( all)?( now)?|Update all mirrors|Refresh toolkit cache|Install)$/.test(b.textContent)),
   [...d.querySelectorAll('button[data-update]')].map((b) => b.textContent));
 for (const [form, often, act] of [['library-policy', 'check_every_hours', 'auto_install'], ['auto-form', 'hub_check_every_hours', 'hub_auto'], ['debian-pattern', 'often', 'act']]) {
   const f = d.getElementById(form);

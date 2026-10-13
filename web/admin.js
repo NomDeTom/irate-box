@@ -1531,12 +1531,12 @@ async function loadUpdate() {
 
 async function requestUpdate(action) {
   if (action === 'install' && !confirm('Install the update now? The hub restarts during the install.')) return;
-  if (action === 'force-install' && !confirm(`Install the fetched version although it failed these checks?\n\n${upd.force.dataset.failed}\n\nThe installer still stops on its own errors. The hub restarts during the install.`)) return;
+  if (action === 'force-install' && !confirm(`Install the downloaded version although it failed these checks?\n\n${upd.force.dataset.failed}\n\nThe installer still stops on its own errors. The hub restarts during the install.`)) return;
   try {
     updWaiting = { id: (await postJSON('/admin/update', { action })).id, action };
     upd.check.disabled = upd.fetch.disabled = upd.install.disabled = upd.force.disabled = true;
     updSay(action, { check: 'Checking for updates…', fetch: 'Fetching the update: verifying it and caching its downloads…',
-      install: 'Installing the update…', 'force-install': 'Installing the fetched version anyway…', doctor: 'Running the update doctor (up to a minute or two)…',
+      install: 'Installing the update…', 'force-install': 'Installing the downloaded version anyway…', doctor: 'Running the update doctor (up to a minute or two)…',
       'clear-cache': 'Clearing the update cache…' }[action], true);
     loadUpdate();
   } catch (err) { updSay(action, err.message, false); }
@@ -3637,7 +3637,7 @@ function renderVisible(inv, busy) {
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const nets = (nm && nm.visible) || [];
   const shared = inv && inv.radios.some((r) => r.type === 'AP' && inv.radios.some((m) => m.type === 'managed' && m.phy === r.phy));
-  const scanAgain = actionButton('Scan again', () => {
+  const scanAgain = actionButton('Run scan', () => {
     if (shared && !confirm('Scan for networks now? The hotspot shares this radio, so guests may lose it for a moment.')) return;
     netRequest({ action: 'scan', rescan: true }, 'scan');
   }, { disabled: busy, className: 'small' });

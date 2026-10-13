@@ -1239,7 +1239,7 @@
               <select id="ap-radio"><option value="">Automatic</option></select>
               <label class="setting-name" for="ap-channel">Channel</label>
               <select id="ap-channel"><option value="">Automatic</option></select>
-              <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot: the box leaves your WiFi while it runs</label>
+              <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot. The box leaves your WiFi while the hotspot runs</label>
               <span class="library-buttons">
                 <button class="action-btn primary" type="submit" id="ap-switch">Switch on</button>
                 <button class="action-btn" type="button" id="ap-try" hidden>Try a channel of its own</button>
@@ -1248,12 +1248,12 @@
             </form>
             <p class="setting-desc action-note" id="ap-note" role="status" hidden></p>
 
-            <h3>The hotspot's own WiFi</h3>
+            <h3>Hotspot security</h3>
             <p class="setting-desc">
-              How guests join the box's own hotspot: open to all, or encrypted so someone listening nearby
-              cannot read what guests do. Encryption shuts out older devices, so this is a trade between
-              who can join and what is protected. The choice applies the next time the hotspot is switched on,
-              above, which also says what the radios here allow. A setup decision; the tour comes here.
+              The hotspot can be open or encrypted. An open hotspot lets anyone join. An encrypted hotspot prevents a
+              person who listens nearby from reading what guests do. Encryption excludes older devices. The choice applies
+              the next time you switch the hotspot on above. That section also shows what the radios allow. This is a
+              setup decision, and the setup tour links here.
             </p>
             <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
             <div class="net-settings" id="hs-fields">
@@ -1267,7 +1267,7 @@
               <label class="setting-name" for="hs-password" id="hs-password-label">WPA3 password (published to guests)</label>
               <span class="library-buttons">
                 <input type="text" id="hs-password" autocomplete="off" spellcheck="false" maxlength="63" size="24">
-                <button class="action-btn" type="button" id="hs-generate">Make one</button>
+                <button class="action-btn" type="button" id="hs-generate">Generate password</button>
               </span>
               <label class="setting" id="hs-wpa2-label">
                 <input type="checkbox" id="hs-wpa2">
@@ -1280,17 +1280,17 @@
               <button class="action-btn primary" type="button" id="hs-save" disabled>Save</button>
             </div>
             <p class="setting-desc action-note" id="hs-note" role="status" hidden></p>
-            <h4>Guests reach the internet</h4>
+            <h4>Guest internet access</h4>
             <p class="setting-desc">
-              Whether guests on the hotspot can go on through this box's own connection, from nobody to
-              everyone. Their traffic then leaves as the box's: whatever they do online comes from your
-              connection. The safest is the default; each step out says what it opens. However far it goes,
-              guests are kept out of your own network and the box's Tailscale, let out by their device's
-              hardware address, and can't look names up before tapping through: each of those can be turned
-              off on <a href="#security">Security</a>, where the doctor warns while one is.
+              This setting decides whether guests on the hotspot can use the box's connection to reach the internet. The
+              levels run from no access to full access. The default is the safest. Each level says what it opens. Guest
+              traffic leaves as the traffic of the box, so what guests do online comes from your connection. At every level,
+              the box keeps guests out of your own network and the box's Tailscale, lets them out by the hardware address of
+              their device, and does not let them look up names before they pass the sign-in page. You can turn off each of
+              these on <a href="#security">Security</a>. The doctor warns while one is off.
             </p>
             <div id="guest-net-box">
-              <div class="chip-group" role="radiogroup" aria-label="Guests reach the internet" id="guest-net-chips"></div>
+              <div class="chip-group" role="radiogroup" aria-label="Guest internet access" id="guest-net-chips"></div>
               <p class="setting-desc" id="guest-net-said"></p>
               <p class="library-buttons"><button class="action-btn" type="button" id="guest-net-discard" disabled>Discard</button><button class="action-btn primary" type="button" id="guest-net-save" disabled>Save</button></p>
             </div>
@@ -1302,36 +1302,35 @@
       <section class="admin-pane" id="security" aria-labelledby="security-title">
         <h2 id="security-title">Security</h2>
         <p class="setting-desc">
-          What a guest on the box's network can reach, and how the box is set up. Nothing here
-          changes until you press its button. Every change can be undone here, and uninstalling
-          irate-box puts back what it found.
+          This page shows what a guest on the box's network can reach, and how the box is set up. Nothing here
+          changes until you select its button. You can undo every change here. Uninstalling irate-box restores the
+          settings that it found.
         </p>
         <div class="sec-head">
           <p class="setting-desc" id="security-when">Not scanned yet.</p>
-          <button class="action-btn" type="button" id="security-scan">Scan again</button>
+          <button class="action-btn" type="button" id="security-scan">Run scan</button>
         </div>
         <p class="setting-desc action-note" id="security-note" role="status" hidden></p>
         <p class="sec-counts" id="security-counts"></p>
         <div class="sec-pending" hidden></div>
         <!-- The box's choices by subject, each in its place whether it waits for a choice or is set. -->
         <div id="security-findings"></div>
-        <h3>What the hub itself can and can't protect</h3>
+        <h3>Hub security limits</h3>
         <div class="findings" id="security-hub"></div>
         <p class="setting-desc" id="security-elsewhere">
-          Elsewhere: fixes with one right answer are offered by the <a href="#secdoctor">Security doctor</a>,
-          beside what it found; Debian's security updates are on <a href="#updates-debian">Updates</a>; the
-          hotspot's WiFi password is with the hotspot, on <a href="#network/hotspot">Network → Hotspot</a>.
+          Related settings: the <a href="#secdoctor">Security doctor</a> offers fixes that have one correct answer, beside
+          its findings. Debian security updates are on <a href="#updates-debian">Updates</a>. The WiFi password of the
+          hotspot is on <a href="#network/hotspot">Network → Hotspot</a>.
         </p>
-        <h3>What the box keeps about visitors</h3>
+        <h3>Visitor data</h3>
         <p class="setting-desc">
-          A count of different devices, today and this week, for the People tile: never who they
-          were. A helper of its own reads the network addresses of the devices the box has seen, hashes
-          each with a random salt made for the day (and one for the week) and held only in its memory,
-          and throws the salt away when the day or week ends, so no hash can be turned back into a
-          device or matched with another day's. Only the two numbers are written, and they go at
-          reboot. Phones that use a random address may count more than once, so the numbers are
-          approximate. Off, the helper doesn't run at all. Signed-in people's names show only if each
-          of them says so, on their own account page.
+          The box counts different devices, today and this week, for the People tile. It never records who they were. A
+          helper reads the network addresses of the devices that the box has seen. It hashes each address with a random
+          salt for the day and a random salt for the week. The helper holds the salts only in memory and discards them when
+          the day or week ends. No hash can be reversed to a device or matched to another day. The box writes only the two
+          numbers, and deletes them at reboot. Phones that use a random address can count more than once, so the numbers
+          are approximate. If you turn this off, the helper does not run. Signed-in names show only if each person allows
+          it on their account page.
         </p>
         <div class="settings" data-note="visitors-note">
           <label class="setting">
@@ -1351,7 +1350,7 @@
           password. The box's certificate authority is limited to this box's names. A device that enforces the
           limit rejects other sites. Plain HTTP stays on, for other devices and the hotspot's sign-in.
         </p>
-        <p class="setting-desc" id="tls-state">Looking…</p>
+        <p class="setting-desc" id="tls-state">Checking…</p>
         <p class="library-buttons">
           <button class="action-btn" type="button" id="tls-make">Make the box's certificate</button>
           <button class="action-btn" type="button" id="tls-switch" hidden></button>
@@ -1364,23 +1363,23 @@
         <details class="tls-own">
           <summary>Use your own certificate</summary>
           <p class="setting-desc">
-            For a domain you hold, minted elsewhere (the box has no public address, so a DNS
-            challenge: <code>certbot certonly --manual --preferred-challenges dns</code>, or your DNS
-            host's own tool). Devices then trust the box with nothing to install. Paste the full
-            chain (the certificate, then its intermediates) and its unencrypted private key. The
-            box checks that they match, that it hasn't expired and that the chain reaches a known CA,
-            and never replaces it on its own: renew it before it expires.
+            Use this for a domain that you own, with a certificate made elsewhere. The box has no public address, so use
+            a DNS challenge: <code>certbot certonly --manual --preferred-challenges dns</code>, or the tool of your DNS
+            host. Devices then trust the box without an installation. Paste the full chain (the certificate, then its
+            intermediates) and the unencrypted private key. The box checks that the certificate and key match, that the
+            certificate has not expired, and that the chain reaches a known CA. The box never replaces the certificate
+            by itself. Renew it before it expires.
           </p>
-          <p class="setting-desc bad" id="tls-own-plain" hidden>This page is on plain HTTP: the private key would cross the network in clear. Paste it over HTTPS, or from a device on a cable.</p>
+          <p class="setting-desc bad" id="tls-own-plain" hidden>This page uses plain HTTP. The private key would cross the network in clear text. Paste the key over HTTPS, or from a device on a cable.</p>
           <form id="tls-own-form" class="library-form">
             <label>Certificate chain <textarea name="chain" rows="5" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
             <label>Private key <textarea name="key" rows="4" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></label>
-            <button class="action-btn primary" type="submit">Use it</button>
+            <button class="action-btn primary" type="submit">Use this certificate</button>
           </form>
         </details>
 
         <h3 id="security-ports">Listening on the network</h3>
-        <p class="setting-desc">Everything that answers from outside the box, and whether it should. Services on loopback only are left out.</p>
+        <p class="setting-desc">This table lists every service that answers from outside the box, and whether it should. It omits services that listen on loopback only.</p>
         <table class="admin-table" id="security-listeners">
           <thead><tr><th>Port</th><th>Service</th><th>On</th><th>Should it?</th></tr></thead>
           <tbody></tbody>
@@ -1394,9 +1393,9 @@
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
-        <p class="setting-desc">One card for each thing the box updates: what it is and where it stands, how often it looks and
-          what it does with what it finds, and Check now, Download and Install. When an update fails, the
-          <a href="#updoctor">Updates doctor</a> can say why.</p>
+        <p class="setting-desc">Each card shows one item that the box updates: its state, how often the box looks for updates, what the box does
+          with an update, and the buttons Check now, Download and Install. If an update fails, the
+          <a href="#updoctor">Updates doctor</a> shows the reason.</p>
         <div class="update-cards">
         <div class="setting library-source update-card" id="update-hub-card">
           <div class="update-card-body">
@@ -1436,14 +1435,14 @@
               <p class="setting-desc action-note" id="auto-note" role="status" hidden></p>
             </details>
             <details class="field-help" id="update-signing">
-              <summary>What an update must carry: <span id="update-signing-says">…</span></summary>
+              <summary>Update verification: <span id="update-signing-says">…</span></summary>
               <p class="setting-desc">
-                How far a new version must be vouched for before the box installs it (as root). A version
-                that is not signed as chosen here is refused, by Install anyway too.
+                This setting decides how far the box verifies a new version before it installs the version as root. The box
+                refuses a version that is not signed at the level you select here. This includes Install anyway.
               </p>
               <form id="update-signing-form" class="library-form">
                 <fieldset class="choice-tiles">
-                  <legend>Updates must be</legend>
+                  <legend>Required update level</legend>
                   <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
                   <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does. The box refuses a commit that GitHub did not sign.</span></span></label>
                   <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
@@ -1458,17 +1457,16 @@
             <details class="field-help">
               <summary>How an update goes</summary>
               <p class="setting-desc">
-                Checking asks the repository this box was installed from what is new. Fetching then
-                verifies that version and downloads what its installer will need, so nothing is fetched
-                half-way through an install. Installing reruns the installer with the same options. Apps,
-                books, data and the password are kept. The hub restarts part-way through, and this page
-                reconnects by itself.
+                Check asks the repository that the box was installed from what is new. Download verifies that version and
+                downloads what its installer needs, so the box downloads nothing in the middle of an installation. Install
+                runs the installer again with the same options. The box keeps apps, books, data and the password. The hub
+                server restarts during the installation, and this page reconnects by itself.
               </p>
               <p class="setting-desc">
-                The librarian can look for updates by itself, on its hourly round, and take them as far
-                as you choose. An install is only ever of a version that passed verification, inside
-                the hours you set, with nobody on the hub and nothing else running; the hub restarts
-                part-way through. A version that fails verification waits for you here.
+                The librarian can look for updates by itself in its hourly round, and take them as far as you select. The
+                box installs only a version that passed verification. It installs inside the hours you set, when nobody
+                uses the hub and nothing else runs. The hub server restarts during the installation. A version that fails
+                verification waits for you here.
               </p>
             </details>
           </div>
@@ -1476,7 +1474,7 @@
         <div class="setting library-source update-card" id="updates-debian">
           <div class="update-card-body">
             <span class="setting-name">Debian's security updates</span>
-            <span class="setting-desc">The system underneath: what Debian has fixed and this box has not installed yet, and whether it installs them by itself.</span>
+            <span class="setting-desc">The operating system: fixes from Debian that the box has not installed yet, and whether the box installs them by itself.</span>
             <div class="findings" id="updates-security"></div>
             <div class="sec-pending" hidden></div>
             <div id="debian-buttons"></div>
@@ -1497,34 +1495,33 @@
         </div>
         <h3 id="pkg-makers">Packages from their makers</h3>
         <p class="setting-desc">
-          Debian packages the box watches on their makers' own channels: meshtasticd from Meshtastic's
-          repositories (beta, alpha or nightly). Each new build is kept when it is first seen, so one can be
-          installed once it has been out a while, and an update can be rolled back with no internet.
+          The box watches Debian packages on the channels of their makers: meshtasticd from the Meshtastic
+          repositories (beta, alpha or nightly). The box keeps each new build when it first sees it. You can install a
+          build after it has been out for a while, and you can roll back an update without internet access.
         </p>
-        <div id="pkg-list"><p class="setting-desc">Looking…</p></div>
+        <div id="pkg-list"><p class="setting-desc">Checking…</p></div>
         <p class="setting-desc action-note" id="pkg-note" role="status" hidden></p>
 
         <!-- Maintenance: what is done rarely and on purpose, not routine updating. -->
         <details class="sec-fold" id="update-maint">
           <summary>Maintenance: clear the cache, install anyway</summary>
           <h3>The update cache</h3>
-          <p class="setting-desc">The cached copy of the hub's code and the downloads kept for updates. Clearing it makes
-            the next check start afresh: for a cache the Updates doctor finds broken.</p>
+          <p class="setting-desc">The cache holds a copy of the hub's code and the downloads for updates. After you clear it, the
+            next check starts afresh. Clear it when the Updates doctor finds the cache broken.</p>
           <div class="library-buttons">
             <button class="action-btn" type="button" id="update-clear">Clear the update cache</button>
           </div>
           <p class="setting-desc action-note" id="update-clear-note" role="status" hidden></p>
         <h3>Install anyway</h3>
         <p class="setting-desc">
-          When the fetched version did not pass verification and you know why — the check itself
-          can be what is wrong, as when an update changes how the code is laid out — it can be
-          installed regardless. The installer runs as it always does and stops on its own errors;
-          the checks that failed are skipped. Only for a version you trust: the one fetched from
-          the repository this box was installed from.
+          Use this when the downloaded version did not pass verification and you know the reason. For example, the
+          check can be wrong when an update changes the code layout. The installer runs as usual and stops on its own
+          errors. It skips the checks that failed. Use this only for a version that you trust: the version downloaded
+          from the repository that the box was installed from.
         </p>
         <div class="findings" id="force-failed" hidden></div>
         <div class="library-buttons">
-          <button class="action-btn" type="button" id="update-force" disabled>Install the fetched version anyway</button>
+          <button class="action-btn" type="button" id="update-force" disabled>Install the downloaded version anyway</button>
         </div>
         <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
         </details>
@@ -1535,23 +1532,23 @@
         <h2 id="backup-title">Backup and a new box</h2>
         <!-- Offers with sizes: settings only, settings and data, or a full image, each with an estimated size. -->
         <h3 id="backup-levels">Back up this box</h3>
-        <p class="setting-desc">Three levels, from the smallest. Books, the firmware and git mirrors, builds and caches are
-          never in a backup: they are fetched again from their sources.</p>
+        <p class="setting-desc">The three levels run from the smallest. The first two levels leave out books, firmware, git mirrors,
+          builds and caches. The box downloads them again from their sources. The full image contains everything on the card.</p>
         <div class="choice-tiles" id="backup-level" role="radiogroup" aria-label="What the backup holds"></div>
         <label class="inline backup-keys" id="backup-keys-label"><input type="checkbox" id="backup-syncthing">
           <span><strong>⚠ With Syncthing's private keys</strong> (<code>key.pem</code>, <code>https-key.pem</code>,
-          <code>config.xml</code>), so a restored box keeps its device ID. Whoever holds that file can pose as this box to
-          its Syncthing peers: keep it like a password.</span></label>
+          <code>config.xml</code>), so a restored box keeps its device ID. A person who holds that file can pose as this box to
+          its Syncthing peers. Keep the file as you keep a password.</span></label>
         <p class="setting-desc" id="backup-left-out"></p>
         <div class="library-buttons" id="backup-go-box">
           <a class="action-btn primary" id="backup-go" href="/admin/backup?level=data" download>Download the backup</a>
         </div>
         <div id="backup-image-box" hidden>
-          <p class="setting-desc">The image is written straight to a USB stick plugged into the box (it is too big to download
-            through the browser), in 3.9 GB parts on a FAT stick.</p>
+          <p class="setting-desc">The box writes the image straight to a USB drive that is connected to the box. The image is too big to download
+            through the browser. On a FAT drive, the box writes it in parts of 3.9 GB.</p>
           <div class="library-buttons">
-            <select id="backup-image-stick" aria-label="The USB stick"></select>
-            <button class="action-btn" type="button" id="backup-image-scan">Look for USB sticks</button>
+            <select id="backup-image-stick" aria-label="USB drive"></select>
+            <button class="action-btn" type="button" id="backup-image-scan">Scan for USB drives</button>
             <button class="action-btn primary" type="button" id="backup-image-go" disabled>Write the image</button>
           </div>
         </div>
@@ -1563,39 +1560,40 @@
 
         <h3 id="backup-kit">Content export</h3>
         <p class="setting-desc">
-          What this box has, for another box with no internet: books, toolkits, git repositories and this box's state, each
-          with its size, against a size budget if you set one. Leave the hub program out for a box that has irate-box
-          already: its Books → USB stick and Toolkits → USB stick read the export, and <code>sudo sh import.sh</code> in it
-          brings in the repositories and the state. Put the hub program in for a new box: unpack the download on it and run
-          <code>sudo ./setup.sh</code>, which installs, then brings in the rest (each toolkit package checked against Debian's
-          signatures). Debian's own packages still come from the other box's system.
+          This export holds what this box has, for another box without internet access: books, toolkits, git
+          repositories and the state of this box. Each item shows its size, and a storage limit applies if you set one.
+          For a box that already has irate-box, leave out the hub program. On that box, Books → USB drive and Toolkits →
+          USB drive read the export, and <code>sudo sh import.sh</code> in the export imports the repositories and the
+          state. For a new box, include the hub program. Unpack the download on the new box and run
+          <code>sudo ./setup.sh</code>. It installs the hub program and then imports the rest. It checks each toolkit
+          package against the Debian signatures. The packages of Debian itself still come from the system of the other box.
         </p>
         <form id="kit-form" class="library-form kit-offer">
-          <div class="chip-group" id="export-presets" role="group" aria-label="Start from">
-            <button type="button" class="chip" data-export="update" title="The hub program and the state left out: books and toolkits for a box that has irate-box">Update a box</button>
-            <button type="button" class="chip" data-export="level" title="As Update a box, with every repository and this box's settings">Bring a box level</button>
-            <button type="button" class="chip" data-export="new" title="The hub program in: everything chosen, for a box without irate-box">A new box</button>
+          <div class="chip-group" id="export-presets" role="group" aria-label="Preset">
+            <button type="button" class="chip" data-export="update" title="Without the hub program and the state. Books and toolkits for a box that has irate-box.">Update a box</button>
+            <button type="button" class="chip" data-export="level" title="As Update a box, with every repository and the settings of this box.">Bring a box level</button>
+            <button type="button" class="chip" data-export="new" title="With the hub program and everything that you select. For a box without irate-box.">A new box</button>
           </div>
           <p class="setting-desc" id="export-preset-says"></p>
           <fieldset class="kit-pick"><legend>Books</legend><div id="kit-books"></div></fieldset>
           <fieldset class="kit-pick"><legend>Toolkits</legend><div id="kit-kits"></div></fieldset>
           <fieldset class="kit-pick"><legend>Git repositories</legend><div id="kit-repos"></div></fieldset>
-          <label>This box's state
+          <label>State of this box
             <select name="state">
-              <option value="none" data-says="Nothing of this box's own: the other box keeps its own, or starts as new.">None</option>
-              <option value="settings" data-says="This box's choices: settings, accounts, sources.">Settings</option>
-              <option value="data" data-says="Its choices and what was made on it: notes, saved work, the board, its own repositories.">Settings and data</option>
+              <option value="none" data-says="Nothing of this box. The other box keeps its own state, or starts as new.">None</option>
+              <option value="settings" data-says="The settings of this box: settings, accounts, sources.">Settings</option>
+              <option value="data" data-says="The settings and the user data of this box: notes, saved work, the board, its own repositories.">Settings and data</option>
             </select></label>
           <label class="inline"><input type="checkbox" name="hub" id="kit-hub"> The hub program, <span id="kit-hub-size">its code, apps and release files</span>: for a box without irate-box</label>
-          <label>Budget (MB, blank for none) <input name="budget" type="number" min="1" step="64" inputmode="numeric"></label>
-          <label>Where to
+          <label>Storage limit (MB, blank = no limit) <input name="budget" type="number" min="1" step="64" inputmode="numeric"></label>
+          <label>Destination
             <select name="dest" id="kit-dest">
-              <option value="download" data-says="One file to download, made on the box first (it replaces the last one).">A download</option>
-              <option value="stick" data-says="Straight onto a USB stick plugged into the box, in the layout the other box reads.">A USB stick</option>
+              <option value="download" data-says="One file to download. The box makes the file first and replaces the previous file.">A download</option>
+              <option value="stick" data-says="Straight to a USB drive that is connected to the box, in the layout that the other box reads.">A USB drive</option>
             </select></label>
           <div class="library-buttons" id="offline-stick-box" hidden>
-            <select id="offline-stick" aria-label="The USB stick"></select>
-            <button class="action-btn" type="button" id="offline-scan">Look for USB sticks</button>
+            <select id="offline-stick" aria-label="USB drive"></select>
+            <button class="action-btn" type="button" id="offline-scan">Scan for USB drives</button>
           </div>
           <p class="setting-desc kit-total" id="kit-total" role="status"></p>
           <button class="action-btn primary" type="submit" id="kit-make">Make the export</button>
@@ -1607,61 +1605,61 @@
         <p class="setting-desc action-note" id="kit-note" role="status" hidden></p>
         <p class="setting-desc" id="kit-state">No export made yet.</p>
         <details class="admin-output" id="kit-details" hidden>
-          <summary>What is in it</summary>
+          <summary>Contents</summary>
           <ul class="admin-list" id="kit-contents"></ul>
         </details>
 
         <p class="setting-desc">
-          <a href="/sync/" target="_blank">Syncthing</a> — an optional add-on for moving notes and
-          content between the box and your own machines when they share a network. Returns an error
-          page if it is not installed or its unit is off.
+          <a href="/sync/" target="_blank">Syncthing</a> is an optional add-on. It moves notes and content between the box
+          and your own machines when they share a network. The link shows an error page if Syncthing is not installed or its
+          service is off.
         </p>
       </section>
 
       <section class="admin-pane" id="secdoctor" aria-labelledby="secdoctor-title">
         <h2 id="secdoctor-title">Security doctor</h2>
         <p class="setting-desc">
-          What the security checks found that is not fine, said once, worst first: the doctor's own audit, the
-          Security page's scan, Debian's security tracker and the weekly deep audit. Each ends in one thing to do;
-          what you are happy to leave, accept, and it stops counting. From a shell:
-          <code>sudo /opt/irate-box/irate-box secdoctor</code>.
+          This page lists the problems that the security checks found, once each, worst first. The sources are the
+          audit of the doctor, the scan on the Security page, the Debian security tracker and the weekly deep audit.
+          Each finding ends with one action. Accept a finding that you want to leave, and it stops counting. From a
+          shell, run <code>sudo /opt/irate-box/irate-box secdoctor</code>.
         </p>
         <div class="sec-head">
           <p class="setting-desc" id="audit-when">Not run yet.</p>
           <button class="action-btn" type="button" id="audit-run">Run the doctor</button>
           <button class="action-btn" type="button" id="audit-deep">Deep audit</button>
         </div>
-        <p class="setting-desc" id="audit-deep-when">The deep audit (debian-cis's CIS benchmark checks and Lynis, about 8 minutes on a small board) runs weekly while the Security kit is kept current.</p>
+        <p class="setting-desc" id="audit-deep-when">The deep audit (CIS benchmark checks from debian-cis, and Lynis) takes about 8 minutes on a small board. It runs weekly while the box keeps the Security toolkit current.</p>
         <p class="setting-desc action-note" id="audit-note" role="status" hidden></p>
         <div class="sec-pending" hidden></div>
         <!-- Each source and how fresh it is: what it covers in its title. -->
-        <p class="fresh-strip" id="joint-fresh" aria-label="Each source, and how fresh it is"></p>
-        <div class="sec-counts" id="joint-summary" role="group" aria-label="Show"></div>
+        <p class="fresh-strip" id="joint-fresh" aria-label="Age of each source"></p>
+        <div class="sec-counts" id="joint-summary" role="group" aria-label="Filter findings"></div>
         <input type="search" class="sec-search" id="joint-search" placeholder="Search the findings…" aria-label="Search the findings">
         <div class="findings" id="joint-items"></div>
         <p class="setting-desc" id="joint-empty" hidden></p>
         <details class="sec-fold" id="joint-suggest-fold">
-          <summary>Hardening suggestions <span id="joint-suggest-count"></span>: the CIS benchmark's, written for a general server</summary>
+          <summary>Hardening suggestions <span id="joint-suggest-count"></span>: from the CIS benchmark, written for a general server</summary>
           <div class="findings" id="joint-suggest"></div>
         </details>
         <details class="sec-fold" id="joint-nothere-fold">
-          <summary>Not for this box <span id="joint-nothere-count"></span>, and why</summary>
+          <summary>Not applicable to this box <span id="joint-nothere-count"></span>, with reasons</summary>
           <div class="findings compact" id="joint-nothere"></div>
         </details>
         <details class="sec-fold" id="joint-cured-fold">
-          <summary>Put right here <span id="joint-cured-count"></span>: each with its Undo</summary>
+          <summary>Repaired here <span id="joint-cured-count"></span>: each with its Undo</summary>
           <div class="findings compact" id="joint-cured"></div>
         </details>
         <details class="sec-fold" id="joint-accepted-fold">
-          <summary>Accepted by you <span id="joint-accepted-count"></span></summary>
+          <summary>Accepted <span id="joint-accepted-count"></span></summary>
           <div class="findings compact" id="joint-accepted"></div>
         </details>
         <h3>Import a scan</h3>
         <p class="setting-desc">
-          OpenVAS (Greenbone) or nmap, run from a PC on the hotspot against the box: the outside view,
-          including software debsecan can't see. Export the report (OpenVAS: XML or CSV; nmap:
-          <code>nmap -sV -oX report.xml &lt;box&gt;</code>) and choose it here. It is read in this browser;
-          only what it found is sent to the box, and kept until the next import of the same kind.
+          Run OpenVAS (Greenbone) or nmap from a PC on the hotspot against the box. This gives the outside view,
+          including software that debsecan cannot see. Export the report (OpenVAS: XML or CSV; nmap:
+          <code>nmap -sV -oX report.xml &lt;box&gt;</code>) and select it here. This browser reads the report. It
+          sends only the findings to the box. The box keeps them until the next import of the same type.
         </p>
         <form id="import-form" class="library-form inline-form">
           <label>Report <input type="file" name="file" accept=".xml,.csv,text/xml,text/csv" required></label>
@@ -1670,8 +1668,8 @@
         <p class="setting-desc action-note" id="import-note" role="status" hidden></p>
         <ul class="admin-list" id="import-list"></ul>
         <details class="sec-fold" id="audit-raw">
-          <summary>The raw report, step by step</summary>
-          <p class="setting-desc">Every check each step made, the fine ones too, as the doctor wrote them.</p>
+          <summary>Raw report, step by step</summary>
+          <p class="setting-desc">Every check of each step, including the checks that passed, as the doctor wrote them.</p>
           <div id="audit-steps"></div>
         </details>
         <details class="sec-fold" id="audit-scope" hidden>
