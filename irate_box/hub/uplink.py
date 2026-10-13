@@ -162,11 +162,15 @@ BSSID_RE = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
 DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "sensitivity": 3, "iface": "auto",
            "overrides": {}, "hold_until": 0, "on_wedge": "ladder", "roaming": "roam", "lock_bssid": None,
            "ignore_roams": False, "steps_off": {}, "retry": "steady", "give_up": "never",
-           "watch": {}, "watch_new": "uplink", "box_steps": "nothing-works", "cable_out": "wait"}
+           "watch": {}, "watch_hw": {}, "watch_new": "uplink", "box_steps": "nothing-works", "cable_out": "wait",
+           "cable_reach": "reconnect"}
 # Which links are watched, each with a watchdog of its own. A link the owner set is watched or not (watch:
 # {iface: bool}); any other follows watch_new: "uplink", the link that holds the box's route (and one in
-# trouble while it was, as the route goes with its link); "all"; or "none".
-WATCH_NEW = ("uplink", "all", "none")
+# trouble while it was, as the route goes with its link); "look", that and every other link watched but looked at
+# only (logged and said, nothing done); "all"; or "none". A link is known by its name, then by its hardware (watch_hw:
+# {iface: {mac, path}}, recorded as the settings are saved), so a USB adapter that comes back as another name keeps its own.
+WATCH_NEW = ("uplink", "look", "all", "none")
+HW_PATH_RE = re.compile(r"^[a-z0-9_]{1,16}:[A-Za-z0-9:._-]{1,64}$")
 # Steps that reach every link, not only the failing one: restarting the network service drops them all, and a
 # reboot drops everything. Taken only when no other link works ("nothing-works"), when the failing link holds
 # the box's route ("uplink"), or for any watched link as for one ("any").
@@ -175,6 +179,9 @@ WHOLE_BOX = ("restart", "reboot")
 # A cable link with no carrier: no cable, or the other end off. Nothing the box does mends that, so by default
 # it waits and says so ("wait"); or it reconnects now and then ("reconnect"); or takes its whole ladder ("ladder").
 CABLE_OUT = ("wait", "reconnect", "ladder")
+# How far the watchdog goes on a cable link of its own accord: a lost wired link is most often a cable pulled or the other
+# end off, which no step mends, so by default it reconnects (when the cable is back) and goes no further. The lesser of this
+# and the reach is used; a reach set for that link alone (per_iface, kept where it differs from the box's) is used instead.
 # The steps the owner has switched off for a connection ({iface: [step, ...]}): applied while the
 # watchdog watches that one (a radio that a network restart unsettles, a cable that has no radio).
 # When the radio itself has failed (outage_cause "radio": its driver wedged, its interface gone): keep to
@@ -365,13 +372,26 @@ def validate(raw):
     for name, on in watch.items():
         if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(on, bool):
             raise ValueError(f"watch: {name} must be a link's name, watched true or false")
-    choices = {k: raw.get(k, DEFAULT[k]) for k in ("watch_new", "box_steps", "cable_out")}
-    for k, allowed in (("watch_new", WATCH_NEW), ("box_steps", BOX_STEPS), ("cable_out", CABLE_OUT)):
+    hw = raw.get("watch_hw") or {}
+    if not isinstance(hw, dict) or len(hw) > 16:
+        raise ValueError("watch_hw must be an object of links")
+    clean_hw = {}
+    for name, h in hw.items():
+        if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(h, dict):
+            raise ValueError(f"watch_hw: {name} must be a link's name, with its hardware")
+        mac, path = h.get("mac"), h.get("path")
+        if mac is not None and not (isinstance(mac, str) and BSSID_RE.match(mac)):
+            raise ValueError(f"watch_hw.{name}.mac: an address like aa:bb:cc:dd:ee:ff")
+        if path is not None and not (isinstance(path, str) and HW_PATH_RE.match(path)):
+            raise ValueError(f"watch_hw.{name}.path: a bus and device")
+        clean_hw[name] = {"mac": mac, "path": path}
+    choices = {k: raw.get(k, DEFAULT[k]) for k in ("watch_new", "box_steps", "cable_out", "cable_reach")}
+    for k, allowed in (("watch_new", WATCH_NEW), ("box_steps", BOX_STEPS), ("cable_out", CABLE_OUT), ("cable_reach", REACH)):
         if choices[k] not in allowed:
             raise ValueError(f"{k} must be one of {', '.join(allowed)}")
     out.update(pace=pace, reach=reach, guests=guests, sensitivity=sens, iface=iface, overrides={}, on_wedge=w,
                retry=retry, give_up=give_up, roaming=roaming, lock_bssid=lock if roaming == "lock" else None, ignore_roams=ignore,
-               watch=dict(watch), **choices)
+               watch=dict(watch), watch_hw=clean_hw, **choices)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
         raise ValueError("overrides must be an object")
@@ -964,6 +984,9 @@ def words(chosen):
         parts.append("roams not counted")
     parts.append({"uplink": "the network service and the box restarted for the route's link even with another up",
                   "any": "the network service and the box restarted for any watched link"}.get(chosen.get("box_steps"), ""))
+    if chosen.get("cable_reach", "reconnect") != "reconnect":
+        cr = chosen["cable_reach"]
+        parts.append("on a cable, watch only" if cr == "watch" else f"on a cable as far as to {'reset the adapter' if cr == 'radio' else STEP_LABEL[cr]}")
     parts.append({"reconnect": "a cable unplugged reconnected now and then",
                   "ladder": "a cable unplugged met with the whole ladder"}.get(chosen.get("cable_out"), ""))
     parts += [f"on {i} never {' or '.join(STEP_LABEL[x].lower() for x in steps)}" for i, steps in sorted((chosen.get("steps_off") or {}).items())]
@@ -988,7 +1011,8 @@ def watching_words(chosen):
     """Which links are watched, as the settings say it: "wlan0 and eth0", "the route's link and wlan0"."""
     on = sorted(i for i, v in (chosen.get("watch") or {}).items() if v)
     off = sorted(i for i, v in (chosen.get("watch") or {}).items() if v is False)
-    new = {"uplink": "the link holding the box's route", "all": "every link", "none": None}[chosen.get("watch_new", "uplink")]
+    new = {"uplink": "the link holding the box's route", "look": "the link holding the box's route, and every other looked at only",
+           "all": "every link", "none": None}[chosen.get("watch_new", "uplink")]
     parts = ([new] if new else []) + on
     said = " and ".join([", ".join(parts[:-1]), parts[-1]] if len(parts) > 1 else parts) or "no link"
     return said + (f" (never {', '.join(off)})" if off else "")
@@ -999,8 +1023,10 @@ def main_link(chosen):
     route's link if it is watched, else the first one watched."""
     route = netinv.default_route()
     r = route["iface"] if route else None
-    want = watched_links(chosen, r, candidate_links())
-    return r if r in want else (sorted(want)[0] if want else None)
+    cands = candidate_links()
+    want = watched_links(chosen, r, cands, alias=aliases(chosen, cands))
+    full = sorted(i for i, how in want.items() if how == "full")
+    return r if r in want else (full or sorted(want) or [None])[0]
 
 
 def pick_iface(chosen, last):
@@ -1620,21 +1646,76 @@ def candidate_links(types=None):
     return out
 
 
-def watched_links(chosen, route, candidates, troubled=()):
-    """The links to watch: each the owner set to be watched (there or not: a radio whose driver failed takes its
-    interface with it), and the others as watch_new says: the route's link (with one in trouble while it was, since
-    the route goes with its link), every link there is, or none; never one the owner set not to be watched."""
+def link_hw(iface, run=run):
+    """What a link's hardware is, so its settings follow it if it comes back under another name (a USB adapter
+    plugged into another port, a second one before it): {mac: its own address, path: bus and device}."""
+    d = SYS_NET / iface
+    mac = netinv.read(d / "address")
+    if netinv.read(d / "addr_assign_type") not in (None, "0"):   # an address given to it, not its own
+        code, out = run("ethtool", "-P", iface, timeout=10)
+        m = re.search(r"((?:[0-9a-f]{2}:){5}[0-9a-f]{2})", out or "") if code == 0 else None
+        mac = m.group(1) if m else None
+    try:
+        dev = (d / "device").resolve()
+        path = f"{(dev / 'subsystem').resolve().name}:{dev.name}" if (dev / "subsystem").exists() else None
+    except OSError:
+        path = None
+    mac = mac.lower() if mac and BSSID_RE.match(mac.lower()) and mac != "00:00:00:00:00:00" else None
+    return {"mac": mac, "path": path if path and HW_PATH_RE.match(path) else None}
+
+
+def aliases(chosen, candidates, hw=link_hw):
+    """{iface: the name its settings are under} for each link there now that the settings don't name, whose hardware
+    is that of a name they do and that isn't there now: a link is known by its name, then by its hardware (its own
+    address first, then its place on the bus)."""
+    known = set(chosen.get("watch") or {}) | set(chosen.get("per_iface") or {}) | set(chosen.get("steps_off") or {})
+    saved = {n: h for n, h in (chosen.get("watch_hw") or {}).items() if n in known and n not in candidates}
+    out = {}
+    for i in sorted(candidates):
+        if i in known or not saved:
+            continue
+        h = hw(i)
+        hit = next((n for n, s in saved.items() if h.get("mac") and s.get("mac") == h["mac"]), None) \
+            or next((n for n, s in saved.items() if h.get("path") and s.get("path") == h["path"]), None)
+        if hit:
+            out[i] = hit
+            saved.pop(hit)
+    return out
+
+
+def watched_links(chosen, route, candidates, troubled=(), alias=None):
+    """The links to watch, {iface: "full" | "look"}: each the owner set to be watched (there or not: a radio whose driver
+    failed takes its interface with it; under another name, when its hardware says it is the same link), and the
+    others as watch_new says: the route's link (with one in trouble while it was, since the route goes with its link),
+    every link there is, the route's link and every other looked at only, or none; never one the owner set not to be
+    watched. troubled: {iface: how it was watched} for the links in an outage now."""
+    alias = alias or {}
     watch, new = chosen.get("watch") or {}, chosen.get("watch_new", DEFAULT["watch_new"])
-    out = {i for i, on in watch.items() if on}
-    if new == "all":
-        out |= {i for i in candidates if watch.get(i) is not False} | {i for i in troubled if watch.get(i) is not False}
-    elif new == "uplink":
-        if route and watch.get(route) is not False:
-            out.add(route)
-        out |= {i for i in troubled if watch.get(i) is not False and i not in watch}
-        if not out and not route:
-            # No route at all, nothing watched: the first WiFi client, as it is the likeliest to need help.
-            out |= {next((i for i, k in sorted(candidates.items()) if k == "wifi" and watch.get(i) is not False), None)} - {None}
+    troubled = troubled if isinstance(troubled, dict) else {i: "full" for i in troubled}
+    said = lambda i: watch.get(alias.get(i, i))  # noqa: E731
+    out = {}
+    for name, on in watch.items():
+        if on:
+            moved = [i for i, n in alias.items() if n == name]
+            out[moved[0] if moved and name not in candidates else name] = "full"
+    for i in candidates:
+        if said(i) is True:
+            out[i] = "full"
+    if new in ("uplink", "look"):
+        if route and said(route) is not False:
+            out[route] = "full"
+        for i, how in troubled.items():
+            if said(i) is not False:
+                out.setdefault(i, how)
+    if new in ("all", "look"):
+        for i in [*candidates, *troubled]:
+            if said(i) is not False:
+                out.setdefault(i, "full" if new == "all" else "look")
+    if new == "uplink" and not out and not route:
+        # No route at all, nothing watched: the first WiFi client, as it is the likeliest to need help.
+        first = next((i for i, k in sorted(candidates.items()) if k == "wifi" and said(i) is not False), None)
+        if first:
+            out[first] = "full"
     return out
 
 
@@ -1663,12 +1744,12 @@ def autoconnect_for(iface, kind, run=run):
 class Link:
     """One watched link: its watchdog (Watch) and what the loop keeps of it between looks."""
 
-    def __init__(self, iface, chosen, old=None, reboots=None, dry=False):
-        self.iface = iface
+    def __init__(self, iface, chosen, old=None, reboots=None, dry=False, name=None, how="full"):
+        self.iface, self.name, self.how = iface, name or iface, how
         old = old or {}
         self.kind = link_kind(iface) if (SYS_NET / iface).exists() else old.get("kind", "wifi")
         cable = self.kind == "ethernet"
-        self.w = Watch(effective(chosen, iface), old.get("events"), None,
+        self.w = Watch(self.settings(chosen), old.get("events"), None,
                        {"radio": "reset the adapter"} if cable else None, {"radio": "the adapter has failed"} if cable else None)
         if reboots is not None:
             self.w.reboots = reboots   # one record for the box: the caps count every link's reboots
@@ -1682,6 +1763,17 @@ class Link:
         self.pinned = None
         self.roams = Roams()
         self.obs, self.up, self.gw, self.answers, self.roam_rows = {}, False, None, None, []
+
+    def settings(self, chosen):
+        """Its numbers: its own settings (under the name they are saved as); looked at only, nothing done (reach watch)."""
+        if self.how == "look":
+            return effective(dict(chosen, reach="watch"), self.name)
+        own = (chosen.get("per_iface") or {}).get(self.name) or {}
+        if self.kind == "ethernet" and "reach" not in own:
+            cap = chosen.get("cable_reach", DEFAULT["cable_reach"])
+            reach = min(chosen["reach"], cap, key=REACH.index)
+            return effective(dict(chosen, reach=reach), self.name)
+        return effective(chosen, self.name)
 
     def refresh(self, now, force=False):
         if force or now - self.looked > 600 or not self.actor:
@@ -1734,7 +1826,8 @@ class Link:
                 if self.ssids_known is None:
                     self.ssids_known = known_ssids()
                 ssid = self.ssids_known
-            cable = (carrier(i) if exists else False) if self.kind == "ethernet" else None
+            # A cable link's carrier; when it can't be read (the interface switched off), a cable is assumed pulled.
+            cable = carrier(i) is True if self.kind == "ethernet" else None
             obs["cause"] = outage_cause(i, up, answers, wifi, exists, obs["wedged"], own, ssid, carrier=cable)
         elif self.backend and self.backend != "none":
             self.known_backend = self.backend
@@ -1802,7 +1895,7 @@ def serve(dry=False):
     history = History()
     ladder = Ladder()
     ladder.started(time.time(), old.get("at"), uptime())
-    tls_at, cands, cands_at, inv, inv_at, first = 0, {}, 0, {}, 0, True
+    tls_at, cands, cands_at, inv, inv_at, first, alias = 0, {}, 0, {}, 0, True, {}
 
     def stop(*_):
         history.flush()  # the slot under way, rather than lose up to five minutes of it
@@ -1818,7 +1911,7 @@ def serve(dry=False):
             if {k: v for k, v in before.items() if k != "hold_until"} != {k: v for k, v in chosen.items() if k != "hold_until"}:
                 changed = True
                 for lk in links.values():
-                    lk.w.eff = effective(chosen, lk.iface)
+                    lk.w.eff = lk.settings(chosen)
                     lk.w.pause_until = now + lk.w.eff["pause_after_change"]
                     lk.w.log(now, "info", f"Settings changed: {words(chosen)}" + (", with custom values" if chosen["overrides"] else "") + ".")
             if before.get("hold_until") != chosen.get("hold_until"):
@@ -1828,18 +1921,26 @@ def serve(dry=False):
                              if hold > now else "Hold ended: repairs as set.")
         if first or changed or now - cands_at > 60:
             cands, cands_at = candidate_links(), now
+            alias = aliases(chosen, cands)
         route = netinv.default_route()
         route_if = route["iface"] if route else None
-        troubled = {i for i, lk in links.items() if lk.w.outage or lk.w.misses}
-        want = watched_links(chosen, route_if, cands, troubled)
-        for i in sorted(want - set(links)):
-            lk = links[i] = Link(i, chosen, old_of(i) if first else resting.pop(i, None), reboots, dry)
+        troubled = {i: lk.how for i, lk in links.items() if lk.w.outage or lk.w.misses}
+        want = watched_links(chosen, route_if, cands, troubled, alias)
+        for i in sorted(set(want) - set(links)):
+            lk = links[i] = Link(i, chosen, old_of(i) if first else resting.pop(i, None), reboots, dry, alias.get(i), want[i])
             resting.pop(i, None)
+            if alias.get(i):
+                lk.w.log(now, "info", f"{i} is {alias[i]} under another name (the same hardware): its settings follow it.")
             if first and rebooted and old.get("iface") == i:
                 lk.w.log(now, "info", "Started again after the reboot.")
-            lk.w.log(now, "info", (f"Watching {i} ({words(chosen)})" if first else f"Now watching {i} too ({words(chosen)})")
-                     + (" — dry run" if dry else "") + ".")
-        for i in sorted(set(links) - want):
+            lk.w.log(now, "info", (f"Watching {i}" if first else f"Now watching {i} too")
+                     + (": looking only, nothing done for it" if lk.how == "look" else f" ({words(chosen)})") + (" — dry run" if dry else "") + ".")
+        for i, lk in links.items():
+            if i in want and want[i] != lk.how:
+                lk.how = want[i]
+                lk.w.eff = lk.settings(chosen)
+                lk.w.log(now, "info", f"{i}: " + ("looked at only from now on." if lk.how == "look" else f"watched in full from now on ({words(chosen)})."))
+        for i in sorted(set(links) - set(want)):
             lk = links.pop(i)
             lk.w.log(now, "info", f"No longer watching {i}: " + ("set not to be watched." if (chosen.get("watch") or {}).get(i) is False
                                                                  else "it no longer holds the box's route."))
@@ -1851,9 +1952,12 @@ def serve(dry=False):
         if first or now - inv_at > 600 or changed:
             inv_at = now
             inv = {i: {"kind": k, "watched": i in links, "autoconnect": autoconnect_for(i, k)} for i, k in cands.items()}
+            for i, n in alias.items():
+                if i in inv:
+                    inv[i]["as"] = n
         for i, k in cands.items():
             inv.setdefault(i, {"kind": k, "autoconnect": []})
-            inv[i].update(kind=k, watched=i in links, up=link_up(i), route=i == route_if)
+            inv[i].update(kind=k, watched=i in links, look=i in links and links[i].how == "look", up=link_up(i), route=i == route_if)
         for i in [x for x in inv if x not in cands]:
             inv.pop(i)
         if not links:
@@ -1867,7 +1971,8 @@ def serve(dry=False):
         # What else works now: the links a whole-box step would cut off (box_steps).
         works = {i for i, lk in links.items() if lk.healthy()}
         works |= {i for i in cands if i not in links and inv.get(i, {}).get("up") and gateway_of(i)}
-        primary = route_if if route_if in links else next((i for i in sorted(links) if links[i].w.outage), sorted(links)[0])
+        full = sorted(i for i in links if links[i].how == "full") or sorted(links)
+        primary = route_if if route_if in links else next((i for i in full if links[i].w.outage), full[0])
         asked = take_request(now) if NOW.exists() else None
         for i, lk in sorted(links.items()):
             lk.obs["others_up"] = sorted(works - {i})
@@ -1913,7 +2018,7 @@ def _report(links, resting, inv, primary, chosen, dry, reboots, now):
     for i, lk in links.items():
         st = _status(lk.w, now, chosen, i, lk.backend, lk.can, lk.up, lk.gw, lk.answers, lk.obs, lk.pinned, dry)
         st["roams_hour"], st["roam_last"] = lk.roams.hour(), lk.roams.last
-        per[i] = dict(st, watched=True, kind=lk.kind)
+        per[i] = dict(st, watched=True, kind=lk.kind, look=lk.how == "look", **({"as": lk.name} if lk.name != i else {}))
     top = dict(per[primary])
     events = sorted(({**e, "iface": i} for i, st in per.items() for e in st["events"]), key=lambda e: e["at"])[-100:]
     for st in per.values():
