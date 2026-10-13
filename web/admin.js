@@ -5927,9 +5927,7 @@ const WIDTHS = [45, 60, 80, 90, 100];
 // A width as pixels, at the browsers' default text size (16 px a rem); stored in rem.
 const widthOption = (w) => [w, `${w * 16} px`];
 let appearanceSettings = null;
-// The accent is drawn as text on the themes' backgrounds: WCAG asks 4.5:1 for text, 3:1 for
-// buttons and other large marks. Says which theme falls short, or '' when both are fine.
-const THEME_GROUNDS = { light: ['#f4f5f9', '#ffffff'], dark: ['#0f1117', '#1a1d27'] };
+// WCAG's relative luminance and contrast ratio, for the palettes' checks.
 function luminance(hex) {
   const ch = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
@@ -5938,12 +5936,109 @@ function contrast(a, b) {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 }
-function accentWarning(hex) {
-  const short = Object.entries(THEME_GROUNDS).map(([theme, grounds]) => [theme, Math.min(...grounds.map((g) => contrast(hex, g)))])
-    .filter(([, r]) => r < 4.5);
-  if (!short.length) return '';
-  return '⚠ Hard to read: ' + short.map(([t, r]) => `${r.toFixed(1)}:1 on the ${t} theme`).join(', ')
-    + '. The accessibility guidelines (WCAG AA) ask for 4.5:1 for text' + (short.some(([, r]) => r < 3) ? ', and 3:1 even for buttons.' : '.');
+// ---- The light and dark palettes (Appearance → Colours): each mode its own, the standard theme's colours under
+// whatever is left out. Every pair a page draws as text is checked against WCAG's 4.5:1; a palette that falls short
+// is saved only once the owner says so, the pair, its ratio and the target said beside it.
+const PALETTE_ROLES = [['bg', 'Page'], ['surface', 'Tiles and panels'], ['border', 'Edges'], ['text', 'Text'],
+  ['muted', 'Quieter text'], ['accent', 'Accent (links, buttons)']];
+const PALETTE_STANDARD = {
+  light: { bg: '#f4f5f9', surface: '#ffffff', border: '#d9dbe6', text: '#1b1d27', muted: '#6b6f8a', accent: '#5b4bd6' },
+  dark: { bg: '#0f1117', surface: '#1a1d27', border: '#2a2d3a', text: '#e2e4ef', muted: '#6b6f8a', accent: '#7c6af7' },
+};
+// Paired presets: a light accent a shade deeper than its dark one, so each reads on its own ground.
+const PALETTE_PRESETS = [
+  ['standard', 'Standard', {}],
+  ['contrast', 'Standard, more contrast', { light: { muted: '#5f6380' }, dark: { muted: '#8a8fa8', accent: '#9d8ff9' } }],
+  ['teal', 'Teal', { light: { muted: '#5f6380', accent: '#0f766e' }, dark: { muted: '#8a8fa8', accent: '#2dd4bf' } }],
+  ['rose', 'Rose', { light: { muted: '#5f6380', accent: '#be123c' }, dark: { muted: '#8a8fa8', accent: '#fb7185' } }],
+  ['green', 'Green', { light: { muted: '#5f6380', accent: '#15803d' }, dark: { muted: '#8a8fa8', accent: '#4ade80' } }],
+];
+const PALETTE_PAIRS = [['text', 'bg', 'Text on the page'], ['text', 'surface', 'Text on a tile'], ['muted', 'bg', 'Quieter text on the page'],
+  ['muted', 'surface', 'Quieter text on a tile'], ['accent', 'bg', 'A link on the page'], ['accent', 'surface', 'A link on a tile'],
+  ['ink', 'accent', 'A button\'s words on the accent']];
+const accentInk = (hex) => (contrast('#ffffff', hex) >= contrast('#0f1117', hex) ? '#ffffff' : '#0f1117');
+// What a mode shows: the standard theme's, then the mode's own. The words on the accent are the theme's own (white)
+// until the accent is changed; then white or near-black, whichever stands out more, as /layout.css writes them.
+const PALETTE_INK = { light: '#ffffff', dark: '#ffffff' };
+function paletteShown(mode, pal) {
+  const own = (pal || {})[mode] || {};
+  const c = { ...PALETTE_STANDARD[mode], ...own };
+  return { ...c, ink: own.accent ? accentInk(c.accent) : PALETTE_INK[mode] };
+}
+function paletteShort(mode, pal) {
+  const c = paletteShown(mode, pal);
+  return PALETTE_PAIRS.map(([f, b, words]) => ({ mode, words, ratio: contrast(c[f], c[b]) })).filter((x) => x.ratio < 4.5);
+}
+function paletteEditor(st, onSaved) {
+  // The one accent of before, where a mode has none of its own, taken in as that mode's: the page looks the same,
+  // and a Save keeps it in the palette and clears the old setting.
+  const saved = JSON.parse(JSON.stringify(st.palette || {}));
+  if (st.accent) for (const m of ['light', 'dark']) if (!(saved[m] || {}).accent) saved[m] = { ...(saved[m] || {}), accent: st.accent };
+  let draft = JSON.parse(JSON.stringify(saved));
+  let mode = 'light';
+  const box = el('div', { className: 'aw-settings palette-editor' });
+  const same = () => JSON.stringify(draft) === JSON.stringify(saved);
+  const draw = () => {
+    const c = paletteShown(mode, draft);
+    const modeChips = el('div', { className: 'chip-group', role: 'group', 'aria-label': 'The palette shown and changed' },
+      ...['light', 'dark'].map((m) => {
+        const b = el('button', { type: 'button', className: 'chip' + (m === mode ? ' selected' : ''), textContent: m === 'light' ? 'Light' : 'Dark',
+          onclick: () => { mode = m; draw(); } });
+        b.setAttribute('aria-pressed', String(m === mode));
+        return b;
+      }));
+    const presets = el('div', { className: 'chip-group', role: 'group', 'aria-label': 'Presets' },
+      ...PALETTE_PRESETS.map(([id, label, pal]) => {
+        const on = JSON.stringify(pal) === JSON.stringify(draft);
+        const b = el('button', { type: 'button', className: 'chip' + (on ? ' selected' : ''), textContent: label,
+          onclick: () => { draft = JSON.parse(JSON.stringify(pal)); draw(); } });
+        b.dataset.preset = id;
+        b.setAttribute('aria-pressed', String(on));
+        return b;
+      }));
+    const roles = PALETTE_ROLES.map(([role, label]) => {
+      const own = ((draft[mode] || {})[role]);
+      const pick = el('input', { type: 'color', value: c[role] });
+      pick.setAttribute('aria-label', `${label}, ${mode}`);
+      pick.dataset.role = role;
+      pick.addEventListener('change', () => { draft[mode] = { ...(draft[mode] || {}), [role]: pick.value.toLowerCase() }; draw(); });
+      const back = el('button', { type: 'button', className: 'action-btn small', textContent: 'The theme\'s own', disabled: !own,
+        onclick: () => { const m = { ...(draft[mode] || {}) }; delete m[role]; if (Object.keys(m).length) draft[mode] = m; else delete draft[mode]; draw(); } });
+      return el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: label }),
+        el('span', { className: 'aw-colour' }, pick, back));
+    });
+    // The draft drawn as the page draws it: a page, a tile on it, its words, a link and a button.
+    const preview = el('div', { className: 'palette-preview' },
+      el('div', { className: 'palette-tile' }, el('strong', { textContent: 'A tile' }), el('span', { className: 'palette-muted', textContent: 'Quieter words under it' }),
+        el('a', { href: '#appearance', textContent: 'A link' }), el('span', { className: 'palette-button', textContent: 'A button' })),
+      el('span', { textContent: 'Words on the page' }));
+    for (const [k, v] of Object.entries({ '--pv-bg': c.bg, '--pv-surface': c.surface, '--pv-border': c.border, '--pv-text': c.text,
+      '--pv-muted': c.muted, '--pv-accent': c.accent, '--pv-ink': c.ink })) preview.style.setProperty(k, v);
+    const short = [...paletteShort('light', draft), ...paletteShort('dark', draft)];
+    const ack = el('input', { type: 'checkbox' });
+    const report = el('div', { className: 'palette-report', role: 'status' }, short.length
+      ? el('ul', {}, ...short.map((x) => el('li', { className: 'bad', textContent: `${x.mode === 'light' ? 'Light' : 'Dark'}: ${x.words}, ${x.ratio.toFixed(1)}:1 (4.5:1 asked)` })))
+      : el('p', { className: 'setting-desc', textContent: 'Every pair reads at 4.5:1 or more in both modes (WCAG AA for text). Focus, layout and the other themes are not checked here.' }));
+    const ackLine = short.length ? el('label', { className: 'inline palette-ack' }, ack,
+      ' Keep it anyway: I know these words will be hard to read for some.') : null;
+    const note = el('small', { className: 'setting-desc', role: 'status' });
+    const save = el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: same() || !!short.length });
+    ack.addEventListener('change', () => { save.disabled = same() || (short.length && !ack.checked); });
+    const discard = el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: same(),
+      onclick: () => { draft = JSON.parse(JSON.stringify(saved)); draw(); } });
+    save.addEventListener('click', async () => {
+      try { await postJSON('/admin/settings', { palette: draft, accent: '' }); reloadLayoutCss(); onSaved(); } catch (e) { note.textContent = e.message; }
+    });
+    box.replaceChildren(
+      el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'Presets' }), presets,
+        el('small', { className: 'setting-desc', textContent: 'each sets both modes; Standard is the theme as it comes' })),
+      el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'Mode' }), modeChips,
+        el('small', { className: 'setting-desc', textContent: 'each mode keeps its own colours; Auto follows the visitor\'s device, and their own theme choice is theirs' })),
+      ...roles, preview, report, ...(ackLine ? [ackLine] : []),
+      el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: same() ? 'Settings wait for Save.' : 'Changed, not saved.' }), discard, save), note);
+  };
+  draw();
+  return box;
 }
 // The owner's pictures: the favicon (the browser tab's icon on every page) and the hub page's header picture.
 // An upload acts at once (not a setting held for Save); Remove takes it away again.
@@ -6009,8 +6104,6 @@ async function loadAppearance() {
   const hub = AW.settings([
     { key: 'hub_title', label: 'Name', kind: 'text', value: st.hub_title, max: 40, note: 'the hub page\'s heading and its browser tab' },
     { key: 'hub_subtitle', label: 'Line under it', kind: 'text', value: st.hub_subtitle, max: 120, note: 'empty for none' },
-    { key: 'accent', label: 'Accent colour', kind: 'colour', value: st.accent, unset: 'The theme\'s own', shown: '#5b4bd6',
-      warn: accentWarning, note: 'links, buttons and headings in the light and dark themes; the other themes keep theirs' },
     { key: 'krab_art', label: 'Krab art', kind: 'toggle', value: st.krab_art, note: 'the pictures at the foot of the admin pages and a few others' },
   ], { save: async (changed) => {
     if ('hub_title' in changed && !changed.hub_title.trim()) throw new Error('The hub needs a name.');
@@ -6019,7 +6112,11 @@ async function loadAppearance() {
     return now;
   } });
   const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map(widthOption) });
-  box.replaceChildren(el('h3', { textContent: 'The hub' }), hub, el('h3', { textContent: 'Pictures' }), el('div', { className: 'aw-settings' }, faviconRow(), pictureRow('hub-art')), el('h3', { textContent: 'Widths' }), AW.settings([
+  box.replaceChildren(el('h3', { textContent: 'The hub' }), hub,
+    el('h3', { textContent: 'Colours' }),
+    el('p', { className: 'setting-desc', textContent: 'The light and dark themes\' colours, for everyone. E-ink and Cybercore keep their own.' }),
+    paletteEditor(st, loadAppearance),
+    el('h3', { textContent: 'Pictures' }), el('div', { className: 'aw-settings' }, faviconRow(), pictureRow('hub-art')), el('h3', { textContent: 'Widths' }), AW.settings([
     row('page_width', 'Hub', 'the tiles, the menu and its pages'),
     row('admin_width', 'Admin', 'these pages'),
     row('shout_width', 'Shoutbox', 'its tab on the hub page'),

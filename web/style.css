@@ -1679,3 +1679,15 @@ body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--tex
 .net-changes .change-hide { font-size: 0.85rem; margin-left: 0.25rem; }
 #net-changes-more { margin-top: 0.4rem; align-self: flex-start; justify-self: start; width: auto; }
 .net-changes [hidden], .net-changes[hidden] { display: none !important; }
+
+/* Appearance → Colours: the draft palette drawn as the page draws it (admin.js paletteEditor). */
+.palette-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; padding: 0.9rem; border-radius: var(--radius);
+  background: var(--pv-bg); color: var(--pv-text); border: 1px solid var(--pv-border); margin: 0.4rem 0; }
+.palette-tile { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.8rem 1rem; border-radius: var(--radius);
+  background: var(--pv-surface); border: 1px solid var(--pv-border); min-width: 12rem; }
+.palette-muted { color: var(--pv-muted); font-size: 0.85rem; }
+.palette-preview a { color: var(--pv-accent); }
+.palette-button { display: inline-block; align-self: flex-start; padding: 0.3rem 0.8rem; border-radius: 6px; background: var(--pv-accent); color: var(--pv-ink); font-weight: 600; }
+.palette-report ul { margin: 0.3rem 0; padding-left: 1.2rem; }
+.palette-report li.bad { color: var(--warn); }
+.palette-ack { margin: 0.3rem 0; }

@@ -948,6 +948,9 @@ DEFAULT_SETTINGS = {
     "hub_title": "Hub",
     "hub_subtitle": "You're connected to the local network.",
     "accent": "",
+    # The light and dark palettes the owner chose (Appearance): per mode, any of PALETTE_ROLES as #rrggbb; a role
+    # left out keeps the theme's own (or, for the accent, the one accent above). {} is the standard theme.
+    "palette": {},
     # The Krab art at the foot of the admin pages and a few others: on, or off for a plainer look.
     "krab_art": True,
     # What guests see: a notice at the top of the hub page ("Back online at 6 pm"), until a time
@@ -1004,6 +1007,35 @@ EMOJI_SETS = ("13.1", "15.0", "16.0")
 TEXT_LIMITS = {"hub_title": 40, "hub_subtitle": 120, "notice_text": 200, "keeper_contact": 200}
 
 
+# A palette role and the colour variable it sets.
+PALETTE_ROLES = {"bg": "--bg", "surface": "--surface", "border": "--border", "text": "--text", "muted": "--muted",
+                 "accent": "--accent"}
+PALETTE_MODES = ("light", "dark")
+
+
+def valid_palette(value):
+    return (isinstance(value, dict) and set(value) <= set(PALETTE_MODES)
+            and all(isinstance(m, dict) and set(m) <= set(PALETTE_ROLES)
+                    and all(isinstance(c, str) and re.fullmatch(r"#[0-9a-f]{6}", c) for c in m.values()) for m in value.values()))
+
+
+def palette_css(palette):
+    """The owner's palettes as rules for the main themes only: dark where the page is dark (chosen, or Auto on a device
+    not asking for light), light where it is light; the other themes keep their colours."""
+    def block(colours):
+        decl = "".join(f" {PALETTE_ROLES[r]}: {c};" for r, c in sorted(colours.items()))
+        if "accent" in colours:
+            decl += f" --accent-ink: {accent_ink(colours['accent'])};"
+        return "{" + decl + " }"
+    out = ""
+    dark, light = palette.get("dark") or {}, palette.get("light") or {}
+    if dark:
+        out += 'html:root[data-theme="dark"] %s\n@media not all and (prefers-color-scheme: light) { html:root:not([data-theme]) %s }\n' % (block(dark), block(dark))
+    if light:
+        out += 'html:root[data-theme="light"] %s\n@media (prefers-color-scheme: light) { html:root:not([data-theme]) %s }\n' % (block(light), block(light))
+    return out
+
+
 def accent_ink(accent):
     """The text colour on the accent: white or near-black, whichever stands out more from it."""
     def lum(hexc):
@@ -1046,6 +1078,8 @@ def valid_setting(key, value):
                 and (key != "hub_title" or value.strip()) and not any(ord(c) < 32 for c in value))
     if key == "accent":
         return value == "" or (isinstance(value, str) and re.fullmatch(r"#[0-9a-f]{6}", value) is not None)
+    if key == "palette":
+        return valid_palette(value)
     if key == "names_to":
         return value in ("users", "admin")
     if key == "report_threshold":
@@ -3733,6 +3767,7 @@ class Handler(BaseHTTPRequestHandler):
                 # The main themes only (light, dark, or as the device): another theme keeps its colours.
                 body += ('html:root:not([data-theme]), html:root[data-theme="light"], html:root[data-theme="dark"] '
                          "{ --accent: %s; --accent-ink: %s; }\n" % (cur["accent"], accent_ink(cur["accent"])))
+            body += palette_css(cur["palette"])   # after the one accent: a mode's own accent wins over it
             body = body.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
