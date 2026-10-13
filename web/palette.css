@@ -60,3 +60,15 @@
   --ok: #15803d;
   --warn: #b45309;
 }
+
+/* Increased contrast, a visitor's own choice (themes.js: data-palette="contrast", from the theme menu): the main theme
+   with quieter text and, in the dark, the links strong enough for 4.5:1 on every ground (the Appearance preset
+   "Standard, more contrast"). Over the box's own colours (/layout.css), which only apply without data-palette. */
+html:root[data-palette="contrast"][data-theme="dark"] { --muted: #8a8fa8; --accent: #9d8ff9; --accent-ink: #0f1117; }
+html:root[data-palette="contrast"][data-theme="light"] { --muted: #5f6380; }
+@media not all and (prefers-color-scheme: light) {
+  html:root[data-palette="contrast"]:not([data-theme]) { --muted: #8a8fa8; --accent: #9d8ff9; --accent-ink: #0f1117; }
+}
+@media (prefers-color-scheme: light) {
+  html:root[data-palette="contrast"]:not([data-theme]) { --muted: #5f6380; }
+}

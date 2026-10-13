@@ -1021,7 +1021,8 @@ def valid_palette(value):
 
 def palette_css(palette):
     """The owner's palettes as rules for the main themes only: dark where the page is dark (chosen, or Auto on a device
-    not asking for light), light where it is light; the other themes keep their colours."""
+    not asking for light), light where it is light; the other themes keep their colours, and so does a visitor who
+    chose a palette of their own (themes.js: data-palette, standard or more contrast) over the box's."""
     def block(colours):
         decl = "".join(f" {PALETTE_ROLES[r]}: {c};" for r, c in sorted(colours.items()))
         if "accent" in colours:
@@ -1030,9 +1031,11 @@ def palette_css(palette):
     out = ""
     dark, light = palette.get("dark") or {}, palette.get("light") or {}
     if dark:
-        out += 'html:root[data-theme="dark"] %s\n@media not all and (prefers-color-scheme: light) { html:root:not([data-theme]) %s }\n' % (block(dark), block(dark))
+        out += ('html:root:not([data-palette])[data-theme="dark"] %s\n'
+                '@media not all and (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) %s }\n' % (block(dark), block(dark)))
     if light:
-        out += 'html:root[data-theme="light"] %s\n@media (prefers-color-scheme: light) { html:root:not([data-theme]) %s }\n' % (block(light), block(light))
+        out += ('html:root:not([data-palette])[data-theme="light"] %s\n'
+                '@media (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) %s }\n' % (block(light), block(light)))
     return out
 
 
@@ -3771,7 +3774,8 @@ class Handler(BaseHTTPRequestHandler):
                          '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n')
             if cur["accent"]:
                 # The main themes only (light, dark, or as the device): another theme keeps its colours.
-                body += ('html:root:not([data-theme]), html:root[data-theme="light"], html:root[data-theme="dark"] '
+                body += ('html:root:not([data-palette]):not([data-theme]), html:root:not([data-palette])[data-theme="light"], '
+                         'html:root:not([data-palette])[data-theme="dark"] '
                          "{ --accent: %s; --accent-ink: %s; }\n" % (cur["accent"], accent_ink(cur["accent"])))
             body += palette_css(cur["palette"])   # after the one accent: a mode's own accent wins over it
             body = body.encode()

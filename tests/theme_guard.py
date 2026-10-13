@@ -20,7 +20,18 @@ def check(name, cond, info=""):
 
 
 registry = (WEB / "themes.js").read_text(encoding="utf-8")
-ids = re.findall(r"\{ id: '([a-z0-9-]+)'", registry)
+themes_list = registry[registry.index("var THEMES = ["):registry.index("];", registry.index("var THEMES = ["))]
+ids = re.findall(r"\{ id: '([a-z0-9-]+)'", themes_list)
+# The colours of light and dark a visitor may pick over the box's: each but the box's has its rules in palette.css, and
+# the box's own (/layout.css) apply only where none is picked.
+pal_list = registry[registry.index("var PALETTES = ["):registry.index("];", registry.index("var PALETTES = ["))]
+palettes = re.findall(r"\{ id: '([a-z0-9-]+)'", pal_list)
+palette_css_text = (WEB / "palette.css").read_text(encoding="utf-8")
+check("themes.js lists the box's preset first, then Standard and Increased contrast", palettes == ["box", "standard", "contrast"], palettes)
+check("  Increased contrast has its rules in palette.css, in dark and light", '[data-palette="contrast"][data-theme="dark"]' in palette_css_text
+      and '[data-palette="contrast"][data-theme="light"]' in palette_css_text)
+server_src = (REPO / "irate_box" / "hub" / "server.py").read_text(encoding="utf-8")
+check("  the box's colours in /layout.css only without a visitor's palette", server_src.count(":not([data-palette])") >= 7)
 check("themes.js lists light and dark as the main theme", {"light", "dark"} <= set(ids), ids)
 others = [i for i in ids if i not in ("light", "dark")]
 for t in others:

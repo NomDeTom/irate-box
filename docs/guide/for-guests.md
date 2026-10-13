@@ -11,6 +11,7 @@ The hub is the box's front page. It needs no internet: everything here stays on 
 - **The file drop**: leave files for others, and take theirs. A file can be locked to your browser, so only you can change or remove it.
 - **👤 Sign in** if the owner has given you an account, or if the box lets anyone make one. Your account page has your own settings.
 - **🛟 Help** says what each app is for.
+- **The theme picker** at the top: light (☀️), dark (🌙) or **Auto** (as your device is set); and under 🎨, the colours: the **Box preset** (the owner's, the default), **Standard**, **Increased contrast**, or a theme of its own colours (E-ink, Cybercore). Your choice stays in your browser.
 
 ## Privacy
 

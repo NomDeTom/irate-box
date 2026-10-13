@@ -45,7 +45,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     && saveB().disabled && /wait for Save/.test(t(ed().querySelector('.aw-foot .note'))), accentPick().value);
   check('  matching no preset: said as Your own, marked', chip('Your own') && chip('Your own').getAttribute('aria-pressed') === 'true'
     && ed().querySelectorAll('.chip-group')[0].querySelectorAll('.selected').length === 1);
-  check('  and its shortfall named: a yellow link on a white tile', /Light: A link on a tile, 1\.\d:1 \(4\.5:1 asked\)/.test(t(ed().querySelector('.palette-report'))), t(ed().querySelector('.palette-report')));
+  check('  and its shortfall named: a yellow link on a white tile', /Light: A link on a tile, 1\.\d:1 \(4\.5:1 recommended\)/.test(t(ed().querySelector('.palette-report'))), t(ed().querySelector('.palette-report')));
   // Standard: the theme as it comes, its dark pairs that fall short said honestly.
   chip('Standard').click();
   const rep = t(ed().querySelector('.palette-report'));

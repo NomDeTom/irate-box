@@ -62,11 +62,17 @@ header .subtitle {
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, box-shadow 0.12s;
 }
+/* Three looks, each answering the pointer: not chosen (quiet, lifting on hover), chosen (the accent, ringed on hover),
+   and the keyboard's focus (a ring in the accent). */
+.theme-picker button:hover { background: var(--bg); color: var(--text); }
 .theme-picker button[aria-pressed="true"] {
   background: var(--accent);
   color: var(--accent-ink);
 }
+.theme-picker button[aria-pressed="true"]:hover { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 0 0 2px var(--accent-ink); }
+.theme-picker button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* 🎨: the themes other than light and dark (themes.js), in a menu under the picker. */
 .theme-menu {
   position: absolute;
@@ -97,8 +103,10 @@ header .subtitle {
   text-align: left;
   line-height: 1.3;
 }
-.theme-picker .theme-menu button:hover { background: var(--bg); }
+.theme-picker .theme-menu button:hover { background: var(--bg); color: var(--text); }
 .theme-picker .theme-menu button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.theme-picker .theme-menu button[aria-checked="true"]:hover { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 0 0 2px var(--accent-ink); }
+.theme-picker .theme-menu button[aria-checked="true"] .theme-menu-name::after { content: " ✓"; }
 .theme-menu-name { font-size: 0.9rem; }
 .theme-menu-desc { font-size: 0.75rem; opacity: 0.8; white-space: normal; }
 

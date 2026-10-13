@@ -79,13 +79,15 @@ try:
     pal = {"light": {"accent": "#0f766e", "muted": "#5f6380"}, "dark": {"accent": "#2dd4bf", "bg": "#101418"}}
     st, _, _ = go("POST", "/admin/settings", page, json.dumps({"palette": pal, "accent": ""}).encode())
     _, _, css = go("GET", "/layout.css")
-    dark_rule = 'html:root[data-theme="dark"] { --accent: #2dd4bf; --bg: #101418; --accent-ink: #0f1117; }'
-    light_rule = 'html:root[data-theme="light"] { --accent: #0f766e; --muted: #5f6380; --accent-ink: #fff; }'
+    dark_rule = 'html:root:not([data-palette])[data-theme="dark"] { --accent: #2dd4bf; --bg: #101418; --accent-ink: #0f1117; }'
+    light_rule = 'html:root:not([data-palette])[data-theme="light"] { --accent: #0f766e; --muted: #5f6380; --accent-ink: #fff; }'
     check("palettes: a rule per mode, with its own accent's ink; the old accent gone", st == 200
           and dark_rule in css and light_rule in css and "#1a237e" not in css, css)
     check("  Auto: the dark one only where the device does not ask for light, the light one where it does",
-          "@media not all and (prefers-color-scheme: light) { html:root:not([data-theme]) { --accent: #2dd4bf;" in css
-          and "@media (prefers-color-scheme: light) { html:root:not([data-theme]) { --accent: #0f766e;" in css, css)
+          "@media not all and (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) { --accent: #2dd4bf;" in css
+          and "@media (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) { --accent: #0f766e;" in css, css)
+    check("  a visitor's own palette choice (standard, more contrast) left alone: every rule only without data-palette",
+          all(":not([data-palette])" in line for line in css.splitlines() if "--accent" in line), css)
     check("  the other themes untouched", "eink" not in css and "cyber" not in css)
     for bad in ({"sepia": {"accent": "#000000"}}, {"dark": {"font": "#000000"}}, {"dark": {"accent": "#FFD400"}},
                 {"dark": {"accent": "#000000; } body { display: none"}}, {"dark": "#000000"}, ["dark"]):

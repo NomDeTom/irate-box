@@ -13,8 +13,9 @@ if (services) {
 
 // Theme picker, built from themes.js (window.HubThemes, loaded in every page's <head>, which
 // has already drawn the page in the saved theme). Light, Dark and Auto (the OS's choice) are
-// the main row; 🎨 opens the other themes. app.html carries a change into the framed app
-// through the hub-theme event (app.js).
+// the main row; 🎨 opens the colours: the box's preset (the default), Standard, Increased
+// contrast, and the themes of their own colours (E-ink, Cybercore). app.html carries a change
+// into the framed app through the hub-theme event (app.js).
 const picker = document.querySelector('.theme-picker');
 const themes = window.HubThemes;
 if (picker && themes) {
@@ -27,6 +28,7 @@ if (picker && themes) {
   };
   const main = themes.list.filter((t) => t.main);
   const others = themes.list.filter((t) => !t.main);
+  const palettes = themes.palettes || [];
   const label = document.createElement('span');
   label.className = 'theme-label';
   label.setAttribute('aria-hidden', 'true');
@@ -36,14 +38,14 @@ if (picker && themes) {
     btn({ 'data-theme-choice': 'auto', title: 'Follow this device (light or dark)' }, 'Auto')];
   let more = null;
   let menu = null;
-  if (others.length) {
-    more = btn({ class: 'theme-more', title: 'More themes', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '🎨');
+  if (others.length || palettes.length) {
+    more = btn({ class: 'theme-more', title: 'Colours and themes', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '🎨');
     menu = document.createElement('div');
     menu.className = 'theme-menu';
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
-    for (const t of others) {
-      const item = btn({ role: 'menuitemradio', 'data-theme-choice': t.id }, '');
+    for (const t of [...palettes.map((x) => ({ ...x, palette: true })), ...others]) {
+      const item = btn({ role: 'menuitemradio', [t.palette ? 'data-palette-choice' : 'data-theme-choice']: t.id }, '');
       const name = document.createElement('span');
       name.className = 'theme-menu-name';
       name.textContent = `${t.emoji} ${t.label}`;
@@ -68,19 +70,25 @@ if (picker && themes) {
   };
   const showChoice = () => {
     const cur = themes.current();
+    const other = others.find((t) => t.id === cur);
+    // The mode row shows the base an own-colours theme sits on as not chosen: that theme is chosen in the menu.
     picker.querySelectorAll('[data-theme-choice]').forEach((b) => {
       const on = b.dataset.themeChoice === cur;
       b.setAttribute(b.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', String(on));
     });
+    const pal = themes.palette ? themes.palette() : 'box';
+    picker.querySelectorAll('[data-palette-choice]').forEach((b) => b.setAttribute('aria-checked', String(!other && b.dataset.paletteChoice === pal)));
     if (more) {
-      const other = others.find((t) => t.id === cur);
-      more.textContent = other ? other.emoji : '🎨';
-      more.title = other ? `Theme: ${other.label} (more themes)` : 'More themes';
-      more.setAttribute('aria-pressed', String(!!other));
+      const shown = other || palettes.find((p) => p.id === pal && p.id !== 'box');
+      more.textContent = shown ? shown.emoji : '🎨';
+      more.title = shown ? `Colours: ${shown.label} (change)` : 'Colours: the box\'s preset (change)';
+      more.setAttribute('aria-pressed', String(!!shown));
     }
   };
   picker.addEventListener('click', (e) => {
     if (more && e.target.closest('.theme-more')) { openMenu(menu.hidden); return; }
+    const p = e.target.closest('[data-palette-choice]');
+    if (p) { themes.choosePalette(p.dataset.paletteChoice); openMenu(false); showChoice(); return; }
     const b = e.target.closest('[data-theme-choice]');
     if (!b) return;
     themes.choose(b.dataset.themeChoice);
@@ -106,9 +114,10 @@ if (picker && themes) {
 // A choice made in another tab arrives as a storage event: follow it live, so an open
 // admin page (or app) does not stay in the old theme until it is reloaded.
 window.addEventListener('storage', (e) => {
-  if (!themes || (e.key !== 'theme' && e.key !== 'hub-theme' && e.key !== null)) return;
+  if (!themes || (e.key !== 'theme' && e.key !== 'hub-theme' && e.key !== 'hub-palette' && e.key !== null)) return;
   const t = themes.current();
   themes.show(t);
+  if (themes.showPalette) themes.showPalette(themes.palette());
   document.dispatchEvent(new CustomEvent('hub-theme', { detail: t }));
 });
 
