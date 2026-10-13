@@ -57,6 +57,7 @@ import argparse
 import fcntl
 import fnmatch
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -721,11 +722,36 @@ class _NotModified(Exception):
         self.headers = headers
 
 
+class _Answer:
+    """A response whose body, cut short or timed out while it is read, fails as the open does (a LibrarianError):
+    one source's broken answer is that source's error, not the end of the run."""
+
+    def __init__(self, resp, host):
+        self._resp, self._host = resp, host
+
+    def read(self, *args):
+        try:
+            return self._resp.read(*args)
+        except (http.client.HTTPException, OSError) as exc:
+            raise LibrarianError(f"the answer from {self._host} was cut short: {exc!r}"[:300]) from exc
+
+    def __getattr__(self, name):
+        return getattr(self._resp, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._resp.close()
+        return False
+
+
 def _open(url, auth=None, method="GET", timeout=60, extra=None):
     if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
         _pace_hit()
     try:
-        return urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)
+        return _Answer(urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout),
+                       urllib.parse.urlparse(url).hostname)
     except urllib.error.HTTPError as exc:
         if exc.code == 304 and (extra or {}).get("If-None-Match"):
             raise _NotModified(exc.headers)
@@ -858,7 +884,10 @@ def _api(path, auth=None):
     try:
         with _open(url, auth, extra={"If-None-Match": hit["etag"]} if hit else None) as resp:
             _note_rate(resp.headers)
-            body = json.load(resp)
+            try:
+                body = json.load(resp)
+            except ValueError as exc:
+                raise LibrarianError(f"{urllib.parse.urlparse(url).hostname} answered with something that is not JSON: {exc}"[:300]) from exc
             etag = resp.headers.get("ETag")
     except _NotModified as nm:
         _note_rate(nm.headers)
