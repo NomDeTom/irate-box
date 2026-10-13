@@ -525,9 +525,11 @@ check("  the blip 20 s unless set, and said in the settings' words", U.effective
 # The drop watcher keeps when the link came back; a drop still down and younger than the blip waits.
 dw = U.DropWatcher.__new__(U.DropWatcher)
 import threading
-dw.lock, dw.drops = threading.Lock(), [[100.0, 104.0], [150.0, None], [190.0, None]]
-got = dw.take(now=200, blip=20)
-check("drops taken: the one back, and the one down past the blip; the young one waits", got == [(100.0, 104.0), (150.0, None)] and dw.drops == [[190.0, None]], got)
+dw.lock, dw.drops = threading.Lock(), {"wlan0": [[100.0, 104.0], [150.0, None], [190.0, None]], "eth0": [[120.0, 121.0]]}
+got = dw.take("wlan0", now=200, blip=20)
+check("drops taken: the one back, and the one down past the blip; the young one waits", got == [(100.0, 104.0), (150.0, None)] and dw.drops["wlan0"] == [[190.0, None]], got)
+check("  each link's own: the other link's drop stays for its own take", dw.drops["eth0"] == [[120.0, 121.0]] and dw.take("eth0", now=200) == [(120.0, 121.0)]
+      and dw.take("usb0", now=200) == [])
 eff_i, eff_c = U.effective(C("gentle/reboot", ignore_roams=True)), U.effective(C("gentle/reboot"))
 pairs = [(100.0, 104.0), (300.0, 360.0), (500.0, None)]
 check("sorted: back within 20 s on the same network is a roam; ignored, it is no miss; counted, it is", U.sort_drops(pairs, eff_i, True) == ([300.0, 500.0], [(100.0, 104.0)])

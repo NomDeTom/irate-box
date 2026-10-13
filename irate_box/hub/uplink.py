@@ -3,11 +3,19 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Keep the box on its home network: watch the link, and repair it as eagerly as the owner chose.
 
-irate-box-uplink.service runs this as root (`uplink.py run`). Every so often it checks the
-link the box reaches its network by (the default route's interface, or the one chosen on
-/admin): is the interface up, and does the gateway answer (a ping, or failing that its ARP
-entry: some routers drop pings but none ignore ARP). The internet is never checked: the box
+irate-box-uplink.service runs this as root (`uplink.py run`). Every so often it checks each
+link it watches: is the interface up, and does the gateway answer (a ping, or failing that its
+ARP entry: some routers drop pings but none ignore ARP). The internet is never checked: the box
 is meant to work offline, and a LAN with no internet is not a fault.
+
+Links  Each link (a WiFi client, a cable, a USB adapter; not the hotspot's radio) is watched or
+       not, as the owner sets it (watch); one not set follows watch_new: watched while it holds
+       the box's route (the default, and while it is in trouble after), always, or never. Each
+       watched link has a watchdog of its own (Watch, in a Link), with the settings below and its
+       own per_iface ones. The steps that reach every link (restart, reboot) wait while another
+       link works, unless box_steps says otherwise; a cable with no carrier is waited for
+       (cable_out), as nothing the box does mends a missing cable. The report keeps the route's
+       link at the top, as it was before there were several, and each link under "links".
 
 Its settings, on /admin's Network page (and `install.sh --uplink`), each meaning one thing:
 
@@ -153,7 +161,20 @@ BSSID_RE = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
 # a build or an update runs, not soon after boot).
 DEFAULT = {"pace": "gentle", "reach": "reboot", "guests": "protect", "sensitivity": 3, "iface": "auto",
            "overrides": {}, "hold_until": 0, "on_wedge": "ladder", "roaming": "roam", "lock_bssid": None,
-           "ignore_roams": False, "steps_off": {}, "retry": "steady", "give_up": "never"}
+           "ignore_roams": False, "steps_off": {}, "retry": "steady", "give_up": "never",
+           "watch": {}, "watch_new": "uplink", "box_steps": "nothing-works", "cable_out": "wait"}
+# Which links are watched, each with a watchdog of its own. A link the owner set is watched or not (watch:
+# {iface: bool}); any other follows watch_new: "uplink", the link that holds the box's route (and one in
+# trouble while it was, as the route goes with its link); "all"; or "none".
+WATCH_NEW = ("uplink", "all", "none")
+# Steps that reach every link, not only the failing one: restarting the network service drops them all, and a
+# reboot drops everything. Taken only when no other link works ("nothing-works"), when the failing link holds
+# the box's route ("uplink"), or for any watched link as for one ("any").
+BOX_STEPS = ("nothing-works", "uplink", "any")
+WHOLE_BOX = ("restart", "reboot")
+# A cable link with no carrier: no cable, or the other end off. Nothing the box does mends that, so by default
+# it waits and says so ("wait"); or it reconnects now and then ("reconnect"); or takes its whole ladder ("ladder").
+CABLE_OUT = ("wait", "reconnect", "ladder")
 # The steps the owner has switched off for a connection ({iface: [step, ...]}): applied while the
 # watchdog watches that one (a radio that a network restart unsettles, a cable that has no radio).
 # When the radio itself has failed (outage_cause "radio": its driver wedged, its interface gone): keep to
@@ -167,7 +188,7 @@ RADIO_WAIT = 180
 # those causes only reconnect (and, for join, restart the network service), as often as `retry` says
 # and for as long as `give_up` says.
 NET_CAUSES = ("absent", "join", "gateway")
-CAUSE_WORDS = {"radio": "the radio has failed",
+CAUSE_WORDS = {"radio": "the radio has failed", "cable": "no cable is plugged in, or the other end is off",
                "absent": "the network is not in range (the radio scans, and does not see it)",
                "join": "the network is in range, but joining it fails",
                "gateway": "joined, but the gateway does not answer"}
@@ -225,6 +246,8 @@ def effective(chosen, iface=None):
     eff["give_up"] = GIVE_UP[chosen.get("give_up", DEFAULT["give_up"])]
     eff["roaming"] = chosen.get("roaming", "roam")
     eff["ignore_roams"] = bool(chosen.get("ignore_roams"))
+    eff["box_steps"] = chosen.get("box_steps", DEFAULT["box_steps"])
+    eff["cable_out"] = chosen.get("cable_out", DEFAULT["cable_out"])
     for k, v in chosen.get("overrides", {}).items():
         if k == "steps":
             for s, t in v.items():
@@ -241,10 +264,28 @@ def effective(chosen, iface=None):
     return eff
 
 
+def levels():
+    """What the Network page offers, from here, so the page and the watchdog cannot disagree."""
+    return {"pace": list(PACE), "reach": list(REACH), "sensitivity": list(SENSITIVITY), "guests": list(GUESTS),
+            "on_wedge": list(ON_WEDGE), "steps": list(STEPS), "retry": RETRY, "give_up": GIVE_UP, "roaming": list(ROAMING),
+            "watch_new": list(WATCH_NEW), "box_steps": list(BOX_STEPS), "cable_out": list(CABLE_OUT),
+            "describe": DESCRIBE, "default": DEFAULT, "presets": {"pace": PACE, "common": COMMON},
+            "fields": {k: list(v) if isinstance(v, tuple) else {s: list(r) for s, r in v.items()} for k, v in FIELDS.items()}}
+
+
 def migrate(raw):
     """Settings saved before the two dials: their eagerness as pace, reach and guests, and an
     overridden guests as the setting it is now."""
     raw = dict(raw)
+    if "watch_new" not in raw:
+        # One interface chosen to watch (the old "Watch" field): that one watched, no other; "auto": the route's link.
+        iface = raw.get("iface", "auto")
+        if isinstance(iface, str) and iface != "auto" and IFACE_RE.match(iface):
+            raw["watch"] = {**(raw.get("watch") if isinstance(raw.get("watch"), dict) else {}), iface: True}
+            raw["watch_new"] = "none"
+            raw["iface"] = "auto"
+        else:
+            raw["watch_new"] = "uplink"
     if "eagerness" in raw and "pace" not in raw:
         old = raw.pop("eagerness")
         if old not in EAGERNESS_WAS:
@@ -317,8 +358,19 @@ def validate(raw):
     lock = lock.lower() if isinstance(lock, str) else None
     if roaming == "lock" and not (lock and BSSID_RE.match(lock)):
         raise ValueError("a lock needs the access point's BSSID (aa:bb:cc:dd:ee:ff)")
+    watch = raw.get("watch") or {}
+    if not isinstance(watch, dict) or len(watch) > 16:
+        raise ValueError("watch must be an object of links")
+    for name, on in watch.items():
+        if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(on, bool):
+            raise ValueError(f"watch: {name} must be a link's name, watched true or false")
+    choices = {k: raw.get(k, DEFAULT[k]) for k in ("watch_new", "box_steps", "cable_out")}
+    for k, allowed in (("watch_new", WATCH_NEW), ("box_steps", BOX_STEPS), ("cable_out", CABLE_OUT)):
+        if choices[k] not in allowed:
+            raise ValueError(f"{k} must be one of {', '.join(allowed)}")
     out.update(pace=pace, reach=reach, guests=guests, sensitivity=sens, iface=iface, overrides={}, on_wedge=w,
-               retry=retry, give_up=give_up, roaming=roaming, lock_bssid=lock if roaming == "lock" else None, ignore_roams=ignore)
+               retry=retry, give_up=give_up, roaming=roaming, lock_bssid=lock if roaming == "lock" else None, ignore_roams=ignore,
+               watch=dict(watch), **choices)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
         raise ValueError("overrides must be an object")
@@ -416,8 +468,11 @@ class Watch:
     """What the watchdog knows and decides, apart from how it looks and acts, so it can be
     driven by a test clock. tick() takes one observation and returns the actions to take."""
 
-    def __init__(self, eff, events=None, reboots=None):
+    def __init__(self, eff, events=None, reboots=None, labels=None, causes=None):
         self.eff = eff
+        # The words for its steps and causes: a cable link's adapter is reset, not a radio.
+        self.labels = {**STEP_LABEL, **(labels or {})}
+        self.causes = {**CAUSE_WORDS, **(causes or {})}
         self.events = deque(events or [], maxlen=100)
         self.reboots = list(reboots or [])
         self.misses = 0
@@ -515,7 +570,7 @@ class Watch:
             ep["last_end"], ep["last_done"] = None, []
             if gone:
                 self.log(now, "info", f"Down again {human(start - (ep['end_was'] or start))} after it came back: "
-                         f"{', '.join(STEP_LABEL[s] for s in gone)} did not hold, so it is not repeated while a heavier step is left "
+                         f"{', '.join(self.labels[s] for s in gone)} did not hold, so it is not repeated while a heavier step is left "
                          f"(outage {ep['outages']} of this episode).")
             return ep
         # The steps' times count from when it went on the ladder (not from the window's first miss).
@@ -538,7 +593,7 @@ class Watch:
         if self.outage:
             o = self.outage
             done = [s for s in o["done"] if s not in o.get("skipped", ())]
-            tried = ", ".join(STEP_LABEL[s] for s in done) or "nothing"
+            tried = ", ".join(self.labels[s] for s in done) or "nothing"
             self.log(now, "up", (f"Steady again: fewer than {eff['sensitivity']} misses within {human(eff['window'])} (tried: {tried})."
                                  if o.get("flapping") else f"Back after {human(now - o['since'])} (tried: {tried})."))
             if not o.get("flapping"):
@@ -551,7 +606,7 @@ class Watch:
         self.first_fail, self.outage, self.last_ok = None, None, now
         if ep and ep["last_end"] is not None and now - ep["last_end"] >= eff["relapse"]:
             if ep["outages"] > 1:
-                tried = ", ".join(STEP_LABEL[s] for s in ep["tried"]) or "nothing"
+                tried = ", ".join(self.labels[s] for s in ep["tried"]) or "nothing"
                 self.log(now, "info", f"Steady again after an episode of {ep['outages']} outages (tried: {tried}).")
             self.episode = None
 
@@ -566,16 +621,21 @@ class Watch:
             cause = "radio"
         if cause and cause != o.get("cause"):
             o["cause"] = cause
-            says = ("a radio reset, then a reboot if it isn't back" if cause == "radio"
-                    else "reconnecting" + (" (and once a restart of the network service)" if cause == "join" else "")
+            says = (f"{'an adapter' if self.labels['radio'] != STEP_LABEL['radio'] else 'a radio'} reset, then a reboot if it isn't back"
+                    if cause == "radio" else {"wait": "plugging it in, or switching the other end on; the box waits",
+                                              "reconnect": "plugging it in; meanwhile the box reconnects now and then",
+                                              "ladder": "plugging it in; meanwhile the box takes its steps"}[self.eff.get("cable_out", "wait")]
+                    if cause == "cable" else "reconnecting" + (" (and once a restart of the network service)" if cause == "join" else "")
                     + ", never a radio reset or a reboot")
-            self.log(now, "cause", f"Why it is down: {CAUSE_WORDS[cause]}. What can help: {says}.", cause)
+            self.log(now, "cause", f"Why it is down: {self.causes[cause]}. What can help: {says}.", cause)
         return o.get("cause")
 
     def _allowed(self, o):
         """The steps this outage's cause may take: all of them for the radio or an unknown cause;
         for a network's fault, reconnecting (and, when joining fails, restarting the network service)."""
         cause = o.get("cause")
+        if cause == "cable":
+            return {"wait": set(), "reconnect": {"reconnect"}}.get(self.eff.get("cable_out", "wait"), set(STEPS))
         if cause not in NET_CAUSES:
             return set(STEPS)
         return {"reconnect", "restart"} if cause == "join" else {"reconnect"}
@@ -610,7 +670,7 @@ class Watch:
         if self._given_up(now, o):
             if not o.get("gave_up"):
                 o["gave_up"] = True
-                self.log(now, "stalled", f"Stopped trying after {human(now - o['since'])}: {CAUSE_WORDS[cause]}. "
+                self.log(now, "stalled", f"Stopped trying after {human(now - o['since'])}: {self.causes[cause]}. "
                          "It comes back by itself if the network does; the Network page's \"keep trying\" sets how long.")
             return []
         # The owner's choice (on_wedge "radio" or "reboot"): reconnecting and restarting can't mend a
@@ -656,13 +716,13 @@ class Watch:
             if step not in can:
                 o["done"].append(step)
                 o["skipped"].append(step)  # done with, but never tried: the page and the log say so
-                self.log(now, "skip", f"Cannot {STEP_LABEL[step]} here; skipped.", step)
+                self.log(now, "skip", f"Cannot {self.labels[step]} here; skipped.", step)
                 continue
             why = self._held(now, obs, step)
             if why:
                 if step not in o["held"]:
                     o["held"].append(step)
-                    self.log(now, "held", f"Would {STEP_LABEL[step]}, but {why}.", step)
+                    self.log(now, "held", f"Would {self.labels[step]}, but {why}.", step)
                 continue
             o["done"].append(step)
             # Lighter steps that came due at the same time are passed over: this one covers them.
@@ -675,7 +735,7 @@ class Watch:
                 o["radio_at"] = now
             o["next_reconnect"] = now + max(o["gap"], 30) if eff["repeat"] else None
             act = self._reconnect_as(o, can) if step == "reconnect" else step
-            self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}{', locked to the strongest access point' if act == 'pin' else ''}"
+            self.log(now, "repair", f"{self.labels[step].capitalize()}{', locked to the strongest access point' if act == 'pin' else ''}"
                      f" ({human(now - o['since'])} {'flapping' if o.get('flapping') else 'down'}).", step, "auto")
             return [act]
         if ("reconnect" in o["done"] and eff["repeat"] and "reconnect" in can and o["next_reconnect"]
@@ -702,8 +762,16 @@ class Watch:
         o["repeats"] = o.get("repeats", 0) + 1
         return "reconnect"
 
-    def _held(self, now, obs, step):
+    def _held(self, now, obs, step, hand=False):
         eff = self.eff
+        # A step that reaches every link waits while another link works, as the owner chose (box_steps); one
+        # asked for by hand is the owner's own call.
+        others = obs.get("others_up") or []
+        rule = eff.get("box_steps", "nothing-works")
+        if step in WHOLE_BOX and others and not hand and (rule == "nothing-works" or rule == "uplink" and not obs.get("is_uplink")):
+            return (f"{', '.join(others)} {'is' if len(others) == 1 else 'are'} up, and "
+                    + ("the network service and the box are restarted only when nothing works" if rule == "nothing-works"
+                       else "this link doesn't hold the box's route"))
         # A restart of the network service takes the hotspot down too when it shares the uplink's
         # radio: held then like a radio reset, only on a shared radio.
         heavy = step in ("radio", "reboot") or (step == "restart" and obs.get("shared_radio"))
@@ -745,27 +813,30 @@ class Watch:
         if not rest:
             return None
         at, step = min(rest)
-        return {"step": step, "label": STEP_LABEL[step], "at": max(at, now)}
+        return {"step": step, "label": self.labels[step], "at": max(at, now)}
 
     def stall(self, now):
         """On the ladder, with nothing left that the level allows and the box can
         do: {needs: the lightest possible step beyond the level, or None; text}. Not when the level
         is watch-only (that is the owner's choice, not a stall), nor while a step is only held."""
         o, eff = self.outage, self.eff
+        if o and o.get("cause") == "cable" and eff.get("cable_out", "wait") == "wait":
+            return {"needs": None, "label": None, "text": "Waiting: no cable is plugged in, or the other end is off. Nothing the box "
+                    "does can mend that; it comes back by itself once the cable is."}
         if o and self._given_up(now, o):
-            return {"needs": None, "label": None, "text": f"Stopped trying after {human(now - o['since'])}: {CAUSE_WORDS[o['cause']]}. "
+            return {"needs": None, "label": None, "text": f"Stopped trying after {human(now - o['since'])}: {self.causes[o['cause']]}. "
                     "It comes back by itself if the network does."}
         if not o or not eff["steps"] or self.next_step(now):
             return None
         allowed = self._allowed(o)
         needs = next((s for s in STEPS if s in self.can and s not in eff["steps"] and s not in o["done"] and s in allowed), None)
         top = max(eff["steps"], key=STEPS.index)
-        text = (f"Stalled: what could help now is to {STEP_LABEL[needs]}, and the reach set goes no further than to "
-                f"{STEP_LABEL[top]}." if needs else "Stalled: nothing the box can do from here could help "
+        text = (f"Stalled: what could help now is to {self.labels[needs]}, and the reach set goes no further than to "
+                f"{self.labels[top]}." if needs else "Stalled: nothing the box can do from here could help "
                 f"(possible now: {', '.join(sorted(self.can)) or 'nothing'}).")
         if o.get("wedged"):
             text += f" The radio's driver looks wedged: {o['wedged']}."
-        return {"needs": needs, "label": STEP_LABEL[needs] if needs else None, "text": text}
+        return {"needs": needs, "label": self.labels[needs] if needs else None, "text": text}
 
     def by_hand(self, now, obs, step):
         """A step the owner asked for on /admin: done now, whatever the level and the hold, but
@@ -774,17 +845,17 @@ class Watch:
         if step not in STEPS:
             return [], f"{step} is not a step"
         if step not in obs.get("can", ()):
-            self.log(now, "skip", f"Asked on /admin to {STEP_LABEL[step]}, but it cannot be done here.", step, "hand")
-            return [], f"cannot {STEP_LABEL[step]} here"
-        why = self._held(now, obs, step)
+            self.log(now, "skip", f"Asked on /admin to {self.labels[step]}, but it cannot be done here.", step, "hand")
+            return [], f"cannot {self.labels[step]} here"
+        why = self._held(now, obs, step, hand=True)
         if why:
-            self.log(now, "held", f"Asked on /admin to {STEP_LABEL[step]}, but {why}.", step, "hand")
+            self.log(now, "held", f"Asked on /admin to {self.labels[step]}, but {why}.", step, "hand")
             return [], why
         if step == "reboot":
             self.reboots.append(now)
         if self.outage and step not in self.outage["done"]:
             self.outage["done"].append(step)
-        self.log(now, "repair", f"{STEP_LABEL[step].capitalize()}, asked on /admin.", step, "hand")
+        self.log(now, "repair", f"{self.labels[step].capitalize()}, asked on /admin.", step, "hand")
         return [step], None
 
 
@@ -871,6 +942,10 @@ def words(chosen):
                   "lock": f"locked to {chosen.get('lock_bssid')}"}.get(chosen.get("roaming"), ""))
     if chosen.get("ignore_roams"):
         parts.append("roams not counted")
+    parts.append({"uplink": "the network service and the box restarted for the route's link even with another up",
+                  "any": "the network service and the box restarted for any watched link"}.get(chosen.get("box_steps"), ""))
+    parts.append({"reconnect": "a cable unplugged reconnected now and then",
+                  "ladder": "a cable unplugged met with the whole ladder"}.get(chosen.get("cable_out"), ""))
     parts += [f"on {i} never {' or '.join(STEP_LABEL[x].lower() for x in steps)}" for i, steps in sorted((chosen.get("steps_off") or {}).items())]
     return ", ".join(x for x in parts if x)
 
@@ -887,6 +962,25 @@ def uptime():
         return float(Path("/proc/uptime").read_text().split()[0])
     except (OSError, ValueError):
         return 1e9
+
+
+def watching_words(chosen):
+    """Which links are watched, as the settings say it: "wlan0 and eth0", "the route's link and wlan0"."""
+    on = sorted(i for i, v in (chosen.get("watch") or {}).items() if v)
+    off = sorted(i for i, v in (chosen.get("watch") or {}).items() if v is False)
+    new = {"uplink": "the link holding the box's route", "all": "every link", "none": None}[chosen.get("watch_new", "uplink")]
+    parts = ([new] if new else []) + on
+    said = " and ".join([", ".join(parts[:-1]), parts[-1]] if len(parts) > 1 else parts) or "no link"
+    return said + (f" (never {', '.join(off)})" if off else "")
+
+
+def main_link(chosen):
+    """The link the box's settings speak of when one is meant (the profile's retries, a look from a shell): the
+    route's link if it is watched, else the first one watched."""
+    route = netinv.default_route()
+    r = route["iface"] if route else None
+    want = watched_links(chosen, r, candidate_links())
+    return r if r in want else (sorted(want)[0] if want else None)
 
 
 def pick_iface(chosen, last):
@@ -924,7 +1018,8 @@ def repairs_for(backend, iface, gone=None):
     here = (SYS_NET / iface).exists()
     facts = netinv.device_facts(iface) if here else (gone or {})
     wifi = (SYS_NET / iface / "phy80211").exists() if here else bool(gone)
-    if wifi and (facts.get("usb") or facts.get("driver")):
+    cable = here and not wifi and link_kind(iface) == "ethernet"
+    if (wifi or cable) and (facts.get("usb") or facts.get("driver")):
         can.add("radio")
     if can:
         can.add("reboot")
@@ -971,7 +1066,7 @@ def recent_journal(secs=120, since=0.0):
     return out.splitlines() if code == 0 else []
 
 
-def outage_cause(iface, up, answers, wifi, exists, wedged, own, ssids, run=run):
+def outage_cause(iface, up, answers, wifi, exists, wedged, own, ssids, run=run, carrier=None):
     """Why the link is down (CAUSE_WORDS), or None when the box can't tell (a wired link, no
     network known, no scan list): the radio has failed (the driver resetting itself, wedge evidence,
     the interface gone); joined with the gateway silent; else NetworkManager's last scan, without
@@ -980,7 +1075,12 @@ def outage_cause(iface, up, answers, wifi, exists, wedged, own, ssids, run=run):
     if own is not None or wedged or (wifi and not exists):
         return "radio"
     if not wifi:
-        return None
+        # A cable link: no carrier is no cable (or the other end off); gone with its driver, a failed adapter.
+        if not exists and carrier is not None:
+            return "radio"
+        if carrier is False:
+            return "cable"
+        return "gateway" if up and answers is False else None
     if up:
         return "gateway" if answers is False else None
     ssids = {ssids} if isinstance(ssids, str) else set(ssids or ())
@@ -1060,8 +1160,8 @@ def nm_connection(iface):
 # --- acting ----------------------------------------------------------------------------------
 
 class Actor:
-    def __init__(self, iface, backend, dry=False):
-        self.iface, self.backend, self.dry = iface, backend, dry
+    def __init__(self, iface, backend, dry=False, kind="wifi"):
+        self.iface, self.backend, self.dry, self.kind = iface, backend, dry, kind
         self.profile = None  # {name, uuid, ssid}: NetworkManager's connection, remembered while up
         self.facts = None    # its radio's facts (netinv.device_facts), remembered while it is there
 
@@ -1076,8 +1176,12 @@ class Actor:
 
     def _reconnect(self):
         i = self.iface
+        if self.kind == "ethernet":
+            # A cable: the link negotiated afresh with the other end, where ethtool is there to ask.
+            run("ethtool", "-r", i, timeout=20)
         if self.backend == "networkmanager":
-            run("nmcli", "dev", "wifi", "rescan", "ifname", i, timeout=20)
+            if self.kind == "wifi":
+                run("nmcli", "dev", "wifi", "rescan", "ifname", i, timeout=20)
             if self.profile:
                 return run("nmcli", "-w", "45", "con", "up", "uuid", self.profile["uuid"], "ifname", i, timeout=60)[1]
             return run("nmcli", "-w", "45", "dev", "connect", i, timeout=60)[1]
@@ -1122,7 +1226,8 @@ class Actor:
         from irate_box.root import radio
         facts = netinv.device_facts(self.iface) if (SYS_NET / self.iface).exists() else (self.facts or {})
         usb = facts.get("usb") or {}
-        _file_reset(self.iface, usb.get("port"))
+        if self.kind == "wifi":
+            _file_reset(self.iface, usb.get("port"))
         return radio.reset(self.iface, usb.get("port"), facts.get("driver"), usb.get("product") or usb.get("id"))
 
     def _reboot(self):
@@ -1151,23 +1256,24 @@ class Actor:
 # --- the loop ----------------------------------------------------------------------------------
 
 class DropWatcher(threading.Thread):
-    """`ip -o monitor link`: each time the interface loses its carrier, between two checks too."""
+    """`ip -o monitor link`: each time a watched link loses its carrier, between two checks too."""
 
     def __init__(self, wake):
         super().__init__(daemon=True)
-        self.iface = None
+        self.ifaces = set()
         self.wake = wake
         self.lock = threading.Lock()
-        self.drops = []   # [lost, back or None]
+        self.drops = {}   # iface: [[lost, back or None]]
         self.up = {}
 
-    def take(self, now=None, blip=0):
-        """The drops since the last take, as (lost, back): back None while the link is still down. One
+    def take(self, iface, now=None, blip=0):
+        """The link's drops since its last take, as (lost, back): back None while the link is still down. One
         still down and younger than `blip` waits for the next take, to be told whether it was a roam."""
         now = now or time.time()
         with self.lock:
-            ready = [d for d in self.drops if d[1] is not None or now - d[0] > blip]
-            self.drops = [d for d in self.drops if d not in ready]
+            mine = self.drops.get(iface, [])
+            ready = [d for d in mine if d[1] is not None or now - d[0] > blip]
+            self.drops[iface] = [d for d in mine if d not in ready]
         return [tuple(d) for d in ready]
 
     def run(self):
@@ -1184,13 +1290,13 @@ class DropWatcher(threading.Thread):
                 lower = "LOWER_UP" in flags and not line.startswith("Deleted")
                 was = self.up.get(name)
                 self.up[name] = lower
-                if name == self.iface and was and not lower:
+                if name in self.ifaces and was and not lower:
                     with self.lock:
-                        self.drops.append([time.time(), None])
+                        self.drops.setdefault(name, []).append([time.time(), None])
                     self.wake.set()
-                elif name == self.iface and was is False and lower:
+                elif name in self.ifaces and was is False and lower:
                     with self.lock:
-                        for d in reversed(self.drops):
+                        for d in reversed(self.drops.get(name, [])):
                             if d[1] is None:
                                 d[1] = time.time()
                                 break
@@ -1455,30 +1561,226 @@ def take_request(now):
     return req["step"] if now - req["at"] < 600 else None
 
 
+# --- the links ------------------------------------------------------------------------------
+
+def link_kind(iface):
+    """wifi | ethernet | other (a cellular modem, anything else): what a link is, for its steps and words."""
+    d = SYS_NET / iface
+    if (d / "phy80211").exists() or (d / "wireless").exists():
+        return "wifi"
+    if "DEVTYPE=wwan" in (netinv.read(d / "uevent") or ""):
+        return "other"
+    return "ethernet" if netinv.read(d / "type") == "1" else "other"
+
+
+def carrier(iface):
+    """The link's carrier: True, False, or None when it can't be read (the interface switched off)."""
+    v = netinv.read(SYS_NET / iface / "carrier")
+    return {"1": True, "0": False}.get(v)
+
+
+def candidate_links(types=None):
+    """The links that could carry the box to a network, {iface: kind}: every interface with a device behind it,
+    less the loopback and a WiFi radio that is not a client (the hotspot's, a monitor)."""
+    if types is None:
+        types = {i: info.get("type") for i, info in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).items()}
+    out = {}
+    try:
+        dirs = sorted(SYS_NET.iterdir())
+    except OSError:
+        return out
+    for d in dirs:
+        if d.name == "lo" or not (d / "device").exists():
+            continue
+        if (d / "phy80211").exists() and types.get(d.name) not in (None, "managed"):
+            continue
+        out[d.name] = link_kind(d.name)
+    return out
+
+
+def watched_links(chosen, route, candidates, troubled=()):
+    """The links to watch: each the owner set to be watched (there or not: a radio whose driver failed takes its
+    interface with it), and the others as watch_new says: the route's link (with one in trouble while it was, since
+    the route goes with its link), every link there is, or none; never one the owner set not to be watched."""
+    watch, new = chosen.get("watch") or {}, chosen.get("watch_new", DEFAULT["watch_new"])
+    out = {i for i, on in watch.items() if on}
+    if new == "all":
+        out |= {i for i in candidates if watch.get(i) is not False} | {i for i in troubled if watch.get(i) is not False}
+    elif new == "uplink":
+        if route and watch.get(route) is not False:
+            out.add(route)
+        out |= {i for i in troubled if watch.get(i) is not False and i not in watch}
+        if not out and not route:
+            # No route at all, nothing watched: the first WiFi client, as it is the likeliest to need help.
+            out |= {next((i for i, k in sorted(candidates.items()) if k == "wifi" and watch.get(i) is not False), None)} - {None}
+    return out
+
+
+NM_TYPES = {"wifi": "802-11-wireless", "ethernet": "802-3-ethernet"}
+
+
+def autoconnect_for(iface, kind, run=run):
+    """The NetworkManager connections set to start by themselves on this link (their names): what the link carries,
+    or would if it worked. One up on another link, or bound to another interface, is not this link's."""
+    if kind not in NM_TYPES or not shutil.which("nmcli"):
+        return []
+    code, out = run("nmcli", "-t", "-f", "NAME,UUID,TYPE,DEVICE,AUTOCONNECT,ACTIVE", "con", "show")
+    if code != 0:
+        return []
+    names = []
+    for row in netinv.nm_fields(out):
+        if len(row) < 6 or row[2] != NM_TYPES[kind] or row[4] != "yes" or row[3] not in ("", iface):
+            continue
+        c, bound = run("nmcli", "-g", "connection.interface-name", "con", "show", "uuid", row[1])
+        if c == 0 and bound.strip() not in ("", iface):
+            continue
+        names.append(row[0])
+    return names
+
+
+class Link:
+    """One watched link: its watchdog (Watch) and what the loop keeps of it between looks."""
+
+    def __init__(self, iface, chosen, old=None, reboots=None, dry=False):
+        self.iface = iface
+        old = old or {}
+        self.kind = link_kind(iface) if (SYS_NET / iface).exists() else old.get("kind", "wifi")
+        cable = self.kind == "ethernet"
+        self.w = Watch(effective(chosen, iface), old.get("events"), None,
+                       {"radio": "reset the adapter"} if cable else None, {"radio": "the adapter has failed"} if cable else None)
+        if reboots is not None:
+            self.w.reboots = reboots   # one record for the box: the caps count every link's reboots
+        self.dry = dry
+        self.backend, self.actor, self.can, self.looked = None, None, set(), 0
+        self.known_backend = None   # the last real backend seen, so its going away can be told
+        self.radio_seen = None      # its radio's facts while it was there, for when it has gone
+        self.reset_at = 0.0         # the radio's last reset (here or by its driver): older evidence is left behind
+        self.hotspot_due = False    # the driver reset its radio: the hotspot started again once the link is back
+        self.ssids_known = None     # the WiFi networks NetworkManager knows, read once an outage needs them
+        self.pinned = None
+        self.roams = Roams()
+        self.obs, self.up, self.gw, self.answers, self.roam_rows = {}, False, None, None, []
+
+    def refresh(self, now, force=False):
+        if force or now - self.looked > 600 or not self.actor:
+            self.looked = now
+            self.backend = backend_of(self.iface)
+            self.can = repairs_for(self.backend, self.iface, self.radio_seen)
+            if not self.actor:
+                self.actor = Actor(self.iface, self.backend, self.dry)
+            self.actor.backend, self.actor.kind = self.backend, self.kind
+
+    def look(self, now, chosen, watcher):
+        """One look at the link: up, the gateway, its drops and roams; closer when in trouble (the backend afresh, a
+        wedged driver, the cause). Fills self.obs for tick()."""
+        i, w = self.iface, self.w
+        self.refresh(now)
+        wifi_here = (SYS_NET / i / "phy80211").exists()
+        if wifi_here:
+            self.radio_seen = netinv.device_facts(i)
+            self.actor.facts = self.radio_seen
+        up = link_up(i)
+        gw = gateway_of(i) if up else None
+        answers = gateway_answers(i, gw) if gw else (False if up else None)
+        link = netinv.parse_link(netinv.run("iw", "dev", i, "link")[1]) if up and wifi_here else {}
+        same = bool(link.get("ssid")) and link.get("ssid") == (self.roams.last or {}).get("ssid", link.get("ssid"))
+        drops, blips = sort_drops(watcher.take(i, now, w.eff.get("blip", 20)), w.eff, same)
+        self.roam_rows = self.roams.see(now, link, blips)
+        if self.roams.last:
+            self.roams.last["ssid"] = link.get("ssid") or self.roams.last.get("ssid")
+        obs = {"link": up, "gateway": answers, "drops": drops, "guests": guests(), "busy": busy(),
+               "uptime": uptime(), "can": self.can, "hold_until": chosen.get("hold_until", 0),
+               "owner_off": not up and self.backend == "networkmanager" and nm_owner_off(i),
+               "shared_radio": shared_radio(i) if wifi_here else False}
+        if w.outage or w.misses:
+            # In trouble: look closer, each check, for a wedged driver (and the backend afresh).
+            was, self.backend = self.backend, backend_of(i)
+            if self.backend != was:
+                self.can = obs["can"] = repairs_for(self.backend, i, self.radio_seen)
+                self.actor.backend = self.backend
+                w.log(now, "info", f"{i} is now run by {self.backend} (was {was}).")
+            known = was if was != "none" else self.known_backend
+            exists, wifi = (SYS_NET / i).exists(), self.radio_seen is not None and self.kind == "wifi"
+            own = own_reset() if wifi else None
+            if own is not None:
+                self.reset_at, self.hotspot_due = max(self.reset_at, now - own), True
+            obs["wedged"] = wedge_evidence(i, self.backend, known, recent_journal(since=self.reset_at), crashwatch_events(), now,
+                                           exists, wifi, self.reset_at)
+            obs["driver_reset"] = own
+            ssid = (self.actor.profile or {}).get("ssid")
+            if not ssid and self.backend == "networkmanager" and wifi and not up:
+                if self.ssids_known is None:
+                    self.ssids_known = known_ssids()
+                ssid = self.ssids_known
+            cable = (carrier(i) if exists else False) if self.kind == "ethernet" else None
+            obs["cause"] = outage_cause(i, up, answers, wifi, exists, obs["wedged"], own, ssid, carrier=cable)
+        elif self.backend and self.backend != "none":
+            self.known_backend = self.backend
+        if chosen.get("roaming") == "no-scan" and up and wifi_here and not self.dry:
+            from irate_box.hub import roaming
+            said = roaming.clear_scan(i)
+            if said:
+                w.log(now, "info", f"Roaming: {said} (NetworkManager had set them again).")
+        self.obs, self.up, self.gw, self.answers = obs, up, gw, answers
+        return obs
+
+    def healthy(self):
+        return bool(self.up) and self.answers is not False and self.gw is not None
+
+    def act(self, now, actions, status):
+        """The steps the watchdog decided on, taken; status(): this link's report, written before a reboot."""
+        w, i = self.w, self.iface
+        if self.up and self.answers:
+            self.actor.remember()
+            self.ssids_known = None
+            if self.hotspot_due:
+                # The driver's own reset took the hotspot down with the link; the link is back.
+                self.hotspot_due = False
+                from irate_box.root import radio
+                if not self.dry and radio.hotspot_up() and not any(d.get("type") == "AP" for d in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).values()):
+                    w.log(now, "result", radio.restore_hotspot() or "the hotspot is up")
+        for step in actions:
+            if step == "pin":
+                result = self.actor.pin()
+                if "locked to" in result:
+                    self.pinned = {"bssid": result.split()[2].rstrip(":"), "at": now}
+            else:
+                if step == "reboot":
+                    write_status(status())
+                result = self.actor.do(step)
+                self.pinned = None if step in ("reconnect", "restart", "radio") else self.pinned
+                if step == "radio":
+                    self.reset_at = time.time()
+            if result:
+                w.log(time.time(), "result", str(result)[:300])
+
+
+def _no_links_status(now, chosen, links_info, events, reboots, dry, said):
+    return {"at": now, "state": "no-link", "iface": None, "events": events, "chosen": chosen, "settings": effective(chosen),
+            "reboots": reboots[-10:], "dry_run": dry, "links": {}, "inventory": links_info, "watching": said}
+
+
 def serve(dry=False):
     old = read_status()
     chosen = load_settings()
     mtime = _settings_mtime()
-    w = Watch(effective(chosen, old.get("iface")), old.get("events"), _reboot_history(old))
-    now = time.time()
-    if old.get("events") and old["events"][-1]["text"].startswith("Reboot"):
-        w.log(now, "info", "Started again after the reboot.")
-    w.log(now, "info", f"Watching ({words(chosen)})" + (" — dry run" if dry else "") + ".")
+    reboots = list(_reboot_history(old) or [])
+    old_links = old.get("links") if isinstance(old.get("links"), dict) else {}
+
+    def old_of(iface):
+        # A link's own events from the last report, or the single link's from a report written before links.
+        o = old_links.get(iface) or {}
+        return o if o.get("events") else ({"events": old.get("events")} if old.get("iface") == iface else o)
+    rebooted = bool(old.get("events")) and old["events"][-1]["text"].startswith("Reboot")
     wake = threading.Event()
     watcher = DropWatcher(wake)
     watcher.start()
-    iface, backend, actor, can, looked = None, None, None, set(), 0
-    known_backend = None  # the last real backend seen, so its going away can be told
-    radios_seen = {}      # iface: its radio's facts while it was there, for when it has gone
-    reset_at = 0.0        # the radio's last reset (here or by its driver): older evidence is left behind
-    hotspot_due = False   # the driver reset its radio: the hotspot started again once the link is back
-    ssids_known = None    # the WiFi networks NetworkManager knows, read once an outage needs them
-    pinned = None
+    links = {}           # iface: Link, the watched ones
+    resting = {}         # iface: the last report of a link no longer watched, kept for the page
     history = History()
     ladder = Ladder()
-    ladder.started(now, old.get("at"), uptime())
-    roams = Roams()
-    tls_at = 0  # HTTPS: the certificate renewed when due, looked at every six hours
+    ladder.started(time.time(), old.get("at"), uptime())
+    tls_at, cands, cands_at, inv, inv_at, first = 0, {}, 0, {}, 0, True
 
     def stop(*_):
         history.flush()  # the slot under way, rather than lose up to five minutes of it
@@ -1488,109 +1790,81 @@ def serve(dry=False):
         now = time.time()
         # Settings changed on /admin: take them, and give the owner a moment before acting.
         m = _settings_mtime()
+        changed = False
         if m != mtime:
             before, (mtime, chosen) = chosen, (m, load_settings())
             if {k: v for k, v in before.items() if k != "hold_until"} != {k: v for k, v in chosen.items() if k != "hold_until"}:
-                w.eff = effective(chosen, iface)
-                w.pause_until = now + w.eff["pause_after_change"]
-                w.log(now, "info", f"Settings changed: {words(chosen)}"
-                      + (", with custom values" if chosen["overrides"] else "") + ".")
+                changed = True
+                for lk in links.values():
+                    lk.w.eff = effective(chosen, lk.iface)
+                    lk.w.pause_until = now + lk.w.eff["pause_after_change"]
+                    lk.w.log(now, "info", f"Settings changed: {words(chosen)}" + (", with custom values" if chosen["overrides"] else "") + ".")
             if before.get("hold_until") != chosen.get("hold_until"):
                 hold = chosen.get("hold_until") or 0
-                w.log(now, "info", f"Repairs held until {time.strftime('%H:%M', time.localtime(hold))}."
-                      if hold > now else "Hold ended: repairs as set.")
-        new_iface = pick_iface(chosen["iface"], iface)
-        if new_iface != iface or now - looked > 600:
-            if new_iface != iface and iface:
-                w.log(now, "info", f"Now watching {new_iface}.")
-            if new_iface != iface:
-                w.eff = effective(chosen, new_iface)  # its own steps switched off, if any
-            iface, looked = new_iface, now
-            if iface:
-                backend = backend_of(iface)
-                can = repairs_for(backend, iface, radios_seen.get(iface))
-                actor = Actor(iface, backend, dry) if not actor or actor.iface != iface else actor
-                actor.backend = backend
-                watcher.iface = iface
-        if not iface:
+                for lk in links.values():
+                    lk.w.log(now, "info", f"Repairs held until {time.strftime('%H:%M', time.localtime(hold))}."
+                             if hold > now else "Hold ended: repairs as set.")
+        if first or changed or now - cands_at > 60:
+            cands, cands_at = candidate_links(), now
+        route = netinv.default_route()
+        route_if = route["iface"] if route else None
+        troubled = {i for i, lk in links.items() if lk.w.outage or lk.w.misses}
+        want = watched_links(chosen, route_if, cands, troubled)
+        for i in sorted(want - set(links)):
+            lk = links[i] = Link(i, chosen, old_of(i) if first else resting.pop(i, None), reboots, dry)
+            resting.pop(i, None)
+            if first and rebooted and old.get("iface") == i:
+                lk.w.log(now, "info", "Started again after the reboot.")
+            lk.w.log(now, "info", (f"Watching {i} ({words(chosen)})" if first else f"Now watching {i} too ({words(chosen)})")
+                     + (" — dry run" if dry else "") + ".")
+        for i in sorted(set(links) - want):
+            lk = links.pop(i)
+            lk.w.log(now, "info", f"No longer watching {i}: " + ("set not to be watched." if (chosen.get("watch") or {}).get(i) is False
+                                                                 else "it no longer holds the box's route."))
+            share(lk.w, i, dry)
+            resting[i] = dict(_status(lk.w, now, chosen, i, lk.backend, lk.can, lk.up, lk.gw, lk.answers, lk.obs or {"guests": 0},
+                                      lk.pinned, dry), watched=False, kind=lk.kind)
+        first = False
+        watcher.ifaces = set(links)
+        if first or now - inv_at > 600 or changed:
+            inv_at = now
+            inv = {i: {"kind": k, "watched": i in links, "autoconnect": autoconnect_for(i, k)} for i, k in cands.items()}
+        for i, k in cands.items():
+            inv.setdefault(i, {"kind": k, "autoconnect": []})
+            inv[i].update(kind=k, watched=i in links, up=link_up(i), route=i == route_if)
+        for i in [x for x in inv if x not in cands]:
+            inv.pop(i)
+        if not links:
             history.note(now, None, None, history.others(None, now), history.hotspots(now))
-            write_status({"at": now, "state": "no-link", "iface": None, "events": list(w.events),
-                          "chosen": chosen, "settings": w.eff, "reboots": w.reboots, "dry_run": dry})
-            nap(wake, w.eff["check"], mtime)
+            write_status(_no_links_status(now, chosen, inv, [], reboots, dry, "nothing: no link is set to be watched"
+                                          if chosen.get("watch_new") == "none" else "nothing: no link holds the box's route"))
+            nap(wake, effective(chosen)["check"], mtime)
             continue
-        if (SYS_NET / iface / "phy80211").exists():
-            radios_seen[iface] = netinv.device_facts(iface)
-            actor.facts = radios_seen[iface]
-        up = link_up(iface)
-        gw = gateway_of(iface) if up else None
-        answers = gateway_answers(iface, gw) if gw else (False if up else None)
-        link = netinv.parse_link(netinv.run("iw", "dev", iface, "link")[1]) if up and (SYS_NET / iface / "phy80211").exists() else {}
-        same = bool(link.get("ssid")) and link.get("ssid") == (roams.last or {}).get("ssid", link.get("ssid"))
-        drops, blips = sort_drops(watcher.take(now, w.eff.get("blip", 20)), w.eff, same)
-        roam_rows = roams.see(now, link, blips)
-        if roams.last:
-            roams.last["ssid"] = link.get("ssid") or roams.last.get("ssid")
-        obs = {"link": up, "gateway": answers, "drops": drops, "guests": guests(), "busy": busy(),
-               "uptime": uptime(), "can": can, "hold_until": chosen.get("hold_until", 0),
-               "owner_off": not up and backend == "networkmanager" and nm_owner_off(iface),
-               "shared_radio": shared_radio(iface)}
-        if w.outage or w.misses:
-            # In trouble: look closer, each check, for a wedged driver (and the backend afresh).
-            was, backend = backend, backend_of(iface)
-            if backend != was:
-                can = obs["can"] = repairs_for(backend, iface, radios_seen.get(iface))
-                actor.backend = backend
-                w.log(now, "info", f"{iface} is now run by {backend} (was {was}).")
-            known = was if was != "none" else known_backend
-            exists, wifi = (SYS_NET / iface).exists(), iface in radios_seen
-            own = own_reset()
-            if own is not None:
-                reset_at, hotspot_due = max(reset_at, now - own), True
-            obs["wedged"] = wedge_evidence(iface, backend, known, recent_journal(since=reset_at), crashwatch_events(), now,
-                                           exists, wifi, reset_at)
-            obs["driver_reset"] = own
-            ssid = (actor.profile or {}).get("ssid")
-            if not ssid and backend == "networkmanager" and wifi and not up:
-                if ssids_known is None:
-                    ssids_known = known_ssids()
-                ssid = ssids_known
-            obs["cause"] = outage_cause(iface, up, answers, wifi, exists, obs["wedged"], own, ssid)
-        elif backend and backend != "none":
-            known_backend = backend
-        if chosen.get("roaming") == "no-scan" and up and not dry:
-            from irate_box.hub import roaming
-            said = roaming.clear_scan(iface)
-            if said:
-                w.log(now, "info", f"Roaming: {said} (NetworkManager had set them again).")
-        actions = w.tick(now, obs)
+        for lk in links.values():
+            lk.look(now, chosen, watcher)
+        # What else works now: the links a whole-box step would cut off (box_steps).
+        works = {i for i, lk in links.items() if lk.healthy()}
+        works |= {i for i in cands if i not in links and inv.get(i, {}).get("up") and gateway_of(i)}
+        primary = route_if if route_if in links else next((i for i in sorted(links) if links[i].w.outage), sorted(links)[0])
         asked = take_request(now) if NOW.exists() else None
-        if asked:
-            more, _ = w.by_hand(now, obs, asked)
-            actions += [s for s in more if s not in actions]
-        share(w, iface, dry)   # before acting: a reboot leaves no time after
-        if up and answers:
-            actor.remember()
-            ssids_known = None
-            if hotspot_due:
-                # The driver's own reset took the hotspot down with the link; the link is back.
-                hotspot_due = False
-                from irate_box.root import radio
-                if not dry and radio.hotspot_up() and not any(d.get("type") == "AP" for d in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).values()):
-                    w.log(now, "result", radio.restore_hotspot() or "the hotspot is up")
-        for step in actions:
-            if step == "pin":
-                result = actor.pin()
-                if "locked to" in result:
-                    pinned = {"bssid": result.split()[2].rstrip(":"), "at": now}
-            else:
-                if step == "reboot":
-                    write_status(_status(w, now, chosen, iface, backend, can, up, gw, answers, obs, pinned, dry))
-                result = actor.do(step)
-                pinned = None if step in ("reconnect", "restart", "radio") else pinned
-                if step == "radio":
-                    reset_at = time.time()
-            if result:
-                w.log(time.time(), "result", str(result)[:300])
+        for i, lk in sorted(links.items()):
+            lk.obs["others_up"] = sorted(works - {i})
+            lk.obs["is_uplink"] = i == route_if
+            actions = lk.w.tick(now, lk.obs)
+            if asked and i == primary:
+                more, _ = lk.w.by_hand(now, lk.obs, asked)
+                actions += [s for s in more if s not in actions]
+            share(lk.w, i, dry)   # before acting: a reboot leaves no time after
+            lk.act(now, actions, lambda lk=lk: _report(links, resting, inv, primary, chosen, dry, reboots, time.time()))
+            if not dry:
+                try:
+                    ladder.add(lk.w.ladder, i, now, [dict(r, i=i) for r in lk.roam_rows])
+                    if i == primary:
+                        ladder.misses(now, lk.w.misses, lk.w.eff["sensitivity"], i)
+                except OSError as exc:
+                    lk.w.log(now, "info", f"The escalation record was not written: {exc}")
+            lk.w.ladder = []
+            share(lk.w, i, dry)
         if not dry and os.geteuid() == 0 and now - tls_at > 6 * 3600:
             tls_at = now
             try:
@@ -1598,24 +1872,33 @@ def serve(dry=False):
                 if tls.status().get("set_up"):
                     tls.renew()
             except Exception as exc:  # noqa: BLE001 - the watchdog goes on whatever happens here
-                w.log(now, "info", f"HTTPS certificate renewal failed: {exc}")
-        if not dry:
-            try:
-                ladder.add(w.ladder, iface, now, [dict(r, i=iface) for r in roam_rows])
-                ladder.misses(now, w.misses, w.eff["sensitivity"], iface)
-            except OSError as exc:
-                w.log(now, "info", f"The escalation record was not written: {exc}")
-        w.ladder = []
-        share(w, iface, dry)
-        report = _status(w, time.time(), chosen, iface, backend, can, up, gw, answers, obs, pinned, dry)
-        report["roams_hour"] = roams.hour()
-        report["roam_last"] = roams.last
-        history.note(report["at"], iface, history_state(report["state"], up), history.others(iface, report["at"]),
+                links[primary].w.log(now, "info", f"HTTPS certificate renewal failed: {exc}")
+        report = _report(links, resting, inv, primary, chosen, dry, reboots, time.time())
+        history.note(report["at"], primary, history_state(report["state"], links[primary].up), history.others(primary, report["at"]),
                      history.hotspots(report["at"]))
         write_status(report)
         # While a check or an outage is under way, look again sooner than the steady pace.
-        wait = w.eff["check"] if not (w.misses or w.outage) else min(w.eff["check"], 15)
-        nap(wake, wait, mtime)
+        trouble = any(lk.w.misses or lk.w.outage for lk in links.values())
+        check = min(lk.w.eff["check"] for lk in links.values())
+        nap(wake, check if not trouble else min(check, 15), mtime)
+
+
+def _report(links, resting, inv, primary, chosen, dry, reboots, now):
+    """The report: the primary link's at the top, as it always was (the page, the box doctor and the status light read
+    it); each watched link's own under "links"; every link there is, watched or not, under "inventory"; the events of
+    all of them, newest last, each with its link."""
+    per = {}
+    for i, lk in links.items():
+        st = _status(lk.w, now, chosen, i, lk.backend, lk.can, lk.up, lk.gw, lk.answers, lk.obs, lk.pinned, dry)
+        st["roams_hour"], st["roam_last"] = lk.roams.hour(), lk.roams.last
+        per[i] = dict(st, watched=True, kind=lk.kind)
+    top = dict(per[primary])
+    events = sorted(({**e, "iface": i} for i, st in per.items() for e in st["events"]), key=lambda e: e["at"])[-100:]
+    for st in per.values():
+        for k in ("chosen", "profile_change", "roaming_change", "reboots"):
+            st.pop(k, None)
+    top.update(events=events, reboots=reboots[-10:], links={**resting, **per}, inventory=inv, primary=primary)
+    return top
 
 
 def share(w, iface, dry):
@@ -1653,7 +1936,7 @@ def _roaming_record():
 
 def _uplink_profile():
     chosen = load_settings()
-    iface = pick_iface(chosen["iface"], None)
+    iface = main_link(chosen)
     if not iface or backend_of(iface) != "networkmanager":
         raise ValueError("the box's link is not run by NetworkManager, so there is no profile to change")
     prof = nm_connection(iface)
@@ -1701,7 +1984,7 @@ def profile(on):
 
 def check():
     chosen = load_settings()
-    iface = pick_iface(chosen["iface"], None)
+    iface = main_link(chosen)
     if not iface:
         return "no link to watch"
     backend = backend_of(iface)
@@ -1784,7 +2067,7 @@ def main(argv):
             print(f"profile: {exc}")
         from irate_box.hub import roaming
         try:
-            for line in roaming.undo_all(pick_iface(load_settings()["iface"], None)):
+            for line in roaming.undo_all(main_link(load_settings())):
                 print(line)
         except ValueError as exc:
             print(f"roaming: {exc}")

@@ -2784,7 +2784,7 @@ def uplink_set(req):
     old, s = s, uplink.validate(new)
     # Roaming's lock and its no-scan change the owner's WiFi: done first, and the setting kept as
     # it was if they fail, so the page never says one is in force that is not.
-    iface = uplink.pick_iface(s["iface"], None)
+    iface = uplink.main_link(s)
     try:
         moved = roaming.apply(s, old, iface)
     except ValueError as exc:
@@ -2792,7 +2792,7 @@ def uplink_set(req):
     s = uplink.save_settings(s)
     _uplink_running()
     return (f"Uplink: {uplink.words(s)}" + (", custom values" if s["overrides"] else "")
-            + f", watching {s['iface']}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest."
+            + f", watching {uplink.watching_words(s)}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest."
             + (f" {moved[:1].upper()}{moved[1:]}." if moved else ""))
 
 

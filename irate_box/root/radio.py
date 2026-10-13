@@ -19,7 +19,17 @@ A radio on the board's SDIO bus (a Raspberry Pi's):
   2. the SD host controller it sits on unbound and bound again (the card found again from scratch;
      where the board has a power line for the chip, it is switched off and on with it)
 
-Either, last:
+A device on the PCI bus (an M.2 or mini-PCIe WiFi card, a PCIe network adapter):
+
+  1. the PCI function reset (its `reset` file: a function-level or bus reset, as the device allows)
+  2. the device unbound from its driver and bound again
+  3. the device removed and the bus rescanned (found afresh, as at boot)
+
+A device on the SoC itself (the platform bus: a board's own Ethernet, WiFi built into the chip):
+
+  1. the device unbound from its driver and bound again
+
+Any, last:
 
   4. the driver reloaded: the modules that hold it unloaded first (brcmfmac_cyw holds brcmfmac),
      then it (rmmod by the name it is loaded under), then modprobe by its module file's name, which
@@ -52,6 +62,7 @@ ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 AP_RECORD = ETC / "ap.json"          # root/ap.py's: whether the hotspot is up
 AP_UNIT = "irate-box-ap.service"
 PORT_RE = re.compile(r"[0-9]+-[0-9.]+")
+PCI_RE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]")
 MOD_RE = re.compile(r"[A-Za-z0-9_-]+")
 BACK_WAIT = 20                        # seconds for the interface to come back after each way
 USBDEVFS_RESET = 0x5514               # _IO('U', 20)
@@ -191,6 +202,21 @@ def _sdio_target(iface):
             "host_driver": host_drv.resolve().name if host_drv.exists() else None}
 
 
+def _bus_target(iface):
+    """For a device on the PCI or the platform bus: {bus, name, driver}, from the interface's place in sysfs; None
+    for any other (USB and SDIO have their own ways)."""
+    try:
+        dev = (SYS / "class/net" / iface / "device").resolve()
+        bus = (dev / "subsystem").resolve().name
+    except OSError:
+        return None
+    if bus not in ("pci", "platform") or not (dev / "driver").exists():
+        return None
+    if bus == "pci" and not PCI_RE.fullmatch(dev.name):
+        return None
+    return {"bus": bus, "name": dev.name, "driver": (dev / "driver").resolve().name}
+
+
 def _rebind(bus, driver, name, sleep, pause=3):
     d = SYS / "bus" / bus / "drivers" / driver
     (d / "unbind").write_text(name)
@@ -226,6 +252,7 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
     One line saying what was done and whether the interface came back."""
     tried = []
     sdio = None if _usb_target(port) else _sdio_target(iface)   # looked up while the interface is still there
+    onbus = None if _usb_target(port) or sdio else _bus_target(iface)
     nm = run("systemctl", "is-active", "--quiet", "NetworkManager", timeout=10)[0] == 0
     if nm:
         run("systemctl", "stop", "NetworkManager", timeout=90)
@@ -275,6 +302,39 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
                     back = _back(iface, wait, sleep)
                 except OSError as exc:
                     tried.append(f"SD host {sdio['host']}: unbind/bind failed ({exc})")
+        if not back and onbus and onbus["bus"] == "pci":
+            name, pci = f"PCI {onbus['name']} ({onbus['driver']})", SYS / "bus/pci/devices" / onbus["name"]
+            if (pci / "reset").exists():
+                try:
+                    (pci / "reset").write_text("1")
+                    tried.append(f"{name} reset")
+                    back = _back(iface, wait, sleep)
+                except OSError as exc:
+                    tried.append(f"{name}: reset failed ({exc})")
+            if not back:
+                try:
+                    _rebind("pci", onbus["driver"], onbus["name"], sleep)
+                    tried.append(f"{name} unbound and bound again")
+                    back = _back(iface, wait, sleep)
+                except OSError as exc:
+                    tried.append(f"{name}: unbind/bind failed ({exc})")
+            if not back:
+                try:
+                    (pci / "remove").write_text("1")
+                    sleep(2)
+                    (SYS / "bus/pci/rescan").write_text("1")
+                    tried.append(f"{name} removed and the bus rescanned")
+                    back = _back(iface, wait, sleep)
+                except OSError as exc:
+                    tried.append(f"{name}: remove and rescan failed ({exc})")
+        if not back and onbus and onbus["bus"] == "platform":
+            name = f"{onbus['name']} ({onbus['driver']})"
+            try:
+                _rebind("platform", onbus["driver"], onbus["name"], sleep)
+                tried.append(f"{name} unbound and bound again")
+                back = _back(iface, wait, sleep)
+            except OSError as exc:
+                tried.append(f"{name}: unbind/bind failed ({exc})")
         if not back and driver and MOD_RE.fullmatch(driver):
             loaded = (SYS / "module" / driver.replace("-", "_")).exists()
             holders = [h for h in _holders(driver) if MOD_RE.fullmatch(h)] if loaded else []

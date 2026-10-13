@@ -9,7 +9,8 @@ irate-box-led.service runs this as root (`led.py run`), always: one small proces
   What it shows   the owner's choice (SHOW), from the least to the most:
                     leave    the LED is left as the image set it
                     alive    the hub runs
-                    network  the hub runs and the uplink watchdog says the link is up
+                    network  the hub runs and the uplink watchdog says the link is up (another
+                           link it watches being down shows as something to read)
                     all      that, and the box doctor's last look found no problem
   How             one pattern per state (PATTERNS), the same on every board: 1 s on, 1 s off while
                   well; off when not; quick flashes while the watchdog repairs the link; two short
@@ -308,6 +309,10 @@ def box_state(show, now=None, active=_active):
         return "repairing"
     if st not in ("up", "checking"):     # one missed check is not down yet
         return "starting" if uptime() < STARTING else "down"
+    # The box is on its network; another link it watches being down is something to read, not the box down.
+    if any(lk.get("watched") and lk.get("state") in ("down", "stalled") for i, lk in (rep.get("links") or {}).items()
+           if i != rep.get("iface")):
+        return "problem"
     if show == "all":
         try:
             doc = json.loads((CONTROL / "health.json").read_text())

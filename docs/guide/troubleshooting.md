@@ -41,7 +41,7 @@ Its crash watch keeps notes on the card, and the Box doctor says after a restart
 
 The box can blink one of the board's LEDs so you can tell from across the room how it is: **1 s on, 1 s off** while all
 it reports is well; **off** when not (the network is down, or the hub isn't running); **quick flashes** while the network
-is being repaired; **two short flashes** when the Box doctor has a problem to read; **steady on** while the box starts or
+is being repaired; **two short flashes** when the Box doctor has a problem to read, or another link the watchdog watches is down; **steady on** while the box starts or
 updates. A light stuck on or off, not changing, is a box that has frozen.
 
 **Recovery and monitoring → The status light** chooses what it reports: **Leave it** (the light stays as the image set

@@ -565,9 +565,59 @@ def check_uplink():
                        "or choose a level that goes that far." if stall.get("needs")
                        else "Look at the box by its console or a cable: nothing it can do by itself would help."),
                       go=_go("net-watchdog-card", "Network → Staying on the network", "up-stall" if stall.get("needs") else "up-reach")))
+    out += link_findings(st)
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
     out += metered_findings()
     out += step_findings(jsonlog.read(CONTROL / "uplink-ladder.json"), st.get("chosen") or {})
+    return out
+
+
+LINK_KIND = {"wifi": "WiFi", "ethernet": "cable", "other": "a link of another kind"}
+
+
+def link_findings(st):
+    """The links nobody watches: none at all; one that carries the box, or would (a connection set to start by itself on
+    it), and isn't watched, louder when it is down too, with a reconnect; one the owner set not to be watched is theirs.
+    And each watched link but the first that has stalled, and one of a kind the box knows no repair for."""
+    inv = st.get("inventory")
+    if not isinstance(inv, dict):
+        return []   # a report from before the watchdog watched links one by one
+    links, chosen = st.get("links") or {}, st.get("chosen") or {}
+    off = {i for i, v in (chosen.get("watch") or {}).items() if v is False}
+    watched = sorted(i for i, lk in links.items() if lk.get("watched"))
+    go = lambda mark: _go("net-watchdog-card", "Network → Staying on the network", mark)  # noqa: E731
+    out = []
+    if not watched and inv:
+        out.append(_f("uplink-none-watched", "No link is watched", "problem",
+                      f"The watchdog is watching {st.get('watching') or 'nothing'}. If the box's network fails, nothing will notice or "
+                      "try again.", "Network → Staying on the network: choose which links it watches.", go=go("up-watch")))
+    for i, lk in sorted(inv.items()):
+        if lk.get("watched") or i in off or not lk.get("autoconnect"):
+            continue
+        what = f"{i} ({LINK_KIND.get(lk.get('kind'), lk.get('kind'))}, {', '.join(lk['autoconnect'])})"
+        if lk.get("up"):
+            out.append(_f(f"uplink-uncovered-{i}", f"{i} is not watched", "warn",
+                          f"{what} is up, but nothing watches it: if it fails, nothing will notice or try again.",
+                          f"Network → Staying on the network: watch {i}, or set it not to be watched to say that is meant.",
+                          go=go(f"up-watch-{i}")))
+        else:
+            out.append(_f(f"uplink-uncovered-{i}", f"{i} is down, and not watched", "problem",
+                          f"{what} is down. NetworkManager has a connection for it set to start by itself, but nothing watches "
+                          f"{i}, so nothing tries again. After a password check fails, NetworkManager stops and waits for someone.",
+                          f"Reconnect it now; and on Network → Staying on the network, watch {i}.",
+                          [_act(f"uplink-reconnect:{i}", "Reconnect it")], go=go(f"up-watch-{i}")))
+    for i in watched:
+        lk = links[i]
+        if lk.get("kind") == "other":
+            out.append(_f(f"uplink-kind-{i}", f"{i}: watched, no repair known", "ok",
+                          f"{i} is a link of a kind the watchdog knows no repair for (not WiFi, not a cable): its failures are logged, "
+                          "and nothing more is done."))
+        stall = lk.get("stall") if lk.get("state") == "stalled" and i != st.get("iface") else None
+        if stall:
+            out.append(_f(f"uplink-stalled-{i}", f"{i} is down and its watchdog has stalled", "problem" if stall.get("needs") else "warn",
+                          f"{i}: {stall.get('text', '')}",
+                          (f"Network → Staying on the network: choose a reach that goes as far as to {stall['label']}."
+                           if stall.get("needs") else "Nothing the box can do by itself would help."), go=go("up-reach")))
     return out
 
 
@@ -1346,7 +1396,8 @@ CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
                        r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
                        r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
-                       r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$")
+                       r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
+                       r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")
 
 
 def fix(choice):
@@ -1417,6 +1468,16 @@ def fix(choice):
         return set_clock(int(arg))
     if kind in ("idle-off", "idle-on"):
         return idle_switch(arg, kind == "idle-on")
+    if kind == "uplink-reconnect":
+        # A link nobody watches, parked by NetworkManager (a password check failed and nobody answered): connected
+        # by hand, which also lifts NetworkManager's stop on it.
+        if not (Path("/sys/class/net") / arg).exists():
+            raise ValueError(f"{arg} is not a link on this box")
+        r = run("nmcli", "-w", "45", "dev", "connect", arg, timeout=60)
+        out = (r.stdout + r.stderr).strip()
+        if r.returncode:
+            raise ValueError(f"{arg} did not connect: {out[-200:] or 'nmcli failed'}")
+        return f"{arg}: {out[-160:] or 'connected'}"
     if kind == "uplink-skip":
         from irate_box.hub import uplink
         iface, _, step = arg.partition(":")

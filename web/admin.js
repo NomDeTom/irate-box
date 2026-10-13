@@ -2655,7 +2655,10 @@ const net = {
   ignoreRoams: document.getElementById('up-ignore-roams'),
   sensSays: document.getElementById('up-sens-says'),
   will: document.getElementById('up-will'),
-  iface: document.getElementById('up-iface'),
+  watchRows: document.getElementById('up-watch-rows'),
+  watchNew: document.getElementById('up-watchnew'),
+  boxSteps: document.getElementById('up-boxsteps'),
+  cable: document.getElementById('up-cable'),
   custom: document.getElementById('up-custom'),
   fields: document.getElementById('up-fields'),
   save: document.getElementById('up-save'),
@@ -2688,8 +2691,20 @@ let netPoll = null;
 let upDirty = false;
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach, guests,
 // a wedged driver, and the sensitivity, a number of missed checks within the pace's window.
-const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', retry: 'steady', give_up: 'never', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false };
-const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['retry', 'retry'], ['giveUp', 'give_up'], ['roaming', 'roaming']];
+const upPick = { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', retry: 'steady', give_up: 'never', sensitivity: 3, roaming: 'roam', lock_bssid: null, ignore_roams: false,
+  watch_new: 'uplink', box_steps: 'nothing-works', cable_out: 'wait' };
+const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], ['wedge', 'on_wedge'], ['retry', 'retry'], ['giveUp', 'give_up'], ['roaming', 'roaming'],
+  ['watchNew', 'watch_new'], ['boxSteps', 'box_steps'], ['cable', 'cable_out']];
+// Each link the owner set: watched (true) or not (false); one not set follows watch_new (uplink.py watch).
+let upWatch = {};
+const WATCHNEW_WORDS = { uplink: ['While it holds the route', 'Watched while it is the box\'s way to its network (and while it is in trouble).'],
+  all: ['Watched', 'Every link the box has, each with a watchdog of its own.'], none: ['Not watched', 'Only the links set above are watched.'] };
+const BOXSTEPS_WORDS = { 'nothing-works': ['Only when nothing works', 'Never while another link is up: a dead WiFi on a box whose cable works is reconnected and reset, not rebooted for.'],
+  uplink: ['For the route\'s link', 'For the link that holds the box\'s route, even with another up.'],
+  any: ['For any link', 'For any watched link, as the reach allows, whatever else works.'] };
+const CABLE_WORDS = { wait: ['Wait, and say so', 'Nothing the box does mends a missing cable: it waits for it.'],
+  reconnect: ['Reconnect now and then', 'Reconnects as the pace says, in case the port is stuck.'],
+  ladder: ['The whole ladder', 'Every step the reach allows, as for any other failure.'] };
 let netAsked = false;
 // Which connection the card shows: '' every connection, else one with its own pace, reach,
 // sensitivity, guests and wedge choice (uplink.py per_iface); the rest is the same for all.
@@ -2866,6 +2881,9 @@ function buildUpChoices(levels) {
   rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
   rungs(net.retry, 'retry', Object.keys(levels.retry || RETRY_WORDS).map((n) => ({ value: n, title: RETRY_WORDS[n][0], desc: RETRY_WORDS[n][1] })));
   rungs(net.giveUp, 'give_up', Object.keys(levels.give_up || GIVEUP_WORDS).map((n) => ({ value: n, title: GIVEUP_WORDS[n][0], desc: GIVEUP_WORDS[n][1] })));
+  rungs(net.watchNew, 'watch_new', (levels.watch_new || Object.keys(WATCHNEW_WORDS)).map((n) => ({ value: n, title: WATCHNEW_WORDS[n][0], desc: WATCHNEW_WORDS[n][1] })));
+  rungs(net.boxSteps, 'box_steps', (levels.box_steps || Object.keys(BOXSTEPS_WORDS)).map((n) => ({ value: n, title: BOXSTEPS_WORDS[n][0], desc: BOXSTEPS_WORDS[n][1] })));
+  rungs(net.cable, 'cable_out', (levels.cable_out || Object.keys(CABLE_WORDS)).map((n) => ({ value: n, title: CABLE_WORDS[n][0], desc: CABLE_WORDS[n][1] })));
   drawRoamTiles(levels);
   net.ignoreRoams.addEventListener('change', () => upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels));
   net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
@@ -2907,7 +2925,8 @@ function fillUpForm(chosen, levels) {
   upPick.roaming = chosen.roaming || 'roam';
   upPick.ignore_roams = !!chosen.ignore_roams;
   net.ignoreRoams.checked = upPick.ignore_roams;
-  net.iface.value = [...net.iface.options].some((o) => o.value === chosen.iface) ? chosen.iface : 'auto';
+  for (const k of ['watch_new', 'box_steps', 'cable_out']) upPick[k] = chosen[k] || levels.default[k];
+  upWatch = { ...(chosen.watch || {}) };
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll('[data-key]')) {
     const v = upGet(over, input.dataset.key);
@@ -2962,7 +2981,7 @@ function readUpForm() {
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  const all = { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: net.iface.value, overrides, steps_off: readUpSteps() };
+  const all = { ...upPick, lock_bssid: upPick.roaming === 'lock' ? upPick.lock_bssid : null, iface: 'auto', watch: { ...upWatch }, overrides, steps_off: readUpSteps() };
   const base = upSaved || {};
   if (!upScope) return { ...all, per_iface: base.per_iface || {} };
   // One connection's own: those five, over what is saved for every connection.
@@ -2991,6 +3010,32 @@ function renderUpSteps(inv, chosen) {
     return row;
   }));
 }
+// The links, a row each: watched, not watched, or as any other link (watch_new); and what it is doing now.
+const WATCH_SAY = { '': 'As any other link', on: 'Watched', off: 'Not watched' };
+function renderUpWatch(inv, u) {
+  const box = net.watchRows;
+  const known = (u && u.inventory) || {};
+  const links = inv ? [...inv.radios.filter((r) => r.type === 'managed').map((r) => [r.iface, 'WiFi']), ...inv.wired.map((w) => [w.iface, 'wired'])] : [];
+  for (const [name, l] of Object.entries(known)) if (!links.some(([i]) => i === name)) links.push([name, { wifi: 'WiFi', ethernet: 'wired' }[l.kind] || 'other']);
+  for (const name of Object.keys(upWatch)) if (!links.some(([i]) => i === name)) links.push([name, 'not here now']);
+  if (!links.length) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No links found yet.' })); return; }
+  const watching = (u && u.links) || {};
+  box.replaceChildren(...links.map(([iface, kind]) => {
+    const sel = el('select', { id: `up-watch-${iface}` }, ...Object.entries(WATCH_SAY).map(([v, t]) => el('option', { value: v, textContent: t })));
+    sel.value = upWatch[iface] === true ? 'on' : upWatch[iface] === false ? 'off' : '';
+    sel.setAttribute('aria-label', `${iface}: watched or not`);
+    sel.addEventListener('change', () => {
+      if (sel.value === '') delete upWatch[iface]; else upWatch[iface] = sel.value === 'on';
+      upDirty = true;
+      showUpSave();
+    });
+    const now = watching[iface];
+    const l = known[iface] || {};
+    const said = now && now.watched ? `watched now: ${now.state}` : 'not watched now' + (l.up === false ? ', and down' : l.up ? ', up' : '');
+    return el('div', { className: 'up-watch-row' }, el('label', { className: 'setting-name', htmlFor: `up-watch-${iface}`, textContent: `${iface} (${kind})` }), sel,
+      el('span', { className: 'setting-desc', textContent: said + ((l.autoconnect || []).length ? `; starts ${l.autoconnect.join(', ')} by itself` : '') }));
+  }));
+}
 function readUpSteps() {
   const out = {};
   for (const row of document.querySelectorAll('#up-steps .up-steps-row')) {
@@ -3005,7 +3050,12 @@ const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit',
 function upStatusText(u) {
   if (!u) return 'The watchdog has not reported yet (irate-box-uplink starts with the box, or when you save here).';
   if (u.stale) return `The watchdog has not reported since ${new Date(u.at * 1000).toLocaleString()}: is irate-box-uplink running?`;
-  if (u.state === 'no-link') return 'No link to watch: the box has no route to a network and no WiFi client interface.';
+  if (u.state === 'no-link') return u.watching ? `Watching ${u.watching}.` : 'No link to watch: the box has no route to a network and no WiFi client interface.';
+  const others = Object.entries(u.links || {}).filter(([i, l]) => i !== u.iface && l.watched);
+  const one = upLinkText(u);
+  return others.length ? `${one} Also watching: ${others.map(([i, l]) => `${i}, ${l.state}${l.state === 'stalled' && l.stall ? ` (${l.stall.text})` : ''}`).join('; ')}.` : one;
+}
+function upLinkText(u) {
   if (u.state === 'off') return `${u.iface} was disconnected by hand (nmcli device disconnect), so the watchdog leaves it alone until it is connected again.`;
   const l = u.link || {};
   const on = l.ssid ? `${u.iface}: ${l.ssid} via ${l.bssid}, channel ${l.channel}, ${l.signal} dBm` : u.iface;
@@ -3295,13 +3345,6 @@ function renderNetwork(data) {
   net.when.textContent = inv ? `Looked ${new Date(inv.at * 1000).toLocaleString()}${agoText(inv.at)}${inv.focus ? ` at ${inv.focus} only` : ''}.`
     + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not looked yet.';
   net.scan.disabled = busy;
-  const devices = inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : [];
-  for (const box of [net.iface]) {
-    const keep = box.value;
-    const first = box.options[0];
-    box.replaceChildren(first, ...devices.map((d) => el('option', { value: d, textContent: d })));
-    box.value = [...box.options].some((o) => o.value === keep) ? keep : first.value;
-  }
   // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
   // can run the hotspot and on what conditions, and the warnings that are about it.
   const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
@@ -3324,6 +3367,7 @@ function renderNetwork(data) {
     drawUpScope(inv);
     renderUpSteps(data.inventory, (u && u.chosen) || {});
   }
+  if (!upDirty || !net.watchRows.childElementCount) renderUpWatch(inv, u);
   net.status.textContent = upStatusText(u);
   // Stalled: the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
@@ -3385,7 +3429,7 @@ function renderNetwork(data) {
   net.events.replaceChildren(...evs.slice(-25).reverse().map((e) => el('li', {},
     el('time', { className: 'ev-time', dateTime: new Date(e.at * 1000).toISOString(),
       textContent: new Date(e.at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }),
-    el('span', { className: 'ev-text', textContent: e.text }))));
+    el('span', { className: 'ev-text', textContent: e.iface && Object.values((u && u.links) || {}).filter((l) => l.watched).length > 1 ? `${e.iface}: ${e.text}` : e.text }))));
   const down = u && !u.stale && u.state !== 'up';
   badge('network', down ? '!' : '');
 
@@ -3763,9 +3807,6 @@ function joinAsk(now) {
 }
 joinForm.addEventListener('submit', (e) => { e.preventDefault(); joinAsk(false); });
 document.getElementById('net-join-now').addEventListener('click', () => joinAsk(true));
-for (const box of [net.iface]) {
-  box.addEventListener('change', () => { upDirty = true; if (netData) showUpPreset(netData.levels); showUpSave(); });
-}
 net.save.addEventListener('click', () => {
   let settings;
   try { settings = readUpForm(); } catch (err) { netNotes.up = { text: err.message, ok: false }; renderNetwork(netData); return; }
