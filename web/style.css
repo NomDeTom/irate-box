@@ -1425,11 +1425,15 @@ html:has(> body.admin) { background: var(--bg); }
 .service-grid .service-card.large .icon { font-size: 3rem; }
 .service-grid .service-card.large .name { font-size: 1.15rem; }
 .service-grid .service-card.large .desc { font-size: 0.9rem; }
-.service-grid .qr-card.large .qr { width: 11rem; }  /* big enough to scan across a table */
+/* On a large tile the QR takes the height its name and address leave, square, never past the tile's width: as big as
+   the tile is, to scan across a table. */
+.service-grid .qr-card.large .qr { flex: 1 1 0; min-height: 0; width: 100%; display: flex; justify-content: center; }
+.service-grid .qr-card.large .qr svg { height: 100%; width: auto; max-width: 100%; aspect-ratio: 1; }
 .people-card .people-more { margin-top: 0.2rem; }
 .people-card .field-help { margin-top: 0.4rem; text-align: left; font-size: 0.75rem; }
 /* On a phone a large tile is one full-width row, so rows go back to their own height: alike, every row would be the QR's. */
-@media (max-width: 480px) { .service-grid { grid-auto-rows: minmax(var(--tile-row, 7.25rem), auto); } .service-grid .service-card.wide { grid-column: auto; } .service-grid .service-card.large { grid-column: 1 / -1; grid-row: auto; } }
+@media (max-width: 480px) { .service-grid { grid-auto-rows: minmax(var(--tile-row, 7.25rem), auto); }
+  .service-grid .qr-card.large .qr { flex: none; width: 11rem; } .service-grid .qr-card.large .qr svg { width: 100%; height: auto; } .service-grid .service-card.wide { grid-column: auto; } .service-grid .service-card.large { grid-column: 1 / -1; grid-row: auto; } }
 
 /* Reporting a message or post: a quiet ⚑, its reasons opening beside it. */
 .report { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-left: 0.4rem; }
