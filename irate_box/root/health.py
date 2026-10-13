@@ -115,11 +115,6 @@ def _act(choice, label, confirm=None):
     return {"choice": choice, "label": label, **({"confirm": confirm} if confirm else {})}
 
 
-def _chip(group, choice, label, on, confirm=None):
-    """One choice of a setting, drawn as a chip in its group's row; `on` marks the current one, which does nothing."""
-    return dict(_act(choice, label, None if on else confirm), group=group, on=bool(on))
-
-
 RERUN = _act("rerun-install", "Run the installer again",
              "Run install.sh again with this box's recorded options? Services restart once; nothing else changes.")
 

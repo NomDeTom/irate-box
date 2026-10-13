@@ -58,5 +58,15 @@ check("with_go: a target for what is not fine, none for what is fine or has no p
       out[0]["go"] == {"section": "network", "where": "Network"} and "go" not in out[1] and "go" not in out[2]
       and out[3]["go"].get("mark") == "library-token", out)
 
+# Who owns what: a doctor diagnoses and repairs; an ongoing choice is changed on its own page. The Box doctor builds no
+# setting chips, and the Security doctor's rows link a policy choice to Security or Updates rather than changing it.
+health = (Path(__file__).resolve().parents[1] / "irate_box" / "root" / "health.py").read_text()
+check("the Box doctor builds no setting chips (a choice is changed on its own page)",
+      "_chip(" not in health and "group=" not in health, re.findall(r".*(?:_chip\(|group=).*", health)[:3])
+adminjs = (Path(__file__).resolve().parents[1] / "web" / "admin.js").read_text()
+joint = adminjs[adminjs.index("function jointDo("):adminjs.index("function jointRow(")]
+check("the Security doctor: a policy choice is a link (Choose on …), only a cure is a button that acts",
+      "secKind(f) !== 'cure'" in joint and "Choose on ${where}" in joint and "secChoose(" not in joint)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
