@@ -158,6 +158,9 @@ h2 {
 .service-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  /* Every row at least a normal tile's height: a large tile's second row may hold nothing else, and
+     content-sized it would shrink, leaving the large tile well short of two rows and their gap. */
+  grid-auto-rows: minmax(var(--tile-row, 7.25rem), auto);
   gap: 1rem;
 }
 

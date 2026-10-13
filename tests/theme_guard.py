@@ -53,5 +53,14 @@ bare = [str(p.relative_to(REPO)) for p in sorted(WEB.glob("*.html")) + sorted(WE
         if re.search(r'>🏠</a>', p.read_text(encoding="utf-8"))]
 check("every 🏠 link says Hub", not bare, bare)
 
+# The tile grid: every row at least a normal tile's height, so a large tile is two rows and their gap even where its
+# second row holds nothing else (content-sized rows left it about 1.3 rows tall). Measured in a browser by
+# tests/browser/tile-rows.sh.
+css = (WEB / "style.css").read_text(encoding="utf-8")
+grid = re.search(r"\.service-grid \{[^}]*\}", css)
+check("the tile grid has a floor under every row (grid-auto-rows: minmax(..., auto))",
+      bool(grid) and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*auto\);", grid.group(0)) is not None, grid and grid.group(0))
+check("  and a large tile spans two rows", re.search(r"\.service-card\.large \{[^}]*grid-row: span 2", css) is not None)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
