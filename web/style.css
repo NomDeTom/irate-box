@@ -886,6 +886,8 @@ body.about h3 { margin: 1.25rem 0 0.4rem; font-size: 0.95rem; }
 .memory-grid { stroke: var(--border); stroke-width: 1; }
 .memory-used-line, .memory-swap-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .memory-swap-line { stroke: var(--warn); stroke-dasharray: 5 3; }
+.memory-disk-line { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasharray: 1.5 3; stroke-linecap: round; }
+.memory-disk-key { color: var(--ok); }
 .memory-cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .memory-readout { min-height: 2.5em; font-variant-numeric: tabular-nums; }
 .inv-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0.6rem 0; }

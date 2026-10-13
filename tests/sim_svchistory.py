@@ -99,6 +99,25 @@ with mock.patch.object(M, "memory", return_value=mem), mock.patch.object(M, "pro
     sampler.tick(D0 + M.EVERY)
 check("memory: the older single-object file turned into lines at the next sample", M.FILE.read_text().count("\n") == 2
       and [x["at"] for x in M.load()["samples"]] == [D0, D0 + M.EVERY])
+# The disk with each sample: the state folder's filesystem, as the disk meter reads it; an older sample without it, or
+# with unsound values, keeps its memory and says nothing of the disk (never a zero).
+M.FILE.unlink()
+disk = {"disk_total": 8000, "disk_free": 3000}
+with mock.patch.object(M, "memory", return_value=mem), mock.patch.object(M, "disk", return_value=disk), \
+        mock.patch.object(M, "processes", return_value=[]):
+    sampler.tick(D0 + 5 * M.EVERY)
+got = M.load()["samples"][-1]
+check("disk: kept with the memory in each sample", got["disk_total"] == 8000 and got["disk_free"] == 3000 and got["available"] == 512, got)
+M.FILE.write_text(json.dumps({"samples": [dict(mem, at=D0), dict(mem, at=D0 + M.EVERY, disk_total=8000, disk_free=9000),
+                                          dict(mem, at=D0 + 2 * M.EVERY, disk_total=8000, disk_free="x"), dict(mem, at=D0 + 3 * M.EVERY, **disk)]}))
+got = M.load()["samples"]
+check("disk: an older sample, or one with free over total or not a number: its memory kept, no disk said",
+      len(got) == 4 and all("disk_total" not in s and "disk_free" not in s for s in got[:3]) and got[3]["disk_free"] == 3000, got)
+with mock.patch.object(M, "STATE", T / "no-such-folder"):
+    check("disk: no filesystem to read: nothing said, the memory sample still taken", M.disk() == {})
+check("disk: read from a real folder: total over zero, free within it", 0 <= M.disk()["disk_free"] <= M.disk()["disk_total"])
+M.FILE.unlink()
+
 from irate_box.hub import jsonlog as J
 jl = T / "log.jsonl"
 check("jsonlog: nothing to append to: the caller writes it whole", not J.append(jl, [{"a": 1}]))

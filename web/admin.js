@@ -925,17 +925,22 @@ function renderMemoryHistory(history, system = {}) {
     && Number.isFinite(sample.total) && sample.total > 0 && Number.isFinite(sample.available));
   const used = (sample) => Math.max(0, Math.min(100, (sample.total - sample.available) / sample.total * 100));
   const swap = (sample) => sample.swap_total > 0 ? Math.max(0, Math.min(100, (sample.swap_total - sample.swap_free) / sample.swap_total * 100)) : 0;
+  // The disk, where a sample has it (older ones do not): its own size each time, so a card swapped or grown is not one line.
+  const hasDisk = (sample) => Number.isFinite(sample.disk_total) && sample.disk_total > 0 && Number.isFinite(sample.disk_free);
+  const disk = (sample) => Math.max(0, Math.min(100, (sample.disk_total - sample.disk_free) / sample.disk_total * 100));
   const latest = samples.at(-1);
   document.getElementById('memory-current').replaceChildren(
     el('span', { className: 'memory-used-key', textContent: system.mem_total ? `Memory used: ${Math.round((system.mem_total - system.mem_available) / system.mem_total * 100)}%` : 'Memory used' }),
-    el('span', { className: 'memory-swap-key', textContent: system.swap_total ? `Swap used: ${size(system.swap_total - system.swap_free)} of ${size(system.swap_total)}` : 'No swap configured' }));
+    el('span', { className: 'memory-swap-key', textContent: system.swap_total ? `Swap used: ${size(system.swap_total - system.swap_free)} of ${size(system.swap_total)}` : 'No swap configured' }),
+    el('span', { className: 'memory-disk-key', textContent: system.disk_total ? `Disk used: ${size(system.disk_total - system.disk_free)} of ${size(system.disk_total)}` : 'Disk: not known' }));
   document.querySelectorAll('[data-memory-hours]').forEach((button) => {
     const active = Number(button.dataset.memoryHours) === memoryHours;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
   const note = !latest ? 'No samples in this range. Recording starts when the box clock is trusted.'
-    : `${samples.length} samples; peak memory use ${Math.round(Math.max(...samples.map(used)))}%.`
+    : `${samples.length} samples; peak memory use ${Math.round(Math.max(...samples.map(used)))}%`
+      + (samples.some(hasDisk) ? `; disk ${Math.round(disk(samples.filter(hasDisk).at(-1)))}% used at the last sample.` : '; no disk samples yet.')
       + (now - latest.at > (memoryHistory.every || 300) * 2 ? ' No recent sample.' : '');
   document.getElementById('memory-history-note').textContent = note;
   const width = Math.max(280, box.clientWidth || 800), height = 240;
@@ -947,7 +952,7 @@ function renderMemoryHistory(history, system = {}) {
     return node;
   };
   const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, class: 'memory-plot', role: 'img', tabindex: '0',
-    'aria-label': `Memory and swap use, last ${memoryHours === 24 ? '24 hours' : '7 days'}. ${note}` });
+    'aria-label': `Memory, swap and disk use, last ${memoryHours === 24 ? '24 hours' : '7 days'}. ${note}` });
   const x = (at) => left + (at - start) / (now - start) * (right - left);
   const y = (value) => bottom - value / 100 * (bottom - top);
   for (const value of [0, 50, 100]) {
@@ -959,9 +964,12 @@ function renderMemoryHistory(history, system = {}) {
     svg.append(svgNode('text', { x: x(at), y: height - 8, 'text-anchor': anchor, class: 'memory-axis' }, label));
   }
   const gap = (memoryHistory.every || 300) * 2;
-  for (const [getValue, className] of [[used, 'memory-used-line'], [swap, 'memory-swap-line']]) {
-    const visible = className === 'memory-swap-line' ? samples.filter((sample) => sample.swap_total > 0) : samples;
-    const path = visible.map((sample, index) => `${index && sample.at - visible[index - 1].at <= gap ? 'L' : 'M'}${x(sample.at).toFixed(2)},${y(getValue(sample)).toFixed(2)}`).join(' ');
+  for (const [getValue, className] of [[used, 'memory-used-line'], [swap, 'memory-swap-line'], [disk, 'memory-disk-line']]) {
+    const visible = className === 'memory-swap-line' ? samples.filter((sample) => sample.swap_total > 0)
+      : className === 'memory-disk-line' ? samples.filter(hasDisk) : samples;
+    // A new stroke after a gap in the samples, and for the disk where its size changed.
+    const joins = (sample, prev) => sample.at - prev.at <= gap && (className !== 'memory-disk-line' || sample.disk_total === prev.disk_total);
+    const path = visible.map((sample, index) => `${index && joins(sample, visible[index - 1]) ? 'L' : 'M'}${x(sample.at).toFixed(2)},${y(getValue(sample)).toFixed(2)}`).join(' ');
     if (path) {
       svg.append(svgNode('path', { d: path, class: className }));
       const last = visible.at(-1);
@@ -978,7 +986,8 @@ function renderMemoryHistory(history, system = {}) {
     const sample = samples[selected];
     cursor.setAttribute('x1', x(sample.at)); cursor.setAttribute('x2', x(sample.at)); cursor.setAttribute('visibility', 'visible');
     readout.textContent = `${new Date(sample.at * 1000).toLocaleString()}: ${Math.round(used(sample))}% memory used, ${size(sample.available)} available`
-      + (sample.swap_total ? `; ${Math.round(swap(sample))}% swap used.` : '; no swap.');
+      + (sample.swap_total ? `; ${Math.round(swap(sample))}% swap used` : '; no swap')
+      + (hasDisk(sample) ? `; disk ${Math.round(disk(sample))}% used, ${size(sample.disk_free)} free.` : '; disk not recorded.');
   };
   svg.addEventListener('pointermove', (event) => {
     if (!samples.length) return;
