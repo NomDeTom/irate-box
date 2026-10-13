@@ -43,7 +43,7 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   // One list, every step in the same form: the setup's own steps, the decisions, a backup last.
   const rows = [...d.querySelectorAll('#setup-steps > li[data-step]')];
   check('one list: every step and decision, the backup last', rows.length === T.STEPS.length && T.STEPS.length === 17 && rows[rows.length - 1].dataset.step === 'backup', rows.length);
-  check('  each the same form: its name, its pill, a line, Go there', rows.every((r) => r.querySelector('strong') && r.querySelector('[class$="-pill"]') && r.querySelector('.step-text') && r.querySelector('a[data-tour]')));
+  check('  each the same form: its name, its pill, a line, Open settings', rows.every((r) => r.querySelector('strong') && r.querySelector('[class$="-pill"]') && r.querySelector('.step-text') && r.querySelector('a[data-tour]')));
   const py = fs.readFileSync(require('path').resolve(__dirname, '../../irate_box/hub/server.py'), 'utf8');
   const ids = (py.match(/SETUP_DECISIONS = \(([\s\S]*?)\)/) || [])[1] || '';
   check('the hub knows the same steps', T.STEPS.every((x) => ids.includes(`"${x.id}"`)) && (ids.match(/"/g) || []).length / 2 === T.STEPS.length, ids);
@@ -62,7 +62,7 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   await wait(400);
   p = shownPage();
   check('a decision\'s page opens (Security), its part highlighted', p && p.contains(d.getElementById('security')) && !!d.querySelector('.tour-target') && d.querySelector('.tour-target').contains(d.getElementById('visitor_counts')));
-  click([...d.querySelectorAll('.tour-bar button')].find((b) => /Keep this/.test(b.textContent)));
+  click([...d.querySelectorAll('.tour-bar button')].find((b) => /Keep and continue/.test(b.textContent)));
   await wait();
   check('Keep and next: decided on the hub', posted.some((b) => (b.setup_decided || []).includes('visitors')), JSON.stringify(posted));
   p = shownPage();
@@ -98,10 +98,10 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   [...row.querySelectorAll('button.mute-step')][0].click();
   await wait();
   check('mute: asked of the hub, still listed with a muted word, and no longer counted', posted.some((b) => (b.setup_muted || []).includes('cockpit'))
-    && /muted/.test(d.querySelector('#setup-steps [data-step="cockpit"]').textContent) && T.left() === before - 1, `${before} -> ${T.left()}`);
+    && /no reminders/.test(d.querySelector('#setup-steps [data-step="cockpit"]').textContent) && T.left() === before - 1, `${before} -> ${T.left()}`);
   [...d.querySelector('#setup-steps [data-step="cockpit"]').querySelectorAll('button.mute-step')][0].click();
   await wait();
-  check('  Unmute counts it again', T.left() === before);
+  check('  Resume reminders counts it again', T.left() === before);
   check('no page errors', !errors.length, errors.join('; '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

@@ -464,7 +464,7 @@
         <p class="setting-desc action-note" id="fw-note" role="status" hidden></p>
         <form id="fw-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="firmware_every_hours" data-act="firmware_auto" data-acts="0,1"
-            data-says-1="Also downloaded, for the web flasher."
+            data-says-1="The box downloads the release files for the web flasher."
             data-why="Fetching the release files is their update: nothing on the box itself is installed."></div>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
@@ -488,8 +488,8 @@
         </p>
         <form id="mirrors-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="mirrors_every_hours" data-act="mirrors_auto" data-acts="0,1"
-            data-says-0="Said on each mirror; press Fetch to bring it up to date."
-            data-says-1="Also fetched: the mirror brought up to date."
+            data-says-0="The box shows on each mirror that it is out of date. Select Fetch to update a mirror."
+            data-says-1="The box shows that a mirror is out of date. It also fetches the update."
             data-why="Fetching is a mirror's update: there is nothing to install."></div>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
@@ -527,7 +527,7 @@
         </p>
         <form id="kits-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="kits_every_hours" data-act="kits_act" data-acts="1"
-            data-says-1="The kits kept current are fetched again; nothing is installed until you ask."
+            data-says-1="The box downloads the kits that it keeps current again. It installs nothing until you ask."
             data-why="A cache is looked at by fetching it, so Fetch is its only answer."></div>
           <button class="action-btn primary" type="submit">Save</button>
         </form>
@@ -586,8 +586,8 @@
         <form id="library-policy" class="library-form">
           <h3>Apps and books</h3>
           <div data-update-pattern data-often="check_every_hours" data-act="auto_install"
-            data-says-0="Said on Apps and Books, and on the badge; update from there."
-            data-says-2="Fetched and put in use."></div>
+            data-says-0="The box shows newer versions on Apps and Books, and on the badge. Update from there."
+            data-says-2="The box downloads each newer version and puts it in use."></div>
           <h3>Storage and kept versions</h3>
           <label>Keep old versions of each book
             <select name="keep_old"><option>0</option><option>1</option><option>2</option><option>3</option></select>
@@ -668,10 +668,9 @@
       </section>
 
       <section class="admin-pane" id="made" aria-labelledby="made-title">
-        <h2 id="made-title">Everything people made</h2>
+        <h2 id="made-title">User data</h2>
         <p class="setting-desc">
-          What people leave on the box, by app: each is looked after on its app's own page, with what
-          was reported there.
+          Manage shared user data on each app's page. Review reports on the same page.
         </p>
         <ul class="admin-list made-list" id="made-list">
           <li><a href="#saved">Saved work</a> <span class="setting-desc" id="made-saved">— the gallery and shared drawings, on Excalidraw's page</span></li>
@@ -1438,8 +1437,8 @@
               <summary>Automatic updates: <span id="update-auto-says">…</span></summary>
               <form id="auto-form" class="library-form">
                 <div data-update-pattern data-often="hub_check_every_hours" data-act="hub_auto"
-                  data-says-0="Said here and on the badge; only the new version's source is fetched, to read what changed."
-                  data-says-2="Also installed, inside the hours below, with nobody on the hub (it restarts)."></div>
+                  data-says-0="The box shows the newer version here and on the badge. It downloads only the new source, to show what changed."
+                  data-says-2="The box downloads the newer version and installs it inside the hours below, when nobody uses the hub. The hub server restarts."></div>
                 <label class="inline" id="auto-window">Install between
                   <select name="hub_window_start"></select> and <select name="hub_window_end"></select>
                   <span class="setting-desc">(the box's own clock)</span>
@@ -1497,10 +1496,10 @@
               <summary>Automatic updates: <span id="debian-auto-says">…</span></summary>
               <form id="debian-pattern" class="library-form">
                 <div data-update-pattern data-often="often" data-act="act"
-                  data-says-0="Said here and on the badge; only apt's lists of what is new are downloaded. You fetch or install them."
-                  data-says-1="Also downloaded (apt's cache), ready for you to install."
-                  data-says-2="Also installed (unattended-upgrades, from Debian's security archive)."
-                  data-often-says-0="Only when you press Check now; what it finds is taken as far as chosen below."></div>
+                  data-says-0="The box shows what is new here and on the badge. It downloads only apt's lists of new packages. You fetch and install the updates."
+                  data-says-1="The box shows what is new. It downloads the updates into the apt cache. You install them."
+                  data-says-2="The box shows what is new. It downloads the updates and installs them with unattended-upgrades, from the Debian security archive only."
+                  data-often-says-0="The box looks only when you select Check now. It then does what the setting below says."></div>
                 <button class="action-btn primary" type="submit">Save</button>
               </form>
               <p class="setting-desc action-note" id="debian-pattern-note" role="status" hidden></p>

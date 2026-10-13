@@ -59,17 +59,18 @@ const AW = (() => {
   // hub's own, apps and books, packages, the toolkits' cache, the mirrors. Values are the librarian's:
   // hours (0 Manual) and 0 Flag / 1 Fetch / 2 Install. Selects underneath, so forms read them and
   // chipSelect draws them as chips.
-  const OFTEN = [['0', 'Manual', 'Only when you press Check now; what it finds is taken as far as chosen below.'],
-    ['6', '6 hours', 'Looks every 6 hours.'], ['24', '24 hours', 'Looks once a day.'], ['168', 'Weekly', 'Looks once a week.']];
-  const ACT = [['0', 'Flag', 'Said here and on the badge; nothing else done.'], ['1', 'Fetch', 'Also downloaded and checked, ready for you to install.'],
-    ['2', 'Install', 'Also installed.']];
+  const OFTEN = [['0', 'Manual', 'The box looks only when you select Check now. It then does what the setting below says.'],
+    ['6', '6 hours', 'The box looks every 6 hours.'], ['24', '24 hours', 'The box looks once a day.'], ['168', 'Weekly', 'The box looks once a week.']];
+  const ACT = [['0', 'Flag', 'The box shows that a newer version exists, here and on the badge. It downloads nothing.'],
+    ['1', 'Fetch', 'The box shows that a newer version exists. It downloads and checks the version. You install it.'],
+    ['2', 'Install', 'The box shows that a newer version exists. It downloads, checks and installs the version.']];
   const PATTERN_LABELS = { often: 'How often to look', act: 'When something newer is found' };
   // The saved pattern in one sentence, for a folded policy's title: what the box will actually do.
-  const OFTEN_SAYS = { 0: 'Only when you press Check now', 6: 'Looks every 6 hours', 24: 'Looks once a day', 168: 'Looks once a week' };
-  const ACT_SAYS = { 0: 'flags what is newer', 1: 'downloads it, ready for you to install', 2: 'installs it' };
+  const OFTEN_SAYS = { 0: 'Only when you select Check now', 6: 'Looks every 6 hours', 24: 'Looks once a day', 168: 'Looks once a week' };
+  const ACT_SAYS = { 0: 'Flags what is newer', 1: 'Downloads it. You install it', 2: 'Installs it' };
   function patternSays(often, act) {
     const o = Number(often), a = Number(act);
-    return o ? `${OFTEN_SAYS[o] || `Looks every ${o} hours`}; ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
+    return o ? `${OFTEN_SAYS[o] || `Looks every ${o} hours`}. ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
   }
   //   opts: {often: name, act: name, acts: ['0','1'] (a subset where fetching is the update), says: {'2': …},
   //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}

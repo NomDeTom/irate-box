@@ -352,7 +352,7 @@ function drawLibraryOthers(pol) {
   const box = document.getElementById('library-others');
   if (!box) return;
   const hh = (h) => `${String(h).padStart(2, '0')}:00`;
-  const fetchOnly = (often, act, what) => (Number(often) ? `${AW.patternSays(often, 0).replace(/; .*$/, '')}; ${Number(act) ? `fetches ${what}` : 'flags what is newer'}.` : AW.patternSays(0));
+  const fetchOnly = (often, act, what) => (Number(often) ? `${AW.patternSays(often, 0).replace(/\. .*$/, '')}. ${Number(act) ? `Fetches ${what}` : 'Flags what is newer'}.` : AW.patternSays(0));
   const rows = [
     ['This hub', AW.patternSays(pol.hub_check_every_hours, pol.hub_auto).replace(/\.$/, '')
       + (Number(pol.hub_check_every_hours) && Number(pol.hub_auto) === 2 ? `, between ${hh(pol.hub_window_start)} and ${hh(pol.hub_window_end)}.` : '.'), 'update-hub-card', 'Updates'],
@@ -786,7 +786,7 @@ function pkgCard(id, p) {
     { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
     { key: 'every', label: 'How often to look', kind: 'choice', value: s.every ?? 24, options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]) },
     { key: 'act', label: 'When something newer is found', kind: 'choice', value: act, options: pat(AW.UPDATE_ACT),
-      note: 'Flag says so and downloads nothing; Fetch also downloads and keeps each new build, so Roll back works offline; Install also installs it' },
+      note: 'Flag shows the new version and downloads nothing. Fetch downloads and keeps each new build, so Roll back works offline. Install also installs the build.' },
     { key: 'wait', label: 'Install', kind: 'choice', value: wait, options: [[0, 'at once']].concat((p.days || [1, 3, 7, 14, 30]).map((n) => [n, `after ${n} day${n === 1 ? '' : 's'}`])),
       note: 'With Install: a build waits until it has been out this long (alpha and nightly builds are untested)' },
   ], { save: (v) => {
@@ -4329,10 +4329,10 @@ function visibilitySet(a, v) {
 }
 
 function accessDesc(a) {
-  if (a.mode === 'public') return a.login ? 'Public: on the home page; it still asks for the admin login.' : 'Public: on the home page, open to everyone on the network.';
-  if (a.mode === 'users') return 'Users: on the home page for anyone logged in to an account (Accounts); anyone else is asked to log in.';
-  if (a.mode === 'private') return 'Private: not on the home page; its address asks for the admin login.';
-  return `Off: not on the home page; its address answers "not found"${a.unit ? ', and its service is stopped' : ''}.`;
+  if (a.mode === 'public') return a.login ? 'Guests: the hub shows the tile. The app still asks for the administrator sign-in.' : 'Guests: the hub shows the tile. Every device on the box\'s network can open the app.';
+  if (a.mode === 'users') return 'Users: the hub shows the tile to signed-in users. A guest must sign in to an account first (Accounts).';
+  if (a.mode === 'private') return 'Administrators: the hub does not show the tile. The app address asks for the administrator sign-in.';
+  return `Disabled: the hub does not show the tile. The app address answers "Not found"${a.unit ? '. The service is stopped' : ''}.`;
 }
 
 // A list may render before the choices arrive: its slot is made empty and filled in later.
@@ -4555,7 +4555,7 @@ function drawTileOrder(openId) {
           AW.btn('↑ Earlier', { onclick: () => move(id, -1) }), AW.btn('↓ Later', { onclick: () => move(id, 1) })),
         AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
           sizeChips((tilesDraft.size || {})[id] || 'single', (v) => { setSize(tilesDraft, id, v); redraw(id); })),
-        chipRow('Who sees the tile', SEEN_CHIPS, seen, setSeen, () => !!(a && a.mode === 'off')),
+        chipRow('Visibility', SEEN_CHIPS, seen, setSeen, () => !!(a && a.mode === 'off')),
         el('p', { className: 'setting-desc', textContent: seenWords(seen, a ? a.mode : 'public') + ' Hidden, its address still works for whoever may open it.' }),
         a && a.mode !== 'public' ? chipRow('When seen but not opened', LOCK_CHIPS, lock, setLock, (v) => !!lockAll || (v === 'signup' && a.mode !== 'users')) : null,
         a && a.mode !== 'public' ? el('p', { className: 'setting-desc', textContent: lockAll
@@ -4591,8 +4591,8 @@ loadTileOrder();
 // Who opens it, who sees it, and its place on the hub: a set of four chips each, and two buttons
 // for moving it: guests, users, admin, off; guests, users, admin, hidden; ↑ Earlier, ↓ Later. Held until Save, as every
 // setting is; drafts kept per app, so a poll redrawing the page doesn't lose one.
-const OPEN_CHIPS = [['public', 'guests'], ['users', 'users'], ['private', 'admin'], ['off', 'off']];
-const SEEN_CHIPS = [['guests', 'guests'], ['users', 'users'], ['admin', 'admin'], ['hidden', 'hidden']];
+const OPEN_CHIPS = [['public', 'Guests'], ['users', 'Users'], ['private', 'Administrators'], ['off', 'Disabled']];
+const SEEN_CHIPS = [['guests', 'Guests'], ['users', 'Users'], ['admin', 'Administrators'], ['hidden', 'Hidden']];
 // What the tile does for one who sees it but may not open it.
 const LOCK_CHIPS = [['signin', 'sign in'], ['signup', 'sign up'], ['padlock', 'padlock'], ['grey', 'greyed']];
 const LOCK_WORDS = { signin: 'it leads to the sign-in page', signup: 'it leads to sign-up, while accounts are open or by application (otherwise to sign-in)',
@@ -4623,19 +4623,19 @@ function accessBlock(id, a) {
   const note = accessNote && accessNote.app === id
     ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
   const save = () => { accessDrafts.delete(id); accessSet(a, d.mode); };  // root's, answered by poll
-  const seen = d.mode === 'off' ? 'Off: no tile while it is off.' : `Its tile: ${seenWords(seenOf(d.mode, a.visible), d.mode)}`;
+  const seen = d.mode === 'off' ? 'Disabled: no tile.' : `Tile visibility: ${seenWords(seenOf(d.mode, a.visible), d.mode)}`;
   return el('div', { className: 'access-set' },
-    chipRow('Who can open it', OPEN_CHIPS, d.mode, (v) => { d.mode = v; redraw(); }, (v) => waiting || (v === 'users' && !a.users)),
+    chipRow('Access', OPEN_CHIPS, d.mode, (v) => { d.mode = v; redraw(); }, (v) => waiting || (v === 'users' && !a.users)),
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : `${accessDesc({ ...a, mode: d.mode })} ${seen}` }),
     el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting, onclick: save })),
     note);
 }
-const SEEN_WORDS = { guests: 'Its tile shows to everyone', users: 'Its tile shows to those signed in', admin: 'Its tile shows only to an admin account signed in', hidden: 'No tile' };
+const SEEN_WORDS = { guests: 'Every visitor sees the tile', users: 'Signed-in users see the tile', admin: 'Only a signed-in administrator sees the tile', hidden: 'No tile' };
 function seenWords(seen, mode) {
-  if (mode === 'off') return 'No tile while it is off.';
-  return `${SEEN_WORDS[seen]}${seen !== 'hidden' && (mode === 'users' && seen === 'guests' || mode === 'private' && seen !== 'admin') ? ', with a lock for those who can\'t open it' : ''}.`;
+  if (mode === 'off') return 'Disabled: no tile.';
+  return `${SEEN_WORDS[seen]}${seen !== 'hidden' && (mode === 'users' && seen === 'guests' || mode === 'private' && seen !== 'admin') ? '. A lock shows for visitors who cannot open the app' : ''}.`;
 }
 function accessControls(a) { return [accessBlock(a.id, a)]; }
 // The tile's own icon: emoji, or up to four letters and digits drawn as text;

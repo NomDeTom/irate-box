@@ -142,9 +142,9 @@ setTimeout(() => {
   check('  access, tile and maintenance fold, closed to start', kiwix.querySelectorAll(':scope > .admin-pane > details.app-fold:not([open])').length === 3);
   check('  its header: what it is, who opens it, and Open', /Built in/.test(t('#app-head-wiki')[0]) && /Opens: the admin/.test(t('#app-head-wiki')[0])
     && (d.querySelector('#app-head-wiki a.action-btn') || {}).textContent === 'Open', t('#app-head-wiki')[0]);
-  check('  who can open it: four chips, Kiwix (private) at admin; its tile is not edited here', chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
-    && picked(kiwix, 'Who can open it') === 'admin' && !rowOf(kiwix, 'Who sees the tile') && !rowOf(kiwix, 'Tile icon'), t('#app-access-wiki')[0]);
-  check('  its tile: a summary, and the way to Home tiles', /shows only to an admin account/.test(t('#app-tile-wiki')[0]) && /Place 3 of 3/.test(t('#app-tile-wiki')[0])
+  check('  who can open it: four chips, Kiwix (private) at admin; its tile is not edited here', chipsOf(kiwix, 'Access').map((c) => c.textContent).join('|') === 'Guests|Users|Administrators|Disabled'
+    && picked(kiwix, 'Access') === 'Administrators' && !rowOf(kiwix, 'Visibility') && !rowOf(kiwix, 'Tile icon'), t('#app-access-wiki')[0]);
+  check('  its tile: a summary, and the way to Home tiles', /Only a signed-in administrator sees the tile/.test(t('#app-tile-wiki')[0]) && /Place 3 of 3/.test(t('#app-tile-wiki')[0])
     && !!d.querySelector('#app-tile-wiki a[href="#tile-order"]'), t('#app-tile-wiki')[0]);
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
   check('About\'s page: its state and its tile, nothing of access', panes('page-app-about') === 'app-head-about app-tile-about' && !d.getElementById('app-access-about'), panes('page-app-about'));
@@ -168,12 +168,12 @@ setTimeout(() => {
     check('Kiwix\'s row: when seen but not opened: sign in, sign up, padlock, greyed; sign in by default; no sign-up for an app for the admin',
       lockChips.map((c) => c.textContent).join('|') === 'sign in|sign up|padlock|greyed' && picked(wiki, 'When seen but not opened') === 'sign in' && lockChips[1].disabled,
       lockChips.map((c) => `${c.textContent}${c.disabled ? '(off)' : ''}`).join('|'));
-    check('  who sees it: admin, as its access', picked(wiki, 'Who sees the tile') === 'admin');
+    check('  who sees it: admin, as its access', picked(wiki, 'Visibility') === 'Administrators');
     lockChips[2].click();
     const about = open('about');
-    check('About, open to all, has no locked-tile row; who sees it: guests', !rowOf(about, 'When seen but not opened') && picked(about, 'Who sees the tile') === 'guests');
-    chipsOf(about, 'Who sees the tile')[3].click();
-    check('  hidden waits for Save', picked(rowEl('about'), 'Who sees the tile') === 'hidden' && !posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about'));
+    check('About, open to all, has no locked-tile row; who sees it: guests', !rowOf(about, 'When seen but not opened') && picked(about, 'Visibility') === 'Guests');
+    chipsOf(about, 'Visibility')[3].click();
+    check('  hidden waits for Save', picked(rowEl('about'), 'Visibility') === 'Hidden' && !posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about'));
     const save = () => [...d.querySelectorAll('#tile-order-box button')].find((b) => b.textContent === 'Save');
     const icon = () => rowOf(rowEl('about'), 'Tile icon').querySelector('input');
     check('a tile icon field, the app\'s own as its placeholder', icon().placeholder === 'ℹ️', icon().placeholder);
@@ -219,8 +219,8 @@ setTimeout(() => {
   check('the shoutbox\'s page ends with what was reported there', [...d.querySelectorAll('#page-app-shoutbox > .admin-pane')].pop().id === 'app-flagged-shoutbox');
   check('  the shoutbox\'s reported post on its page; none on the board\'s', d.querySelectorAll('#app-flagged-shoutbox .aw-row').length === 1
     && /buy cheap things/.test(t('#app-flagged-shoutbox')[0]) && /Nothing reported here/.test(t('#app-flagged-board')[0]), t('#app-flagged-shoutbox')[0]);
-  check('Moderation: everything people made, linking to all five', ['#saved', '#drop-mod', '#shoutbox-mod', '#board-mod', '#git'].every((h) => d.querySelector(`#made-list a[href="${h}"]`))
-    && d.getElementById('made').closest('.admin-page').querySelector('.admin-page-title, h2').textContent.includes('Everything people made'));
+  check('Moderation: user data, linking to all five', ['#saved', '#drop-mod', '#shoutbox-mod', '#board-mod', '#git'].every((h) => d.querySelector(`#made-list a[href="${h}"]`))
+    && d.getElementById('made').closest('.admin-page').querySelector('.admin-page-title, h2').textContent.includes('User data'));
   // The Factory's building is inside the app, on its own page; /admin keeps its settings.
   check('the Factory in /admin: its tile setting and a link to its own page, no build form', !!d.querySelector('#factory #factory_tile')
     && d.querySelector('#factory-open').getAttribute('href') === '/admin/factory.html' && !d.getElementById('factory-form') && !d.getElementById('factory-runs'));
@@ -258,8 +258,8 @@ setTimeout(() => {
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
   check('built-in parts with pages of their own are not listed a second time', d.getElementById('builtin-more').hidden && !t('#builtin-list .setting-name').length);
   const on = (id) => [...d.querySelectorAll(`#${id} [aria-checked="true"]`)].map((b) => b.textContent);
-  check('the Notes add-on\'s page carries its access block, set to off', picked(d.getElementById('app-access-notes'), 'Who can open it') === 'off');
-  check('Terminal public still says it asks for the login', t('#app-access-term')[0].includes('still asks for the admin login'));
+  check('the Notes add-on\'s page carries its access block, set to off', picked(d.getElementById('app-access-notes'), 'Access') === 'Disabled');
+  check('Terminal public still says it asks for the login', t('#app-access-term')[0].includes('still asks for the administrator sign-in'));
   check('add-ons with pages of their own are not carded again on All apps', !d.querySelector('#addons-list .library-source'));
   const ircInstall = d.getElementById('app-install-irc');
   check('IRC has installation status, requirements and Add on its own page', ircInstall && ircInstall.closest('.admin-page').id === 'page-app-irc'
@@ -304,7 +304,7 @@ setTimeout(() => {
     const before = (a, b) => !!(a.compareDocumentPosition(b) & w.Node.DOCUMENT_POSITION_FOLLOWING);
     check('the hub card: Check now before Automatic updates, which is folded', before(d.getElementById('update-check'), af)
       && af.closest('details') && af.closest('details').id === 'update-auto-fold');
-    check('  its title says what is saved', t('#update-auto-says')[0] === 'Looks once a day; installs it, between 02:00 and 05:00.', t('#update-auto-says')[0]);
+    check('  its title says what is saved', t('#update-auto-says')[0] === 'Looks once a day. Installs it, between 02:00 and 05:00.', t('#update-auto-says')[0]);
     check('  what an update must carry: said in its title', t('#update-signing-says')[0] === 'merged on GitHub (signed by GitHub)', t('#update-signing-says')[0]);
     check('Debian: its buttons before its Automatic updates, folded', before(d.getElementById('debian-buttons'), d.getElementById('debian-pattern'))
       && d.getElementById('debian-pattern').closest('details').id === 'debian-auto-fold');
@@ -336,7 +336,7 @@ setTimeout(() => {
     const others = [...d.querySelectorAll('#library-others dt')].map((x) => x.textContent);
     check('the librarian: the other updates listed, each linked to its own page', others.join('|') === 'This hub|Git mirrors|Firmware mirror|Toolkits\' cache|Debian\'s security updates'
       && ['#update-hub-card', '#mirrors', '#firmware', '#toolkits', '#updates-debian'].every((h) => d.querySelector(`#library-others a[href="${h}"]`)), others);
-    check('  the hub\'s line is what is saved', /^Looks once a day; installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
+    check('  the hub\'s line is what is saved', /^Looks once a day\. Installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
     check('  no editor for them here', !d.querySelector('#sources [name="hub_auto"], #sources [name="mirrors_auto"]'));
     check('  source access folded, its title saying token and pacing', d.getElementById('library-token').closest('details').id === 'library-access'
       && t('#library-access-says')[0] === '(no token; not adapting)', t('#library-access-says')[0]);
@@ -499,7 +499,7 @@ setTimeout(() => {
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   force.click();
   const drop = d.getElementById('app-access-drop');
-  chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
+  chipsOf(drop, 'Access').find((c) => c.textContent === 'Administrators').click();
   [...d.getElementById('app-access-drop').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   d.querySelector('#app-install-irc button').click();
   check('Add on the IRC page sends the existing installer request', posted.some((post) => post[0] === '/admin/addons'
