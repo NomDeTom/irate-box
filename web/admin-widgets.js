@@ -64,6 +64,13 @@ const AW = (() => {
   const ACT = [['0', 'Flag', 'Said here and on the badge; nothing else done.'], ['1', 'Fetch', 'Also downloaded and checked, ready for you to install.'],
     ['2', 'Install', 'Also installed.']];
   const PATTERN_LABELS = { often: 'How often to look', act: 'When something newer is found' };
+  // The saved pattern in one sentence, for a folded policy's title: what the box will actually do.
+  const OFTEN_SAYS = { 0: 'Only when you press Check now', 6: 'Looks every 6 hours', 24: 'Looks once a day', 168: 'Looks once a week' };
+  const ACT_SAYS = { 0: 'flags what is newer', 1: 'downloads it, ready for you to install', 2: 'installs it' };
+  function patternSays(often, act) {
+    const o = Number(often), a = Number(act);
+    return o ? `${OFTEN_SAYS[o] || `Looks every ${o} hours`}; ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
+  }
   //   opts: {often: name, act: name, acts: ['0','1'] (a subset where fetching is the update), says: {'2': …},
   //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}
   function updatePattern(opts) {
@@ -506,7 +513,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

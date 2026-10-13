@@ -288,7 +288,8 @@ setTimeout(() => {
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('#books opens Kiwix\'s own page, the librarian behind it', !pageOf('books').hidden && pageOf('books').getAttribute('aria-label') === 'Kiwix' && main.dataset.art === 'librarian', main.dataset.art);
   w.location.hash = '#backup'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
-  check('an old address still lands: #backup opens Updates and backup', !pageOf('backup').hidden && pageOf('backup').getAttribute('aria-label') === 'Updates and backup');
+  check('an old address still lands: #backup opens Backup and transfer', !pageOf('backup').hidden && pageOf('backup').getAttribute('aria-label') === 'Backup and transfer');
+  check('  and #updates its own page, Updates', pageOf('updates').getAttribute('aria-label') === 'Updates' && pageOf('updates') !== pageOf('backup'));
   w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
     && /\[data-art="workbench"\] \{[^}]*--art-w: min\(46vw, 34rem\)[^}]*\}\s*\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
@@ -298,6 +299,37 @@ setTimeout(() => {
   check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
   check('  the window shown when installing', !d.getElementById('auto-window').hidden);
   check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
+  {
+    // Action first: what is installed and the three buttons before the policy, which is folded with what is saved said.
+    const before = (a, b) => !!(a.compareDocumentPosition(b) & w.Node.DOCUMENT_POSITION_FOLLOWING);
+    check('the hub card: Check now before Automatic updates, which is folded', before(d.getElementById('update-check'), af)
+      && af.closest('details') && af.closest('details').id === 'update-auto-fold');
+    check('  its title says what is saved', t('#update-auto-says')[0] === 'Looks once a day; installs it, between 02:00 and 05:00.', t('#update-auto-says')[0]);
+    check('  what an update must carry: said in its title', t('#update-signing-says')[0] === 'merged on GitHub (signed by GitHub)', t('#update-signing-says')[0]);
+    check('Debian: its buttons before its Automatic updates, folded', before(d.getElementById('debian-buttons'), d.getElementById('debian-pattern'))
+      && d.getElementById('debian-pattern').closest('details').id === 'debian-auto-fold');
+    // An unsaved edit survives the next poll, focus or not, and the title still says what is saved.
+    af.elements.hub_check_every_hours.value = '6';
+    af.dispatchEvent(new w.Event('change'));
+    w.renderAuto(update.auto);
+    check('  an unsaved change kept through a poll; the title still the saved one, marked changed', af.elements.hub_check_every_hours.value === '6'
+      && /^Looks once a day/.test(t('#update-auto-says')[0]) && /not saved/.test(t('#update-auto-says')[0]), `${af.elements.hub_check_every_hours.value} ${t('#update-auto-says')[0]}`);
+    delete af.dataset.dirty;
+    w.renderAuto(update.auto);
+    // One press, one request, however often the librarian's part was redrawn.
+    for (let i = 0; i < 3; i++) w.renderLibrary(library);
+    const n0 = posted.filter((p) => p[1] && p[1].action === 'adapt-rate').length;
+    d.getElementById('library-adapt').click();
+    check('Adapt to rate limit: one press, one request after several redraws', posted.filter((p) => p[1] && p[1].action === 'adapt-rate').length - n0 === 1);
+    // The librarian's policy: an unsaved change kept through a redraw.
+    const lp = d.getElementById('library-policy');
+    lp.elements.min_free_mb.value = '900';
+    lp.dispatchEvent(new w.Event('input'));
+    w.renderLibrary(library);
+    check('the librarian\'s policy: an unsaved change kept through a redraw', lp.elements.min_free_mb.value === '900', lp.elements.min_free_mb.value);
+    delete lp.dataset.dirty;
+    w.renderLibrary(library);
+  }
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
   // Backup: settings only, settings and data, or a full image, each with an estimated size.

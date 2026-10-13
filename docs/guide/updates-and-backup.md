@@ -2,11 +2,11 @@
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Updates and backup
 
-*Keeping the box current, and a copy of what's on it. On the admin pages: System → Updates and backup.*
+*Keeping the box current, and a copy of what's on it. On the admin pages: System → Updates, and System → Backup and transfer.*
 
 ## The box's own updates
 
-The **This hub** card checks for a newer version, fetches it, checks it, and installs it. For each, you choose:
+The **This hub** card says what is installed and what is newer, with **Check now**, **Fetch** and **Install** first. Below them, folded, **Automatic updates** says in one line what the box does by itself; open it to choose:
 
 - **How often to look**: by hand, every 6 or 24 hours, or weekly.
 - **When something newer is found**: **Flag** it (said on the page and its badge), also **Fetch** it (downloaded and checked, ready for you), or also **Install** it, only between the hours you set and with nobody on the hub (it restarts).
@@ -15,7 +15,7 @@ Each update downloads only what changed. **What an update must carry** sets how 
 
 ## Debian's security updates
 
-The same choices for the operating system's security fixes: list them, also download them, or also install them (from Debian's security archive only).
+What is waiting and its three buttons first; the same **Automatic updates** choices, folded, for the operating system's security fixes: list them, also download them, or also install them (from Debian's security archive only).
 
 ## Packages from their makers
 
