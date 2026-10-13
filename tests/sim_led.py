@@ -154,7 +154,7 @@ g = {x["key"]: x for x in health.led_groups(ls)}
 check("the doctor's settings: what the light shows (left on a Pi, said why), the safest first; which light, when there's a choice",
       list(g) == ["led-show", "led-which"] and g["led-show"]["current"] == "leave" and "SD card" in g["led-show"]["desc"]
       and [o["value"] for o in g["led-show"]["options"]] == ["leave", "alive", "network", "all"]
-      and g["led-which"]["options"][0]["choice"] == "led-led:auto" and g["led-which"]["options"][2]["choice"] == "led-led:led-user", g)
+      and g["led-which"]["options"][0]["choice"] == "led-led:auto" and g["led-which"]["options"][2]["choice"] == "led-led:led-user")
 check("  the image's failing LED service: a choice to switch it off, and on again",
       [o["choice"] for o in health.led_groups(ls, "failed")[-1]["options"]] == ["armbian-led:on", "armbian-led:off"]
       and health.led_groups(ls, "masked")[-1]["current"] == "off")
@@ -175,7 +175,7 @@ for good in ("led-show:network", "led-led:auto", "led-led:green:status", "led-fl
 for bad in ("led-show:blink", "led-led:../x", "led-flash:a b", "armbian-led:remove"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 said = health.fix("led-show:alive")
-check("  a choice saved: the setting changed, and said", led.load_settings()["show"] == "alive" and "hub runs" in said, said)
+check("  a choice saved: the setting changed, and said", led.load_settings()["show"] == "alive" and "hub runs" in said)
 from irate_box.hub import server  # noqa: E402
 check("the hub passes the same choices on", all(server.HEALTH_CHOICE_RE.match(c) for c in ("led-show:all", "led-flash:ACT", "armbian-led:on"))
       and not server.HEALTH_CHOICE_RE.match("led-show:x"))
