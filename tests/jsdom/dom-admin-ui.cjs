@@ -23,7 +23,7 @@ const accessData = { apps: [
   { id: 'term', title: 'Terminal', mode: 'public', login: true, kind: 'addon', unit: true },
 ], results: [], seen: { about: 'auto', 'tools-rf': 'hidden' } };
 // The librarian's snapshot, with Excalidraw kept current (its own updates on its page).
-const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1 }, token_set: false, running: false, types: [],
+const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1, hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5 }, token_set: false, running: false, types: [],
   progress: null, free_mb: 51000, job: {}, status: { draw: { last_check: '2026-10-08 03:00', outcome: 'up to date' } },
   sources: [{ kind: 'app', name: 'draw', type: 'bundle', repo: 'NomDeTom/excalidraw', workflow: 'irate-box-bundle.yml', branch: 'main' }],
   apps: { draw: { title: 'Excalidraw', installed: { commit: 'abc1234def', repository: 'NomDeTom/excalidraw', ref: 'main', built: '2026-10-01T00:00:00Z', has_previous: false }, pin: null } } };
@@ -288,7 +288,8 @@ setTimeout(() => {
   w.location.hash = '#books'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('#books opens Kiwix\'s own page, the librarian behind it', !pageOf('books').hidden && pageOf('books').getAttribute('aria-label') === 'Kiwix' && main.dataset.art === 'librarian', main.dataset.art);
   w.location.hash = '#backup'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
-  check('an old address still lands: #backup opens Updates and backup', !pageOf('backup').hidden && pageOf('backup').getAttribute('aria-label') === 'Updates and backup');
+  check('an old address still lands: #backup opens Backup and transfer', !pageOf('backup').hidden && pageOf('backup').getAttribute('aria-label') === 'Backup and transfer');
+  check('  and #updates its own page, Updates', pageOf('updates').getAttribute('aria-label') === 'Updates' && pageOf('updates') !== pageOf('backup'));
   w.location.hash = '#toolkits'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('background art: the workbench for Toolkits, the desk\'s size', main.dataset.art === 'workbench' && fs.existsSync(`${WEB}/art/krab-workbench.webp`)
     && /\[data-art="workbench"\] \{[^}]*--art-w: min\(46vw, 34rem\)[^}]*\}\s*\[data-art="workbench"\] \.admin-art \{[^}]*krab-workbench\.webp/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')), main.dataset.art);
@@ -298,7 +299,49 @@ setTimeout(() => {
   check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
   check('  the window shown when installing', !d.getElementById('auto-window').hidden);
   check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
+  {
+    // Action first: what is installed and the three buttons before the policy, which is folded with what is saved said.
+    const before = (a, b) => !!(a.compareDocumentPosition(b) & w.Node.DOCUMENT_POSITION_FOLLOWING);
+    check('the hub card: Check now before Automatic updates, which is folded', before(d.getElementById('update-check'), af)
+      && af.closest('details') && af.closest('details').id === 'update-auto-fold');
+    check('  its title says what is saved', t('#update-auto-says')[0] === 'Looks once a day; installs it, between 02:00 and 05:00.', t('#update-auto-says')[0]);
+    check('  what an update must carry: said in its title', t('#update-signing-says')[0] === 'merged on GitHub (signed by GitHub)', t('#update-signing-says')[0]);
+    check('Debian: its buttons before its Automatic updates, folded', before(d.getElementById('debian-buttons'), d.getElementById('debian-pattern'))
+      && d.getElementById('debian-pattern').closest('details').id === 'debian-auto-fold');
+    // An unsaved edit survives the next poll, focus or not, and the title still says what is saved.
+    af.elements.hub_check_every_hours.value = '6';
+    af.dispatchEvent(new w.Event('change'));
+    w.renderAuto(update.auto);
+    check('  an unsaved change kept through a poll; the title still the saved one, marked changed', af.elements.hub_check_every_hours.value === '6'
+      && /^Looks once a day/.test(t('#update-auto-says')[0]) && /not saved/.test(t('#update-auto-says')[0]), `${af.elements.hub_check_every_hours.value} ${t('#update-auto-says')[0]}`);
+    delete af.dataset.dirty;
+    w.renderAuto(update.auto);
+    // One press, one request, however often the librarian's part was redrawn.
+    for (let i = 0; i < 3; i++) w.renderLibrary(library);
+    const n0 = posted.filter((p) => p[1] && p[1].action === 'adapt-rate').length;
+    d.getElementById('library-adapt').click();
+    check('Adapt to rate limit: one press, one request after several redraws', posted.filter((p) => p[1] && p[1].action === 'adapt-rate').length - n0 === 1);
+    // The librarian's policy: an unsaved change kept through a redraw.
+    const lp = d.getElementById('library-policy');
+    lp.elements.min_free_mb.value = '900';
+    lp.dispatchEvent(new w.Event('input'));
+    w.renderLibrary(library);
+    check('the librarian\'s policy: an unsaved change kept through a redraw', lp.elements.min_free_mb.value === '900', lp.elements.min_free_mb.value);
+    delete lp.dataset.dirty;
+    w.renderLibrary(library);
+  }
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
+  {
+    // The librarian: its own work at the top; apps and books, then storage; the others' policies linked, not edited here.
+    const others = [...d.querySelectorAll('#library-others dt')].map((x) => x.textContent);
+    check('the librarian: the other updates listed, each linked to its own page', others.join('|') === 'This hub|Git mirrors|Firmware mirror|Toolkits\' cache|Debian\'s security updates'
+      && ['#update-hub-card', '#mirrors', '#firmware', '#toolkits', '#updates-debian'].every((h) => d.querySelector(`#library-others a[href="${h}"]`)), others);
+    check('  the hub\'s line is what is saved', /^Looks once a day; installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
+    check('  no editor for them here', !d.querySelector('#sources [name="hub_auto"], #sources [name="mirrors_auto"]'));
+    check('  source access folded, its title saying token and pacing', d.getElementById('library-token').closest('details').id === 'library-access'
+      && t('#library-access-says')[0] === '(no token; not adapting)', t('#library-access-says')[0]);
+    check('  the work now: a state line at the top', !!d.querySelector('#library-now .library-state'));
+  }
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
   // Backup: settings only, settings and data, or a full image, each with an estimated size.
   const lv = [...d.querySelectorAll('#backup-level .choice-tile')];
@@ -325,6 +368,16 @@ setTimeout(() => {
     && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Fetch 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
   [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Fetch 2.8.1.9')?.click();
   check('  Fetch asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
+  {
+    // The card: its state and buttons first; channel and policy folded under what is saved; a draft kept through a reload.
+    const pol = pk && pk.querySelector('.pkg-policy');
+    const btns = pk && pk.querySelector('.library-buttons');
+    check('packages: the buttons before the policy, which is folded under what is saved', !!pol && pol.tagName === 'DETAILS'
+      && !!(btns.compareDocumentPosition(pol) & w.Node.DOCUMENT_POSITION_FOLLOWING) && /^.+: (Looks|Only)/.test(t('.pkg-policy-says')[0]), t('.pkg-policy-says')[0]);
+    pol.open = true;
+    [...pol.querySelectorAll('.chip')].find((c) => c.textContent === 'Fetch').click();
+    w.loadPackages();
+  }
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
   check('new box: books, toolkits and repositories offered with their sizes, mirrors marked', kb.querySelectorAll('input').length === 2 && /wikipedia_en \(2\.6 GB\)/.test(kb.textContent)
     && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);
@@ -505,6 +558,11 @@ setTimeout(() => {
     check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
     [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
     setTimeout(() => {
+    {
+      const pol = d.querySelector('#pkg-list .pkg-policy');
+      check('  after a reload: the fold still open, the unsaved Fetch still chosen', pol && pol.open
+        && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Fetch'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
+    }
       check('git: Flush asks the hub, and the cache is gone from the page', posted.some((p) => p[0] === '/admin/firmware' && p[1].action === 'flush-cache')
         && !/Kept:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);
       console.log('\nfailures:', fails);

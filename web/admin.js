@@ -337,6 +337,37 @@ function renderApps(snap, busy) {
   renderInventory();
 }
 
+// The other update policies the librarian runs, as saved, each with a link to the one place it is changed.
+function drawLibraryOthers(pol) {
+  const box = document.getElementById('library-others');
+  if (!box) return;
+  const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+  const fetchOnly = (often, act, what) => (Number(often) ? `${AW.patternSays(often, 0).replace(/; .*$/, '')}; ${Number(act) ? `fetches ${what}` : 'flags what is newer'}.` : AW.patternSays(0));
+  const rows = [
+    ['This hub', AW.patternSays(pol.hub_check_every_hours, pol.hub_auto).replace(/\.$/, '')
+      + (Number(pol.hub_check_every_hours) && Number(pol.hub_auto) === 2 ? `, between ${hh(pol.hub_window_start)} and ${hh(pol.hub_window_end)}.` : '.'), 'update-hub-card', 'Updates'],
+    ['Git mirrors', fetchOnly(pol.mirrors_every_hours, pol.mirrors_auto, 'what is newer (fetching is the update)'), 'mirrors', 'Mirrors'],
+    ['Firmware mirror', fetchOnly(pol.firmware_every_hours, pol.firmware_auto, 'new releases'), 'firmware', 'Firmware'],
+    ['Toolkits\' cache', Number(pol.kits_every_hours) ? `${AW.patternSays(pol.kits_every_hours, 0).replace(/; .*$/, '')}; refreshes the cache (installs nothing).` : AW.patternSays(0), 'toolkits', 'Toolkits'],
+    ['Debian\'s security updates', 'Set with the box\'s scan.', 'updates-debian', 'Updates'],
+  ];
+  const key = JSON.stringify(rows);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren(...rows.flatMap(([k, v, to, where]) => [el('dt', { textContent: k }),
+    el('dd', {}, `${v} `, el('a', { href: `#${to}`, textContent: `Change on ${where} →` }))]));
+}
+
+// Adapting to GitHub's allowance: attached once, so one press is one request however often the page redraws.
+document.getElementById('library-adapt').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted: GitHub was asked what it allows.', true, at); } catch (err) { say(err.message, false, at); }
+});
+document.getElementById('library-adapt-off').addEventListener('click', async () => {
+  const at = noteEl('library-token-note');
+  try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
+});
+
 function renderLibrary(snap) {
   const busy = snap.running;
   drawSuggested(snap.sources);
@@ -369,15 +400,7 @@ function renderLibrary(snap) {
   if (libWasBusy && !busy) loadBooks();
   libWasBusy = busy;
   libBusy = busy;
-  document.getElementById('library-adapt').addEventListener('click', async () => {
-  const at = noteEl('library-token-note');
-  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted: GitHub was asked what it allows.', true, at); } catch (err) { say(err.message, false, at); }
-});
-document.getElementById('library-adapt-off').addEventListener('click', async () => {
-  const at = noteEl('library-token-note');
-  try { renderLibrary(await libPost({ action: 'adapt-rate-off' })); say('No longer adapting.', true, at); } catch (err) { say(err.message, false, at); }
-});
-document.querySelectorAll('[data-all], [data-mirrors-all]').forEach((b) => { b.disabled = busy; });
+  document.querySelectorAll('[data-all], [data-mirrors-all]').forEach((b) => { b.disabled = busy; });
   document.querySelectorAll('[data-bulk]').forEach((b) => { b.disabled = busy; });
   const allNote = noteFor('all');
   lib.allNote.hidden = !allNote;
@@ -385,7 +408,7 @@ document.querySelectorAll('[data-all], [data-mirrors-all]').forEach((b) => { b.d
 
   for (const [k, v] of Object.entries(snap.policy)) {
     const field = lib.policy.elements[k];
-    if (field && document.activeElement !== field) field.value = String(v);
+    if (field && document.activeElement !== field && !lib.policy.dataset.dirty) field.value = String(v);
   }
   lastPolicy = snap.policy;
   fillSurfaces(snap.policy);
@@ -403,6 +426,9 @@ document.querySelectorAll('[data-all], [data-mirrors-all]').forEach((b) => { b.d
     ? `Adapted: a budget of ${pc.budget} requests an hour (GitHub allows ${pc.limit}), ${pc.left} left this hour${pc.backed_off ? '; it has backed off after refusals' : ''}.`
     : 'Not adapted: the librarian asks as it likes, and stops only when GitHub says it is nearly out.';
   document.getElementById('library-adapt-off').hidden = !pc.budget;
+  const access = document.getElementById('library-access-says');
+  if (access) access.textContent = `(${snap.token_set ? 'a token is set' : 'no token'}; ${pc.budget ? 'adapting' : 'not adapting'})`;
+  drawLibraryOthers(snap.policy || {});
 
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.
@@ -453,8 +479,10 @@ lib.policy.addEventListener('submit', async (e) => {
   const body = { action: 'policy' };
   for (const k of ['keep_old', 'check_every_hours', 'min_free_mb', 'books_budget_mb', 'auto_install']) body[k] = Number(lib.policy.elements[k].value);
   const at = noteEl('library-policy-note');
-  try { renderLibrary(await libPost(body)); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
+  try { const snap = await libPost(body); delete lib.policy.dataset.dirty; renderLibrary(snap); say('Saved.', true, at); } catch (err) { say(err.message, false, at); }
 });
+// Changed and not saved: kept through the page's polling, focus or not.
+for (const ev of ['input', 'change']) lib.policy.addEventListener(ev, () => { lib.policy.dataset.dirty = '1'; });
 // The mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
 const surfaceForms = [...document.querySelectorAll('form.surface-policy')];
 function fillSurfaces(policy) {
@@ -675,7 +703,16 @@ async function loadPackages() {
     else if (Date.now() - pkgWaiting.at < 600000) setTimeout(loadPackages, 3000);
   }
   const pkgs = Object.entries(d.packages || {});
-  box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => pkgCard(id, p))
+  // A redraw keeps an open policy fold open, and one with changes not saved keeps them (its fold carried over).
+  const before = new Map([...box.querySelectorAll('[data-pkg]')].map((c) => [c.dataset.pkg, c.querySelector('.pkg-policy')]));
+  const carry = (card) => {
+    const old = before.get(card.dataset.pkg), now = card.querySelector('.pkg-policy');
+    if (!old || !now) return card;
+    if (old.querySelector('.aw-foot .action-btn.primary:not([disabled])')) now.replaceWith(old);
+    else now.open = old.open;
+    return card;
+  };
+  box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => carry(pkgCard(id, p)))
     : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
       el('p', { className: 'library-buttons' }, actionButton('Check now', () => pkgAct({ action: 'check', package: '' })))]));
 }
@@ -730,16 +767,20 @@ function pkgCard(id, p) {
       mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
         + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
   } });
-  return el('div', { className: 'setting library-source update-card' }, el('span', { className: 'update-card-body' },
+  // What it does by itself, as saved: the fold's title; the editor inside it.
+  const says = `${label(s.channel)}: ${AW.patternSays(s.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? '' : 's'}.` : 'installs it.')}`;
+  const policy = el('details', { className: 'sec-fold update-auto pkg-policy' },
+    el('summary', {}, 'Channel and automatic updates: ', el('span', { className: 'pkg-policy-says', textContent: says })), settings);
+  return el('div', { className: 'setting library-source update-card', dataset: { pkg: id } }, el('span', { className: 'update-card-body' },
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
-    keptList, settings,
     el('span', { className: 'library-buttons' },
       actionButton('Check now', () => pkgAct({ action: 'check', package: id })),
       flag ? actionButton(`Fetch ${flag.version}`, () => pkgAct({ action: 'fetch', package: id })) : null,
       newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
-      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null)));
+      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null),
+    policy, keptList));
 }
 loadPackages();
 loadBooks();
@@ -1289,10 +1330,10 @@ let updWaiting = null; // { id, action }
 let updPoll = null;
 
 // Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
-function updSay(action, text, ok) {
+function updSay(action, text, ok, extra) {
   const node = action === 'force-install' ? upd.forceNote : action === 'clear-cache' ? upd.clearNote
     : action === 'doctor' ? upd.doctorNote : upd.note;
-  node.textContent = text;
+  node.replaceChildren(text || '', ...(extra ? [' ', extra] : []));
   node.classList.toggle('bad', !ok);
   node.hidden = !text;
 }
@@ -1404,8 +1445,9 @@ function renderUpdate(data) {
     const done = (data.results || []).find((r) => r.id === updWaiting.id);
     if (done) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
-      updSay(updWaiting.action, failed && updWaiting.action !== 'doctor'
-        ? `${done.message} — the Updates doctor (under Doctors) can say why.` : done.message, !failed);
+      // A failure says itself, with the way to its diagnosis beside it.
+      updSay(updWaiting.action, done.message, !failed, failed && updWaiting.action !== 'doctor'
+        ? el('a', { className: 'action-btn go-btn', href: '#updoctor', textContent: 'Why: the Updates doctor →' }) : null);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -1425,8 +1467,12 @@ async function loadUpdate() {
     renderUpdate(await getJSON('/admin/update'));
   } catch (_) {
     clearTimeout(updPoll);
+    // Only an install restarts the hub: during one, an unanswered status is that restart; otherwise it is said as
+    // not answering, and what was asked keeps its own words.
     if (updWaiting) {
-      upd.summary.textContent = 'Installing… the hub is restarting.';
+      const installing = /install/.test(updWaiting.action);
+      upd.summary.textContent = installing ? 'Installing… the hub is restarting.'
+        : 'The hub is not answering just now; trying again. What was asked is still waiting.';
       updPoll = setTimeout(loadUpdate, 3000);
     }
   }
@@ -1456,7 +1502,7 @@ upd.install.addEventListener('click', () => requestUpdate('install'));
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
 // and what its last step did. The form is filled from the hub only while nobody is editing it.
 const auto = { form: document.getElementById('auto-form'), state: document.getElementById('auto-state'),
-  note: noteEl('auto-note'), window: document.getElementById('auto-window') };
+  note: noteEl('auto-note'), window: document.getElementById('auto-window'), says: document.getElementById('update-auto-says') };
 for (const name of ['hub_window_start', 'hub_window_end']) {
   auto.form.elements[name].replaceChildren(...Array.from({ length: 24 }, (_, h) =>
     el('option', { value: String(h), textContent: `${String(h).padStart(2, '0')}:00` })));
@@ -1464,9 +1510,14 @@ for (const name of ['hub_window_start', 'hub_window_end']) {
 const AUTO_STEP = { check: 'looked for an update', fetch: 'fetched and verified an update', install: 'installed an update' };
 function renderAuto(a) {
   if (!a) return;
-  if (!auto.form.contains(document.activeElement)) {
+  // An edit not saved yet is kept through polling, focus or not; the fold's title says what is saved.
+  if (!auto.form.contains(document.activeElement) && !auto.form.dataset.dirty) {
     for (const k of ['hub_check_every_hours', 'hub_auto', 'hub_window_start', 'hub_window_end']) auto.form.elements[k].value = String(a[k]);
   }
+  const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+  auto.says.textContent = AW.patternSays(a.hub_check_every_hours, a.hub_auto).replace(/\.$/, '')
+    + (Number(a.hub_check_every_hours) && Number(a.hub_auto) === 2 ? `, between ${hh(a.hub_window_start)} and ${hh(a.hub_window_end)}.` : '.')
+    + (auto.form.dataset.dirty ? ' (Changed below, not saved.)' : '');
   auto.window.hidden = auto.form.elements.hub_auto.value !== '2';
   const st = a.state || {};
   const parts = [];
@@ -1476,12 +1527,13 @@ function renderAuto(a) {
   auto.state.textContent = parts.join(' ') || (Number(a.hub_check_every_hours) ? 'No automatic step yet: the librarian takes the first on its next round.' : 'Automatic checks are off.');
 }
 auto.form.elements.hub_auto.addEventListener('change', () => { auto.window.hidden = auto.form.elements.hub_auto.value !== '2'; });
+for (const ev of ['input', 'change']) auto.form.addEventListener(ev, () => { auto.form.dataset.dirty = '1'; });
 auto.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = { action: 'policy' };
   for (const k of ['hub_check_every_hours', 'hub_auto', 'hub_window_start', 'hub_window_end']) body[k] = Number(auto.form.elements[k].value);
   if (body.hub_auto === 2 && body.hub_window_start === body.hub_window_end) { say('The install hours need a start and an end that differ.', false, auto.note); return; }
-  try { await libPost(body); say('Saved. The librarian follows it from its next round (hourly).', true, auto.note); loadUpdate(); } catch (err) { say(err.message, false, auto.note); }
+  try { await libPost(body); delete auto.form.dataset.dirty; say('Saved. The librarian follows it from its next round (hourly).', true, auto.note); loadUpdate(); } catch (err) { say(err.message, false, auto.note); }
 });
 upd.force.addEventListener('click', () => requestUpdate('force-install'));
 loadUpdate();
@@ -2065,7 +2117,8 @@ async function secRequest(body, fid) {
 
 // Debian's security updates as the update pattern: how often apt looks, what it does with what
 // it finds (apt's periodic work, unattended-upgrades to install), and Check now / Fetch / Install by hand.
-const deb = { form: document.getElementById('debian-pattern'), note: noteEl('debian-pattern-note'), box: document.getElementById('debian-buttons') };
+const deb = { form: document.getElementById('debian-pattern'), note: noteEl('debian-pattern-note'), box: document.getElementById('debian-buttons'),
+  says: document.getElementById('debian-auto-says') };
 deb.buttons = AW.updateButtons({
   check: { onclick: () => secFix('security-updates', { choice: 'security-check' }) },
   fetch: { onclick: () => secFix('security-updates', { choice: 'security-fetch' }) },
@@ -2080,6 +2133,7 @@ function drawDebianPattern(lines, busy) {
     deb.form.elements.often.value = String(pat.often);
     deb.form.elements.act.value = String(pat.act);
   }
+  deb.says.textContent = pat ? AW.patternSays(pat.often, pat.act) + (deb.form.dataset.dirty ? ' (Changed below, not saved.)' : '') : 'Not known until the box is scanned.';
   const waiting = w ? w.waiting || 0 : 0, fetched = w ? w.fetched || 0 : 0;
   deb.buttons.update({
     check: { disabled: busy, why: busy ? 'busy' : '' },
@@ -6314,6 +6368,8 @@ function drawSigning(sig, results) {
     if (done) { sigWaiting = null; say(done.message, done.ok, sigEl.note); }
   }
   if (!sigEl.form.contains(document.activeElement)) sigEl.form.elements.level.value = sig.level;
+  const says = document.getElementById('update-signing-says');
+  if (says) says.textContent = SIG_WORDS[sig.level] || sig.level;
   sigShowKeys();
   sigEl.kept.textContent = sig.level === 'tags' && sig.keys.length
     ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ''})`).join('; ')}. Saving replaces the list with what is in the box above.`

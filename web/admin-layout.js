@@ -37,7 +37,8 @@ const AL = (() => {
       { title: 'Toolkits', sections: ['toolkits'], art: 'workbench' },
       { title: 'Clock', sections: ['clock'] },
       { title: 'Recovery and monitoring', sections: ['recovery'] },
-      { title: 'Updates and backup', sections: ['updates', 'backup'] }] },
+      { title: 'Updates', sections: ['updates'] },
+      { title: 'Backup and transfer', sections: ['backup'] }] },
     { name: 'Doctors', art: 'doctor', pages: [
       { title: 'Box doctor', sections: ['health'] },
       { title: 'Security doctor', sections: ['secdoctor'] },
