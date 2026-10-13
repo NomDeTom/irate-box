@@ -1713,8 +1713,8 @@ async function secSavePending(page) {
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
-const STATE_WORD = { problem: 'To fix', warn: 'To look at', ok: 'Fine', suggest: 'Suggestion', 'not-here': 'Not for this box',
-  accepted: 'Accepted', fixed: 'Put right' };
+const STATE_WORD = { problem: 'To fix', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', 'not-here': 'Not for this box',
+  accepted: 'Accepted', fixed: 'Repaired' };
 function copyBox(cmd) {
   const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
   b.addEventListener('click', async () => {
@@ -2333,7 +2333,7 @@ function installText(st) {
 // What to do about one of the box doctor's findings: its repair buttons; a link to the page where it
 // is changed, when its words name one ("Network → the hotspot"); a command to copy, when they end
 // in one; and the words. A fine finding says nothing more.
-const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Staying|Hold|The box's access)/, 'network/access', 'Network → The box\'s access'],
+const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Network recovery|Hold|Connection settings)/, 'network/access', 'Network → Connection settings'],
   [/\bNetwork → (the )?[Hh]otspot/, 'network/hotspot', 'Network → Hotspot'], [/\bNetwork → (Look|Hardware)/, 'network/hardware', 'Network → Hardware'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
   [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
   [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts'],
@@ -2399,7 +2399,7 @@ function renderGlance(data, rep) {
   const ago = (at) => { const s = Date.now() / 1000 - at; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
   const rows = [
     ['Health', !rep ? 'Not checked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to look at (below).` : 'Nothing to fix or look at.'],
-    ['Staying on the network', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Why it is down: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
+    ['Network recovery', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Why it is down: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
     ['The WiFi radio', find('crash-radio') ? first(find('crash-radio').detail) : 'No radio watched.'],
     ['The last start', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
     ['The last repair', w.last_repair ? `${ago(w.last_repair.at)}: ${w.last_repair.text}` : 'None recorded.'],
@@ -3243,12 +3243,12 @@ function deviceCard(inv, d, wifi, hazards) {
   const look = mine.filter((h) => h.status !== 'ok'), known = mine.filter((h) => h.status === 'ok');
   const fact = (h) => el('li', {}, el('strong', { textContent: h.title }), h.detail ? `: ${h.detail}` : '',
     h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null);
-  if (look.length) kids.push(section(line('To look at', ''), el('ul', { className: 'net-facts' }, ...look.map(fact))));
+  if (look.length) kids.push(section(line('Needs review', ''), el('ul', { className: 'net-facts' }, ...look.map(fact))));
   if (known.length) kids.push(section(line('Known about it', ''), el('ul', { className: 'net-facts' }, ...known.map(fact))));
   return el('div', { className: 'net-device setting' }, ...kids);
 }
 
-// --- the tabs' own parts: a card per connection on Status and on The box's access ----------------
+// --- the tabs' own parts: a card per connection on Status and on Connection settings ----------------
 const netTabs = { overview: document.getElementById('net-overview'), statusCards: document.getElementById('net-status-cards'),
   ladder: document.getElementById('net-ladder'), wifiNow: document.getElementById('net-wifi-now'), saved: document.getElementById('net-saved'),
   wiredNow: document.getElementById('net-wired-now'), wiredCard: document.getElementById('net-wired-card'), apHealth: document.getElementById('ap-health') };
@@ -3323,7 +3323,7 @@ function drawNetTabs(data, inv, u) {
     netTabs.ladder.dataset.key = netLadKey;
     LadderChart.render(netTabs.ladder, data.ladder || [], { gaps: data.ladder_gaps });
   }
-  // The box's access: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
+  // Connection settings: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
   const wifi = inv ? inv.radios.filter((r) => r.type === 'managed') : [];
   netTabs.wifiNow.replaceChildren(...(wifi.length ? wifi.map((r) => el('div', {}, netLine(r.iface, linkNow(inv, r)),
     r.link && r.link.bssid ? netLine('Access point', `${r.link.bssid}${r.profile && r.profile.bssid_lock ? ' (locked to it)' : ''}`) : null,
@@ -3395,7 +3395,7 @@ function renderNetwork(data) {
   const jn = netNotes.join;
   say(jn ? jn.text : '', jn ? jn.ok : true, noteEl('net-join-note'));
 
-  // Staying on the network
+  // Network recovery
   buildUpFields(levels);
   if (!upDirty) {
     fillUpForm((u && u.chosen) || levels.default, levels);
@@ -3541,7 +3541,7 @@ function renderDefaults(inv, busy) {
     row.dataset.name = name;
     return row;
   });
-  // The retries go beside the watchdog's own (Staying on the network), for the whole box.
+  // The retries go beside the watchdog's own (Network recovery), for the whole box.
   const retries = defaultsScope ? [] : rows.filter((r) => RETRY_DEFAULTS.includes(r.dataset.name));
   document.getElementById('net-retry-defaults').replaceChildren(...retries);
   document.getElementById('up-retries-group').hidden = !retries.length && !net.profile.childElementCount;

@@ -238,7 +238,7 @@
         <div class="net-card setting" id="health-settings">
           <h3>Automatic recovery</h3>
           <p class="setting-desc">Set crash snapshot retention and frozen-system restart. The uplink watchdog repairs the box's network
-            connection and reboots the box for it: <a href="#net-watchdog-card">Network → Staying on the network</a>.</p>
+            connection and reboots the box for it: <a href="#net-watchdog-card">Network → Network recovery</a>.</p>
           <div id="health-settings-groups"></div>
           <div class="library-buttons">
             <button class="action-btn" type="button" id="health-settings-discard" disabled>Discard</button>
@@ -916,27 +916,27 @@
       <section class="admin-pane" id="factory" aria-labelledby="factory-title">
         <h2 id="factory-title">Firmware Factory</h2>
         <p class="setting-desc">
-          Build Meshtastic firmware here, from the box's own copy of its source (a mirror, or a
-          private repository such as a fork): choose a release or a branch, then the boards. Builds
-          run one at a time, at the lowest priority, as the builder (Git → Builds), and each one's
-          use of time, memory, disk and heat is recorded, so the estimates below come from this box.
-          A family's first build here downloads its toolchain; after that it can build offline.
+          Build Meshtastic firmware on this box. The source is the box's own copy: a mirror, or a private repository
+          such as a fork. Select a release or a branch, then select the boards. Builds run one at a time at the lowest
+          priority, as the builder (Git → Builds). The box records the time, memory, disk and heat of each build. The
+          estimates below come from these records. The first build of a family downloads its toolchain. After that
+          download, builds of that target need no internet access. Other targets in the family can need more downloads.
         </p>
         <div class="settings" data-note="factory-tile-note">
           <label class="setting">
             <input type="checkbox" id="factory_tile">
             <span>
-              <span class="setting-name">Show the factory on the front page</span>
-              <span class="setting-desc">A tile anyone on the network can see: what is building and how far along, what is waiting, and the newest builds' ESP32 images and UF2 files to download. Never logs, nor anything else of the builds.</span>
+              <span class="setting-name">Show the Firmware Factory on the hub</span>
+              <span class="setting-desc">A tile that anyone on the network can see. It shows what is building and how far along, what is waiting, and the ESP32 images and UF2 files of the newest builds to download. It shows no logs and nothing else of the builds.</span>
             </span>
           </label>
         </div>
         <p class="setting-desc action-note" id="factory-tile-note" role="status" hidden></p>
-        <h3>The Factory itself</h3>
+        <h3>Firmware Factory app</h3>
         <p class="setting-desc">
-          Choosing what to build, the queue and what was built are inside the app, on a page of its
-          own, with all of the decisions about building and scheduling builds. Its builds come from the box's own copies of the firmware's source: a
-          mirror under <a href="#mirrors">Git → Mirrors</a>, or a private repository on Git's page.
+          The app has its own page for the selection of builds, the queue and the finished builds. It also holds all
+          decisions about building and scheduling. The builds use the box's own copies of the firmware source: a
+          mirror under <a href="#mirrors">Git → Mirrors</a>, or a private repository on the Git page.
         </p>
         <p class="library-buttons"><a class="action-btn primary" href="/admin/factory.html" id="factory-open">Open the Firmware Factory →</a></p>
       </section>
@@ -944,58 +944,57 @@
       <section class="admin-pane" id="health" aria-labelledby="health-title">
         <h2 id="health-title">Box doctor</h2>
         <p class="setting-desc">
-          Is everything the installer set up still there and working: the services, the root helper,
-          Kiwix and its books, the uplink watchdog, the web server (the clock is on <a href="#clock">Clock</a>).
-          Safe repairs are buttons; settings are changed on their own pages. From a terminal, even when this
-          page cannot reach the root helper: <code>sudo /opt/irate-box/irate-box health</code>.
+          Check the services, the root helper, books, network recovery and the web server. Use
+          <a href="#clock">Clock</a> for time-source checks. Select a repair to apply it. Change settings on their own
+          pages. To check from a terminal, also when this page cannot reach the root helper, run
+          <code>sudo /opt/irate-box/irate-box health</code>.
         </p>
-        <p class="setting-desc" id="health-when">Not looked yet.</p>
+        <p class="setting-desc" id="health-when">Not checked yet.</p>
         <p class="setting-desc" id="helper-busy-log" hidden></p>
         <div class="library-buttons">
-          <button class="action-btn" type="button" id="health-scan">Look again</button>
+          <button class="action-btn" type="button" id="health-scan">Run checks</button>
         </div>
         <p class="setting-desc action-note" id="health-note" role="status" hidden></p>
         <!-- The box at a glance: what the findings below add up to, and how the box looks after itself
              (admin.js renderGlance; server.py watchers_glance; health.py doctor_settings). -->
         <div class="net-card setting hl-glance-card" id="health-overview">
-          <h3>The box at a glance</h3>
+          <h3>Summary</h3>
           <dl class="hl-glance" id="health-glance"></dl>
         </div>
-        <p class="setting-desc" id="health-recovery-summary">How the box looks after itself (what crash watch keeps, what restarts
-          a frozen box) is set on <a href="#recovery">System → Recovery and monitoring</a>.</p>
+        <p class="setting-desc" id="health-recovery-summary">Crash snapshot retention and frozen-system restart are set on
+          <a href="#recovery">System → Recovery and monitoring</a>.</p>
         <div class="admin-progress" id="health-progress" hidden>
           <progress class="admin-bar" id="health-bar" max="1" value="0"></progress>
           <p class="setting-desc" id="health-step"></p>
         </div>
-        <div class="sec-counts" id="health-summary" role="group" aria-label="Show"></div>
+        <div class="sec-counts" id="health-summary" role="group" aria-label="Filter findings"></div>
         <input type="search" class="sec-search" id="health-search" placeholder="Search the findings…" aria-label="Search the findings">
         <div class="findings" id="health-findings"></div>
         <p class="setting-desc" id="health-empty" hidden></p>
         <details class="sec-fold" id="health-fine-fold">
-          <summary>Fine <span id="health-fine-count"></span>: what the doctor looked at and found as it should be</summary>
+          <summary>Passed checks <span id="health-fine-count"></span>: checks that found no problem</summary>
           <div class="findings compact" id="health-fine"></div>
         </details>
         <details class="sec-fold helper-queue" id="helper-queue">
-          <summary>The root helper's queue: <span id="hq-running">Nothing running.</span></summary>
-          <p class="setting-desc">Everything on these pages that needs root goes to one helper, which does one job at a time:
-            a long one (a toolkit's download, an update) holds the rest back until it ends.</p>
+          <summary>Root-helper jobs: <span id="hq-running">Nothing running.</span></summary>
+          <p class="setting-desc">One helper handles every action that needs root. It does one job at a time. A long job, such as a toolkit download or an update, holds the other jobs until it ends.</p>
           <ol class="admin-checks" id="hq-waiting" hidden></ol>
           <details class="sec-fold" id="hq-done-fold" hidden>
-            <summary>Finished lately</summary>
+            <summary>Recently completed</summary>
             <ol class="admin-checks" id="hq-done"></ol>
           </details>
         </details>
         <details class="sec-fold" id="health-ladder-fold">
-          <summary>Staying on the network: how far the watchdog went</summary>
-          <p class="setting-desc">Each outage of the box's link and the steps the uplink watchdog took, over time. Many outages
-          ending at the first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace
-          could go further (<a href="#network/access">Network → The box's access</a>).</p>
+          <summary>Network recovery history</summary>
+          <p class="setting-desc">This history shows each outage of the box's link and the steps that the uplink watchdog took.
+          Many outages that end at the first step show that a gentler pace is enough. Long waits at a step that never helps show
+          that the reach or the pace can go further (<a href="#network/access">Network → Connection settings</a>).</p>
           <div id="health-ladder"></div>
         </details>
         <details class="sec-fold" id="health-install-fold">
-          <summary>The last install: <span id="health-install">No record yet.</span></summary>
+          <summary>Last installation: <span id="health-install">No record yet.</span></summary>
           <details class="admin-output" id="health-output">
-            <summary>Its output (the end of /var/log/irate-box/install.log)</summary>
+            <summary>Installer log (end of /var/log/irate-box/install.log)</summary>
             <pre class="admin-log" id="health-log"></pre>
           </details>
         </details>
@@ -1004,8 +1003,8 @@
       <section class="admin-pane" id="network" aria-labelledby="network-title">
         <h2 id="network-title">Network</h2>
         <p class="setting-desc">
-          What the box has for networking, how it reaches your network, and its own hotspot for guests.
-          Nothing about your own connection changes unless you press its button.
+          This page shows the networking hardware of the box, how the box reaches your network, and the box's own
+          hotspot for guests. Network settings change only when you select Save or the button of an action.
         </p>
         <!-- Tabs by role, the same on every box, cards per device or connection inside. Each tab has
              an address of its own (#network/access …), so a doctor's or the chart's link lands on the setting. -->
@@ -1013,39 +1012,39 @@
           <div class="view-switch" role="tablist" aria-label="Network">
             <button type="button" class="view-switch-btn" role="tab" id="tab-net-status" aria-controls="network/status">Status</button>
             <button type="button" class="view-switch-btn" role="tab" id="tab-net-hardware" aria-controls="network/hardware">Hardware</button>
-            <button type="button" class="view-switch-btn" role="tab" id="tab-net-access" aria-controls="network/access">The box's access</button>
+            <button type="button" class="view-switch-btn" role="tab" id="tab-net-access" aria-controls="network/access">Connection settings</button>
             <button type="button" class="view-switch-btn" role="tab" id="tab-net-hotspot" aria-controls="network/hotspot">Hotspot</button>
           </div>
 
           <div role="tabpanel" id="network/status" aria-labelledby="tab-net-status">
-            <p class="setting-desc net-overview" id="net-overview">Not looked yet.</p>
+            <p class="setting-desc net-overview" id="net-overview">Not checked yet.</p>
             <div class="net-cards" id="net-status-cards"></div>
-            <h3>How far the watchdog went</h3>
-            <p class="setting-desc">Each outage of the box's link and the steps the watchdog took. Many outages ending at the
-              first rung say a gentler pace would do; long waits at a rung that never helps say the reach or the pace could go
-              further (<a href="#network/access">The box's access</a>).</p>
+            <h3>Network recovery history</h3>
+            <p class="setting-desc">This history shows each outage of the box's link and the steps that the watchdog took. Many outages that end at the
+              first step show that a gentler pace is enough. Long waits at a step that never helps show that the reach or the pace can go
+              further (<a href="#network/access">Connection settings</a>).</p>
             <div id="net-ladder"></div>
-            <h3>Recent</h3>
+            <h3>Recent events</h3>
             <ul class="admin-list net-events" id="up-events"></ul>
           </div>
 
           <div role="tabpanel" id="network/hardware" aria-labelledby="tab-net-hardware" hidden>
-            <p class="setting-desc">The radios and ports the box has, what each can do, and what looks after it.</p>
-            <p class="setting-desc" id="net-when">Not looked yet.</p>
+            <p class="setting-desc">This tab lists the radios and ports of the box, what each can do, and which program manages each.</p>
+            <p class="setting-desc" id="net-when">Not checked yet.</p>
             <div class="library-buttons">
               <button class="action-btn" type="button" id="net-scan" aria-label="Refresh the network inventory">↻ Refresh</button>
             </div>
             <p class="setting-desc action-note" id="net-scan-note" role="status" hidden></p>
             <details class="net-glossary" id="net-glossary">
-              <summary>What these words mean</summary>
+              <summary>Network terms</summary>
               <dl>
-                <dt>Client</dt><dd>The box joined to your WiFi, as a laptop would: its way to your network and the internet.</dd>
-                <dt>Hotspot</dt><dd>The box's own WiFi network, which guests join (an "access point").</dd>
-                <dt>Beside the client</dt><dd>Some radios can be both at once: on your WiFi, and running the hotspot as a second network.</dd>
-                <dt>Takes the radio</dt><dd>A radio that can only do one: running the hotspot means leaving your WiFi.</dd>
-                <dt>Channel</dt><dd>The slice of the WiFi band a network uses. A radio that can only use one channel at a time makes its hotspot follow your WiFi's.</dd>
-                <dt>Managed by</dt><dd>The program on the box that looks after a device's connection (NetworkManager, wpa_supplicant, …). irate-box asks it, and doesn't take over.</dd>
-                <dt>Signal</dt><dd>How strongly your WiFi is heard, in dBm: closer to 0 is stronger. About −50 is excellent, −70 weak, −80 barely there.</dd>
+                <dt>Client</dt><dd>The box joins your WiFi as a laptop does. This is the box's way to your network and the internet.</dd>
+                <dt>Hotspot</dt><dd>The box's own WiFi network. Guests join it (an "access point").</dd>
+                <dt>Concurrent client and hotspot</dt><dd>Some radios can serve the client connection and the hotspot at the same time. The hotspot is a second network.</dd>
+                <dt>Exclusive hotspot radio</dt><dd>This radio can do one task only. To run the hotspot, the box must leave your WiFi.</dd>
+                <dt>Channel</dt><dd>The part of the WiFi band that a network uses. A radio that can use one channel at a time makes its hotspot follow the channel of your WiFi.</dd>
+                <dt>Managed by</dt><dd>The program on the box that manages the connection of a device (NetworkManager, wpa_supplicant, …). irate-box asks that program and does not take control.</dd>
+                <dt>Signal</dt><dd>How strongly the box receives your WiFi, in dBm. A value closer to 0 is stronger. About −50 is excellent, −70 is weak, −80 is barely usable.</dd>
               </dl>
             </details>
             <div class="net-devices" id="net-devices"></div>
@@ -1055,8 +1054,8 @@
           </div>
 
           <div role="tabpanel" id="network/access" aria-labelledby="tab-net-access" hidden>
-            <p class="setting-desc">How the box itself reaches your network and the internet: a card per connection, and the
-              watchdog that keeps it up. Guests' side is on <a href="#network/hotspot">Hotspot</a>.</p>
+            <p class="setting-desc">This tab shows how the box reaches your network and the internet: one card for each connection, and the
+              watchdog that keeps the connection up. Guest settings are on the <a href="#network/hotspot">Hotspot</a> tab.</p>
             <div class="net-cards">
               <div class="net-card setting net-card-wide" id="net-wifi-card">
                 <h4>WiFi</h4>
@@ -1064,32 +1063,32 @@
                      networking here, each with its undo. -->
                 <div class="net-wifi-cols">
                   <section class="net-wifi-col" aria-labelledby="net-wifi-now-h">
-                    <h5 id="net-wifi-now-h">Now</h5>
+                    <h5 id="net-wifi-now-h">Current connection</h5>
                     <div id="net-wifi-now"></div>
                     <div id="net-roaming"></div>
                   </section>
                   <section class="net-wifi-col" aria-labelledby="net-saved-h">
-                    <h5 id="net-saved-h">Networks it knows</h5>
+                    <h5 id="net-saved-h">Saved networks</h5>
                     <div id="net-saved"></div>
                 <details id="net-join" class="net-join">
                   <summary>Add a WiFi network</summary>
-                  <p class="setting-desc">Pick one the box can see, or type one it will meet somewhere else. The box joins it by itself
-                    whenever the networks it knows are out of reach. The password is stored on the box, where only root can read it,
-                    and is never shown again.</p>
+                  <p class="setting-desc">Select a network that the box can see, or enter a network that the box will meet elsewhere. The box joins it
+                    automatically when the saved networks are out of range. The box stores the password where only root can
+                    read it. The page never shows it again.</p>
                   <div id="net-visible" class="net-visible"></div>
                   <form id="net-join-form" class="library-form" autocomplete="off">
                     <label>Network name (SSID) <input name="ssid" required maxlength="32" spellcheck="false" autocapitalize="off"></label>
                     <label>Security
                       <select name="security">
-                        <option value="wpa-psk" data-says="WPA2 or WPA3 with a password: what most home networks are.">WPA2/WPA3</option>
+                        <option value="wpa-psk" data-says="WPA2 or WPA3 with a password. Most home networks use this.">WPA2/WPA3</option>
                         <option value="sae" data-says="WPA3 only, with a password.">WPA3 only</option>
-                        <option value="open" data-says="No password: anyone nearby can read what the box sends that is not encrypted itself.">Open</option>
+                        <option value="open" data-says="No password. Anyone nearby can read the traffic that the application does not encrypt.">Open</option>
                       </select></label>
                     <label id="net-join-psk">Password <input name="psk" type="password" minlength="8" maxlength="64" autocomplete="new-password" spellcheck="false"></label>
                     <label class="inline"><input type="checkbox" name="hidden"> The network is hidden (does not announce its name)</label>
                     <span class="library-buttons">
                       <button class="action-btn primary" type="submit">Add</button>
-                      <button class="action-btn" type="button" id="net-join-now">Add and join it now</button>
+                      <button class="action-btn" type="button" id="net-join-now">Add and join now</button>
                     </span>
                   </form>
                 </details>
@@ -1109,7 +1108,7 @@
                 <div id="net-wired-now"></div>
               </div>
               <div class="net-card setting net-card-wide" id="net-defaults-card">
-                <h4>Box defaults for every connection</h4>
+                <h4>Default connection settings</h4>
                 <p class="setting-desc">What every connection uses unless it has its own setting. NetworkManager keeps these in its
                   own configuration, so they last even for a connection netplan writes afresh at every boot. Each says where its
                   value comes from now; changing one writes it to irate-box's own file, and "NetworkManager's own" takes
@@ -1119,7 +1118,7 @@
                 <p class="setting-desc action-note" id="net-defaults-note" role="status" hidden></p>
               </div>
               <div class="net-card setting net-card-wide" id="net-watchdog-card">
-                <h4>Staying on the network</h4>
+                <h4>Network recovery</h4>
                 <p class="setting-desc" id="up-status">The watchdog has not reported yet.</p>
                 <div class="library-buttons" id="up-stall" hidden></div>
                 <div class="net-settings up-settings">
@@ -1129,11 +1128,11 @@
                     <p class="setting-desc" id="up-scope-says"></p>
                   </div>
                   <div class="up-group">
-                    <span class="setting-name" id="up-pace-label">Pace: how soon it acts, and how often</span>
+                    <span class="setting-name" id="up-pace-label">Recovery timing (Pace)</span>
                     <div class="choice-tiles" id="up-pace" role="radiogroup" aria-labelledby="up-pace-label"></div>
                   </div>
                   <div class="up-group">
-                    <span class="setting-name" id="up-reach-label">Reach: the furthest it may go</span>
+                    <span class="setting-name" id="up-reach-label">Maximum recovery action (Reach)</span>
                     <div class="choice-tiles" id="up-reach" role="radiogroup" aria-labelledby="up-reach-label"></div>
                   </div>
                   <div class="up-group">
@@ -1141,31 +1140,31 @@
                     <div class="choice-tiles" id="up-guests" role="radiogroup" aria-labelledby="up-guests-label"></div>
                   </div>
                   <div class="up-group">
-                    <span class="setting-name" id="up-wedge-label">A failed radio (its driver wedged, or its interface gone)</span>
+                    <span class="setting-name" id="up-wedge-label">Failed radio (driver stalled, or interface missing)</span>
                     <div class="choice-tiles" id="up-wedge" role="radiogroup" aria-labelledby="up-wedge-label"></div>
                   </div>
                   <!-- The network at fault (gone, not letting the box join, the gateway silent): reconnects only,
                        never a radio reset or a reboot; how often, and for how long (uplink.py retry, give_up). -->
                   <div class="up-group">
-                    <span class="setting-name" id="up-retry-label">The network gone: how often to try again</span>
+                    <span class="setting-name" id="up-retry-label">Network unavailable: retry interval</span>
                     <div class="choice-tiles" id="up-retry" role="radiogroup" aria-labelledby="up-retry-label"></div>
                   </div>
                   <div class="up-group">
-                    <span class="setting-name" id="up-giveup-label">The network gone: how long to keep trying</span>
+                    <span class="setting-name" id="up-giveup-label">Network unavailable: retry period</span>
                     <div class="choice-tiles" id="up-giveup" role="radiogroup" aria-labelledby="up-giveup-label"></div>
                   </div>
                   <!-- NetworkManager's own retries, beside the watchdog's: a box default each (saved with the box defaults), and
                        the WiFi connection's own setting where irate-box changed it, with its undo. -->
                   <div class="up-group up-box-only" id="up-retries-group" hidden>
-                    <span class="setting-name">Joining failing: NetworkManager's own retries</span>
-                    <p class="setting-desc">How often NetworkManager tries a connection that fails to connect, or whose password
-                      check fails, before it stops and waits for someone to reconnect it by hand. For every connection on the box.</p>
+                    <span class="setting-name">NetworkManager join retries</span>
+                    <p class="setting-desc">How often NetworkManager retries a connection that fails to connect, or whose password
+                      check fails. After the last retry, it stops and waits until someone reconnects the connection by hand. This setting applies to every connection on the box.</p>
                     <div class="net-defaults" id="net-retry-defaults"></div>
                     <div id="up-profile"></div>
                     <span class="library-buttons"><button class="action-btn" type="button" id="net-retry-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-retry-save" disabled>Save these</button></span>
                   </div>
                   <div class="up-group">
-                    <label class="setting-name" for="up-sens">Sensitivity: missed checks within the pace's window that put the link on the ladder</label>
+                    <label class="setting-name" for="up-sens">Sensitivity: missed checks, within the timing window, that start recovery</label>
                     <span class="up-sens-row"><input type="number" id="up-sens" min="1" max="20" step="1" inputmode="numeric">
                       <span class="setting-desc" id="up-sens-says"></span></span>
                   </div>
@@ -1173,39 +1172,40 @@
                     <span class="setting-name" id="up-roaming-label">Roaming between access points that share your network's name</span>
                     <div class="choice-tiles" id="up-roaming" role="radiogroup" aria-labelledby="up-roaming-label"></div>
                     <div class="net-lock-aps" id="up-lock-aps" role="radiogroup" aria-label="The access point to lock to" hidden></div>
-                    <label class="inline"><input type="checkbox" id="up-ignore-roams"> Don't count short roams as missed checks: a drop that is
-                      back within 20 s on the same network is drawn on the chart, never counted (failed gateway checks still count)</label>
+                    <label class="inline"><input type="checkbox" id="up-ignore-roams"> Do not count short roams as missed checks. The chart shows a drop
+                      that returns within 20 s on the same network. The drop is not counted. Failed gateway checks still count.</label>
                   </div>
                   <!-- Which links have a watchdog of their own (uplink.py watch, watch_new), and the steps that reach every
                        link (box_steps) or meet a cable unplugged (cable_out). -->
                   <div class="up-group up-box-only" id="up-watch">
-                    <span class="setting-name">Which links it watches</span>
-                    <p class="setting-desc">Each link watched has a watchdog of its own, with the settings above. A link nobody
-                      watches is on its own: if it fails, nothing notices or tries again, and the Box doctor says so.</p>
+                    <span class="setting-name">Monitored interfaces</span>
+                    <p class="setting-desc">Each monitored interface has a watchdog of its own, with the settings above. If nobody monitors
+                      a link and it fails, nothing detects the failure and nothing retries. The Box doctor reports it.</p>
                     <div class="up-watch-rows" id="up-watch-rows"></div>
-                    <span class="setting-name" id="up-watchnew-label">A link not set here (a new one, too)</span>
+                    <span class="setting-name" id="up-watchnew-label">New interfaces and interfaces not listed here</span>
                     <div class="choice-tiles" id="up-watchnew" role="radiogroup" aria-labelledby="up-watchnew-label"></div>
                   </div>
                   <div class="up-group up-box-only">
-                    <span class="setting-name" id="up-boxsteps-label">Steps that reach every link: restarting the network service, rebooting</span>
+                    <span class="setting-name" id="up-boxsteps-label">System-wide recovery actions: restart the network service, reboot</span>
                     <div class="choice-tiles" id="up-boxsteps" role="radiogroup" aria-labelledby="up-boxsteps-label"></div>
                   </div>
                   <div class="up-group up-box-only">
-                    <span class="setting-name" id="up-cable-label">A cable unplugged (or its other end off)</span>
+                    <span class="setting-name" id="up-cable-label">Cable disconnected (or the other end is off)</span>
                     <div class="choice-tiles" id="up-cable" role="radiogroup" aria-labelledby="up-cable-label"></div>
-                    <span class="setting-name" id="up-cablereach-label">How far it goes on a cable by itself</span>
-                    <p class="setting-desc">A lost wired link is most often a cable pulled or the other end off, which no step
-                      mends. By default it reconnects, when the cable is back, and goes no further. Never past the reach above.</p>
+                    <span class="setting-name" id="up-cablereach-label">Wired-link recovery limit</span>
+                    <p class="setting-desc">A lost wired link usually means that a cable is disconnected or the other end is off. No recovery action
+                      repairs that. By default, the box reconnects when the cable returns and takes no further action. It never
+                      goes past the maximum recovery action above.</p>
                     <div class="choice-tiles" id="up-cablereach" role="radiogroup" aria-labelledby="up-cablereach-label"></div>
                   </div>
                   <!-- The steps the watchdog may take, per connection: unticked, it never takes that one there
                        (admin.js renderUpSteps; uplink.py steps_off). -->
-                  <span class="setting-name" id="up-steps-label">Steps it may take, for each connection</span>
-                  <p class="setting-desc">Untick a step to leave it out on that connection: a radio a network restart unsettles can go
-                    straight from a reconnect to a radio reset. The reach above still caps how far it goes.</p>
+                  <span class="setting-name" id="up-steps-label">Recovery actions for each connection</span>
+                  <p class="setting-desc">Clear an action to exclude it on that connection. For example, a radio that a network restart disturbs can go
+                    straight from a reconnect to a radio reset. The maximum recovery action above still limits how far the box goes.</p>
                   <div class="up-steps" id="up-steps" role="group" aria-labelledby="up-steps-label"></div>
                   <details id="up-custom" class="up-box-only">
-                    <summary>Custom values (blank: the pace's own)</summary>
+                    <summary>Custom values (blank = use the recovery timing)</summary>
                     <div class="net-fields" id="up-fields"></div>
                   </details>
                 </div>
@@ -1213,8 +1213,8 @@
                 <div class="library-buttons">
                   <button class="action-btn" type="button" id="up-discard" disabled>Discard</button>
                   <button class="action-btn" type="button" id="up-save">Save</button>
-                  <button class="action-btn" type="button" id="up-hold">Hold repairs for an hour</button>
-                  <button class="action-btn" type="button" id="up-unhold" hidden>End the hold</button>
+                  <button class="action-btn" type="button" id="up-hold">Pause recovery for 1 hour</button>
+                  <button class="action-btn" type="button" id="up-unhold" hidden>Resume recovery</button>
                 </div>
                 <p class="setting-desc action-note" id="up-note" role="status" hidden></p>
               </div>
@@ -1223,17 +1223,17 @@
 
           <div role="tabpanel" id="network/hotspot" aria-labelledby="tab-net-hotspot" hidden>
             <div class="net-card setting" id="ap-health-card">
-              <h4>How the hotspot is doing</h4>
+              <h4>Hotspot status</h4>
               <div id="ap-health"></div>
             </div>
             <h3>The hotspot</h3>
             <p class="setting-desc">
-              The box's own WiFi, for guests: address 192.168.4.1, every name answered with the hub. It
-              fits itself to the radios here: a radio of its own if there is one, beside your WiFi on a
-              channel of its own where the radio can, following your WiFi's channel where it can't. How
-              guests join (open or encrypted) is chosen below.
+              The hotspot is the box's own WiFi network for guests. Its address is 192.168.4.1. In captive-portal DNS
+              mode, every name leads to the hub. The box adapts to its radios. It uses a separate radio if one exists. If
+              the radio supports it, the hotspot runs on its own channel beside your WiFi. Otherwise it follows the
+              channel of your WiFi. Select below how guests join: open or encrypted.
             </p>
-            <p class="setting-desc" id="ap-state">Looking…</p>
+            <p class="setting-desc" id="ap-state">Checking…</p>
             <form class="net-settings" id="ap-form">
               <label class="setting-name" for="ap-radio">Radio</label>
               <select id="ap-radio"><option value="">Automatic</option></select>
@@ -1698,7 +1698,7 @@
         <div class="findings" id="doctor-findings"></div>
         <p class="setting-desc" id="updoctor-empty" hidden></p>
         <details class="sec-fold" id="updoctor-fine-fold" hidden>
-          <summary>Fine <span id="updoctor-fine-count"></span>: what the doctor looked at and found as it should be</summary>
+          <summary>Passed checks <span id="updoctor-fine-count"></span>: checks that found no problem</summary>
           <div class="findings compact" id="updoctor-fine"></div>
         </details>
 

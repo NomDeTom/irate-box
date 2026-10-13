@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Network → Staying on the network, with a watchdog per link: a row for each link (watched, not watched, or as any
+// Network → Network recovery, with a watchdog per link: a row for each link (watched, not watched, or as any
 // other link) saying what it is doing, the choices for a new link, the steps that reach every link and a cable
 // unplugged, Save sending them, and the status and log naming each watched link. No hub needed: its answer is stood
 // in, the watchdog's levels taken from uplink.py itself. Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-watch-links.cjs

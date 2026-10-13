@@ -561,10 +561,10 @@ def check_uplink():
         down = int((st.get("at", 0) - ((st.get("outage") or {}).get("since") or st.get("at", 0))) // 60)
         out.append(_f("uplink-stalled", "The link is down and the watchdog has stalled", "problem",
                       f"{st.get('iface')} down for {down} min. {stall.get('text', '')}",
-                      (f"Network → Staying on the network: {stall['label'][:1].upper() + stall['label'][1:]} now, "
+                      (f"Network → Network recovery: {stall['label'][:1].upper() + stall['label'][1:]} now, "
                        "or choose a level that goes that far." if stall.get("needs")
                        else "Look at the box by its console or a cable: nothing it can do by itself would help."),
-                      go=_go("net-watchdog-card", "Network → Staying on the network", "up-stall" if stall.get("needs") else "up-reach")))
+                      go=_go("net-watchdog-card", "Network → Network recovery", "up-stall" if stall.get("needs") else "up-reach")))
     out += link_findings(st)
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
     out += metered_findings()
@@ -585,19 +585,19 @@ def link_findings(st):
     links, chosen = st.get("links") or {}, st.get("chosen") or {}
     off = {i for i, v in (chosen.get("watch") or {}).items() if v is False}
     watched = sorted(i for i, lk in links.items() if lk.get("watched"))
-    go = lambda mark: _go("net-watchdog-card", "Network → Staying on the network", mark)  # noqa: E731
+    go = lambda mark: _go("net-watchdog-card", "Network → Network recovery", mark)  # noqa: E731
     out = []
     if not watched and inv:
         out.append(_f("uplink-none-watched", "No link is watched", "problem",
                       f"The watchdog is watching {st.get('watching') or 'nothing'}. If the box's network fails, nothing will notice or "
-                      "try again.", "Network → Staying on the network: choose which links it watches.", go=go("up-watch")))
+                      "try again.", "Network → Network recovery: choose which links it watches.", go=go("up-watch")))
     for i, lk in sorted(inv.items()):
         what = f"{i} ({LINK_KIND.get(lk.get('kind'), lk.get('kind'))}, {', '.join(lk.get('autoconnect') or []) or 'no connection set to start'})"
         if lk.get("look") and not lk.get("up") and lk.get("autoconnect"):
             out.append(_f(f"uplink-look-{i}", f"{i} is down, and only looked at", "warn",
                           f"{what} is down. The watchdog looks at it but does nothing for it, as set (every other link looked at "
                           "only). After a password check fails, NetworkManager stops and waits for someone.",
-                          f"Reconnect it now; or on Network → Staying on the network, watch {i} in full.",
+                          f"Reconnect it now; or on Network → Network recovery, watch {i} in full.",
                           [_act(f"uplink-reconnect:{i}", "Reconnect it")], go=go(f"up-watch-{i}")))
             continue
         if lk.get("watched") or (lk.get("as") or i) in off or not lk.get("autoconnect"):
@@ -605,13 +605,13 @@ def link_findings(st):
         if lk.get("up"):
             out.append(_f(f"uplink-uncovered-{i}", f"{i} is not watched", "warn",
                           f"{what} is up, but nothing watches it: if it fails, nothing will notice or try again.",
-                          f"Network → Staying on the network: watch {i}, or set it not to be watched to say that is meant.",
+                          f"Network → Network recovery: watch {i}, or set it not to be watched to say that is meant.",
                           go=go(f"up-watch-{i}")))
         else:
             out.append(_f(f"uplink-uncovered-{i}", f"{i} is down, and not watched", "problem",
                           f"{what} is down. NetworkManager has a connection for it set to start by itself, but nothing watches "
                           f"{i}, so nothing tries again. After a password check fails, NetworkManager stops and waits for someone.",
-                          f"Reconnect it now; and on Network → Staying on the network, watch {i}.",
+                          f"Reconnect it now; and on Network → Network recovery, watch {i}.",
                           [_act(f"uplink-reconnect:{i}", "Reconnect it")], go=go(f"up-watch-{i}")))
     for i in watched:
         lk = links[i]
@@ -623,7 +623,7 @@ def link_findings(st):
         if stall:
             out.append(_f(f"uplink-stalled-{i}", f"{i} is down and its watchdog has stalled", "problem" if stall.get("needs") else "warn",
                           f"{i}: {stall.get('text', '')}",
-                          (f"Network → Staying on the network: choose a reach that goes as far as to {stall['label']}."
+                          (f"Network → Network recovery: choose a reach that goes as far as to {stall['label']}."
                            if stall.get("needs") else "Nothing the box can do by itself would help."), go=go("up-reach")))
     return out
 
@@ -721,8 +721,8 @@ def step_findings(rows, chosen, now=None):
                 why += f", and the radio's driver wedged right after it {v['wedged']} times"
             out.append(_f(f"uplink-skip-{iface}-{s}", f"{iface}: {STEP_SAID.get(s, s)} isn't helping", "warn",
                           f"{why} (the last {STEP_DAYS} days). The watchdog could leave it out on {iface} and go on to the next step sooner.",
-                          f"Network → The box's access → Steps it may take: untick {STEP_TICK.get(s, s)} for {iface}.",
-                          go=_go("up-steps", "Network → Steps it may take", f"up-step-{iface}-{s}")))
+                          f"Network → Connection settings → Recovery actions: clear {STEP_TICK.get(s, s)} for {iface}.",
+                          go=_go("up-steps", "Network → Recovery actions", f"up-step-{iface}-{s}")))
     return out
 
 
@@ -748,7 +748,7 @@ def roaming_findings(st, inv):
                f"{st.get('iface')} moved between access points {n} times in the last hour ({len(f['aps'])} share {f.get('ssid')}, "
                f"channels {', '.join(map(str, f.get('channels', [])))}); each move takes the hotspot's guests along, and is a moment off "
                "the network on a radio that copes worst with that.",
-               "Network → Staying on the network: choose no background scans while the hotspot shares the radio, a lock to one access "
+               "Network → Network recovery: choose no background scans while the hotspot shares the radio, a lock to one access "
                "point, or don't count short roams as missed checks. Or, on your router, put the access points on one channel.")]
 
 
@@ -1221,8 +1221,8 @@ def check_crashwatch(now=None):
     failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
     out.append(_f("crash-radio", "The WiFi radio", "warn" if failed else "ok", detail,
                   "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver. "
-                  "What is done when it fails: Network → The box's access → A failed radio." if failed else "",
-                  go=_go("net-watchdog-card", "Network → A failed radio", "up-wedge") if failed else None))
+                  "What is done when it fails: Network → Connection settings → Failed radio." if failed else "",
+                  go=_go("net-watchdog-card", "Network → Failed radio", "up-wedge") if failed else None))
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
     on = [w for w, v in (("restarts after a kernel panic or lockup", s["panic"]), ("a watchdog restarts it if it freezes", s["watchdog"])) if v]
     said = "; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug."

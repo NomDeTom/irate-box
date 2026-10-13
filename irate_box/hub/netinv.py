@@ -845,7 +845,7 @@ def link_findings(inv):
             out.append(_h(f"locked:{p['uuid']}", "warn", f"{name}: locked to {' and '.join(locks)}",
                           "The box can't move to another access point or band of the same network: if that one goes, the box "
                           "stays off the network" + (f" ({len(roam['aps'])} access points share its name)." if len(roam.get("aps") or []) > 1 else "."),
-                          "Network page, WiFi: its own settings, the locks; or Staying on the network, roaming.", iface=iface))
+                          "Network page, WiFi: its own settings, the locks; or Network recovery, roaming.", iface=iface))
         ps_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("powersave") or {}).get("value") or ((dflt.get("settings") or {}).get("powersave") or {}).get("value")
         if p.get("powersave") == 3 or (p.get("powersave") in (0, None) and ps_box == "3"):
             out.append(_h(f"powersave-set:{p['uuid']}", "warn", f"{name}: WiFi power save on",

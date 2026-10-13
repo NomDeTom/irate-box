@@ -4,11 +4,11 @@
 
 *How the box stays online, and its own WiFi for guests. On the admin pages: System → Network.*
 
-## The box's access
+## Connection settings
 
-**The box's access** shows its WiFi (the networks it knows; **Add a network for the box to join**) and its wired port.
+**Connection settings** shows its WiFi (the networks it knows; **Add a network for the box to join**) and its wired port.
 
-## Staying on the network
+## Network recovery
 
 A watchdog checks the router every minute or two. If the link drops, it climbs a ladder of repairs, each only if the one before didn't help:
 
@@ -17,7 +17,7 @@ A watchdog checks the router every minute or two. If the link drops, it climbs a
 3. **Reset the radio** (reload its driver: a fresh start for the WiFi chip).
 4. **Reboot the box** (at most three times a day, never during an update or a build).
 
-You choose the **pace** (how soon it acts), the **reach** (how far up the ladder it may go), how many missed checks put it on the ladder, and, with guests on the hotspot, whether to protect them from a restart. **Steps it may take, for each connection** lets you untick a step for one link: a radio that a restart unsettles can go from a reconnect straight to a radio reset. The Box doctor says when a step isn't helping on a link that drops often, with a button to leave it out.
+You choose the **pace** (how soon it acts), the **reach** (how far up the ladder it may go), how many missed checks put it on the ladder, and, with guests on the hotspot, whether to protect them from a restart. **Recovery actions, for each connection** lets you untick a step for one link: a radio that a restart unsettles can go from a reconnect straight to a radio reset. The Box doctor says when a step isn't helping on a link that drops often, with a button to leave it out.
 
 It also tells **why** the link is down. When the **radio itself has failed** (its driver stuck, or the WiFi interface gone), only a radio reset or a reboot helps: **A failed radio** sets whether that waits its turn on the ladder, happens at once, or happens at once with a restart of the box if the radio isn't back three minutes later. When the **network is at fault** (out of range, not letting the box join, or the router silent), a reset or a reboot can't help, so the box only reconnects: **how often** (eager, steady, or sparing for a box on a battery) and **how long** (forever by default, or an hour, a day, a week).
 

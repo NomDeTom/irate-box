@@ -47,7 +47,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   const glance = [...d.querySelectorAll('#health-glance dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]);
   const g = Object.fromEntries(glance);
   check('at a glance: health, the link, the radio, the last start and why, the last repair, a frozen box, snapshots, the status light, writes to the card',
-    Object.keys(g).join('|') === 'Health|Staying on the network|The WiFi radio|The last start|The last repair|A frozen box|Snapshots|Status light|Writes to the card', Object.keys(g));
+    Object.keys(g).join('|') === 'Health|Network recovery|The WiFi radio|The last start|The last repair|A frozen box|Snapshots|Status light|Writes to the card', Object.keys(g));
   check('  the status light: its finding\'s first sentence', g['Status light'] === 'work-led: alive and on its network; now 1 s on, 1 s off: well (driven by the box: this kernel has no LED triggers, so nothing else can blink it).', g['Status light']);
   check('  the last start: when, and that the watchdog rebooted it', /^2 h ago: the uplink watchdog rebooted it/.test(g['The last start']), g['The last start']);
   check('  a frozen box stays stopped; snapshots kept', g['A frozen box'].startsWith('Stays stopped') && g.Snapshots === 'Kept every 30 s.', g);

@@ -108,7 +108,7 @@ setTimeout(() => {
   d.getElementById('net-join-now').click();
   w.confirm = () => true;
   const sentJoin = posted.find((p) => p.action === 'join');
-  check('  Add and join it now: warned the page may lose the box, sent, the password cleared from the form', /may lose the box/.test(asked)
+  check('  Add and join now: warned the page may lose the box, sent, the password cleared from the form', /may lose the box/.test(asked)
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
@@ -129,7 +129,7 @@ setTimeout(() => {
   console.log('FIELDS:', [...d.querySelectorAll('#up-fields [data-key]')].map((i) => `${i.dataset.key}=${i.value || '(' + (i.placeholder || i.options?.[0]?.textContent) + ')'}`).join('  '));
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
-  // Staying on the network: two dials, pace and reach, guests, a wedged driver and
+  // Network recovery: two dials, pace and reach, guests, a wedged driver and
   // the sensitivity, a number of missed checks, each choice as radio cards.
   const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
   const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
