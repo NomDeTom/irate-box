@@ -3,7 +3,7 @@
   "order": 75,
   "tile": {
     "icon": "🧮📐",
-    "name": "Calculators (plain copy)",
+    "name": "Unmodified calculator site",
     "desc": "nomdetom.github.io as published, as a web add-on",
     "path": "index.html"
   },
@@ -15,9 +15,9 @@
   },
   "needs": "index.html",
   "addon": {
-    "title": "Calculators (plain copy)",
-    "summary": "The RF, electronics and Meshtastic calculators of nomdetom.github.io, exactly as published (not adapted to the hub's look), from its own index page. About 41 MB, nearly all of it the Meshtasticatom explorer page.",
-    "consent": "This downloads nomdetom.github.io from GitHub and serves it to everyone on the box's network. One page (the meshtasticd pinout map) asks GitHub for the firmware's file list when it is online. Add it?"
+    "title": "Unmodified calculator site",
+    "summary": "The RF, electronics and Meshtastic calculators of nomdetom.github.io, exactly as published. They are not adapted to the look of the hub. The add-on has its own index page. It uses about 41 MB of storage. Nearly all of this is the Meshtasticatom explorer page.",
+    "consent": "This downloads nomdetom.github.io from GitHub. A new web add-on starts disabled. After you enable it, the hub serves it to the visitors that its Access setting lets open it. One page (the meshtasticd pinout map) asks GitHub for the file list of the firmware when the box is online. Add the calculator site?"
   },
   "capabilities": {
     "connect": ["https://api.github.com"],

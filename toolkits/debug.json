@@ -1,7 +1,7 @@
 {
  "id": "debug",
  "title": "Debugging",
- "summary": "Step through a program, trace what it does, watch the network and the disk.",
+ "summary": "Program debugging and tracing. Step through a program, trace what it does, and watch the network and the disk.",
  "packages": [
   "gdb",
   "strace",
@@ -17,11 +17,11 @@
   "valgrind",
   "linux-perf"
  ],
- "consent": "These tools can read any process's memory and every packet on the box. Install them only while you need them: they are removed again after the time you choose.",
+ "consent": "These tools can read the memory of any process. They can read every packet on the box. Install them only while you need them. The box removes them after the time that you select.",
  "notes": [
-  "perf is built for Debian's kernel; on a vendor kernel parts of it may not work (on a Luckfox Lyra's 6.1 kernel it reports 6.12 and runs).",
-  "bpftrace, bcc (bpfcc-tools) and bpftool come only on 64-bit boards: a 32-bit ARM kernel will not load their programs (a Luckfox Lyra's did not). Where they come, they need the kernel's BTF (/sys/kernel/btf/vmlinux) or its headers.",
-  "Core dumps are collected while the kit is installed (systemd-coredump); its other services stay stopped."
+  "perf is built for the Debian kernel. On a vendor kernel, parts of perf can fail.",
+  "bpftrace, bcc (bpfcc-tools) and bpftool install only on 64-bit boards. A 32-bit ARM kernel cannot load their programs. On a 64-bit board, they need the BTF of the kernel (/sys/kernel/btf/vmlinux) or its headers.",
+  "systemd-coredump collects core dumps while the toolkit is installed. This is an exception to the rule that toolkit services stay stopped. The other services of the toolkit stay stopped."
  ],
  "remove_after_hours": 24,
  "services": [

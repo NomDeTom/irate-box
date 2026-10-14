@@ -4,7 +4,7 @@
   "tile": {
     "icon": "📡",
     "name": "MQTT explorer",
-    "desc": "The box's MQTT broker, live: topics, traffic and messages",
+    "desc": "Live MQTT topics and messages from the broker of the box",
     "path": "index.html"
   },
   "source": {
@@ -17,8 +17,8 @@
   "needs": "explorer.js",
   "addon": {
     "title": "MQTT explorer",
-    "summary": "A page that listens to the box's MQTT broker (install.sh --with-mqtt) and lists its topics as messages arrive: how many, how big, how recent, and each topic's last messages as JSON, text or hex. Meshtastic's encrypted packets show as traffic, not content. It only listens and never publishes. About 20 KB, no service and no memory on the box.",
-    "consent": "This downloads the Irate-Box's own MQTT explorer page from github.com/NomDeTom/irate-box, at the commit this hub pins, and serves it to whoever you let open it. Its pages may reach the box's broker at /mqtt and nothing else. Anyone who can open it sees the topics and traffic on the broker (msh/#). Add it?"
+    "summary": "A page that subscribes to the MQTT broker of the box (install.sh --with-mqtt). It lists the topics as messages arrive. It shows the number, the size and the age of the messages. It shows the last messages of each topic as JSON, text or hex. It shows Meshtastic encrypted packets as traffic, not as content. The page only subscribes. It never publishes. It uses about 20 KB of storage. It adds no server process on the box.",
+    "consent": "This downloads the MQTT explorer page of Irate-Box from github.com/NomDeTom/irate-box, at the commit that this hub pins. The hub serves it to the visitors that you let open it. The page can connect to the broker of the box at /mqtt only. It can read the topic prefix msh/#. Every visitor who can open the page sees the topics and the traffic of the broker. Add the MQTT explorer?"
   },
   "capabilities": {
     "connect": ["ws://{box}/mqtt"],

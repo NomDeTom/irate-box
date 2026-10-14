@@ -1,16 +1,16 @@
 {
  "id": "radio",
  "title": "Radio",
- "summary": "Listen with an RTL-SDR stick and decode what the air carries: rtl-sdr's tools, multimon-ng (POCSAG, AFSK, DTMF), Direwolf (APRS, packet).",
+ "summary": "Radio reception and decoding. Use an RTL-SDR USB receiver. The toolkit has the tools of rtl-sdr, multimon-ng (POCSAG, AFSK, DTMF) and Direwolf (APRS, packet).",
  "packages": [
   "rtl-sdr",
   "multimon-ng",
   "direwolf"
  ],
- "consent": "These tools receive only; rtl-sdr's rtl_tcp listens on the box for a client if you start it. Transmitting (Direwolf with a radio) is yours to license.",
+ "consent": "Most of these tools receive only. Direwolf can transmit if you attach a radio. You need the authorisation that the law requires to transmit. rtl_tcp of rtl-sdr listens on the box for a client only when you start it.",
  "notes": [
-  "rtl_test -t says whether the stick is seen; rtl_fm piped into multimon-ng decodes pagers and AFSK; Direwolf with a USB sound card and a radio is an APRS digipeater or iGate for the mesh's neighbours.",
-  "Meshtastic's own radios are reached through meshtasticd and the hub's Meshtastic page, not this kit."
+  "rtl_test -t shows whether the box detects the RTL-SDR USB receiver. Pipe rtl_fm into multimon-ng to decode pagers and AFSK. Direwolf with a USB sound card and a radio is an APRS digipeater or iGate.",
+  "This toolkit does not control Meshtastic radios. Use meshtasticd and the Meshtastic page of the hub."
  ],
  "remove_after_hours": 24
 }

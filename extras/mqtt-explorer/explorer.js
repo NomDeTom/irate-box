@@ -143,7 +143,7 @@ function connect() {
   try {
     ws = new WebSocket(url, ['mqtt']);
   } catch (e) {
-    setState(`Cannot open ${url}: ${e.message}`, 'bad');
+    setState(`Connection failed. Cannot open ${url}: ${e.message}`, 'bad');
     return;
   }
   explorer.ws = ws;
@@ -157,8 +157,8 @@ function connect() {
     clearInterval(explorer.ping);
     const wait = Math.min(60, 5 * 2 ** explorer.retry++);
     setState(explorer.connected
-      ? `The broker went away; trying again in ${wait} s.`
-      : `No broker answered at ${url}. It is installed with install.sh --with-mqtt, and /admin can switch it off. Trying again in ${wait} s.`, 'bad');
+      ? `Connection lost. Reconnecting in ${wait} s.`
+      : `Connection failed. No broker answered at ${url}. Check that the MQTT add-on is installed and enabled. Reconnecting in ${wait} s.`, 'bad');
     explorer.connected = false;
     explorer.timer = setTimeout(connect, wait * 1000);
   };
@@ -178,7 +178,7 @@ function receive(bytes) {
   try {
     [packets, explorer.buf] = splitPackets(joined);
   } catch (e) {
-    setState(`The broker sent something unreadable (${e.message}); reconnecting.`, 'bad');
+    setState(`Invalid MQTT data received (${e.message}). Reconnecting.`, 'bad');
     explorer.ws.close();
     return;
   }
@@ -186,18 +186,18 @@ function receive(bytes) {
     if (p.type === 2) {          // CONNACK
       const code = p.body[1];
       if (code !== 0) {
-        setState(`The broker refused the connection (code ${code}).`, 'bad');
+        setState(`Connection refused by the broker (code ${code}).`, 'bad');
         continue;
       }
       explorer.connected = true;
       explorer.retry = 0;
-      setState(`Listening to ${explorer.filter} at ${brokerUrl()}`, 'ok');
+      setState(`Subscribed to ${explorer.filter} at ${brokerUrl()}`, 'ok');
       clearInterval(explorer.ping);
       explorer.ping = setInterval(() => send(PINGREQ), KEEPALIVE * 500);
       send(subscribePacket(explorer.nextId++ & 0xffff || 1, explorer.filter));
     } else if (p.type === 9) {   // SUBACK
-      if (p.body[2] === 0x80) setState(`The broker does not allow ${explorer.filter} (it allows msh/#).`, 'bad');
-      else setState(`Listening to ${explorer.filter} at ${brokerUrl()}`, 'ok');
+      if (p.body[2] === 0x80) setState(`Subscription refused for ${explorer.filter}. The broker accepts only msh/#.`, 'bad');
+      else setState(`Subscribed to ${explorer.filter} at ${brokerUrl()}`, 'ok');
     } else if (p.type === 3) {   // PUBLISH
       if (!explorer.paused) record(readPublish(p));
     }
@@ -258,10 +258,10 @@ function draw() {
   const mins = Math.max(1, (now - explorer.started) / 60000);
   const bytes = [...explorer.topics.values()].reduce((a, t) => a + t.bytes, 0);
   document.getElementById('totals').textContent = `${explorer.topics.size} topics, ${explorer.total} messages`
-    + ` (${(explorer.total / mins).toFixed(1)} a minute), ${sizeText(bytes)}`
-    + (search ? `; ${names.length} shown` : '')
-    + (explorer.overflow ? `; ${explorer.overflow} on topics past the first ${KEEP_TOPICS}, counted only` : '')
-    + (explorer.paused ? '; paused' : '');
+    + ` (${(explorer.total / mins).toFixed(1)} per minute), ${sizeText(bytes)}`
+    + (search ? `, ${names.length} shown` : '')
+    + (explorer.overflow ? `, ${explorer.overflow} messages on topics past the first ${KEEP_TOPICS} (counted only)` : '')
+    + (explorer.paused ? ', paused' : '');
   drawDetail();
 }
 

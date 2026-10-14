@@ -4,13 +4,13 @@
   "tile": {
     "icon": "📡📻",
     "name": "Meshtastic",
-    "desc": "Log analyser, docs & tools",
+    "desc": "Log analyser, documentation and tools",
     "href": "/meshtastic.html"
   },
   "menu": {
     "title": "Meshtastic",
-    "subtitle": "Everything on the box for Meshtastic nodes.",
-    "about": "Everything Meshtastic in one list. The flasher joins it when it is packaged.",
+    "subtitle": "Meshtastic tools and documentation on the box.",
+    "about": "Meshtastic tools and documentation in one list. The list shows the entries that are configured on this box.",
     "art": "librarian"
   }
 }

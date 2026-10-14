@@ -14,25 +14,27 @@
     <h1>MQTT explorer</h1>
     <p id="state" class="state" role="status">Starting…</p>
   </header>
-  <p class="note">The box's broker, as it happens. Meshtastic sends most packets
-    <strong>encrypted</strong> (topics with <code>/e/</code>), so for those this shows the topics and the
-    traffic, not what was said. Topics with <code>/json/</code> are readable. This page only listens: it
-    never publishes, and keeps nothing once closed.</p>
+  <p class="note">Live broker messages from this box.
+    Meshtastic sends most packets <strong>encrypted</strong> (topics with <code>/e/</code>).
+    For those topics, this page shows the topic and the traffic, not the content.
+    Topics with <code>/json/</code> are readable.
+    This page only subscribes. It never publishes.
+    It keeps messages in memory only. It keeps nothing after you close it.</p>
   <form id="sub" class="bar">
-    <label>Topics <input id="filter" value="msh/#" spellcheck="false" autocomplete="off" aria-label="Topic filter"></label>
-    <button type="submit">Listen</button>
-    <button type="button" id="pause">Pause</button>
-    <button type="button" id="clear">Clear</button>
-    <label>Show <input id="search" type="search" placeholder="part of a topic" aria-label="Show topics containing"></label>
+    <label>Topic filter <input id="filter" value="msh/#" spellcheck="false" autocomplete="off" aria-label="Topic filter"></label>
+    <button type="submit">Subscribe</button>
+    <button type="button" id="pause" title="Stop adding new messages to the list in this browser. The broker is not affected.">Pause</button>
+    <button type="button" id="clear" title="Clear the list in this browser. The broker is not affected.">Clear</button>
+    <label>Topic search <input id="search" type="search" placeholder="part of a topic" aria-label="Topic search"></label>
   </form>
   <p id="totals" class="totals"></p>
   <div class="split">
     <div class="scroll">
       <table id="topics">
-        <thead><tr><th>Topic</th><th class="n">Messages</th><th class="n">Bytes</th><th class="n">Last</th></tr></thead>
+        <thead><tr><th>Topic</th><th class="n">Messages</th><th class="n">Bytes</th><th class="n">Last message</th></tr></thead>
         <tbody></tbody>
       </table>
-      <p id="empty" class="empty">Nothing yet. Packets appear here as nodes send them.</p>
+      <p id="empty" class="empty">No messages received. Packets appear here when nodes send them.</p>
     </div>
     <section id="detail" class="detail" hidden>
       <h2 id="detail-topic"></h2>

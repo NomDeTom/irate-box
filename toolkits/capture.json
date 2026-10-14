@@ -1,6 +1,6 @@
 {"id": "capture", "title": "Capture",
- "summary": "Record and read network traffic: tcpdump and tshark, a part of Debugging for network work.",
+ "summary": "Packet capture and analysis: tcpdump and tshark. Debugging also includes them.",
  "packages": ["tcpdump", "tshark"],
- "consent": "These tools can see every packet the box sends or receives, guests' included. Install them only while you need them.",
+ "consent": "These tools can record the packets that the box can see. These include the packets that the box sends or receives, and the packets of guests. Encrypted payloads stay encrypted. A capture can still hold private data and metadata. Install the toolkit only while you need it.",
  "notes": [],
  "remove_after_hours": 24}

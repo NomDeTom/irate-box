@@ -4,7 +4,7 @@
   "tile": {
     "icon": "📥🗄️",
     "name": "File drop",
-    "desc": "Leave files for each other",
+    "desc": "Upload and download shared files",
     "href": "/drop.html"
   },
   "admin": {

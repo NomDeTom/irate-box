@@ -25,8 +25,8 @@
         "tools-rf": 0,
         "meshtastic": 0
       },
-      "name": "Serial terminal & log analyser",
-      "desc": "Meshtastic logs: drop in a saved one. For live USB, use the download below",
+      "name": "Serial terminal and log analyser",
+      "desc": "Open a saved Meshtastic log to analyse it. For live USB serial, use the download below",
       "href": "/app.html#/serial/"
     },
     {
@@ -35,8 +35,8 @@
         "meshtastic": 1,
         "flashing": 4
       },
-      "name": "Serial terminal, as a download (for live USB)",
-      "desc": "One file: save it, then open it from your downloads in Chrome or Edge, where live USB serial works. Its SHA-256 is beside it on the box",
+      "name": "Download serial terminal (for live USB)",
+      "desc": "Download one file. Open it from your downloads in Chrome or Edge. Live USB serial works there. The box shows the SHA-256 hash of the file next to it. The hash shows that the file is not damaged. It does not show who published the file",
       "href": "/serial/serial-terminal.html"
     }
   ],

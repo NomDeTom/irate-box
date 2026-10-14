@@ -4,12 +4,12 @@
   "tile": {
     "icon": "🗨️🛋️",
     "name": "ELIZA",
-    "desc": "Eliza - small language model"
+    "desc": "Rule-based chatbot"
   },
   "menu": {
     "title": "ELIZA",
-    "subtitle": "Weizenbaum's 1966 program with every script that survives, and one for the mesh. Runs in your browser; type *help in any of them for the commands.",
-    "about": "Anthony and Max Hay's recreation of ELIZA, fetched from github.com/anthay/ELIZA and adapted by adapt_eliza.py; each entry opens eliza.html?script=NAME. The banner is the one in its source (eliza.cpp, eliza.html).",
+    "subtitle": "Weizenbaum's 1966 program with the scripts that exist in the source repository, and one script for the mesh. It runs in your browser. Type *help in any script to see the commands.",
+    "about": "The recreation of ELIZA by Anthony and Max Hay. The box downloads it from github.com/anthay/ELIZA. adapt_eliza.py adapts it. Each entry opens eliza.html?script=NAME. The banner is the banner in its source (eliza.cpp, eliza.html).",
     "banner": [
       "//////// //       //// ////////    ///    //        ///////   //////   ////  //////",
       "//       //        //       //    // //   //       //     // //    //   //  //    //",
@@ -26,7 +26,7 @@
         "eliza": 10
       },
       "name": "DOCTOR, 1966",
-      "desc": "The famous one, as printed in the January 1966 CACM paper. Type *cacm to replay the paper's conversation",
+      "desc": "The DOCTOR script as printed in the January 1966 CACM paper. Type *cacm to replay the conversation in the paper",
       "path": "eliza.html"
     },
     {
@@ -34,7 +34,7 @@
         "eliza": 20
       },
       "name": "DOCTOR, 1965 (MIT archive, tape 100)",
-      "desc": "The earlier DOCTOR, from a listing printed on 6 March 1965 in Weizenbaum's papers",
+      "desc": "The earlier DOCTOR script, from a listing printed on 6 March 1965 in the papers of Weizenbaum",
       "path": "eliza.html?script=ELIZA-script-02-000311051-1965-03-06-TAPE-100"
     },
     {
@@ -50,7 +50,7 @@
         "eliza": 40
       },
       "name": "DOCTOR, 1965 (tape 102), as printed",
-      "desc": "The other script in that listing. It does not run as printed: one line is out of place, and ELIZA says where",
+      "desc": "The other script in that listing. It does not run as printed because one line is out of place. ELIZA shows where",
       "path": "eliza.html?script=ELIZA-script-02-000311051-1965-03-06-TAPE-102"
     },
     {
@@ -74,7 +74,7 @@
         "eliza": 70
       },
       "name": "YAPYAP, as printed",
-      "desc": "The study's script before adaptation. It needs features 1966 ELIZA lacks, so it does not run",
+      "desc": "The script of the study before adaptation. It needs features that ELIZA of 1966 does not have. It does not run",
       "path": "eliza.html?script=ELIZA-script-YAPYAP-original"
     },
     {
@@ -82,7 +82,7 @@
         "eliza": 80
       },
       "name": "Turing machine: equal As and Bs",
-      "desc": "ELIZA as a computer. Type EQUAL A B B A (YES) or EQUAL A A A B B (NO)",
+      "desc": "ELIZA as a Turing machine. Type EQUAL A B B A (answer: YES). Type EQUAL A A A B B (answer: NO)",
       "path": "eliza.html?script=ELIZA-script-equal-number-Turing-machine"
     },
     {
@@ -90,7 +90,7 @@
         "eliza": 90
       },
       "name": "Turing machine: palindromes",
-      "desc": "Type PALP A B B A (TRUE) or PALP A A A B B (FALSE)",
+      "desc": "Type PALP A B B A (answer: TRUE). Type PALP A A A B B (answer: FALSE)",
       "path": "eliza.html?script=ELIZA-script-palindrome-Turing-machine"
     },
     {
@@ -98,7 +98,7 @@
         "eliza": 100
       },
       "name": "Turing's Example I (1936)",
-      "desc": "Computes 010101… as in On Computable Numbers, and never stops. Type *tracepre to watch the tape, then EX1; *maxtran 0 lifts the 500-step limit, Escape stops it",
+      "desc": "Computes 010101… as in On Computable Numbers. It never stops. Type *tracepre to watch the tape. Then type EX1. Type *maxtran 0 to remove the limit of 500 steps. Press Escape to stop it",
       "path": "eliza.html?script=ELIZA-script-Turing-example1"
     },
     {
@@ -106,7 +106,7 @@
         "eliza": 110
       },
       "name": "Turing's Example II (1936)",
-      "desc": "Computes 001011011101111…, and never stops. Type *tracepre, then EX2; *maxtran 0 lifts the 500-step limit, Escape stops it",
+      "desc": "Computes 001011011101111… It never stops. Type *tracepre. Then type EX2. Type *maxtran 0 to remove the limit of 500 steps. Press Escape to stop it",
       "path": "eliza.html?script=ELIZA-script-Turing-example2"
     }
   ],
@@ -119,9 +119,9 @@
   },
   "needs": "eliza.html",
   "addon": {
-    "title": "ELIZA (chatbot)",
-    "summary": "Weizenbaum's 1966 ELIZA, with every script that survives and a few Irate-Box keywords, from Anthony and Max Hay's github.com/anthay/ELIZA at the commit this hub pins. It runs in the visitor's browser: about 250 KB on disk, no service and no memory use on the box.",
-    "consent": "This downloads ELIZA from github.com/anthay/ELIZA, where its authors publish it, and serves it to everyone on the box's network. Some of its scripts are not openly licensed: the 1966 DOCTOR is (c) ACM, its French translation is based on it, and YAPYAP is reproduced with the Harold Garfinkel Archive's permission. The copy on this box is yours. Add it?"
+    "title": "ELIZA (rule-based chatbot)",
+    "summary": "Weizenbaum's 1966 ELIZA, with the scripts of the source repository and a few Irate-Box keywords. The source is github.com/anthay/ELIZA, at the commit that this hub pins. It runs in the browser of the visitor. It uses about 250 KB of storage. It has no service on the box.",
+    "consent": "This downloads ELIZA from github.com/anthay/ELIZA, where its authors publish it. The commit is pinned. The hub then serves it to every device on the network of the box. The browser of the visitor runs it. Some scripts do not have an open licence. The 1966 DOCTOR is copyright ACM. The French translation is based on it. YAPYAP is reproduced with the permission of the Harold Garfinkel Archive. This download does not give you the right to redistribute these scripts. Add ELIZA?"
   },
   "capabilities": {
     "connect": [],

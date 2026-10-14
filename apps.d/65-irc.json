@@ -25,12 +25,12 @@
     "present": "/etc/ngircd/irate-box.conf",
     "hotspot": "open",
     "risk": "warn",
-    "says": "The IRC chat: anyone on the network can join, with no accounts and nothing encrypted (limited to 5 connections an address)."
+    "says": "IRC server. Anyone on the network can join. IRC has no accounts and no encryption. The server accepts at most 5 connections from one client address."
   },
   "addon": {
     "option": "--with-irc",
     "title": "IRC server (ngIRCd)",
-    "summary": "A small IRC server on :6667 with a #lobby channel, for chat in any IRC app, and a page at /irc.html saying how to join. A few MB of memory.",
-    "consent": "The server answers anyone on the box's network on port 6667, with no accounts and no encryption (client addresses are hidden from other users, and there are no moderators). Add it?"
+    "summary": "A small IRC server on TCP port 6667 with a #lobby channel, for chat in any IRC app. The page /irc.html shows how to join. It uses a few MB of memory.",
+    "consent": "The server answers every device on the network of the box on TCP port 6667. It has no IRC authentication. It has no encryption between the client and the box. The server hides client addresses from other users. It has no moderators. Add the IRC server?"
   }
 }

@@ -4,11 +4,11 @@
   "tile": {
     "icon": "🎨🖌️",
     "name": "Themes",
-    "desc": "Light, dark, e-ink and more",
+    "desc": "Light, dark, E-ink and more. The selection applies to this browser only",
     "href": "/themes.html"
   },
   "access": {
     "title": "Themes page",
-    "note": "Its tile and page. The 🎨 in every page's header stays either way."
+    "note": "The tile and the page. The 🎨 in the header of every page stays in both cases."
   }
 }

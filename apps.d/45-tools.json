@@ -25,7 +25,7 @@
         "meshtastic": 60
       },
       "name": "LoRa Airtime Calculator",
-      "desc": "Time on air for a packet at any SF, bandwidth and coding rate",
+      "desc": "Time on air of a packet for a spreading factor (SF), a bandwidth and a coding rate",
       "href": "/app.html#/tools/lora-airtime-calculator.html"
     },
     {
@@ -60,7 +60,7 @@
         "meshtastic": 50
       },
       "name": "meshtasticd Pinout Map",
-      "desc": "Which Raspberry Pi header pins a config.d YAML uses",
+      "desc": "The Raspberry Pi header pins that a config.d YAML file uses",
       "href": "/app.html#/tools/meshtasticd-pinout-map.html"
     },
     {
@@ -108,7 +108,7 @@
         "tools-general": 50
       },
       "name": "Protobuf Encoding Demonstrator",
-      "desc": "How varints and fields land on the wire",
+      "desc": "Inspect Protocol Buffers field and varint encoding",
       "href": "/app.html#/tools/protobuf-encoding-demonstrator.html"
     },
     {
@@ -148,7 +148,7 @@
         "tools-electronics": 10
       },
       "name": "Solar Panel Sense Checker",
-      "desc": "Is this panel and battery pairing plausible?",
+      "desc": "Check a solar panel and battery pair against the expected power",
       "href": "/app.html#/tools/solar-panel-sense-checker.html"
     },
     {
@@ -164,7 +164,7 @@
         "tools-electronics": 30
       },
       "name": "Ohm's Law Calculator",
-      "desc": "Any two of V, I, R and P",
+      "desc": "Enter two of V, I, R and P. The calculator computes the others",
       "href": "/app.html#/tools/ohms-law-calculator.html"
     },
     {
@@ -219,5 +219,5 @@
       "Tiny Tools": "tools-general"
     }
   },
-  "admin": {"title": "Calculators' site", "icon": "🧮"}
+  "admin": {"title": "Calculators", "icon": "🧮"}
 }
