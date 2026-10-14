@@ -113,6 +113,7 @@ run sim_share.py
 run sim_guest_net.py
 run sim_overview_net.py
 run guide_guard.py
+run guide_labels_guard.py
 
 state="$(mktemp -d)"
 port=$((20000 + RANDOM % 20000))
