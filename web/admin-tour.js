@@ -29,7 +29,7 @@ const TOUR = (() => {
     { id: 'guest-net', label: 'Guest internet access', section: 'network/hotspot', fallback: 'network', target: '#guest-net-box',
       said: 'Default: off. Guests on the hotspot reach the box and nothing else. There are five levels. Each level shows what it opens.' },
     { id: 'ssh', label: 'SSH password authentication', section: 'security', target: finding(/SSH password/),
-      said: 'The box keeps the image setting until you change it. If you allow keys only and you have no key, you cannot sign in over SSH.' },
+      said: 'The box keeps the image setting until you change it. If SSH accepts keys only and you have no key, you cannot sign in over SSH.' },
     { id: 'tailscale', label: 'Remote access (Tailscale)', section: 'access', target: '#remote-section',
       said: 'The box keeps the setting that it found. This step shows only where the image has Tailscale.' },
     { id: 'cockpit', label: 'Cockpit (root sign-in on port 9090)', section: 'security', target: finding(/Cockpit/),
@@ -113,7 +113,7 @@ const TOUR = (() => {
       return li;
     }));
     const said = document.getElementById('setup-left');
-    if (said) said.textContent = n ? `${n} of ${STEPS.length} still to do or decide: until then the box uses each default.` : 'All done.';
+    if (said) said.textContent = n ? `${n} of ${STEPS.length} still to do or decide. Until then the box uses each default.` : 'All done.';
     const actions = document.querySelector('#welcome .tour-actions');
     if (!actions) return;
     let start = actions.querySelector('.tour-start');

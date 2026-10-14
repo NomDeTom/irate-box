@@ -183,7 +183,7 @@ const AL = (() => {
           if (a.width) ids.push(made('app-width-' + a.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': a.width })));
           ids.push(...a.sections);
           // What was reported there, for an app drawn on the hub page.
-          if (a.page) ids.push(made('app-flagged-' + a.id, 'app-flagged', 'Flagged and reported', () => el('div', { class: 'flagged-block', 'data-app': a.id })));
+          if (a.page) ids.push(made('app-flagged-' + a.id, 'app-flagged', 'Reported content', () => el('div', { class: 'flagged-block', 'data-app': a.id })));
           if (a.switch) ids.push(made('app-access-' + a.id, 'app-access', 'Access', () => el('div', { class: 'access-block', 'data-app': a.id }), true));
           if (a.switch || a.seen) ids.push(made('app-tile-' + a.id, 'app-tile', 'Hub tile', () => el('div', { class: 'tile-block', 'data-app': a.id }), true));
           // Maintenance: its own updates and its installation, each where admin.js draws it.

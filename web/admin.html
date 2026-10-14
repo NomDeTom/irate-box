@@ -251,7 +251,7 @@
       <section class="admin-pane" id="clock" aria-labelledby="clock-title">
         <h2 id="clock-title">Clock</h2>
         <p class="setting-desc">
-          This page shows what keeps the box's time, what happened to the time at this boot, and the clock
+          This page shows what keeps the box's time and what happened to the time at this boot. It also shows the clock
           module on I2C, if there is one. This board has no clock of its own. Without the network or a clock
           module, the time is wrong after a power cut. A scan only reads the I2C buses. Setup of a module uses the
           kernel driver where one exists. Setup never turns on charging.
@@ -306,7 +306,7 @@
           <strong>Users</strong>: signed-in accounts can open it. Other visitors must sign in first.
           <strong>Administrators</strong>: only an administrator can open it. Its address asks for the administrator sign-in.
           <strong>Disabled</strong>: its address answers "Not found". The service of an add-on stops too.
-          <strong>Visibility</strong> is a separate setting. A tile can show to everyone with a lock, or to nobody
+          <strong>Visibility</strong> is a separate setting. A tile can show to guests with a lock, or to nobody
           while the app address still works. Tile visibility does not change app access. Set access on the page
           of each app under Apps. Set tile visibility on Home tiles.
         </p>
@@ -420,7 +420,7 @@
             copy the hub's books to the drive. The box mounts the drive only during a scan or a copy. The mount is
             read-only, except while the box copies to the drive.
           </p>
-          <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan for USB drives</button></div>
+          <div class="library-buttons"><button class="action-btn" type="button" id="usb-scan">Scan USB drives</button></div>
           <p class="setting-desc action-note" id="usb-note" role="status" hidden></p>
           <div class="admin-progress" id="usb-progress" hidden>
             <progress class="admin-bar" id="usb-bar" max="1" value="0"></progress>
@@ -480,7 +480,7 @@
         </p>
         <form id="mirrors-policy" class="library-form surface-policy">
           <div data-update-pattern data-often="mirrors_every_hours" data-act="mirrors_auto" data-acts="0,1"
-            data-says-0="The box shows on each mirror that it is out of date. Select Update to update a mirror."
+            data-says-0="The box shows on each mirror that it is out of date. Select Update mirror to update a mirror."
             data-says-1="The box shows that a mirror is out of date. It also downloads the update."
             data-why="Downloading is the update of a mirror. There is nothing to install."></div>
           <button class="action-btn primary" type="submit">Save</button>
@@ -542,7 +542,7 @@
           Import it on the other box. The drive also holds the signed Debian indexes for the toolkit packages. An
           import checks every package against them with the box's own keys before the box keeps anything.
         </p>
-        <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Scan for USB drives</button></p>
+        <p class="library-buttons"><button class="action-btn" type="button" id="kits-usb-scan">Scan USB drives</button></p>
         <p class="setting-desc action-note" id="kits-usb-note" role="status" hidden></p>
         <div id="kits-usb"></div>
         <!-- The form for a toolkit of your own: opened in the "+ Custom toolkit" card, kept here
@@ -615,8 +615,8 @@
           </form>
           <h4>Adapt to the rate limit</h4>
           <p class="setting-desc">
-            GitHub allows this box 60 requests an hour without a token and 5000 with a token. Adapt asks GitHub what
-            it allows. The librarian then keeps its scheduled checks to a budget just under that limit. When the
+            GitHub lets this box send 60 requests an hour without a token and 5000 with a token. Adapt asks GitHub for
+            its request limit. The librarian then keeps its scheduled checks to a budget just under that limit. When the
             hourly budget is spent, the checks wait. If GitHub refuses several requests in a row, the box halves the
             budget. A clean run gives some budget back. Adapt works with or without a token.
             <span id="library-pace-state"></span>
@@ -783,7 +783,7 @@
             <dt>Guests, Administrators</dt><dd>Where the repository lives: /git/ (guests can browse and clone it) or /git-private/ (the administrator sign-in is required). Moving a repository changes its clone URL.</dd>
             <dt>Push permission</dt><dd>Guests, administrators only, or nobody (read-only). The hub decides each push. Git also enforces the setting.</dd>
             <dt>Mirror</dt><dd>A copy of a repository on the internet. The librarian keeps it to a policy (Mirrors, below). It is read-only here.</dd>
-            <dt>Builds</dt><dd>A push starts a build on the box (Builds, below) when the build switch is on, the repository is private, only an administrator pushes to it, and the commit has a .irate-ci.sh file.</dd>
+            <dt>Builds</dt><dd>A push starts a build on the box (Builds, below) only if four conditions are true. The build switch is on. The repository is in the administrators-only area. Only an administrator pushes to it. The commit has a .irate-ci.sh file.</dd>
           </dl>
         </details>
         <p class="setting-desc" id="git-usage"></p>
@@ -858,7 +858,7 @@
         <h3>Notebooks</h3>
         <p class="setting-desc">
           Users with Notes access can read and change the shared notebook. Each account can also have a private
-          notebook. It starts when its owner opens it. It stops when the owner signs out, or 30 minutes after the
+          notebook. It starts when the account holder opens it. It stops when the account holder signs out, or 30 minutes after the
           last use. A running notebook uses about 40 MB of memory. The pages of a notebook stay on the box when the
           notebook stops, when notebooks are switched off, and when its account is deleted.
         </p>
@@ -867,7 +867,7 @@
         <h3>Create account</h3>
         <form id="accounts-make" class="library-form">
           <label>Username <input name="name" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" required placeholder="e.g. alice or club.laptop"
-            title="3 to 32 characters: letters, digits, dots, dashes or underscores; no spaces">
+            title="3 to 32 characters: letters, digits, dots, dashes or underscores. Do not use spaces.">
             <small class="setting-desc">3 to 32 characters: letters, digits, dots (.), dashes (-) or underscores (_). No spaces.</small></label>
           <div class="library-buttons" role="group" aria-label="Account type">
             <button class="action-btn primary big" type="submit" name="role" value="user">Create user account</button>
@@ -916,7 +916,7 @@
       <section class="admin-pane" id="factory" aria-labelledby="factory-title">
         <h2 id="factory-title">Firmware Factory</h2>
         <p class="setting-desc">
-          Build Meshtastic firmware on this box. The source is the box's own copy: a mirror, or a private repository
+          Build Meshtastic firmware on this box. The source is the box's own copy: a mirror, or an administrators-only repository
           such as a fork. Select a release or a branch, then select the boards. Builds run one at a time at the lowest
           priority, as the builder (Git → Builds). The box records the time, memory, disk and heat of each build. The
           estimates below come from these records. The first build of a family downloads its toolchain. After that
@@ -936,7 +936,7 @@
         <p class="setting-desc">
           The app has its own page for the selection of builds, the queue and the finished builds. It also holds all
           decisions about building and scheduling. The builds use the box's own copies of the firmware source: a
-          mirror under <a href="#mirrors">Git → Mirrors</a>, or a private repository on the Git page.
+          mirror under <a href="#mirrors">Git → Mirrors</a>, or an administrators-only repository on the Git page.
         </p>
         <p class="library-buttons"><a class="action-btn primary" href="/admin/factory.html" id="factory-open">Open the Firmware Factory →</a></p>
       </section>
@@ -1110,9 +1110,9 @@
               <div class="net-card setting net-card-wide" id="net-defaults-card">
                 <h4>Default connection settings</h4>
                 <p class="setting-desc">What every connection uses unless it has its own setting. NetworkManager keeps these in its
-                  own configuration, so they last even for a connection netplan writes afresh at every boot. Each says where its
-                  value comes from now; changing one writes it to irate-box's own file, and "NetworkManager's own" takes
-                  irate-box's line out again.</p>
+                  own configuration, so they persist even for a connection that netplan writes again at every boot. Each says where its
+                  value comes from now. Changing one writes it to the irate-box file. "Use NetworkManager default" removes
+                  the irate-box line again.</p>
                 <div class="net-defaults" id="net-defaults"></div>
                 <span class="library-buttons"><button class="action-btn" type="button" id="net-defaults-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-defaults-save" disabled>Save the box defaults</button></span>
                 <p class="setting-desc action-note" id="net-defaults-note" role="status" hidden></p>
@@ -1241,9 +1241,9 @@
               <select id="ap-channel"><option value="">Automatic</option></select>
               <label class="inline" id="ap-take-label" hidden><input type="checkbox" id="ap-take"> Use this radio for the hotspot. The box leaves your WiFi while the hotspot runs</label>
               <span class="library-buttons">
-                <button class="action-btn primary" type="submit" id="ap-switch">Switch on</button>
+                <button class="action-btn primary" type="submit" id="ap-switch">Enable hotspot</button>
                 <button class="action-btn" type="button" id="ap-try" hidden>Try a channel of its own</button>
-                <button class="action-btn" type="button" id="ap-confirm" hidden>Keep it</button>
+                <button class="action-btn" type="button" id="ap-confirm" hidden>Keep hotspot settings</button>
               </span>
             </form>
             <p class="setting-desc action-note" id="ap-note" role="status" hidden></p>
@@ -1252,7 +1252,7 @@
             <p class="setting-desc">
               The hotspot can be open or encrypted. An open hotspot lets anyone join. An encrypted hotspot prevents a
               person who listens nearby from reading what guests do. Encryption excludes older devices. The choice applies
-              the next time you switch the hotspot on above. That section also shows what the radios allow. This is a
+              the next time you switch the hotspot on above. That section also shows what the radios support. This is a
               setup decision, and the setup tour links here.
             </p>
             <div class="choice-tiles" id="hs-modes" role="radiogroup" aria-label="Hotspot security"></div>
@@ -1285,8 +1285,8 @@
               This setting decides whether guests on the hotspot can use the box's connection to reach the internet. The
               levels run from no access to full access. The default is the safest. Each level says what it opens. Guest
               traffic leaves as the traffic of the box, so what guests do online comes from your connection. At every level,
-              the box keeps guests out of your own network and the box's Tailscale, lets them out by the hardware address of
-              their device, and does not let them look up names before they pass the sign-in page. You can turn off each of
+              the box keeps guests out of your own network and the box's Tailscale. It lets them out by the hardware address of
+              their device. It does not let them look up names before they pass the sign-in page. You can turn off each of
               these on <a href="#security">Security</a>. The doctor warns while one is off.
             </p>
             <div id="guest-net-box">
@@ -1329,22 +1329,22 @@
           salt for the day and a random salt for the week. The helper holds the salts only in memory and discards them when
           the day or week ends. No hash can be reversed to a device or matched to another day. The box writes only the two
           numbers, and deletes them at reboot. Phones that use a random address can count more than once, so the numbers
-          are approximate. If you turn this off, the helper does not run. Signed-in names show only if each person allows
-          it on their account page.
+          are approximate. If you turn this off, the helper does not run. Signed-in names show only if each person lets the box
+          show it on their account page.
         </p>
         <div class="settings" data-note="visitors-note">
           <label class="setting">
             <input type="checkbox" id="visitor_counts">
             <span>
               <span class="setting-name">Count unique visitors</span>
-              <span class="setting-desc">By salted hashes, as above; on unless you turn it off.</span>
+              <span class="setting-desc">By salted hashes, as above. Enabled unless you disable it.</span>
             </span>
           </label>
         </div>
         <p class="setting-desc action-note" id="visitors-note" role="status" hidden></p>
         <h3 id="security-https">HTTPS</h3>
         <p class="setting-desc">
-          The box can serve every page over HTTPS too, with a certificate of its own: phones and
+          The box can serve every page over HTTPS too, with a certificate of its own. Phones and
           computers that install the box's certificate (from <a href="/certificate">/certificate</a>)
           then use HTTPS when they connect. Other people on the WiFi cannot read the administrator
           password. The box's certificate authority is limited to this box's names. A device that enforces the
@@ -1393,8 +1393,8 @@
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
-        <p class="setting-desc">Each card shows one item that the box updates: its state, how often the box looks for updates, what the box does
-          with an update, and the buttons Check now, Download and Install. If an update fails, the
+        <p class="setting-desc">Each card shows one item that the box updates. It shows the state, how often the box looks for updates and what the box does
+          with an update. It also has the buttons Check now, Download and Install. If an update fails, the
           <a href="#updoctor">Updates doctor</a> shows the reason.</p>
         <div class="update-cards">
         <div class="setting library-source update-card" id="update-hub-card">
@@ -1445,7 +1445,7 @@
                   <legend>Required update level</legend>
                   <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
                   <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does. The box refuses a commit that GitHub did not sign.</span></span></label>
-                  <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys; the box then follows releases, not the branch.</span></span></label>
+                  <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys. The box then follows releases, not the branch.</span></span></label>
                 </fieldset>
                 <label id="update-signers-label" hidden>Your signing keys, one per line, as <code>ssh-keygen -Y</code> reads them (<code>name ssh-ed25519 AAAA… comment</code>)
                   <textarea name="signers" rows="3" spellcheck="false" placeholder="owner@laptop ssh-ed25519 AAAAC3Nza… laptop"></textarea></label>
@@ -1482,7 +1482,7 @@
               <summary>Automatic updates: <span id="debian-auto-says">…</span></summary>
               <form id="debian-pattern" class="library-form">
                 <div data-update-pattern data-often="often" data-act="act"
-                  data-says-0="The box shows what is new here and on the badge. It downloads only apt's lists of new packages. You fetch and install the updates."
+                  data-says-0="The box shows what is new here and on the badge. It downloads only apt's lists of new packages. You download and install the updates."
                   data-says-1="The box shows what is new. It downloads the updates into the apt cache. You install them."
                   data-says-2="The box shows what is new. It downloads the updates and installs them with unattended-upgrades, from the Debian security archive only."
                   data-often-says-0="The box looks only when you select Check now. It then does what the setting below says."></div>
@@ -1651,7 +1651,7 @@
           <div class="findings compact" id="joint-cured"></div>
         </details>
         <details class="sec-fold" id="joint-accepted-fold">
-          <summary>Accepted <span id="joint-accepted-count"></span></summary>
+          <summary>Accepted risks <span id="joint-accepted-count"></span></summary>
           <div class="findings compact" id="joint-accepted"></div>
         </details>
         <h3>Import a scan</h3>
@@ -1681,8 +1681,8 @@
       <section class="admin-pane" id="updoctor" aria-labelledby="updoctor-title">
         <h2 id="updoctor-title">Updates doctor</h2>
         <p class="setting-desc">
-          The update doctor looks at what an update depends on — the network, names, the clock,
-          GitHub, free space, the cached copy, the package sources — and says what is wrong and what
+          The update doctor checks what an update depends on. These are the network, names, the clock,
+          GitHub, free space, the cached copy and the package sources. It says what is wrong and what
           to do about it. For the box itself (services, Kiwix, an install that stopped), see the
           <a href="#health">Box doctor</a>; to check for and install updates, <a href="#updates">Updates</a>.
         </p>
@@ -1700,7 +1700,7 @@
           <div class="findings compact" id="updoctor-fine"></div>
         </details>
 
-        <p class="setting-desc">Clearing the update cache and installing a fetched version that failed its checks are on
+        <p class="setting-desc">Clearing the update cache and installing a downloaded version that failed its checks are on
           <a href="#update-maint">Updates → Maintenance</a>.</p>
       </section>
 

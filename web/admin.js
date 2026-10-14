@@ -92,7 +92,7 @@ async function save(box) {
     say('Saved. It takes effect at the next boot.', true, settingNote(box));
   } catch (_) {
     box.checked = !box.checked;
-    say('Could not save — the setting is unchanged.', false, settingNote(box));
+    say('Could not save. The setting is unchanged.', false, settingNote(box));
   }
 }
 
@@ -109,17 +109,17 @@ const remoteState = document.getElementById('remote-state');
 const remoteNote = noteEl('remote-note');
 const STATE_TEXT = {
   running: 'Tailscale is running.',
-  stopped: 'Tailscale is off.',
+  stopped: 'Tailscale is stopped.',
 };
 // Running is not the same as reachable: what Tailscale itself says while it runs.
 function remoteText(data) {
   const b = data.backend;
   if (data.state !== 'running' || !b) return STATE_TEXT[data.state] || '';
-  if (b.state === 'connected') return `Tailscale is on: this box is ${b.name || 'on your Tailscale network'}${b.tailnet ? ` on ${b.tailnet}` : ''}${b.ip ? ` (${b.ip})` : ''}.`;
-  if (b.state === 'needs-login') return 'Tailscale is running, but this box is not signed in to a Tailscale network yet, so nothing can reach it '
-    + 'through Tailscale. To sign in, run sudo tailscale up in the box\'s terminal, open the link it prints, and sign in with your '
-    + 'Tailscale account. Or switch it off here.';
-  return `Tailscale is running (it says: ${b.state}).`;
+  if (b.state === 'connected') return `Tailscale is running and connected. This box is ${b.name || 'on your Tailscale network'}${b.tailnet ? ` on ${b.tailnet}` : ''}${b.ip ? ` (${b.ip})` : ''}.`;
+  if (b.state === 'needs-login') return 'Tailscale is running, but this box is not signed in to a Tailscale network. Nothing can reach it '
+    + 'through Tailscale. To sign in, run sudo tailscale up in Terminal. Open the URL shown by the command. '
+    + 'Sign in to your Tailscale account. Or disable remote access here.';
+  return `Tailscale is running. Connection status: ${b.state}.`;
 }
 
 function showRemote(data) {
@@ -154,7 +154,7 @@ async function saveRemote() {
     });
     if (!r.ok) throw new Error(r.status);
     showRemote(await r.json());
-    say('Saved. Tailscale follows within a few seconds.', true, remoteNote);
+    say('Saved. Tailscale changes within a few seconds.', true, remoteNote);
     [2000, 5000, 10000].forEach((ms) => setTimeout(loadRemote, ms));
   } catch (_) {
     say('Could not change remote access.', false, remoteNote);
@@ -186,10 +186,10 @@ const lib = {
   typeHelp: document.getElementById('library-type-help'),
 };
 const TYPE_HELP = {
-  release: "The newest release with a matching asset. No token. Use this when the project itself publishes its ZIM.",
-  actions: "The newest successful run's artifact. Needs the GitHub token below. Artifacts expire after 90 days, so the workflow must run at least that often.",
-  'nightly-link': "The same artifacts, downloaded through the free nightly.link service, so no token is needed.",
-  url: "A direct link to a .zim (or a .zip holding one). Updated when its ETag or Last-Modified changes.",
+  release: "The newest release that has a matching asset. No token is needed. Use this when the project publishes its own ZIM file.",
+  actions: "The artifact of the newest successful run. A GitHub token is required to download Actions artifacts. Artifacts expire after a period set in the repository. The workflow must run more often than that period.",
+  'nightly-link': "The same artifacts, downloaded through the third-party nightly.link service. No token is needed.",
+  url: "A direct link to a .zim file, or to a .zip file that holds one. The book updates when its ETag or Last-Modified header changes.",
 };
 const PRESETS = {
   release: { type: 'release', name: 'project-docs', repo: 'owner/project', pattern: '*.zim' },
@@ -231,7 +231,7 @@ async function libAct(key, body, confirmText) {
     renderLibrary(await libPost(body));
   } catch (e) {
     libNote = e.status === 409
-      ? { key, busy: true, text: 'The librarian is already running. The buttons come back when it is free; try again then.' }
+      ? { key, busy: true, text: 'The librarian is already running. The buttons return when it is free. Try again then.' }
       : { key, busy: false, text: e.message };
     loadLibrary();
 
@@ -250,7 +250,7 @@ function sourceRow(src, st, busy) {
   const key = `book:${src.name}`;
   const button = (label, body, confirmText, opts = {}) => el('button', {
     type: 'button', className: 'action-btn', textContent: label, disabled: busy || !!opts.off, title: opts.title || '',
-    onclick: () => { if (['fetch', 'update'].includes(body.action) && !meteredOk(`${label}: the download`)) return; libAct(key, body, confirmText); },
+    onclick: () => { if (['fetch', 'update'].includes(body.action) && !meteredOk(`The download for ${label}`)) return; libAct(key, body, confirmText); },
   });
   // Check finds a newer version; Download downloads and checks it beside the book in use;
   // Update swaps it in (fetching first if that has not happened).
@@ -261,22 +261,22 @@ function sourceRow(src, st, busy) {
       el('span', { className: 'setting-name' }, `${src.name}.zim `, AW.updatePill(st.last_check, newer, !!st.error)),
       el('span', { className: 'setting-desc', textContent: `${src.type}: ${where(src)}` }),
       el('span', { className: 'setting-desc',
-        textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : 'Not installed by the librarian yet' }),
+        textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : 'The librarian has not installed it yet.' }),
       newer ? el('span', { className: 'setting-desc', textContent: fetched
-        ? `Fetched: ${fetched.label} (${mb(fetched.size)}), ready to update.`
+        ? `Downloaded: ${fetched.label} (${mb(fetched.size)}), ready to install.`
         : `Available: ${latest.label} (${mb(latest.size)})` }) : null,
-      archive.length ? el('span', { className: 'setting-desc', textContent: `Archived: ${archive.join(', ')}` }) : null,
+      archive.length ? el('span', { className: 'setting-desc', textContent: `Retained versions: ${archive.join(', ')}` }) : null,
       st.last_check ? el('span', { className: 'setting-desc', textContent: `Checked ${st.last_check}: ${st.outcome || ''}` }) : null,
       st.error ? el('span', { className: 'setting-desc bad', textContent: st.error }) : null,
       el('span', { className: 'library-buttons' },
         button('Check now', { action: 'check', names: [src.name] }),
         button('Download', { action: 'fetch', names: [src.name] }, null, {
-          off: !newer || fetched, title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '' }),
+          off: !newer || fetched, title: !newer ? 'Select Check now first. No newer version is known.' : fetched ? 'Already downloaded' : '' }),
         button('Install', { action: 'update', names: [src.name] }),
         archive.length ? button('Roll back', { action: 'rollback', name: src.name },
-          `Put ${archive[0]} back as ${src.name}.zim? The current version is archived.`) : null,
-        button('Remove', { action: 'remove', name: src.name },
-          `Stop tracking ${src.name}? The book itself stays in the library.`),
+          `Restore version ${archive[0]} as ${src.name}.zim? The librarian retains the current version.`) : null,
+        button('Stop tracking', { action: 'remove', name: src.name },
+          `Stop tracking ${src.name}? The book stays in the library.`),
       ),
       noteFor(key),
     ),
@@ -302,14 +302,14 @@ function renderApps(snap, busy) {
     const lines = [
       inst === null ? 'Not installed.' : inst.commit
         ? `Installed: ${inst.commit.slice(0, 7)} from ${inst.repository} (${inst.ref}), built ${String(inst.built).slice(0, 10)}.`
-        : 'Installed by hand (no bundle record): the first update replaces it.',
+        : 'Installed by hand, with no bundle record. The first update replaces it.',
       src ? (src.type === 'git' ? `Source: git, ${src.repo} @ ${src.branch}, adapted for the hub.`
-        : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.`) : 'Not kept current: it has no update source yet.',
-      a.pin ? `Pinned (last known good): ${a.pin.slice(0, 7)}. Newest: ${st.latest ? st.latest.label : 'not checked yet'}. ` +
-        (follow === 'pinned' ? 'Installs the pinned one.' : 'Installs the newest; if it fails, keeps what it has (or the pinned one).') : null,
+        : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ''}.`) : 'No update source is set for this app.',
+      a.pin ? `Pinned version (last known good): ${a.pin.slice(0, 7)}. Newest: ${st.latest ? st.latest.label : 'not checked yet'}. ` +
+        (follow === 'pinned' ? 'Updates use the pinned version.' : 'Updates use the newest version. If it fails, the app keeps the installed version or the pinned version.') : null,
       st.latest_failed && follow === 'latest' ? `The newest (${st.latest_failed.label}) failed: ${st.latest_failed.error}` : null,
       st.last_check ? `Checked ${st.last_check}: ${st.outcome || ''}` : null,
-      fetched ? `Fetched: ${fetched.commit} (${fetched.label}), ready to update.` : null,
+      fetched ? `Downloaded: ${fetched.commit} (${fetched.label}), ready to install.` : null,
       res ? `${res.ok ? 'Installed' : 'Install failed'}: ${res.message}` : null,
       st.error || null,
     ];
@@ -321,17 +321,17 @@ function renderApps(snap, busy) {
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
         el('button', { type: 'button', className: 'action-btn', textContent: 'Download', disabled: busy || !newer || !!fetched,
-          title: !newer ? 'Check first: nothing newer is known' : fetched ? 'Already fetched' : '',
+          title: !newer ? 'Select Check now first. No newer version is known.' : fetched ? 'Already downloaded' : '',
           onclick: post(`app:${name}`, { action: 'fetch', names: [name] }) }),
         el('button', { type: 'button', className: 'action-btn', textContent: 'Install', disabled: busy, onclick: post(`app:${name}`, { action: 'update', names: [name] }) }),
         inst && inst.has_previous ? el('button', { type: 'button', className: 'action-btn', textContent: 'Roll back', disabled: busy,
-          onclick: post(`app:${name}`, { action: 'rollback', name }, `Go back to the previous ${a.title} build?`) }) : null,
-        a.pin ? el('button', { type: 'button', className: 'action-btn', textContent: follow === 'pinned' ? 'Follow the newest' : 'Follow the pin', disabled: busy,
+          onclick: post(`app:${name}`, { action: 'rollback', name }, `Restore the previous ${a.title} build?`) }) : null,
+        a.pin ? el('button', { type: 'button', className: 'action-btn', textContent: follow === 'pinned' ? 'Use latest version' : 'Use pinned version', disabled: busy,
           onclick: post(`app:${name}`, { action: 'add', source: { ...src, follow: follow === 'pinned' ? 'latest' : 'pinned' } },
-            follow === 'pinned' ? `Install the newest ${a.title} from now on, rather than the pinned commit the hub's maintainers checked? Nobody will have looked at it first.` : null) }) : null)
+            follow === 'pinned' ? `Future ${a.title} updates will use the latest build instead of the reviewed pinned commit. It is possible that nobody has reviewed the latest build. Change update source?` : null) }) : null)
         : el('span', { className: 'library-buttons' },
-          el('button', { type: 'button', className: 'action-btn', textContent: 'Keep current', disabled: busy,
-            title: `Track ${a.title}'s published builds, so Check, Download and Update work for it`,
+          el('button', { type: 'button', className: 'action-btn', textContent: 'Track app updates', disabled: busy,
+            title: `Track the published builds of ${a.title}. Then Check now, Download and Install work for it.`,
             onclick: post(`app:${name}`, { action: 'add-apps', names: [name] }) })),
       noteFor(`app:${name}`)));
   };
@@ -341,7 +341,7 @@ function renderApps(snap, busy) {
   // Each app's own page has its row too, its access being at the top of that page already.
   document.querySelectorAll('.updates-block[data-app]').forEach((b) => {
     const a = apps[b.dataset.app];
-    b.replaceChildren(a ? row(b.dataset.app, a, false) : el('p', { className: 'setting-desc', textContent: 'The librarian has nothing on it yet.' }));
+    b.replaceChildren(a ? row(b.dataset.app, a, false) : el('p', { className: 'setting-desc', textContent: 'The librarian has no data about this app yet.' }));
   });
   lastLibrary = snap;
   renderInventory();
@@ -352,11 +352,11 @@ function drawLibraryOthers(pol) {
   const box = document.getElementById('library-others');
   if (!box) return;
   const hh = (h) => `${String(h).padStart(2, '0')}:00`;
-  const fetchOnly = (often, act, what) => (Number(often) ? `${AW.patternSays(often, 0).replace(/\. .*$/, '')}. ${Number(act) ? `Fetches ${what}` : 'Flags what is newer'}.` : AW.patternSays(0));
+  const fetchOnly = (often, act, what) => (Number(often) ? `${AW.patternSays(often, 0).replace(/\. .*$/, '')}. ${Number(act) ? `Downloads ${what}` : 'Flags newer versions'}.` : AW.patternSays(0));
   const rows = [
     ['This hub', AW.patternSays(pol.hub_check_every_hours, pol.hub_auto).replace(/\.$/, '')
       + (Number(pol.hub_check_every_hours) && Number(pol.hub_auto) === 2 ? `, between ${hh(pol.hub_window_start)} and ${hh(pol.hub_window_end)}.` : '.'), 'update-hub-card', 'Updates'],
-    ['Git mirrors', fetchOnly(pol.mirrors_every_hours, pol.mirrors_auto, 'what is newer (fetching is the update)'), 'mirrors', 'Mirrors'],
+    ['Git mirrors', fetchOnly(pol.mirrors_every_hours, pol.mirrors_auto, 'what is newer (downloading is the update)'), 'mirrors', 'Mirrors'],
     ['Firmware mirror', fetchOnly(pol.firmware_every_hours, pol.firmware_auto, 'new releases'), 'firmware', 'Firmware'],
     ['Toolkits\' cache', Number(pol.kits_every_hours) ? `${AW.patternSays(pol.kits_every_hours, 0).replace(/; .*$/, '')}; refreshes the cache (installs nothing).` : AW.patternSays(0), 'toolkits', 'Toolkits'],
     ['Debian\'s security updates', 'Set with the box\'s scan.', 'updates-debian', 'Updates'],
@@ -371,7 +371,7 @@ function drawLibraryOthers(pol) {
 // Adapting to GitHub's allowance: attached once, so one press is one request however often the page redraws.
 document.getElementById('library-adapt').addEventListener('click', async () => {
   const at = noteEl('library-token-note');
-  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted: GitHub was asked what it allows.', true, at); } catch (err) { say(err.message, false, at); }
+  try { renderLibrary(await libPost({ action: 'adapt-rate' })); say('Adapted. GitHub reported its request limit.', true, at); } catch (err) { say(err.message, false, at); }
 });
 document.getElementById('library-adapt-off').addEventListener('click', async () => {
   const at = noteEl('library-token-note');
@@ -408,8 +408,8 @@ function renderLibrary(snap) {
     const every = Number((snap.policy || {}).check_every_hours) || 0;
     if (looked.length) {
       const last = Math.max(...looked), at = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-      parts.push(`Idle. Last looked ${at(last)}${every ? `; next about ${at(Math.max(last + every * 3600e3, Date.now()))}` : '; it looks only when asked'}.`);
-    } else parts.push(every ? 'Idle. Not checked yet.' : 'Idle; it looks only when asked.');
+      parts.push(`Idle. Last checked ${at(last)}.${every ? ` Next check about ${at(Math.max(last + every * 3600e3, Date.now()))}.` : ' It checks only when you ask.'}`);
+    } else parts.push(every ? 'Idle. Not checked yet.' : 'Idle. It checks only when you ask.');
   }
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
@@ -436,17 +436,17 @@ function renderLibrary(snap) {
   const gh = snap.github || {};
   const resets = gh.reset ? new Date(gh.reset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   lib.tokenState.textContent = (snap.token_set ? 'A token is set.' : 'No token is set.')
-    + (gh.limit && gh.reset * 1000 > Date.now() ? ` GitHub: ${gh.remaining} of ${gh.limit} requests left this hour (until ${resets})`
-      + (gh.remaining < 10 ? '; scheduled checks wait for the next hour.' : '.') : '');
+    + (gh.limit && gh.reset * 1000 > Date.now() ? ` GitHub: ${gh.remaining} of ${gh.limit} requests left this hour, until ${resets}.`
+      + (gh.remaining < 10 ? ' Scheduled checks resume at the next hourly cycle.' : '') : '');
 
   const pc = snap.pace || {};
   const paceEl = document.getElementById('library-pace-state');
   if (paceEl) paceEl.textContent = pc.budget
-    ? `Adapted: a budget of ${pc.budget} requests an hour (GitHub allows ${pc.limit}), ${pc.left} left this hour${pc.backed_off ? '; it has backed off after refusals' : ''}.`
-    : 'Not adapted: the librarian asks as it likes, and stops only when GitHub says it is nearly out.';
+    ? `Adapted. The budget is ${pc.budget} requests an hour (the GitHub limit is ${pc.limit}). ${pc.left} requests are left this hour.${pc.backed_off ? ' The librarian has slowed down after GitHub refused requests.' : ''}`
+    : 'Not adapted. The librarian sends requests at its own rate. It stops only when GitHub reports that the limit is nearly reached.';
   document.getElementById('library-adapt-off').hidden = !pc.budget;
   const access = document.getElementById('library-access-says');
-  if (access) access.textContent = `(${snap.token_set ? 'a token is set' : 'no token'}; ${pc.budget ? 'adapting' : 'not adapting'})`;
+  if (access) access.textContent = `(${snap.token_set ? 'a token is set' : 'no token'}, ${pc.budget ? 'adapting' : 'not adapting'})`;
   drawLibraryOthers(snap.policy || {});
 
   clearTimeout(libPoll);
@@ -517,7 +517,7 @@ for (const f of surfaceForms) {
     const body = { action: 'policy' };
     f.querySelectorAll('select[name]').forEach((s) => { if (s.name in (lastPolicy || {})) body[s.name] = Number(s.value); });
     const at = f.nextElementSibling;
-    try { delete f.dataset.dirty; renderLibrary(await libPost(body)); say('Saved. The librarian follows it from its next round (hourly).', true, at); } catch (err) { say(err.message, false, at); }
+    try { delete f.dataset.dirty; renderLibrary(await libPost(body)); say('Saved. The librarian applies it at the next hourly cycle.', true, at); } catch (err) { say(err.message, false, at); }
   });
 }
 let lastPolicy = null;
@@ -564,11 +564,11 @@ function renderBooks(d) {
   bookData = d;
   bookPage = d.page;
   const sm = d.summary;
-  setupStep('books', sm.kept ? `${sm.kept} kept current by the librarian.` : 'None kept current yet: Kiwix serves only books copied in by hand.', sm.kept ? 'ok' : 'warn');
+  setupStep('books', sm.kept ? `${sm.kept} kept current by the librarian.` : 'No books are tracked yet. Kiwix serves only books that were copied in by hand.', sm.kept ? 'ok' : 'warn');
   const st = sm.states;
   bk.summary.textContent = `${sm.count} book${sm.count === 1 ? '' : 's'}, ${size(sm.bytes)}`
     + (sm.budget_mb ? ` of a ${size(sm.budget_mb * 2 ** 20)} budget (${Math.round((100 * sm.bytes) / (sm.budget_mb * 2 ** 20))} %)` : '')
-    + `; ${sm.kept} kept current.`
+    + `. ${sm.kept} kept current.`
     + ['newer', 'failed', 'unreadable', 'not installed'].filter((k) => st[k]).map((k) => ` ${st[k]} ${STATE_WORDS[k]}.`).join('');
   const langs = Object.keys(sm.languages).sort();
   if (bk.language.dataset.langs !== langs.join(',')) {
@@ -592,7 +592,7 @@ function renderBooks(d) {
       el('td', { className: b.state === 'ok' ? '' : 'bad', textContent: STATE_WORDS[b.state] || b.state })));
     if (open) {
       rows.push(el('tr', { className: 'book-card' }, el('td', { colSpan: 7 }, b.source ? sourceRow(b.source, b.status || {}, libBusy)
-        : el('p', { className: 'setting-desc', textContent: `${b.name}.zim was put here by hand or from a USB drive: the librarian leaves it alone. `
+        : el('p', { className: 'setting-desc', textContent: `${b.name}.zim was put here by hand or from a USB drive. The librarian does not change it. `
           + (b.description ? `“${b.description}”` : '') }))));
     }
   }
@@ -631,7 +631,7 @@ document.querySelectorAll('[data-bulk]').forEach((b) => b.addEventListener('clic
   // Every selected name, on any page: the librarian skips one with no source (put here by hand).
   const names = [...bookSel];
   if (b.dataset.bulk === 'untrack') {
-    if (!confirm(`Stop keeping ${names.length} book${names.length === 1 ? '' : 's'} current? The books themselves stay in the library.`)) return;
+    if (!confirm(`Stop tracking ${names.length} book${names.length === 1 ? '' : 's'}? The books stay in the library.`)) return;
     for (const name of names) {
       try { await libPost({ action: 'remove', name }); } catch (_) { /* not tracked: nothing to stop */ }
     }
@@ -660,11 +660,11 @@ async function searchCatalogue(more) {
       const name = e.name.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 64);
       return el('div', { className: 'admin-item' },
         el('span', { className: 'setting-name', textContent: e.title }),
-        el('span', { className: 'setting-desc', textContent: ` ${e.language}, ${size(e.size)}, ${e.updated}${e.flavour ? `, ${e.flavour}` : ''}; ${e.articles} articles. ${e.summary}` }),
+        el('span', { className: 'setting-desc', textContent: ` ${e.language}, ${size(e.size)}, ${e.updated}${e.flavour ? `, ${e.flavour}` : ''}, ${e.articles} articles. ${e.summary}` }),
         el('span', { className: 'library-buttons' }, actionButton('Track releases', async () => {
           try {
             await libPost({ action: 'add', source: { name: e.flavour ? `${name}_${e.flavour}`.slice(0, 64) : name, type: 'kiwix', kiwix_name: e.name, flavour: e.flavour } });
-            say(`Added ${e.title}: Update in the table above fetches it (${size(e.size)}).`, true, cat.note);
+            say(`Added ${e.title} (${size(e.size)}). Select Install in the table above to download and install it.`, true, cat.note);
             loadBooks();
           } catch (err) { say(err.message, false, cat.note); }
         })));
@@ -692,11 +692,11 @@ function drawSuggested(sources) {
     return el('div', { className: 'admin-item' },
       el('span', { className: 'setting-name', textContent: b.title }),
       el('span', { className: 'setting-desc', textContent: ` About ${size(b.mb * 2 ** 20)}${b.flavour === 'nopic' ? ', without pictures' : ''}: ${b.why}.` }),
-      el('span', { className: 'library-buttons' }, have ? el('span', { className: 'setting-desc', textContent: 'Kept here already.' })
+      el('span', { className: 'library-buttons' }, have ? el('span', { className: 'setting-desc', textContent: 'Already tracked.' })
         : actionButton('Track releases', async () => {
           try {
             await libPost({ action: 'add', source: { name, type: 'kiwix', kiwix_name: b.name, flavour: b.flavour } });
-            say(`Added ${b.title}: Update in the table above fetches it (about ${size(b.mb * 2 ** 20)}).`, true, cat.note);
+            say(`Added ${b.title} (about ${size(b.mb * 2 ** 20)}). Select Install in the table above to download and install it.`, true, cat.note);
             loadLibrary(); loadBooks();
           } catch (err) { say(err.message, false, cat.note); }
         })));
@@ -742,14 +742,14 @@ async function loadPackages() {
     return card;
   };
   box.replaceChildren(...(pkgs.length ? pkgs.map(([id, p]) => carry(pkgCard(id, p)))
-    : [el('p', { className: 'setting-desc', textContent: 'None on this box yet: meshtasticd appears here once it is installed (Check looks now).' }),
+    : [el('p', { className: 'setting-desc', textContent: 'No watched packages yet. meshtasticd appears here after it is installed. Select Check now to look again.' }),
       el('p', { className: 'library-buttons' }, actionButton('Check now', () => pkgAct({ action: 'check', package: '' })))]));
 }
 async function pkgAct(body, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
   try {
     pkgWaiting = { id: (await postJSON('/admin/packages', body)).id, at: Date.now(), pkg: body.package || '' };
-    pkgSay(body.package, 'Asked: queued with the root helper; it runs when the jobs before it are done.', true);
+    pkgSay(body.package, 'Queued with the root helper. It runs after the earlier jobs are done.', true);
     setTimeout(loadPackages, 2000);
   } catch (err) { pkgSay(body.package, err.message, false); }
 }
@@ -766,42 +766,42 @@ function pkgCard(id, p) {
   const lines = [
     p.installed ? `Installed: ${p.installed}.` : 'Not installed.',
     p.image ? (p.image.channels.length === 1 ? `${p.image.name} lists ${label(p.image.channels[0])}.`
-      : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}: apt takes the newer of them. Saving a channel here settles it.`
-        : `${p.image.name} lists no channel: saving one here sets it there too.`) : null,
-    newest ? `Newest seen on ${label(newest.channel)}: ${newest.version}, first seen ${ageOf(newest)}`
-      + (newest.flagged ? ' (not downloaded: Download keeps it here, Install fetches it first).' : '.') : 'Not checked yet.',
-    p.due ? `Due: ${p.due}` + (looking ? ' (nothing installs by itself: press Install to install it).' : ', at the next check.')
-      : newest && p.installed && newest.version !== p.installed ? `What is installed is newer than ${label(s.channel)}'s newest: `
-        + (looking ? '' : 'nothing installs by itself until that channel passes it; ') + 'Install installs it anyway.' : null,
-    s.mode === 'aged' ? `apt upgrade leaves it alone while it waits (${p.held ? 'held' : 'not held yet'}).` : null,
+      : p.image.channels.length ? `${p.image.name} lists ${p.image.channels.map(label).join(' and ')}. apt selects the newest package from either channel. Saving a channel here changes that configuration.`
+        : `${p.image.name} lists no channel. Saving a channel here sets it there too.`) : null,
+    newest ? `Newest detected on ${label(newest.channel)}: ${newest.version}, first detected ${ageOf(newest)}`
+      + (newest.flagged ? '. It is not downloaded yet. Download keeps it here. Install downloads it first.' : '.') : 'Not checked yet.',
+    p.due ? `Due: ${p.due}` + (looking ? '. Nothing installs by itself. Select Install to install it.' : '. It installs at the next check.')
+      : newest && p.installed && newest.version !== p.installed ? `The installed version is newer than the newest version on ${label(s.channel)}.`
+        + (looking ? '' : ' Nothing installs by itself until that channel passes it.') + ' Install installs the channel\'s newest version anyway.' : null,
+    s.mode === 'aged' ? `While it waits, apt upgrade does not change it (${p.held ? 'held' : 'not held yet'}).` : null,
     p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
   ];
   const keptList = builds.length ? el('details', { className: 'field-help' }, el('summary', { textContent: `${builds.length} build${builds.length === 1 ? '' : 's'} kept` }),
-    el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first seen ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
+    el('ul', {}, ...builds.slice().reverse().map((b) => el('li', { textContent: `${b.version} (${label(b.channel)}), first detected ${ageOf(b)}${b.version === p.installed ? ': installed' : ''}` })))) : null;
   // The update pattern's three steps: Flag (mode flag), Download (mode watch: each build kept when first seen),
   // Install at once (auto) or after a wait (aged).
   const act = { flag: 0, watch: 1 }[s.mode] ?? 2, wait = s.mode === 'aged' ? s.days : 0;
   const pat = (list) => list.map(([v, t]) => [Number(v), t]);
   const settings = AW.settings([
-    { key: 'channel', label: 'Channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
+    { key: 'channel', label: 'Release channel', kind: 'choice', value: s.channel, options: p.channels.map((c) => [c, label(c)]) },
     { key: 'every', label: 'How often to look', kind: 'choice', value: s.every ?? 24, options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]) },
     { key: 'act', label: 'When something newer is found', kind: 'choice', value: act, options: pat(AW.UPDATE_ACT),
       note: 'Flag shows the new version and downloads nothing. Download downloads and keeps each new build, so Roll back works offline. Install also installs the build.' },
     { key: 'wait', label: 'Install', kind: 'choice', value: wait, options: [[0, 'at once']].concat((p.days || [1, 3, 7, 14, 30]).map((n) => [n, `after ${n} day${n === 1 ? '' : 's'}`])),
-      note: 'With Install: a build waits until it has been out this long (alpha and nightly builds are untested)' },
+      note: 'With Install, a build waits until this long after the box first detected it. The box counts from detection, not from publication. Alpha and nightly builds are less stable than other channels.' },
   ], { save: (v) => {
     const all = { channel: s.channel, every: s.every ?? 24, act, wait, ...v };
     const mode = all.act === 0 ? 'flag' : all.act === 1 ? 'watch' : all.wait ? 'aged' : 'auto', days = all.wait || s.days;
     return pkgAct({ action: 'settings', package: id, channel: all.channel, mode, days, every: all.every },
-      mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once they have been out ${days} day${days === 1 ? '' : 's'}` : ''}? `
-        + 'Alpha and nightly builds are untested; Roll back puts the previous one back.' : null);
+      mode === 'auto' || mode === 'aged' ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === 'aged' ? ` once the box first detected them ${days} day${days === 1 ? '' : 's'} ago` : ''}? `
+        + 'Alpha and nightly builds can be less stable. Roll back restores the previous build.' : null);
   } });
   const answer = el('p', { className: 'setting-desc action-note pkg-answer', role: 'status' });
   if (pkgAnswer[id]) say(pkgAnswer[id].text, pkgAnswer[id].ok, answer); else answer.hidden = true;
   // What it does by itself, as saved: the fold's title; the editor inside it.
   const says = `${label(s.channel)}: ${AW.patternSays(s.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? '' : 's'}.` : 'installs it.')}`;
   const policy = el('details', { className: 'field-help update-auto pkg-policy' },
-    el('summary', {}, 'Channel and automatic updates: ', el('span', { className: 'pkg-policy-says', textContent: says })), settings);
+    el('summary', {}, 'Release channel and automatic updates: ', el('span', { className: 'pkg-policy-says', textContent: says })), settings);
   return el('div', { className: 'setting library-source update-card', dataset: { pkg: id } }, el('span', { className: 'update-card-body' },
     el('span', { className: 'setting-name' }, p.title, p.installed ? ' ' : null, p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null),
     ...lines.filter(Boolean).map((t) => el('span', { className: 'setting-desc', textContent: t })),
@@ -810,7 +810,7 @@ function pkgCard(id, p) {
       flag ? actionButton(`Download ${flag.version}`, () => pkgAct({ action: 'fetch', package: id })) : null,
       newest && newest.version !== p.installed ? actionButton(`Install ${newest.version}`, () => pkgAct({ action: 'install', package: id, version: newest.version },
         `Install ${p.title} ${newest.version} now?`), { className: 'primary' }) : null,
-      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Go back to ${p.title} ${p.previous}?`)) : null),
+      p.previous ? actionButton(`Roll back to ${p.previous}`, () => pkgAct({ action: 'rollback', package: id }, `Roll back ${p.title} to version ${p.previous}? This downgrades the package.`)) : null),
     answer, policy, keptList));
 }
 loadPackages();
@@ -850,7 +850,7 @@ const actionButton = (label, onclick, extra = {}) =>
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = { running: 'Running', stopped: 'Not running', missing: 'Not installed' };
 const OP_LABEL = { start: 'Start', stop: 'Stop', restart: 'Restart', enable: 'Enable', disable: 'Disable' };
-const OP_TITLE = { enable: 'Start at boot', disable: "Don't start at boot" };
+const OP_TITLE = { enable: 'Start at boot', disable: 'Do not start at boot' };
 let boxPoll = null;
 let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
 const controlNote = noteEl('control-note');
@@ -883,8 +883,8 @@ function renderServiceUptime(services, u, pages) {
   const mine = services.filter((s) => s.unit && units[s.unit]);
   const used = services.filter((s) => !s.unit && s.path && pages && (pages.pages || {})[s.path]);
   if (!mine.length) {
-    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Uptime: nothing recorded yet. The hub looks at every service every five minutes, '
-      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
+    body.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Uptime: nothing recorded yet. The box checks every service every five minutes after its clock is known to be correct. '
+      + 'Use network time, or set the clock on Clock. The box keeps 72 days of records.' }));
     return;
   }
   // One line: what was not up all the time over the last 72 hours, and what is switched off now (said as off, not as
@@ -895,7 +895,7 @@ function renderServiceUptime(services, u, pages) {
   const quiet = mine.filter((s) => units[s.unit].summary.up == null && !off(s));
   const parts = [...worse.map((s) => `${s.name} up ${Heatmap.percent(units[s.unit].summary.up)}`),
     ...quiet.map((s) => `${s.name} not recorded lately`)];
-  const line = el('p', { className: 'setting-desc' }, parts.length ? `Over the last 72 hours, all up but: ${parts.join('; ')}.` : 'All up over the last 72 hours.');
+  const line = el('p', { className: 'setting-desc' }, parts.length ? `Over the last 72 hours, all up but: ${parts.join(', ')}.` : 'All up over the last 72 hours.');
   for (const s of offNow) {
     line.append(` ${s.name} is switched off.`);
     if (s.unit === 'tailscaled.service') line.append(' ', goLink({ section: 'access', where: 'System → Access', mark: 'remote-section' }));
@@ -907,7 +907,7 @@ function renderServiceUptime(services, u, pages) {
       Heatmap.legend(),
       el('p', { className: 'setting-desc', textContent: 'A dot marks an hour or a day in which the service started: restarted, or the box rebooted.' }),
       ...(used.length ? [el('p', { className: 'setting-desc', textContent: 'The pages the web server serves itself have no service to watch: '
-        + 'their strips show use instead. Blank, not used; green, every load answered; red, a load failed. ' + used.map(usedSaid).join('; ') + '.' })] : [])));
+        + 'their strips show use instead. Blank means not used. Green means every load answered. Red means a load failed. ' + used.map(usedSaid).join(', ') + '.' })] : [])));
 }
 
 // The network on the Overview: each link's last 72 hours by hour, the box's link to the network
@@ -921,7 +921,7 @@ function renderOverviewNet(u) {
   const said = sm.up == null ? `${ifaces[0]}: no data lately.`
     : `${ifaces[0]}: up ${Heatmap.percent(sm.up)} over the last 72 hours`
       + (sm.drops ? `, ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : ', no drops')
-      + (sm.longest ? `; the longest outage ${sm.longest.minutes} min.` : '.');
+      + (sm.longest ? `. The longest outage was ${sm.longest.minutes} min.` : '.');
   box.replaceChildren(
     el('h3', { textContent: 'Network, the last 72 hours' }),
     Heatmap.grid({ caption: 'The network links, the last 72 hours by hour', cols: first.hour_cols,
@@ -934,10 +934,10 @@ function renderOverviewNet(u) {
 // with the services) and its state in words, for its trends: restarts, and a crash loop ended by
 // systemd's start limit.
 function meshWords(m, sm) {
-  const ran = m.restarts ? `; systemd restarted it ${m.restarts} time${m.restarts === 1 ? '' : 's'} since the box started` : '';
+  const ran = m.restarts ? `, and systemd restarted it ${m.restarts} time${m.restarts === 1 ? '' : 's'} since the box started` : '';
   const now = m.active === 'active' ? `running${ran}.`
     : m.active === 'failed' && m.result === 'start-limit-hit'
-      ? `stopped: it kept failing, and systemd's limit (${m.burst} starts within ${m.interval}) ended the loop. It stays down until it is started again.`
+      ? `stopped. It kept failing. The systemd limit of ${m.burst} starts within ${m.interval} ended the restart loop. It stays stopped until someone starts it again.`
       : m.active === 'failed' ? `failed (${m.result || 'no reason given'})${ran}.`
         : m.active === 'activating' ? `starting${ran}.` : `not running${ran}.`;
   const week = sm && sm.up != null ? ` Over the last 72 hours: up ${Heatmap.percent(sm.up)}${sm.restarts ? `, started ${sm.restarts} time${sm.restarts === 1 ? '' : 's'}` : ''}.` : '';
@@ -951,7 +951,7 @@ function renderOverviewMesh(m, u) {
   box.replaceChildren(el('h3', { textContent: 'Meshtastic (meshtasticd), the last 72 hours' }),
     rec ? Heatmap.grid({ caption: 'meshtasticd, the last 72 hours by hour', cols: u.hour_cols,
       rows: [{ label: 'meshtasticd', cells: rec.hours, where: (k) => `meshtasticd, ${u.hour_full[k]}` }] })
-      : el('p', { className: 'setting-desc', textContent: 'Not recorded yet: the hub looks at it every five minutes, once the box\'s clock is known to be right.' }),
+      : el('p', { className: 'setting-desc', textContent: 'Not recorded yet. The box checks it every five minutes after its clock is known to be correct.' }),
     el('p', { className: 'setting-desc', textContent: meshWords(m, rec && rec.summary) }));
 }
 
@@ -974,15 +974,15 @@ function renderMemoryHistory(history, system = {}) {
   document.getElementById('memory-current').replaceChildren(
     el('span', { className: 'memory-used-key', textContent: system.mem_total ? `Memory used: ${Math.round((system.mem_total - system.mem_available) / system.mem_total * 100)}%` : 'Memory used' }),
     el('span', { className: 'memory-swap-key', textContent: system.swap_total ? `Swap used: ${size(system.swap_total - system.swap_free)} of ${size(system.swap_total)}` : 'No swap configured' }),
-    el('span', { className: 'memory-disk-key', textContent: system.disk_total ? `Disk used: ${size(system.disk_total - system.disk_free)} of ${size(system.disk_total)}` : 'Disk: not known' }));
+    el('span', { className: 'memory-disk-key', textContent: system.disk_total ? `Disk used: ${size(system.disk_total - system.disk_free)} of ${size(system.disk_total)}` : 'Disk data unavailable' }));
   document.querySelectorAll('[data-memory-hours]').forEach((button) => {
     const active = Number(button.dataset.memoryHours) === memoryHours;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
   const note = !latest ? 'No samples in this range. Recording starts when the box clock is trusted.'
-    : `${samples.length} samples; peak memory use ${Math.round(Math.max(...samples.map(used)))}%`
-      + (samples.some(hasDisk) ? `; disk ${Math.round(disk(samples.filter(hasDisk).at(-1)))}% used at the last sample.` : '; no disk samples yet.')
+    : `${samples.length} samples. Peak memory use ${Math.round(Math.max(...samples.map(used)))}%.`
+      + (samples.some(hasDisk) ? ` Disk ${Math.round(disk(samples.filter(hasDisk).at(-1)))}% used at the last sample.` : ' No disk samples yet.')
       + (now - latest.at > (memoryHistory.every || 300) * 2 ? ' No recent sample.' : '');
   document.getElementById('memory-history-note').textContent = note;
   const width = Math.max(280, box.clientWidth || 800), height = 240;
@@ -1028,8 +1028,8 @@ function renderMemoryHistory(history, system = {}) {
     const sample = samples[selected];
     cursor.setAttribute('x1', x(sample.at)); cursor.setAttribute('x2', x(sample.at)); cursor.setAttribute('visibility', 'visible');
     readout.textContent = `${new Date(sample.at * 1000).toLocaleString()}: ${Math.round(used(sample))}% memory used, ${size(sample.available)} available`
-      + (sample.swap_total ? `; ${Math.round(swap(sample))}% swap used` : '; no swap')
-      + (hasDisk(sample) ? `; disk ${Math.round(disk(sample))}% used, ${size(sample.disk_free)} free.` : '; disk not recorded.');
+      + (sample.swap_total ? `, ${Math.round(swap(sample))}% swap used` : ', no swap')
+      + (hasDisk(sample) ? `, disk ${Math.round(disk(sample))}% used, ${size(sample.disk_free)} free.` : ', disk not recorded.');
   };
   svg.addEventListener('pointermove', (event) => {
     if (!samples.length) return;
@@ -1068,7 +1068,7 @@ function renderBox(data) {
   lastBox = data;
   const rate = cardRate(data.system);
   const rateEl = document.getElementById('card-writes-rate');
-  if (rateEl) rateEl.textContent = rate ? `Written to the card: ${rate}` : 'The card\'s writes are not known on this system.';
+  if (rateEl) rateEl.textContent = rate ? `Written to the card: ${rate}` : 'Card write data is unavailable on this system.';
   if (typeof fillHeadBlocks === 'function') fillHeadBlocks();
   const sys = data.system || {};
   const h = Math.floor((data.uptime || 0) / 3600);
@@ -1080,7 +1080,7 @@ function renderBox(data) {
     tile('Card', sys.disk_total ? `${size(sys.disk_free)} free of ${size(sys.disk_total)}` : '—'),
     tile('Since boot', bootTime),
     tile('Total recorded powered-on time', `${Math.floor(h / 24)} d ${h % 24} h across boots`),
-    tile('Guests', `${data.online} on the page${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ''}`),
+    tile('Guests', `${data.online} hub sessions${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ''}`),
   );
   renderMemoryHistory(data.memory_history, sys);
   renderOverviewNet(data.net_uptime);
@@ -1131,8 +1131,8 @@ async function loadBox() {
 }
 
 async function control(s, op) {
-  if (s.unit === 'irate-box.service' && !confirm('Restart the hub server? This page reconnects by itself.')) return;
-  if (op === 'stop' && !confirm(`Stop ${s.name}?`)) return;
+  if (s.unit === 'irate-box.service' && !confirm('Restart the hub server? This page reconnects automatically.')) return;
+  if (op === 'stop' && !confirm(`Stop ${s.name}? Its app is unavailable until you start it again.`)) return;
   try {
     waitingFor = { id: (await postJSON('/admin/control', { unit: s.unit, op })).id, at: controlNote };
     say(`${OP_LABEL[op]}: ${s.name}…`, true, controlNote);
@@ -1156,15 +1156,15 @@ function renderModeration(data) {
     el('div', { className: 'admin-item' },
       el('span', {}, el('strong', { textContent: m.name }), ` · ${ago(now - m.created)} `, flag(`shoutbox:${m.created}:${String(m.name).slice(0, 40)}`)),
       el('span', { className: 'admin-text', textContent: m.text }),
-      actionButton('Delete', del({ action: 'delete_message', created: m.created, name: m.name }), { className: 'small' })))
+      actionButton('Delete message', del({ action: 'delete_message', created: m.created, name: m.name }), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No messages.' })]));
 
   document.getElementById('mod-drops').replaceChildren(...((data.drops || []).length ? data.drops.map((d) =>
     el('div', { className: 'admin-item' },
-      el('span', {}, d.locked ? el('span', { title: 'Locked by a guest\'s device: only it, or you here, can remove it', textContent: '🔒 ' }) : null,
+      el('span', {}, d.locked ? el('span', { title: 'Locked by a guest\'s device. Only that device, or an administrator here, can remove it.', textContent: '🔒 ' }) : null,
         el('a', { href: `/api/drop/${encodeURIComponent(d.id)}`, textContent: d.name }),
         ` · ${size(d.size)}${d.by ? ` · ${d.by}` : ''} · ${ago(d.age)}${d.locked ? ' · locked' : ''}`),
-      actionButton('Delete', del({ action: 'delete_drop', id: d.id }, `"${d.name}"`), { className: 'small' })))
+      actionButton('Delete file', del({ action: 'delete_drop', id: d.id }, `"${d.name}"`), { className: 'small' })))
     : [el('p', { className: 'setting-desc', textContent: 'No files.' })]));
 
   const threads = data.board.threads;
@@ -1196,23 +1196,23 @@ function renderReports(data, del) {
     detail: () => [
       AW.h('p', { class: 'admin-text', text: r.text }),
       AW.dl(Object.fromEntries(Object.entries(r.reasons || {}).map(([k, n]) => [k, `${n}`]))),
-      AW.btn('Keep it', { onclick: async () => { try { renderModeration(await postJSON('/admin/moderation', { action: 'keep', key: r.key })); } catch (err) { say(err.message, false, noteEl('mod-note')); } } }),
+      AW.btn('Keep content', { onclick: async () => { try { renderModeration(await postJSON('/admin/moderation', { action: 'keep', key: r.key })); } catch (err) { say(err.message, false, noteEl('mod-note')); } } }),
       ' ',
       // A notes page is changed or deleted in Notes itself; the rest from here.
-      r.link ? AW.h('a', { href: r.link, class: 'action-btn', target: '_blank', rel: 'noopener' }, 'Open it in Notes')
-        : AW.btn('Delete it', { onclick: r.key.startsWith('shoutbox:')
+      r.link ? AW.h('a', { href: r.link, class: 'action-btn', target: '_blank', rel: 'noopener' }, 'Open notebook')
+        : AW.btn(r.key.startsWith('shoutbox:') ? 'Delete message' : r.drop ? 'Delete file' : r.index === 0 ? 'Delete thread' : 'Delete post', { onclick: r.key.startsWith('shoutbox:')
           ? del({ action: 'delete_message', created: Number(r.key.split(':')[1]), name: r.by }, 'this message')
           : r.drop ? del({ action: 'delete_drop', id: r.drop }, 'this file')
             : del(r.index === 0 ? { action: 'delete_thread', id: r.thread } : { action: 'delete_post', id: r.thread, index: r.index }, r.index === 0 ? 'the whole thread' : 'this post') }),
-    ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported.' }));
+    ] })), { id: 'mod-queue-list' }) : AW.h('p', { class: 'setting-desc', text: 'No reports.' }));
   // Each app's slice of it, on its own page: the same lines, its posts only.
   lastReports = [data, del];
   document.querySelectorAll('.flagged-block[data-app]').forEach((b) => {
     const mine = queue.filter((r) => r.key.startsWith(b.dataset.app + ':'));
     b.replaceChildren(mine.length ? AW.shortList(mine.map((r) => ({ id: 'own-' + r.key, title: r.text.slice(0, 80) || '(empty)',
       summary: `${r.where}${r.by ? ` · by ${r.by}` : ''} · ${r.count} report${r.count === 1 ? '' : 's'}`, badges: Object.keys(r.reasons || {}),
-      detail: () => [AW.h('p', { class: 'admin-text', text: r.text }), AW.h('a', { href: '#moderation', class: 'action-btn' }, 'Keep or delete it under Moderation →')] })),
-    { id: 'mod-queue-' + b.dataset.app }) : AW.h('p', { class: 'setting-desc', text: 'Nothing reported here.' }));
+      detail: () => [AW.h('p', { class: 'admin-text', text: r.text }), AW.h('a', { href: '#moderation', class: 'action-btn' }, 'Keep or delete content under Moderation →')] })),
+    { id: 'mod-queue-' + b.dataset.app }) : AW.h('p', { class: 'setting-desc', text: 'No reports here.' }));
   });
   const box = document.getElementById('report-settings');
   if (!box || !rs) return;
@@ -1225,11 +1225,11 @@ function renderReports(data, del) {
       try { await postJSON('/admin/settings', { report_reasons: next }); loadModeration(); } catch (err) { say(err.message, false, noteEl('mod-note')); }
     } }, r)));
   box.replaceChildren(AW.h('div', { class: 'aw-settings' }, AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Reasons offered' }), reasons,
-    AW.h('small', { class: 'setting-desc', text: 'saved as you choose' }))),
+    AW.h('small', { class: 'setting-desc', text: 'Each selection is saved at once.' }))),
   AW.settings([
-    { key: 'report_threshold', label: 'In the queue after', kind: 'choice', value: rs.threshold, options: [[1, '1 report'], [2, '2'], [3, '3'], [5, '5']] },
-    { key: 'report_hide', label: 'Hidden from everyone else until you look', kind: 'toggle', value: rs.hide,
-      note: 'off: it stays up while waiting; on: it is hidden once it counts, and shows again if you keep it' },
+    { key: 'report_threshold', label: 'Reports required for queue', kind: 'choice', value: rs.threshold, options: [[1, '1 report'], [2, '2'], [3, '3'], [5, '5']] },
+    { key: 'report_hide', label: 'Hide reported content pending review', kind: 'toggle', value: rs.hide,
+      note: 'Disabled: reported content stays visible while it waits for review. Enabled: content is hidden when it reaches the report limit, and shown again if you keep it.' },
   ], { save: async (changed) => { const r = await postJSON('/admin/settings', changed); loadModeration(); return r; } }));
 }
 
@@ -1261,12 +1261,12 @@ function renderStore(data) {
   const dr = data.drop;
   if (dr) {
     document.getElementById('drop-usage').textContent = `${dr.files} file${dr.files === 1 ? '' : 's'}, ` +
-      `${size(dr.bytes)} of ${size(dr.max_total)}. Up to ${size(dr.max_file)} a file` +
-      (dr.ttl ? `; each stays ${Math.round(dr.ttl / 3600)} hours of powered-on time.` : '; kept until the cap is reached.');
+      `${size(dr.bytes)} of ${size(dr.max_total)}. Maximum file size: ${size(dr.max_file)}` +
+      (dr.ttl ? `. Each file stays ${Math.round(dr.ttl / 3600)} hours of powered-on time.` : '. Files stay until the storage limit is reached.');
   }
   document.getElementById('store-clear').replaceChildren(...['scenes', 'rooms', 'files'].map((ns) =>
     actionButton(`Clear ${NS_LABEL[ns]}`, async () => {
-      if (!confirm(`Delete all ${NS_LABEL[ns]}? Links to them stop working.`)) return;
+      if (!confirm(`Delete all ${NS_LABEL[ns]}? This cannot be undone. Links to them stop working.`)) return;
       try { renderStore(await postJSON('/admin/store', { action: 'clear', namespace: ns })); } catch (err) { say(err.message, false, noteEl('store-note')); }
     }, { disabled: !u.namespaces[ns].files, className: 'small' })));
 
@@ -1278,7 +1278,7 @@ function renderStore(data) {
       s.thumb ? thumbFor(s.id) : el('span', { className: 'admin-thumb' }),
       el('span', {}, el('strong', { textContent: `${s.locked ? '🔒 ' : ''}${s.name}` }),
         el('span', { className: 'setting-desc', textContent: `${s.kind} · ${size(s.size)} · ${ago(data.now - s.created)}` +
-          (s.locked ? ' · locked by a guest\'s device: only it can change it, but you can still rename or delete it here' : '') })),
+          (s.locked ? ' · locked by a guest\'s device. Only that device can change it. You can still rename or delete it here.' : '') })),
       el('span', { className: 'library-buttons' },
         actionButton('Rename', () => {
           const name = prompt('New name', s.name);
@@ -1314,7 +1314,7 @@ storeForm.addEventListener('submit', async (e) => {
       drop_max_total_mb: Number(storeForm.elements.drop_max_total_mb.value),
       drop_ttl_hours: Number(storeForm.elements.drop_ttl_hours.value),
     });
-    say('Saved. The new cap applies from the next write to the store.', true, noteEl('store-settings-note'));
+    say('Saved. The new storage limit applies when the box next writes data.', true, noteEl('store-settings-note'));
     loadStoreSettings();
     loadStore();
   } catch (err) { say(err.message, false, noteEl('store-settings-note')); }
@@ -1330,7 +1330,7 @@ pwForm.addEventListener('submit', async (e) => {
   try {
     waitingFor = { id: (await postJSON('/admin/password', { password: pw })).id, at: pwNote };
     pwForm.reset();
-    say('Changing the password… your browser will ask for the new one.', true, pwNote);
+    say('Changing the password. Your browser will ask for the new password.', true, pwNote);
     loadBox();
   } catch (err) { say(err.message, false, pwNote); }
 });
@@ -1376,7 +1376,7 @@ const checkItem = (status, title, detail, fix) => el('li', { className: `check c
   el('span', { textContent: `${MARK[status]} ` }), el('strong', { textContent: title }),
   detail ? el('span', { textContent: ` — ${detail}` }) : null,
   fix ? el('span', { className: 'setting-desc', textContent: fix }) : null);
-const UPD_DOING = { check: 'Checking for updates', fetch: 'Fetching the update', install: 'Installing the update', addon: 'Changing an add-on', repair: 'Running the installer again' };
+const UPD_DOING = { check: 'Checking for updates', fetch: 'Downloading update', install: 'Installing the update', addon: 'Changing an add-on', repair: 'Running the installer again' };
 let updWaiting = null; // { id, action }
 let updPoll = null;
 
@@ -1406,12 +1406,12 @@ let udShow = 'all';
 function renderUpdoctor(d) {
   const all = d ? [...d.findings].sort((a, b) => RANK[a.status] - RANK[b.status]) : [];
   const counts = { problem: all.filter((f) => f.status === 'problem').length, warn: all.filter((f) => f.status === 'warn').length };
-  upd.doctorWhen.textContent = d ? `Looked ${new Date(d.at * 1000).toLocaleString()}.`
-    : 'Not run yet: it runs when you press the button, or by itself when a check for updates fails.';
+  upd.doctorWhen.textContent = d ? `Last checked ${new Date(d.at * 1000).toLocaleString()}.`
+    : 'Not run yet. It runs when you select the button. It also runs when a check for updates fails.';
   upd.udSummary.replaceChildren(...(!d ? [] : [
     ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
     ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
-    ['warn', counts.warn, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    ['warn', counts.warn, 'to review', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
     const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${udShow === key ? ' active' : ''}`,
       onclick: () => { udShow = key; renderUpdoctor(d); } }, el('strong', { textContent: String(n) }), ` ${word}`);
     b.setAttribute('aria-pressed', String(udShow === key));
@@ -1430,7 +1430,7 @@ function renderUpdoctor(d) {
   const open = all.filter((f) => f.status !== 'ok' && (udShow === 'all' || f.status === udShow));
   upd.findings.replaceChildren(...open.map(item));
   upd.udEmpty.hidden = !d || open.length > 0;
-  upd.udEmpty.textContent = counts.problem + counts.warn ? 'Nothing of that kind.' : 'Nothing to fix or look at: updates have what they need.';
+  upd.udEmpty.textContent = counts.problem + counts.warn ? 'Nothing of that kind.' : 'Nothing to fix or review. Updates have what they need.';
   const fine = all.filter((f) => f.status === 'ok');
   upd.udFineFold.hidden = !fine.length;
   upd.udFineCount.textContent = `(${fine.length})`;
@@ -1441,7 +1441,7 @@ function renderUpdoctor(d) {
 let meteredNow = null;
 function meteredOk(what) {
   if (!meteredNow || !meteredNow.metered) return true;
-  return confirm(`The box is on a metered network now (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). ${what} may use a lot of its data. Go ahead?`);
+  return confirm(`The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). ${what} can use a lot of data. Continue?`);
 }
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
@@ -1450,9 +1450,9 @@ function renderUpdate(data) {
   const mEl = document.getElementById('update-metered');
   const w = m.waiting;
   mEl.hidden = !(meteredNow && meteredNow.metered) && !w;
-  mEl.textContent = w ? `Scheduled updates and downloads have waited since ${new Date(w.since * 1000).toLocaleString()}: the box is on a metered network `
-    + `(${w.connection || w.iface}, ${w.how}). They go ahead on another network; one started here asks first. Set a network not metered in its own settings (Network → WiFi).`
-    : meteredNow && meteredNow.metered ? `The box is on a metered network now (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}): scheduled updates and downloads will wait for another.` : '';
+  mEl.textContent = w ? `Scheduled updates and downloads have waited since ${new Date(w.since * 1000).toLocaleString()}. The box is on a metered network `
+    + `(${w.connection || w.iface}, ${w.how}). They continue on another network. An update that you start here asks for approval first. To change this, mark the network as not metered in its settings (Network → WiFi).`
+    : meteredNow && meteredNow.metered ? `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). Scheduled updates and downloads wait for another network.` : '';
   const s = data.state;
   const p = data.progress;
   const busy = data.pending > 0 || !!updWaiting || !!p;
@@ -1467,8 +1467,8 @@ function renderUpdate(data) {
       ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
       : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
         (s.changes_known ? `, ${s.changes.length} new commit${s.changes.length === 1 ? '' : 's'}` : '') +
-        `. Checked ${when}. ` + (ready ? 'Fetched and verified, and its downloads are cached: ready to install.'
-          : fetched ? 'It did not pass verification (below), so it cannot be installed.'
+        `. Checked ${when}. ` + (ready ? 'Downloaded and verified. Its downloads are cached. Ready to install.'
+          : fetched ? 'It did not pass verification (below). It cannot be installed.'
           : 'Download it to verify it and download what it needs.'));
   }
   const checks = (fetched && s.checks) || [];
@@ -1498,7 +1498,7 @@ function renderUpdate(data) {
       const failed = !done.ok || /did not pass verification/.test(done.message);
       // A failure says itself, with the way to its diagnosis beside it.
       updSay(updWaiting.action, done.message, !failed, failed && updWaiting.action !== 'doctor'
-        ? el('a', { className: 'action-btn go-btn', href: '#updoctor', textContent: 'Why: the Updates doctor →' }) : null);
+        ? el('a', { className: 'action-btn go-btn', href: '#updoctor', textContent: 'Show reason: Updates doctor →' }) : null);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -1522,8 +1522,8 @@ async function loadUpdate() {
     // not answering, and what was asked keeps its own words.
     if (updWaiting) {
       const installing = /install/.test(updWaiting.action);
-      upd.summary.textContent = installing ? 'Installing… the hub is restarting.'
-        : 'The hub is not answering just now; trying again. What was asked is still waiting.';
+      upd.summary.textContent = installing ? 'Installing. The hub server is restarting.'
+        : 'The hub server is not answering. Reconnecting to check the action status.';
       updPoll = setTimeout(loadUpdate, 3000);
     }
   }
@@ -1535,18 +1535,18 @@ async function requestUpdate(action) {
   try {
     updWaiting = { id: (await postJSON('/admin/update', { action })).id, action };
     upd.check.disabled = upd.fetch.disabled = upd.install.disabled = upd.force.disabled = true;
-    updSay(action, { check: 'Checking for updates…', fetch: 'Fetching the update: verifying it and caching its downloads…',
-      install: 'Installing the update…', 'force-install': 'Installing the downloaded version anyway…', doctor: 'Running the update doctor (up to a minute or two)…',
+    updSay(action, { check: 'Checking for updates…', fetch: 'Downloading the update. The box verifies it and caches its downloads…',
+      install: 'Installing the update…', 'force-install': 'Installing the downloaded version anyway…', doctor: 'Running the update doctor. It can take up to two minutes…',
       'clear-cache': 'Clearing the update cache…' }[action], true);
     loadUpdate();
   } catch (err) { updSay(action, err.message, false); }
 }
 
 upd.check.addEventListener('click', () => requestUpdate('check'));
-upd.fetch.addEventListener('click', () => { if (meteredOk('Fetching the update')) requestUpdate('fetch'); });
+upd.fetch.addEventListener('click', () => { if (meteredOk('Downloading the update')) requestUpdate('fetch'); });
 upd.doctor.addEventListener('click', () => requestUpdate('doctor'));
 upd.clear.addEventListener('click', () => {
-  if (confirm('Remove the cached copy and downloads? The next check starts afresh.')) requestUpdate('clear-cache');
+  if (confirm('Delete the cached copy and downloads? The next check starts again from the beginning.')) requestUpdate('clear-cache');
 });
 upd.install.addEventListener('click', () => requestUpdate('install'));
 
@@ -1558,7 +1558,7 @@ for (const name of ['hub_window_start', 'hub_window_end']) {
   auto.form.elements[name].replaceChildren(...Array.from({ length: 24 }, (_, h) =>
     el('option', { value: String(h), textContent: `${String(h).padStart(2, '0')}:00` })));
 }
-const AUTO_STEP = { check: 'looked for an update', fetch: 'fetched and verified an update', install: 'installed an update' };
+const AUTO_STEP = { check: 'checked for an update', fetch: 'downloaded and verified an update', install: 'installed an update' };
 function renderAuto(a) {
   if (!a) return;
   // An edit not saved yet is kept through polling, focus or not; the fold's title says what is saved.
@@ -1572,10 +1572,10 @@ function renderAuto(a) {
   auto.window.hidden = auto.form.elements.hub_auto.value !== '2';
   const st = a.state || {};
   const parts = [];
-  if (st.waiting) parts.push(`Working: asked the root helper to ${st.waiting.step} at ${new Date(st.waiting.at * 1000).toLocaleTimeString()}.`);
-  if (st.last) parts.push(`Last automatic step, ${new Date(st.last.at * 1000).toLocaleString()}: ${AUTO_STEP[st.last.step] || st.last.step}: ${st.last.message}`);
+  if (st.waiting) parts.push(`Working. The root helper was asked to ${st.waiting.step} at ${new Date(st.waiting.at * 1000).toLocaleTimeString()}.`);
+  if (st.last) parts.push(`Last automatic step, ${new Date(st.last.at * 1000).toLocaleString()}: ${AUTO_STEP[st.last.step] || st.last.step}. ${st.last.message}`);
   if (st.note && !st.waiting) parts.push(st.note + '.');
-  auto.state.textContent = parts.join(' ') || (Number(a.hub_check_every_hours) ? 'No automatic step yet: the librarian takes the first on its next round.' : 'Automatic checks are off.');
+  auto.state.textContent = parts.join(' ') || (Number(a.hub_check_every_hours) ? 'No automatic step yet. The librarian runs the first step at the next hourly cycle.' : 'Automatic checks are disabled.');
 }
 auto.form.elements.hub_auto.addEventListener('change', () => { auto.window.hidden = auto.form.elements.hub_auto.value !== '2'; });
 for (const ev of ['input', 'change']) auto.form.addEventListener(ev, () => { auto.form.dataset.dirty = '1'; });
@@ -1583,8 +1583,8 @@ auto.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = { action: 'policy' };
   for (const k of ['hub_check_every_hours', 'hub_auto', 'hub_window_start', 'hub_window_end']) body[k] = Number(auto.form.elements[k].value);
-  if (body.hub_auto === 2 && body.hub_window_start === body.hub_window_end) { say('The install hours need a start and an end that differ.', false, auto.note); return; }
-  try { await libPost(body); delete auto.form.dataset.dirty; say('Saved. The librarian follows it from its next round (hourly).', true, auto.note); loadUpdate(); } catch (err) { say(err.message, false, auto.note); }
+  if (body.hub_auto === 2 && body.hub_window_start === body.hub_window_end) { say('The start time and the end time must differ.', false, auto.note); return; }
+  try { await libPost(body); delete auto.form.dataset.dirty; say('Saved. The librarian applies it at the next hourly cycle.', true, auto.note); loadUpdate(); } catch (err) { say(err.message, false, auto.note); }
 });
 upd.force.addEventListener('click', () => requestUpdate('force-install'));
 loadUpdate();
@@ -1650,7 +1650,7 @@ function scanButtons(f, busy) {
   if ((f.actions || []).some((a) => a.group)) return [...secChipRows(f, busy), ...scanButtons({ ...f, actions: f.actions.filter((a) => !a.group) }, busy)];
   return (f.actions || []).map((a) => {
     const b = el('button', { type: 'button', className: 'action-btn' + (secChosen(f.id, a) ? ' pending' : ''), textContent: a.label, disabled: busy,
-      title: secChosen(f.id, a) ? 'Chosen: waits for Save. Press again to leave it out.' : '', onclick: (ev) => secChoose(f, a, ev.currentTarget) });
+      title: secChosen(f.id, a) ? 'Selected. Select Save changes to apply this change. Select the button again to cancel the selection.' : '', onclick: (ev) => secChoose(f, a, ev.currentTarget) });
     b.setAttribute('aria-pressed', String(secChosen(f.id, a)));
     return b;
   });
@@ -1689,7 +1689,7 @@ function drawSecPending(busy) {
       el('div', { className: 'library-buttons' },
         el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: busy,
           onclick: () => { secOnPage(page).forEach(([k]) => secPending.delete(k)); if (secData) renderSecurity(secData); } }),
-        el('button', { type: 'button', className: 'action-btn primary', textContent: `Save ${list.length === 1 ? 'it' : `all ${list.length}`}`, disabled: busy,
+        el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save changes', disabled: busy,
           onclick: () => secSavePending(page) })));
   });
 }
@@ -1704,7 +1704,7 @@ async function secSavePending(page) {
   }
   if (ids.length) { secWaiting = { id: ids[ids.length - 1], ids, fid: 'scan' }; secNote = null; }
   if (failed) {
-    secNote = { fid: 'scan', text: `${ids.length} of ${list.length} sent; then: ${failed} The rest are still chosen, not saved.`, ok: false };
+    secNote = { fid: 'scan', text: `${ids.length} of ${list.length} changes were sent to the root helper. The next change failed: ${failed.replace(/\.?$/, '.')} ${list.length - ids.length} change${list.length - ids.length === 1 ? ' is' : 's are'} still selected and not saved.`, ok: false };
     if (ids.length) secWaiting.keepNote = secNote;
   }
   loadSecurity();
@@ -1713,8 +1713,8 @@ async function secSavePending(page) {
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
-const STATE_WORD = { problem: 'To fix', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', 'not-here': 'Not for this box',
-  accepted: 'Accepted', fixed: 'Repaired' };
+const STATE_WORD = { problem: 'Action required', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', 'not-here': 'Not applicable',
+  accepted: 'Accepted risk', fixed: 'Repaired' };
 function copyBox(cmd) {
   const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
   b.addEventListener('click', async () => {
@@ -1734,23 +1734,23 @@ function findingRow(r) {
       r.meta ? el('span', { className: 'fmeta', textContent: r.meta }) : null),
     r.detail ? el('p', { className: 'fdetail', textContent: r.detail }) : null,
     (r.how || (r.controls || []).length) ? el('div', { className: 'fdo' },
-      r.how ? el('p', { className: 'fhow' }, el('span', { className: 'fdo-label', textContent: state === 'ok' || state === 'fixed' ? 'Undo: ' : 'What to do: ' }), r.how) : null,
+      r.how ? el('p', { className: 'fhow' }, el('span', { className: 'fdo-label', textContent: state === 'ok' || state === 'fixed' ? 'Undo action: ' : 'Recommended action: ' }), r.how) : null,
       (r.controls || []).length ? el('div', { className: 'fdo-controls' }, ...r.controls) : null) : null,
     r.note || null,
     // The deep audit's checks one by one (deepaudit.cis_findings): what each wants, what it found, its own fix.
     (r.checks || []).length ? el('details', { className: 'fsaid fchecks' }, el('summary', { textContent: `Each check, with its fix (${r.checks.length})` }),
       el('ul', {}, ...r.checks.map((c) => el('li', {},
         el('strong', { textContent: (c.check || '').replace(/^[\d.]+_/, '').replace(/_/g, ' ') }), c.what ? ` — ${c.what}` : '',
-        (c.msgs || []).length ? el('span', { className: 'setting-desc', textContent: ` Found: ${c.msgs.join('; ')}.` }) : null,
+        (c.msgs || []).length ? el('span', { className: 'setting-desc', textContent: ` Found: ${c.msgs.join(', ')}.` }) : null,
         c.say ? el('span', { className: 'setting-desc', textContent: ` ${c.say}` }) : null,
         c.cmd ? el('div', {}, copyBox(c.cmd)) : null)))) : null,
-    (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `What each source said (${r.said.length})` }),
+    (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `Source results (${r.said.length})` }),
       el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
         el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
-        l.fix ? el('span', { className: 'setting-desc', textContent: ` To do: ${l.fix}` }) : null)))) : null,
+        l.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${l.fix}` }) : null)))) : null,
     r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'link-button',
-      textContent: r.accept.on ? 'Take back: list it again' : 'Accept as it is',
-      title: r.accept.on ? 'Back among what is to fix or look at' : 'You have looked at it and are happy to leave it: it moves to "Accepted by you" and stops counting',
+      textContent: r.accept.on ? 'Reopen finding' : 'Accept risk',
+      title: r.accept.on ? 'Return this finding to the unresolved list.' : 'Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.',
       onclick: () => secAccept(r.accept.key, r.accept.title, !r.accept.on) })) : null);
 }
 const noteUnder = (fid) => (secNote && secNote.fid === fid
@@ -1804,9 +1804,9 @@ function secChipRows(f, busy) {
 }
 // The Security page's subjects: where each of the box's choices lives.
 const SEC_SUBJECTS = [
-  ['exposure', 'What guests can reach', 'The ports that answer, the floor between guests and the box, and what is shared onward.'],
+  ['exposure', 'What guests can reach', 'Ports that answer, the minimum rules between guests and the box, and what the box shares with other networks.'],
   ['login', 'Sign-in and root', 'Who can sign in to the box itself, how, and what they can do as root.'],
-  ['system', 'The system', 'How the system underneath is set up: its kernel, its package sources, its logs and its services.'],
+  ['system', 'The system', 'How the system under the box software is set up: kernel, package sources, logs and services.'],
 ];
 function secSubject(f) {
   if (/^(port-|listen-|firewall|guest-net|cockpit|llmnr|share)/.test(f.id)) return 'exposure';
@@ -1843,7 +1843,7 @@ function renderSecurity(data) {
   const shown = new Set(lines.map((f) => f.id));
   const by = (k) => lines.filter((f) => secKind(f) === k).sort((a, b) => RANK[a.status] - RANK[b.status]);
   const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
-    how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Nothing to press: it is said so you know.'),
+    how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Information only.'),
     controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
   // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
   // choice or is set, so a setting can always be found and changed back.
@@ -1882,7 +1882,7 @@ function renderSecurity(data) {
 
   // Scanning only while a scan asked from here is out; anything else the helper has is said as such.
   const doing = secWaiting && secWaiting.fid === 'scan' && !secWaiting.ids ? 'Scanning…'
-    : secWaiting ? 'Saving: waiting for the root helper…' : busy ? 'The root helper is busy with other work; this report is from before it.' : '';
+    : secWaiting ? 'Saving. Waiting for the root helper…' : busy ? 'The root helper is busy with other work. This report is from before that work.' : '';
   sec.when.textContent = (scan ? `Last scanned ${new Date(scan.at * 1000).toLocaleString()}.` : 'Not scanned yet.') + (doing ? ` ${doing}` : '');
   sec.scan.disabled = busy;
   sec.auditRun.disabled = busy;
@@ -1891,7 +1891,7 @@ function renderSecurity(data) {
   sec.auditDeepWhen.textContent = deep.progress
     ? `Deep audit running: ${deep.progress.step} (${deep.progress.n} of ${deep.progress.total})…`
     : (deep.at ? `Last deep audit ${new Date(deep.at * 1000).toLocaleString()}, ${Math.round((deep.took || 0) / 60)} min. ` : 'No deep audit yet. ')
-      + 'It runs debian-cis\'s CIS benchmark checks and Lynis (about 8 minutes on a small board), weekly while the Security kit is kept current.';
+      + 'It runs the CIS benchmark checks from debian-cis and Lynis. This takes about 8 minutes on a small board. It runs weekly while the Security kit is kept current.';
   renderAudit(data.audit, busy, data);
   renderImports(data.imports);
   // Each port with the scan's word on it and, where there is one, its button: no separate list of ports.
@@ -1917,13 +1917,13 @@ function renderSecurity(data) {
   const ports = lines.filter((f) => /^port-/.test(f.id) && f.status !== 'ok').length;
   sec.counts.replaceChildren(...[
     [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
-    [ports, `port${ports === 1 ? '' : 's'} worth a look`, ports ? 'warn' : 'ok', 'security-ports'],
+    [ports, `port${ports === 1 ? '' : 's'} to review`, ports ? 'warn' : 'ok', 'security-ports'],
     [set.length, 'set', 'ok', 'security-findings']].map(([n, word, st, to]) =>
     el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
   badge('security', problems ? String(problems) : '');
   const updProblems = by('update').filter((f) => f.status === 'problem').length;
   badge('updates-security', updProblems ? String(updProblems) : '');  // Needs attention words it
-  if (scan) setupStep('security', problems ? `${problems} thing${problems === 1 ? '' : 's'} to fix or leave.` : 'Nothing to fix.', problems ? 'problem' : 'ok');
+  if (scan) setupStep('security', problems ? `${problems} item${problems === 1 ? '' : 's'} to fix or accept.` : 'Nothing to fix.', problems ? 'problem' : 'ok');
 
   const stale = !scan || Date.now() / 1000 - scan.at > 15 * 60;
   if (stale && !busy && !secAsked) { secAsked = true; secRequest({ action: 'scan' }, 'scan'); return; }
@@ -1954,7 +1954,7 @@ function jointDo(i, data, busy) {
     if (secKind(f) !== 'cure') {
       if ((f.actions || []).length || f.status !== 'ok') {
         const [to, where] = secKind(f) === 'update' ? ['updates-security', 'Updates'] : [`sec-${f.id}`, 'Security'];
-        if (!seen.has(to)) { seen.add(to); controls.push(el('a', { className: 'action-btn go-btn', href: `#${to}`, textContent: `Choose on ${where} →` })); }
+        if (!seen.has(to)) { seen.add(to); controls.push(el('a', { className: 'action-btn go-btn', href: `#${to}`, textContent: `Go to ${where} →` })); }
       }
       continue;
     }
@@ -1967,7 +1967,7 @@ function jointDo(i, data, busy) {
   const d = i.do || {};
   if (d.repair === 'rerun-install') {
     controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the installer again', disabled: busy,
-      onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run install.sh again with this box\'s recorded options? The installer can repair, upgrade and restart services.') }));
+      onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run the installer with this box\'s recorded options? The installer can repair, upgrade and restart services.') }));
   }
   if (d.act === 'deep') controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the deep audit', disabled: busy, onclick: () => sec.auditDeep.click() }));
   if (d.go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${d.go}`, textContent: `Go to ${d.where} →` }));
@@ -1975,7 +1975,7 @@ function jointDo(i, data, busy) {
   // The words: the hub's own work said as such; else the Security page's (it goes with its buttons); else the item's.
   const pageFix = page.map((f) => f.fix).find(Boolean);
   const how = d.hub || d.say || (page.length && page.some((f) => (f.actions || []).length) ? pageFix || '' : '') || i.fix
-    || (controls.length ? '' : 'Nothing to press: it is said so you know.');
+    || (controls.length ? '' : 'Information only.');
   // Put right since the doctor ran: every Security page line in it is fine now.
   const fixed = page.length > 0 && page.length === (i.page || []).length && page.every((f) => f.status === 'ok');
   return { controls, how, fixed, page };
@@ -1988,7 +1988,7 @@ function jointRow(i, data, busy, accepted) {
     i.alone ? `${srcWords(i.could_see)} could have seen it and did not` : '', isNew ? 'new since the last run' : ''].filter(Boolean).join(' · ');
   const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].detail !== i.detail) ? i.lines : [];
   return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
-    title: i.title, detail: i.detail, how: fixed ? 'Put right here since the doctor last ran; it drops off at its next run.' : how,
+    title: i.title, detail: i.detail, how: fixed ? 'Repaired here since the doctor last ran. It leaves the list at the next run.' : how,
     controls, meta, said, checks: i.checks, note: (i.page || []).map(noteUnder).find(Boolean) || null,
     accept: { key: i.key, title: i.title, on: !!accepted } });
 }
@@ -2008,7 +2008,7 @@ function renderJoint(j, data) {
   box('joint-summary').replaceChildren(...(!j ? [el('p', { className: 'setting-desc', textContent: 'Run the doctor to see it.' })] : [
     ['all', `${counts.problem + counts.warn}`, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
     ['problem', `${counts.problem}`, 'to fix', counts.problem ? 'problem' : 'ok'],
-    ['warn', `${counts.warn}`, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    ['warn', `${counts.warn}`, 'to review', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
     const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${jointShow === key ? ' active' : ''}`,
       onclick: () => { jointShow = key; renderJoint(j, data); } }, el('strong', { textContent: n }), ` ${word}`);
     b.setAttribute('aria-pressed', String(jointShow === key));
@@ -2017,7 +2017,7 @@ function renderJoint(j, data) {
   const list = real.filter(pick);
   box('joint-items').replaceChildren(...list.map((i) => jointRow(i, data, busy, null)));
   box('joint-empty').hidden = !j || list.length > 0;
-  box('joint-empty').textContent = real.length ? 'Nothing matches.' : 'Nothing to fix or look at.';
+  box('joint-empty').textContent = real.length ? 'Nothing matches.' : 'Nothing to fix or review.';
   const fold = (id, items, row) => {
     box(`${id}-fold`).hidden = !items.length;
     box(`${id}-count`).textContent = `(${items.length})`;
@@ -2029,7 +2029,7 @@ function renderJoint(j, data) {
   // What the box's own scan has put right with a cure (one right answer), each with its Undo.
   const cured = ((data.scan || {}).findings || []).filter((f) => secKind(f) === 'cure' && f.status === 'ok' && (f.actions || []).length);
   fold('joint-cured', cured, (f) => findingRow({ id: `sec-cure-${f.id}`, state: 'ok', title: f.title, detail: f.detail,
-    how: 'Done from here; put it back as it was if you need to.', controls: scanButtons(f, busy), note: noteUnder(f.id) }));
+    how: 'Done from here. Use the button to restore the previous setting.', controls: scanButtons(f, busy), note: noteUnder(f.id) }));
   // One strip at the top: each source, its age, and a warning once it is older than it
   // should be; what it covers and what it said in the pill's title.
   const fresh = (j && j.freshness) || {};
@@ -2037,7 +2037,7 @@ function renderJoint(j, data) {
   box('joint-fresh').replaceChildren(...Object.keys((j && j.sources) || {}).map((src) => {
     const c = j.sources[src], at = fresh[src], old = !at || now - at > (STALE_DAYS[src] || 30) * 86400;
     return el('span', { className: old ? 'warn-pill' : 'info-pill',
-      title: `${(j.coverage || {})[src] || ''} To fix: ${c.problem || 0}; to look at: ${c.warn || 0}.`.trim(),
+      title: `${(j.coverage || {})[src] || ''} To fix: ${c.problem || 0}. To review: ${c.warn || 0}.`.trim(),
       textContent: `${SOURCE_WORDS[src] || src}: ${at ? ago(now - at) : 'never'}${old ? ', stale' : ''}` });
   }));
   return counts;
@@ -2046,13 +2046,13 @@ function renderJoint(j, data) {
 // Scan reports, read here in the browser: only what they found goes to the box (secimports.py).
 function xmlDoc(text) {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if (doc.getElementsByTagName('parsererror').length) throw new Error('This is not XML the page can read.');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Unsupported XML report. This page cannot read this file as XML.');
   return doc;
 }
 const kid = (node, name) => { const n = node && [...node.children].find((c) => c.tagName === name); return n ? n.textContent.trim() : ''; };
 function parseNmapXml(text) {
   const doc = xmlDoc(text);
-  if (doc.documentElement.tagName !== 'nmaprun') throw new Error('Not an nmap XML report (nmap -oX).');
+  if (doc.documentElement.tagName !== 'nmaprun') throw new Error('Unsupported XML report. Select an nmap XML report created with -oX.');
   const results = [];
   for (const host of doc.getElementsByTagName('host')) {
     const addr = (host.getElementsByTagName('address')[0] || { getAttribute: () => '' }).getAttribute('addr');
@@ -2107,7 +2107,7 @@ function parseOpenvasCsv(text) {
   const ix = (name) => head.findIndex((h) => h.trim().toLowerCase() === name);
   const col = { ip: ix('ip'), port: ix('port'), proto: ix('port protocol'), cvss: ix('cvss'), name: ix('nvt name'), summary: ix('summary'),
     solution: ix('solution'), cves: ix('cves'), time: ix('timestamp') };
-  if (col.cvss < 0 || col.name < 0) throw new Error('Not an OpenVAS CSV report (it has no CVSS and NVT Name columns).');
+  if (col.cvss < 0 || col.name < 0) throw new Error('OpenVAS CSV must include CVSS and NVT Name columns.');
   const results = rows.map((r) => ({ port: /^\d+$/.test(r[col.port] || '') ? Number(r[col.port]) : 'general',
     proto: (r[col.proto] || 'tcp').toLowerCase() === 'udp' ? 'udp' : 'tcp', host: r[col.ip] || '', cvss: parseFloat(r[col.cvss]) || 0,
     name: r[col.name] || '', summary: r[col.summary] || '', solution: col.solution >= 0 ? r[col.solution] : '',
@@ -2132,8 +2132,8 @@ function renderAudit(audit, busy, data) {
     return;
   }
   sec.auditWhen.textContent = `Last run ${new Date(audit.at * 1000).toLocaleString()}`
-    + ((audit.new || []).length ? `; ${audit.new.length} new since ${new Date(audit.previous_at * 1000).toLocaleDateString()}` : '')
-    + (audit.root ? '.' : ' (not run as root: some checks could not read what they need).') + (busy ? ' Running…' : '');
+    + ((audit.new || []).length ? `, ${audit.new.length} new since ${new Date(audit.previous_at * 1000).toLocaleDateString()}` : '')
+    + (audit.root ? '.' : '. Not run as root: some checks could not read what they need.') + (busy ? ' Running…' : '');
   // The raw report: every step's checks as the doctor wrote them, the fine ones too, all folded.
   sec.auditSteps.replaceChildren(...audit.steps.map((st) => {
     const worst = st.findings.some((f) => f.status === 'problem') ? 'problem' : st.findings.some((f) => f.status === 'warn') ? 'warn' : 'ok';
@@ -2145,7 +2145,7 @@ function renderAudit(audit, busy, data) {
         (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
         el('span', { textContent: ` — ${f.detail}` }),
-        f.fix ? el('span', { className: 'setting-desc', textContent: ` To do: ${f.fix}` }) : null))));
+        f.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${f.fix}` }) : null))));
   }));
   sec.auditScope.hidden = !(audit.not_covered || []).length;
   sec.auditNot.replaceChildren(...(audit.not_covered || []).map((t) => el('li', { textContent: t })));
@@ -2154,7 +2154,7 @@ function renderAudit(audit, busy, data) {
 async function loadSecurity() {
   try { renderSecurity(await getJSON('/admin/security')); } catch (err) {
     console.error('security pane:', err);
-    sec.when.textContent = 'Could not read the security report.';
+    sec.when.textContent = 'Could not read the security report. Reload the page to try again.';
   }
 }
 
@@ -2189,8 +2189,8 @@ function drawDebianPattern(lines, busy) {
   deb.buttons.update({
     check: { disabled: busy, why: busy ? 'busy' : '' },
     fetch: { disabled: busy || !waiting || fetched >= waiting,
-      why: busy ? 'busy' : !waiting ? 'nothing newer is known; check first.' : fetched >= waiting ? 'downloaded already.' : '' },
-    install: { disabled: busy || !waiting, why: busy ? 'busy' : !waiting ? 'nothing waiting.' : '' },
+      why: busy ? 'busy' : !waiting ? 'no newer version is known. Select Check now first.' : fetched >= waiting ? 'already downloaded.' : '' },
+    install: { disabled: busy || !waiting, why: busy ? 'busy' : !waiting ? 'no updates are waiting.' : '' },
   });
 }
 deb.form.addEventListener('input', () => { deb.form.dataset.dirty = '1'; });
@@ -2215,7 +2215,7 @@ document.getElementById('import-form').addEventListener('submit', async (e) => {
   const file = e.target.elements.file.files[0];
   if (!file) return;
   try {
-    if (file.size > 64 * 2 ** 20) throw new Error('That file is over 64 MB: export fewer results.');
+    if (file.size > 64 * 2 ** 20) throw new Error('The file is larger than the maximum report size of 64 MB. Export fewer results.');
     const text = file.text ? await file.text() : await new Promise((ok, no) => {
       const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(r.error); r.readAsText(file);
     });
@@ -2229,7 +2229,7 @@ document.getElementById('import-form').addEventListener('submit', async (e) => {
 function renderImports(imports) {
   document.getElementById('import-list').replaceChildren(...Object.entries(imports || {}).map(([kind, i]) => el('li', { className: 'admin-item' },
     el('span', {}, el('strong', { textContent: kind === 'nmap' ? 'nmap' : 'OpenVAS' }),
-      el('span', { className: 'setting-desc', textContent: ` ${i.name || ''}: ${i.results} results; ran ${i.ran ? new Date(i.ran * 1000).toISOString().slice(0, 10) : '?'}, imported ${new Date(i.imported * 1000).toISOString().slice(0, 10)}` })),
+      el('span', { className: 'setting-desc', textContent: ` ${i.name || ''}: ${i.results} results. Scan time: ${i.ran ? new Date(i.ran * 1000).toISOString().slice(0, 10) : '?'}. Import time: ${new Date(i.imported * 1000).toISOString().slice(0, 10)}.` })),
     actionButton('Remove', async () => {
       try { const r = await postJSON('/admin/security', { action: 'import-remove', kind }); secWaiting = { id: r.id, fid: 'audit' }; loadSecurity(); }
       catch (err) { say(err.message, false, importNote); }
@@ -2322,12 +2322,12 @@ function agoText(at) {
 }
 
 function installText(st) {
-  if (!st) return 'No record yet: older installs kept none. The next run of the installer keeps one.';
+  if (!st) return 'No record yet. Older installations kept none. The next run of the installer keeps one.';
   const when = new Date(st.started * 1000).toLocaleString();
   const n = (st.problems || []).length;
-  if (st.running) return `Started ${when}${st.step ? `, at "${st.step}"` : ''}. If nothing is installing now, it was cut off there (the doctor says so too).`;
-  if (st.aborted) return `Started ${when}; stopped during "${st.step}"${st.failed_command ? `: ${st.failed_command} failed (exit ${st.exit})` : ''}. The steps after it were not done.`;
-  return `Started ${when} (${st.args || 'no options'}); finished${n ? ` with ${n} problem${n === 1 ? '' : 's'}: ${st.problems.join('; ')}` : ' with no problems'}.`;
+  if (st.running) return `Started ${when}${st.step ? `, at "${st.step}"` : ''}. If nothing is installing now, the installation was interrupted there. The doctor also reports this.`;
+  if (st.aborted) return `Started ${when}. Stopped during "${st.step}"${st.failed_command ? `: ${st.failed_command} failed (exit ${st.exit})` : ''}. The steps after it were not done.`;
+  return `Started ${when} (${st.args || 'no options'}). Finished${n ? ` with ${n} problem${n === 1 ? '' : 's'}: ${st.problems.join(', ')}` : ' with no problems'}.`;
 }
 
 // What to do about one of the box doctor's findings: its repair buttons; a link to the page where it
@@ -2382,7 +2382,7 @@ function healthDo(f, busy) {
   const go = HEALTH_GO.find(([re]) => re.test(f.fix || ''));
   if (f.go) controls.push(goLink(f.go));
   else if (go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${go[1]}`, textContent: `Go to ${go[2]} →` }));
-  if (!how && !controls.length) how = 'Nothing to press: it is said so you know.';
+  if (!how && !controls.length) how = 'Information only.';
   return { how, controls };
 }
 let hlShow = 'all';  // the counters double as the list's filter: all, problem, warn
@@ -2398,16 +2398,16 @@ function renderGlance(data, rep) {
   const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k).length) : null;
   const ago = (at) => { const s = Date.now() / 1000 - at; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
   const rows = [
-    ['Health', !rep ? 'Not checked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to look at (below).` : 'Nothing to fix or look at.'],
-    ['Network recovery', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Why it is down: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
+    ['Health', !rep ? 'Not checked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to review (below).` : 'Nothing to fix or review.'],
+    ['Network recovery', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Cause: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
     ['The WiFi radio', find('crash-radio') ? first(find('crash-radio').detail) : 'No radio watched.'],
-    ['The last start', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
-    ['The last repair', w.last_repair ? `${ago(w.last_repair.at)}: ${w.last_repair.text}` : 'None recorded.'],
-    ['A frozen box', !st ? 'Not known yet.' : st.panic || st.watchdog
-      ? `Restarts by itself (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
-    ['Snapshots', !st ? 'Not known yet.' : st.snapshots ? 'Kept every 30 s.' : 'Off.'],
+    ['Last boot', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
+    ['Last repair', w.last_repair ? `${ago(w.last_repair.at)}: ${w.last_repair.text}` : 'None recorded.'],
+    ['Frozen-system recovery', !st ? 'Not known yet.' : st.panic || st.watchdog
+      ? `Restarts automatically (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
+    ['Snapshot interval', !st ? 'Not known yet.' : st.snapshots ? 'Every 30 s.' : 'Disabled.'],
     ['Status light', find('led') ? first(find('led').detail) : 'Not checked yet.'],
-    ['Writes to the card', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
+    ['SD card writes', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
   if (hl.glance.dataset.key === key) return;   // the same again: left alone, a selection in it too
@@ -2434,20 +2434,20 @@ function renderDoctorSettings(data, rep) {
       return el('div', { className: 'up-group' }, el('span', { className: 'setting-name', textContent: g.label }),
         el('p', { className: 'setting-desc', textContent: g.desc }), box);
     }));
-    if (!groups.length) hl.setGroups.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Shown after the next look.' }));
+    if (!groups.length) hl.setGroups.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Shown after the next check.' }));
   }
   if (hsSaving) {
     const done = hsSaving.ids.map((id) => (data.results || []).find((r) => r.id === id));
     if (done.every(Boolean)) {
       const bad = done.filter((r) => !r.ok);
-      say(bad.length ? bad.map((r) => r.message).join('; ') : `Saved: ${done.map((r) => r.message).join('; ')}.`, !bad.length, hl.setNote);
+      say(bad.length ? bad.map((r) => r.message).join(' ') : `Saved: ${done.map((r) => r.message).join(' ')}`, !bad.length, hl.setNote);
       hsSaving = null;
       hsFrom = '';
       hlRequest({ action: 'scan' }, 'scan');
     } else {
       const ahead = (data.queue && data.queue.waiting || []).length;
-      say(`Saving: ${done.filter(Boolean).length} of ${done.length} done; waiting for the root helper`
-        + (data.queue && data.queue.running ? ` (it is busy with ${data.queue.running.action}${ahead ? `, ${ahead} waiting` : ''})` : '') + '.', true, hl.setNote);
+      say(`Saving: ${done.filter(Boolean).length} of ${done.length} done. Waiting for the root helper`
+        + (data.queue && data.queue.running ? ` (busy with ${data.queue.running.action}${ahead ? `, ${ahead} waiting` : ''})` : '') + '.', true, hl.setNote);
     }
   }
   showDoctorSave(groups);
@@ -2456,7 +2456,7 @@ function showDoctorSave(groups) {
   const changed = groups.filter((g) => hsPick[g.key] !== undefined && hsPick[g.key] !== g.current);
   hl.setSave.disabled = hl.setDiscard.disabled = !!hsSaving || !changed.length;
   hl.setDiscard.onclick = () => { hsPick = {}; hsFrom = ''; if (hlLast) renderHealth(hlLast); };
-  hl.setSave.textContent = hsSaving ? 'Saving…' : changed.length ? `Save (${changed.length} not saved yet)` : 'Save';
+  hl.setSave.textContent = hsSaving ? 'Saving…' : changed.length ? `Save (${changed.length} unsaved)` : 'Save';
   hl.setSave.onclick = async () => {
     for (const g of changed) {
       const o = g.options.find((x) => x.value === hsPick[g.key]);
@@ -2470,7 +2470,7 @@ function showDoctorSave(groups) {
     }
     hsSaving = { ids };
     showDoctorSave(groups);
-    say('Saving: sent to the root helper.', true, hl.setNote);
+    say('Saving. Sent to the root helper.', true, hl.setNote);
     loadHealth();
   };
 }
@@ -2479,23 +2479,23 @@ document.getElementById('health-search').addEventListener('input', () => hlLast 
 let hlLast = null;
 // The root helper's queue in words: its action names, as the pages that ask for them call them.
 const HELPER_WORDS = {
-  'health-scan': 'Box doctor: look again', 'health-fix': 'Box doctor', 'kit-fetch': 'Toolkit: download', 'kit-install': 'Toolkit: install',
-  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-status': 'Toolkits: look', 'kit-keep': 'Toolkit: keep',
-  'kit-expire': 'Toolkits: tidy', 'kit-define': 'Toolkit: save', 'kit-undefine': 'Toolkit: delete', 'kit-extra': 'Toolkit: extras',
-  'update-check': 'Updates: check', 'update-fetch': 'Updates: fetch', 'update-install': 'Updates: install',
-  'update-force-install': 'Updates: install anyway', 'update-doctor': 'Updates: look', 'update-clear-cache': 'Updates: clear the cache',
-  'update-signing': 'Updates: signing', 'pkg-check': 'Packages: check', 'pkg-fetch': 'Packages: fetch', 'pkg-install': 'Packages: install',
+  'health-scan': 'Box doctor: refresh checks', 'health-fix': 'Box doctor', 'kit-fetch': 'Toolkit: download', 'kit-install': 'Toolkit: install',
+  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-status': 'Refresh toolkit cache', 'kit-keep': 'Toolkit: extend installation period',
+  'kit-expire': 'Toolkits: remove expired installations', 'kit-define': 'Toolkit: save', 'kit-undefine': 'Toolkit: delete', 'kit-extra': 'Toolkit: extras',
+  'update-check': 'Updates: check', 'update-fetch': 'Updates: download', 'update-install': 'Updates: install',
+  'update-force-install': 'Updates: install anyway', 'update-doctor': 'Updates: run doctor', 'update-clear-cache': 'Updates: delete the cache',
+  'update-signing': 'Updates: signing', 'pkg-check': 'Packages: check', 'pkg-fetch': 'Packages: download', 'pkg-install': 'Packages: install',
   'pkg-rollback': 'Packages: roll back', 'pkg-settings': 'Packages: settings', 'addon': 'Add-on', 'app-install': 'Apps: install',
   'app-rollback': 'Apps: roll back', 'security-scan': 'Security: scan', 'security-fix': 'Security', 'security-audit': 'Security doctor',
-  'security-deep-audit': 'Security doctor: deep audit', 'net-scan': 'Network: look', 'uplink-set': 'Network: watchdog settings',
-  'uplink-do': 'Network: a step by hand', 'uplink-hold': 'Network: hold', 'uplink-profile': 'Network: profile', 'wifi-join': 'Network: join',
-  'wifi-forget': 'Network: forget', 'ap-on': 'Hotspot: on', 'ap-off': 'Hotspot: off', 'ap-try': 'Hotspot: try', 'ap-confirm': 'Hotspot: keep',
-  'share-set': 'Guests\' internet', 'share-allow': 'Guests\' internet', 'service': 'A service', 'password': 'The password', 'access': 'Who may open an app',
+  'security-deep-audit': 'Security doctor: deep audit', 'net-scan': 'Network: scan', 'uplink-set': 'Apply watchdog settings',
+  'uplink-do': 'Network: manual recovery step', 'uplink-hold': 'Network: pause recovery', 'uplink-profile': 'Network: profile', 'wifi-join': 'Network: join',
+  'wifi-forget': 'Network: remove saved network', 'ap-on': 'Hotspot: enable', 'ap-off': 'Hotspot: disable', 'ap-try': 'Hotspot: trial', 'ap-confirm': 'Hotspot: keep settings',
+  'share-set': 'Guests\' internet', 'share-allow': 'Guests\' internet', 'service': 'A service', 'password': 'The password', 'access': 'Who can open an app',
   'admin-gate': 'The administrator sign-in', 'admin-login': 'The administrator sign-in', 'tls-switch': 'HTTPS', 'tls-make': 'HTTPS: a certificate',
-  'tls-renew': 'HTTPS: renew', 'tls-import': 'HTTPS: import', 'tls-box': 'HTTPS', 'tls-admin-only': 'HTTPS', 'usb-scan': 'USB drive: look',
-  'usb-import': 'USB drive: import', 'usb-export': 'USB drive: export', 'usb-export-many': 'USB drive: export', 'usb-kit-import': 'USB drive: a toolkit in',
-  'usb-kit-export': 'USB drive: a toolkit out', 'offline-kit': 'Backup: an offline kit', 'content-export': 'Backup: content export',
-  'backup-image': 'Backup: an image',
+  'tls-renew': 'HTTPS: renew', 'tls-import': 'HTTPS: import', 'tls-box': 'HTTPS', 'tls-admin-only': 'HTTPS', 'usb-scan': 'USB drive: scan',
+  'usb-import': 'USB drive: import', 'usb-export': 'USB drive: export', 'usb-export-many': 'USB drive: export', 'usb-kit-import': 'Import toolkit from USB drive',
+  'usb-kit-export': 'Export toolkit to USB drive', 'offline-kit': 'Backup: an offline kit', 'content-export': 'Backup: content export',
+  'backup-image': 'Backup: image',
 };
 const helperWords = (r) => `${HELPER_WORDS[r.action] || r.action.replace(/-/g, ' ')}${r.detail ? ` (${r.detail})` : ''}`;
 const spanOf = (secs) => ago(secs).replace(/ ago$/, '').replace('just now', 'under a minute');
@@ -2504,7 +2504,7 @@ function renderHelperQueue(q) {
   const doneFold = document.getElementById('hq-done-fold'), done = document.getElementById('hq-done');
   if (!run || !q) return;
   run.textContent = q.running ? `Running: ${helperWords(q.running)}${q.running.for != null ? `, for ${spanOf(q.running.for)}` : ''}.`
-    : (q.waiting || []).length ? 'Starting the next one.' : 'Nothing running.';
+    : (q.waiting || []).length ? 'Starting the next job.' : 'Nothing running.';
   wait.hidden = !(q.waiting || []).length;
   wait.replaceChildren(...(q.waiting || []).map((w) => el('li', { textContent: `${helperWords(w)}: waiting ${spanOf(w.waited || 0)}` })));
   doneFold.hidden = !(q.done || []).length;
@@ -2533,14 +2533,14 @@ function renderHealth(data) {
   hl.busyLog.hidden = !bl;
   if (bl) {
     hl.busyLog.textContent = `The root helper kept requests waiting ${bl.count} time${bl.count === 1 ? '' : 's'} this week while busy `
-      + `(the longest wait ${minutes(bl.longest_wait)}); most often while running ${bl.commonest} (${bl.commonest_n}×). `
-      + `The log: ${'helper-busy.json'} in the hub's state folder.`;
+      + `(longest wait: ${minutes(bl.longest_wait)}). Most often it was busy running ${bl.commonest} (${bl.commonest_n}×). `
+      + `The log is helper-busy.json in the state folder of the hub server.`;
   }
   // Busy, not stuck: an earlier job (a toolkit's download, an update) is still running; the rest wait their turn.
   hl.busyLine.hidden = !h.busy || !h.waiting;
   if (h.busy && h.waiting) {
-    hl.busyLine.textContent = `The root helper is busy with an earlier job (for ${minutes(h.busy)}); `
-      + `${h.waiting} request${h.waiting === 1 ? ' waits' : 's wait'} behind it and will be done in turn.`;
+    hl.busyLine.textContent = `The root helper is busy with an earlier job (for ${minutes(h.busy)}). `
+      + `${h.waiting} request${h.waiting === 1 ? ' waits' : 's wait'} behind it. The helper runs them in turn.`;
   }
   const p = data.progress && data.progress.action === 'repair' ? data.progress : null;
   const busy = data.pending > 0 || !!hlWaiting || !!p;
@@ -2574,7 +2574,7 @@ function renderHealth(data) {
   hl.summary.replaceChildren(...(!rep ? [] : [
     ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
     ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
-    ['warn', counts.warn, 'to look at', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
+    ['warn', counts.warn, 'to review', counts.warn ? 'warn' : 'ok']].map(([key, n, word, st]) => {
     const b = el('button', { type: 'button', className: `sec-count sec-count-${st}${hlShow === key ? ' active' : ''}`,
       onclick: () => { hlShow = key; renderHealth(data); } }, el('strong', { textContent: String(n) }), ` ${word}`);
     b.setAttribute('aria-pressed', String(hlShow === key));
@@ -2587,7 +2587,7 @@ function renderHealth(data) {
   hlDrawn = drawn;
   if (redraw) hl.findings.replaceChildren(...open.map(item));
   hl.empty.hidden = !rep || open.length > 0;
-  hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or look at.';
+  hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or review.';
   const fine = services.filter((f) => f.status === 'ok' && match(f));
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
@@ -2599,8 +2599,8 @@ function renderHealth(data) {
   const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
   say(loose && !inClock ? loose.text : '', loose ? loose.ok : true, hl.note);
   say(inClock ? loose.text : '', loose ? loose.ok : true, hl.clockNote);
-  hl.when.textContent = rep ? `Looked ${new Date(rep.at * 1000).toLocaleString()}${agoText(rep.at)}.` + (busy ? ' Working…' : '')
-    : busy ? 'Looking…' : 'Not checked yet.';
+  hl.when.textContent = rep ? `Last checked ${new Date(rep.at * 1000).toLocaleString()}${agoText(rep.at)}.` + (busy ? ' Working…' : '')
+    : busy ? 'Checking…' : 'Not checked yet.';
   hl.clockWhen.textContent = hl.when.textContent;
   hl.scan.disabled = hl.clockScan.disabled = busy || h.stuck;
   hl.progress.hidden = !p;
@@ -2651,7 +2651,7 @@ function hlFix(fid, action) {
     // This device's clock, read at the moment of the click: the box has none it can trust.
     const now = new Date();
     choice = `clock-set:${Math.round(now.getTime() / 1000)}`;
-    ask = `Set the box's clock to ${now.toLocaleString()} (this device's time)? Use it only if this device's clock is right.`;
+    ask = `Set the box clock to ${now.toLocaleString()} (the time of this device)? Do this only if the clock of this device is correct.`;
   }
   if (ask && !confirm(ask)) return;
   hlRequest({ action: 'fix', choice }, fid);
@@ -2707,11 +2707,11 @@ const net = {
   events: document.getElementById('up-events'),
 };
 const UP_FIELDS = [
-  ['check', 'Check every (s)'], ['window', 'Count misses over (s)'], ['steps.reconnect', 'Reconnect after (s)'],
-  ['steps.restart', 'Restart the network service after (s)'], ['steps.radio', 'Reset the radio after (s)'],
-  ['steps.reboot', 'Reboot after (s)'], ['repeat', 'Reconnect again every (s)'], ['backoff', '… that gap growing ×'],
-  ['max_repeat', '… up to (s)'], ['relapse', 'Down again within (s): the same episode'],
-  ['reboots_per_day', 'Reboots a day, at most'], ['reboot_gap', 'Never reboot within (s) of the last'],
+  ['check', 'Check interval (s)'], ['window', 'Failure-count window (s)'], ['steps.reconnect', 'Reconnect after (s)'],
+  ['steps.restart', 'Restart network service after (s)'], ['steps.radio', 'Reset radio after (s)'],
+  ['steps.reboot', 'Reboot after (s)'], ['repeat', 'Reconnect again every (s)'], ['backoff', 'Retry backoff multiplier'],
+  ['max_repeat', 'Maximum retry interval (s)'], ['relapse', 'Outage grouping window (s)'],
+  ['reboots_per_day', 'Maximum reboots per day'], ['reboot_gap', 'Minimum reboot interval (s)'],
 ];
 const UP_WORDS = {
 };
@@ -2728,15 +2728,15 @@ const UP_GROUPS = [['pace', 'pace'], ['reach', 'reach'], ['guests', 'guests'], [
   ['watchNew', 'watch_new'], ['boxSteps', 'box_steps'], ['cable', 'cable_out'], ['cableReach', 'cable_reach']];
 // Each link the owner set: watched (true) or not (false); one not set follows watch_new (uplink.py watch).
 let upWatch = {};
-const WATCHNEW_WORDS = { uplink: ['While it holds the route', 'Watched while it is the box\'s way to its network (and while it is in trouble).'],
-  look: ['Looked at', 'The route\'s link watched; every other link looked at and its trouble said, nothing done for it.'],
-  all: ['Watched', 'Every link the box has, each with a watchdog of its own.'], none: ['Not watched', 'Only the links set above are watched.'] };
-const BOXSTEPS_WORDS = { 'nothing-works': ['Only when no path is left', 'Only when no link reaches the network: a dead WiFi on a box whose cable works is reconnected and reset, not rebooted for.'],
-  uplink: ['For the route\'s link', 'For the link that holds the box\'s route, even with another up.'],
-  any: ['For any link', 'For any watched link, as the reach allows, whatever else works.'] };
-const CABLE_WORDS = { wait: ['Wait, and say so', 'Nothing the box does mends a missing cable: it waits for it.'],
-  reconnect: ['Reconnect now and then', 'Reconnects as the pace says, in case the port is stuck.'],
-  ladder: ['The whole ladder', 'Every step the reach allows, as for any other failure.'] };
+const WATCHNEW_WORDS = { uplink: ['Monitor default-route interface', 'The watchdog monitors the interface that carries the default route of the box. It also monitors an interface that has a problem.'],
+  look: ['Report all interfaces', 'The watchdog monitors the default-route interface. It reports problems on every other interface and takes no action on them.'],
+  all: ['Monitor all interfaces', 'The watchdog monitors every interface of the box. Each interface has its own watchdog.'], none: ['Do not monitor', 'The watchdog monitors only the interfaces that you set above.'] };
+const BOXSTEPS_WORDS = { 'nothing-works': ['Only when no path is left', 'Only when no link reaches the network. If the WiFi fails and the cable works, the box reconnects and resets the WiFi. It does not reboot.'],
+  uplink: ['For the default-route interface', 'For the interface that carries the default route of the box, even when another interface works.'],
+  any: ['For any monitored interface', 'For any monitored interface, up to the maximum action, even when another interface works.'] };
+const CABLE_WORDS = { wait: ['Wait and report', 'The box cannot repair a missing cable. It waits for the cable and reports this.'],
+  reconnect: ['Reconnect periodically', 'The box reconnects at the pace that you set, in case the port is stuck.'],
+  ladder: ['All recovery steps', 'Every step up to the maximum action, as for any other failure.'] };
 let netAsked = false;
 // Which connection the card shows: '' every connection, else one with its own pace, reach,
 // sensitivity, guests and wedge choice (uplink.py per_iface); the rest is the same for all.
@@ -2758,14 +2758,14 @@ function drawUpScope(inv) {
   for (const g of document.querySelectorAll('#net-watchdog-card .up-box-only')) g.hidden = !!upScope;
   const own = upScope && ((upSaved && upSaved.per_iface) || {})[upScope];
   upScopeSays.replaceChildren(...(upScope ? [
-    own ? `${upScope} has its own ${Object.keys(own).join(', ')}; the rest as for every connection. ` : `${upScope} follows the settings for every connection; a choice here becomes its own. `,
-    own ? actionButton('Use the settings for every connection', () => {
-      if (!confirm(`Let ${upScope} follow the settings for every connection again?`)) return;
+    own ? `${upScope} has its own ${Object.keys(own).join(', ')}. The other settings follow every connection. ` : `${upScope} follows the settings for every connection. A choice here becomes its own setting. `,
+    own ? actionButton('Use default connection settings', () => {
+      if (!confirm(`Remove the overrides for ${upScope}? It then follows the settings for every connection.`)) return;
       const per = { ...(upSaved.per_iface || {}) };
       delete per[upScope];
       upDirty = false;
       netRequest({ action: 'settings', settings: { ...upSaved, per_iface: per } }, 'up');
-    }) : null] : ['Pace, reach, sensitivity, guests and a wedged driver can also be chosen for one connection.']));
+    }) : null] : ['You can also set pace, maximum action, sensitivity, guest handling and driver-failure handling for one connection.']));
 }
 net.discard.addEventListener('click', () => {
   upDirty = false;
@@ -2773,7 +2773,7 @@ net.discard.addEventListener('click', () => {
   showUpSave();
 });
 upScopeBox.addEventListener('change', () => {
-  if (upDirty && !confirm('Leave the choices not saved yet?')) { upScopeBox.value = upScope; return; }
+  if (upDirty && !confirm('Discard the unsaved selections?')) { upScopeBox.value = upScope; return; }
   upScope = upScopeBox.value;
   upDirty = false;
   if (netData && upSaved) { fillUpForm(upSaved, netData.levels); drawUpScope(netData.inventory); }
@@ -2799,7 +2799,7 @@ function buildUpFields(levels) {
   for (const [key, label] of UP_FIELDS) {
     let input;
     if (UP_WORDS[key]) {
-      input = el('select', {}, el('option', { value: '', textContent: "(the level's)" }),
+      input = el('select', {}, el('option', { value: '', textContent: '(use the default)' }),
         ...Object.entries(UP_WORDS[key]).map(([v, t]) => el('option', { value: v, textContent: t })));
     } else {
       input = el('input', { type: 'text', inputMode: 'decimal', size: 8 });
@@ -2818,59 +2818,59 @@ const STEP_DOES = { reconnect: 'reconnects', restart: 'restarts the network serv
 // What a set of numbers does once the link counts as down ("What this will do").
 function stepsInWords(p) {
   const st = p.steps || {};
-  if (!Object.keys(st).length) return 'does nothing but note it';
+  if (!Object.keys(st).length) return 'only records it';
   const parts = [];
   if ('reconnect' in st) {
     let r = st.reconnect ? `reconnects after ${dur(st.reconnect)}` : 'reconnects at once';
-    if (p.repeat) r += `, then again every ${dur(p.repeat)}` + (p.backoff > 1 && p.max_repeat ? ` (the gap growing ×${p.backoff}, up to ${dur(p.max_repeat)})` : '');
+    if (p.repeat) r += `, then again every ${dur(p.repeat)}` + (p.backoff > 1 && p.max_repeat ? ` (the interval grows ×${p.backoff}, up to ${dur(p.max_repeat)})` : '');
     parts.push(r);
   }
   if ('restart' in st) parts.push(`restarts the network service after ${dur(st.restart)}`);
   if ('radio' in st) parts.push(`resets the radio after ${dur(st.radio)}`);
   parts.push('reboot' in st ? `reboots after ${dur(st.reboot)}${p.reboots_per_day ? ` (at most ${p.reboots_per_day} a day)` : ''}` : 'never reboots');
   const heavy = 'radio' in st || 'reboot' in st || 'restart' in st;
-  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', with guests on or not'
-    : ', but not, while guests are on the hotspot, what would take it down') : '');
+  return parts.join(', ') + (heavy ? (p.guests === 'ignore' ? ', whether or not guests are connected'
+    : ' (while guests are on the hotspot, it takes no step that disconnects them)') : '');
 }
 
 // A pace's own line: when each step comes, as far as any reach goes.
 function paceLine(name, levels) {
   const p = levels.presets.pace[name];
-  return `First a reconnect ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : 'at once'}, again every ${dur(p.repeat)}; `
-    + `then ${['restart', 'radio', 'reboot'].map((s) => `${STEP_DOES[s].replace('the network service', 'the service')} after ${dur(p.steps[s])}`).join(', ')}`
-    + ` — each only if the reach goes that far. It checks every ${dur(p.check)}, and counts missed checks over ${dur(p.window)}.`;
+  return `First it reconnects ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : 'at once'}, then again every ${dur(p.repeat)}. `
+    + `Then it ${['restart', 'radio', 'reboot'].map((s) => `${STEP_DOES[s].replace('the network service', 'the service')} after ${dur(p.steps[s])}`).join(', ')}. `
+    + `Each step runs only if the maximum action includes it. It checks every ${dur(p.check)} and counts failed checks over ${dur(p.window)}.`;
 }
 
 // The sensitivity said for the pace chosen: how many checks fit its window, so a number that can
 // never be reached by failed checks alone says so.
 function sensLine(n, eff) {
   const fit = Math.floor(eff.window / eff.check) + 1;
-  return `${n} missed check${n === 1 ? '' : 's'} (or drops of the link) within ${dur(eff.window)}, together or spread out, `
-    + 'put it on the ladder; fewer is more sensitive.' + (n > fit ? ` Only ${fit} checks fit that window, so only drops between them can reach it.` : '');
+  return `${n} failed check${n === 1 ? '' : 's'}, or link drops, within ${dur(eff.window)} start recovery. The failures can be together or spread out. `
+    + 'A lower number is more sensitive.' + (n > fit ? ` Only ${fit} checks fit that window, so only link drops between the checks can reach this number.` : '');
 }
 
-const GUEST_WORDS = { protect: ['Protect them', 'No radio reset or reboot while guests are on the hotspot, nor a restart of the network service when the hotspot shares the radio. Said, and done once they have gone.'],
-  ignore: ['Go ahead', 'Every step the reach allows, guests on or not: they lose the hotspot for a while.'] };
-const WEDGE_WORDS = { ladder: ['Keep to the ladder', 'The evidence is shown, with a button to reset the radio by hand; the steps come as the pace and reach set them.'],
-  radio: ['Reset the radio at once', 'Reconnecting or restarting can\'t mend a failed radio: go straight to the radio reset, if the reach allows it and no guests are held for.'],
-  reboot: ['Reset it, then restart the box', 'As the one before, and the box restarted if the radio is not back 3 minutes after its reset: if the reach goes that far, within the reboot\'s limits (a day\'s cap, not during a build or an update).'] };
+const GUEST_WORDS = { protect: ['Defer disruptive recovery while guests are connected', 'While guests are on the hotspot, the box does not reset the radio or reboot. It does not restart the network service when the hotspot shares the radio. The box reports this and takes the step after the guests leave.'],
+  ignore: ['Allow disruptive recovery', 'The box takes every step up to the maximum action, whether or not guests are connected. Guests lose the hotspot for a while.'] };
+const WEDGE_WORDS = { ladder: ['Use the normal recovery steps', 'The box shows the evidence and a button to reset the radio by hand. The recovery steps follow the pace and the maximum action.'],
+  radio: ['Reset the radio at once', 'Reconnecting or restarting cannot repair a failed radio. The box goes straight to the radio reset, if the maximum action includes it and the box is not deferring for guests.'],
+  reboot: ['Reset the radio, then reboot', 'The same as the previous option. The box also reboots if the radio does not return 3 minutes after the reset. This applies only if the maximum action includes a reboot. The reboot limits still apply: a maximum per day, and no reboot during a build or an update.'] };
 // The network at fault rather than the radio: reconnecting is all that helps, as often and for as long as chosen.
-const RETRY_WORDS = { eager: ['Eager', 'Again soon, the gap growing to at most 10 minutes: back quickest when the network returns.'],
-  steady: ['Steady', 'The gap growing to at most an hour.'],
-  sparing: ['Sparing', 'The gap growing to at most 6 hours: fewest tries, for a box on a battery.'] };
-const GIVEUP_WORDS = { never: ['Try forever', 'For as long as it takes: the box gets back on whenever the network does.'],
-  hour: ['An hour', 'Then it stops, and says so; the network coming back by itself still brings the box back.'],
-  day: ['A day', 'Then it stops, and says so.'], week: ['A week', 'Then it stops, and says so.'] };
+const RETRY_WORDS = { eager: ['Eager', 'The box retries soon. The interval grows to at most 10 minutes. The box returns fastest when the network returns.'],
+  steady: ['Steady', 'The interval grows to at most 1 hour.'],
+  sparing: ['Sparing', 'The interval grows to at most 6 hours. This makes the fewest attempts. Use it for a box on a battery.'] };
+const GIVEUP_WORDS = { never: ['Retry without limit', 'The box retries for as long as needed. It reconnects whenever the network returns.'],
+  hour: ['An hour', 'Then the box stops and reports this. If the network returns by itself, the box still reconnects.'],
+  day: ['A day', 'Then the box stops and reports this.'], week: ['A week', 'Then the box stops and reports this.'] };
 
 // Roaming: from the least change to the owner's system to the most,
 // each with its cost. The last two change the WiFi profile, by consent, and are undone the same way.
 const ROAM_WORDS = {
-  roam: ['Roam normally', 'The WiFi moves between your access points as it finds a stronger one (NetworkManager\'s own background scans). Nothing on the box changes.',
-    'Cost: each move is a moment off the network, and the hotspot moves with it when it shares the radio.'],
-  'no-scan': ['No background scans while the hotspot shares the radio', 'wpa_supplicant\'s background scan is switched off for the network in use, so the box stays where it is; it still reconnects (perhaps to another access point) if the link is really lost. Only while the hotspot runs on this radio.',
-    'Cost: a box carried around the house stays on a weak access point until it drops. Changes your WiFi\'s running settings; undone here.'],
-  lock: ['Lock to one access point', 'Your WiFi profile held to the access point chosen below (NetworkManager\'s BSSID): no roaming and no background scans.',
-    'Cost: if that access point goes away, the box does not move to another one: the link stays down until it is back or you unlock. Changes your WiFi profile; undone here.'],
+  roam: ['Roam normally', 'The WiFi moves between your access points when it finds a stronger one (NetworkManager background scans). Nothing on the box changes.',
+    'Cost: each move briefly disconnects the box from the network. The hotspot moves with it when it shares the radio.'],
+  'no-scan': ['No background scans while the hotspot shares the radio', 'The wpa_supplicant background scan is disabled for the network in use, so the box stays where it is. It still reconnects, perhaps to another access point, if the link is lost. This applies only while the hotspot runs on this radio.',
+    'Cost: a box that moves around the house stays on a weak access point until the link drops. This changes the running WiFi settings. You can undo it here.'],
+  lock: ['Lock to one access point', 'Your WiFi profile is held to the access point that you select below (NetworkManager BSSID). No roaming and no background scans.',
+    'Cost: if that access point goes away, the box does not move to another one. The link stays down until the access point returns or you disable the lock. This changes your WiFi profile. You can undo it here.'],
 };
 const uplinkRadio = () => { const inv = netData && netData.inventory; const up = inv && inv.uplink;
   return inv && up ? inv.radios.find((r) => r.iface === up.iface) : null; };
@@ -2885,18 +2885,18 @@ function drawLockAps() {
     input.addEventListener('change', () => upChoose({ lock_bssid: a.bssid }, netData.levels));
     return el('label', { className: 'inline' }, input, ` ${a.bssid}: channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}, signal ${a.signal}%`
       + `${r.link && r.link.bssid === a.bssid ? ' (in use now)' : ''}`);
-  }) : [el('p', { className: 'setting-desc', textContent: 'No access points seen for this network in the last look: Refresh on Hardware, then choose.' })]));
+  }) : [el('p', { className: 'setting-desc', textContent: 'No access points were seen for this network in the last scan. Select Refresh on Hardware, then select an access point.' })]));
 }
 
 function willText(eff) {
   return `What this will do: it checks the link every ${dur(eff.check)}. When ${eff.sensitivity} checks have failed, or the link has dropped, `
-    + `within ${dur(eff.window)}, it goes on the ladder (a link that keeps dropping too, until it settles), and then ${stepsInWords(eff)}. `
-    + `Outages within ${dur(eff.relapse)} of each other are one episode: what did not hold is not repeated while a heavier step is left, `
-    + 'and a reconnect after the first is locked to the strongest access point. '
-    + 'When it can tell the network is at fault (gone from the scan, not letting the box join, the gateway silent), it only reconnects, '
-    + `never resetting the radio or rebooting${eff.give_up ? `, and stops after ${dur(eff.give_up)}` : ', for as long as it takes'}. `
-    + (eff.on_wedge === 'reboot' ? 'A failed radio is reset at once, and the box restarted if it is not back 3 minutes later.'
-      : eff.on_wedge === 'radio' ? 'A failed radio is reset at once.' : 'A failed radio climbs the ladder like any outage.');
+    + `within ${dur(eff.window)}, recovery starts. A link that keeps dropping stays in recovery until it settles. Then it ${stepsInWords(eff)}. `
+    + `Outages within ${dur(eff.relapse)} of each other are one episode. A step that did not hold is not repeated while a heavier step remains. `
+    + 'A reconnect after the first locks to the strongest access point. '
+    + 'If it can tell that the network is at fault (gone from the scan, not letting the box join, the gateway silent), it only reconnects. '
+    + `In that case it never resets the radio or reboots${eff.give_up ? `, and it stops after ${dur(eff.give_up)}` : ', and it retries for as long as needed'}. `
+    + (eff.on_wedge === 'reboot' ? 'A failed radio is reset at once. The box reboots if the radio is not back 3 minutes later.'
+      : eff.on_wedge === 'radio' ? 'A failed radio is reset at once.' : 'A failed radio goes through the recovery steps like any outage.');
 }
 
 // Every choice the same way: radio cards, each one's description and what it does.
@@ -2908,7 +2908,7 @@ function buildUpChoices(levels) {
   if (net.pace.childElementCount) return;
   rungs(net.pace, 'pace', levels.pace.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '', does: paceLine(n, levels) })));
   rungs(net.reach, 'reach', levels.reach.map((n) => ({ value: n, title: cap1(n), desc: levels.describe[n] || '',
-    does: n === 'watch' ? 'Checks, and never acts.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
+    does: n === 'watch' ? 'Checks, and never acts.' : `Up to: ${n === 'reconnect' ? 'reconnecting' : STEP_DOES[n]}.` })));
   rungs(net.guests, 'guests', levels.guests.map((n) => ({ value: n, title: GUEST_WORDS[n][0], desc: GUEST_WORDS[n][1] })));
   rungs(net.wedge, 'on_wedge', levels.on_wedge.map((n) => ({ value: n, title: WEDGE_WORDS[n][0], desc: WEDGE_WORDS[n][1] })));
   rungs(net.retry, 'retry', Object.keys(levels.retry || RETRY_WORDS).map((n) => ({ value: n, title: RETRY_WORDS[n][0], desc: RETRY_WORDS[n][1] })));
@@ -2917,7 +2917,7 @@ function buildUpChoices(levels) {
   rungs(net.boxSteps, 'box_steps', (levels.box_steps || Object.keys(BOXSTEPS_WORDS)).map((n) => ({ value: n, title: BOXSTEPS_WORDS[n][0], desc: BOXSTEPS_WORDS[n][1] })));
   rungs(net.cable, 'cable_out', (levels.cable_out || Object.keys(CABLE_WORDS)).map((n) => ({ value: n, title: CABLE_WORDS[n][0], desc: CABLE_WORDS[n][1] })));
   rungs(net.cableReach, 'cable_reach', levels.reach.map((n) => ({ value: n, title: cap1(n),
-    desc: n === 'watch' ? 'Looks and logs.' : `As far as: ${n === 'reconnect' ? 'reconnecting' : n === 'radio' ? 'resetting the network adapter' : STEP_DOES[n]}.` })));
+    desc: n === 'watch' ? 'Checks and logs.' : `Up to: ${n === 'reconnect' ? 'reconnecting' : n === 'radio' ? 'resetting the network adapter' : STEP_DOES[n]}.` })));
   drawRoamTiles(levels);
   net.ignoreRoams.addEventListener('change', () => upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels));
   net.sens.min = levels.sensitivity[0]; net.sens.max = levels.sensitivity[1];
@@ -2948,7 +2948,7 @@ function upChoose(change, levels) {
 function showUpSave() {
   const busy = !!netWaiting || (netData && netData.pending > 0);
   net.save.disabled = net.discard.disabled = busy || !upDirty;
-  net.save.textContent = upDirty ? 'Save (not saved yet)' : 'Save';
+  net.save.textContent = upDirty ? 'Save (unsaved)' : 'Save';
 }
 
 function fillUpForm(chosen, levels) {
@@ -3009,7 +3009,7 @@ function readUpForm() {
     let v = raw;
     if (input.tagName === 'INPUT') {
       if (key.startsWith('steps.') && raw.toLowerCase() === 'off') v = null;
-      else if (Number.isNaN(Number(raw))) throw new Error(`${input.previousSibling.textContent}: a number${key.startsWith('steps.') ? ' or off' : ''}, please`);
+      else if (Number.isNaN(Number(raw))) throw new Error(`${input.previousSibling.textContent}: enter a number${key.startsWith('steps.') ? ' or off' : ''}.`);
       else v = Number(raw);
     }
     if (key.startsWith('steps.')) (overrides.steps ||= {})[key.slice(6)] = v;
@@ -3045,7 +3045,7 @@ function renderUpSteps(inv, chosen) {
   }));
 }
 // The links, a row each: watched, not watched, or as any other link (watch_new); and what it is doing now.
-const WATCH_SAY = { '': 'As any other link', on: 'Watched', off: 'Not watched' };
+const WATCH_SAY = { '': 'As any other link', on: 'Monitored', off: 'Not monitored' };
 function renderUpWatch(inv, u) {
   const box = net.watchRows;
   const known = (u && u.inventory) || {};
@@ -3057,7 +3057,7 @@ function renderUpWatch(inv, u) {
   box.replaceChildren(...links.map(([iface, kind]) => {
     const sel = el('select', { id: `up-watch-${iface}` }, ...Object.entries(WATCH_SAY).map(([v, t]) => el('option', { value: v, textContent: t })));
     sel.value = upWatch[iface] === true ? 'on' : upWatch[iface] === false ? 'off' : '';
-    sel.setAttribute('aria-label', `${iface}: watched or not`);
+    sel.setAttribute('aria-label', `${iface}: monitored or not`);
     sel.addEventListener('change', () => {
       if (sel.value === '') delete upWatch[iface]; else upWatch[iface] = sel.value === 'on';
       upDirty = true;
@@ -3065,10 +3065,10 @@ function renderUpWatch(inv, u) {
     });
     const now = watching[iface];
     const l = known[iface] || {};
-    const said = (now && now.watched ? `${now.look ? 'looked at only' : 'watched'} now: ${now.state}` : 'not watched now' + (l.up === false ? ', and down' : l.up ? ', up' : ''))
-      + (l.as ? `; known before as ${l.as} (the same hardware), whose setting it follows` : '');
+    const said = (now && now.watched ? `${now.look ? 'Reporting only' : 'Monitoring'}: ${now.state}` : 'Not monitored' + (l.up === false ? ', and down' : l.up ? ', up' : ''))
+      + (l.as ? `. Known before as ${l.as} (the same hardware). It follows the setting of ${l.as}` : '');
     return el('div', { className: 'up-watch-row' }, el('label', { className: 'setting-name', htmlFor: `up-watch-${iface}`, textContent: `${iface} (${kind})` }), sel,
-      el('span', { className: 'setting-desc', textContent: said + ((l.autoconnect || []).length ? `; starts ${l.autoconnect.join(', ')} by itself` : '') }));
+      el('span', { className: 'setting-desc', textContent: said + ((l.autoconnect || []).length ? `. Autoconnect: ${l.autoconnect.join(', ')}` : '') + '.' }));
   }));
 }
 function readUpSteps() {
@@ -3083,46 +3083,46 @@ function readUpSteps() {
 const when = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function upStatusText(u) {
-  if (!u) return 'The watchdog has not reported yet (irate-box-uplink starts with the box, or when you save here).';
+  if (!u) return 'The watchdog has not reported yet. The irate-box-uplink service starts with the box, or when you save here.';
   if (u.stale) return `The watchdog has not reported since ${new Date(u.at * 1000).toLocaleString()}: is irate-box-uplink running?`;
-  if (u.state === 'no-link') return u.watching ? `Watching ${u.watching}.` : 'No link to watch: the box has no route to a network and no WiFi client interface.';
+  if (u.state === 'no-link') return u.watching ? `Monitoring ${u.watching}.` : 'No link to monitor. The box has no route to a network and no WiFi client interface.';
   const others = Object.entries(u.links || {}).filter(([i, l]) => i !== u.iface && l.watched);
   const one = upLinkText(u);
-  return others.length ? `${one} Also watching: ${others.map(([i, l]) => `${i}, ${l.state}${l.state === 'stalled' && l.stall ? ` (${l.stall.text})` : ''}`).join('; ')}.` : one;
+  return others.length ? `${one} Also monitoring: ${others.map(([i, l]) => `${i}, ${l.state}${l.state === 'stalled' && l.stall ? ` (${l.stall.text})` : ''}`).join(', ')}.` : one;
 }
 function upLinkText(u) {
-  if (u.state === 'off') return `${u.iface} was disconnected by hand (nmcli device disconnect), so the watchdog leaves it alone until it is connected again.`;
+  if (u.state === 'off') return `${u.iface} was disconnected manually with nmcli device disconnect. The watchdog does not act on it until it is connected again.`;
   const l = u.link || {};
   const on = l.ssid ? `${u.iface}: ${l.ssid} via ${l.bssid}, channel ${l.channel}, ${l.signal} dBm` : u.iface;
   const parts = [];
   if (u.state === 'up') {
     parts.push(`Up on ${on}. The gateway (${u.gateway}) answers.`);
   } else if (u.state === 'checking') {
-    parts.push(`Checking ${u.iface}: ${u.misses} missed check${u.misses === 1 ? '' : 's'} within ${dur((u.settings || {}).window || 0)}, `
-      + `of the ${(u.settings || {}).sensitivity} that put it on the ladder.`);
+    parts.push(`Checking ${u.iface}: ${u.misses} failed check${u.misses === 1 ? '' : 's'} within ${dur((u.settings || {}).window || 0)}. `
+      + `${(u.settings || {}).sensitivity} failed checks start recovery.`);
   } else {
     const o = u.outage;
     parts.push(o ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.` : `Down on ${u.iface}.`);
     const tried = o ? o.done.filter((s) => !(o.skipped || []).includes(s)) : [];
     if (tried.length) parts.push(`Tried: ${tried.join(', ')}.`);
     if (o && (o.skipped || []).length) parts.push(`Not possible here: ${o.skipped.join(', ')}.`);
-    if (u.next) parts.push(`Next: ${u.next.label} at ${when(u.next.at)}.`);
+    if (u.next) parts.push(`Next recovery action: ${u.next.label} at ${when(u.next.at)}.`);
     if (u.state === 'stalled' && u.stall) parts.push(u.stall.text);
-    else if (u.wedged) parts.push(`The radio's driver looks wedged: ${u.wedged}.`);
+    else if (u.wedged) parts.push(`Possible driver failure: ${u.wedged}.`);
     const ep = u.episode;
-    if (ep && ep.outages > 1) parts.push(`Outage ${ep.outages} since ${when(ep.since)}` + (ep.failed.length ? `; did not hold: ${ep.failed.join(', ')}.` : '.'));
+    if (ep && ep.outages > 1) parts.push(`Outage ${ep.outages} since ${when(ep.since)}` + (ep.failed.length ? `. Did not hold: ${ep.failed.join(', ')}.` : '.'));
   }
   if (u.pinned) parts.push(`Locked to ${u.pinned.bssid} since ${when(u.pinned.at)}, until the next drop.`);
-  if (u.paused_until && u.paused_until > Date.now() / 1000) parts.push(`No repairs until ${when(u.paused_until)}.`);
+  if (u.paused_until && u.paused_until > Date.now() / 1000) parts.push(`Recovery paused until ${when(u.paused_until)}.`);
   if (u.drops_in_window) parts.push(`${u.drops_in_window} drop${u.drops_in_window === 1 ? '' : 's'} lately.`);
-  parts.push(`Run by ${u.backend}; repairs possible: ${(u.repairs || []).join(', ') || 'none (watch only)'}.`);
-  if (u.dry_run) parts.push('Dry run: it decides and logs, and does nothing.');
+  parts.push(`Run by ${u.backend}. Possible repairs: ${(u.repairs || []).join(', ') || 'none (monitoring only)'}.`);
+  if (u.dry_run) parts.push('Dry run: it decides and logs. It runs no repair actions.');
   return parts.join(' ');
 }
 
 // --- the devices, in plain words -------------------------------------------------------
 const MANAGED_BY = {
-  networkmanager: 'NetworkManager, the system\'s own network settings. irate-box asks it, and doesn\'t take over.',
+  networkmanager: 'NetworkManager, the system\'s own network settings. irate-box asks it and does not take over.',
   wpa_supplicant: 'wpa_supplicant, which joins WiFi networks (with something else giving the address).',
   ifupdown: 'ifupdown, from /etc/network/interfaces.',
   networkd: 'systemd-networkd.',
@@ -3135,13 +3135,14 @@ const BUS_WORDS = { usb: 'USB', sdio: 'built-in (SDIO)', pci: 'built-in (PCI)', 
 const COND_WORD = { how: '', limit: 'Limit: ', untested: 'Not tested yet: ', needs: 'Needs: ' };
 // Experiments the box runs on a radio (root/radiotests.py), each said before it runs.
 const RADIO_TEST_SAYS = {
-  'follows-roam': 'The WiFi link moves to another access point of your network, on another channel, for a few seconds, then back. Guests would lose the hotspot for a moment, so it only runs with nobody on it.',
-  'radio-reset': 'The radio is reset as the watchdog would: the WiFi and the hotspot go away for up to a minute. Only with nobody on the hotspot.',
-  'driver-reset': 'One command to the WiFi chip is made to count as timed out, so the driver resets the chip itself: the WiFi and the hotspot go away for a few seconds. Only with nobody on the hotspot.',
+  'follows-roam': 'The WiFi link moves to another access point of your network on another channel for a few seconds. Then it moves back. Guests lose the hotspot for a moment, so the test runs only when no guests are connected.',
+  'radio-reset': 'The box resets the radio as the watchdog would. The WiFi and the hotspot stop for up to 1 minute. The test runs only when no guests are connected.',
+  'driver-reset': 'The box makes one command to the WiFi chip count as timed out. The driver then resets the chip itself. The WiFi and the hotspot stop for a few seconds. The test runs only when no guests are connected.',
 };
+const TEST_LABEL = { 'follows-roam': 'Test roaming', 'radio-reset': 'Test radio reset', 'driver-reset': 'Test driver timeout recovery' };
 function radioTestButton(iface, exp, label) {
   const busy = !!netWaiting || (netData && netData.pending > 0);
-  return actionButton(label, () => { if (confirm(`${RADIO_TEST_SAYS[exp]} Run it now?`)) netRequest({ action: 'radiotest', iface, exp }, 'scan'); },
+  return actionButton(label, () => { if (confirm(`${RADIO_TEST_SAYS[exp]} Run the test now?`)) netRequest({ action: 'radiotest', iface, exp }, 'scan'); },
     { className: 'small', disabled: busy });
 }
 function radioTests(inv, iface, section, line) {
@@ -3151,7 +3152,7 @@ function radioTests(inv, iface, section, line) {
     const got = (t.found || {})[exp];
     return el('li', {}, el('strong', { textContent: t.questions[exp] }), ' ',
       got ? `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}. ` : 'Not tested yet. ',
-      radioTestButton(iface, exp, got ? 'Test again' : 'Test it now'));
+      radioTestButton(iface, exp, got ? 'Test again' : TEST_LABEL[exp] || 'Run test'));
   })))];
 }
 
@@ -3170,12 +3171,12 @@ function uptimeSection(iface) {
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const said = !sm || sm.up == null ? 'Not recorded yet.'
     : `Up ${Heatmap.percent(sm.up)} over the last 72 hours (${sm.hours_seen} hours recorded)`
-      + (sm.drops ? `; ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : '; no drops')
-      + (sm.longest ? `; longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
+      + (sm.drops ? `, ${sm.drops} drop${sm.drops === 1 ? '' : 's'}` : ', no drops')
+      + (sm.longest ? `, longest outage ${sm.longest.minutes} min, ${time(sm.longest.at)}.` : '.');
   fold.append(el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: 'Uptime' }), el('span', { textContent: said })));
   if (!u) {
-    fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots, '
-      + 'once the box\'s clock is known to be right (network time, or set on Clock), and keeps 72 days.' }));
+    fold.append(el('p', { className: 'setting-desc', textContent: 'The watchdog (irate-box-uplink) records each link in five-minute slots after the box clock is known to be correct. '
+      + 'Use network time, or set the clock on Clock. It keeps 72 days of records.' }));
     return fold;
   }
   fold.append(el('p', { className: 'setting-desc', textContent: 'The last 72 hours, by hour:' }),
@@ -3187,9 +3188,9 @@ function uptimeSection(iface) {
       rows: [{ label: iface, cells: u.month.map((c) => (c.n ? c : null)), where: (i) => day(u.month[i].date) }] }),
     Heatmap.legend());
   fold.append(el('p', { className: 'setting-desc', textContent: u.kind === 'uplink'
-    ? 'Up means the link was up and the gateway answered. A drop is the link going down after being up; switched off by you is not counted.'
+    ? 'Up means the link was up and the gateway answered. A drop is the link going down after being up. A link that you disabled is not counted.'
     : u.kind === 'hotspot' ? 'Up means the hotspot was running: its interface up and serving.'
-      : 'Only whether the link was up (a cable in, or joined to a network): the gateway is checked on the box\'s link to your network.' }));
+      : 'This shows only whether the link was up: a cable in, or joined to a network. The gateway is checked on the link of the box to your network.' }));
   return fold;
 }
 
@@ -3217,9 +3218,9 @@ function deviceCard(inv, d, wifi, hazards) {
   const managed = owner ? (MANAGED_BY[owner] || owner) + (d.manager ? ` With ${d.manager} for the address.` : '') : '—';
   const kids = [
     el('h4', {}, el('span', { textContent: d.iface }), el('span', { className: 'state', textContent: kind })),
-    section(line('What it is', what || '—')),
+    section(line('Device type', what || '—')),
     section(line('Now', now)),
-    section(line('Managed by', managed)),
+    section(line('Connection manager', managed)),
   ];
   if (wifi) {
     const a = (inv.ap || []).find((x) => x.phy === d.phy);
@@ -3228,23 +3229,23 @@ function deviceCard(inv, d, wifi, hazards) {
       const any = conds.some((c) => c.kind !== 'how');
       const verdict = !a.possible ? 'No.' : any ? `Yes, with conditions (through ${a.backend}).` : `Yes (through ${a.backend}).`;
       const tests = (inv.radio_tests || {})[d.iface] || {};
-      kids.push(section(line('Can it run the hotspot?', verdict),
+      kids.push(section(line('Hotspot support', verdict),
         el('ul', { className: 'net-conditions' }, ...conds.map((c) => {
           const got = c.test && (tests.found || {})[c.test];
           if (c.kind === 'untested' && got) return el('li', { className: 'cond-tested' }, `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}.`);
           return el('li', { className: `cond-${c.kind}` }, `${COND_WORD[c.kind] || ''}${c.text}`,
-            c.kind === 'untested' && c.test && (tests.can || []).includes(c.test) ? radioTestButton(d.iface, c.test, 'Test it now') : null);
+            c.kind === 'untested' && c.test && (tests.can || []).includes(c.test) ? radioTestButton(d.iface, c.test, TEST_LABEL[c.test] || 'Run test') : null);
         }))));
     }
     kids.push(...radioTests(inv, d.iface, section, line));
   }
-  // What the box knows about this device, in words: what to look at first, then what is known.
+  // What the box knows about this device, in words: what to review first, then what is known.
   const mine = hazards.filter((h) => h.iface === d.iface);
   const look = mine.filter((h) => h.status !== 'ok'), known = mine.filter((h) => h.status === 'ok');
   const fact = (h) => el('li', {}, el('strong', { textContent: h.title }), h.detail ? `: ${h.detail}` : '',
     h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null);
   if (look.length) kids.push(section(line('Needs review', ''), el('ul', { className: 'net-facts' }, ...look.map(fact))));
-  if (known.length) kids.push(section(line('Known about it', ''), el('ul', { className: 'net-facts' }, ...known.map(fact))));
+  if (known.length) kids.push(section(line('Known limitations', ''), el('ul', { className: 'net-facts' }, ...known.map(fact))));
   return el('div', { className: 'net-device setting' }, ...kids);
 }
 
@@ -3282,14 +3283,14 @@ function drawRoaming(inv, u, wifi) {
   const lines = [netLine('Roaming', n > 1
     ? `Roaming: ${ROAM_SHORT[chosen.roaming || 'roam']}${chosen.ignore_roams ? ' (short moves not counted as drops)' : ''}. `
       + `${n} access points for ${f.ssid}, on channel${f.channels.length === 1 ? '' : 's'} ${andList(f.channels)}. `
-      + (hour == null ? '' : hour ? `The box moved between them ${hour === 1 ? 'once' : `${hour} times`} in the last hour.` : 'The box hasn\'t moved between them in the last hour.')
+      + (hour == null ? '' : hour ? `The box moved between them ${hour === 1 ? 'once' : `${hour} times`} in the last hour.` : 'The box has not moved between them in the last hour.')
       + (f.hotspot_shares && n > 1 ? ' The hotspot shares this radio, so it moves too.' : '')
     : `One access point for ${f.ssid}: nothing to roam between.`)];
   if (f.bgscan != null) lines.push(netLine('Background scan', cap1(bgscanWords(f.bgscan))));
   const lockGone = chosen.roaming === 'lock' && u && u.state !== 'up' && !f.aps.some((a) => a.bssid === chosen.lock_bssid);
   if (lockGone) {
     lines.push(el('p', { className: 'setting-desc bad' }, `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,
-      actionButton('Unlock', () => { if (confirm('Unlock, so the box may join any of your access points again?'))
+      actionButton('Disable access-point lock', () => { if (confirm('Disable the access-point lock? The box can then join any of your access points.'))
         netRequest({ action: 'settings', settings: { ...chosen, roaming: 'roam', lock_bssid: null } }, 'up'); }, { className: 'primary' })));
   }
   box.replaceChildren(...lines);
@@ -3301,7 +3302,7 @@ function drawRoaming(inv, u, wifi) {
       el('meter', { min: 0, max: 100, value: a.signal, title: `Signal ${a.signal}%` }),
       el('span', { className: 'setting-desc', textContent: `${a.signal}%${r.link && r.link.bssid === a.bssid ? ', in use' : ''}` }))))
       : el('p', { className: 'setting-desc', textContent: 'None in the last scan.' }),
-    el('p', { className: 'net-label', textContent: 'Roaming choices this box can take' }),
+    el('p', { className: 'net-label', textContent: 'Roaming options on this box' }),
     el('ul', { className: 'net-choice-pills' }, ...['roam', 'no-scan', 'lock'].map((c) => el('li', {},
       el('span', { className: f.choices.includes(c) ? 'ok-pill' : 'info-pill', textContent: f.choices.includes(c) ? 'yes' : 'no' }),
       ` ${ROAM_WORDS[c][0]}${f.choices.includes(c) ? '' : `: ${f.why[c]}`}`))),
@@ -3329,8 +3330,8 @@ function drawNetTabs(data, inv, u) {
     r.link && r.link.bssid ? netLine('Access point', `${r.link.bssid}${r.profile && r.profile.bssid_lock ? ' (locked to it)' : ''}`) : null,
     r.profile ? netLine('Profile', `${r.profile.name}${r.profile.autoconnect ? '' : ', autoconnect off'}`) : null,
     meteredNow && meteredNow.iface === r.iface ? netLine('Metered', meteredNow.metered
-      ? `yes (${meteredNow.how}): scheduled updates and downloads wait for another network` : `no (${meteredNow.how})`) : null))
-    : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here: the box reaches its network another way.' : 'Not checked yet.' })]));
+      ? `yes (${meteredNow.how}). Scheduled updates and downloads wait for another network.` : `no (${meteredNow.how})`) : null))
+    : [el('p', { className: 'setting-desc', textContent: inv ? 'No WiFi client here. The box reaches its network another way.' : 'Not checked yet.' })]));
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== 'ap');
   const current = new Set(wifi.map((r) => r.profile && r.profile.uuid).filter(Boolean));
@@ -3339,11 +3340,11 @@ function drawNetTabs(data, inv, u) {
   // Not redrawn while a field in it has focus: the poll would take the field away mid-edit.
   if (!netTabs.saved.contains(document.activeElement)) netTabs.saved.replaceChildren(...(known.length ? [el('ul', { className: 'net-known' }, ...known.map((p) => el('li', {},
     el('strong', { textContent: p.ssid || p.name }), current.has(p.uuid) ? el('span', { className: 'ok-pill', textContent: 'in use' }) : null,
-    el('span', { className: 'setting-desc', textContent: ` ${p.name}${p.autoconnect ? `, joins by itself${p.priority ? ` (priority ${p.priority})` : ''}` : ', only by hand'}`
+    el('span', { className: 'setting-desc', textContent: ` ${p.name}${p.autoconnect ? `, connects automatically${p.priority ? ` (priority ${p.priority})` : ''}` : ', manual connection only'}`
       + `${p.bssid_lock ? `, locked to ${p.bssid_lock}` : ''}${p.iface ? `, on ${p.iface} only` : ''}.` }),
     mine.has(p.uuid) ? el('span', { className: 'info-pill', textContent: 'added here' }) : null,
     connSettings(p, inv, data, busy, current.has(p.uuid) ? wifi.find((r) => r.profile && r.profile.uuid === p.uuid) : null),
-    mine.has(p.uuid) ? actionButton('Forget', () => { if (confirm(`Forget ${p.ssid || p.name}? The box will not join it again.`)) netRequest({ action: 'forget', uuid: p.uuid }, 'join'); },
+    mine.has(p.uuid) ? actionButton('Remove saved network', () => { if (confirm(`Remove the saved network ${p.ssid || p.name}? The box deletes its profile and does not join it automatically again.`)) netRequest({ action: 'forget', uuid: p.uuid }, 'join'); },
       { className: 'small', disabled: busy || current.has(p.uuid), title: current.has(p.uuid) ? 'In use: the box is on it now' : '' }) : null)))]
     : [el('p', { className: 'setting-desc', textContent: nm && nm.running ? 'None saved in NetworkManager.' : 'NetworkManager does not run this box\'s WiFi, so its saved networks are not listed here.' })]));
   drawRoaming(inv, u, wifi);
@@ -3355,8 +3356,8 @@ function drawNetTabs(data, inv, u) {
   netTabs.apHealth.replaceChildren(...(aps.length ? aps.flatMap((a) => {
     const shared = wifi.find((r) => r.phy === a.phy);
     const n = (a.stations || []).length;
-    return [netLine(a.iface, `Up${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}; ${n} guest device${n === 1 ? '' : 's'} joined.`),
-      shared ? netLine('Its radio', `Shared with the box's WiFi (${shared.iface}): it follows that network's channel, so a roam or a reconnect there moves guests too.`) : null];
+    return [netLine(a.iface, `Running${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}. ${n} guest device${n === 1 ? '' : 's'} joined.`),
+      shared ? netLine('Its radio', `Shared with the WiFi of the box (${shared.iface}). It follows the channel of that network, so a roam or a reconnect there moves guests too.`) : null];
   }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not checked yet.' })]));
 }
 
@@ -3377,8 +3378,8 @@ function renderNetwork(data) {
   const u = data.uplink;
   const levels = data.levels;
   // What the box has
-  net.when.textContent = inv ? `Looked ${new Date(inv.at * 1000).toLocaleString()}${agoText(inv.at)}${inv.focus ? ` at ${inv.focus} only` : ''}.`
-    + (busy ? ' Looking…' : '') : busy ? 'Looking…' : 'Not checked yet.';
+  net.when.textContent = inv ? `Last checked ${new Date(inv.at * 1000).toLocaleString()}${agoText(inv.at)}${inv.focus ? ` at ${inv.focus} only` : ''}.`
+    + (busy ? ' Checking…' : '') : busy ? 'Checking…' : 'Not checked yet.';
   net.scan.disabled = busy;
   // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
   // can run the hotspot and on what conditions, and the warnings that are about it.
@@ -3414,8 +3415,8 @@ function renderNetwork(data) {
   net.stall.replaceChildren(...(need ? [el('button', { type: 'button', className: 'action-btn primary', disabled: busy,
     textContent: `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now`,
     onclick: () => { if (confirm(`${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now? `
-      + (need === 'reboot' ? 'The box restarts, and everything on it is away for a minute or two.'
-        : 'The WiFi, and the hotspot with it, goes away for a moment.'))) netRequest({ action: 'do', step: need }, 'up'); } })] : []));
+      + (need === 'reboot' ? 'The box restarts. All its services are unavailable for 1 to 2 minutes.'
+        : 'The WiFi and the hotspot stop for a moment.'))) netRequest({ action: 'do', step: need }, 'up'); } })] : []));
   showUpSave();
   const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;
@@ -3434,20 +3435,20 @@ function renderNetwork(data) {
   const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
   if (change && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Your WiFi connection ${change.name} was set to try for ever, but that was lost when netplan wrote it afresh at boot. `
-      + 'The settings above last whatever writes the connection. ',
-      actionButton('Set it again', () => netRequest({ action: 'profile', on: true }, 'up'), { disabled: busy }), ' ',
+      `Your WiFi connection ${change.name} was set to retry without limit. netplan wrote the connection again at boot, and the setting was lost. `
+      + 'The settings above persist, whichever program writes the connection. ',
+      actionButton('Enable automatic retries', () => netRequest({ action: 'profile', on: true }, 'up'), { disabled: busy }), ' ',
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
   } else if (change) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Your WiFi connection ${change.name} is also set, on its own, to try for ever (since ${new Date(change.at * 1000).toLocaleDateString()}). `,
+      `Your WiFi connection ${change.name} is also set to retry without limit, by a separate setting (since ${new Date(change.at * 1000).toLocaleDateString()}). `,
       actionButton('Undo', () => netRequest({ action: 'profile', on: false }, 'up'), { disabled: busy })));
   } else if (prof && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
-      `Your WiFi connection ${prof} stops after a few failures and waits for someone to reconnect it by hand, which a box with no screen can't ask for. `
-      + 'This sets it, on its own, to try for ever; undo, here or by uninstalling, puts it back. ',
-      actionButton('Try for ever', () => {
-        if (confirm(`Change two settings of your WiFi profile ${prof}, so it never stops trying? Undo puts them back.`)) netRequest({ action: 'profile', on: true }, 'up');
+      `Your WiFi connection ${prof} stops after a few failures. It then waits for someone to reconnect it manually. A box with no screen cannot ask for this. `
+      + 'Enable automatic retries to set the connection to retry without limit. Wrong passwords are also retried. You can undo this here or by uninstalling. ',
+      actionButton('Enable automatic retries', () => {
+        if (confirm(`Change two settings of the WiFi profile ${prof} so that it retries without limit? Wrong passwords are also retried. Undo restores the previous settings.`)) netRequest({ action: 'profile', on: true }, 'up');
       }, { disabled: busy })));
   } else {
     net.profile.replaceChildren();
@@ -3516,8 +3517,8 @@ function renderDefaults(inv, busy) {
     const boxNow = s.value === null ? `NetworkManager's own: ${s.nm_default}` : (s.values[s.value] || s.value);
     // "default" means irate-box sets nothing here: said as what applies then, not as NetworkManager's
     // own when another file (the image's) sets it.
-    const other = s.value !== null && s.mine === null ? 'Leave as it is' : null;
-    const opts = [['default', defaultsScope ? 'As the box default' : (other || "NetworkManager's own")], ...Object.entries(s.values).map(([v, l]) => [v, cap1(l)])];
+    const other = s.value !== null && s.mine === null ? 'Use current value' : null;
+    const opts = [['default', defaultsScope ? 'Use box default' : (other || 'Use NetworkManager default')], ...Object.entries(s.values).map(([v, l]) => [v, cap1(l)])];
     const cur = defaultsScope ? (mineIf[name] ?? null) : s.mine;
     if (s.kind === 'count' && cur !== null && !(cur in s.values)) opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts) sel.append(el('option', { value: v, textContent: label }));
@@ -3537,7 +3538,7 @@ function renderDefaults(inv, busy) {
     // What each word choice means, said once under them: the box default, NetworkManager's own.
     const means = [defaultsScope ? `the box default is ${boxNow}` : null, s.value !== null || defaultsScope ? `NetworkManager's own is ${s.nm_default}` : null].filter(Boolean);
     const row = el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: s.label }), sel,
-      el('span', { className: 'setting-desc', textContent: cap1(now) + (means.length ? `; ${means.join('; ')}` : '') + '.' }));
+      el('span', { className: 'setting-desc', textContent: cap1(now) + '.' + means.map((m) => ` ${cap1(m)}.`).join('') }));
     row.dataset.name = name;
     return row;
   });
@@ -3547,11 +3548,11 @@ function renderDefaults(inv, busy) {
   document.getElementById('up-retries-group').hidden = !retries.length && !net.profile.childElementCount;
   rows.unshift(el('label', { className: 'net-default net-default-scope' }, el('span', { className: 'setting-name', textContent: 'For' }), scope,
     el('span', { className: 'setting-desc', textContent: defaultsScope
-      ? `Only what NetworkManager takes per interface; how long to keep trying to connect is for the whole box.` : 'A connection\'s own setting, or one for its interface, comes first.' })));
+      ? `Only what NetworkManager takes per interface. The retry setting applies to the whole box.` : 'A connection\'s own setting, or one for its interface, comes first.' })));
   const notes = [
     ...d.legacy.map((l) => `${own(l.file)} also sets ${l.key}=${l.value} (an older name NetworkManager still reads: ${l.means}).`),
     ...d.scoped.map((x) => `${own(x.file)} sets ${Object.keys(x.keys).join(', ')} for some devices only (${x.match || x.section}).`),
-    ...d.broken.map((f) => `${f} could not be read: NetworkManager may not read it either.`),
+    ...d.broken.map((f) => `${f} could not be read. NetworkManager can also fail to read it.`),
   ];
   net.defaults.replaceChildren(...rows.filter((r) => !retries.includes(r)), ...(notes.length ? [el('ul', { className: 'setting-desc' }, ...notes.map((t) => el('li', { textContent: t })))] : []));
   net.defaultsSave.disabled = net.defaultsDiscard.disabled = busy || !Object.keys(defaultsDirty).length;
@@ -3563,7 +3564,7 @@ net.defaultsDiscard.addEventListener('click', () => { defaultsDirty = {}; render
 net.defaultsSave.addEventListener('click', () => {
   const changes = { ...defaultsDirty };
   if (!Object.keys(changes).length) return;
-  if (!confirm('Save these box defaults? NetworkManager reads them again at once; connections pick them up the next time they connect.')) return;
+  if (!confirm('Save these box defaults? NetworkManager reads them again at once. Connections use them the next time they connect.')) return;
   defaultsDirty = {};
   netRequest({ action: 'defaults', changes, ...(defaultsScope ? { iface: defaultsScope } : {}) }, 'defaults');
 });
@@ -3577,12 +3578,12 @@ function renderWifisync(inv, data, busy) {
   if (!h) { box.replaceChildren(); return; }
   const on = h.status !== 'ok';
   const rows = [el('p', { className: 'setting-desc', dataset: { change: 'wifisync' } },
-    `mPWRD-OS's wifisync is ${on ? 'on' : 'off'}: ${on ? 'it switches the WiFi radio off whenever meshtasticd\'s WiFi setting is off, '
-      + 'which takes the box off its network and its hotspot down' : 'it leaves the WiFi radio alone'}. `,
-    actionButton(on ? 'Switch it off' : 'Switch it on', () => netRequest({ action: 'wifisync', do: on ? 'off' : 'on' }, 'wifisync'),
+    `The mPWRD-OS wifisync service is ${on ? 'enabled' : 'disabled'}. ${on ? 'It switches the WiFi radio off whenever the WiFi setting of meshtasticd is off. '
+      + 'This disconnects the box from its network and stops the hotspot.' : 'It leaves the WiFi radio alone.'} `,
+    actionButton(on ? 'Disable wifisync' : 'Enable wifisync', () => netRequest({ action: 'wifisync', do: on ? 'off' : 'on' }, 'wifisync'),
       { className: 'small', disabled: busy }),
     rec.was ? ' ' : null,
-    rec.was ? actionButton(`Undo: ${rec.was === 'enabled' ? 'on' : 'off'}, as the image had it`, () => netRequest({ action: 'wifisync', do: 'undo' }, 'wifisync'),
+    rec.was ? actionButton(`Undo: ${rec.was === 'enabled' ? 'enabled' : 'disabled'}, as the image had it`, () => netRequest({ action: 'wifisync', do: 'undo' }, 'wifisync'),
       { className: 'small', disabled: busy }) : null)];
   const n = netNotes.wifisync;
   if (n) rows.push(el('p', { className: `setting-desc action-note${n.ok ? '' : ' bad'}`, role: 'status', textContent: n.text }));
@@ -3601,28 +3602,28 @@ function renderOtherAp(inv, data, busy) {
     const c = chosen[p.uuid];
     const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || '') ? ', Armbian\'s setup hotspot' : ', probably the system\'s own setup hotspot'}`;
     if (c && c.choice === 'left') {
-      rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } }, `Ignored: ${what}. `,
-        actionButton('Stop ignoring it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
+      rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } }, `Ignored: ${what}. The profile is not disabled. `,
+        actionButton('Stop ignoring profile', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy })));
       continue;
     }
     rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${p.uuid}` } },
       `This box has ${what}. `
-      + (p.active ? 'It is running now: it holds the WiFi, so the box\'s own network link and irate-box\'s hotspot can\'t have it. '
-        : p.autoconnect ? 'It is set to start by itself: at boot it could take over the WiFi and take the box off its network. '
-          : 'It is switched off (it does not start by itself), so irate-box has the WiFi and runs its own hotspot. ')
-      + 'Delete it (a copy is kept, to restore it), or ignore it. ',
-      actionButton('Delete it', () => {
-        if (confirm(`Delete ${p.name}? A copy is kept, and Restore brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
+      + (p.active ? 'It is running now. It holds the WiFi, so the network link of the box and the irate-box hotspot cannot use it. '
+        : p.autoconnect ? 'It is set to connect automatically. At boot it can take over the WiFi and disconnect the box from its network. '
+          : 'It is disabled and does not connect automatically, so irate-box has the WiFi and runs its own hotspot. ')
+      + 'Delete the profile (the box keeps a copy that you can restore) or ignore it. Ignoring does not disable the profile. ',
+      actionButton('Delete profile', () => {
+        if (confirm(`Delete the profile ${p.name}? The box keeps a copy. Restore profile brings it back.`)) netRequest({ action: 'otherap', uuid: p.uuid, do: 'remove' }, 'otherap');
       }, { className: 'small', disabled: busy }), ' ',
-      actionButton('Ignore it', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
+      actionButton('Ignore profile', () => netRequest({ action: 'otherap', uuid: p.uuid, do: 'leave' }, 'otherap'), { className: 'small', disabled: busy })));
   }
   for (const [uuid, c] of Object.entries(chosen)) {
     if (c.choice !== 'removed') continue;
     rows.push(el('p', { className: 'setting-desc', dataset: { change: `otherap:${uuid}` } },
-      `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}; a copy is kept. `,
-      actionButton('Restore it', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy }), ' ',
-      actionButton('Delete the copy too', () => {
-        if (confirm(`Delete the kept copy of ${c.name} for good? It can't be restored after.`)) netRequest({ action: 'otherap', uuid, do: 'forget' }, 'otherap');
+      `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}. The box keeps a copy. `,
+      actionButton('Restore profile', () => netRequest({ action: 'otherap', uuid, do: 'undo' }, 'otherap'), { className: 'small', disabled: busy }), ' ',
+      actionButton('Delete retained copy permanently', () => {
+        if (confirm(`Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`)) netRequest({ action: 'otherap', uuid, do: 'forget' }, 'otherap');
       }, { className: 'small', disabled: busy })));
   }
   const n = netNotes.otherap;
@@ -3638,12 +3639,12 @@ function renderVisible(inv, busy) {
   const nets = (nm && nm.visible) || [];
   const shared = inv && inv.radios.some((r) => r.type === 'AP' && inv.radios.some((m) => m.type === 'managed' && m.phy === r.phy));
   const scanAgain = actionButton('Run scan', () => {
-    if (shared && !confirm('Scan for networks now? The hotspot shares this radio, so guests may lose it for a moment.')) return;
+    if (shared && !confirm('Scan for networks now? The hotspot shares this radio, so guests can lose it for a moment.')) return;
     netRequest({ action: 'scan', rescan: true }, 'scan');
   }, { disabled: busy, className: 'small' });
   const f = joinForm.elements;
   box.replaceChildren(
-    el('p', { className: 'setting-desc' }, nets.length ? `Networks the box can see (from ${inv ? new Date(inv.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'its last look'}): pick one, then give its password. ` : 'No networks seen in the last look. ', scanAgain),
+    el('p', { className: 'setting-desc' }, nets.length ? `Networks the box can see (from ${inv ? new Date(inv.at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'its last look'}). Select one, then enter its password. ` : 'No networks were seen in the last scan. ', scanAgain),
     ...(nets.length ? [el('div', { className: 'table-scroll' }, el('table', { className: 'admin-table net-visible-table' },
       el('thead', {}, el('tr', {}, ...['Network', 'Signal', 'Band', 'Channel', 'Access points', 'Security', ''].map((h) => el('th', { textContent: h })))),
       el('tbody', {}, ...nets.slice(0, 25).map((n) => el('tr', {},
@@ -3653,39 +3654,39 @@ function renderVisible(inv, busy) {
         el('td', { className: 'num', textContent: n.channels.join(', ') }),
         el('td', { className: 'num', textContent: String(n.aps || 1) }),
         el('td', { textContent: n.security || 'open' }),
-        el('td', {}, n.kind ? actionButton('Use this one', () => {
+        el('td', {}, n.kind ? actionButton('Use this network', () => {
           f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
           (n.kind === 'open' ? f.ssid : f.psk).focus();
-        }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
+        }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Already known' : '' })
           : el('span', { className: 'setting-desc', textContent: 'needs a sign-in (802.1X)' })))))))] : []));
 }
 
 // One connection's own settings: each with its value now and the choices, the risky side said; a change
 // goes to that connection's profile (where it lasts) and takes effect the next time it connects.
 const CONN_FIELDS = [
-  ['autoconnect', 'Join it by itself', [['yes', 'yes'], ['no', 'no, only when asked']], (p) => (p.autoconnect ? 'yes' : 'no'),
-    'Off: the box never joins this network on its own.'],
-  ['priority', 'Preference among networks', 'num:-999:999', (p) => String(p.priority ?? 0),
-    'Higher wins when several known networks are in range (0 is NetworkManager\'s own).'],
-  ['autoconnect_retries', 'Keep trying to connect', [['-1', 'as the box default'], ['0', 'forever'], ['1', 'once'], ['4', '4 times, then 5 minutes blocked']],
+  ['autoconnect', 'Autoconnect', [['yes', 'yes'], ['no', 'no, manual connection only']], (p) => (p.autoconnect ? 'yes' : 'no'),
+    'Disabled: the box never joins this network automatically.'],
+  ['priority', 'Connection priority', 'num:-999:999', (p) => String(p.priority ?? 0),
+    'A higher number wins when several known networks are in range. 0 is the NetworkManager default.'],
+  ['autoconnect_retries', 'Connection retries', [['-1', 'use box default'], ['0', 'without limit'], ['1', 'once'], ['4', '4 times, then 5 minutes blocked']],
     (p) => String(p.autoconnect_retries ?? -1), ''],
-  ['auth_retries', 'Keep trying after a failed password check', [['-1', 'as the box default'], ['0', 'forever'], ['3', '3 times, then waits for someone']],
-    (p) => String(p.auth_retries ?? -1), 'Forever also means a wrong password is tried forever (the box says so).'],
-  ['metered', 'Metered: big downloads wait for another network', [['unknown', 'let NetworkManager guess'], ['yes', 'yes'], ['no', 'no']],
-    (p) => p.metered || 'unknown', 'For a phone\'s hotspot, say: updates and library downloads wait.'],
-  ['cloned_mac', 'MAC address', [['', 'as the box default'], ['permanent', 'the board\'s own'], ['preserve', 'as the device has it'],
-    ['random', 'random each time'], ['stable', 'stable, made up for this connection'], ['stable-ssid', 'stable, made up per network']],
-    (p) => p.cloned || '', 'Random: the router sees a new device each time, so a reserved address or MAC filter stops working.'],
-  ['bssid', 'Lock to one access point', 'bssid', (p) => p.bssid_lock || '',
-    'Locked: the box cannot roam; if that access point goes, the box stays off the network.'],
-  ['band', 'Lock to a band', [['', 'any'], ['bg', '2.4 GHz only'], ['a', '5 GHz only']], (p) => p.band_lock || '',
-    '2.4 GHz reaches further and is busier; 5 GHz is faster with less reach. A hotspot on the same radio follows it.'],
-  ['channel', 'Lock to a channel', 'num:0:196', (p) => String(p.channel ?? 0), '0 is any. Needs a band chosen.'],
-  ['powersave', 'Power save', [['0', 'as the box default'], ['2', 'off'], ['3', 'on'], ['1', 'leave to the driver']],
-    (p) => String(p.powersave ?? 0), 'On: slower to answer, and some drivers drop.'],
+  ['auth_retries', 'Authentication retries', [['-1', 'use box default'], ['0', 'without limit'], ['3', '3 times, then waits for manual reconnection']],
+    (p) => String(p.auth_retries ?? -1), 'Without limit also means that a wrong password is retried without limit.'],
+  ['metered', 'Metered connection', [['unknown', 'NetworkManager detects it'], ['yes', 'yes'], ['no', 'no']],
+    (p) => p.metered || 'unknown', 'For the hotspot of a phone, select yes. Updates and library downloads then wait for another network.'],
+  ['cloned_mac', 'Randomised MAC', [['', 'use box default'], ['permanent', 'the hardware address of the board'], ['preserve', 'as the device has it'],
+    ['random', 'random each time'], ['stable', 'stable, generated for this connection'], ['stable-ssid', 'stable, generated for each network']],
+    (p) => p.cloned || '', 'Random: the router sees a new device each time. A reserved address or MAC filter stops working.'],
+  ['bssid', 'Access-point lock', 'bssid', (p) => p.bssid_lock || '',
+    'Locked: the box cannot roam. If that access point goes away, the box stays off the network.'],
+  ['band', 'Band', [['', 'any'], ['bg', '2.4 GHz only'], ['a', '5 GHz only']], (p) => p.band_lock || '',
+    '2.4 GHz reaches further and is busier. 5 GHz is faster with less reach. A hotspot on the same radio follows it.'],
+  ['channel', 'Channel', 'num:0:196', (p) => String(p.channel ?? 0), '0 is any. A band must be selected.'],
+  ['powersave', 'Power saving', [['0', 'use box default'], ['2', 'disabled'], ['3', 'enabled'], ['1', 'leave to the driver']],
+    (p) => String(p.powersave ?? 0), 'Enabled: the box answers more slowly, and some drivers disconnect.'],
   ['hidden', 'Hidden network', [['no', 'no'], ['yes', 'yes']], (p) => (p.hidden ? 'yes' : 'no'), 'Yes when the network does not announce its name.'],
-  ['dhcp_timeout', 'Wait for an address (s)', 'num:0:3600', (p) => String(p.dhcp_timeout ?? 0),
-    '0 is NetworkManager\'s 45 s; longer can hide a dead link as "connecting".'],
+  ['dhcp_timeout', 'Address timeout (s)', 'num:0:3600', (p) => String(p.dhcp_timeout ?? 0),
+    '0 is the NetworkManager default of 45 s. A longer time can hide a dead link as "connecting".'],
 ];
 const connDirty = {};
 const connOpen = new Set();
@@ -3713,19 +3714,19 @@ function connSettings(p, inv, data, busy, radio) {
     return el('label', { className: 'net-default' }, el('span', { className: 'setting-name', textContent: label }), input,
       help ? el('span', { className: 'setting-desc', textContent: help }) : null);
   });
-  const save = actionButton('Save its settings', () => {
+  const save = actionButton('Save network settings', () => {
     const changes = Object.fromEntries(Object.entries(dirty).filter(([n, v]) => v !== CONN_FIELDS.find((f) => f[0] === n)[3](p)));
     if (!Object.keys(changes).length) return;
     if (!confirm(`Change ${Object.keys(changes).length} setting${Object.keys(changes).length === 1 ? '' : 's'} of ${p.ssid || p.name}? `
-      + 'They take effect the next time it connects. Undo puts them back as they were.')) return;
+      + 'They take effect the next time the box connects. Undo restores the previous settings.')) return;
     connDirty[p.uuid] = {};
     netRequest({ action: 'connection', uuid: p.uuid, changes }, 'connection');
   }, { disabled: busy || !Object.keys(dirty).length });
   const cn = netNotes.connection;
   const box = el('details', { className: 'net-conn-settings', open: connOpen.has(p.uuid) }, el('summary', { textContent: 'Settings for this network' }),
-    lasts ? null : el('p', { className: 'setting-desc', textContent: 'netplan writes this connection afresh at every boot, so a setting made for it alone would be lost. Hand it over to NetworkManager (above) to set these.' }),
+    lasts ? null : el('p', { className: 'setting-desc', textContent: 'netplan writes this connection again at every boot, so a setting for this connection alone is lost. Select Manage with NetworkManager (above) to change these settings.' }),
     changed ? el('p', { className: 'setting-desc' }, `Changed here: ${changed.changed.join(', ')}. `,
-      actionButton('Undo', () => { if (confirm(`Put ${p.ssid || p.name}'s settings back as they were?`)) netRequest({ action: 'connection', uuid: p.uuid, undo: true }, 'connection'); }, { disabled: busy })) : null,
+      actionButton('Undo', () => { if (confirm(`Restore the previous settings of ${p.ssid || p.name}?`)) netRequest({ action: 'connection', uuid: p.uuid, undo: true }, 'connection'); }, { disabled: busy })) : null,
     el('div', { className: 'net-defaults' }, ...fields),
     lasts ? el('span', { className: 'library-buttons' }, save) : null,
     cn ? el('p', { className: `setting-desc action-note${cn.ok ? '' : ' bad'}`, role: 'status', textContent: cn.text }) : null);
@@ -3745,11 +3746,11 @@ function renderHandover(inv, busy) {
       const names = f.connections.map((c) => c.name).join(', ');
       if (f.ok) {
         rows.push(el('p', { className: 'setting-desc', dataset: { change: `handover:${f.name}` } },
-          `${names || 'Your connection'}: netplan rewrites ${f.connections.length === 1 ? 'it' : 'them'} from its file ${f.name} at every boot, which undoes any change made here. `
-          + 'Hand it to NetworkManager to keep for good, with the same name, password and settings; netplan\'s file is kept aside, so it can be undone. ',
-          actionButton('Hand it to NetworkManager', () => {
-            if (confirm(`Hand ${names || f.name} over to NetworkManager? ${f.name} is moved aside (kept), and NetworkManager keeps ${f.connections.length === 1 ? 'the connection' : 'them'} from now on. `
-              + 'Nothing is disconnected; if NetworkManager\'s view of a connection changes in any way, everything is put back at once.'
+          `${names || 'Your connection'}: at every boot, netplan writes ${f.connections.length === 1 ? 'it' : 'them'} again from the file ${f.name}. This undoes any change made here. `
+          + 'Select Manage with NetworkManager to keep changes permanently. The connection keeps the same name, password and settings. The box keeps the netplan file aside, so you can undo this. ',
+          actionButton('Manage with NetworkManager', () => {
+            if (confirm(`Manage ${names || f.name} with NetworkManager? The box moves ${f.name} aside and keeps it. NetworkManager manages ${f.connections.length === 1 ? 'the connection' : 'them'} from now on. `
+              + 'Nothing is disconnected. If the NetworkManager view of a connection changes, the box restores everything at once.'
               + (f.regdom ? ` The WiFi country it sets (${f.regdom}) is kept.` : ''))) netRequest({ action: 'handover', name: f.name }, 'handover');
           }, { disabled: busy })));
       } else {
@@ -3759,10 +3760,10 @@ function renderHandover(inv, busy) {
     for (const d of ho.done || []) {
       const conns = (d.connections || []).map((c) => (c.keyfile || '').split('/').pop().replace(/\.nmconnection$/, '')).filter(Boolean).join(', ');
       rows.push(el('p', { className: 'setting-desc', dataset: { change: `handover:${d.name}` } },
-        `${conns ? `Your connection ${conns} is` : 'Your connections are'} kept by NetworkManager itself since ${new Date(d.at * 1000).toLocaleDateString()}. `
-        + `Before, netplan rewrote ${conns ? 'it' : 'them'} from its file ${d.name} at every boot, undoing any change made here; that file is kept aside. `,
-        actionButton('Give it back to netplan', () => {
-          if (confirm(`Put ${d.name} back? netplan makes its connections again, written afresh at every boot.`)) netRequest({ action: 'handover', name: d.name, undo: true }, 'handover');
+        `${conns ? `Your connection ${conns} is` : 'Your connections are'} managed by NetworkManager since ${new Date(d.at * 1000).toLocaleDateString()}. `
+        + `Before, netplan wrote ${conns ? 'it' : 'them'} again from the file ${d.name} at every boot, which undid any change made here. The box keeps that file aside. `,
+        actionButton('Restore netplan management', () => {
+          if (confirm(`Restore netplan management with ${d.name}? netplan writes its connections again at every boot.`)) netRequest({ action: 'handover', name: d.name, undo: true }, 'handover');
         }, { disabled: busy })));
     }
   }
@@ -3793,8 +3794,8 @@ function applyChangesHidden() {
       b = el('button', { type: 'button', className: 'link-button change-hide' });
       r.append(' ', b);
     }
-    b.textContent = isHidden ? 'Keep it shown' : 'Hide';
-    b.title = isHidden ? 'Show it here again from now on' : 'Hide it here: it stays as it is, one button away';
+    b.textContent = isHidden ? 'Show this change' : 'Hide this change';
+    b.title = isHidden ? 'Show this change here again from now on' : 'Hide this change here. The change stays as it is. Select Show hidden changes to see it.';
     b.onclick = () => setChangesHidden(isHidden ? changesHidden.filter((x) => x !== id) : [...changesHidden, id]);
   }
   // A part whose every change is hidden goes too, box and all.
@@ -3809,7 +3810,7 @@ function applyChangesHidden() {
     sec.append(more);
   }
   more.hidden = !hiddenNow;
-  more.textContent = changesShowAll ? 'Hide them again' : `Show the ${hiddenNow} hidden change${hiddenNow === 1 ? '' : 's'}`;
+  more.textContent = changesShowAll ? 'Hide changes again' : `Show hidden changes (${hiddenNow})`;
   // All hidden and folded: the section's heading alone, with its button.
   const lead = document.getElementById('net-changes-lead');
   if (lead) lead.dataset.allHidden = String(hiddenNow === rows.length && !changesShowAll);
@@ -3834,9 +3835,9 @@ function joinAsk(now) {
   const f = joinForm.elements;
   if (!joinForm.reportValidity()) return;
   const ssid = f.ssid.value;
-  if (now && !confirm(`Join ${ssid} now? The box leaves the network it is on: this page may lose the box until you are on ${ssid} too. `
-    + 'If it cannot join within a minute it goes back to the network it was on.')) return;
-  if (!now && !confirm(`Add ${ssid} to the networks the box knows? It joins it by itself when the networks it knows are out of reach.`)) return;
+  if (now && !confirm(`Join ${ssid} now? The box leaves its current network. This page can lose the connection to the box until you are on ${ssid} too. `
+    + 'If the box cannot join within 1 minute, it reconnects to the previous network.')) return;
+  if (!now && !confirm(`Add ${ssid} to the networks that the box knows? The box joins it automatically when the other known networks are out of range.`)) return;
   netRequest({ action: 'join', ssid, security: f.security.value, psk: f.security.value === 'open' ? '' : f.psk.value, hidden: f.hidden.checked, now }, 'join');
   f.psk.value = '';
 }
@@ -3847,11 +3848,11 @@ net.save.addEventListener('click', () => {
   try { settings = readUpForm(); } catch (err) { netNotes.up = { text: err.message, ok: false }; renderNetwork(netData); return; }
   const was = (netData && netData.uplink && netData.uplink.chosen) || {};
   if (settings.roaming === 'lock' && (was.roaming !== 'lock' || was.lock_bssid !== settings.lock_bssid)
-    && !confirm(`Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now (a moment off the network), and stays with it, not moving to another access point, until you unlock. If it does not answer, the lock is taken off again.`)) return;
+    && !confirm(`Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now. The box is briefly disconnected from the network. It stays with this access point and does not move to another one until you disable the lock. If this access point does not answer, the box removes the lock.`)) return;
   if (settings.roaming === 'no-scan' && was.roaming !== 'no-scan'
-    && !confirm('Switch wpa_supplicant\'s background scans off while the hotspot shares the radio? It changes your WiFi\'s running settings, not its profile; choosing another option puts them back.')) return;
+    && !confirm('Disable the wpa_supplicant background scans while the hotspot shares the radio? This changes the running WiFi settings, not the WiFi profile. Selecting another option restores them.')) return;
   if (settings.guests === 'ignore' && ['restart', 'radio', 'reboot'].includes(settings.reach)
-    && !confirm(`With guests ignored, it may ${settings.reach === 'restart' ? 'restart the network service' : settings.reach === 'radio' ? 'reset the radio' : 'reset the radio and reboot the box'} while guests are on the hotspot. Use it?`)) return;
+    && !confirm(`This setting lets the box ${settings.reach === 'restart' ? 'restart the network service' : settings.reach === 'radio' ? 'reset the radio' : 'reset the radio and reboot the box'} while guests are on the hotspot. Continue?`)) return;
   netRequest({ action: 'settings', settings }, 'up');
 });
 net.hold.addEventListener('click', () => netRequest({ action: 'hold', minutes: 60 }, 'up'));
@@ -3874,15 +3875,15 @@ function renderAp(run) {
   const p = run.up ? run.plan : run.preview;
   const where = (q) => (q && q.channel ? ` on ${q.iface === 'ap0' || q.kind === 'own-channel' || q.kind === 'follow' ? 'a second interface beside ' + q.iface : q.iface}, channel ${q.channel}` : '');
   apEl.state.textContent = run.up
-    ? `On${where(p)}. ${p.text}${run.confirmed === false ? ' Your WiFi link is off: press Keep it from the hotspot, or it comes back by itself.' : ''}`
+    ? `On${where(p)}. ${p.text}${run.confirmed === false ? ' Your WiFi link is disabled. Join the hotspot network and open the hub. Then select Keep hotspot settings. If you do not, the WiFi link returns automatically.' : ''}`
     : p ? `Off. Switched on, it would run${where(p)}. ${p.text}${p.to_try ? ' Whether it can keep a channel of its own here is still to be tried.' : ''}${p.why ? ` (${p.why})` : ''}`
-      : 'Off. The radios have not been looked at yet: Refresh, above.';
+      : 'Off. The radios have not been checked yet. Select Refresh, above.';
   if (run.note) say(run.note, true, apEl.note);
   const radio = apEl.radio.value;
   apFill(apEl.radio, (run.radios || []).map((r) => r.iface), (run.owner || {}).radio || radio);
   const chans = ((run.radios || []).find((r) => r.iface === (apEl.radio.value || (p && p.iface))) || (run.radios || [])[0] || { channels: [] }).channels;
   apFill(apEl.channel, chans, (run.owner || {}).channel);
-  apEl.sw.textContent = run.up ? 'Switch off' : 'Switch on';
+  apEl.sw.textContent = run.up ? 'Disable hotspot' : 'Enable hotspot';
   apEl.takeLabel.hidden = run.up || !(p && p.needs_choice);
   apEl.tryB.hidden = run.up || !(p && p.to_try);
   apEl.confirmB.hidden = !(run.up && run.confirmed === false);
@@ -3902,7 +3903,7 @@ async function apAct(body) {
   try {
     await postJSON('/admin/hotspot', body);
     apWait = { since: Date.now() - 1000, until: Date.now() + 90000 };
-    say('Asked: the box is doing it…', true, apEl.note);
+    say('Request sent. The box is applying it…', true, apEl.note);
     renderAp(apRun || {});
     setTimeout(loadAp, 2000);
   } catch (err) { say(err.message, false, apEl.note); }
@@ -3914,8 +3915,8 @@ apEl.form.addEventListener('submit', (e) => {
   if (apEl.radio.value) body.radio = apEl.radio.value;
   if (apEl.channel.value) body.channel = Number(apEl.channel.value);
   if (!apEl.takeLabel.hidden) {
-    if (!apEl.take.checked) { say('This radio can only do one thing at a time: tick the box to use it for the hotspot, or leave the hotspot off.', false, apEl.note); return; }
-    if (!confirm('The box will leave your WiFi while the hotspot runs. Open the hub from the hotspot within 5 minutes and press Keep it, or your WiFi comes back by itself.')) return;
+    if (!apEl.take.checked) { say('This radio can do only one thing at a time. Select the checkbox to use it for the hotspot, or leave the hotspot disabled.', false, apEl.note); return; }
+    if (!confirm('The box leaves your WiFi while the hotspot runs. Join the hotspot network and open the hub within 5 minutes. Then select Keep hotspot settings. If you do not, the box reconnects to your WiFi automatically.')) return;
     body.take_radio = true;
   }
   apAct(body);
@@ -3993,11 +3994,11 @@ function renderHotspot(data) {
 // Guests' onward internet (root/share.py): five stops from nobody to everyone, the safest the
 // default; held until Save. The "welcome page" is the page a phone is shown when it joins the hotspot.
 const GUEST_NET = [
-  ['off', 'Off', 'Guests reach the box and nothing else.'],
-  ['users-web', 'Users, web only', 'A device signed in to an account on the hub reaches the web (ports 80 and 443).'],
-  ['sheet-web', 'After the welcome page, web only', 'A phone that joins the hotspot is shown the box\'s welcome page; any device that taps through it reaches the web.'],
-  ['sheet-all', 'After the welcome page, everything', 'Any device reaches everything once it has tapped through the welcome page.'],
-  ['open', 'Everyone, no welcome page', 'Every device on the hotspot reaches everything, straight away. The welcome page stops appearing.'],
+  ['off', 'Disabled', 'Guests reach the box and nothing else.'],
+  ['users-web', 'Signed-in devices: web only', 'A device that is signed in to an account on the hub reaches the web (ports 80 and 443).'],
+  ['sheet-web', 'After portal consent: web only', 'A phone that joins the hotspot is shown the captive portal page of the box. Any device that accepts it reaches the web (ports 80 and 443).'],
+  ['sheet-all', 'After portal consent: all permitted traffic', 'A device that accepts the captive portal page reaches the internet. The containment rules still apply. The box does not forward guest traffic into your local network, into Tailscale or into tunnels, unless an administrator disables them.'],
+  ['open', 'All devices: no portal consent', 'Every device on the hotspot reaches the internet at once, with the same containment rules. The captive portal page stops appearing.'],
 ];
 let guestNetSaved = 'off', guestNetDraft = null, guestNetWaiting = null;
 function drawGuestNet(level, results) {
@@ -4009,7 +4010,7 @@ function drawGuestNet(level, results) {
     say(`Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`, true, noteEl('guest-net-note'));
   } else if (guestNetWaiting && Date.now() - guestNetWaiting.at > 40000) {
     guestNetWaiting = null;
-    say('The box has not changed it yet: see the Security doctor, or try again.', false, noteEl('guest-net-note'));
+    say('The box has not applied the change yet. Check the Security doctor, or try again.', false, noteEl('guest-net-note'));
   } else if (guestNetWaiting) setTimeout(loadHotspot, 2000);
   guestNetSaved = level;
   const cur = guestNetDraft || level;
@@ -4021,18 +4022,18 @@ function drawGuestNet(level, results) {
     return b;
   }));
   document.getElementById('guest-net-said').textContent = GUEST_NET.find((x) => x[0] === cur)[2]
-    + (['users-web', 'sheet-web', 'sheet-all'].includes(cur) ? ' Each device is let out for 12 hours at a time.' : '');
+    + (['users-web', 'sheet-web', 'sheet-all'].includes(cur) ? ' The box authorises each device for 12 hours at a time.' : '');
   document.getElementById('guest-net-save').disabled = document.getElementById('guest-net-discard').disabled = !guestNetDraft || !!guestNetWaiting;
 }
 document.getElementById('guest-net-discard').addEventListener('click', () => { guestNetDraft = null; drawGuestNet(guestNetSaved); });
 document.getElementById('guest-net-save').addEventListener('click', async () => {
   const level = guestNetDraft;
   if (!level) return;
-  if (level !== 'off' && !confirm(`Share this box's connection with guests (${GUEST_NET.find((x) => x[0] === level)[1]})? What they do online will come from your connection.`)) return;
+  if (level !== 'off' && !confirm(`Share the internet connection of this box with guests (${GUEST_NET.find((x) => x[0] === level)[1]})? The box attributes their online activity to your internet connection.`)) return;
   try {
     await postJSON('/admin/hotspot', { action: 'share', level });
     guestNetWaiting = { level, at: Date.now() };
-    say('Asked: the root helper sets it.', true, noteEl('guest-net-note'));
+    say('Request sent. The root helper applies it.', true, noteEl('guest-net-note'));
     drawGuestNet(guestNetSaved);
     setTimeout(loadHotspot, 1500);
   } catch (err) { say(err.message, false, noteEl('guest-net-note')); }
@@ -4087,9 +4088,9 @@ const bku = { level: document.getElementById('backup-level'), keys: document.get
   progress: document.getElementById('backup-progress'), bar: document.getElementById('backup-bar'), step: document.getElementById('backup-step') };
 let bkPlan = null, bkLevel = 'data', bkWaiting = null, bkPoll = null, usbSticks = [];
 const BK_WORDS = {
-  settings: ['Settings only', 'What was chosen: the hub\'s settings, accounts, the apps\' and add-ons\' settings, the library\'s and mirrors\' sources. Nothing that was made on the box.'],
-  data: ['Settings and data', 'Also what was made on the box: notes, saved work, the board, the shoutbox, dropped files, the box\'s own git repositories.'],
-  image: ['Full image', 'The whole card, onto a USB drive: the system, the hub, books and all. Taken while the box runs, so as after a power cut; written back with any image writer.'],
+  settings: ['Settings archive', 'The settings of the hub, the accounts, the settings of apps and add-ons, and the sources of the library and the mirrors. It does not include notes, saved work, the board, the shoutbox, dropped files or git repositories.'],
+  data: ['Settings and shared-data archive', 'The settings archive, plus the data made on the box: notes, saved work, the board, the shoutbox, dropped files and the git repositories of the box.'],
+  image: ['Full storage image', 'The whole card, written to a USB drive: the system, the hub, books and all. The box creates the image while it runs, so the files might not match one point in time. Write it back with any image writer.'],
 };
 function drawBackup() {
   const p = bkPlan;
@@ -4099,8 +4100,8 @@ function drawBackup() {
     does: v === 'image' ? `About ${size(img.used)} (what the card holds)${img.card ? `, at most ${size(img.card)} (the card)` : ''}, compressed.`
       : `About ${size(p.levels[v] + (bku.keys.checked ? p.syncthing : 0))}.` })), { value: bkLevel, onChange: (v) => { bkLevel = v; drawBackupGo(); } });
   const lo = p.left_out || {};
-  bku.leftOut.textContent = `Left out of every download: books (${size(lo.books)}), the firmware mirror (${size(lo.firmware)}), `
-    + 'the git mirrors, builds and their caches, crash evidence and the library\'s archive: all fetched again.';
+  bku.leftOut.textContent = `Omitted from every download: books (${size(lo.books)}), the firmware mirror (${size(lo.firmware)}), `
+    + 'the git mirrors, builds and their caches, crash evidence and the archive of the library. The box can download them again.';
   drawBackupGo();
 }
 function drawBackupGo() {
@@ -4125,7 +4126,7 @@ function drawBackupGo() {
   drawKitTotal();
 }
 bku.keys.addEventListener('change', (e) => {
-  if (bku.keys.checked && !confirm("Include Syncthing's private keys? Anyone with the file can pose as this box to its Syncthing peers.")) { bku.keys.checked = false; return; }
+  if (bku.keys.checked && !confirm('Include the Syncthing private keys? Anyone who has the file can impersonate this box to its Syncthing peers.')) { bku.keys.checked = false; return; }
   drawBackup();
 });
 // The kit's and the offline stick's offers: a checkbox per book, toolkit and repository, with its size.
@@ -4146,9 +4147,9 @@ const stickEl = { box: document.getElementById('offline-stick-box'), stick: docu
   presets: document.getElementById('export-presets'), presetSays: document.getElementById('export-preset-says') };
 // Presets set the hub program, the state and the repositories; the books and toolkits stay as picked.
 const EXPORT_PRESETS = {
-  update: ['Books and toolkits for a box that has irate-box: the hub program, the repositories and the state left out.', { hub: false, state: 'none', repos: false }],
-  level: ['For a box that has irate-box but is behind: every repository and this box\'s settings too.', { hub: false, state: 'settings', repos: true }],
-  new: ['For a box without irate-box: the hub program in, with what is chosen below; unpack it there and run setup.sh.', { hub: true }],
+  update: ['Books and toolkits for a box that has irate-box. The hub program, the repositories and the state are omitted.', { hub: false, state: 'none', repos: false }],
+  level: ['For a box that has irate-box but is out of date. It includes every repository and the settings of this box.', { hub: false, state: 'settings', repos: true }],
+  new: ['For a box without irate-box. It includes the hub program and what you select below. Unpack it on that box and run setup.sh.', { hub: true }],
 };
 let exportPreset = 'update', kitBusy = false;
 function applyPreset(key) {
@@ -4175,7 +4176,7 @@ function drawPicks() {
   pickList(kitEl.books, p.books.map((b) => ({ ...b, value: b.name })), 'book', book);
   pickList(kitEl.kits, p.kits.map((k) => ({ ...k, value: k.id })), 'kit', kit);
   pickList(kitEl.repos, p.repos.map((r) => ({ ...r, value: `${r.area}/${r.name}` })), 'repo',
-    (r) => `${r.name}${r.area === 'private' ? ' (private)' : ''}${r.mirror ? ', a mirror' : ''} (${size(r.size)})`);
+    (r) => `${r.name}${r.area === 'private' ? ' (administrators only)' : ''}${r.mirror ? ', a mirror' : ''} (${size(r.size)})`);
   stickEl.hubSize.textContent = `about ${size(p.hub)} (its code, apps and release files)`;
   drawPresets();
   drawKitTotal();
@@ -4197,12 +4198,12 @@ function drawKitTotal() {
   stickEl.box.hidden = !stick;
   const total = kitBytes(), budget = Number(f.budget.value) || 0;
   const over = budget && total > budget * 2 ** 20;
-  kitEl.total.textContent = (total ? `About ${size(total)}` : 'Nothing chosen yet')
-    + (budget ? ` of a ${size(budget * 2 ** 20)} budget${over ? ': over it, so leave something out.' : '.'}` : ' (no budget set).')
-    + (f.hub.checked ? ' The hub program is in it.' : '') + (moved ? ' With the hub program it goes as a download.' : '');
+  kitEl.total.textContent = (total ? `About ${size(total)}` : 'Nothing selected yet')
+    + (budget ? ` of a ${size(budget * 2 ** 20)} budget${over ? '. This is over the budget. Remove something from the export.' : '.'}` : ' (no budget set).')
+    + (f.hub.checked ? ' The hub program is in it.' : '') + (moved ? ' With the hub program, the export is a download.' : '');
   kitEl.total.classList.toggle('bad', !!over);
   kitEl.make.dataset.over = over ? '1' : '';
-  kitEl.make.textContent = stick ? 'Copy to the drive' : 'Make the export';
+  kitEl.make.textContent = stick ? 'Copy export to USB drive' : 'Create export';
   kitEl.make.disabled = kitBusy || !total || (stick && (!usbSticks.length || !!bkWaiting));
 }
 kitEl.form.addEventListener('change', drawKitTotal);
@@ -4235,11 +4236,11 @@ document.getElementById('backup-image-scan').addEventListener('click', () => bkS
 document.getElementById('offline-scan').addEventListener('click', () => bkSticks(true));
 bku.imageGo.addEventListener('click', async () => {
   const d = usbSticks.find((x) => x.name === bku.stick.value);
-  if (!d || !confirm(`Write an image of the whole card onto ${d.label || d.name}? About ${size((bkPlan.image || {}).used)} or more, `
-    + 'an hour or more on this board; the box stays in use meanwhile.')) return;
+  if (!d || !confirm(`Write an image of the whole card to ${d.label || d.name}? The image is about ${size((bkPlan.image || {}).used)} or more. `
+    + 'On this board it can take an hour or more. The box stays in use meanwhile.')) return;
   try {
     bkWaiting = { id: (await postJSON('/admin/usb', { action: 'image', device: d.name })).id, note: bku.note };
-    say('Writing the image: its progress shows here.', true, bku.note);
+    say('Writing the image. The progress shows here.', true, bku.note);
     bkSticks(false);
   } catch (err) { say(err.message, false, bku.note); }
 });
@@ -4268,7 +4269,7 @@ function renderKit(d) {
   kitEl.state.replaceChildren(...(k ? [
     el('a', { href: '/admin/kit/download', download: k.name, textContent: `Download ${k.name}` }),
     document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}, with ${held.length ? held.join(', ') : 'the hub alone'}${k.kind === 'content' ? ', without the hub program' : ''}.`),
-  ] : [document.createTextNode(busy ? 'Making the export…' : 'No export made yet.')]));
+  ] : [document.createTextNode(busy ? 'Creating the export…' : 'No export created yet.')]));
   kitEl.details.hidden = !(k && k.contents && k.contents.length);
   if (k) kitEl.contents.replaceChildren(...(k.contents || []).map((t) => el('li', { textContent: t })));
   clearTimeout(kitPoll);
@@ -4279,7 +4280,7 @@ async function loadKit() {
 }
 kitEl.form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (kitEl.make.dataset.over) { say('Over the budget: leave something out, or raise the budget.', false, kitEl.note); return; }
+  if (kitEl.make.dataset.over) { say('The export is over the budget. Remove something from it, or raise the budget.', false, kitEl.note); return; }
   const f = kitEl.form.elements, budget = Number(f.budget.value) || null;
   const books = picked(kitEl.books), kits = picked(kitEl.kits), repos = picked(kitEl.repos), state = f.state.value;
   try {
@@ -4287,12 +4288,12 @@ kitEl.form.addEventListener('submit', async (e) => {
       const d = usbSticks.find((x) => x.name === stickEl.stick.value);
       if (!d || !confirm(`Copy the export onto ${d.label || d.name}?`)) return;
       bkWaiting = { id: (await postJSON('/admin/usb', { action: 'export-many', device: d.name, books, kits, repos, state })).id, note: kitEl.note };
-      say('Copying: its progress shows above, under Back up this box.', true, kitEl.note);
+      say('Copying. The progress shows above, under Back up this box.', true, kitEl.note);
       bkSticks(false);
       return;
     }
     kitWaiting = (await postJSON('/admin/kit', { action: 'make', hub: f.hub.checked, books, kits, repos, state, budget_mb: budget })).id;
-    say('Making the export: a minute or two, longer with books.', true, kitEl.note);
+    say('Creating the export. This takes a minute or two, and longer with books.', true, kitEl.note);
     loadKit();
   } catch (err) { say(err.message, false, kitEl.note); }
 });
@@ -4305,22 +4306,21 @@ loadBackupPlan();
 // (Add-ons) and the hub's own parts (Apps, Built into the hub). The root helper rewrites the
 // web server's part and answers; each switch keeps its node, so a list that re-renders moves
 // it rather than losing what it shows.
-const ACCESS_LABEL = { public: '🌐 Public', users: '👥 Users', private: '🔒 Private', off: '⭘ Off' };
 const accessNodes = new Map(); // id -> { node, app }
 let accessWaiting = null; // { id, app }
 let accessNote = null; // { app, text, ok }
 let accessPoll = null;
 
-const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'signed-in users', hidden: 'nobody' };
+const SEEN_LABEL = { auto: 'as its access', guests: 'guests', users: 'signed-in users', hidden: 'nobody' };
 function seenDesc(a) {
   a = { ...a, visible: a.visible || 'auto' };
-  if (a.mode === 'off') return 'Off: no tile.';
+  if (a.mode === 'off') return 'Disabled: no tile.';
   if (a.visible === 'auto') return '';
-  const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'signed-in users' : 'administrators';
-  if (a.visible === 'hidden') return 'No tile; its address still works for whoever may open it.';
+  const opens = a.mode === 'public' ? 'guests' : a.mode === 'users' ? 'signed-in users' : 'administrators';
+  if (a.visible === 'hidden') return 'No tile. The address still works for everyone who can open the app.';
   return a.visible === 'guests' && a.mode !== 'public'
-    ? `Everyone sees its tile, with a lock: it opens for ${opens}, and anyone else is asked to sign in.`
-    : `Its tile shows to ${SEEN_LABEL[a.visible]}; it opens for ${opens}.`;
+    ? `Guests see its tile with a lock. It opens for ${opens}. Other visitors are asked to sign in.`
+    : `Its tile shows to ${SEEN_LABEL[a.visible]}. It opens for ${opens}.`;
 }
 function visibilitySet(a, v) {
   if (v === a.visible) return;
@@ -4343,9 +4343,9 @@ function accessSlot(id) {
 
 function accessSet(a, mode) {
   if (mode === a.mode) return;
-  if (mode === 'off' && a.unit && !confirm(`Turn ${a.title} off? Its service stops until you switch it back on.`)) return;
+  if (mode === 'off' && a.unit && !confirm(`Disable ${a.title}? Its service stops until you enable it again.`)) return;
   if (mode === 'public' && a.mode !== 'public' && !a.login
-    && !confirm(`Let guests open ${a.title}? Everyone on the box's network can open it, with no sign-in.`)) return;
+    && !confirm(`Let guests open ${a.title}? Every device on the network of the box can open it without a sign-in.`)) return;
   postJSON('/admin/access', { app: a.id, mode }).then((r) => {
     accessWaiting = { id: r.id, app: a.id };
     accessNote = null;
@@ -4381,12 +4381,12 @@ function renderAccess(data) {
 
 // Each app's own page starts with its access: the same controls, drawn again there.
 let lastAccess = null;
-const TAB_SEEN = { guests: 'everyone', users: 'signed-in users', hidden: 'nobody' };
+const TAB_SEEN = { guests: 'guests', users: 'signed-in users', hidden: 'nobody' };
 function fillSeenBlocks() {
   if (!lastAccess) return;
   document.querySelectorAll('.seen-block[data-app]').forEach((block) => {
     const app = block.dataset.app, cur = ((lastAccess.pages || {})[app] || 'auto').replace('auto', 'guests');
-    block.replaceChildren(el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Its tab on the hub page, shown to:' }),
+    block.replaceChildren(el('span', { className: 'chip-group access-seen' }, el('span', { className: 'setting-desc', textContent: 'Visibility of its tab on the hub page:' }),
       ...Object.entries(TAB_SEEN).map(([v, label]) => {
         const b = el('button', { type: 'button', className: 'chip' + (cur === v ? ' selected' : ''), textContent: label,
           onclick: () => { if (v !== cur) postJSON('/admin/visibility', { app, visible: v }).then(loadAccess, (err) => say(err.message, false, block)); } });
@@ -4418,19 +4418,19 @@ function fillTileBlocks() {
     if (!tilesData) { block.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Loading the tiles.' })); return; }
     if (!t) {
       block.replaceChildren(el('p', { className: 'setting-desc', textContent: a && a.mode === 'off'
-        ? 'No tile while it is off.' : 'No tile on the home page.' }));
+        ? 'No tile while it is disabled.' : 'No tile on the home page.' }));
       return;
     }
     const order = tilesData.tiles.map((x) => x.id);
     const mode = a ? a.mode : 'public';
     const seen = a ? seenOf(a.mode, a.visible) : seenOf('public', ((lastAccess && lastAccess.seen) || {})[id]);
     const lock = ((lastAccess && lastAccess.locked_as) || {})[id] || 'signin';
-    const go = el('a', { className: 'action-btn', href: '#tile-order', textContent: 'Arrange it on Home tiles →' });
+    const go = el('a', { className: 'action-btn', href: '#tile-order', textContent: 'Edit Home tiles →' });
     go.addEventListener('click', () => { tileFocus = id; });
     block.replaceChildren(
-      el('p', { className: 'setting-desc', textContent: `${seenWords(seen, mode)} Place ${order.indexOf(id) + 1} of ${order.length}; `
-        + `${t.size || 'single'} size; icon ${t.own_icon ? `its own (${t.own_icon})` : 'the app\'s'}.`
-        + (a && mode !== 'public' && seen !== 'hidden' ? ` Seen but not opened: ${LOCK_WORDS[lock]}.` : '') }),
+      el('p', { className: 'setting-desc', textContent: `${seenWords(seen, mode)} Place ${order.indexOf(id) + 1} of ${order.length}. `
+        + `${t.size || 'single'} size. Icon: ${t.own_icon ? `its own (${t.own_icon})` : 'the icon of the app'}.`
+        + (a && mode !== 'public' && seen !== 'hidden' ? ` Locked-tile action: ${LOCK_WORDS[lock]}.` : '') }),
       el('p', {}, go));
   });
 }
@@ -4476,7 +4476,7 @@ AL.onBuild(fillAccessBlocks);
 
 // A tile with no switch of its own (a folder, About): anyone may open it, so only who sees
 // its tile is to choose. Hidden, its address still works.
-const SEEN_ONLY = { auto: 'everyone', guests: 'everyone', users: 'signed-in users', admin: 'administrators', hidden: 'nobody' };
+const SEEN_ONLY = { auto: 'guests', guests: 'guests', users: 'signed-in users', admin: 'administrators', hidden: 'nobody' };
 
 
 // The box-wide sign-in offer (the setup decision "sign-in-offer"): an app for users, left at
@@ -4490,10 +4490,10 @@ async function loadSignInOffer() {
   lockAll = st.locked_all || '';
   box.replaceChildren(AW.settings([{ key: 'sign_in_offer', label: 'Show guests the tiles of apps for users, locked, with sign-in', kind: 'toggle',
     value: !!st.sign_in_offer, decision: 'sign-in-offer',
-    note: 'Off: an app for users shows its tile only to those signed in. On: guests see it too, with a lock that leads to sign-in. An app\'s own "Tile shown to" still has the last word.' },
-  { key: 'locked_all', label: 'When seen but not opened, for every app', kind: 'choice', value: lockAll,
+    note: 'Disabled: an app for users shows its tile only to signed-in users. Enabled: guests also see the tile, with a lock that leads to sign-in. The Visibility setting of each app overrides this setting.' },
+  { key: 'locked_all', label: 'Locked-tile action for every app', kind: 'choice', value: lockAll,
     options: [['', 'Per app'], ['signin', 'Sign in'], ['signup', 'Sign up'], ['padlock', 'Padlock'], ['grey', 'Greyed']],
-    note: 'Per app (the default): each app\'s own page chooses. Any other: every app does that, over its own choice. Sign up only where accounts are open or by application.' }],
+    note: 'Per app (the default): the page of each app sets the action. Any other option: every app uses that action and the setting of the app is ignored. Sign up applies only where accounts are open or by application.' }],
   { save: async (changed) => { await postJSON('/admin/settings', changed); await loadSignInOffer(); loadAccess(); } }));
 }
 loadSignInOffer();
@@ -4549,23 +4549,23 @@ function drawTileOrder(openId) {
     const setIcon = () => { const v = iconDraft.icon; tilesDraft.icon = { ...tilesDraft.icon }; if (v) tilesDraft.icon[id] = v; else delete tilesDraft.icon[id]; redraw(id); };
     const setSeen = (v) => { if (v === seenNow(id)) delete tilesDraft.seen[id]; else tilesDraft.seen[id] = v; redraw(id); };
     const setLock = (v) => { if (v === lockNow(id)) delete tilesDraft.lock[id]; else tilesDraft.lock[id] = v; redraw(id); };
-    return { id, title: `${tilesDraft.icon[id] || t.icon} ${t.name}`.trim(), summary: w.summary + (sz ? ` · ${sz}` : ''),
+    return { id, title: `${tilesDraft.icon[id] || t.icon} ${t.name}`.trim(), summary: w.summary + (sz ? ` · ${(TILE_SIZES.find((x) => x[0] === sz) || [])[1] || sz}` : ''),
       badges: [folderIds.has(id) ? 'folder' : 'app', ...w.badges], detail: () => [
         AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Place' }),
           AW.btn('↑ Earlier', { onclick: () => move(id, -1) }), AW.btn('↓ Later', { onclick: () => move(id, 1) })),
         AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
           sizeChips((tilesDraft.size || {})[id] || 'single', (v) => { setSize(tilesDraft, id, v); redraw(id); })),
         chipRow('Visibility', SEEN_CHIPS, seen, setSeen, () => !!(a && a.mode === 'off')),
-        el('p', { className: 'setting-desc', textContent: seenWords(seen, a ? a.mode : 'public') + ' Hidden, its address still works for whoever may open it.' }),
-        a && a.mode !== 'public' ? chipRow('When seen but not opened', LOCK_CHIPS, lock, setLock, (v) => !!lockAll || (v === 'signup' && a.mode !== 'users')) : null,
+        el('p', { className: 'setting-desc', textContent: seenWords(seen, a ? a.mode : 'public') + ' If hidden, the address still works for everyone who can open the app.' }),
+        a && a.mode !== 'public' ? chipRow('Locked-tile action', LOCK_CHIPS, lock, setLock, (v) => !!lockAll || (v === 'signup' && a.mode !== 'users')) : null,
         a && a.mode !== 'public' ? el('p', { className: 'setting-desc', textContent: lockAll
-          ? `Every tile is set together to "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}", over this one (All apps, under "App access").`
-          : `Seen but not opened: ${LOCK_WORDS[lock]}.` }) : null,
+          ? `The global locked-tile action for every app is "${LOCK_CHIPS.find((c) => c[0] === lockAll)[1]}". It overrides the setting of this app (All apps, under "App access").`
+          : `Locked-tile action: ${LOCK_WORDS[lock]}.` }) : null,
         iconField(iconDraft, t, iconNow, setIcon),
-        document.getElementById('page-app-' + id) ? AW.h('a', { href: '#page-app-' + id, class: 'action-btn' }, folderIds.has(id) ? 'Its folder page →' : 'Its page: who can open it, its settings →') : null,
+        document.getElementById('page-app-' + id) ? AW.h('a', { href: '#page-app-' + id, class: 'action-btn' }, folderIds.has(id) ? 'Open folder page →' : 'Open app settings →') : null,
       ].filter(Boolean) }; });
   const badIcon = Object.values(tilesDraft.icon || {}).some((v) => v && !ICON_OK(v));
-  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'Changes wait for Save.' });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Unsaved changes.' : 'Changes apply after you select Save.' });
   box.replaceChildren(AW.shortList(items, { id: 'tile-order-list' }), AW.h('div', { class: 'aw-foot' }, note,
     AW.btn('Discard', { disabled: !dirty, onclick: () => { tilesDraft = freshTilesDraft(); drawTileOrder(); } }),
     AW.btn('Save', { class: 'action-btn primary', disabled: !dirty || badIcon, onclick: async () => {
@@ -4595,7 +4595,7 @@ const OPEN_CHIPS = [['public', 'Guests'], ['users', 'Users'], ['private', 'Admin
 const SEEN_CHIPS = [['guests', 'Guests'], ['users', 'Users'], ['admin', 'Administrators'], ['hidden', 'Hidden']];
 // What the tile does for one who sees it but may not open it.
 const LOCK_CHIPS = [['signin', 'sign in'], ['signup', 'sign up'], ['padlock', 'padlock'], ['grey', 'greyed']];
-const LOCK_WORDS = { signin: 'it leads to the sign-in page', signup: 'it leads to sign-up, while accounts are open or by application (otherwise to sign-in)',
+const LOCK_WORDS = { signin: 'it leads to the sign-in page', signup: 'it leads to sign-up while accounts are open or by application, otherwise to sign-in',
   padlock: 'it shows a padlock and does nothing', grey: 'it is greyed out and does nothing' };
 // "As its access" (auto), shown as the chip it amounts to.
 const seenOf = (mode, visible) => (visible && visible !== 'auto' ? visible
@@ -4623,11 +4623,11 @@ function accessBlock(id, a) {
   const note = accessNote && accessNote.app === id
     ? el('span', { className: `setting-desc action-note${accessNote.ok ? '' : ' bad'}`, role: 'status', textContent: accessNote.text }) : null;
   const save = () => { accessDrafts.delete(id); accessSet(a, d.mode); };  // root's, answered by poll
-  const seen = d.mode === 'off' ? 'Disabled: no tile.' : `Tile visibility: ${seenWords(seenOf(d.mode, a.visible), d.mode)}`;
+  const seen = d.mode === 'off' ? 'Disabled: no tile.' : `Visibility: ${seenWords(seenOf(d.mode, a.visible), d.mode)}`;
   return el('div', { className: 'access-set' },
     chipRow('Access', OPEN_CHIPS, d.mode, (v) => { d.mode = v; redraw(); }, (v) => waiting || (v === 'users' && !a.users)),
     el('p', { className: 'setting-desc', textContent: waiting ? 'Changing…' : `${accessDesc({ ...a, mode: d.mode })} ${seen}` }),
-    el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' }),
+    el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: dirty ? 'Unsaved changes.' : 'Changes apply after you select Save.' }),
       el('button', { type: 'button', className: 'action-btn', textContent: 'Discard', disabled: !dirty, onclick: () => { accessDrafts.delete(id); fillAccessBlocks(); } }),
       el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: !dirty || waiting, onclick: save })),
     note);
@@ -4647,7 +4647,7 @@ function iconField(d, tile, iconNow, redraw) {
   input.setAttribute('aria-label', 'Tile icon: emoji, or up to four letters and digits');
   const bad = val && !ICON_OK(val);
   const hint = el('span', { className: 'setting-desc' + (bad ? ' bad' : ''), textContent: bad ? 'Emoji, or up to four letters and digits (no spaces).'
-    : val ? 'Its own; blank goes back to the app\'s.' : `The app's own: ${tile.icon}` });
+    : val ? 'Its own icon. A blank field restores the icon of the app.' : `Icon of the app: ${tile.icon}` });
   input.addEventListener('change', () => { d.icon = input.value.trim(); redraw(); });
   // A pick from the emoji picker arrives as an input event of the page's own.
   input.addEventListener('input', (e) => { if (!e.isTrusted) { d.icon = input.value.trim(); redraw(); } });
@@ -4684,8 +4684,8 @@ let lastAddons = null;
 AL.onBuild(() => { if (lastAddons) renderAddons(lastAddons); });
 
 function addonCard(a, busy, withAccess, progressText) {
-  const state = a.added === null ? 'Unknown: this box records no install options.'
-    : a.added ? (a.active ? 'Added, and running.' : 'Added, but not running (see Overview).') : 'Not added.';
+  const state = a.added === null ? 'Installation status unavailable. This box records no install options.'
+    : a.added ? (a.active ? 'Installed. Service running.' : 'Installed. Service not running (see Overview).') : 'Not installed.';
   const note = adoNote && adoNote.addon === a.id
     ? el('span', { className: `setting-desc action-note${adoNote.ok ? '' : ' bad'}`, role: 'status', textContent: adoNote.text }) : null;
   return el('div', { className: 'setting library-source' }, el('span', {},
@@ -4695,7 +4695,7 @@ function addonCard(a, busy, withAccess, progressText) {
     el('span', { className: `setting-desc${a.added && !a.active ? ' bad' : ''}`, textContent: state }),
     !a.added && a.needs ? el('span', { className: 'setting-desc', textContent: `Needs: ${a.needs}` }) : null,
     a.added === null ? null : el('span', { className: 'library-buttons' }, el('button', {
-      type: 'button', className: 'action-btn', textContent: a.added ? 'Remove' : 'Add', disabled: busy,
+      type: 'button', className: 'action-btn', textContent: a.added ? 'Uninstall add-on' : 'Install add-on', disabled: busy,
       onclick: () => addonSet(a, !a.added),
     })),
     note,
@@ -4739,7 +4739,7 @@ function renderAddons(data) {
   if (p && p.action === 'addon') ado.output.open = true;
   badge('addons', p && p.action === 'addon' ? 'working' : '');
   const added = data.addons.filter((a) => a.added).map((a) => a.title);
-  setupStep('addons', added.length ? `Added: ${added.join(', ')}.` : 'None added: the hub works without them.', 'ok');
+  setupStep('addons', added.length ? `Installed: ${added.join(', ')}.` : 'None installed. The hub works without them.', 'ok');
   clearTimeout(adoPoll);
   if (busy) adoPoll = setTimeout(loadAddons, 1500);
 }
@@ -4752,12 +4752,12 @@ async function loadAddons() {
 }
 
 async function addonSet(a, on) {
-  const ask = on ? (a.consent || `Add ${a.title}? The installer runs for a few minutes.`)
-    : `Remove ${a.title}? Its service stops; its data stays, so adding it back finds it.`;
+  const ask = on ? (a.consent || `Install ${a.title}? The installer runs for a few minutes. The hub server can restart during the installation.`)
+    : `Uninstall ${a.title}? Its service stops. Its data stays, so installing it again finds the data.`;
   if (!confirm(ask)) return;
   try {
     adoWaiting = { id: (await postJSON('/admin/addons', { addon: a.id, on })).id, addon: a.id };
-    adoNote = { addon: a.id, text: on ? `Adding ${a.title}…` : `Removing ${a.title}…`, ok: true };
+    adoNote = { addon: a.id, text: on ? `Installing ${a.title}…` : `Uninstalling ${a.title}…`, ok: true };
     loadAddons();
   } catch (err) { adoNote = { addon: a.id, text: err.message, ok: false }; loadAddons(); }
 }
@@ -4783,8 +4783,8 @@ const LOC_UNDERSTOOD = "I understand this runs someone else's code on this box's
 
 function capsText(c) {
   const connect = (c && c.connect) || [];
-  return (connect.length ? `Connects to: ${connect.join(', ')} ({box} is this hub).` : 'Connects to nothing but its own address.')
-    + (c && c.storage ? " Keeps data in the visitor's browser." : '');
+  return (connect.length ? `Allowed connections: ${connect.join(', ')} ({box} is this hub).` : 'Allowed connections: its own address only.')
+    + (c && c.storage ? ' Stores data in this browser.' : '');
 }
 
 let lastLocal = null;
@@ -4799,7 +4799,7 @@ function renderLocal(data) {
     const inst = a.installed;
     const st = a.status || {};
     const state = inst && inst.commit ? `Installed: ${inst.commit.slice(0, 7)} (${inst.ref === 'pinned' ? 'the pinned commit' : inst.ref}), from ${a.repo}.`
-      : st.error ? `Not installed: ${st.error}` : fetching ? 'Fetching…' : 'Not installed yet.';
+      : st.error ? `Not installed: ${st.error}` : fetching ? 'Downloading…' : 'Not installed yet.';
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: a.title }),
       accessSlot(a.id),
@@ -4810,8 +4810,8 @@ function renderLocal(data) {
       el('span', { className: 'library-buttons' },
         inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
         a.catalogue && a.catalogue.status === 'held'
-          ? el('button', { type: 'button', className: 'action-btn', textContent: 'Accept the new version', onclick: () => localAccept(a, data) }) : null,
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Remove', onclick: () => localRemove(a) })),
+          ? el('button', { type: 'button', className: 'action-btn', textContent: 'Approve changed permissions', onclick: () => localAccept(a, data) }) : null,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Remove web add-on', onclick: () => localRemove(a) })),
       note(a.id)));
   }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
   const offered = data.catalogue.filter((c) => !c.added);
@@ -4821,9 +4821,9 @@ function renderLocal(data) {
       el('span', { className: 'setting-name', textContent: c.title }),
       el('span', { className: 'setting-desc', textContent: c.summary }),
       el('span', { className: 'setting-desc', textContent: `${capsText(c.capabilities)} From ${c.repo} at ${String(c.pin).slice(0, 7)}.` }),
-      el('span', { className: 'library-buttons' }, el('button', { type: 'button', className: 'action-btn', textContent: 'Add', disabled: fetching, onclick: () => localAdd(c) })),
+      el('span', { className: 'library-buttons' }, el('button', { type: 'button', className: 'action-btn', textContent: 'Add web add-on', disabled: fetching, onclick: () => localAdd(c) })),
       note(c.id)))) : [el('p', { className: 'setting-desc', textContent: 'Everything in the catalogue is added.' })]));
-  loc.errors.replaceChildren(...Object.values(data.errors || {}).map((why) => el('p', { className: 'setting-desc bad', textContent: `Left out: ${why}` })));
+  loc.errors.replaceChildren(...Object.values(data.errors || {}).map((why) => el('p', { className: 'setting-desc bad', textContent: `Omitted: ${why}` })));
   clearTimeout(locPoll);
   if (fetching) locPoll = setTimeout(() => { loadLocal(); loadAccess(); }, 1500);
 }
@@ -4834,20 +4834,20 @@ function catalogueNote(a) {
   if (!c) return null;
   const day = new Date(c.at * 1000).toLocaleDateString();
   if (c.status === 'updated') {
-    return el('span', { className: 'setting-desc', textContent: `Updated from the catalogue on ${day}: ${(c.changed || []).join(', ') || 'small changes'}.` });
+    return el('span', { className: 'setting-desc', textContent: `Updated from the catalogue on ${day}. Changes: ${(c.changed || []).join(', ') || 'none to permissions, trust or source'}.` });
   }
   if (c.status === 'held') {
-    return el('span', { className: 'setting-desc bad', textContent: `The catalogue has a newer version that changes what you agreed to: ${(c.held || []).join('; ')}. `
-      + 'The version you agreed to keeps running until you accept the new one.' });
+    return el('span', { className: 'setting-desc bad', textContent: `The catalogue has a newer version that changes permissions, trust or source: ${(c.held || []).join(', ')}. `
+      + 'The version that you approved keeps running until you select Approve changed permissions.' });
   }
-  if (c.status === 'gone') return el('span', { className: 'setting-desc', textContent: "No longer in the catalogue: it keeps working, but won't be updated from it." });
+  if (c.status === 'gone') return el('span', { className: 'setting-desc', textContent: 'No longer in the catalogue. It keeps working, but the catalogue no longer updates it.' });
   return null;
 }
 
 function localAccept(a, data) {
   const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
-  if (!confirm(`${c.consent || ''}\n\nWhat changed: ${((a.catalogue || {}).held || []).join('; ')}.\n\n${capsText(c.capabilities)}`)) return;
-  localPost({ action: 'accept', id: a.id, agree: true }, a.id, `${a.title}: the new version accepted, fetching it…`);
+  if (!confirm(`${c.consent || ''}\n\nWhat changed: ${((a.catalogue || {}).held || []).join(', ')}.\n\n${capsText(c.capabilities)}`)) return;
+  localPost({ action: 'accept', id: a.id, agree: true }, a.id, `${a.title}: the changed permissions are approved. Downloading the new version…`);
 }
 
 async function loadLocal() {
@@ -4864,25 +4864,25 @@ async function localPost(body, id, doing) {
 }
 
 function localAdd(c) {
-  if (!confirm(`${c.consent}\n\n${capsText(c.capabilities)}\n\nIt starts off: switch it on here once it is installed.`)) return;
-  localPost({ action: 'add', id: c.id, agree: true }, c.id, `Adding ${c.title}: fetching it…`);
+  if (!confirm(`${c.consent}\n\n${capsText(c.capabilities)}\n\nIt starts disabled. Enable it here after the installation.`)) return;
+  localPost({ action: 'add', id: c.id, agree: true }, c.id, `Adding ${c.title}. Downloading it…`);
 }
 
 function localRemove(a) {
-  if (!confirm(`Remove ${a.title}? Its files go; adding it back fetches it again.`)) return;
+  if (!confirm(`Remove ${a.title}? The box deletes its files. Adding it again downloads it again.`)) return;
   localPost({ action: 'remove', id: a.id }, a.id, `${a.title} removed.`);
 }
 
 loc.pasteGo.addEventListener('click', async () => {
   const bad = (text) => { loc.pasteNote.textContent = text; loc.pasteNote.className = 'setting-desc bad'; };
   let manifest;
-  try { manifest = JSON.parse(loc.paste.value); } catch (err) { bad(`Not JSON: ${err.message}`); return; }
-  if (!loc.pasteOk.checked) { bad('Read the warning, and tick the box, first.'); return; }
+  try { manifest = JSON.parse(loc.paste.value); } catch (err) { bad(`Invalid manifest JSON: ${err.message}`); return; }
+  if (!loc.pasteOk.checked) { bad('Read the warning and select the checkbox first.'); return; }
   const addon = (manifest && manifest.addon) || {};
   if (!confirm(`Add "${addon.title}" from a pasted manifest?\n\n${addon.consent || ''}\n\n${capsText(manifest.capabilities)}`)) return;
   try {
     await postJSON('/admin/local-addons', { action: 'paste', manifest, understood: LOC_UNDERSTOOD });
-    loc.pasteNote.textContent = 'Added: fetching it.';
+    loc.pasteNote.textContent = 'Added. Downloading it.';
     loc.pasteNote.className = 'setting-desc';
     loc.paste.value = '';
     loc.pasteOk.checked = false;
@@ -4923,8 +4923,8 @@ async function setSetupDone(done) {
 (() => {
   const port = location.port && location.port !== '80' ? location.port : '';
   setupStep('connection', port
-    ? `At http://${location.host}/, on port ${port}: something else has port 80, so a phone joining a hotspot would not get the sign-in sheet. Everything else works.`
-    : `At http://${location.host}/ on the network the box is already on. A hotspot of its own is planned as an add-on.`,
+    ? `At http://${location.host}/ on port ${port}. Something else uses port 80, so a phone that joins a hotspot does not get the captive portal page.`
+    : `At http://${location.host}/ on the network that the box is already on.`,
   port ? 'warn' : 'ok');
   setupStep('password', 'Set.', 'ok');
 })();
@@ -4971,19 +4971,19 @@ function renderUsb(data) {
       el('span', { className: 'setting-name', textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }),
       d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
       ...(d.zims.length ? d.zims.map((z) => el('span', { className: 'usb-book' },
-        el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ` · cannot be imported: ${z.problem || 'not a ZIM file'}`}` }),
-        z.zim ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
+        el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ` · Cannot import: ${z.problem || 'not a ZIM file'}`}` }),
+        z.zim ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy book to library', disabled: busy,
           onclick: () => usbRequest({ action: 'import', device: d.name, file: z.file }, `${d.name}:${z.file}`,
             `Copy ${z.file} into the library (${size(z.size)})?`) }) : null,
         noteAt(`${d.name}:${z.file}`)))
         : [el('span', { className: 'setting-desc', textContent: d.error ? '' : 'No books on this drive.' })]),
       data.books.length ? el('span', { className: 'library-buttons' }, pick,
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Export to this drive', disabled: busy,
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Export book to USB drive', disabled: busy,
           onclick: () => usbRequest({ action: 'export', device: d.name, book: pick.value }, `export:${d.name}`,
             `Copy ${pick.value}.zim onto ${d.label || d.name}?`) })) : null,
       noteAt(`export:${d.name}`)));
   }));
-  if (data.scan && !devs.length) usb.devices.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No USB drive found. Connect one to the box and scan again.' }));
+  if (data.scan && !devs.length) usb.devices.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No USB drive found. Connect a USB drive. Select Scan USB drives.' }));
   usb.progress.hidden = !p;
   if (p) {
     usb.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
@@ -5027,10 +5027,10 @@ const gitView = { kind: 'all', area: 'all', q: '', open: null };
 const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'administrators push', nobody: 'read-only' };
 const builds = (r) => r.can_build && r.build && r.has_script;
 const repoKey = (r) => `${r.area}/${r.name}`;
-const GIT_KINDS = [['all', 'All', () => true], ['mine', 'Mine', (r) => !r.mirror_of], ['mirrors', 'Mirrors', (r) => !!r.mirror_of],
+const GIT_KINDS = [['all', 'All', () => true], ['mine', 'Local repositories', (r) => !r.mirror_of], ['mirrors', 'Mirrors', (r) => !!r.mirror_of],
   ['builds', 'Builds', builds]];
-const GIT_AREAS = [['all', 'Public and private', () => true], ['public', 'Public', (r) => r.area === 'public'],
-  ['private', 'Private', (r) => r.area === 'private']];
+const GIT_AREAS = [['all', 'All access', () => true], ['public', 'Guests', (r) => r.area === 'public'],
+  ['private', 'Administrators', (r) => r.area === 'private']];
 
 // One sentence for the card: who sees it, who pushes, whether pushes are built.
 function accessSentence(r) {
@@ -5043,14 +5043,14 @@ function accessSentence(r) {
 function renderGit(data) {
   gitData = data;
   if (!data.installed) {
-    git.usage.textContent = 'The git servers are not set up on this box: rerun install.sh.';
+    git.usage.textContent = 'The git servers are not set up on this box. Run install.sh again.';
     git.grid.replaceChildren();
     return;
   }
   renderMirrors(data);
   const total = data.repos.reduce((n, r) => n + r.size, 0);
   git.usage.textContent = `${data.repos.length} repositor${data.repos.length === 1 ? 'y' : 'ies'}, ${size(total)}` +
-    (data.free != null ? `; ${size(data.free)} free on the card` : '') +
+    (data.free != null ? `, ${size(data.free)} free on the card` : '') +
     `. A single push can be up to ${size(data.max_push)}.`;
   // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
   const shown = data.repos.filter((r) => !r.submodule_of);
@@ -5090,7 +5090,7 @@ function newPanel(cls) {
   return el('div', { className: `git-manage ${cls}` },
     el('div', { className: 'git-manage-head' }, el('strong', { textContent: 'New' }), closeButton()),
     el('section', {}, el('h4', { textContent: 'An empty repository' }),
-      el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Public: anyone on the network can browse and clone it. Until you change the push setting, only administrators can push. Private: only administrators can browse, clone or push.' }),
+      el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Guests: anyone on the network can browse and clone it. Until you change the push setting, only administrators can push. Administrators: only administrators can browse, clone or push.' }),
       git.form, git.createNote),
     el('section', {}, el('h4', { textContent: 'A mirror of a repository on the internet' }),
       el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed under Mirrors, below.' }),
@@ -5108,13 +5108,13 @@ function repoCard(r, data) {
   const ms = (m && m.status) || {};
   const b = r.last_build;
   const badges = [
-    [r.area === 'public' ? 'Public' : 'Private', `badge-${r.area}`],
+    [r.area === 'public' ? 'Guests' : 'Administrators', `badge-${r.area}`],
     [r.mirror_of ? 'read-only' : PUSH_WORDS[r.write], 'badge-push'],
     r.mirror_of ? ['Mirror', 'badge-mirror'] : null,
     builds(r) ? [b ? `${STATE_ICON[b.state] || ''} build ${b.state}${b.started ? `, ${commitDate(b.started)}` : ''}` : 'builds on push', `badge-build${b && b.state === 'failed' ? ' bad' : ''}`] : null,
   ].filter(Boolean);
   const facts = r.mirror_of
-    ? [`from ${r.mirror_of.replace(/^https:\/\//, '')}`, ms.updated ? `updated ${commitDate(ms.updated)}` : 'not fetched yet', size(r.size)]
+    ? [`from ${r.mirror_of.replace(/^https:\/\//, '')}`, ms.updated ? `updated ${commitDate(ms.updated)}` : 'not downloaded yet', size(r.size)]
     : [r.last_commit ? `Last commit ${commitDate(r.last_commit)}` : 'Empty', r.branches ? `${r.branches} branch${r.branches === 1 ? '' : 'es'}` : null, size(r.size)];
   const open = gitView.open === repoKey(r);
   return el('div', { className: `git-card${open ? ' open' : ''}` },
@@ -5147,17 +5147,17 @@ function managePanel(r, data, cls) {
   // Who can see it: the area. Moving changes the clone URL, so it asks.
   const see = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can see it?' }),
     radio('see', 'public', 'Everyone on the network', r.area === 'public', act({ action: 'move', area: r.area, name: r.name, to: 'public' },
-      `Move ${r.name}.git to /git/? Anyone on the network will be able to browse and clone it, and its clone URL changes.`, `${r.name}.git is public now.`)),
+      `Move ${r.name}.git to /git/? Anyone on the network can browse and clone it. Its clone URL changes.`, `${r.name}.git is now visible to guests.`)),
     radio('see', 'private', 'Only administrators', r.area === 'private', act({ action: 'move', area: r.area, name: r.name, to: 'private' },
-      `Move ${r.name}.git to /git-private/? Only administrators can see or clone it. Its clone URL changes.`, `${r.name}.git is private now.`)),
-    el('p', { className: 'setting-desc', textContent: 'Moving it changes its clone URL; clones elsewhere need git remote set-url.' }));
+      `Move ${r.name}.git to /git-private/? Only administrators can see or clone it. Its clone URL changes.`, `${r.name}.git is now visible to administrators only.`)),
+    el('p', { className: 'setting-desc', textContent: 'Moving it changes its clone URL. Clones elsewhere need git remote set-url.' }));
   const presets = (data.presets || {})[r.area] || [];
-  const WHO = { everyone: 'Anyone', users: 'The box\'s users (their account\'s name and password)', admin: 'Only administrators', nobody: 'Nobody (read-only)' };
+  const WHO = { everyone: 'Anyone', users: 'Users (account name and password)', admin: 'Only administrators', nobody: 'Nobody (read-only)' };
   const push = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can push?' }),
     ...presets.map((p) => radio('push', p.name, WHO[p.write], p.name === r.preset, act({ action: 'preset', area: r.area, name: r.name, preset: p.name },
-      p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git without signing in? They cannot rewrite or delete its history. Public repositories have a storage limit. The box serves anything they push.` : null,
+      p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git without signing in? They cannot rewrite or delete its history. Repositories that guests can read have a storage limit. The box serves anything they push.` : null,
       `${r.name}.git: ${p.text}.`))),
-    el('p', { className: 'setting-desc', textContent: 'The hub decides each push; nobody can rewrite or delete history in a public repository.' }));
+    el('p', { className: 'setting-desc', textContent: 'The hub server decides each push. Nobody can rewrite or delete history in a repository that guests can read.' }));
   const buildNow = r.can_build && r.build && r.has_script ? actionButton('Build now', async () => {
     try {
       const out = await postJSON('/admin/ci', { action: 'build', repo: r.name });
@@ -5169,12 +5169,12 @@ function managePanel(r, data, cls) {
     r.can_build
       ? el('label', { className: 'inline' }, el('input', { type: 'checkbox', className: 'git-build', checked: r.build,
         onchange: (e) => act({ action: 'build', area: r.area, name: r.name, on: e.target.checked }, null,
-          `${r.name}.git: builds ${e.target.checked ? 'on' : 'off'}.`)() }), ' Build each push that has a .irate-ci.sh')
+          `${r.name}.git: builds ${e.target.checked ? 'enabled' : 'disabled'}.`)() }), ' Build each push that has a .irate-ci.sh')
       : null,
     el('p', { className: 'setting-desc', textContent: r.can_build
-      ? (r.has_script ? 'Its newest commit has a .irate-ci.sh. A build runs as a user of its own, sandboxed, at the lowest priority (Builds, below).'
-        : 'Its newest commit has no .irate-ci.sh yet: add one at the top of the repository to build.')
-      : r.area === 'public' ? 'Public repositories never build: anyone could push what runs.'
+      ? (r.has_script ? 'Its newest commit has a .irate-ci.sh. A build runs as a dedicated user in a sandbox at the lowest priority (Builds, below).'
+        : 'Its newest commit has no .irate-ci.sh yet. Add one at the top of the repository to build.')
+      : r.area === 'public' ? 'Repositories that guests can push to never build, because anyone could push code that runs.'
         : 'Only for repositories that only administrators can push to.' }),
     buildNow, r.can_build ? buildSetup(r) : null);
   const desc = el('textarea', { rows: 2, maxLength: 200, value: r.description || '', className: 'git-desc' });
@@ -5185,20 +5185,20 @@ function managePanel(r, data, cls) {
   const target = el('select', { className: 'git-publish-to' }, ...others.map((o) => el('option', { value: repoKey(o), textContent: `${o.area}/${o.name}.git` })));
   const refs = withAttrs(el('input', { value: 'main', className: 'git-publish-refs' }), { 'aria-label': 'Branches or tags, separated by spaces' });
   const publish = el('section', {}, el('h4', { textContent: 'Publish to…' }),
-    el('p', { className: 'setting-desc', textContent: 'Copy branches or tags into another repository on the box (they replace those of the same name there): a private draft to a public copy, say.' }),
-    others.length ? el('p', { className: 'library-buttons' }, target, refs, actionButton('Publish', () => {
+    el('p', { className: 'setting-desc', textContent: 'Copy branches or tags into another repository on the box. They replace branches or tags of the same name there. Example: copy a draft from an administrator-only repository to a repository that guests can read.' }),
+    others.length ? el('p', { className: 'library-buttons' }, target, refs, actionButton('Publish branches or tags', () => {
       const [toArea, toName] = target.value.split('/');
       act({ action: 'publish', from: { area: r.area, name: r.name }, to: { area: toArea, name: toName }, refs: refs.value.trim().split(/\s+/) },
-        null, 'Published.')();
+        `Publish ${refs.value.trim()} from ${r.name}.git to ${target.value}.git? This replaces branches or tags of the same name there.`, 'Published.')();
     }, { className: 'small' })) : el('p', { className: 'setting-desc', textContent: 'There is no other repository to publish to yet.' }));
   return el('div', { className: `git-manage ${cls}` },
     el('div', { className: 'git-manage-head' }, el('strong', { textContent: `Manage ${r.name}.git` }), closeButton()),
     el('section', {}, el('h4', { textContent: 'Access' }), el('p', { className: 'setting-desc', textContent: accessSentence(r) }), see, push, build),
     about, publish,
     el('section', { className: 'git-danger' }, el('h4', { textContent: 'Delete' }),
-      el('p', { className: 'setting-desc', textContent: 'Its history goes with it. Clones elsewhere keep theirs; this one cannot be brought back.' }),
-      actionButton(`Delete ${r.name}.git`, act({ action: 'delete', area: r.area, name: r.name },
-        `Delete ${r.name}.git and all its history? Clones elsewhere keep theirs; this one cannot be brought back.`, 'Deleted.'), { className: 'small danger' })));
+      el('p', { className: 'setting-desc', textContent: 'Deleting it removes its history. Clones elsewhere keep their own history. You cannot restore this repository.' }),
+      actionButton(`Delete repository ${r.name}.git`, act({ action: 'delete', area: r.area, name: r.name },
+        `Delete the repository ${r.name}.git and all its history? Clones elsewhere keep their own history. You cannot restore this repository.`, 'Deleted.'), { className: 'small danger' })));
 }
 
 git.search.addEventListener('input', () => { gitView.q = git.search.value.trim(); if (gitData) renderGit(gitData); });
@@ -5207,7 +5207,7 @@ git.search.addEventListener('input', () => { gitView.q = git.search.value.trim()
 function renderMirrors(data) {
   const act = (body, confirmText) => async () => {
     if (confirmText && !confirm(confirmText)) return;
-    try { renderGit(await postJSON('/admin/git', body)); say(body.action === 'mirror-remove' ? 'Removed.' : 'Started: the outcome shows here when it is done.', true, git.mirrorNote); }
+    try { renderGit(await postJSON('/admin/git', body)); say(body.action === 'mirror-remove' ? 'Removed.' : 'Started. The outcome shows here when it is done.', true, git.mirrorNote); }
     catch (err) { say(err.message, false, git.mirrorNote); }
   };
   const list = data.mirrors || [];
@@ -5219,14 +5219,14 @@ function renderMirrors(data) {
     const subs = Object.entries(st.submodules || {}).map(([p, s]) => `${p} (${s.kept.length} commit${s.kept.length === 1 ? '' : 's'}, ${size(s.size)})`);
     const state = st.error ? `error: ${st.error}` : st.outcome
       ? `${st.outcome}${st.size != null ? ` · ${size(st.size)}` : ''}${st.checked ? ` · checked ${commitDate(st.checked)}` : ''}`
-      : 'not fetched yet';
+      : 'not downloaded yet';
     // Release groups: revoked releases (named so by their project) are left out unless switched off.
     const relGroups = m.groups.filter((g) => g.kind !== 'tags');
     const skipping = relGroups.some((g) => g.skip_revoked !== false);
     const revoked = ((st.releases || {}).list || []).filter((r) => r[2]).map((r) => r[0]);
     const relNote = !relGroups.length ? null : [
-      skipping ? (revoked.length ? `revoked, left out: ${revoked.join(', ')}` : 'revoked releases are left out')
-        : 'revoked releases are kept like any other',
+      skipping ? (revoked.length ? `Revoked releases are excluded: ${revoked.join(', ')}` : 'Revoked releases are excluded')
+        : 'Revoked releases are included',
       st.releases_cached ? `release list from the cache of ${st.releases_cached.since ? commitDate(st.releases_cached.since) : 'earlier'} (${st.releases_cached.why})` : null,
     ].filter(Boolean).join(' · ');
     return el('div', { className: 'admin-item' },
@@ -5239,19 +5239,19 @@ function renderMirrors(data) {
         el('span', { className: `setting-desc${st.error || st.over_budget ? ' bad' : ''}`, textContent: state }),
         // Every upstream tag, held apart for checking (mirrors.py _sync_tags); one moved upstream said plainly.
         st.tags ? el('span', { className: `setting-desc${(st.tags.moved || []).length ? ' bad' : ''}`, textContent:
-          `Holds all ${st.tags.count} of its upstream's tags (${st.tags.signed} signed), without their files`
-          + ((st.tags.moved || []).length ? `; moved upstream since it was first seen: ${st.tags.moved.join(', ')}` : '') }) : null,
+          `Holds all ${st.tags.count} tags of its upstream repository (${st.tags.signed} carry a signature that the box does not verify), without their files.`
+          + ((st.tags.moved || []).length ? ` Moved upstream since first detected: ${st.tags.moved.join(', ')}.` : '') }) : null,
         st.tags_error ? el('span', { className: 'setting-desc bad', textContent: `The tags: ${st.tags_error}` }) : null),
       el('span', { className: 'library-buttons' },
         actionButton('Check now', act({ action: 'mirror-check', name: m.name }), { className: 'small', disabled: data.running }),
-        actionButton('Download', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Fetching is a mirror\'s update' }),
+        actionButton('Update mirror', act({ action: 'mirror-update', name: m.name }), { className: 'small', disabled: data.running, title: 'Updating a mirror downloads new data from the upstream repository' }),
         actionButton(m.submodules ? 'Without submodules' : 'With submodules', act({ action: 'mirror-change',
           mirror: Object.assign({}, m, { status: undefined, submodules: !m.submodules }) }), { className: 'small' }),
-        relGroups.length ? actionButton(skipping ? 'Keep revoked' : 'Leave revoked out', act({ action: 'mirror-change',
+        relGroups.length ? actionButton(skipping ? 'Include revoked releases' : 'Exclude revoked releases', act({ action: 'mirror-change',
           mirror: Object.assign({}, m, { status: undefined, groups: m.groups.map((g) => g.kind === 'tags' ? g : Object.assign({}, g, { skip_revoked: !skipping })) }) },
-          skipping ? 'Keep releases their project has revoked (for looking into them)? They are left out by default.' : null), { className: 'small' }) : null,
-        actionButton('Remove', act({ action: 'mirror-remove', name: m.name },
-          `Remove the mirror ${m.name}.git and its copy on the box? The upstream is not touched.`), { className: 'small' })));
+          skipping ? 'Include releases that their project has revoked? The mirror excludes them by default. Include them only to investigate them.' : null), { className: 'small' }) : null,
+        actionButton('Remove local mirror', act({ action: 'mirror-remove', name: m.name },
+          `Remove the local mirror ${m.name}.git and its copy on the box? The upstream repository is not changed.`), { className: 'small' })));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
 }
 
@@ -5269,7 +5269,7 @@ git.mirrorForm.addEventListener('submit', async (e) => {
     budget_mb: Number(f.budget.value) || 2048, submodules: f.submodules.checked };
   try {
     renderGit(await postJSON('/admin/git', { action: 'mirror-add', mirror }));
-    say(`Added ${mirror.name}.git: Update fetches it now, or the librarian on its schedule.`, true, git.mirrorNote);
+    say(`Added ${mirror.name}.git. Select Update mirror to download it now, or the librarian downloads it on its schedule.`, true, git.mirrorNote);
   } catch (err) { say(err.message, false, git.mirrorNote); }
 });
 
@@ -5299,26 +5299,26 @@ let ciData = null;
 let ciViewing = null; // { run, next, log } while a run's view is open
 function renderCi(data) {
   ciData = data;
-  if (!data.installed) { ciAbout.textContent = 'Builds are not set up on this box: rerun install.sh.'; return; }
-  ciAbout.textContent = `A push to a private repository whose commit has a ${data.script} at its top builds it here: ` +
-    `a fresh clone, then bash ${data.script}, as a user of its own, at the lowest priority. Public repositories never build. ` +
-    'Set one up, or build now, under Manage on its card.' + (data.queued ? ` ${data.queued} waiting.` : '');
+  if (!data.installed) { ciAbout.textContent = 'Builds are not set up on this box. Run install.sh again.'; return; }
+  ciAbout.textContent = `A push to an administrator-only repository builds here when its commit has a ${data.script} at the top. ` +
+    `The box makes a fresh clone and runs bash ${data.script} as a dedicated user at the lowest priority. Repositories that guests can push to never build. ` +
+    'Set up builds, or select Build now, under Manage on the card of a repository.' + (data.queued ? ` ${data.queued} waiting.` : '');
   const mem = data.memory || {};
-  const memText = /^\d+$/.test(mem.max || '') ? `memory capped at ${size(Number(mem.max))}` : 'no memory cap';
+  const memText = /^\d+$/.test(mem.max || '') ? `memory limit ${size(Number(mem.max))}` : 'no memory limit';
   noteEl('ci-limits').textContent = `Each build: up to ${Math.round(data.time_limit / 3600)} hours, ${memText}, ` +
-    `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}; the newest ${data.keep_runs} per repository are kept, and any marked Keep.`;
+    `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}. The box retains the newest ${data.keep_runs} runs for each repository, and every run marked Retain run.`;
   const kf = document.getElementById('ci-keep-form');
   if (!kf.contains(document.activeElement)) kf.elements.keep.value = data.keep_runs;
-  noteEl('ci-offline').textContent = 'With no internet: ' + ((data.mirrored || []).length
-    ? `a build's git fetches of ${data.mirrored.length} URL${data.mirrored.length === 1 ? '' : 's'} come from this box's mirrors (${data.mirrored.slice(0, 3).map((u) => u.replace(/^https:\/\//, '')).join(', ')}${data.mirrored.length > 3 ? '…' : ''})`
-    : 'no mirrors yet, so a build that fetches from the internet needs it (Git → Mirrors)')
-    + (data.pio_deps ? '; PlatformIO\'s packages come from the library\'s cache (CI_PIO_DEPS).' : '; no PlatformIO cache kept (Builds above, the firmware build cache).')
-    + (data.wheelhouse ? ' pip installs (platformio itself) come from the Building kit\'s wheelhouse (PIP_NO_INDEX, PIP_FIND_LINKS).'
-      : ' The Building kit has no wheelhouse yet: a build\'s pip install still needs the internet.');
+  noteEl('ci-offline').textContent = 'Without internet access: ' + ((data.mirrored || []).length
+    ? `git downloads of ${data.mirrored.length} URL${data.mirrored.length === 1 ? '' : 's'} in a build use the mirrors of this box (${data.mirrored.slice(0, 3).map((u) => u.replace(/^https:\/\//, '')).join(', ')}${data.mirrored.length > 3 ? '…' : ''}).`
+    : 'no mirrors exist yet, so a build that downloads from the internet needs internet access (Git → Mirrors).')
+    + (data.pio_deps ? ' PlatformIO packages come from the cache of the library (CI_PIO_DEPS).' : ' No PlatformIO cache is kept (Builds above, the firmware build cache).')
+    + (data.wheelhouse ? ' pip installs (platformio itself) use the wheelhouse of the Building toolkit (PIP_NO_INDEX, PIP_FIND_LINKS).'
+      : ' The Building toolkit has no wheelhouse yet, so a pip install in a build still needs internet access.');
   ciRuns.replaceChildren(...(data.runs.length ? data.runs.map((r) => el('div', { className: 'admin-item' },
     el('span', {},
-      el('strong', { textContent: `${STATE_ICON[r.state] || ''} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` + (r.keep ? ' · kept' : '') }),
-      el('span', { className: 'setting-desc', textContent: [r.state, r.by === 'build-now' ? 'built by hand' : null,
+      el('strong', { textContent: `${STATE_ICON[r.state] || ''} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` + (r.keep ? ' · retained' : '') }),
+      el('span', { className: 'setting-desc', textContent: [r.state, r.by === 'build-now' ? 'built manually' : null,
         r.duration != null ? minutes(r.duration) : null,
         r.started ? commitDate(r.started) : null].filter(Boolean).join(' · ') })),
     el('span', { className: 'library-buttons' }, actionButton('View', () => openRun(r.run), { className: 'small' }))))
@@ -5354,22 +5354,22 @@ async function followRun() {
     el('div', { className: 'git-manage-head' }, el('strong', { textContent: `${STATE_ICON[st.state] || ''} ${st.repo} · ${st.branch} · ${st.commit.slice(0, 7)}` }),
       actionButton('Close', () => { ciViewing = null; box.hidden = true; }, { className: 'small' })),
     el('p', { className: 'setting-desc', textContent: [st.state, st.duration != null ? minutes(st.duration) : running ? `running for ${minutes(Math.round(Date.now() / 1000 - st.started))}` : null,
-      st.keep ? 'kept' : null].filter(Boolean).join(' · ') }),
+      st.keep ? 'retained' : null].filter(Boolean).join(' · ') }),
     v.steps.length ? el('ol', { className: 'ci-steps' }, ...v.steps.map((x) => el('li', { textContent: x }))) : null,
     pre,
     v.artifacts.length ? el('p', { className: 'library-buttons' }, el('span', { className: 'setting-desc', textContent: 'Artifacts: ' }),
       ...v.artifacts.map((a) => el('a', { href: ciFile(v.run, a.name), className: 'button-link small', textContent: `${a.name} (${size(a.size)})` }))) : null,
     el('p', { className: 'library-buttons' },
-      el('a', { href: ciFile(v.run, 'log.txt'), target: '_blank', className: 'button-link small', textContent: 'The whole log' }),
-      running ? null : actionButton(st.keep ? 'Stop keeping' : 'Keep', () => ciChange(v.run, st.keep ? 'unkeep' : 'keep'), { className: 'small' }),
-      running ? null : actionButton('Delete', () => { if (confirm('Delete this run, its log and its artifacts?')) ciChange(v.run, 'delete'); }, { className: 'small danger' })));
+      el('a', { href: ciFile(v.run, 'log.txt'), target: '_blank', className: 'button-link small', textContent: 'Download full log' }),
+      running ? null : actionButton(st.keep ? 'Stop retaining run' : 'Retain run', () => ciChange(v.run, st.keep ? 'unkeep' : 'keep'), { className: 'small' }),
+      running ? null : actionButton('Delete run', () => { if (confirm('Delete this run, its log and its artifacts?')) ciChange(v.run, 'delete'); }, { className: 'small danger' })));
   pre.scrollTop = pre.scrollHeight;
   if (running) setTimeout(followRun, 2000);
 }
 async function ciChange(run, action) {
   try {
     await postJSON('/admin/ci', { action, run });
-    say(action === 'delete' ? 'Deleted once the builder gets to it (after a build in progress).' : 'Done once the builder gets to it.', true, git.note);
+    say(action === 'delete' ? 'Queued. The builder deletes the run after any build in progress.' : 'Queued. The builder applies the change when it is free.', true, git.note);
     if (action === 'delete') { ciViewing = null; noteEl('ci-run-view').hidden = true; }
     setTimeout(loadCi, 1500);
   } catch (err) { say(err.message, false, git.note); }
@@ -5383,8 +5383,8 @@ document.getElementById('ci-keep-form').addEventListener('submit', async (e) => 
 // "Set up builds", in a repository's Manage: what a script gets, and templates to start from.
 function buildSetup(r) {
   if (!ciData || !ciData.templates) return null;
-  return el('details', { className: 'ci-setup' }, el('summary', { textContent: 'Set up builds: what a script gets, and templates' }),
-    el('p', { className: 'setting-desc', textContent: `Put a ${ciData.script} at the top of the repository; each push to a branch runs it with bash, in a fresh clone of that commit.` }),
+  return el('details', { className: 'ci-setup' }, el('summary', { textContent: 'Set up builds: script environment and templates' }),
+    el('p', { className: 'setting-desc', textContent: `Put a ${ciData.script} at the top of the repository. Each push to a branch runs it with bash in a fresh clone of that commit.` }),
     el('dl', { className: 'ci-env' }, ...Object.entries(ciData.env || {}).flatMap(([k, v]) => [el('dt', {}, el('code', { textContent: k })), el('dd', { textContent: v })])),
     ...Object.entries(ciData.templates).map(([k, t]) => {
       const pre = el('pre', { className: 'admin-log', textContent: t.script });
@@ -5436,19 +5436,19 @@ function renderFirmware(data) {
   const targets = (data.targets || []).filter((t) => !q || t.board.includes(q) || t.platform.includes(q));
   if (!fw.cacheForm.contains(document.activeElement)) fw.cacheForm.elements.cache.value = cfg.cache;
   fw.cacheStatus.replaceChildren(...(st.cache
-    ? [`Kept: ${st.cache.version}'s, ${st.cache.mode === 'native' ? 'headless' : 'all of it'}, ${size(st.cache.bytes)}. `,
-      actionButton('Flush', async () => {
-        try { fwData = await postJSON('/admin/firmware', { action: 'flush-cache' }); renderFirmware(fwData); say('Gone. The next check or update re-fetches it if the policy still wants one.', true, fw.cacheNote); }
+    ? [`Stored firmware: ${st.cache.version}, ${st.cache.mode === 'native' ? 'headless' : 'complete'}, ${size(st.cache.bytes)}. `,
+      actionButton('Remove cache', async () => {
+        try { fwData = await postJSON('/admin/firmware', { action: 'flush-cache' }); renderFirmware(fwData); say('Cache removed. The next check or update downloads it again if the policy requires a cache.', true, fw.cacheNote); }
         catch (err) { say(err.message, false, fw.cacheNote); }
       }, { className: 'small' })]
-    : [cfg.cache === 'discard' ? '' : 'Not fetched yet: the library fetches it on its schedule, or Update now on the Firmware page.']));
+    : [cfg.cache === 'discard' ? '' : 'No cache stored yet. The library downloads it on its schedule, or select Update now on the Firmware page.']));
   fw.source.replaceChildren(...(data.source
     ? [`Source: mirrored as `, el('a', { href: `${data.source.area === 'public' ? '/git/' : '/git-private/'}${data.source.name}.git/`, textContent: `${data.source.name}.git` }),
-      ' (Git → Mirrors). The pinout map\'s board configs are read from it, with no internet.']
-    : ['Source: not mirrored on this box. ', actionButton('Mirror the source', async () => {
+      ' (Git → Mirrors). The pinout map reads the board configs from this mirror, without internet access.']
+    : ['Source: not mirrored on this box. ', actionButton('Mirror source code', async () => {
       try {
         await postJSON('/admin/git', { action: 'mirror-add', mirror: FW_SOURCE_MIRROR });
-        say('Added meshtastic-firmware.git (master, 2 releases, 2 pre-releases, shallow, with submodules): the library fetches it on its schedule, or Update on Git → Mirrors.', true, fw.note);
+        say('Added meshtastic-firmware.git (master, 2 releases, 2 pre-releases, shallow, with submodules). The library downloads it on its schedule, or select Update mirror on Git → Mirrors.', true, fw.note);
         loadFirmware();
       } catch (err) { say(err.message, false, fw.note); }
     }, { className: 'small' })]));
@@ -5457,15 +5457,15 @@ function renderFirmware(data) {
     el('input', { type: 'checkbox', checked: fwChosen.has(t.board),
       onchange: (e) => { if (e.target.checked) fwChosen.add(t.board); else fwChosen.delete(t.board); } }),
     ` ${t.board} `, el('span', { className: 'setting-desc', textContent: t.platform })))
-    : [el('p', { className: 'setting-desc', textContent: 'No board list yet: switch it on, Save, then Check now.' })]));
+    : [el('p', { className: 'setting-desc', textContent: 'No board list available. Enable firmware downloads, select Save, then select Check now.' })]));
   const versions = Object.entries(st.versions || {});
   fw.kept.replaceChildren(...(versions.length ? versions.map(([v, info]) => el('div', { className: 'admin-item' },
     el('span', {}, el('strong', { textContent: `${v} (${info.channel})` }),
       el('span', { className: 'setting-desc', textContent: `${info.boards.length} board${info.boards.length === 1 ? '' : 's'}, ` +
-        `${info.files} files, ${size(info.bytes)}` + (info.missing && info.missing.length ? `; not in this release: ${info.missing.join(', ')}` : '') +
-        (info.unavailable && info.unavailable.length ? `; left out, a file missing from the release: ${info.unavailable.map((u) => u.board).join(', ')}` : '') +
-        (st.cache && st.cache.version === v ? `; build cache (${st.cache.mode}) ${size(st.cache.bytes)}` : '') }))))
-    : [el('p', { className: 'setting-desc', textContent: 'Nothing kept yet.' })]));
+        `${info.files} files, ${size(info.bytes)}` + (info.missing && info.missing.length ? `. Boards not in this release: ${info.missing.join(', ')}` : '') +
+        (info.unavailable && info.unavailable.length ? `. Omitted because a file is missing from the release: ${info.unavailable.map((u) => u.board).join(', ')}` : '') +
+        (st.cache && st.cache.version === v ? `. Build cache (${st.cache.mode}): ${size(st.cache.bytes)}` : '') + '.' }))))
+    : [el('p', { className: 'setting-desc', textContent: 'No stored firmware yet.' })]));
   clearTimeout(fwPoll);
   if (data.running) fwPoll = setTimeout(loadFirmware, 2000);
 }
@@ -5484,7 +5484,7 @@ fw.form.addEventListener('submit', async (e) => {
       keep_alpha: Number(f.keep_alpha.value), keep_beta: Number(f.keep_beta.value),
       boards: f.all_boards.checked ? 'all' : [...fwChosen] });
     renderFirmware(fwData);
-    say('Saved. Update now fetches what is missing; the schedule does the rest.', true, fw.note);
+    say('Saved. Select Update now to download the missing files. The schedule handles the rest.', true, fw.note);
   } catch (err) { say(err.message, false, fw.note); }
 });
 fw.cacheForm.addEventListener('submit', async (e) => {
@@ -5492,7 +5492,7 @@ fw.cacheForm.addEventListener('submit', async (e) => {
   try {
     fwData = await postJSON('/admin/firmware', { action: 'settings', cache: fw.cacheForm.elements.cache.value });
     renderFirmware(fwData);
-    say('Saved. The library fetches or drops it on its schedule (Update now on the Firmware page does it now).', true, fw.cacheNote);
+    say('Saved. The library downloads or removes the cache on its schedule. Update now on the Firmware page does it now.', true, fw.cacheNote);
   } catch (err) { say(err.message, false, fw.cacheNote); }
 });
 for (const [id, action] of [['fw-check', 'check'], ['fw-update', 'update']]) {
@@ -5527,11 +5527,11 @@ function hoursPicker(value) {
 const pickedHours = (sel) => (sel.value === 'never' ? null : Number(sel.value));
 
 async function kitAct(body, quiet) {
-  if (body.action === 'fetch' && !quiet && !meteredOk('Fetching the toolkit')) return;
+  if (body.action === 'fetch' && !quiet && !meteredOk('Downloading the toolkit')) return;
   try {
     const data = await postJSON('/admin/kits', body);
     if (data.id) kitsWaiting.add(data.id);
-    if (!quiet) say(data.id ? 'Asked: the root helper works on it now (a fetch takes a few minutes).' : 'Saved.', true, kitsEl.note);
+    if (!quiet) say(data.id ? 'Queued. The root helper works on it now. A download takes a few minutes.' : 'Saved.', true, kitsEl.note);
     renderKits(data);
   } catch (err) { say(err.message, false, kitsEl.note); }
 }
@@ -5549,15 +5549,15 @@ function renderKits(data) {
   const newest = Math.max(0, ...cached.map((k) => st.kits[k.id].cached.fetched));
   const feed = (data.feeds || {}).debsecan;
   kitsEl.summary.textContent = (st.at ? `${cached.length} of ${kits.length} toolkits cached, ${size(st.pool_bytes || 0)} of ${cfg.budget_mb} MB` +
-    (newest ? `; newest fetch ${dayOf(newest)}` : '') + '. Cached kits install with no internet.' : 'Not looked at yet.') +
+    (newest ? `. Newest download: ${dayOf(newest)}` : '') + '. Cached toolkits install without internet access.' : 'Not checked yet.') +
     (feed && feed.fetched ? ` debsecan's data: ${dayOf(feed.fetched)}.` : '') + (kitsWaiting.size ? ' Working…' : '');
   if (!kitsEl.budget.contains(document.activeElement) && !kitsBudgetDirty()) {
     kitsEl.budget.elements.budget.value = cfg.budget_mb;
     kitsEl.budget.dataset.saved = cfg.budget_mb;
     kitsBudgetSync();
   }
-  kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'The cache', p,
-    'Download the kit again while online; nothing installs from a cache that fails its check.')));
+  kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'Cache integrity check failed', p,
+    'Refresh the toolkit cache while online. The box does not install from a cache that fails its integrity check.')));
   // A card per kit, its details in a drawer inside the card; not redrawn
   // under an open drawer with changes not saved.
   const open = kitsEl.grid.querySelector('.aw-card.open');
@@ -5565,7 +5565,7 @@ function renderKits(data) {
     const openId = open && open.dataset.awId;
     kitsHome.append(...kitsFormNodes);
     kitsEl.grid.replaceChildren(AW.cards([...kits.map((k) => kitItem(k, st, cfg)),
-      { id: 'kit-custom', title: '+ Custom toolkit', summary: 'Packages of your own, kept by the librarian', badges: [] }],
+      { id: 'kit-custom', title: '+ Custom toolkit', summary: 'Your own packages, managed by the librarian', badges: [] }],
     { id: 'kits-cards', body: (it, setDirty) => (it.id === 'kit-custom' ? customBody() : kitBody(it.kit, st, cfg, setDirty)),
       save: (it) => kitSave(it) }));
     const again = openId && kitsEl.grid.querySelector(`.aw-card[data-aw-id="${openId}"] .aw-card-head`);
@@ -5600,54 +5600,54 @@ function kitBody(k, st, cfg, setDirty) {
   const jobRow = (...kids) => el('p', { className: 'library-buttons' }, ...kids);
   if (inst) {
     const keep = hoursPicker(mine.remove_after);
-    jobs.append(jobRow(actionButton('Remove now', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
-      el('span', { className: 'setting-desc', textContent: 'Keep it for ' }), keep,
-      actionButton('Keep longer', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })));
+    jobs.append(jobRow(actionButton('Remove toolkit', () => kitAct({ action: 'remove', kit: k.id }), { className: 'small' }),
+      el('span', { className: 'setting-desc', textContent: 'Keep installed for ' }), keep,
+      actionButton('Extend installation period', () => kitAct({ action: 'keep', kit: k.id, hours: pickedHours(keep) }), { className: 'small' })));
     if (inst.upgraded && inst.upgraded.length) jobs.append(el('p', { className: 'setting-desc', textContent:
-      `Installing it also brought these up to date (they stay when it goes): ${inst.upgraded.join(', ')}.` }));
+      `The installation also upgraded these packages. They remain upgraded after removal: ${inst.upgraded.join(', ')}.` }));
   } else {
     // Install… first shows the consent step: what the kit can do, and when it goes again.
     const consent = () => {
       const hours = hoursPicker(mine.remove_after);
       const flag = ((kitsData || {}).flag_details || {})[k.id];
       return el('div', { className: 'kit-consent' }, el('p', { textContent: k.consent }),
-        flag ? el('p', { className: 'kit-flag', textContent: `The security doctor flags this kit's cache: ${flag} Refresh it first if the box can reach the internet.` }) : null,
-        jobRow(el('span', { className: 'setting-desc', textContent: 'Remove it again after ' }), hours,
-          actionButton('Install', () => kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }), { className: 'small' }),
+        flag ? el('p', { className: 'kit-flag', textContent: `The Security doctor flags the cache of this toolkit: ${flag} Refresh the cache first if the box has internet access.` }) : null,
+        jobRow(el('span', { className: 'setting-desc', textContent: 'Remove after ' }), hours,
+          actionButton('Install toolkit', () => kitAct({ action: 'install', kit: k.id, hours: pickedHours(hours) }), { className: 'small' }),
           actionButton('Cancel', (e) => e.target.closest('.kit-consent').replaceWith(installRow()), { className: 'small' })));
     };
     const installRow = () => jobRow(
-      actionButton('Install…', (e) => e.target.closest('p').replaceWith(consent()),
-        { className: 'small', disabled: !c, title: c ? '' : 'Not cached yet: Refresh it while the box has internet.' }),
-      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh it while the box has internet to cache it.' }));
+      actionButton('Install toolkit…', (e) => e.target.closest('p').replaceWith(consent()),
+        { className: 'small', disabled: !c, title: c ? '' : 'Not cached yet. Refresh the cache while the box has internet access.' }),
+      c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh the cache while the box has internet access.' }));
     jobs.append(installRow());
   }
   jobs.append(jobRow(
-    actionButton('Refresh this kit', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
+    actionButton('Refresh cache', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
     s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
-      if (confirm(`Go back to ${k.title}'s set fetched ${dayOf(s.previous.fetched)}?${inst ? ' Its installed packages are put back to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
+      if (confirm(`Roll back ${k.title} to the set downloaded ${dayOf(s.previous.fetched)}?${inst ? ' The rollback can downgrade installed packages to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
     }, { className: 'small' }) : null,
     k.owner ? actionButton('Edit', () => editKit(k, mine), { className: 'small' }) : null,
-    k.owner ? actionButton('Delete', () => { if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id }); },
-      { className: 'small', disabled: !!inst, title: inst ? 'Remove it first' : '' }) : null));
-  const keepBtn = el('button', { type: 'button', className: 'chip-btn' + (draft.keep_current ? ' active' : ''), textContent: `Keep current: ${draft.keep_current ? 'On' : 'Off'}` });
+    k.owner ? actionButton('Delete toolkit', () => { if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id }); },
+      { className: 'small', disabled: !!inst, title: inst ? 'Remove the toolkit first' : '' }) : null));
+  const keepBtn = el('button', { type: 'button', className: 'chip-btn' + (draft.keep_current ? ' active' : ''), textContent: `Automatic cache refresh: ${draft.keep_current ? 'On' : 'Off'}` });
   keepBtn.setAttribute('aria-pressed', String(draft.keep_current));
   keepBtn.addEventListener('click', () => { draft.keep_current = !draft.keep_current; keepBtn.classList.toggle('active', draft.keep_current);
-    keepBtn.setAttribute('aria-pressed', String(draft.keep_current)); keepBtn.textContent = `Keep current: ${draft.keep_current ? 'On' : 'Off'}`; setDirty(); });
+    keepBtn.setAttribute('aria-pressed', String(draft.keep_current)); keepBtn.textContent = `Automatic cache refresh: ${draft.keep_current ? 'On' : 'Off'}`; setDirty(); });
   const def = hoursPicker(mine.remove_after);
   def.addEventListener('change', () => { draft.remove_after = pickedHours(def); setDirty(); });
   const extra = k.owner ? null : el('input', { className: 'kit-extra', value: draft.extra, placeholder: 'e.g. ltrace gdbserver' });
   if (extra) extra.addEventListener('input', () => { draft.extra = extra.value; setDirty(); });
   const field = (label, ...kids) => el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: label }), ...kids);
   return [
-    el('p', { className: 'setting-desc', textContent: 'Jobs, at once:' }), jobs,
-    field('Keep current', keepBtn, el('span', { className: 'setting-desc', textContent: 'the library refreshes it on its schedule' })),
-    field('Removed after, by default', def),
-    extra ? field('Extra tools', extra) : null,
+    el('p', { className: 'setting-desc', textContent: 'These actions run immediately:' }), jobs,
+    field('Automatic cache refresh', keepBtn, el('span', { className: 'setting-desc', textContent: 'The library refreshes the cache on its schedule.' })),
+    field('Default removal period', def),
+    extra ? field('Additional packages', extra) : null,
     el('ul', { className: 'kit-notes' }, ...(k.notes || []).map((n) => el('li', { textContent: n }))),
     c ? el('p', { className: 'setting-desc', textContent: `${c.packages} packages: ` + Object.entries(c.versions || {}).map(([n, v]) => `${n} ${v}`).join(', ')
       + (c.on_box && c.on_box.length ? `. Already on the box: ${c.on_box.join(', ')}.` : '.') }) : null,
-    c && c.left_out && c.left_out.length ? el('p', { className: 'setting-desc', textContent: `Left out on this ${c.arch || ''} board, as they need a 64-bit one: ${c.left_out.join(', ')}.` }) : null,
+    c && c.left_out && c.left_out.length ? el('p', { className: 'setting-desc', textContent: `Omitted on this ${c.arch || ''} board because they need a 64-bit board: ${c.left_out.join(', ')}.` }) : null,
     (k.git || []).length ? el('p', { className: 'setting-desc', textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, '')}, a mirror)`).join(', ')}.` }) : null,
   ];
 }
@@ -5714,7 +5714,7 @@ async function loadKitsUsb() {
   const cached = Object.entries(st.kits || {}).filter(([, v]) => v.cached);
   const here = (cached[0] && cached[0][1].cached.arch) || '';
   const devs = (data.scan && data.scan.devices) || [];
-  noteEl('kits-usb').replaceChildren(...(data.scan && !devs.length ? [el('p', { className: 'setting-desc', textContent: 'No USB drive found. Plug one into the box and look again.' })] : []),
+  noteEl('kits-usb').replaceChildren(...(data.scan && !devs.length ? [el('p', { className: 'setting-desc', textContent: 'No USB drive found. Connect a USB drive. Select Scan USB drives.' })] : []),
     ...devs.map((d) => {
       const pick = el('select', { disabled: busy || !cached.length }, ...cached.map(([kid]) => el('option', { value: kid, textContent: ((kitsData.kits || {})[kid] || {}).title || kid })));
       return el('div', { className: 'setting library-source' }, el('span', {},
@@ -5722,11 +5722,11 @@ async function loadKitsUsb() {
         d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
         ...((d.kits || []).length ? d.kits.map((k) => el('span', { className: 'usb-book' },
           el('span', { className: 'setting-desc', textContent: `${k.title}: ${k.packages} packages, ${size(k.bytes)}, ${k.arch}` +
-            (here && k.arch !== here ? ` (for another kind of board: this one is ${here})` : '') }),
-          !here || k.arch === here ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import', disabled: busy,
-            onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the drive? Every package is checked against Debian's signatures first.`) }) : null))
+            (here && k.arch !== here ? ` (Architecture mismatch: this board is ${here})` : '') }),
+          !here || k.arch === here ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Import toolkit', disabled: busy,
+            onclick: () => kitsUsbAsk({ action: 'kit-import', device: d.name, kit: k.kit }, `Import ${k.title} from the drive? The box first checks each package file against the signed Debian package indexes.`) }) : null))
           : [el('span', { className: 'setting-desc', textContent: 'No toolkits on this drive.' })]),
-        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Copy to this drive', disabled: busy,
+        cached.length ? el('span', { className: 'library-buttons' }, pick, el('button', { type: 'button', className: 'action-btn', textContent: 'Export toolkit to USB drive', disabled: busy,
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
     // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).
@@ -5772,7 +5772,7 @@ kitsEl.budget.addEventListener('submit', async (e) => {
 });
 document.getElementById('kits-refresh-all').addEventListener('click', async () => {
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
-  say('Asked for each kit: the root helper fetches them one after another (minutes each).', true, kitsEl.note);
+  say('Queued a refresh for each toolkit. The root helper refreshes them one after another. Each takes several minutes.', true, kitsEl.note);
 });
 window.addEventListener('hashchange', () => { if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); } });
 if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); }
@@ -5796,15 +5796,15 @@ function renderTls(d) {
   const busy = !!tlsWaiting || d.pending > 0;
   const c = d.cert || {};
   const day = (t) => new Date(t * 1000).toLocaleDateString();
-  tlsEl.state.textContent = !d.set_up ? 'No certificate yet: pages are served over plain HTTP only.'
-    : `${d.on ? `On: https://<this box>/ (port ${d.ports.main}) and each app's twin.` : 'Off: the certificate is kept, pages are plain HTTP only.'}`
-      + ` The certificate covers ${[...(c.names || []), ...(c.addresses || [])].join(', ')}, until ${c.expires ? day(c.expires) : '?'}`
-      + `${c.own ? ' (your own: renew it before then)' : ', renewed by the box before then'}.${d.ca ? ` The CA's fingerprint: ${d.ca.fingerprint}.` : ''}`
-      + (d.outside && d.outside.length ? ` The box is now at ${d.outside.join(', ')}, outside what its CA may vouch for: make a new CA for that network.` : '');
+  tlsEl.state.textContent = !d.set_up ? 'No certificate yet. The box serves pages over plain HTTP only.'
+    : `${d.on ? `HTTPS enabled: https://<this box>/ (port ${d.ports.main}) and the HTTPS address of each app.` : 'HTTPS disabled. The box keeps the certificate. Pages are plain HTTP only.'}`
+      + ` The certificate covers ${[...(c.names || []), ...(c.addresses || [])].join(', ')}. Certificate expires ${c.expires ? day(c.expires) : '?'}`
+      + `${c.own ? ' (your own certificate: renew it before then)' : ' (the box renews it before then)'}.${d.ca ? ` Certificate-authority fingerprint: ${d.ca.fingerprint}.` : ''}`
+      + (d.outside && d.outside.length ? ` The box is now at ${d.outside.join(', ')}. These addresses are outside the names that its CA can certify. Make a new certificate authority for that network.` : '');
   tlsEl.state.classList.toggle('bad', !!(d.outside && d.outside.length));
   tlsEl.make.hidden = !!d.set_up;
   tlsEl.sw.hidden = !d.set_up;
-  tlsEl.sw.textContent = d.on ? 'Switch HTTPS off' : 'Switch HTTPS on';
+  tlsEl.sw.textContent = d.on ? 'Disable HTTPS' : 'Enable HTTPS';
   tlsEl.again.hidden = !d.set_up;
   tlsEl.box.hidden = !(c.own && d.ca);
   tlsEl.make.hidden = !!(d.set_up && d.ca);
@@ -5813,10 +5813,10 @@ function renderTls(d) {
   // over HTTPS (this device trusts the box, so it can't lock its owner out).
   const secure = location.protocol === 'https:';
   tlsEl.adminOnly.hidden = !d.on;
-  tlsEl.adminOnly.textContent = d.admin_only ? 'Let /admin answer on plain HTTP too' : 'Make /admin HTTPS only';
+  tlsEl.adminOnly.textContent = d.admin_only ? 'Let /admin answer on plain HTTP too' : 'Require HTTPS for administrator pages';
   tlsEl.adminOnlyNote.hidden = !d.on;
-  tlsEl.adminOnlyNote.textContent = d.admin_only ? 'On: /admin answers only over HTTPS, so the password never crosses the network in clear.'
-    : secure ? 'Off: /admin also answers on plain HTTP.' : 'To make /admin HTTPS only, open it over HTTPS first (once this device trusts the box): then it is safe.';
+  tlsEl.adminOnlyNote.textContent = d.admin_only ? 'Enabled: /admin answers only over HTTPS, so the administrator password is encrypted on the network link.'
+    : secure ? 'Disabled: /admin also answers on plain HTTP.' : 'To require HTTPS for /admin, first open it over HTTPS on a device that trusts the certificate of the box. This prevents a lock-out of administrators.';
   [tlsEl.make, tlsEl.sw, tlsEl.again, tlsEl.box, tlsEl.adminOnly].forEach((b) => { b.disabled = busy; });
   if (!d.admin_only && !secure) tlsEl.adminOnly.disabled = true;
   if (busy) setTimeout(loadTls, 1500);
@@ -5840,7 +5840,7 @@ tlsEl.own.addEventListener('submit', (e) => {
 });
 tlsEl.sw.addEventListener('click', () => tlsAct({ action: tlsData && tlsData.on ? 'off' : 'on' }));
 tlsEl.again.addEventListener('click', () => {
-  if (confirm('Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it will warn about the box.')) {
+  if (confirm('Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.')) {
     tlsAct({ action: 'make', again: true });
   }
 });
@@ -5857,9 +5857,9 @@ async function loadAccounts() {
 }
 // The box's own login (for scripts): its reach, from the safest. Each said plainly; the password only at the console.
 const LOGIN_REACH = [
-  ['off', 'Off', 'No login for scripts: the admin pages open only to an admin account, signed in.'],
-  ['local', 'From the box itself', 'Scripts running on the box (over SSH, or its own timers) may use it; from any other device it counts for nothing.'],
-  ['network', 'From the network too', 'Any device with the password may use it. It goes with every request: over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.'],
+  ['off', 'Script sign-in disabled', 'Scripts cannot sign in with the box password. The administration pages open only for a signed-in administrator account.'],
+  ['local', 'Local scripts only', 'Scripts that run on the box (over SSH, or on its own timers) can use the box password. From any other device, the password does not work.'],
+  ['network', 'Network scripts permitted', 'Any device that has the password can use it. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.'],
 ];
 function renderAccounts(d) {
   const al = d.admin_login || { on: true, reach: 'network', password_set: true, https_admins: [], results: [] };
@@ -5871,58 +5871,58 @@ function renderAccounts(d) {
   const admins = al.https_admins.join(', ');
   const choose = async (reach) => {
     if (reach === al.reach || acctWaiting) return;
-    if (reach === 'network' && !confirm('Let the box\'s own login work from other devices? Its password goes with every request; use it over HTTPS.')) return;
-    if (reach === 'off' && !confirm(`Switch the box's own login off? Only the administrator accounts (${admins}) can then open the administration pages.`)) return;
+    if (reach === 'network' && !confirm('Let script sign-in with the box password work from other devices? The password goes with every request. Use it over HTTPS.')) return;
+    if (reach === 'off' && !confirm(`Disable script sign-in with the box password? Only the administrator accounts (${admins}) can then open the administration pages.`)) return;
     try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; loadAccounts(); }
     catch (err) { say(err.message, false, acctEl.note); }
   };
   // Off needs an admin account that has signed in over HTTPS (so the box can't be locked out); on needs a password.
   const blocked = (v) => !!acctWaiting || (v === 'off' ? !admins : !al.password_set);
-  acctEl.loginChoices.replaceChildren(chipRow('It answers', LOGIN_REACH.map(([v, w]) => [v, w]), al.reach, choose, blocked));
+  acctEl.loginChoices.replaceChildren(chipRow('Script sign-in', LOGIN_REACH.map(([v, w]) => [v, w]), al.reach, choose, blocked));
   const said = (LOGIN_REACH.find(([v]) => v === al.reach) || LOGIN_REACH[0])[2];
   acctEl.login.textContent = `${said}${!al.password_set ? ' It has no password yet: set one at the box\'s console first (above).' : ''}`
-    + (al.reach !== 'off' && !admins ? ' To switch it off, first make an admin account and sign in with it over HTTPS.' : '');
+    + (al.reach !== 'off' && !admins ? ' To disable it, first create an administrator account and sign in with it over HTTPS.' : '');
   acctEl.settings.elements.signup.value = d.settings.signup;
   acctEl.settings.elements.http.value = d.settings.http;
   const c = d.counts;
-  acctEl.counts.textContent = `${c.user} user${c.user === 1 ? '' : 's'} (${c.admins} admin${c.admins === 1 ? '' : 's'}), ${c.asked} asking, ${c.disabled} switched off.`;
+  acctEl.counts.textContent = `${c.user} user${c.user === 1 ? '' : 's'} (${c.admins} administrator${c.admins === 1 ? '' : 's'}), ${c.asked} waiting for approval, ${c.disabled} disabled.`;
   const when = (t) => (t ? ago(Date.now() / 1000 - t) : 'never');
   acctEl.list.replaceChildren(...(d.accounts.length ? d.accounts.map((a) => {
     const act = (action, label) => actionButton(label, () => acctAct({ action, name: a.name }));
-    const state = a.state === 'asked' ? 'Asking' : a.state === 'disabled' ? 'Off' : a.role === 'admin' ? 'Admin' : 'User';
+    const state = a.state === 'asked' ? 'Awaiting approval' : a.state === 'disabled' ? 'Disabled' : a.role === 'admin' ? 'Administrator' : 'User';
     return el('div', { className: 'admin-item' },
       el('span', { className: `state state-${a.state === 'user' ? 'running' : 'stopped'}`, textContent: state }),
       el('span', { className: 'setting-name', textContent: ` ${a.name}` }),
-      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}; last seen ${when(a.seen)}${a.password_set ? '' : '; no password yet'}; ${a.shown_online ? 'shown by name online' : 'not shown by name'} (their own choice).` }),
+      el('span', { className: 'setting-desc', textContent: ` ${a.by}, ${when(a.created)}. Last activity ${when(a.seen)}.${a.password_set ? '' : ' Password not set.'} ${a.shown_online ? 'Name shown online' : 'Name not shown'} (their own choice).` }),
       el('span', { className: 'library-buttons' },
-        a.state === 'asked' ? act('accept', 'Accept') : null,
-        a.state === 'user' ? act('disable', 'Switch off') : a.state === 'disabled' ? act('enable', 'Switch on') : null,
-        a.state === 'user' ? act(a.role === 'admin' ? 'user' : 'admin', a.role === 'admin' ? 'Make a user' : 'Make an admin') : null,
+        a.state === 'asked' ? act('accept', 'Approve account') : null,
+        a.state === 'user' ? act('disable', 'Disable account') : a.state === 'disabled' ? act('enable', 'Enable account') : null,
+        a.state === 'user' ? act(a.role === 'admin' ? 'user' : 'admin', a.role === 'admin' ? 'Set user role' : 'Set administrator role') : null,
         a.state !== 'asked' ? act('reset', 'Reset password') : null,
         acctCodes[a.name.toLowerCase()] ? codeBox(a.name, acctCodes[a.name.toLowerCase()]) : null,
-        act('delete', a.state === 'asked' ? 'Refuse' : 'Delete')));
+        act('delete', a.state === 'asked' ? 'Refuse request' : 'Delete account')));
   }) : [el('p', { className: 'setting-desc', textContent: 'None yet.' })]));
 }
-// Notebooks per login (notebooks.py): private or communal, and how many may run at once.
+// Notebooks per account (notebooks.py): private or communal, and how many can run at once.
 async function loadNotebooksAdmin() {
   const box = document.getElementById('notebooks-box');
   let st, nb;
   try { [st, nb] = await Promise.all([getJSON('/admin/settings'), getJSON('/admin/notebooks')]); } catch (_) { return; }
   box.replaceChildren(AW.settings([
     { key: 'notebooks', label: 'Notebooks', kind: 'choice', value: st.notebooks || '',
-      options: [['communal', 'Shared notes only'], ['', 'By sign-up'], ['private', 'Also one per login']],
-      note: 'Shared notes only: no notebook of anyone\'s own. By sign-up (the default): one per login wherever people may sign up. Also one per login: always, for every account.' },
-    { key: 'notebooks_max', label: 'At most running at once', kind: 'choice', value: st.notebooks_max,
+      options: [['communal', 'Shared notebook only'], ['', 'Private notebooks when registration is enabled'], ['private', 'Private notebooks for all accounts']],
+      note: 'Shared notebook only: no account has its own notebook. Private notebooks when registration is enabled (the default): each account has its own notebook where people can create accounts. Private notebooks for all accounts: every account has its own notebook.' },
+    { key: 'notebooks_max', label: 'Maximum active notebooks', kind: 'choice', value: st.notebooks_max,
       options: [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [8, '8'], [10, '10']],
-      note: 'More waits until one stops. Five suits a board with 512 MB.' },
-    { key: 'notebooks_keep_free_mb', label: 'Keep this much memory free', kind: 'choice', value: st.notebooks_keep_free_mb,
+      note: 'An extra notebook waits until a running notebook stops. Five is an estimate for a board with 512 MB of memory.' },
+    { key: 'notebooks_keep_free_mb', label: 'Minimum free memory (MB)', kind: 'choice', value: st.notebooks_keep_free_mb,
       options: [[48, '48 MB'], [64, '64 MB'], [96, '96 MB'], [128, '128 MB'], [192, '192 MB']],
-      note: 'No notebook starts while the box has less than this free; those running carry on.' }],
+      note: 'No notebook starts while the box has less free memory than this. Running notebooks continue.' }],
   { save: async (changed) => { await postJSON('/admin/settings', changed); loadNotebooksAdmin(); } }));
-  const words = !nb.supported ? 'This box\'s web server (Caddy) cannot serve notebooks of their own: shared notes only.'
-    : nb.mode !== 'private' ? 'Now: shared notes only.'
-      : `Now: one per login. ${nb.notebooks.length} made${nb.running.length ? `; running: ${nb.running.join(', ')}` : '; none running'}.`;
-  document.getElementById('notebooks-state').textContent = words + (nb.free_mb != null ? ` ${nb.free_mb} MB free now.` : '');
+  const words = !nb.supported ? 'The web server of this box (Caddy) cannot serve separate notebooks. Only the shared notebook is available.'
+    : nb.mode !== 'private' ? 'Current mode: shared notebook only.'
+      : `Current mode: private notebooks. ${nb.notebooks.length} created. ${nb.running.length ? `Running: ${nb.running.join(', ')}.` : 'None running.'}`;
+  document.getElementById('notebooks-state').textContent = words + (nb.free_mb != null ? ` ${nb.free_mb} MB of memory free now.` : '');
 }
 loadNotebooksAdmin();
 
@@ -5932,7 +5932,7 @@ const acctCodes = {};
 function showCode(name, code) {
   acctCodes[name.toLowerCase()] = code;
   acctEl.code.hidden = false;
-  acctEl.code.replaceChildren(el('span', { textContent: `${name}'s one-time code is beside their name below. Give it to them now: it is not shown again.` }));
+  acctEl.code.replaceChildren(el('span', { textContent: `The one-time code of ${name} is beside the name below. Give it to this person now. The box does not show it again.` }));
 }
 function codeBox(name, code) {
   const box = el('input', { type: 'text', readOnly: true, value: code, className: 'code-box', size: code.length + 1 });
@@ -5941,12 +5941,13 @@ function codeBox(name, code) {
   const copy = async () => {
     box.select();
     try { await navigator.clipboard.writeText(code); note.textContent = ' Copied.'; return; } catch (_) { /* plain HTTP: no clipboard API */ }
-    try { note.textContent = document.execCommand('copy') ? ' Copied.' : ' Selected: copy it.'; } catch (_) { note.textContent = ' Selected: copy it.'; }
+    try { note.textContent = document.execCommand('copy') ? ' Copied.' : ' Select and copy.'; } catch (_) { note.textContent = ' Select and copy.'; }
   };
   return el('span', { className: 'code-copy' }, box, actionButton('Copy', copy, { className: 'small' }), note);
 }
 async function acctAct(body) {
-  if (body.action === 'delete' && !confirm(`Delete ${body.name}'s account?`)) return;
+  if (body.action === 'delete' && !confirm(`Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`)) return;
+  if (body.action === 'admin' && !confirm(`Give ${body.name} the administrator role? An administrator can change every setting of the box.`)) return;
   try {
     const d = await postJSON('/admin/accounts', body);
     if (d.code) showCode(body.name, d.code);
@@ -5995,13 +5996,13 @@ async function loadMesh() {
   try { renderMesh(await getJSON('/admin/mesh')); } catch (_) { meshEl.state.textContent = 'Could not read the mesh.'; }
 }
 function renderMesh(d) {
-  meshEl.state.textContent = d.state === 'listening' ? `Listening to the broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} heard in the last 7 days.`
-    : `Not connected to the broker${d.error ? ` (${d.error})` : ''}: is it installed (Add-ons, MQTT broker) and running? It tries again by itself.`;
+  meshEl.state.textContent = d.state === 'listening' ? `Connected to MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} heard in the last 7 days.`
+    : `Reconnecting to broker${d.error ? ` (${d.error})` : ''}. Check that the MQTT broker is installed (Add-ons, MQTT broker) and running. The box tries again automatically.`;
   meshEl.channels.replaceChildren(...(d.channels.length ? d.channels.map((c) => el('div', { className: 'admin-item' },
     el('span', { className: 'setting-name', textContent: c.name }),
-    el('span', { className: 'setting-desc', textContent: c.public_key ? ' Meshtastic\'s public default key: anyone can read this channel.' : c.no_key ? ' No key: unencrypted.' : ' Its own key (not shown).' }),
-    el('span', { className: 'library-buttons' }, actionButton('Remove', () => meshAct({ action: 'remove-channel', name: c.name })))))
-    : [el('p', { className: 'setting-desc', textContent: 'None yet: every packet stays encrypted. Add a channel and its key, as your Meshtastic app shows them.' })]));
+    el('span', { className: 'setting-desc', textContent: c.public_key ? ' Default public key. Anyone can read this channel.' : c.no_key ? ' Unencrypted channel.' : ' Custom key (not shown).' }),
+    el('span', { className: 'library-buttons' }, actionButton('Remove channel', () => meshAct({ action: 'remove-channel', name: c.name })))))
+    : [el('p', { className: 'setting-desc', textContent: 'No channels configured. The box cannot decode channel-encrypted messages without a configured key. Add a channel and its key as your Meshtastic app shows them.' })]));
   clearTimeout(meshPoll);
   if (paneShown('mesh')) meshPoll = setTimeout(loadMesh, 15000);
 }
@@ -6036,24 +6037,24 @@ function contrast(a, b) {
 }
 // ---- The light and dark palettes (Appearance → Colours): each mode its own, the standard theme's colours under
 // whatever is left out. Every pair a page draws as text is checked against WCAG's 4.5:1; a palette that falls short
-// is saved only once the owner says so, the pair, its ratio and the target said beside it.
-const PALETTE_ROLES = [['bg', 'Page'], ['surface', 'Tiles and panels'], ['border', 'Edges'], ['text', 'Text'],
-  ['muted', 'Quieter text'], ['accent', 'Accent (links, buttons)']];
+// is saved only once the administrator says so, the pair, its ratio and the target said beside it.
+const PALETTE_ROLES = [['bg', 'Page'], ['surface', 'Tiles and panels'], ['border', 'Edges'], ['text', 'Text colour'],
+  ['muted', 'Secondary text'], ['accent', 'Accent (links, buttons)']];
 const PALETTE_STANDARD = {
   light: { bg: '#f4f5f9', surface: '#ffffff', border: '#d9dbe6', text: '#1b1d27', muted: '#6b6f8a', accent: '#5b4bd6' },
   dark: { bg: '#0f1117', surface: '#1a1d27', border: '#2a2d3a', text: '#e2e4ef', muted: '#6b6f8a', accent: '#7c6af7' },
 };
 // Paired presets: a light accent a shade deeper than its dark one, so each reads on its own ground.
 const PALETTE_PRESETS = [
-  ['standard', 'Standard', {}],
+  ['standard', 'Standard palette', {}],
   ['contrast', 'Standard, more contrast', { light: { muted: '#5f6380' }, dark: { muted: '#8a8fa8', accent: '#9d8ff9' } }],
   ['teal', 'Teal', { light: { muted: '#5f6380', accent: '#0f766e' }, dark: { muted: '#8a8fa8', accent: '#2dd4bf' } }],
   ['rose', 'Rose', { light: { muted: '#5f6380', accent: '#be123c' }, dark: { muted: '#8a8fa8', accent: '#fb7185' } }],
   ['green', 'Green', { light: { muted: '#5f6380', accent: '#15803d' }, dark: { muted: '#8a8fa8', accent: '#4ade80' } }],
 ];
-const PALETTE_PAIRS = [['text', 'bg', 'Text on the page'], ['text', 'surface', 'Text on a tile'], ['muted', 'bg', 'Quieter text on the page'],
-  ['muted', 'surface', 'Quieter text on a tile'], ['accent', 'bg', 'A link on the page'], ['accent', 'surface', 'A link on a tile'],
-  ['ink', 'accent', 'A button\'s words on the accent']];
+const PALETTE_PAIRS = [['text', 'bg', 'Text on the page'], ['text', 'surface', 'Text on a tile'], ['muted', 'bg', 'Secondary text on the page'],
+  ['muted', 'surface', 'Secondary text on a tile'], ['accent', 'bg', 'Link on the page'], ['accent', 'surface', 'Link on a tile'],
+  ['ink', 'accent', 'Button text on the accent colour']];
 const accentInk = (hex) => (contrast('#ffffff', hex) >= contrast('#0f1117', hex) ? '#ffffff' : '#0f1117');
 // What a mode shows: the standard theme's, then the mode's own. The words on the accent are the theme's own (white)
 // until the accent is changed; then white or near-black, whichever stands out more, as /layout.css writes them.
@@ -6096,7 +6097,7 @@ function paletteEditor(st, onSaved) {
       }));
     // Colours that match no preset: said as the owner's own, so the row always shows where it stands.
     if (!PALETTE_PRESETS.some(([, , pal]) => JSON.stringify(pal) === JSON.stringify(draft))) {
-      const own = el('button', { type: 'button', className: 'chip selected', textContent: 'Your own', title: 'Colours of your own: change them below' });
+      const own = el('button', { type: 'button', className: 'chip selected', textContent: 'Custom palette', title: 'Custom colours. Change them below.' });
       own.setAttribute('aria-pressed', 'true');
       presets.append(own);
     }
@@ -6113,7 +6114,7 @@ function paletteEditor(st, onSaved) {
     });
     // The draft drawn as the page draws it: a page, a tile on it, its words, a link and a button.
     const preview = el('div', { className: 'palette-preview' },
-      el('div', { className: 'palette-tile' }, el('strong', { textContent: 'A tile' }), el('span', { className: 'palette-muted', textContent: 'Quieter words under it' }),
+      el('div', { className: 'palette-tile' }, el('strong', { textContent: 'A tile' }), el('span', { className: 'palette-muted', textContent: 'Secondary text' }),
         el('a', { href: '#appearance', textContent: 'A link' }), el('span', { className: 'palette-button', textContent: 'A button' })),
       el('span', { textContent: 'Words on the page' }));
     for (const [k, v] of Object.entries({ '--pv-bg': c.bg, '--pv-surface': c.surface, '--pv-border': c.border, '--pv-text': c.text,
@@ -6121,10 +6122,10 @@ function paletteEditor(st, onSaved) {
     const short = [...paletteShort('light', draft), ...paletteShort('dark', draft)];
     const ack = el('input', { type: 'checkbox' });
     const report = el('div', { className: 'palette-report', role: 'status' }, short.length
-      ? el('ul', {}, ...short.map((x) => el('li', { className: 'bad', textContent: `${x.mode === 'light' ? 'Light' : 'Dark'}: ${x.words}, ${x.ratio.toFixed(1)}:1 (4.5:1 recommended)` })))
-      : el('p', { className: 'setting-desc', textContent: 'Every pair reads at 4.5:1 or more in both modes (WCAG AA for text). Focus, layout and the other themes are not checked here.' }));
+      ? el('ul', {}, ...short.map((x) => el('li', { className: 'bad', textContent: `${x.mode === 'light' ? 'Light' : 'Dark'}: ${x.words}, ${x.ratio.toFixed(1)}:1 (minimum 4.5:1)` })))
+      : el('p', { className: 'setting-desc', textContent: 'These text pairs meet 4.5:1 or more in both modes (WCAG AA for text). This check does not cover focus, layout or the other themes.' }));
     const ackLine = short.length ? el('label', { className: 'inline palette-ack' }, ack,
-      ' Keep it anyway: I know these words will be hard to read for some.') : null;
+      ' Save the failing colours anyway. Some people will find the text that fails the 4.5:1 ratio hard to read.') : null;
     const note = el('small', { className: 'setting-desc', role: 'status' });
     const save = el('button', { type: 'button', className: 'action-btn primary', textContent: 'Save', disabled: same() || !!short.length });
     ack.addEventListener('change', () => { save.disabled = same() || (short.length && !ack.checked); });
@@ -6135,22 +6136,22 @@ function paletteEditor(st, onSaved) {
     });
     box.replaceChildren(
       el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'Presets' }), presets,
-        el('small', { className: 'setting-desc', textContent: 'each sets both modes; Standard is the theme as it comes' })),
+        el('small', { className: 'setting-desc', textContent: 'Each preset sets both modes. Standard is the theme as supplied.' })),
       el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'Mode' }), modeChips,
-        el('small', { className: 'setting-desc', textContent: 'each mode keeps its own colours; Auto follows the visitor\'s device. Visitors see these as the Box preset, unless they choose Standard, Increased contrast or another theme in the 🎨 menu' })),
+        el('small', { className: 'setting-desc', textContent: 'Each mode keeps its own colours. Auto follows the device of the visitor. Visitors see these colours as the Box palette, unless they select Standard, Increased contrast or another theme in the 🎨 menu.' })),
       ...roles, preview, report, ...(ackLine ? [ackLine] : []),
-      el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: same() ? 'Settings wait for Save.' : 'Changed, not saved.' }), discard, save), note);
+      el('div', { className: 'aw-foot' }, el('span', { className: 'note', textContent: same() ? 'Changes apply after you select Save.' : 'Unsaved changes.' }), discard, save), note);
   };
   draw();
   return box;
 }
-// The owner's pictures: the favicon (the browser tab's icon on every page) and the hub page's header picture.
+// The pictures of the administrator: the favicon (the browser tab's icon on every page) and the hub page's header picture.
 // An upload acts at once (not a setting held for Save); Remove takes it away again.
 const PICTURE_ROWS = {
-  favicon: { label: 'Favicon', url: '/favicon.ico', max: 64, accept: 'image/png,image/x-icon,.ico,.png', size: 32,
-    none: 'None set: browsers show their own.', note: 'the browser tab\'s icon on every page: a PNG or .ico file, up to 64 KB (32 or 64 px square is plenty)' },
-  'hub-art': { label: 'Header picture', url: '/hub-art', max: 180, accept: 'image/png,image/jpeg,image/webp', size: 64,
-    none: 'None: the hub page starts with its name.', note: 'over the hub page\'s name: a PNG, JPEG or WebP picture, up to 180 KB (a banner about 1200 px wide, as WebP, fits)' },
+  favicon: { label: 'Browser icon (favicon)', url: '/favicon.ico', max: 64, accept: 'image/png,image/x-icon,.ico,.png', size: 32,
+    none: 'No custom favicon.', note: 'The icon of the browser tab on every page. Use a PNG or .ico file, up to 64 KB. A square file of 32 px or 64 px is enough.' },
+  'hub-art': { label: 'Header image', url: '/hub-art', max: 180, accept: 'image/png,image/jpeg,image/webp', size: 64,
+    none: 'No header image. The hub page starts with its name.', note: 'Shown above the name of the hub page. Use a PNG, JPEG or WebP image, up to 180 KB. A WebP banner about 1200 px wide fits.' },
 };
 function pictureRow(which) {
   const p = PICTURE_ROWS[which];
@@ -6178,7 +6179,7 @@ function pictureRow(which) {
     const f = file.files[0];
     file.value = '';
     if (!f) return;
-    if (f.size > p.max * 1024) { note.textContent = `At most ${p.max} KB: that one is ${Math.ceil(f.size / 1024)} KB.`; return; }
+    if (f.size > p.max * 1024) { note.textContent = `Maximum size: ${p.max} KB. This file is ${Math.ceil(f.size / 1024)} KB.`; return; }
     const data = await new Promise((ok, fail) => {
       const r = new FileReader();
       r.onload = () => ok(String(r.result).split(',')[1] || '');
@@ -6207,8 +6208,8 @@ async function loadAppearance() {
   fillWidthBlocks();
   const hub = AW.settings([
     { key: 'hub_title', label: 'Name', kind: 'text', value: st.hub_title, max: 40, note: 'the hub page\'s heading and its browser tab' },
-    { key: 'hub_subtitle', label: 'Line under it', kind: 'text', value: st.hub_subtitle, max: 120, note: 'empty for none' },
-    { key: 'krab_art', label: 'Krab art', kind: 'toggle', value: st.krab_art, note: 'the pictures at the foot of the admin pages and a few others' },
+    { key: 'hub_subtitle', label: 'Subtitle', kind: 'text', value: st.hub_subtitle, max: 120, note: 'Leave empty for no subtitle.' },
+    { key: 'krab_art', label: 'Krab art', kind: 'toggle', value: st.krab_art, note: 'the pictures at the foot of the administration pages and a few others' },
   ], { save: async (changed) => {
     if ('hub_title' in changed && !changed.hub_title.trim()) throw new Error('The hub needs a name.');
     const now = await postJSON('/admin/settings', changed);
@@ -6218,7 +6219,7 @@ async function loadAppearance() {
   const row = (key, label, note) => ({ key, label, kind: 'choice', value: st[key], note, options: WIDTHS.map(widthOption) });
   box.replaceChildren(el('h3', { textContent: 'The hub' }), hub,
     el('h3', { textContent: 'Colours' }),
-    el('p', { className: 'setting-desc', textContent: 'The light and dark themes\' colours, for everyone. E-ink and Cybercore keep their own.' }),
+    el('p', { className: 'setting-desc', textContent: 'These colours apply to the light and dark themes for everyone. E-ink and Cybercore keep their own colours.' }),
     paletteEditor(st, loadAppearance),
     el('h3', { textContent: 'Pictures' }), el('div', { className: 'aw-settings' }, faviconRow(), pictureRow('hub-art')), el('h3', { textContent: 'Widths' }), AW.settings([
     row('page_width', 'Hub', 'the tiles, the menu and its pages'),
@@ -6233,21 +6234,22 @@ async function loadAppearance() {
   // The emoji pickers' set: newer sets have more, but a phone older than a set's
   // release draws its newest emoji as empty boxes. Chosen by the iPhones each reaches.
   el('h3', { textContent: 'Emoji' }),
-  el('p', { className: 'setting-desc', textContent: 'Which emoji the pickers offer, for everyone. A newer set has more, '
-    + 'but a phone older than it shows the newest ones as empty boxes. 13.1: iOS 14.5 and Android 12 on (1,812 emoji). '
-    + '15.0: iOS 16.4, every iPhone from the 8 on, and Android 14 (1,870). 16.0: iOS 18.4, iPhone XS on, and Android 16 (1,906).' }),
-  AW.settings([{ key: 'emoji_set', label: 'Emoji set', kind: 'choice', value: st.emoji_set, note: 'what the oldest phones you expect can show',
+  el('p', { className: 'setting-desc', textContent: 'The emoji pickers offer this set to everyone. A newer set has more emoji. '
+    + 'A device that is older than the set can show the newest emoji as empty boxes. Support depends on the font and the browser, as well as the operating system. '
+    + 'Emoji 13.1 (1,812 emoji): iOS 14.5 and Android 12 and later. '
+    + 'Emoji 15.0 (1,870): iOS 16.4 (iPhone 8 and later) and Android 14 and later. Emoji 16.0 (1,906): iOS 18.4 (iPhone XS and later) and Android 16 and later.' }),
+  AW.settings([{ key: 'emoji_set', label: 'Emoji compatibility', kind: 'choice', value: st.emoji_set, note: 'Select the newest set that your oldest expected device can show.',
     options: [['13.1', 'Emoji 13.1'], ['15.0', 'Emoji 15.0'], ['16.0', 'Emoji 16.0']] }],
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadAppearance();
 
-// The write-intensity ladder (Recovery and monitoring), from the most kept to the least written.
+// The write-frequency levels (Recovery and monitoring), from the most kept to the least written.
 const CARD_STOPS = [
-  ['everything', 'Record everything', 'Crash watch\'s snapshots written and synced every 30 s; the clock saved every minute. Nothing more is lost than now.'],
-  ['thrifty', 'Thrifty', 'Snapshots as above; the clock saved every 10 minutes and when the hub stops: after a crash it may resume up to 10 minutes behind.'],
-  ['gentle', 'Gentle', 'Snapshots written without a sync: a hang loses the last two minutes of them. The clock every 30 minutes.'],
-  ['saver', 'Card saver', 'Snapshots kept in memory and written every quarter of an hour, or at once when crash watch sees trouble; the clock hourly. A hang loses up to 15 minutes of snapshots.'],
+  ['everything', 'Frequent writes', 'The box writes and syncs the crash-watch snapshots every 30 s. It saves the clock every minute.'],
+  ['thrifty', 'Reduced clock writes', 'The box writes and syncs the snapshots every 30 s. It saves the clock every 10 minutes and when the hub server stops. After a crash, the clock can resume up to 10 minutes behind.'],
+  ['gentle', 'Buffered writes', 'The box writes the snapshots without a sync. A hang can lose the last two minutes of snapshots. The box saves the clock every 30 minutes.'],
+  ['saver', 'In-memory snapshots', 'The box keeps the snapshots in memory and writes them every 15 minutes, or at once when crash watch sees trouble. It saves the clock every hour. A hang can lose up to 15 minutes of snapshots.'],
 ];
 async function loadCardWrites() {
   const box = document.getElementById('card-writes-box');
@@ -6255,9 +6257,9 @@ async function loadCardWrites() {
   let st;
   try { st = await getJSON('/admin/settings'); } catch (_) { return; }
   const stop = st.card_writes || 'thrifty';
-  box.replaceChildren(AW.settings([{ key: 'card_writes', label: 'How hard it writes', kind: 'choice', value: stop,
+  box.replaceChildren(AW.settings([{ key: 'card_writes', label: 'Card write level', kind: 'choice', value: stop,
     options: CARD_STOPS.map(([v, label]) => [v, label]),
-    note: (CARD_STOPS.find((c) => c[0] === stop) || CARD_STOPS[1])[2] + ' While the box still hangs now and then, stay at Record everything or Thrifty: the lower stops lose what crash watch is for.' }],
+    note: (CARD_STOPS.find((c) => c[0] === stop) || CARD_STOPS[1])[2] + ' While the box still hangs, use Frequent writes or Reduced clock writes. The lower levels lose the data that crash watch collects.' }],
   { save: async (changed) => { await postJSON('/admin/settings', changed); loadCardWrites(); } }));
 }
 loadCardWrites();
@@ -6269,7 +6271,7 @@ function cardRate(sys) {
 }
 
 // ---- Folders: each folder's page arranges its entries. The
-// owner may hide an entry from a folder, order a folder's entries, and put an entry in other
+// administrator can hide an entry from a folder, order a folder's entries, and put an entry in other
 // folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
 let folders = null, folderDraft = null;
 const folderOpen = {};  // folder -> the entry left open, so a change keeps it in view
@@ -6301,14 +6303,14 @@ function drawFolderIndex() {
     if (fol) {
       const hrefs = new Set([...fol.entries.map((e) => e.href), ...((folderDraft[a.id] || {}).extra || [])]);
       const n = [...hrefs].filter((h) => inFolder(a.id, h)).length;
-      count = `${n} ${n === 1 ? 'entry' : 'entries'} shown`;
+      count = `${n} ${n === 1 ? 'entry' : 'entries'} visible`;
     }
     return el('li', { className: 'inv-row' }, el('a', { className: 'inv-name', href: `#page-app-${a.id}` }, a.icon ? `${a.icon} ${a.name}` : a.name),
       el('span', { className: 'inv-facts' }, count ? el('span', { className: 'inv-fact', textContent: count }) : null));
   });
   list.replaceChildren(...(rows.length ? rows : [el('li', { className: 'setting-desc', textContent: 'This hub has no folders.' })]));
   const note = document.getElementById('folder-index-note') || el('p', { className: 'setting-desc action-note', id: 'folder-index-note', role: 'status' });
-  note.textContent = dirty ? 'Unsaved folder changes: Save or Discard them on any folder\'s page; one Save keeps the changes in every folder.' : '';
+  note.textContent = dirty ? 'Unsaved folder changes. Select Save all folder changes or Discard all folder changes on the page of any folder. Save all folder changes applies the changes to every folder.' : '';
   if (!note.isConnected) list.after(note);
 }
 AL.onBuild(drawFolderIndex);
@@ -6351,11 +6353,11 @@ function drawFolder(block, f) {
     const shown = inFolder(f, e.href);
     return { id: e.href, title: e.name, summary: e.desc || e.href, badges: [shown ? 'shown' : 'hidden', KIND_WORD[e.kind] || e.kind].concat(e.from !== f ? ['from ' + e.from] : []),
       detail: () => [
-        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'In this folder' }),
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Visible in this folder' }),
           AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown),
-            onclick: () => { setInFolder(f, e.href, !shown); folderOpen[f] = e.href; fillFolderBlocks(); } }, shown ? 'Shown in this folder: On' : 'Shown in this folder: Off'),
+            onclick: () => { setInFolder(f, e.href, !shown); folderOpen[f] = e.href; fillFolderBlocks(); } }, shown ? 'Visible in this folder: On' : 'Visible in this folder: Off'),
           AW.btn('↑ Earlier', { onclick: () => move(e, -1) }), AW.btn('↓ Later', { onclick: () => move(e, 1) })),
-        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Also in' }),
+        AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Also included in' }),
           AW.h('div', { class: 'filter-chips' }, folders.folders.filter((x) => x.id !== f).map((x) => {
             const on = inFolder(x.id, e.href);
             return AW.h('button', { type: 'button', class: 'filter-chip' + (on ? ' active' : ''), 'aria-pressed': String(on),
@@ -6364,19 +6366,19 @@ function drawFolder(block, f) {
         AW.dl({ Opens: e.href }),
         // An entry that is a managed app: its access and settings are on the app's own page;
         // hiding it here only takes it out of this folder.
-        appFor(e.href) ? AW.h('a', { href: '#page-app-' + appFor(e.href).id, class: 'action-btn' }, `${appFor(e.href).name}'s page: who can open it, its settings →`) : null,
+        appFor(e.href) ? AW.h('a', { href: '#page-app-' + appFor(e.href).id, class: 'action-btn' }, `Open app settings: ${appFor(e.href).name} →`) : null,
       ].filter(Boolean) };
   });
   const shownCount = list.filter((e) => inFolder(f, e.href)).length;
   // One draft for every folder: say which folders a Save changes, by name.
   const changed = folders.folders.filter((x) => JSON.stringify(folderNorm({ [x.id]: folderDraft[x.id] || {} })) !== JSON.stringify(folderNorm({ [x.id]: (folders.state || {})[x.id] || {} })));
-  const note = AW.h('span', { class: 'note', text: dirty ? `Not saved yet. Save keeps the changes in ${changed.map((x) => x.title).join(', ')}; Discard puts all of them back.` : 'Changes wait for Save.' });
+  const note = AW.h('span', { class: 'note', text: dirty ? `Unsaved changes in ${changed.map((x) => x.title).join(', ')}. Save all folder changes applies them. Discard all folder changes restores the saved arrangement.` : 'Changes apply after you select Save all folder changes.' });
   block.replaceChildren(
-    AW.h('p', { class: 'setting-desc', text: `${shownCount} of ${list.length} shown on its page. The entries come from the apps' manifests, from what an app's own index adds, and from starting switches of one page.` }),
+    AW.h('p', { class: 'setting-desc', text: `${shownCount} of ${list.length} visible on its page. The entries come from the manifests of apps, from the index of an app and from start switches on one page.` }),
     AW.shortList(items, { id: 'folder-list-' + f }),
     AW.h('div', { class: 'aw-foot' }, note,
-      AW.btn('Discard', { disabled: !dirty, onclick: () => { folderDraft = JSON.parse(JSON.stringify(folders.state || {})); fillFolderBlocks(); } }),
-      AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
+      AW.btn('Discard all folder changes', { disabled: !dirty, onclick: () => { folderDraft = JSON.parse(JSON.stringify(folders.state || {})); fillFolderBlocks(); } }),
+      AW.btn('Save all folder changes', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
         try { folders = await postJSON('/admin/folders', { state: folderDraft }); folderDraft = JSON.parse(JSON.stringify(folders.state)); fillFolderBlocks(); }
         catch (err) { note.textContent = err.message; }
       } })));
@@ -6387,7 +6389,7 @@ loadFolders();
 
 // An app drawn on the hub page has its width on its own page too, as on Appearance: one row of
 // the same setting.
-const WIDTH_LABEL = { shout_width: 'Its width on the hub page', board_width: 'Its width on the hub page' };
+const WIDTH_LABEL = { shout_width: 'Width on hub page', board_width: 'Width on hub page' };
 function fillWidthBlocks() {
   if (!appearanceSettings) return;
   document.querySelectorAll('.width-block[data-key]').forEach((block) => {
@@ -6402,10 +6404,10 @@ AL.onBuild(fillWidthBlocks);
 // ---- Status tiles: the box row arranged, held until Save.
 let stTiles = null, stDraft = null;
 // A tile's size, for all tiles: one cell, wide (two across) or large (two by two).
-const TILE_SIZES = [['single', 'one cell'], ['wide', 'wide: two across'], ['large', 'large: two by two']];
+const TILE_SIZES = [['single', 'Single cell'], ['wide', 'Two columns'], ['large', 'Two-by-two']];
 function sizeChips(cur, set) {
   return AW.h('div', { class: 'chip-group', role: 'group', 'aria-label': 'Size' }, TILE_SIZES.map(([v, label]) => AW.h('button', { type: 'button',
-    class: 'chip' + (cur === v ? ' selected' : ''), 'aria-pressed': String(cur === v), title: label, onclick: () => set(v) }, v)));
+    class: 'chip' + (cur === v ? ' selected' : ''), 'aria-pressed': String(cur === v), title: label, onclick: () => set(v) }, label)));
 }
 function setSize(draft, id, v) { draft.size = { ...(draft.size || {}) }; if (v === 'single') delete draft.size[id]; else draft.size[id] = v; }
 async function loadStatusTiles() {
@@ -6427,16 +6429,16 @@ function drawStatusTiles(openId) {
   const dirty = norm(stDraft) !== norm(stTiles.state);
   const items = list.map((t) => {
     const shown = !stDraft.hidden.includes(t.id), size = (stDraft.size || {})[t.id] || 'single';
-    return { id: t.id, title: t.name, summary: { single: 'one cell', wide: 'wide: two cells', large: 'large: two by two' }[size], badges: [shown ? 'shown' : 'hidden'], detail: () => [
+    return { id: t.id, title: t.name, summary: { single: 'Single cell', wide: 'Two columns', large: 'Two-by-two' }[size], badges: [shown ? 'shown' : 'hidden'], detail: () => [
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'On the hub page' }),
         AW.h('button', { type: 'button', class: 'chip-btn' + (shown ? ' active' : ''), 'aria-pressed': String(shown), onclick: () => { toggle('hidden', t.id, shown); redraw(t.id); } }, shown ? 'Shown: On' : 'Shown: Off'),
         AW.btn('↑ Earlier', { onclick: () => move(t.id, -1) }), AW.btn('↓ Later', { onclick: () => move(t.id, 1) })),
       AW.h('div', { class: 'aw-field' }, AW.h('span', { class: 'aw-label', text: 'Size' }),
         sizeChips(size, (v) => { setSize(stDraft, t.id, v); redraw(t.id); }),
-        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'wide or large shows the different devices seen today and this week, if counting is on (Security)' }) : null),
+        t.id === 'box-people' ? AW.h('small', { class: 'setting-desc', text: 'Two columns or Two-by-two shows the estimated number of distinct devices seen today and this week, if counting is enabled (Security).' }) : null),
     ] };
   });
-  const note = AW.h('span', { class: 'note', text: dirty ? 'Changes not saved yet.' : 'Settings wait for Save.' });
+  const note = AW.h('span', { class: 'note', text: dirty ? 'Unsaved changes.' : 'Changes apply after you select Save.' });
   box.replaceChildren(AW.shortList(items, { id: 'status-tiles-list' }), AW.h('div', { class: 'aw-foot' }, note,
     AW.btn('Discard', { disabled: !dirty, onclick: () => { stDraft = JSON.parse(JSON.stringify(stTiles.state)); redraw(); } }),
     AW.btn('Save', { class: 'action-btn primary', disabled: !dirty, onclick: async () => {
@@ -6448,47 +6450,47 @@ function drawStatusTiles(openId) {
 }
 loadStatusTiles();
 
-// Who sees the names of those signed in (a setup decision): users or the admin only.
+// Who sees the names of those signed in (a setup decision): users or administrators only.
 async function loadNamesTo() {
   const box = document.getElementById('names-to-box');
   if (!box) return;
   let st;
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
-  box.replaceChildren(AW.settings([{ key: 'names_to', label: 'Shown to', kind: 'choice', value: st.names_to, decision: 'names',
-    options: [['users', 'those logged in'], ['admin', 'the admin only']],
-    note: 'only of those who chose to be shown, on their own account page; guests get how many' }],
+  box.replaceChildren(AW.settings([{ key: 'names_to', label: 'Visible to', kind: 'choice', value: st.names_to, decision: 'names',
+    options: [['users', 'signed-in users'], ['admin', 'administrators only']],
+    note: 'Names appear only for users who chose to be shown on their own account page. Guests see only the number of users.' }],
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadNamesTo();
 
-// Saves tied to accounts: off by default, so a device lock is
-// the only thing that guards a save unless the admin turns this on.
+// Saves tied to accounts: disabled by default, so a device lock is
+// the only thing that guards a save unless an administrator enables this.
 async function loadSavesCrossDevice() {
   const box = document.getElementById('saves-cross-device-box');
   if (!box) return;
   let st;
   try { st = await getJSON('/admin/settings'); } catch (e) { return; }
-  box.replaceChildren(AW.settings([{ key: 'saves_cross_device', label: 'A user may change or remove their own save from another device', kind: 'toggle',
+  box.replaceChildren(AW.settings([{ key: 'saves_cross_device', label: 'Let users edit their saved items from any device', kind: 'toggle',
     value: st.saves_cross_device,
-    note: 'Off: only the device that made or locked a save may change it, as before. On: once logged in, a user may change or remove any save of their own account’s, on any device, past its lock. A guest’s saves are unaffected either way.' }],
+    note: 'Disabled: only the device that made or locked a save can change it. Enabled: a signed-in user can change or remove any save of their own account on any device. This overrides the device lock for saves that belong to an account. Saves of guests do not change.' }],
   { save: (changed) => postJSON('/admin/settings', changed) }));
 }
 loadSavesCrossDevice();
 
 // --- Needs attention --------------------------------------------------------------------------
-// One list at the top of Overview of what is waiting on the admin, each a link to where it is dealt
+// One list at the top of Overview of what is waiting on an administrator, each a link to where it is dealt
 // with: the words the sections already put beside their sidebar entries, and the setup decisions
 // not yet made. Work in progress ("working") isn't waiting on anyone, so it is left out.
 const ATTENTION = {
-  health: (w) => (w === '!' ? 'The root helper is stuck: nothing the box is asked to do gets done' : `${w} thing${w === '1' ? '' : 's'} wrong with the box`),
-  secdoctor: (w) => `${w} security finding${w === '1' ? '' : 's'} to fix`,
-  security: (w) => `${w} security choice${w === '1' ? '' : 's'} to make or leave`,
+  health: (w) => (w === '!' ? 'The root helper is stuck. Actions that need root cannot run' : `${w} unresolved finding${w === '1' ? '' : 's'} in Box doctor`),
+  secdoctor: (w) => `${w} unresolved finding${w === '1' ? '' : 's'} in Security doctor`,
+  security: (w) => `${w} security choice${w === '1' ? '' : 's'} waiting for a decision`,
   updoctor: (w) => (w === '!' ? 'An update failed its checks' : `${w} problem${w === '1' ? '' : 's'} with updates`),
-  updates: (w) => ({ ready: 'An update is fetched, checked and ready to install', new: 'An update is available' }[w] || null),
+  updates: (w) => ({ ready: 'Update ready to install', new: 'An update is available' }[w] || null),
   clock: (w) => `${w} clock problem${w === '1' ? '' : 's'}`,
   network: () => 'A network link is down',
-  git: (w) => `${w} build${w === '1' ? '' : 's'} failed since you last looked`,
-  moderation: (w) => `${w} reported item${w === '1' ? '' : 's'} waiting for a decision`,
+  git: (w) => `${w} build${w === '1' ? '' : 's'} failed since your last visit`,
+  moderation: (w) => `${w} pending report${w === '1' ? '' : 's'}`,
   'updates-security': () => 'Debian security updates waiting to be installed',
 };
 function drawAttention() {
@@ -6500,11 +6502,11 @@ function drawAttention() {
   }).filter(Boolean);
   const T = window.TOUR;
   const left = T ? T.left() : 0;
-  if (left > 0) items.push({ id: 'welcome', text: `${left} setup step${left === 1 ? '' : 's'} not done yet: the box runs on the defaults until then`, where: 'Setup steps' });
+  if (left > 0) items.push({ id: 'welcome', text: `${left} incomplete setup step${left === 1 ? '' : 's'}. The box uses default settings until you complete them`, where: 'Setup steps' });
   box.replaceChildren(el('h3', { textContent: 'Needs attention' }), items.length
     ? el('ul', { className: 'admin-checks attention-list' }, ...items.map((i) => el('li', { className: 'check' },
       el('a', { href: '#' + i.id, textContent: i.text }), el('span', { className: 'setting-desc', textContent: ` — ${i.where}` }))))
-    : el('p', { className: 'setting-desc', textContent: 'Nothing is waiting on you.' }));
+    : el('p', { className: 'setting-desc', textContent: 'No action required.' }));
 }
 AL.onBadge(drawAttention);
 AL.onBuild(drawAttention);
@@ -6560,7 +6562,7 @@ document.querySelectorAll('[data-tabs]').forEach(initTabs);
 const sigEl = { form: document.getElementById('update-signing-form'), note: noteEl('update-signing-note'),
   label: document.getElementById('update-signers-label'), kept: noteEl('update-signers-kept') };
 let sigWaiting = null;
-const SIG_WORDS = { off: 'from the branch, as before', github: 'merged on GitHub (signed by GitHub)', tags: 'signed releases only' };
+const SIG_WORDS = { off: 'from the branch, without a signature check', github: 'merged on GitHub (signed by GitHub)', tags: 'signed releases only' };
 function sigShowKeys() { sigEl.label.hidden = sigEl.form.elements.level.value !== 'tags'; }
 function drawSigning(sig, results) {
   if (!sigEl.form || !sig) return;
@@ -6573,7 +6575,7 @@ function drawSigning(sig, results) {
   if (says) says.textContent = SIG_WORDS[sig.level] || sig.level;
   sigShowKeys();
   sigEl.kept.textContent = sig.level === 'tags' && sig.keys.length
-    ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ''})`).join('; ')}. Saving replaces the list with what is in the box above.`
+    ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ''})`).join(', ')}. Saving replaces the list with the keys in the box above.`
     : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
 }
 if (sigEl.form) {
@@ -6582,11 +6584,11 @@ if (sigEl.form) {
     e.preventDefault();
     const level = sigEl.form.elements.level.value;
     const signers = sigEl.form.elements.signers.value;
-    if (level === 'tags' && !signers.trim()) { say('Signed releases need at least one key: paste it in the box.', false, sigEl.note); return; }
-    if (level === 'off' && !confirm('Install updates with no signature checked, as before?')) return;
+    if (level === 'tags' && !signers.trim()) { say('Signed releases need at least one key. Paste it in the box.', false, sigEl.note); return; }
+    if (level === 'off' && !confirm('Install updates without a signature check?')) return;
     try {
       sigWaiting = (await postJSON('/admin/update', { action: 'signing', level, signers })).id;
-      say('Asked: the root helper keeps it.', true, sigEl.note);
+      say('Request sent. The root helper applies the change.', true, sigEl.note);
       setTimeout(loadUpdate, 1500);
     } catch (err) { say(err.message, false, sigEl.note); }
   });
@@ -6596,8 +6598,8 @@ if (sigEl.form) {
 // the librarian, the installer's add-ons, the web add-ons, the tiles). It edits nothing: each line
 // leads to the app's own page. What no loader has answered for yet is said as unknown.
 let invShow = 'all';
-const INV_KIND = { builtin: 'Built in', app: 'App bundle', addon: 'Installer add-on', local: 'Web add-on' };
-const INV_OPENS = { public: 'Opens: everyone', users: 'Opens: users', private: 'Opens: the admin', off: 'Off' };
+const INV_KIND = { builtin: 'Built-in app', app: 'App bundle', addon: 'Service add-on', local: 'Web add-on' };
+const INV_OPENS = { public: 'Access: guests', users: 'Access: users', private: 'Access: administrators', off: 'Disabled' };
 function inventoryRows() {
   const manifests = AL.apps() || [];
   const access = new Map(((lastAccess || {}).apps || []).map((a) => [a.id, a]));
@@ -6625,7 +6627,7 @@ function inventoryRows() {
     else if (r.kind === 'addon') {
       const x = addons.get(r.id);
       if (x) state = x.added === null ? 'unknown' : x.added ? 'installed' : 'available';
-      if (x && x.added && x.active === false && !(a && a.mode === 'off')) r.attention.push('Not running');
+      if (x && x.added && x.active === false && !(a && a.mode === 'off')) r.attention.push('Service not running');
     } else if (r.kind === 'app' && libApps) {
       const lib = libApps[r.id];
       state = lib ? (lib.installed ? 'installed' : 'available') : 'unknown';
@@ -6637,13 +6639,13 @@ function inventoryRows() {
     } else if (r.kind === 'local' && local) {
       const x = (local.added || []).find((y) => y.id === r.id);
       state = x ? (x.installed && x.installed.commit ? 'installed' : 'fetching') : 'unknown';
-      if (x && x.catalogue && x.catalogue.status === 'held') r.attention.push('New version waiting for consent');
+      if (x && x.catalogue && x.catalogue.status === 'held') r.attention.push('Consent required');
     }
     r.state = state;
-    if (state !== 'builtin') r.facts.push({ installed: 'Installed', available: 'Not installed', fetching: 'Not installed yet', unknown: 'Installation unknown' }[state]);
+    if (state !== 'builtin') r.facts.push({ installed: 'Installed', available: 'Not installed', fetching: 'Downloading', unknown: 'Installation status unavailable' }[state]);
     if (a) r.facts.push(INV_OPENS[a.mode] || a.mode);
     if (a && a.mode !== 'off' && tileIds) {
-      r.facts.push(!tileIds.has(r.id) ? 'No home tile' : a.visible && a.visible !== 'auto' ? `Tile: ${SEEN_LABEL[a.visible] || a.visible}` : 'Tile: as its access');
+      r.facts.push(!tileIds.has(r.id) ? 'No home tile' : a.visible && a.visible !== 'auto' ? `Visibility: ${SEEN_LABEL[a.visible] || a.visible}` : 'Visibility: as its access');
     }
     r.href = pages.has('page-app-' + r.id) ? '#page-app-' + r.id : r.kind === 'local' ? (r.offered ? '#local-catalogue' : '#local-added') : r.kind === 'addon' ? '#addons' : '#apps';
   }
