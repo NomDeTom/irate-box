@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""A service declared in its manifest (the network block, hub/services.py) reaches the firewall's floor, the
+"""A service declared in its manifest (the network block, hub/services.py) reaches the hotspot firewall, the
 Security page, the security doctor's cross-reference and the box doctor with no code of its own: a made-up
 service (a TAK server: TCP 8087, UDP 6969) in a manifests folder of the test's own. And a service nobody
 declared: the box doctor's options for it. python3 tests/sim_declared_services.py"""
@@ -54,10 +54,10 @@ check("  installed once it is", services.installed(tak))
 
 # --- the firewall and the Security page ----------------------------------------------------------
 from irate_box.root import firewall, security, secdoctor_xref as xref  # noqa: E402
-check("the floor: its ports by its id", firewall.service_ports("tak") == ((8087,), (6969,)))
-check("  where installed, among the services a floor opens", "tak" in firewall.services_here(["tak"]) and "tak" in security.floor_default())
+check("the firewall: its ports by its id", firewall.service_ports("tak") == ((8087,), (6969,)))
+check("  where installed, among the services the firewall opens", "tak" in firewall.services_here(["tak"]) and "tak" in security.firewall_default())
 tcp, udp = firewall.ports(["tak"], "apps")
-check("  in the floor's ports", 8087 in tcp and 6969 in udp, (tcp, udp))
+check("  in the firewall's ports", 8087 in tcp and 6969 in udp, (tcp, udp))
 lf = security.listener_findings([{"proto": "tcp", "port": 8087, "addr": "0.0.0.0", "unit": "takserver.service", "pid": 7,
                                   "process": "java", "name": "TAK server"}], {})[0]
 check("the Security page: its listener rated and said as its manifest says, no stop offered (an add-on)", lf["status"] == "warn"

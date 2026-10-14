@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The network floor (root/firewall.py): the ruleset's text (the hotspot's
+"""The hotspot firewall (root/firewall.py): the ruleset's text (the hotspot's
 interface alone, the hub's doors, the owner's services, drop last, no forwarding), checked by nft
 where nft is installed; the hotspot's interface found from the record or the dnsmasq config; the
 Security page's finding and its switches against a stand-in nft and systemctl; the unit's text.
@@ -42,7 +42,7 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
-# The text. The floor as the Security page keeps it: a level (hub, or hub and apps) and the services.
+# The text. The firewall as the Security page keeps it: a level (hub, or hub and apps) and the services.
 F = lambda services=(), level="apps": {"level": level, "services": list(services)}  # noqa: E731
 text = fw.ruleset("ap0", F(["mqtt", "sync"]))
 lines = [l.strip() for l in text.splitlines()]
@@ -54,7 +54,7 @@ check("the hub's doors, DNS and DHCP, MQTT and Syncthing when chosen; drop last"
       "tcp dport { 53, 80, 443, 1883, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494, 22000 } accept" in hot
       and "udp dport { 53, 67, 21027, 22000 } accept" in hot and hot.strip().endswith("drop") and "established,related accept" in hot, hot)
 check("  SSH only by choice", "22," not in fw.ruleset("ap0", F()) and "{ 22, 53" in fw.ruleset("ap0", F(["ssh"])))
-check("the floor at hub only: the front, DNS and DHCP; the apps' ports closed", "tcp dport { 53, 80, 443 } accept" in fw.ruleset("ap0", F(level="hub"))
+check("the firewall at hub only: the front, DNS and DHCP; the apps' ports closed", "tcp dport { 53, 80, 443 } accept" in fw.ruleset("ap0", F(level="hub"))
       and "8090" not in fw.ruleset("ap0", F(level="hub")))
 check("nothing forwarded to or from the hotspot", 'iifname "ap0" drop' in lines and 'oifname "ap0" drop' in lines)
 try:
@@ -83,7 +83,7 @@ check("  not when it is down", fw.hotspot_iface() == "wlan1")
 def finding():
     return security.firewall_findings(security.load_record())[0]
 f = finding()
-check("no floor: a warning saying what it would allow, with a switch for each level", f["status"] == "warn"
+check("firewall off: a warning saying what it would allow, with a switch for each level", f["status"] == "warn"
       and [(a["choice"], a["on"]) for a in f["actions"]] == [("firewall-off", True), ("firewall-apps", False), ("firewall-hub", False)]
       and "TCP 53, 80, 443, 8090" in f["detail"] and "wlan1" in f["detail"], f)
 print(security.fix("firewall-on", None))
@@ -111,7 +111,7 @@ check("hub only: the apps' ports closed, said, the switch back to hub and apps",
 print(security.fix("firewall-apps", None))
 check("  and back", "8090" in (ETC / "firewall.nft").read_text() and security.load_record()["firewall"]["level"] == "apps")
 # A declared service (IRC's manifest: network block): no switch while it isn't installed; added after the
-# floor, closed until the floor is written again; opened and closed by its own switch.
+# firewall, closed until the firewall is written again; opened and closed by its own switch.
 check("no IRC on the box: no switch for it, 6667 not opened", not any("irc" in x["choice"] for x in finding()["actions"])
       and "6667" not in (ETC / "firewall.nft").read_text())
 (T / "present/etc/ngircd").mkdir(parents=True); (T / "present/etc/ngircd/irate-box.conf").write_text("[Global]\n")
@@ -130,11 +130,11 @@ for bad in ("firewall-svc-on:nosuch", "firewall-port-on:tcp/0", "firewall-port-o
         security.fix(bad, None); check(f"{bad}: refused", False)
     except ValueError:
         check(f"{bad}: refused", True)
-# A service nobody declared (the owner's own): kept for the box's network by the floor, or opened to guests by choice.
+# A service nobody declared (the owner's own): kept for the box's network by the firewall, or opened to guests by choice.
 own = [{"proto": "tcp", "port": 8123, "addr": "0.0.0.0", "unit": "homeassistant.service", "pid": 9, "process": "python3", "name": "python3"}]
 lf = security.listener_findings(own, security.load_record())[0]
-check("an owner's service: a warning saying the floor keeps hotspot guests off, with stop and open-to-guests", lf["status"] == "warn"
-      and "the floor keeps hotspot guests off it" in lf["detail"]
+check("an owner's service: a warning saying the firewall keeps hotspot guests off, with stop and open-to-guests", lf["status"] == "warn"
+      and "the hotspot firewall keeps hotspot guests off it" in lf["detail"]
       and [a["choice"] for a in lf["actions"]] == ["unit-off:homeassistant.service", "firewall-port-on:tcp/8123"], lf)
 print(security.fix("firewall-port-on:tcp/8123", None))
 lf = security.listener_findings(own, security.load_record())[0]
@@ -143,7 +143,7 @@ check("  opened to guests: in the ruleset, said by your choice, the switch close
       and "TCP 8123 open to guests, by your choice" in finding()["detail"], lf)
 print(security.fix("firewall-port-off:tcp/8123", None))
 check("  closed again", "8123" not in (ETC / "firewall.nft").read_text())
-check("a service the floor kept whose manifest is gone opens nothing", fw.service_ports("gone-addon") == ((), ()))
+check("a service the firewall kept whose manifest is gone opens nothing", fw.service_ports("gone-addon") == ((), ()))
 print(security.fix("firewall-svc-on:irc", None))
 lf = security.listener_findings([{"proto": "tcp", "port": 6667, "addr": "0.0.0.0", "unit": "ngircd.service", "pid": 1,
                                   "process": "ngircd", "name": "IRC server (ngIRCd)"}], {})[0]

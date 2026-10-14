@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The user guide (docs/guide/*.md, irate_box/library/guide.py): the box's pages in web/guide/ are what the source
+"""The user guide (docs/user/*.md, irate_box/library/guide.py): the box's pages in web/guide/ are what the source
 renders to (run `./irate-box guide build` after an edit); every link between the pages resolves; every page is
 in the index; no vault link ([[…]]); each source page carries its SPDX lines; the ZIM builds, every page in it.
 python3 tests/guide_guard.py"""
@@ -14,7 +14,7 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 src = sorted(guide.SOURCE.glob("*.md"))
-check("the source: pages under docs/guide", len(src) >= 10, [p.name for p in src])
+check("the source: pages under docs/user", len(src) >= 10, [p.name for p in src])
 stale = [s for s, md in guide.pages() if (guide.WEB / f"{s}.html").read_text() != guide.page_html(s, md)] if guide.WEB.is_dir() else ["(none)"]
 check("web/guide/ is what the source renders to (./irate-box guide build)", not stale, stale)
 extra = sorted({p.stem for p in guide.WEB.glob("*.html")} - {p.stem for p in src})

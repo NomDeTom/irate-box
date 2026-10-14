@@ -2524,7 +2524,7 @@ def step_internet(ctx):
 
 
 def step_firewall(ctx):
-    """The network floor: the hotspot's traffic goes through a
+    """The hotspot firewall: the hotspot's traffic goes through a
     default-drop chain, or it does not."""
     from irate_box.root import firewall
     about = {"kind": "setting", "key": "firewall"}
@@ -2535,19 +2535,19 @@ def step_firewall(ctx):
     except ValueError:
         pass
     if loaded is None:
-        return [F("firewall", "The network floor", "warn", "nftables is not installed: nothing limits what a guest on the hotspot can reach.",
-                  "Update the box (install.sh installs nftables), then switch the floor on (Security).", "", about=about)]
+        return [F("firewall", "Hotspot firewall", "warn", "nftables is not installed: nothing limits what a guest on the hotspot can reach.",
+                  "Update the box (install.sh installs nftables), then turn on the hotspot firewall (Security).", "", about=about)]
     if loaded:
-        return [F("firewall", "The network floor", "ok", f"Loaded: a guest on {firewall.hotspot_iface()} reaches the hub, its apps, DNS, DHCP and what "
+        return [F("firewall", "Hotspot firewall", "ok", f"Loaded: a guest on {firewall.hotspot_iface()} reaches the hub, its apps, DNS, DHCP and what "
                   "an administrator opened; the rest is dropped, and nothing is forwarded.", "", "", about=about)]
-    return [F("firewall", "The network floor", "problem" if hotspot_up else "warn",
-              ("The hotspot is up and " if hotspot_up else "") + "no floor is loaded: a guest on the hotspot reaches every listener on the box "
-              "(SSH, Syncthing, MQTT, Tailscale, the rest).", "Security → What a guest on the hotspot can reach: switch the floor on.", "", about=about)]
+    return [F("firewall", "Hotspot firewall", "problem" if hotspot_up else "warn",
+              ("The hotspot is up and " if hotspot_up else "") + "the hotspot firewall is off: a guest on the hotspot reaches every listener on the box "
+              "(SSH, Syncthing, MQTT, Tailscale, the rest).", "Security → Hotspot firewall: turn it on.", "", about=about)]
 
 
 STEPS = [
     ("notes", "Notes add-on", "F1", step_notes),
-    ("firewall", "The network floor", "", step_firewall),
+    ("firewall", "Hotspot firewall", "", step_firewall),
     ("front", "The web server in front", "F2 F15 F24 F27", step_front),
     ("admin-gate", "/admin from inside the box", "F27 F31 S3", step_admin_gate),
     ("web-addons", "Web add-ons", "", step_web_addons),

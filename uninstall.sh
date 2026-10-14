@@ -68,7 +68,7 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
 # Guests' onward internet (root/share.py): its rules went with irate-box-firewall.service above (one
-# table with the floor); the guests' resolver goes; forwarding goes back to what the box had before
+# table with the hotspot firewall); the guests' resolver goes; forwarding goes back to what the box had before
 # sharing, and its sysctl file goes.
 systemctl disable --now irate-box-guest-dns.service 2>/dev/null || true
 rm -f /etc/systemd/system/irate-box-guest-dns.service

@@ -8,9 +8,9 @@ name: Guide book
 on:
   push:
     branches: [main]
-    paths: ['docs/guide/**', 'irate_box/library/guide.py', 'config/guide-zim.json', 'web/guide/irate-box-guide.*', '.github/workflows/guide-zim.yml']
+    paths: ['docs/user/**', 'irate_box/library/guide.py', 'config/guide-zim.json', 'web/guide/irate-box-guide.*', '.github/workflows/guide-zim.yml']
   pull_request:
-    paths: ['docs/guide/**', 'irate_box/library/guide.py', 'config/guide-zim.json', 'web/guide/irate-box-guide.*', '.github/workflows/guide-zim.yml']
+    paths: ['docs/user/**', 'irate_box/library/guide.py', 'config/guide-zim.json', 'web/guide/irate-box-guide.*', '.github/workflows/guide-zim.yml']
   workflow_dispatch:
 permissions:
   contents: read

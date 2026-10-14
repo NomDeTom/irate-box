@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The guide names what a person sees: every label it puts in bold (docs/guide/*.md) is a word the box's pages,
+"""The guide names what a person sees: every label it puts in bold (docs/user/*.md) is a word the box's pages,
 helper messages or manifests still carry. A button renamed on a page and left in the guide fails here.
 A path in bold (Access → Remote access) is checked part by part. Bold that ends in a full stop, a colon or a
 question mark is a lead-in, and bold that starts in lower case is emphasis: neither is a label. Other bold that
@@ -30,7 +30,6 @@ NOT_LABELS = {
     "Steady on": "an LED pattern, described",
     "Quick flashes": "an LED pattern, described",
     "Two short flashes": "an LED pattern, described",
-    "Hotspot service access": "a glossary term (docs/guide/glossary.md); the setting has no heading of that name",
     "The theme picker": "names the control, which shows an icon and no words",
     "A script calls the administration pages": "a case in a list (first-use.md), not a control",
     "The shoutbox and the board": "a list item naming two apps (for-guests.md)",

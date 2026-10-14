@@ -21,7 +21,7 @@ Contained: each part is on unless the owner turns it off, and the Security docto
             it can't look outside names up through the box. Those let out are sent to a resolver of
             their own (GUEST_DNS, port 5354), which answers as the box's own resolver does.
 
-The rules are firewall.py's: one table with the floor, written and loaded as one (firewall.apply_all).
+The rules are firewall.py's: one table with the hotspot firewall, written and loaded as one (firewall.apply_all).
 Pure functions here, tested offline; the root helper writes and loads."""
 
 import ipaddress

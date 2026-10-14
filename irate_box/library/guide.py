@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The user guide: docs/guide/*.md, the source, rendered to the box's pages (web/guide/*.html, kept in the
+"""The user guide: docs/user/*.md, the source, rendered to the box's pages (web/guide/*.html, kept in the
 repository beside their source: tests/guide_guard.py checks they match) and packed as a ZIM for Kiwix's library,
 where Kiwix is chosen (install.sh). The Markdown is the plain kind the guide uses: headings, paragraphs, lists
 (one level of nesting), fenced code, tables, `code`, **bold**, *emphasis* and [links](page.md), a link to
 another page of the guide becoming its .html.
 
-    ./irate-box guide build            web/guide/*.html from docs/guide/*.md
+    ./irate-box guide build            web/guide/*.html from docs/user/*.md
     ./irate-box guide zim OUT.zim      the guide as one ZIM, made here (stdlib: no search index)
     ./irate-box guide site DIR         the pages as a static site for docusaurus2zim's package.py; DIR/.zim-source
                                        holds source-hash
@@ -27,7 +27,7 @@ import uuid as uuidlib
 from pathlib import Path
 
 CHECKOUT = Path(__file__).resolve().parents[2]
-SOURCE = CHECKOUT / "docs" / "guide"
+SOURCE = CHECKOUT / "docs" / "user"
 WEB = CHECKOUT / "web" / "guide"
 ZIM_NAME = "irate-box-guide"
 ZIM_FILE = f"{ZIM_NAME}.zim"
@@ -142,7 +142,7 @@ def render(md):
 PAGE = """<!DOCTYPE html>
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
-<!-- Made from docs/guide/{src} by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<!-- Made from docs/user/{src} by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">

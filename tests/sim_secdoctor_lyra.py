@@ -47,7 +47,7 @@ check("every CIS section tiered; the ones this board can't do said so", all(tier
       and {s for s, t in tiers.items() if t == "not-here"} == {"1.5", "1.7", "4.1", "99.1", "99.3", "99.4"}, tiers)
 check("the counts after merging (the badge): 1 to fix, 20 to look at, 19 suggestions, 6 not for this board",
       j["after"] == {"problem": 1, "warn": 20, "suggest": 19, "not_here": 6}, j["after"])
-check("the one to fix is the floor", [k for k, i in items.items() if i["status"] == "problem" and not i["tier"]] == ["setting:firewall"])
+check("the one to fix is the firewall", [k for k, i in items.items() if i["status"] == "problem" and not i["tier"]] == ["setting:firewall"])
 
 # A real board's deep audit (tests/fixtures/lyra-security-deep-2026-10-09.json): its
 # CIS checks one by one, Lynis matched by test and by sshd option. Read as the doctor reads its kept report,
@@ -92,7 +92,7 @@ for day in ("2026-10-09", "2026-10-12"):
     lost = [(f.get("source", "doctor"), f["id"]) for s in st for f in s["findings"]
             if f["status"] != "ok" and not f.get("accepted") and (f.get("source", "doctor"), f["id"]) not in said_d]
     idle = [i["key"] for i in jd["items"] if not (i["do"] or i["fix"] or i["cmd"] or i["page"])]
-    check(f"{day}: nothing lost, every item ends in something to do, one to fix (the floor)",
+    check(f"{day}: nothing lost, every item ends in something to do, one to fix (the firewall)",
           not lost and not idle and [i["key"] for i in jd["items"] if i["status"] == "problem" and not i["tier"]] == ["setting:firewall"],
           (lost[:3], idle[:3], jd["after"]))
 shutil.rmtree(T, ignore_errors=True)

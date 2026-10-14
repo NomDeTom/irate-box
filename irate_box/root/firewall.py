@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The network floor: what a guest on
+"""The hotspot firewall: what a guest on
 the hotspot can reach, said once as an nftables ruleset and nothing else.
 
-One table, `inet irate_box`, for everything the hotspot's guests can reach (the floor and guests'
-internet one policy, applied as a whole). The floor, at the level the owner chooses:
+One table, `inet irate_box`, for everything the hotspot's guests can reach (the firewall and guests'
+internet one policy, applied as a whole). The firewall, at the level the administrator selects:
 
   hub    traffic arriving on the hotspot's interface may reach the hub's front (80, 443), DNS and
          DHCP (the box's own dnsmasq) and nothing else of the box;
@@ -18,7 +18,7 @@ untouched: the LAN side stays as the owner has it, so this never locks anyone ou
 
 The ruleset is written to /etc/hub/firewall.nft, checked with nft -c, and loaded in one nft -f (one
 transaction: no moment with half of it), and by irate-box-firewall.service at boot; with neither the
-floor nor sharing on there is no table. The Security page sets the floor and the containment; the
+firewall nor sharing on there is no table. The Security page sets the firewall and the containment; the
 hotspot's card the sharing level; uninstall.sh takes it all away. Pure functions here (the text, the ports), tested offline; the
 root helper writes and loads it. Needs the nftables package (in install.sh's list).
 """
@@ -45,9 +45,9 @@ IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 # The hub's own doors on the hotspot: the front, the apps' origins and their TLS twins, DNS, DHCP.
 HUB_TCP = (53, 80, 443, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494)
 HUB_UDP = (53, 67)
-# The floor at "hub": the front, DNS and DHCP only.
+# The firewall at "hub": the front, DNS and DHCP only.
 HUB_ONLY_TCP = (53, 80, 443)
-FLOOR_LEVELS = ("hub", "apps")
+FIREWALL_LEVELS = ("hub", "apps")
 # Never forwarded to while contained (share.py's lan): this host, private and CGNAT (the tailnet's)
 # ranges, link-local, the special-purpose blocks, multicast and above.
 PRIVATE = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
@@ -88,7 +88,7 @@ def hotspot_iface():
 
 
 def ports(services=(), level="apps"):
-    """(tcp, udp): the hub's own doors (at the floor's level) plus the named services', sorted, each once."""
+    """(tcp, udp): the hub's own doors (at the firewall's level) plus the named services', sorted, each once."""
     tcp, udp = set(HUB_TCP if level == "apps" else HUB_ONLY_TCP), set(HUB_UDP)
     for s in services:
         t, u = service_ports(s)
@@ -97,8 +97,8 @@ def ports(services=(), level="apps"):
     return sorted(tcp), sorted(udp)
 
 
-def ruleset(iface, floor=None, sharing=None, kept=()):
-    """The nftables text. floor: None (off), or {"level": "hub"|"apps", "services": [...]} with the
+def ruleset(iface, fw=None, sharing=None, kept=()):
+    """The nftables text. fw: None (off), or {"level": "hub"|"apps", "services": [...]} with the
     services already those on the box (services_here); sharing: share.load()'s dict, or None (off).
     kept: [(address, seconds left)] already let out, carried into the new set (kept_out)."""
     from irate_box.root import share
@@ -111,7 +111,7 @@ def ruleset(iface, floor=None, sharing=None, kept=()):
     who = "ether saddr" if c.get("by_mac") else "ip saddr"
     fmt = lambda xs: "{ " + ", ".join(str(x) for x in xs) + " }"  # noqa: E731
     out = [
-        "# Written by irate-box (root/firewall.py): what a guest on the hotspot can reach, the floor and",
+        "# Written by irate-box (root/firewall.py): what a guest on the hotspot can reach, the hotspot firewall and",
         "# guests' internet as one. Set on /admin (Security; the hotspot's card); edits are overwritten.",
         "# The box's other interfaces are not filtered here.",
         # Made if missing, then deleted: loading twice is loading once, on any kernel (6.1 has no "destroy").
@@ -130,11 +130,11 @@ def ruleset(iface, floor=None, sharing=None, kept=()):
         # The guests' resolver answers only what was sent there (the redirect marks it), never a direct ask.
         out += [f"\t\t{q} udp dport {share.GUEST_DNS_PORT} ct mark != {DNS_MARK} drop",
                 f"\t\t{q} tcp dport {share.GUEST_DNS_PORT} ct mark != {DNS_MARK} drop"]
-    if floor:
+    if fw:
         out.append(f"\t\t{q} jump hotspot")
     out.append("\t}")
-    if floor:
-        tcp, udp = ports(floor.get("services", ()), floor.get("level", "apps"))
+    if fw:
+        tcp, udp = ports(fw.get("services", ()), fw.get("level", "apps"))
         if sharing:
             tcp, udp = sorted(set(tcp) | {share.GUEST_DNS_PORT}), sorted(set(udp) | {share.GUEST_DNS_PORT})
         out += ["\tchain hotspot {",
@@ -176,7 +176,7 @@ def ruleset(iface, floor=None, sharing=None, kept=()):
 
 
 def service_ports(name):
-    """(tcp ports, udp ports) for a name the floor keeps: a built-in, an owner's port, or a declared service.
+    """(tcp ports, udp ports) for a name the firewall keeps: a built-in, an owner's port, or a declared service.
     A name nothing knows any more (its add-on's manifest gone) opens nothing."""
     if name in SERVICES:
         return SERVICES[name]
@@ -249,15 +249,15 @@ def kept_out(sharing):
     return out
 
 
-def apply_all(floor, sharing, iface=None):
-    """The floor and guests' internet together: written, checked with nft, loaded in one transaction
+def apply_all(fw, sharing, iface=None):
+    """The hotspot firewall and guests' internet together: written, checked with nft, loaded in one transaction
     now and at every boot; with neither on, the table and its file gone. Raises ValueError, having
     changed nothing, when nft refuses the ruleset."""
     from irate_box.root import share
-    if not floor and not share.on(sharing or {"level": "off"}):
+    if not fw and not share.on(sharing or {"level": "off"}):
         remove()
         return
-    text = ruleset(iface or hotspot_iface(), floor, sharing, kept_out(sharing))
+    text = ruleset(iface or hotspot_iface(), fw, sharing, kept_out(sharing))
     RULES.parent.mkdir(parents=True, exist_ok=True)
     tmp = RULES.with_name(f".{RULES.name}.new")
     tmp.write_text(text)

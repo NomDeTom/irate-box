@@ -728,7 +728,7 @@ fi
 if [ "$WITH_COLLAB" = 1 ]; then
 	[ "$ARCH" != armv6l ] || die "--with-collab: Node.js has no ARMv6 build (the Pi Zero W cannot run it)"
 	[ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ] || [ -f "$ROOM/dist/index.js" ] || [ "$APPS_FROM_ACTIONS" = 1 ] ||
-		die "--with-collab needs the relay: --apps-from-actions, or --apps DIR with a prebuilt DIR/room (see BUILDING.md)"
+		die "--with-collab needs the relay: --apps-from-actions, or --apps DIR with a prebuilt DIR/room (see docs/dev/building.md)"
 fi
 
 case "$ARCH" in
@@ -2076,7 +2076,7 @@ if [ "$WITH_IRC" = 1 ]; then
 	AdminInfo2 = Chat for whoever is on this network
 	MotdFile = /etc/ngircd/irate-box.motd
 	PidFile = /run/ngircd/ngircd.pid
-	# Every interface: on the hotspot, the floor (Security) decides whether guests reach it.
+	# Every interface: on the hotspot, the hotspot firewall (Security) decides whether guests reach it.
 	Ports = 6667
 	ServerUID = irc
 	ServerGID = irc
@@ -2441,7 +2441,7 @@ PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectHome=read-only
 EOF
-# The network floor (root/firewall.py): loads /etc/hub/firewall.nft when the Security page has
+# The hotspot firewall (root/firewall.py): loads /etc/hub/firewall.nft when the Security page has
 # written one, nothing otherwise; the page enables it, uninstall.sh takes it away.
 PYTHONPATH="$CODE" python3 -c "from irate_box.root import firewall; print(firewall.unit_text(\"$CODE\"), end=\"\")" >/etc/systemd/system/irate-box-firewall.service
 # The hotspot's units, where it was set up, in this version's form; the running ones take it now (the

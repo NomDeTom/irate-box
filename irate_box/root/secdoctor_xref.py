@@ -36,7 +36,7 @@ XREF = {
     "ssh-forwarding": {"title": "SSH: forwarding", "security-page": ["ssh-forwarding"],
                        "debian-cis": ["disable_x11_forwarding", "disable_ssh_allow_tcp_forwarding"],
                        "lynis": ["SSH-7408:AllowTcpForwarding", "SSH-7408:X11Forwarding", "SSH-7408:AllowAgentForwarding"]},
-    "firewall": {"title": "What a guest on the hotspot can reach (the floor)", "doctor": ["firewall"], "security-page": ["firewall"],
+    "firewall": {"title": "Hotspot firewall (what a guest on the hotspot can reach)", "doctor": ["firewall"], "security-page": ["firewall"],
                  "debian-cis": ["net_fw_default_policy_drop"], "lynis": ["FIRE-4512", "FIRE-4590"]},
     "security-updates": {"title": "Debian's security updates", "security-page": ["security-updates"], "debian-cis": ["install_updates"],
                          "debsecan": [], "lynis": ["PKGS-7392"]},
@@ -179,7 +179,7 @@ CIS = {
     "99.2": ("FireWire storage", "not-here", "The benchmark blocks FireWire storage (firewire-ohci, firewire-sbp2).",
              "The boards irate-box runs on have no FireWire port."),
     "99.3": ("TCP wrappers (hosts.deny)", "not-here", "An old access list for network services.",
-            "Debian 13's sshd no longer reads it; the floor (Security) is what filters the hotspot."),
+            "Debian 13's sshd no longer reads it; the hotspot firewall (Security) is what filters the hotspot."),
     "99.4": ("Kernel audit support", "not-here", "CONFIG_AUDIT in the kernel, for auditd.", "The vendor kernel is built without it."),
     "99.5": ("More SSH settings", "suggest", "Further sshd hardening: keys only, rekeying, strict modes, where keys can come from.",
              "Keys only is a choice on Security; the rest are fine-tuning in /etc/ssh/sshd_config.d."),
@@ -262,5 +262,5 @@ def do_for(source, fid):
     if decl and decl["risk"] != "ok":
         return {"go": "addons", "where": "Add-ons",
                 "say": f"{decl['says']} If nobody uses it, remove the add-on; if they do, accept it as it is. "
-                       "Whether hotspot guests reach it is a switch on the floor (Security)."}
+                       "Whether hotspot guests reach it is a setting of the hotspot firewall (Security)."}
     return next((do for src, pat, do in _DO if src in ("*", source) and pat.search(fid or "")), None)

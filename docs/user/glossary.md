@@ -17,7 +17,7 @@
 | Doctor | A page that checks one part of the box, lists the problems and offers repairs |
 | Guest | A visitor without an account |
 | Hotspot | The WiFi network of the box |
-| Hotspot service access | What guests on the hotspot can reach on the box (also called the floor) |
+| Hotspot firewall | Limits what devices on the hotspot can reach on the box. It does not filter the home network |
 | Hub | The front page of the box and the program behind it |
 | Initial setup | The state of a new box before an administrator account exists. Until an administrator creates the account, anyone on the network can open the administration pages |
 | Install | Put a downloaded package or add-on into use |
