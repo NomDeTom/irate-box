@@ -134,10 +134,10 @@ setTimeout(() => {
     check('  a service down part of the time: only it named, with its share', /^Over the last 72 hours, all up but: Library \(Kiwix\) up 90\.0 %\./.test(t(d.querySelector('#svc-uptime-body > p'))),
       t(d.querySelector('#svc-uptime-body > p')));
     w.renderServiceUptime(box.services, box.service_uptime, null);
-    // Remote access in words: off; running but never logged in to a Tailscale network (not reachable); connected.
+    // Remote access in words: off; running but not signed in to a Tailscale network (not reachable); connected.
     const rt = (d2) => w.remoteText(d2);
     check('Tailscale off: said off', rt({ state: 'stopped' }) === 'Tailscale is off.');
-    check('  running, never logged in: said, with how to log in or switch it off', /not logged in to a Tailscale network yet.*sudo tailscale up.*Or switch it off here\./.test(rt({ state: 'running', backend: { state: 'needs-login' } })));
+    check('  running, not signed in: said, with how to sign in or switch it off', /not signed in to a Tailscale network yet.*sudo tailscale up.*Or switch it off here\./.test(rt({ state: 'running', backend: { state: 'needs-login' } })));
     check('  connected: its name, its tailnet and its address', rt({ state: 'running', backend: { state: 'connected', name: 'lyra.tail1.ts.net', tailnet: 'owner@', ip: '100.64.0.5' } })
       === 'Tailscale is on: this box is lyra.tail1.ts.net on owner@ (100.64.0.5).');
     check('  a service switched off now: said as off, not as its past uptime, with where to switch it', /Remote access \(Tailscale\) is switched off\./.test(line)

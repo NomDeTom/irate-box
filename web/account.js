@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// /account.html: log in or out, make an account
+// /account.html: sign in or out, create an account
 // (as the admin allows: open, or asking the admin), set a password with a one-time code, change
 // it. Over plain HTTP it says what that means, or (when the admin has prevented it) takes no
 // password at all and points at the certificate and the HTTPS page.
@@ -44,8 +44,8 @@ function render(d) {
   $('acct-me').hidden = !d.me;
   $('acct-guest').hidden = !!d.me;
   if (d.me) {
-    $('acct-subtitle').textContent = `Logged in as ${d.me.name}.`;
-    $('acct-me-text').replaceChildren(d.me.role === 'admin' ? `${d.me.name}: an admin of this box. ` : `${d.me.name}: a user of this box.`);
+    $('acct-subtitle').textContent = `Signed in as ${d.me.name}.`;
+    $('acct-me-text').replaceChildren(d.me.role === 'admin' ? `${d.me.name}: an administrator of this box. ` : `${d.me.name}: a user of this box.`);
     if (d.me.role === 'admin') {
       const a = document.createElement('a'); a.href = '/admin/'; a.textContent = 'Open /admin';
       $('acct-me-text').append(a);
@@ -57,17 +57,17 @@ function render(d) {
   const signup = d.signup === 'open' || d.signup === 'apply';
   // One login for everyone: the box's admins sign in here too, sign-up or not.
   const forAdmin = !!next && /^\/(admin|term|sync)(\/|$)/.test(next);
-  $('acct-subtitle').textContent = forAdmin ? 'That page is for the box\'s admin: sign in with an admin account.'
-    : d.signup === 'off' ? 'This box takes no sign-ups: its admins sign in here.'
-      : next ? 'That page is for the box\'s users: log in, or make an account.' : 'Log in, or make an account.';
+  $('acct-subtitle').textContent = forAdmin ? 'That page is for the box\'s administrator. Sign in with an administrator account.'
+    : d.signup === 'off' ? 'This box does not accept new accounts. Administrators sign in here.'
+      : next ? 'That page is for the box\'s users. Sign in or create an account.' : 'Sign in or create an account.';
   $('acct-signup-form').hidden = !signup;
   // From a locked tile that offers sign-up: straight to the form.
   if (signup && location.hash === '#signup') { $('acct-signup-form').scrollIntoView?.({ block: 'center' }); ($('acct-signup-form').elements.name || {}).focus?.(); }
-  $('acct-signup-title').textContent = d.signup === 'apply' ? 'Ask for an account' : 'Make an account';
-  $('acct-signup-button').textContent = d.signup === 'apply' ? 'Ask' : 'Make it';
+  $('acct-signup-title').textContent = d.signup === 'apply' ? 'Request an account' : 'Create account';
+  $('acct-signup-button').textContent = d.signup === 'apply' ? 'Request account' : 'Create account';
   $('acct-login-form').hidden = false;
   $('acct-code-form').hidden = false;   // an admin's one-time code (a new account, a reset) works with sign-up off too
-  $('acct-signup-desc').textContent = d.signup === 'apply' ? 'The box\'s admin accepts each one; until then it can\'t log in.' : 'Usable straight away. No e-mail, no real name.';
+  $('acct-signup-desc').textContent = d.signup === 'apply' ? 'An administrator must approve each request. Until then, the account cannot sign in.' : 'The account works immediately. It does not need an e-mail address or a real name.';
 
 }
 
@@ -89,16 +89,16 @@ function form(id, build, done) {
 
 form('acct-login-form', (f) => ({ action: 'login', name: f.elements.name.value, password: f.elements.password.value }), () => {
   if (next) { location.assign(next); return; }
-  note('Logged in.', true); load();
+  note('Signed in.', true); load();
 });
 form('acct-signup-form', (f) => ({ action: 'signup', name: f.elements.name.value, password: f.elements.password.value }), (d) => {
-  note(d.state === 'asked' ? 'Asked: you can log in once the box\'s admin accepts it.' : 'Made, and logged in.', true);
+  note(d.state === 'asked' ? 'Requested. You can sign in after an administrator approves it.' : 'Account created. You are signed in.', true);
   load();
 });
-form('acct-code-form', (f) => ({ action: 'code', code: f.elements.code.value, password: f.elements.password.value }), (d) => note(`Password set for ${d.name}: log in with it.`, true));
-form('acct-password-form', (f) => ({ action: 'password', old: f.elements.old.value, new: f.elements.new.value }), () => note('Changed. Your other devices are logged out.', true));
+form('acct-code-form', (f) => ({ action: 'code', code: f.elements.code.value, password: f.elements.password.value }), (d) => note(`Password set for ${d.name}. Sign in with it.`, true));
+form('acct-password-form', (f) => ({ action: 'password', old: f.elements.old.value, new: f.elements.new.value }), () => note('Password changed. Your other devices are signed out.', true));
 $('acct-logout').addEventListener('click', async () => {
-  try { await post({ action: 'logout' }); note('Logged out.', true); load(); } catch (err) { note(err.message, false); }
+  try { await post({ action: 'logout' }); note('Signed out.', true); load(); } catch (err) { note(err.message, false); }
 });
 // ---- Your settings: held until Save, theirs alone.
 const HUES = [0, 40, 130, 210, 280];
@@ -106,7 +106,7 @@ let saved = {}, draft = {};
 function showPrefs(p, namesTo) {
   saved = JSON.parse(JSON.stringify(p));
   draft = JSON.parse(JSON.stringify(p));
-  $('acct-names-to').textContent = namesTo === 'admin' ? 'Names are shown to the box\'s admin only (the owner\'s choice).' : 'Names are shown to those logged in (the owner\'s choice); guests only see how many.';
+  $('acct-names-to').textContent = namesTo === 'admin' ? 'Only administrators see names. The administrator chose this.' : 'Signed-in users see names. Guests see only the number. The administrator chose this.';
   drawPrefs();
 }
 function drawPrefs() {

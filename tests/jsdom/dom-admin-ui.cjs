@@ -157,8 +157,8 @@ setTimeout(() => {
     const open = (id) => { const r = rowEl(id); if (r.querySelector('.aw-row-head').getAttribute('aria-expanded') !== 'true') r.querySelector('.aw-row-head').click(); return rowEl(id); };
     const btn = (id, label) => [...rowEl(id).querySelectorAll('button')].find((b) => b.textContent === label);
     const rows = [...d.querySelectorAll('#tile-order-list .aw-row')];
-    check('the tiles in order, each saying who opens it and who sees it', rows.length === 3 && /opens: everyone · seen: as its access/.test(rows[0].textContent)
-      && /opens: everyone · seen: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
+    check('the tiles in order, each saying who opens it and who sees it', rows.length === 3 && /Access: guests · Visibility: as its access/.test(rows[0].textContent)
+      && /Access: guests · Visibility: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
     open('drop');
     btn('drop', 'large').click();
     check('a size chosen: the drop large, said in its line', /· large/.test(rowEl('drop').textContent));

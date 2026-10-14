@@ -116,8 +116,8 @@ function remoteText(data) {
   const b = data.backend;
   if (data.state !== 'running' || !b) return STATE_TEXT[data.state] || '';
   if (b.state === 'connected') return `Tailscale is on: this box is ${b.name || 'on your Tailscale network'}${b.tailnet ? ` on ${b.tailnet}` : ''}${b.ip ? ` (${b.ip})` : ''}.`;
-  if (b.state === 'needs-login') return 'Tailscale is running, but this box is not logged in to a Tailscale network yet, so nothing can reach it '
-    + 'through Tailscale. To log in: run sudo tailscale up in the box\'s terminal, open the link it prints, and sign in with your '
+  if (b.state === 'needs-login') return 'Tailscale is running, but this box is not signed in to a Tailscale network yet, so nothing can reach it '
+    + 'through Tailscale. To sign in, run sudo tailscale up in the box\'s terminal, open the link it prints, and sign in with your '
     + 'Tailscale account. Or switch it off here.';
   return `Tailscale is running (it says: ${b.state}).`;
 }
@@ -1805,7 +1805,7 @@ function secChipRows(f, busy) {
 // The Security page's subjects: where each of the box's choices lives.
 const SEC_SUBJECTS = [
   ['exposure', 'What guests can reach', 'The ports that answer, the floor between guests and the box, and what is shared onward.'],
-  ['login', 'Logging in and root', 'Who can log in to the box itself, how, and what they may do as root.'],
+  ['login', 'Sign-in and root', 'Who can sign in to the box itself, how, and what they can do as root.'],
   ['system', 'The system', 'How the system underneath is set up: its kernel, its package sources, its logs and its services.'],
 ];
 function secSubject(f) {
@@ -1907,7 +1907,7 @@ function renderSecurity(data) {
       el('td', { textContent: l.addr }),
       el('td', {}, f ? el('span', { className: `fstate fstate-${f.status}`, textContent: f.status === 'ok' ? 'Yes' : STATE_WORD[f.status] }) : null,
         f ? el('span', { className: 'setting-desc', textContent: ` ${f.detail.replace(/^(TCP|UDP) \d+ on .*?\.\s+/, '')}` }) : null,
-        ssh ? el('a', { href: '#sec-ssh-password', textContent: 'Who may log in, and how: SSH\'s settings' }) : null,
+        ssh ? el('a', { href: '#sec-ssh-password', textContent: 'Who can sign in, and how: SSH settings' }) : null,
         f && f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: ` ${f.fix}` }) : null,
         f && f.actions.length ? el('span', { className: 'library-buttons' }, ...scanButtons(f, busy)) : null, f ? noteUnder(f.id) : null));
   }));
@@ -2491,7 +2491,7 @@ const HELPER_WORDS = {
   'uplink-do': 'Network: a step by hand', 'uplink-hold': 'Network: hold', 'uplink-profile': 'Network: profile', 'wifi-join': 'Network: join',
   'wifi-forget': 'Network: forget', 'ap-on': 'Hotspot: on', 'ap-off': 'Hotspot: off', 'ap-try': 'Hotspot: try', 'ap-confirm': 'Hotspot: keep',
   'share-set': 'Guests\' internet', 'share-allow': 'Guests\' internet', 'service': 'A service', 'password': 'The password', 'access': 'Who may open an app',
-  'admin-gate': 'The admin login', 'admin-login': 'The admin login', 'tls-switch': 'HTTPS', 'tls-make': 'HTTPS: a certificate',
+  'admin-gate': 'The administrator sign-in', 'admin-login': 'The administrator sign-in', 'tls-switch': 'HTTPS', 'tls-make': 'HTTPS: a certificate',
   'tls-renew': 'HTTPS: renew', 'tls-import': 'HTTPS: import', 'tls-box': 'HTTPS', 'tls-admin-only': 'HTTPS', 'usb-scan': 'USB drive: look',
   'usb-import': 'USB drive: import', 'usb-export': 'USB drive: export', 'usb-export-many': 'USB drive: export', 'usb-kit-import': 'USB drive: a toolkit in',
   'usb-kit-export': 'USB drive: a toolkit out', 'offline-kit': 'Backup: an offline kit', 'content-export': 'Backup: content export',
@@ -3657,7 +3657,7 @@ function renderVisible(inv, busy) {
           f.ssid.value = n.ssid; f.security.value = n.kind; f.hidden.checked = false; joinOpen();
           (n.kind === 'open' ? f.ssid : f.psk).focus();
         }, { className: 'small', disabled: busy || n.known, title: n.known ? 'Known already' : '' })
-          : el('span', { className: 'setting-desc', textContent: 'needs a login (802.1X)' })))))))] : []));
+          : el('span', { className: 'setting-desc', textContent: 'needs a sign-in (802.1X)' })))))))] : []));
 }
 
 // One connection's own settings: each with its value now and the choices, the risky side said; a change
@@ -4311,12 +4311,12 @@ let accessWaiting = null; // { id, app }
 let accessNote = null; // { app, text, ok }
 let accessPoll = null;
 
-const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+const SEEN_LABEL = { auto: 'as its access', guests: 'everyone', users: 'signed-in users', hidden: 'nobody' };
 function seenDesc(a) {
   a = { ...a, visible: a.visible || 'auto' };
   if (a.mode === 'off') return 'Off: no tile.';
   if (a.visible === 'auto') return '';
-  const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'those logged in' : 'the admin';
+  const opens = a.mode === 'public' ? 'everyone' : a.mode === 'users' ? 'signed-in users' : 'administrators';
   if (a.visible === 'hidden') return 'No tile; its address still works for whoever may open it.';
   return a.visible === 'guests' && a.mode !== 'public'
     ? `Everyone sees its tile, with a lock: it opens for ${opens}, and anyone else is asked to sign in.`
@@ -4345,7 +4345,7 @@ function accessSet(a, mode) {
   if (mode === a.mode) return;
   if (mode === 'off' && a.unit && !confirm(`Turn ${a.title} off? Its service stops until you switch it back on.`)) return;
   if (mode === 'public' && a.mode !== 'public' && !a.login
-    && !confirm(`Make ${a.title} public? Everyone on the box's network can open it, with no login.`)) return;
+    && !confirm(`Let guests open ${a.title}? Everyone on the box's network can open it, with no sign-in.`)) return;
   postJSON('/admin/access', { app: a.id, mode }).then((r) => {
     accessWaiting = { id: r.id, app: a.id };
     accessNote = null;
@@ -4381,7 +4381,7 @@ function renderAccess(data) {
 
 // Each app's own page starts with its access: the same controls, drawn again there.
 let lastAccess = null;
-const TAB_SEEN = { guests: 'everyone', users: 'those logged in', hidden: 'nobody' };
+const TAB_SEEN = { guests: 'everyone', users: 'signed-in users', hidden: 'nobody' };
 function fillSeenBlocks() {
   if (!lastAccess) return;
   document.querySelectorAll('.seen-block[data-app]').forEach((block) => {
@@ -4476,7 +4476,7 @@ AL.onBuild(fillAccessBlocks);
 
 // A tile with no switch of its own (a folder, About): anyone may open it, so only who sees
 // its tile is to choose. Hidden, its address still works.
-const SEEN_ONLY = { auto: 'everyone', guests: 'everyone', users: 'those logged in', admin: 'the admin', hidden: 'nobody' };
+const SEEN_ONLY = { auto: 'everyone', guests: 'everyone', users: 'signed-in users', admin: 'administrators', hidden: 'nobody' };
 
 
 // The box-wide sign-in offer (the setup decision "sign-in-offer"): an app for users, left at
@@ -4513,15 +4513,15 @@ async function loadTileOrder() {
 function freshTilesDraft() {
   return { order: tilesData.tiles.map((x) => x.id), size: { ...(tilesData.state.size || {}) }, icon: { ...(tilesData.state.icon || {}) }, seen: {}, lock: {} };
 }
-const OPENS = { public: 'everyone', users: 'users', private: 'the admin', off: 'off' };
+const OPENS = { public: 'guests', users: 'users', private: 'administrators', off: 'disabled' };
 function tileWords(id) {
   const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
   if (a) {
     const seen = a.mode === 'off' ? 'nobody' : a.visible === 'auto' || !a.visible ? 'as its access' : SEEN_LABEL[a.visible];
-    return { summary: `opens: ${OPENS[a.mode] || a.mode} · seen: ${seen}`, badges: [a.mode === 'off' ? 'off' : a.mode] };
+    return { summary: `Access: ${OPENS[a.mode] || a.mode} · Visibility: ${seen}`, badges: [a.mode === 'off' ? 'off' : a.mode] };
   }
   const s = lastAccess && (lastAccess.seen || {})[id];
-  return { summary: `opens: everyone · seen: ${SEEN_ONLY[s || 'auto']}`, badges: [s === 'hidden' ? 'hidden' : 'shown'] };
+  return { summary: `Access: guests · Visibility: ${SEEN_ONLY[s || 'auto']}`, badges: [s === 'hidden' ? 'hidden' : 'shown'] };
 }
 function drawTileOrder(openId) {
   const box = document.getElementById('tile-order-box');
@@ -5024,7 +5024,7 @@ const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 // repository with its badges in words, and Manage, opening under its card.
 let gitData = null;
 const gitView = { kind: 'all', area: 'all', q: '', open: null };
-const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'the admin pushes', nobody: 'read-only' };
+const PUSH_WORDS = { everyone: 'anyone pushes', admin: 'administrators push', nobody: 'read-only' };
 const builds = (r) => r.can_build && r.build && r.has_script;
 const repoKey = (r) => `${r.area}/${r.name}`;
 const GIT_KINDS = [['all', 'All', () => true], ['mine', 'Mine', (r) => !r.mirror_of], ['mirrors', 'Mirrors', (r) => !!r.mirror_of],
@@ -5034,10 +5034,10 @@ const GIT_AREAS = [['all', 'Public and private', () => true], ['public', 'Public
 
 // One sentence for the card: who sees it, who pushes, whether pushes are built.
 function accessSentence(r) {
-  const see = r.area === 'public' ? 'Anyone on the network can see and clone it' : 'Only the admin can see and clone it';
-  const push = r.mirror_of ? 'nobody pushes (the librarian keeps it)' : { everyone: 'anyone can push', admin: 'only the admin can push', nobody: 'nobody can push' }[r.write];
-  const build = builds(r) ? '; pushes are built' : r.can_build && r.has_script && !r.build ? '; builds are switched off' : '';
-  return `${see}; ${push}${build}.`;
+  const see = r.area === 'public' ? 'Anyone on the network can see and clone it.' : 'Only administrators can see and clone it.';
+  const push = r.mirror_of ? 'Nobody can push to it. The librarian updates it.' : { everyone: 'Anyone can push to it.', admin: 'Only administrators can push to it.', nobody: 'Nobody can push to it.' }[r.write];
+  const build = builds(r) ? ' The box builds each push.' : r.can_build && r.has_script && !r.build ? ' Builds are disabled.' : '';
+  return `${see} ${push}${build}`;
 }
 
 function renderGit(data) {
@@ -5090,7 +5090,7 @@ function newPanel(cls) {
   return el('div', { className: `git-manage ${cls}` },
     el('div', { className: 'git-manage-head' }, el('strong', { textContent: 'New' }), closeButton()),
     el('section', {}, el('h4', { textContent: 'An empty repository' }),
-      el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Public: anyone on the network can browse and clone it; only the admin pushes until you choose otherwise. Private: everything needs the admin login.' }),
+      el('p', { className: 'setting-desc', textContent: 'Push to it from a computer. Public: anyone on the network can browse and clone it. Until you change the push setting, only administrators can push. Private: only administrators can browse, clone or push.' }),
       git.form, git.createNote),
     el('section', {}, el('h4', { textContent: 'A mirror of a repository on the internet' }),
       el('p', { className: 'setting-desc', textContent: 'Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed under Mirrors, below.' }),
@@ -5148,14 +5148,14 @@ function managePanel(r, data, cls) {
   const see = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can see it?' }),
     radio('see', 'public', 'Everyone on the network', r.area === 'public', act({ action: 'move', area: r.area, name: r.name, to: 'public' },
       `Move ${r.name}.git to /git/? Anyone on the network will be able to browse and clone it, and its clone URL changes.`, `${r.name}.git is public now.`)),
-    radio('see', 'private', 'Only the admin', r.area === 'private', act({ action: 'move', area: r.area, name: r.name, to: 'private' },
-      `Move ${r.name}.git to /git-private/? Only the admin login will see or clone it, and its clone URL changes.`, `${r.name}.git is private now.`)),
+    radio('see', 'private', 'Only administrators', r.area === 'private', act({ action: 'move', area: r.area, name: r.name, to: 'private' },
+      `Move ${r.name}.git to /git-private/? Only administrators can see or clone it. Its clone URL changes.`, `${r.name}.git is private now.`)),
     el('p', { className: 'setting-desc', textContent: 'Moving it changes its clone URL; clones elsewhere need git remote set-url.' }));
   const presets = (data.presets || {})[r.area] || [];
-  const WHO = { everyone: 'Anyone', users: 'The box\'s users (their account\'s name and password)', admin: 'Only the admin', nobody: 'Nobody (read-only)' };
+  const WHO = { everyone: 'Anyone', users: 'The box\'s users (their account\'s name and password)', admin: 'Only administrators', nobody: 'Nobody (read-only)' };
   const push = el('fieldset', { className: 'git-q' }, el('legend', { textContent: 'Who can push?' }),
     ...presets.map((p) => radio('push', p.name, WHO[p.write], p.name === r.preset, act({ action: 'preset', area: r.area, name: r.name, preset: p.name },
-      p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git, without the login? They cannot rewrite or delete its history, and the public repositories have a size cap, but anything they push is served from this box.` : null,
+      p.write === 'everyone' ? `Let anyone on the network push to ${r.name}.git without signing in? They cannot rewrite or delete its history. Public repositories have a storage limit. The box serves anything they push.` : null,
       `${r.name}.git: ${p.text}.`))),
     el('p', { className: 'setting-desc', textContent: 'The hub decides each push; nobody can rewrite or delete history in a public repository.' }));
   const buildNow = r.can_build && r.build && r.has_script ? actionButton('Build now', async () => {
@@ -5175,7 +5175,7 @@ function managePanel(r, data, cls) {
       ? (r.has_script ? 'Its newest commit has a .irate-ci.sh. A build runs as a user of its own, sandboxed, at the lowest priority (Builds, below).'
         : 'Its newest commit has no .irate-ci.sh yet: add one at the top of the repository to build.')
       : r.area === 'public' ? 'Public repositories never build: anyone could push what runs.'
-        : 'Only for repositories that only the admin can push to.' }),
+        : 'Only for repositories that only administrators can push to.' }),
     buildNow, r.can_build ? buildSetup(r) : null);
   const desc = el('textarea', { rows: 2, maxLength: 200, value: r.description || '', className: 'git-desc' });
   const about = el('section', {}, el('h4', { textContent: 'About' }),
@@ -5872,7 +5872,7 @@ function renderAccounts(d) {
   const choose = async (reach) => {
     if (reach === al.reach || acctWaiting) return;
     if (reach === 'network' && !confirm('Let the box\'s own login work from other devices? Its password goes with every request; use it over HTTPS.')) return;
-    if (reach === 'off' && !confirm(`Switch the box's own login off? Only the admin accounts (${admins}) then open the admin pages.`)) return;
+    if (reach === 'off' && !confirm(`Switch the box's own login off? Only the administrator accounts (${admins}) can then open the administration pages.`)) return;
     try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; loadAccounts(); }
     catch (err) { say(err.message, false, acctEl.note); }
   };

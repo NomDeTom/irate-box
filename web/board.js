@@ -32,8 +32,8 @@ function applyPosting(p) {
     notes[i].replaceChildren();
     if (p.who === 'off') notes[i].textContent = 'The forum is closed to new posts.';
     else if (closed) {
-      const a = document.createElement('a'); a.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; a.textContent = 'Log in';
-      notes[i].append(a, ' to post here: the box\'s admin keeps the forum for its users.');
+      const a = document.createElement('a'); a.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; a.textContent = 'Sign in';
+      notes[i].append(a, ' to post here. The administrator reserves the forum for users.');
     }
   });
   for (const id of ['t-name', 'r-name']) {

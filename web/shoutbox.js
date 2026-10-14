@@ -46,8 +46,8 @@ function applyPosting(p) {
   postNote.replaceChildren();
   if (p.who === 'off') postNote.textContent = 'The shoutbox is closed.';
   else if (closed) {
-    const a = document.createElement('a'); a.href = '/account.html?next=/'; a.textContent = 'Log in';
-    postNote.append(a, ' to post here: the box\'s admin keeps the shoutbox for its users.');
+    const a = document.createElement('a'); a.href = '/account.html?next=/'; a.textContent = 'Sign in';
+    postNote.append(a, ' to post here. The administrator reserves the shoutbox for users.');
   }
   nameInput.readOnly = !!p.me;
   nameRoll.hidden = !!p.me;

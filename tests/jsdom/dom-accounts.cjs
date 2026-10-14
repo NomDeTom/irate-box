@@ -40,12 +40,12 @@ function page(file, url, fetcher, scripts) {
   let d = p.d;
   check('apply over HTTP: warned, with the certificate and the HTTPS page', !d.getElementById('acct-http').hidden && /can be read by anyone on the WiFi/.test(t(d.getElementById('acct-http-text')))
     && d.getElementById('acct-https-link').href === 'https://box.local/account.html');
-  check('  asking, not making', !d.getElementById('acct-signup-form').hidden && t(d.getElementById('acct-signup-button')) === 'Ask');
+  check('  asking, not making', !d.getElementById('acct-signup-form').hidden && t(d.getElementById('acct-signup-button')) === 'Request account');
   const sf = d.getElementById('acct-signup-form');
   sf.elements.name.value = 'alice'; sf.elements.password.value = 'password1';
   sf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
   check('  Ask: sent with the page\'s header; says it waits for the admin', posted[0].b.action === 'signup' && posted[0].h['X-Irate-Account'] === '1'
-    && /once the box's admin accepts it/.test(t(d.getElementById('acct-note'))));
+    && /after an administrator approves it/.test(t(d.getElementById('acct-note'))));
   const lf = d.getElementById('acct-login-form');
   lf.elements.name.value = 'alice'; lf.elements.password.value = 'password1';
   lf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait(300);
@@ -59,8 +59,8 @@ function page(file, url, fetcher, scripts) {
   view = { signup: 'off', http: 'prevented', https: true, me: null };
   p = page('account.html', 'https://box.local/account.html', async () => json(view), ['account.js']);
   await wait(); d = p.d;
-  // One login: with sign-up off the box's admins still sign in here.
-  check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /admins sign in here/.test(t(d.getElementById('acct-subtitle')))
+  // One sign-in: with registration off, administrators still sign in here.
+  check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /Administrators sign in here/.test(t(d.getElementById('acct-subtitle')))
     && !d.getElementById('acct-login-form').hidden && d.getElementById('acct-signup-form').hidden, t(d.getElementById('acct-subtitle')));
   check('account page: no errors', !p.errors.length, p.errors.join(' | '));
 
@@ -84,7 +84,7 @@ function page(file, url, fetcher, scripts) {
   h = await home({ who: 'users', marks: false, me: null });
   d = h.d;
   check('users only, a guest: the forms hidden, a link to log in; marks off: none shown', d.getElementById('shout-form').hidden
-    && /Log in to post here/.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
+    && /Sign in to post here/.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
     && !d.querySelector('.verified'));
   h = await home({ who: 'off', marks: true, me: 'erin' });
   check('  off: closed, even for a user', h.d.getElementById('shout-form').hidden && /closed/.test(t(h.d.querySelector('.shout-post-note')))

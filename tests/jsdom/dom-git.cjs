@@ -85,14 +85,14 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   check('chips with counts: All 5 · Mine 4 · Mirrors 1 · Builds 1', ['All 5', 'Mine 4', 'Mirrors 1', 'Builds 1'].every((l) => chip(l.split(' ')[0]) && t(chip(l.split(' ')[0])) === l),
     [...d.querySelectorAll('#git-chips-kind .chip')].map(t).join(', '));
   check('and Public 3 · Private 2', t(chip('Public')) === 'Public 3' && t(chip('Private')) === 'Private 2', [...d.querySelectorAll('#git-chips-area .chip')].map(t).join(', '));
-  check('badges in words: public, the admin pushes', /Public/.test(t(card('demo').querySelector('.badges'))) && /the admin pushes/.test(t(card('demo').querySelector('.badges'))));
+  check('badges in words: public, the admin pushes', /Public/.test(t(card('demo').querySelector('.badges'))) && /administrators push/.test(t(card('demo').querySelector('.badges'))));
   check('anyone pushes', /anyone pushes/.test(t(card('open').querySelector('.badges'))));
   check('read-only, private', /Private/.test(t(card('archive').querySelector('.badges'))) && /read-only/.test(t(card('archive').querySelector('.badges'))));
   check('the last build, with its result and date', /✅ build passed, 2026-/.test(t(card('fw-ci').querySelector('.badges'))), t(card('fw-ci').querySelector('.badges')));
   check('the description labelled, only when there is one', /^About Field notes/.test(t(card('demo').querySelector('.git-about'))) && !card('open').querySelector('.git-about'));
   check('a facts line: last commit, branches, size', /^Last commit 2026-\d\d-\d\d · 2 branches · /.test(t(card('demo').querySelector('.git-facts'))), t(card('demo').querySelector('.git-facts')));
   check('an empty one says so', /^Empty/.test(t(card('archive').querySelector('.git-facts'))));
-  check('access in one sentence', t(card('fw-ci').querySelector('.git-access')) === 'Only the admin can see and clone it; only the admin can push; pushes are built.',
+  check('access in one sentence', t(card('fw-ci').querySelector('.git-access')) === 'Only administrators can see and clone it. Only administrators can push to it. The box builds each push.',
     t(card('fw-ci').querySelector('.git-access')));
   const mc = card('meshtastic-firmware');
   check('a mirror: the Mirror badge, from where, its update; Manage in Library, no Manage of its own', /Mirror/.test(t(mc.querySelector('.badges')))
@@ -130,8 +130,8 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   check('the drawer stays open after a change', drawer && drawer.previousElementSibling === card('demo'));
   drawer.querySelector('input[name^="see-"][value="private"]').click();
   await wait();
-  check('Only the admin (see) moves it to private', posted.some(([, b]) => b.action === 'move' && b.name === 'demo' && b.to === 'private'));
-  check('  and its drawer follows it', d.querySelector('.git-drawer') && /Only the admin can see/.test(t(d.querySelector('.git-drawer .git-manage-head + section'))));
+  check('Only administrators (see) moves it to private', posted.some(([, b]) => b.action === 'move' && b.name === 'demo' && b.to === 'private'));
+  check('  and its drawer follows it', d.querySelector('.git-drawer') && /Only administrators can see/.test(t(d.querySelector('.git-drawer .git-manage-head + section'))));
   drawer = d.querySelector('.git-drawer');
   drawer.querySelector('textarea.git-desc').value = 'New words';
   [...drawer.querySelectorAll('button')].find((b) => t(b) === 'Save').click();
