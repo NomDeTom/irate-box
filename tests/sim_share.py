@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Guests' onward internet as a scale (root/share.py), contained (each part of the containment can be
 switched off, with security doctor findings against it when too much is off), and
-the floor with it as one ruleset (root/firewall.py), offline: each level's rules, each part of the
+the firewall with it as one ruleset (root/firewall.py), offline: each level's rules, each part of the
 containment on and off, the guests' resolver reached only by the redirect, a guest's hardware address
 found, the root helper's share-set and share-allow in a safe order with the system's commands
 recorded, not run, and the Security doctor's findings and switches. python3 tests/sim_share.py"""
@@ -25,49 +25,49 @@ def check(name, cond, info=""):
 ALL = {k: True for k in share.CONTAIN}
 def S(level, **off):
     return {"level": level, "forward_was": None, "contain": dict(ALL, **{k: False for k in off})}
-FLOOR = {"level": "apps", "services": []}
+FW = {"level": "apps", "services": []}
 
 # --- the levels' rules ---
 for lv in ("users-web", "sheet-web", "sheet-all", "open"):
-    r = firewall.ruleset("ap0", FLOOR, S(lv))
+    r = firewall.ruleset("ap0", FW, S(lv))
     check(f"{lv}: the guests' addresses masqueraded on the way out", 'ip saddr 192.168.4.0/24 oifname != "ap0" masquerade' in r)
     check(f"{lv}: replies back in, anything else to the hotspot dropped", 'oifname "ap0" ct state established,related accept' in r and 'oifname "ap0" drop' in r)
 for lv in ("users-web", "sheet-web", "sheet-all"):
-    r = firewall.ruleset("ap0", FLOOR, S(lv))
+    r = firewall.ruleset("ap0", FW, S(lv))
     check(f"{lv}: a device not let out meets the hub (its plain web requests sent there)",
           'ether saddr != @out ip daddr != 192.168.4.1 tcp dport 80 dnat ip to 192.168.4.1' in r)
     check(f"{lv}: nothing else of it leaves", r.index('iifname "ap0" drop') > r.index("ether saddr @out"))
-web = firewall.ruleset("ap0", FLOOR, S("sheet-web"))
+web = firewall.ruleset("ap0", FW, S("sheet-web"))
 check("web only: 80, 443 and QUIC for those let out, nothing more", 'ether saddr @out tcp dport { 80, 443 } accept' in web
       and 'ether saddr @out udp dport 443 accept' in web and 'ether saddr @out accept' not in web)
-check("everything: all of it for those let out", 'iifname "ap0" ether saddr @out accept' in firewall.ruleset("ap0", FLOOR, S("sheet-all")))
-check("open: no sheet, everyone out", "dnat" not in firewall.ruleset("ap0", FLOOR, S("open")) and 'iifname "ap0" accept' in firewall.ruleset("ap0", FLOOR, S("open")))
-check("one table with the floor, made then deleted: loading twice is loading once", web.count("table inet irate_box") == 3 and "chain hotspot" in web and "chain pre" in web)
+check("everything: all of it for those let out", 'iifname "ap0" ether saddr @out accept' in firewall.ruleset("ap0", FW, S("sheet-all")))
+check("open: no sheet, everyone out", "dnat" not in firewall.ruleset("ap0", FW, S("open")) and 'iifname "ap0" accept' in firewall.ruleset("ap0", FW, S("open")))
+check("one table with the firewall, made then deleted: loading twice is loading once", web.count("table inet irate_box") == 3 and "chain hotspot" in web and "chain pre" in web)
 
 # --- the containment, each part on and off ---
 check("lan: private, CGNAT and link-local destinations dropped before anyone is let out",
       web.index("ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10") < web.index("@out tcp dport") and "192.168.0.0/16" in web and "169.254.0.0/16" in web)
-check("  off: not dropped", "100.64.0.0/10" not in firewall.ruleset("ap0", FLOOR, S("sheet-web", lan=1)))
+check("  off: not dropped", "100.64.0.0/10" not in firewall.ruleset("ap0", FW, S("sheet-web", lan=1)))
 check("tunnels: nothing into Tailscale, WireGuard or a container", 'oifname "tailscale*" drop' in web and 'oifname "docker*" drop' in web and 'oifname "wg*" drop' in web)
-check("  off: forwarded there too", "tailscale" not in firewall.ruleset("ap0", FLOOR, S("sheet-web", tunnels=1)))
+check("  off: forwarded there too", "tailscale" not in firewall.ruleset("ap0", FW, S("sheet-web", tunnels=1)))
 check("by_mac: the set holds hardware addresses", "type ether_addr" in web)
-ipk = firewall.ruleset("ap0", FLOOR, S("sheet-web", by_mac=1))
+ipk = firewall.ruleset("ap0", FW, S("sheet-web", by_mac=1))
 check("  off: addresses, and the rules ask by address", "type ipv4_addr" in ipk and "ip saddr @out tcp dport" in ipk and "ether" not in ipk)
 check("dns_hold: only those let out sent to the guests' resolver", 'iifname "ap0" ether saddr @out udp dport 53 ct mark set 0x00000153 redirect to :5354' in web
       and 'iifname "ap0" udp dport 53 ct mark' not in web)
-check("  off: everyone sent there", 'iifname "ap0" udp dport 53 ct mark set 0x00000153 redirect to :5354' in firewall.ruleset("ap0", FLOOR, S("sheet-web", dns_hold=1)))
-check("  at open: everyone, whatever dns_hold says", 'iifname "ap0" udp dport 53 ct mark set' in firewall.ruleset("ap0", FLOOR, S("open")))
-check("the guests' resolver: never asked directly (only through the redirect's mark), and through the floor when sent there",
+check("  off: everyone sent there", 'iifname "ap0" udp dport 53 ct mark set 0x00000153 redirect to :5354' in firewall.ruleset("ap0", FW, S("sheet-web", dns_hold=1)))
+check("  at open: everyone, whatever dns_hold says", 'iifname "ap0" udp dport 53 ct mark set' in firewall.ruleset("ap0", FW, S("open")))
+check("the guests' resolver: never asked directly (only through the redirect's mark), and through the firewall when sent there",
       'iifname "ap0" udp dport 5354 ct mark != 0x00000153 drop' in web and 'iifname "ap0" tcp dport 5354 ct mark != 0x00000153 drop' in web
       and web.index("ct mark != 0x00000153 drop") < web.index("jump hotspot") and "5354 } accept" in web)
 
-# --- the floor and sharing together ---
-alone = firewall.ruleset("ap0", FLOOR, None)
-check("the floor alone: nothing forwarded to or from the hotspot, no NAT, no set", 'iifname "ap0" drop' in alone and "chain pre" not in alone
+# --- the firewall and sharing together ---
+alone = firewall.ruleset("ap0", FW, None)
+check("the firewall alone: nothing forwarded to or from the hotspot, no NAT, no set", 'iifname "ap0" drop' in alone and "chain pre" not in alone
       and "set out" not in alone and "5354" not in alone)
-check("shared with no floor: no drop chain on what arrives, the resolver still guarded", "jump hotspot" not in firewall.ruleset("ap0", None, S("sheet-web"))
+check("shared with the firewall off: no drop chain on what arrives, the resolver still guarded", "jump hotspot" not in firewall.ruleset("ap0", None, S("sheet-web"))
       and "5354 ct mark != " in firewall.ruleset("ap0", None, S("sheet-web")))
-check("off counts as not shared", firewall.ruleset("ap0", FLOOR, S("off")) == alone)
+check("off counts as not shared", firewall.ruleset("ap0", FW, S("off")) == alone)
 unit = firewall.unit_text()
 check("the boot unit loads the one file; stopped while sharing, forwarding goes off too", f"nft -f {firewall.RULES}" in unit
       and "share.nft" not in unit and f"if [ -f {share.SYSCTL} ]; then sysctl -q -w net.ipv4.ip_forward=0" in unit.split("ExecStop=")[1])
@@ -162,7 +162,7 @@ check("share-set refused: a level not offered", ok)
 ran.clear()
 hub_control.share_set({"level": "off"})
 order = [" ".join(c[:3]) for c in ran]
-check("off: forwarding off first, then the resolver, then the rules (no floor: the table gone)",
+check("off: forwarding off first, then the resolver, then the rules (firewall off: the table gone)",
       order.index("sysctl -q -w") < order.index(f"systemctl disable --now") < order.index("nft delete table")
       and not firewall.RULES.exists() and not share.SYSCTL.exists() and not (T / "units" / share.GUEST_DNS_UNIT).exists()
       and share.load()["level"] == "off" and share.load()["forward_was"] is None, order)

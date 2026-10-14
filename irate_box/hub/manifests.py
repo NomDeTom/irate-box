@@ -34,7 +34,7 @@ on it. Every part but "id" and "order" is optional:
                 "risk": "ok" | "warn", "says"}
                                       a service that answers the network itself, not through the
                                       web server: its ports; the file that shows it is installed;
-                                      whether a new floor opens it to hotspot guests; how its
+                                      whether the hotspot firewall opens it to hotspot guests; how its
                                       listener is rated on the Security page, and what it exposes,
                                       in one plain sentence (services.py; docs/dev/services.md)
     "install": {"dir", "needs", "title", "restart"},

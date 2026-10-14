@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Services the add-ons declare: an apps.d manifest's "network" block, for a service that answers the
-network itself rather than through the web server. The firewall's floor, the Security page and both
+network itself rather than through the web server. The hotspot firewall, the Security page and both
 doctors read these, so a new service needs a manifest, not an edit in each of them (docs/dev/services.md)."""
 
 import os

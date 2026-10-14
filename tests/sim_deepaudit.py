@@ -46,7 +46,7 @@ check("  sections in the benchmark's order, then the shared ones", [k for k in f
 acc = [f for f in fs.values() if f["accepted"]]
 check("the box's design accepted, not counted: one partition, the web server, no firewall yet",
       {f["accepted"] for f in acc} == {"the box runs from one partition on an SD card, with no separate /var, /tmp or /home",
-                                        "the box is a web server, and nginx or Caddy serves the hub", "the box filters only the hotspot interface (the hotspot floor on the Security page). The other interfaces belong to the administrator's network and stay as they are"}
+                                        "the box is a web server, and nginx or Caddy serves the hub", "the box filters only the hotspot interface (the hotspot firewall on the Security page). The other interfaces belong to the administrator's network and stay as they are"}
       and all(f["status"] == "ok" for f in acc) and not any(k in fs for k in ("cis-1.1", "cis-2.2", "cis-3.5")), [f["detail"] for f in acc])
 check("the passes counted, and the time", "2 of 9 checks pass (22.22 %); 3.0 min." == fs["cis-summary"]["detail"], fs["cis-summary"]["detail"])
 
@@ -138,7 +138,7 @@ withinfo = {f["id"]: f for f in da.cis_findings([("KO", "3.2.2_disable_send_pack
                                                 info=lambda c: da.cis_check_info(src0, c))}
 check("  kept with the check in its section's finding", withinfo["cis-3.2"]["checks"][0]["cmd"].endswith("sudo sysctl --system")
       and withinfo["cis-3.2"]["checks"][0]["msgs"] == ["net.ipv4.conf.all.send_redirects was not set to 0"], withinfo["cis-3.2"])
-check("the hotspot's dnsmasq and the floor's nftables: the box's design, accepted (whatever the check's number)",
+check("the hotspot's dnsmasq and the firewall's nftables: the box's design, accepted (whatever the check's number)",
       da.accepted("debian-cis", "2.2.99_dnsmasq_is_disabled") and da.accepted("debian-cis", "3.5.1.1_nftables_not_installed_with_iptables")
       and da.accepted("debian-cis", "9.9_disable_http_server"))
 

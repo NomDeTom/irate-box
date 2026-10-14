@@ -35,7 +35,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
   {"id": ..., "action": "share-set", "level": "off"|"users-web"|"sheet-web"|"sheet-all"|"open"}
-      Guests' onward internet (share.py): the one ruleset with the floor (firewall.apply_all), IPv4
+      Guests' onward internet (share.py): the one ruleset with the hotspot firewall (firewall.apply_all), IPv4
       forwarding and the guests' resolver made to agree; off takes it all back. The level and the
       containment in control/share.json.
   {"id": ..., "action": "pkg-check", "package": "meshtasticd"?} | "pkg-fetch" | "pkg-install" (+ "version") | "pkg-rollback"
@@ -2624,21 +2624,21 @@ def _guest_dns(on, iface=None):
 
 
 def share_apply(rec):
-    """Guests' internet as rec says (share.load()'s shape), with the floor as it is: one ruleset
+    """Guests' internet as rec says (share.load()'s shape), with the hotspot firewall as it is: one ruleset
     (firewall.apply_all). Turning on: the rules first, then forwarding, then the guests' resolver;
     off: forwarding first, then the rest, so at no moment does anything pass unfiltered."""
     from irate_box.root import firewall, security
-    floor = security.load_record().get("firewall")
-    floor = dict(floor, services=firewall.services_here(floor.get("services", []))) if floor else None
+    fw = security.load_record().get("firewall")
+    fw = dict(fw, services=firewall.services_here(fw.get("services", []))) if fw else None
     iface = firewall.hotspot_iface()
     if share.on(rec):
-        firewall.apply_all(floor, rec, iface)
+        firewall.apply_all(fw, rec, iface)
         rec = _forward(True, rec)
         _guest_dns(True, iface)
     else:
         rec = _forward(False, rec)
         _guest_dns(False)
-        firewall.apply_all(floor, rec, iface)
+        firewall.apply_all(fw, rec, iface)
     share.save(rec)
     return rec
 
@@ -2678,7 +2678,7 @@ def share_allow(req):
 
 
 def _guest_policy_follows():
-    """After the hotspot comes up (its interface may be ap0 or a radio of its own): the floor and
+    """After the hotspot comes up (its interface may be ap0 or a radio of its own): the hotspot firewall and
     guests' internet rewritten for it, when either is on. Said, not raised: the hotspot is up."""
     from irate_box.root import security
     if not security.load_record().get("firewall") and not share.on():

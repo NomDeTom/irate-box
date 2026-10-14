@@ -40,10 +40,11 @@ Two separate questions.
 Pick the safest level that still does the job as the default. The owner can move it.
 
 **On its own port**, the hub's login does nothing. Who reaches it depends on:
-- **The hotspot's floor** (Security → What a guest on the hotspot can reach). It is a default-drop firewall on
-  the hotspot's interface. Your manifest says whether a new floor opens your service to hotspot guests
-  (`"hotspot": "open"` or `"closed"`); the owner then has a switch for it either way.
-- **The box's own network** (home or office): the floor doesn't touch it. Anything listening on `0.0.0.0` is
+- **The hotspot firewall** (Security → Hotspot firewall). It drops everything that arrives on the hotspot's
+  interface, except what it lets through. Your manifest says whether the firewall opens your service to hotspot
+  guests when it is turned on (`"hotspot": "open"` or `"closed"`). The administrator then has a switch for it
+  either way.
+- **The box's own network** (home or office): the hotspot firewall does not filter it. Anything listening on `0.0.0.0` is
   reachable there. If the service has no reason to be on that network, bind it to the hotspot's address or to
   loopback.
 - **The service's own authentication.** If it has accounts or keys, use them. If it has none (IRC, MQTT here),
@@ -93,7 +94,7 @@ documented field by field at the top of `irate_box/hub/manifests.py`; the parts 
 - **`network.risk`**: `warn` if anyone who reaches the port can use it without a login or can read others'
   traffic; `ok` only if it is authenticated and encrypted.
 - **`network.says`**: one plain sentence a non-expert understands: who can do what. It appears on the Security
-  page, in the security doctor's item and in the floor's question before opening it.
+  page, in the security doctor's item and in the hotspot firewall's question before opening it.
 - **`addon.consent`**: what the owner is agreeing to, said before it is added. Name the port, who can reach it,
   and what is missing (accounts, encryption).
 
@@ -139,9 +140,10 @@ IRC section (search `WITH_IRC`) and change each of these:
 
 With the `network` block in the manifest, and no code of your own:
 
-- **The floor** knows the service by its id: a new floor opens it to hotspot guests if `hotspot` is `open` and it
-  is installed; the floor's finding has an Open / Close switch for it; added after the floor was set, it shows
-  as closed until opened (the rules are written only when the floor changes).
+- **The hotspot firewall** knows the service by its id. When the firewall is turned on, it opens the service to
+  hotspot guests if `hotspot` is `open` and the service is installed. The firewall's finding has an Open / Close
+  switch for it. A service added after the firewall was turned on shows as closed until opened, because the
+  rules are written only when the firewall settings change.
 - **The Security page** names its port, rates the listener by `risk` and says `says`; it offers no "stop",
   since an add-on is removed on Add-ons.
 - **The security doctor** merges its add-on finding and the page's port finding into one item, pointing at
@@ -150,14 +152,14 @@ With the `network` block in the manifest, and no code of your own:
   install record, restartable from the page.
 
 **Services nobody declared** (the owner's own, or the image's) are handled too, with options from the safest:
-the Security page offers to stop and disable one, keeps it off the hotspot while the floor is on (and says so),
+the Security page offers to stop and disable one, keeps it off the hotspot while the hotspot firewall is on (and says so),
 or opens its port to hotspot guests if the owner chooses; the box doctor gives each failed one a finding of its
 own with the command to see why and a "Start it again" that asks first.
 
 ## 7. Tests
 
 - `tests/sim_declared_services.py` shows the pattern: a made-up service in a manifests folder of the test's
-  own, carried through the floor, the Security page, the cross-reference and both doctors. Copy it for a
+  own, carried through the hotspot firewall, the Security page, the cross-reference and both doctors. Copy it for a
   service with anything unusual.
 - A container test, `tests/container/ct-NAME.sh`: install with the option, check the unit runs as its user from
   irate-box's config, the distribution's conffile untouched, a client really connects, a rerun keeps it,

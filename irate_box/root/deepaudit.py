@@ -37,15 +37,15 @@ TIMEOUT = 40 * 60
 
 # What the box does on purpose, by source and check id (a pattern).
 # debian-cis's by the check's name whatever its number (the benchmark renumbers them).
-FLOOR = "the box filters only the hotspot interface (the hotspot floor on the Security page). The other interfaces belong to the administrator's network and stay as they are"
+HOTSPOT_FIREWALL = "the box filters only the hotspot interface (the hotspot firewall on the Security page). The other interfaces belong to the administrator's network and stay as they are"
 ACCEPTED = [
     ("debian-cis", r"^1\.1\.\d+(\.\d+)?_.*(partition|nodev|nosuid|noexec)$",
      "the box runs from one partition on an SD card, with no separate /var, /tmp or /home"),
     ("debian-cis", r"^[\d.]+_disable_http_server$", "the box is a web server, and nginx or Caddy serves the hub"),
-    ("debian-cis", r"^[\d.]+_net_fw_default_policy_drop$", FLOOR),
-    ("debian-cis", r"^[\d.]+_(nftables_not_installed_with_iptables|ufw_not_installed_with_nftables)$", "the hotspot floor uses the box's own nftables rules"),
+    ("debian-cis", r"^[\d.]+_net_fw_default_policy_drop$", HOTSPOT_FIREWALL),
+    ("debian-cis", r"^[\d.]+_(nftables_not_installed_with_iptables|ufw_not_installed_with_nftables)$", "the hotspot firewall uses the box's own nftables rules"),
     ("debian-cis", r"^[\d.]+_dnsmasq_is_disabled$", "dnsmasq gives hotspot guests their addresses and names"),
-    ("lynis", r"^FIRE-(4512|4590)$", FLOOR),
+    ("lynis", r"^FIRE-(4512|4590)$", HOTSPOT_FIREWALL),
     ("lynis", r"^FILE-6310$", "the box runs from one partition on an SD card, with no separate /var, /tmp or /home"),
 ]
 # What the hub itself installs and uses (install.sh, the toolkits): never offered for removal.

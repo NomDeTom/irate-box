@@ -30,7 +30,6 @@ NOT_LABELS = {
     "Steady on": "an LED pattern, described",
     "Quick flashes": "an LED pattern, described",
     "Two short flashes": "an LED pattern, described",
-    "Hotspot service access": "a glossary term (docs/user/glossary.md); the setting has no heading of that name",
     "The theme picker": "names the control, which shows an icon and no words",
     "A script calls the administration pages": "a case in a list (first-use.md), not a control",
     "The shoutbox and the board": "a list item naming two apps (for-guests.md)",

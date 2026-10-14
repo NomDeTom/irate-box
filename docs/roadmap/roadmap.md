@@ -20,18 +20,18 @@ A feature moves up one step at a time. Update its row in the same change that mo
 
 ### The hub and its pages
 
-| Feature | Status | Notes |
-|---|---|---|
-| Hub home page: app tiles, folders, status tiles, Join QR code, certificate tile | basic | |
-| Accounts: sign-in, sign-up modes, one-time codes, administrators and users, script sign-in | basic | |
-| Access and visibility for each app (Guests, Users, Administrators, Disabled) | basic | |
-| Appearance: name, subtitle, accent colour, favicon, header picture, tile layout | basic | Missing: one default theme for everyone, a background picture, the first-use and sign-in page text, languages and units. |
-| Themes and the theme picker (box palette, standard, increased contrast, E-ink, Cybercore) | basic | |
-| Shoutbox and board, with reports and moderation | basic | |
-| File drop | basic | |
-| Device locks for saved items | basic | |
-| Saved work across devices | basic | |
-| User guide on the box, as pages and as a Kiwix book | basic | The guide still names some labels that have changed. |
+| Feature                                                                                    | Status | Notes                                                                                                                    |
+| ------------------------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Hub home page: app tiles, folders, status tiles, Join QR code, certificate tile            | basic  |                                                                                                                          |
+| Accounts: sign-in, sign-up modes, one-time codes, administrators and users, script sign-in | basic  |                                                                                                                          |
+| Access and visibility for each app (Guests, Users, Administrators, Disabled)               | basic  |                                                                                                                          |
+| Appearance: name, subtitle, accent colour, favicon, header picture, tile layout            | basic  | Missing: one default theme for everyone, a background picture, the first-use and sign-in page text, languages and units. |
+| Themes and the theme picker (box palette, standard, increased contrast, E-ink, Cybercore)  | basic  |                                                                                                                          |
+| Shoutbox and board, with reports and moderation                                            | basic  |                                                                                                                          |
+| File drop                                                                                  | basic  |                                                                                                                          |
+| Device locks for saved items                                                               | basic  |                                                                                                                          |
+| Saved work across devices                                                                  | basic  |                                                                                                                          |
+| User guide on the box, as pages and as a Kiwix book                                        | basic  | The guide still names some labels that have changed.                                                                     |
 
 ### Apps
 
@@ -62,55 +62,56 @@ A feature moves up one step at a time. Update its row in the same change that mo
 | Network recovery: a watchdog for each link, recovery steps up to a reboot | basic | |
 | Connection settings: box defaults, per interface, per connection | basic | |
 | Roaming and joining WiFi networks | basic | |
-| Firewall floor for hotspot guests | basic | |
+| Hotspot firewall: what devices on the hotspot can reach on the box | basic | Off on a new box. |
 | Internet for guests, at levels chosen by an administrator | basic | The hotspot's DNS names are not done. |
 | HTTPS with the box's own certificate | basic | |
 | Remote access with Tailscale | basic | |
 
 ### Running and looking after the box
 
-| Feature | Status | Notes |
-|---|---|---|
-| Installer: one command, options, upgrade in place | basic | |
-| Offline kit: set up a box with no internet | basic | Debian packages still come from apt or the OS image. |
-| Debian package (`.deb`) | MVP | Built by CI. The package does not set up the box by itself. |
-| Updates: check, download, verify, install, with automatic schedules | basic | |
-| Package watch: packages from their publishers, with channels, delay and rollback | basic | |
-| Debian security updates | basic | |
-| Backup: settings, settings and data, full image; content export and import | basic | |
-| Set up another box from this one | basic | |
-| Box doctor | basic | |
-| Security doctor, deep audit and CIS cross-reference | basic | |
-| Update doctor | basic | |
-| Overview and trends: memory, disk, services, uptime heatmaps | basic | |
-| Clock: clock module (RTC) support | basic | Choosing the clock's source is in the pipeline. |
-| Status light | basic | |
-| Crash watch and card-write levels | basic | |
+| Feature                                                                          | Status | Notes                                                       |
+| -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------- |
+| Debian package (`.deb`)                                                          | MVP    | Built by CI. The package does not set up the box by itself. |
+| Clock: clock module (RTC) support                                                | basic  |                                                             |
+| Overview and trends: memory, disk, services, uptime heatmaps                     | basic  |                                                             |
+| Crash watch and card-write levels                                                | basic  |                                                             |
+| Package watch: packages from their publishers, with channels, delay and rollback | basic  |                                                             |
+| Set up another box from this one                                                 | basic  |                                                             |
+| Installer: one command, options, upgrade in place                                | basic  |                                                             |
+| Updates: check, download, verify, install, with automatic schedules              | basic  |                                                             |
+| Backup: settings, settings and data, full image; content export and import       | basic  |                                                             |
+| Offline kit: set up a box with no internet                                       | basic  | Debian packages still come from apt or the OS image.        |
+| Debian security updates                                                          | basic  |                                                             |
+| Status light                                                                     | basic  |                                                             |
+| Box doctor                                                                       | basic  |                                                             |
+| Update doctor                                                                    | basic  |                                                             |
+| Security doctor, deep audit and CIS cross-reference                              | basic  |                                                             |
 
 ## Features in the pipeline
 
-| Feature | Status | Notes |
-|---|---|---|
-| Messages with string IDs, ready for translation; one shape for every doctor finding | plan | |
-| Notebooks encrypted at rest, and in the box's backup | concept | Choices to make: the encryption option, the key, backup in or out, a recovery key. |
-| Choosing the clock's source (GPS, clock module, local NTP, internet NTP) | concept | |
-| Hub as a Tor onion service, as an add-on | plan | Parked. |
-| Remote access through an anonymous discovery service | concept | Parked. |
-| Add-ons that state the oldest irate-box release they work with | idea | Needs signed release numbers. |
-| Hosting the desktop Meshtastic app and the Android app as downloads | concept | |
-| Bluetooth scanner, and control of BLE nodes | idea | |
-| The board's own Cortex-M0 coprocessor, started from Linux | concept | Luckfox Lyra. |
-| Meshtastic on that coprocessor | idea | |
-| A page to operate the toolkits | concept | Reuses the toolkit cards. |
-| Web Serial over HTTPS with a certificate that browsers trust (DNS-01) | idea | |
-| An offline base map for the mesh page | idea | |
-| Bigger versions for bigger boards | idea | |
-| Security updates from a USB drive | idea | |
-| The editors on an origin of their own | idea | |
-| A box OS image built on Debian | MVP | |
-| Package sources stated truly, with fallbacks | MVP | |
-| Proving offline firmware builds for each board family | plan | Paused. |
-| Network overview: a pointer to the Box doctor and every option in place | concept | Parked. |
-| An audit of what information an administrator can see | idea | |
-| Customising: languages and units | idea | |
-| Lighter: less memory and fewer writes on small boards | idea | |
+| Feature                                                                             | Status  | Notes                         |
+| ----------------------------------------------------------------------------------- | ------- | ----------------------------- |
+| Messages with string IDs, ready for translation; one shape for every doctor finding | plan    |                               |
+| Notebooks encrypted at rest, and in the box's backup                                | concept | needs fleshing out            |
+| Choosing the clock's source (GPS, clock module, local NTP, internet NTP)            | concept |                               |
+| Hub as a Tor onion service, as an add-on                                            | idea    | Parked.                       |
+| Remote access through an anonymous discovery service                                | concept | Parked.                       |
+| Add-ons that state the oldest irate-box release they work with                      | idea    | Needs signed release numbers. |
+| Hosting the desktop Meshtastic app and the Android app as downloads                 | concept |                               |
+| Bluetooth scanner, and control of BLE nodes                                         | idea    |                               |
+| A page to operate the toolkits                                                      | concept | Reuses the toolkit cards.     |
+| Web Serial over HTTPS with a certificate that browsers trust (DNS-01)               | idea    |                               |
+| An offline base map for the mesh page                                               | idea    |                               |
+| Bigger versions for bigger boards                                                   | idea    |                               |
+| Security updates from a USB drive                                                   | idea    |                               |
+| The editors on an origin of their own                                               | idea    |                               |
+| A box OS image built on Debian                                                      | MVP     |                               |
+| Package sources stated truly, with fallbacks                                        | MVP     |                               |
+| Proving offline firmware builds for each board family                               | plan    | Paused.                       |
+| Network overview: a pointer to the Box doctor and every option in place             | concept | Parked.                       |
+| An audit of what information an administrator can see                               | idea    |                               |
+| Customising: languages and units                                                    | idea    |                               |
+| Lightweighting: less memory and fewer writes on small boards                        | idea    |                               |
+| Better test suite                                                                   | idea    |                               |
+| Reduced dev tooling to match the minimalist / offline principle                     | idea    |                               |
+| Choosing the clock's source                                                         | concept |                               |

@@ -1850,7 +1850,7 @@ def setup_blocked():
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
-SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._/-]*)?$")   # tcp/8123: a port the floor opens
+SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._/-]*)?$")   # tcp/8123: a port the hotspot firewall opens
 
 
 SECURITY_ACCEPTED = STATE_DIR / "security-accepted.json"
