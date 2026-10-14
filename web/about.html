@@ -21,84 +21,86 @@
   <section>
     <h2>What it is</h2>
     <p class="setting-desc">
-      A small board running its own hub: a shoutbox, a board, a file drop, drawing and diagram
-      tools, an offline library and more, for the people around it, with no internet needed.
-      Its version: <span id="about-version">…</span>.
+      Irate-Box is an offline hub. It serves these pages over its own network. The administrator
+      selects which apps are enabled. Apps can include a shoutbox, a board, a file drop, drawing
+      and diagram tools, and an offline library. Some apps can need internet access.
+      Version: <span id="about-version">…</span>.
     </p>
   </section>
 
   <section class="about-thanks">
     <h2>With thanks to</h2>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">Krab and neonx</span><span class="setting-desc"> For the artwork (the krabs, Kredited to Krab, courtesy of neonx: <a href="http://canadaverse.org" rel="noopener">canadaverse.org</a>) and for the use of their LLM resource.</span></li>
-      <li class="drop-item"><span class="setting-name">WillP (willp618)</span><span class="setting-desc"> For reminding me that PirateBox was awesome, for giving this a test run, for adding the Cybercore theme, and for adding ngIRC chat, the tile and guide.</span></li>
-      <li class="drop-item"><span class="setting-name">The PirateBox team</span><span class="setting-desc"> David Darts, who built the first PirateBox, and Matthias Strubel and everyone who carried the project on: the idea this box grew from, a little network of its own for sharing with the people nearby.</span></li>
+      <li class="drop-item"><span class="setting-name">Krab and neonx</span><span class="setting-desc"> Artwork: the krabs, credited to Krab, courtesy of neonx (<a href="http://canadaverse.org" rel="noopener">canadaverse.org</a>). Use of their LLM resource.</span></li>
+      <li class="drop-item"><span class="setting-name">WillP (willp618)</span><span class="setting-desc"> Tested this box. Added the Cybercore theme. Added the ngIRC chat, its tile and its guide.</span></li>
+      <li class="drop-item"><span class="setting-name">The PirateBox team</span><span class="setting-desc"> David Darts built the first PirateBox. Matthias Strubel and others continued the project. This box is based on their idea: a small network of its own, for sharing with the people nearby.</span></li>
     </ul>
   </section>
 
   <section>
     <h2>Licences</h2>
     <p class="setting-desc">
-      The original PirateBox was free software under the GPL, and this follows it. Every file
-      says which licence it is under, in its first lines (SPDX); the full texts are in the
-      source's <code>LICENSES/</code> folder.
+      The original PirateBox was free software under the GPL. This box follows it. Every file
+      names its licence in its first lines (SPDX). The full texts are in the
+      <code>LICENSES/</code> folder of the source.
     </p>
     <ul class="drop-list">
       <li class="drop-item"><span class="setting-name">GNU AGPL-3.0-or-later</span>
-        <span class="setting-desc"> the hub itself: its server, pages, root helper, doctors, librarian and installer. Because you use it over the network, you can have its source: see below.</span></li>
+        <span class="setting-desc"> The hub itself: its server, pages, root helper, doctors, librarian and installer. Anyone who uses the hub over a network can get its source. See below.</span></li>
       <li class="drop-item"><span class="setting-name">GNU GPL-3.0-or-later</span>
-        <span class="setting-desc"> the git servers' page, builds on push, and books from USB sticks.</span></li>
+        <span class="setting-desc"> The git servers' page, builds on push, and books from USB drives.</span></li>
       <li class="drop-item"><span class="setting-name">MIT</span>
-        <span class="setting-desc"> small, self-contained pieces others may want to reuse (the network inventory, the clock-module driver, the device locks, configuration files and app manifests), and the QR-code library (Kazuhiko Arase).</span></li>
+        <span class="setting-desc"> Small, self-contained pieces that others can reuse: the network inventory, the clock-module driver, the device locks, configuration files and app manifests. Also the QR-code library (Kazuhiko Arase).</span></li>
       <li class="drop-item"><span class="setting-name">CC BY-SA 4.0</span>
-        <span class="setting-desc"> the documentation, including this page and the help page.</span></li>
+        <span class="setting-desc"> The documentation, including this page and the help page.</span></li>
     </ul>
   </section>
 
   <section>
     <h2>This box's own source</h2>
-    <p class="setting-desc">Exactly the code running here, three ways, none of which need the internet:</p>
+    <p class="setting-desc">This is the exact code that runs on this box. There are three routes. None of them needs internet access.</p>
     <ul class="drop-list">
-      <li class="drop-item"><a href="/source">Download it</a><span class="setting-desc"> as one file (a .tar.gz).</span></li>
-      <li class="drop-item"><a href="/git/irate-box-source.git/">Browse it</a>
-        <span class="setting-desc"> on the box's git server, or clone it:</span>
+      <li class="drop-item"><a href="/source">Download source archive</a><span class="setting-desc"> One .tar.gz file.</span></li>
+      <li class="drop-item"><a href="/git/irate-box-source.git/">Browse source</a>
+        <span class="setting-desc"> On the box's git server. To clone it, run:</span>
         <code id="about-clone">git clone http://…/git/irate-box-source.git</code></li>
-      <li class="drop-item"><a href="/drop.html">The file drop</a><span class="setting-desc"> always holds a copy (📌).</span></li>
+      <li class="drop-item"><a href="/drop.html">File drop</a><span class="setting-desc"> If File drop is enabled, it holds a copy (📌). An administrator can delete that copy.</span></li>
     </ul>
-    <p class="setting-desc">Online, the project lives at <code>github.com/NomDeTom/irate-box</code>.</p>
+    <p class="setting-desc">The project is online at <code>github.com/NomDeTom/irate-box</code>.</p>
   </section>
 
   <section>
-    <h2>The programs it runs</h2>
+    <h2>Included programs</h2>
     <p class="setting-desc">
-      These are separate programs with their own licences, run side by side with the hub. Where an
-      app came as a bundle, its list of the licences of everything inside is next to it (its
-      THIRD-PARTY-NOTICES file), and names the exact source it was built from.
+      These are separate programs with their own licences. They run beside the hub. Each can be
+      installed or not installed on a box. If an app came as a bundle, its THIRD-PARTY-NOTICES file
+      is next to it. That file lists the licences of everything inside the bundle and names the
+      exact source.
     </p>
     <h3>The apps</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">Excalidraw</span><span class="setting-desc"> Drawing, on every box. MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">Mermaid live editor</span><span class="setting-desc"> Diagrams, on every box. MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">ESP Web Tools</span><span class="setting-desc"> The web flasher's install button (ESPHome; with Espressif's esptool-js and Lit inside), on every box. Apache-2.0, with the parts it holds under their own: <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">FreeOCD WebDebugger</span><span class="setting-desc"> The flashing tools' ARM flasher (FreeOCD; with Arm's DAP.js inside), on every box. BSD-3-Clause, with DAP.js under MIT: <a href="/flasher/freeocd/THIRD-PARTY-NOTICES.txt">its notices</a>.</span></li>
-      <li class="drop-item"><span class="setting-name">Meshtastic web flasher</span><span class="setting-desc"> Flashing radios over USB, as a download, where it is installed. GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
-      <li class="drop-item"><span class="setting-name">Meshtastic firmware</span><span class="setting-desc"> In the flasher's mirror, if the owner keeps one. GPL-3.0; source at <code>github.com/meshtastic/firmware</code>, tagged with each version</span></li>
+      <li class="drop-item"><span class="setting-name">Excalidraw</span><span class="setting-desc"> Drawing, when installed. MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">Mermaid live editor</span><span class="setting-desc"> Diagrams, when installed. MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">ESP Web Tools</span><span class="setting-desc"> The web flasher's install button (ESPHome, with Espressif's esptool-js and Lit inside), when installed. Apache-2.0, with the parts inside it under their own licences: <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item"><span class="setting-name">FreeOCD WebDebugger</span><span class="setting-desc"> The flashing tools' ARM flasher (FreeOCD, with Arm's DAP.js inside), when installed. BSD-3-Clause, with DAP.js under MIT: <a href="/flasher/freeocd/THIRD-PARTY-NOTICES.txt">its notices</a>.</span></li>
+      <li class="drop-item"><span class="setting-name">Meshtastic web flasher</span><span class="setting-desc"> Flashing radios over USB, as a download, when installed. GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
+      <li class="drop-item"><span class="setting-name">Meshtastic firmware</span><span class="setting-desc"> In the flasher's mirror, if an administrator keeps one. GPL-3.0. The source is at <code>github.com/meshtastic/firmware</code>, tagged with each version.</span></li>
       <li class="drop-item"><span class="setting-name">Kiwix</span><span class="setting-desc"> The offline library, when the box has books. GPL-3.0</span></li>
     </ul>
-    <h3>What runs them</h3>
+    <h3>Programs that run the apps</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">nginx</span><span class="setting-desc"> The web server in front of everything, on every box unless the owner chose Caddy. BSD-2-Clause</span></li>
-      <li class="drop-item"><span class="setting-name">Caddy</span><span class="setting-desc"> The other web server, only on a box whose owner chose it (or where nginx could not be installed). Apache-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">nginx</span><span class="setting-desc"> The web server in front of everything. The box uses it unless an administrator selected Caddy. BSD-2-Clause</span></li>
+      <li class="drop-item"><span class="setting-name">Caddy</span><span class="setting-desc"> The other web server. The box uses it only if an administrator selected it or nginx could not be installed. Apache-2.0</span></li>
       <li class="drop-item"><span class="setting-name">Python</span><span class="setting-desc"> Runs the hub itself. PSF-2.0</span></li>
       <li class="drop-item"><span class="setting-name">git</span><span class="setting-desc"> Behind the git servers (git http-backend). GPL-2.0</span></li>
       <li class="drop-item"><span class="setting-name">cgit</span><span class="setting-desc"> The git servers' web pages. GPL-2.0</span></li>
       <li class="drop-item"><span class="setting-name">fcgiwrap</span><span class="setting-desc"> Runs git and cgit for the web server. MIT</span></li>
     </ul>
-    <h3>Add-ons, when the owner adds them</h3>
+    <h3>Add-ons, when an administrator adds them</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">ttyd</span><span class="setting-desc"> The terminal (the shell in the browser), behind the admin login: installed on every box, running only when added. MIT</span></li>
+      <li class="drop-item"><span class="setting-name">ttyd</span><span class="setting-desc"> The terminal (a shell in the browser), behind the administrator sign-in. The installer always installs it. It runs only after an administrator adds it. MIT</span></li>
       <li class="drop-item"><span class="setting-name">SilverBullet</span><span class="setting-desc"> Notes. MIT</span></li>
-      <li class="drop-item"><span class="setting-name">Syncthing</span><span class="setting-desc"> Keeps folders in step with the owner's machines. MPL-2.0</span></li>
+      <li class="drop-item"><span class="setting-name">Syncthing</span><span class="setting-desc"> Synchronizes folders with the administrator's devices. MPL-2.0</span></li>
       <li class="drop-item"><span class="setting-name">Mosquitto</span><span class="setting-desc"> The MQTT broker for Meshtastic nodes. EPL-2.0 / EDL-1.0</span></li>
       <li class="drop-item"><span class="setting-name">ngIRCd</span><span class="setting-desc"> The IRC server for chat. GPL-2.0-or-later</span></li>
       <li class="drop-item"><span class="setting-name">excalidraw-room</span><span class="setting-desc"> Live collaboration on the whiteboard. MIT</span></li>

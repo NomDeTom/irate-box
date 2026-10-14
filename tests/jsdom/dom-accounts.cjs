@@ -84,11 +84,11 @@ function page(file, url, fetcher, scripts) {
   h = await home({ who: 'users', marks: false, me: null });
   d = h.d;
   check('users only, a guest: the forms hidden, a link to log in; marks off: none shown', d.getElementById('shout-form').hidden
-    && /Sign in to post here/.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
+    && /Sign in to post\. Only users can post here\./.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
     && !d.querySelector('.verified'));
   h = await home({ who: 'off', marks: true, me: 'erin' });
-  check('  off: closed, even for a user', h.d.getElementById('shout-form').hidden && /closed/.test(t(h.d.querySelector('.shout-post-note')))
-    && /closed to new posts/.test(t(h.d.querySelector('.board-post-note'))));
+  check('  off: closed, even for a user', h.d.getElementById('shout-form').hidden && /Posting is disabled/.test(t(h.d.querySelector('.shout-post-note')))
+    && /Posting is disabled/.test(t(h.d.querySelector('.board-post-note'))));
   check('home: no errors', !h.errors.length, h.errors.join(' | '));
 
   // /admin → Accounts.
@@ -107,11 +107,11 @@ function page(file, url, fetcher, scripts) {
   }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait(300); d = a.d;
   check('admin: a side-bar entry, the levels as set, the counts', [...d.querySelectorAll('.admin-side-list a')].some((x) => x.hash === '#accounts')
-    && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 admin\), 1 asking, 0 switched off\./.test(t(d.getElementById('accounts-counts'))));
+    && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 administrator\), 1 waiting for approval, 0 disabled\./.test(t(d.getElementById('accounts-counts'))));
   const rows = [...d.querySelectorAll('#accounts-list .admin-item')];
   const btns = (r) => [...r.querySelectorAll('button')].map((b) => t(b));
-  check('  one asking: Accept or Refuse', /^Asking bob/.test(t(rows[0])) && btns(rows[0]).join() === 'Accept,Refuse', btns(rows[0]).join());
-  check('  an admin: Switch off, Make a user, Reset password, Delete', /^Admin carol/.test(t(rows[1])) && btns(rows[1]).join() === 'Switch off,Make a user,Reset password,Delete', btns(rows[1]).join());
+  check('  one awaiting approval: Approve account or Refuse request', /^Awaiting approval bob/.test(t(rows[0])) && btns(rows[0]).join() === 'Approve account,Refuse request', btns(rows[0]).join());
+  check('  an administrator: Disable account, Set user role, Reset password, Delete account', /^Administrator carol/.test(t(rows[1])) && btns(rows[1]).join() === 'Disable account,Set user role,Reset password,Delete account', btns(rows[1]).join());
   [...rows[0].querySelectorAll('button')][0].click(); await wait();
   check('  Accept asks the hub', aposted.some((b) => b.action === 'accept' && b.name === 'bob'));
   const mf = d.getElementById('accounts-make');
@@ -120,9 +120,9 @@ function page(file, url, fetcher, scripts) {
   mf.querySelector('button[value="user"]').click(); await wait();
   // The code beside the account it is for, in a box to copy; a line by the form says so.
   const daveRow = [...d.querySelectorAll('#accounts-list .admin-item')].find((r) => / dave /.test(` ${t(r)} `));
-  check('  Make: the code shown, once, beside the account', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /dave's one-time code is beside their name/.test(t(d.getElementById('accounts-code')))
+  check('  Make: the code shown, once, beside the account', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /The one-time code of dave is beside the name/.test(t(d.getElementById('accounts-code')))
     && (!daveRow || (daveRow.querySelector('.code-box') || {}).value === 'ABCD-EFGH-JKLM-NPQR'));
-  check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('no spaces'));
+  check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('Do not use spaces'));
   const sform = d.getElementById('accounts-settings');
   check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Allowed'
     && [...sform.querySelectorAll('.chip-says')].length === 2);

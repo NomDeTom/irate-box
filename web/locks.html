@@ -14,26 +14,28 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>🔒 Locks on this device</h1>
-    <p class="subtitle">The saves and files this browser has locked on the hub.</p>
+    <p class="subtitle">The saved work and files that this browser has locked on the box.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section>
     <p class="setting-desc">
-      A lock means only a device that holds its key can change or remove the item before it
-      expires. There is no password: the key lives in this browser. To use a lock on another
-      device too, show its key here and scan or copy it there. Anyone you give a key to can
-      change or remove that item, so treat it like a key. Locks still expire with what they lock.
+      A lock lets only devices that hold its key change or delete the item. The administrator can
+      also delete it. A lock does not restrict downloads. There is no password. This browser keeps
+      the key. To use a lock on another device, show the key here. Then scan or copy it on the other
+      device. Anyone who has a key can change or delete the item. Keep keys secret. A lock expires
+      when the item expires.
     </p>
+    <h2>Device keys</h2>
     <ul class="drop-list" id="locks-list"><li class="setting-desc">Loading…</li></ul>
   </section>
 
   <section>
-    <h2>Add a key from another device</h2>
-    <p class="setting-desc">Paste the key text that device showed (it starts with <code>hublock:</code>).</p>
+    <h2>Add key from another device</h2>
+    <p class="setting-desc">Paste the key text that the other device shows. It starts with <code>hublock:</code>.</p>
     <div class="library-buttons">
       <input id="locks-import" size="40" spellcheck="false" autocomplete="off" placeholder="hublock:…">
-      <button type="button" id="locks-add">Add</button>
+      <button type="button" id="locks-add">Add key</button>
     </div>
     <p class="setting-desc action-note" id="locks-note" role="status" hidden></p>
   </section>

@@ -13,21 +13,21 @@
   function blocker() {
     if (!window.isSecureContext) {
       const https = `https://${location.host}${location.pathname}`;
-      return el('span', {}, 'Flashing from the browser needs this page over HTTPS: ', el('a', { href: https, textContent: https }),
-        ' (when the box has HTTPS on: Admin → Certificate).');
+      return el('span', {}, 'Open this page over HTTPS: ', el('a', { href: https, textContent: https }),
+        '. Flashing from the browser needs HTTPS. If this box has no HTTPS, an administrator can enable it at Administration → Security → HTTPS.');
     }
-    if (!('serial' in navigator)) return el('span', { textContent: 'This browser cannot reach a USB port: use Chrome or Edge on a computer.' });
+    if (!('serial' in navigator)) return el('span', { textContent: 'Unsupported browser. This browser cannot use Web Serial. Use Chrome or Edge on a computer.' });
     return null;
   }
 
   function row(t, ready) {
-    const what = el('span', {}, el('strong', { textContent: t.name }), ` · ${t.chip} · ${t.version.replace(/-built$/, '')}${t.built ? ' · built on this box' : ' · release'}`);
+    const what = el('span', {}, el('strong', { textContent: t.name }), ` · ${t.chip} · ${t.version.replace(/-built$/, '')}${t.built ? ' · built on this box' : ' · cached upstream release'}`);
     if (!ready) return el('li', {}, what);
     const btn = document.createElement('esp-web-install-button');
     btn.setAttribute('manifest', `/flasher/api/esp/${encodeURIComponent(t.version)}/${encodeURIComponent(t.env)}/manifest.json`);
     btn.append(el('button', { type: 'button', slot: 'activate', className: 'action-btn', textContent: 'Install' }),
-      el('span', { slot: 'unsupported', className: 'setting-desc', textContent: 'This browser cannot flash: use Chrome or Edge on a computer.' }),
-      el('span', { slot: 'not-allowed', className: 'setting-desc', textContent: 'Needs the page over HTTPS.' }));
+      el('span', { slot: 'unsupported', className: 'setting-desc', textContent: 'Unsupported browser. Use Chrome or Edge on a computer.' }),
+      el('span', { slot: 'not-allowed', className: 'setting-desc', textContent: 'Open this page over HTTPS.' }));
     return el('li', {}, what, ' ', btn);
   }
 
@@ -38,23 +38,23 @@
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       data = await r.json();
     } catch (e) {
-      can.textContent = `The hub did not answer (${e.message}).`;
+      can.textContent = `The hub server did not answer (${e.message}).`;
       return;
     }
     document.getElementById('flash-download').hidden = !data.download;
     const stop = blocker();
     const ready = !stop && data.engine && data.targets.length > 0;
     if (ready) {
-      try { await import('/flasher/esp-web-tools/install-button.js'); } catch (e) { can.textContent = `The install button did not load (${e.message}).`; return; }
+      try { await import('/flasher/esp-web-tools/install-button.js'); } catch (e) { can.textContent = `Flasher component unavailable (${e.message}).`; return; }
     }
     if (!data.targets.length) {
-      can.textContent = 'Nothing to flash yet: ESP32 builds appear here once they are published from the Firmware Factory (Admin → Firmware Factory, a build\'s "Publish to the web flasher"), or once the librarian keeps Meshtastic releases (Admin → The librarian → Firmware).';
+      can.textContent = 'No firmware available. ESP32 builds appear here after an administrator publishes a build (Administration → Firmware Factory → Publish firmware). They also appear after the librarian keeps Meshtastic releases (Administration → Web flasher → Firmware).';
     } else if (stop) {
       can.replaceChildren(stop);
     } else if (!data.engine) {
-      can.textContent = 'The install button (ESP Web Tools) is not on this box: running the installer again with internet fetches it.';
+      can.textContent = 'Flasher component unavailable. ESP Web Tools is not on this box. Run the installer again with internet access to download it.';
     } else {
-      can.textContent = `${data.targets.length} build${data.targets.length === 1 ? '' : 's'} to install:`;
+      can.textContent = `Firmware available: ${data.targets.length} build${data.targets.length === 1 ? '' : 's'}`;
     }
     list.replaceChildren(...data.targets.map((t) => row(t, ready)));
   }

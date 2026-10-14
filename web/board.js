@@ -14,7 +14,7 @@ const decayNote = document.getElementById('board-decay-note');
 const threadForm = document.getElementById('thread-form');
 const replyForm = document.getElementById('reply-form');
 
-// Who may post, as the box's admin set it: the forms say so, and a logged-in
+// Who can post, as the administrator set it: the forms say so, and a signed-in
 // user posts under their account's name, marked ✓ where the admin shows marks.
 let marks = false;
 const notes = [threadForm, replyForm].map((f) => {
@@ -30,10 +30,10 @@ function applyPosting(p) {
   [threadForm, replyForm].forEach((f, i) => {
     f.hidden = closed;
     notes[i].replaceChildren();
-    if (p.who === 'off') notes[i].textContent = 'The forum is closed to new posts.';
+    if (p.who === 'off') notes[i].textContent = 'Posting is disabled.';
     else if (closed) {
       const a = document.createElement('a'); a.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; a.textContent = 'Sign in';
-      notes[i].append(a, ' to post here. The administrator reserves the forum for users.');
+      notes[i].append(a, ' to post. Only users can post here.');
     }
   });
   for (const id of ['t-name', 'r-name']) {
@@ -42,10 +42,10 @@ function applyPosting(p) {
     if (p.me) el.value = p.me;
   }
 }
-const mark = (x) => (x.account && marks ? '<span class="verified" title="Posted by the box\'s account of that name">✓</span>' : '');
+const mark = (x) => (x.account && marks ? '<span class="verified" title="Posted by a signed-in account">✓</span>' : '');
 async function posted(r, i) {
   if (r.ok) { notes[i].textContent = ''; return true; }
-  notes[i].textContent = (await r.json().catch(() => ({}))).error || `Not posted (HTTP ${r.status}).`;
+  notes[i].textContent = (await r.json().catch(() => ({}))).error || `${i === 0 ? 'Thread not posted' : 'Reply not posted'} (HTTP ${r.status}).`;
   return false;
 }
 
@@ -58,15 +58,15 @@ function currentId() {
 
 function setDecayNote(ttl) {
   decayNote.textContent =
-    `Threads fade ${formatAge(ttl)} after their last reply — measured in hub uptime, ` +
-    `not calendar time. The hub has no clock; while it is switched off, nothing ages.`;
+    `The box deletes a thread ${formatAge(ttl)} after its last reply, measured in powered-on time. ` +
+    'Time while the box is off does not count.';
 }
 
 function renderThreads(data) {
   setDecayNote(data.ttl);
   applyPosting(data.posting);
   if (!data.threads.length) {
-    threadsEl.innerHTML = '<span class="empty">No threads yet. Start one.</span>';
+    threadsEl.innerHTML = '<span class="empty">No threads</span>';
     return;
   }
   threadsEl.innerHTML = data.threads.map((t) => `

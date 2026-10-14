@@ -90,8 +90,8 @@ const shownPage = () => [...d.querySelectorAll('.admin-page')].find((p) => !p.hi
   click(d.querySelector('#backup a[download]'));
   await wait();
   check('downloading a backup is the backup step done', posted.some((b) => (b.setup_decided || []).includes('backup')) && /done/.test(d.querySelector('#setup-steps [data-step="backup"]').textContent));
-  check('the global override of "seen but not opened": offered, Per app by default',
-    /When seen but not opened, for every app/.test(d.getElementById('sign-in-offer-box').textContent) && /Per app/.test(d.getElementById('sign-in-offer-box').textContent));
+  check('the global override of the locked-tile action: offered, Per app by default',
+    /Locked-tile action for every app/.test(d.getElementById('sign-in-offer-box').textContent) && /Per app/.test(d.getElementById('sign-in-offer-box').textContent));
   // Muted: still listed, greyed, but not counted as left to do.
   const before = T.left();
   const row = d.querySelector('#setup-steps [data-step="cockpit"]');

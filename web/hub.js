@@ -35,7 +35,7 @@ if (picker && themes) {
   label.textContent = 'Theme';
   const row = [label,
     ...main.map((t) => btn({ 'data-theme-choice': t.id, title: t.label }, t.emoji)),
-    btn({ 'data-theme-choice': 'auto', title: 'Follow this device (light or dark)' }, 'Auto')];
+    btn({ 'data-theme-choice': 'auto', title: 'Use the light or dark mode set on this device' }, 'Auto')];
   let more = null;
   let menu = null;
   if (others.length || palettes.length) {
@@ -81,7 +81,7 @@ if (picker && themes) {
     if (more) {
       const shown = other || palettes.find((p) => p.id === pal && p.id !== 'box');
       more.textContent = shown ? shown.emoji : '🎨';
-      more.title = shown ? `Colours: ${shown.label} (change)` : 'Colours: the box\'s preset (change)';
+      more.title = shown ? `Colours: ${shown.label} (change)` : 'Colours: box palette (change)';
       more.setAttribute('aria-pressed', String(!!shown));
     }
   };
@@ -161,9 +161,9 @@ if (grid || document.querySelector('[data-service]')) {
     if (count && typeof data.online === 'number') {
       count.textContent = data.online;
       const desc = document.getElementById('people-desc');
-      desc.textContent = data.online === 1 ? 'user online' : 'users online';
+      desc.textContent = data.online === 1 ? 'active hub session' : 'active hub sessions';
       if (typeof data.joined === 'number') {
-        desc.textContent += ` \u00b7 ${data.joined} on the WiFi`;
+        desc.textContent += ` \u00b7 ${data.joined} hotspot devices`;
       }
     }
 
@@ -177,12 +177,12 @@ if (grid || document.querySelector('[data-service]')) {
         more.className = 'desc people-more';
         const how = document.createElement('details');
         how.className = 'field-help';
-        how.innerHTML = '<summary>How is this counted?</summary><p>Each device\u2019s network address is hashed with a random salt made for the day, and another for the week, held only in a helper\u2019s memory and thrown away when the day or week ends. Only the counts are kept. Phones that use a random address may count more than once, so the numbers are approximate.</p>';
+        how.innerHTML = '<summary>How is this counted?</summary><p>The box hashes each device\u2019s network address with a random salt. It makes one salt for each day and one for each week. A helper keeps the salts in memory only and discards them when the day or week ends. The box keeps only the counts. A phone with a random address can count more than once, so the numbers are estimates.</p>';
         people.append(more, how);
       }
       const v = data.visitors;
-      more.textContent = (typeof data.signed_in === 'number' ? `Signed in: ${data.signed_in}` : '')
-        + (v ? `${typeof data.signed_in === 'number' ? ' \u00b7 ' : ''}Seen today \u2248 ${v.day} \u00b7 this week \u2248 ${v.week}` : '');
+      more.textContent = (typeof data.signed_in === 'number' ? `Signed-in accounts: ${data.signed_in}` : '')
+        + (v ? `${typeof data.signed_in === 'number' ? ' \u00b7 ' : ''}Estimated distinct devices: today ${v.day}, this week ${v.week}` : '');
       people.querySelector('.field-help').hidden = !v;
       // The names: only of those who said yes, and only to whom the owner allows.
       let names = document.getElementById('people-names');
@@ -202,16 +202,16 @@ if (grid || document.querySelector('[data-service]')) {
       const svc = byPath.get(el.dataset.service);
       const down = !!svc && !svc.up;
       el.classList.toggle('down', down);
-      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : svc.why || 'Not running';
+      el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : svc.why || 'Service stopped';
     });
     if (!grid) return;
     if (!data.proxied) {
-      note.textContent = 'Served without the web server in front — the hub works, the apps are not reachable.';
+      note.textContent = 'Served without the web server in front — the hub works. The apps cannot be reached.';
       note.hidden = false;
     } else if (grid.querySelector('.service-card.down:not([hidden])')) {
       // Read back from the grid, not from the service list: only a tile that is
       // actually greyed should make the note claim there is one.
-      note.textContent = 'Greyed-out services are not running.';
+      note.textContent = 'Greyed-out apps are not running.';
       note.hidden = false;
     } else {
       note.hidden = true;
@@ -240,9 +240,9 @@ if (factoryCard) {
       d = await r.json();
     } catch (_) { return; }
     const run = d.running;
-    const waiting = d.waiting ? `; ${d.waiting} waiting` : '';
-    fNow.textContent = run ? `Building ${run.name} (${run.family})${run.done != null ? `, about ${Math.round(run.done * 100)} %` : ''}${waiting}`
-      : d.paused ? `Paused${waiting}` : d.waiting ? `${d.waiting} waiting` : 'Nothing building now';
+    const waiting = d.waiting ? `. Queued: ${d.waiting}` : '';
+    fNow.textContent = run ? `Build in progress: ${run.name} (${run.family})${run.done != null ? `, about ${Math.round(run.done * 100)} %` : ''}${waiting}`
+      : d.paused ? `Queue paused${waiting}` : d.waiting ? `Queued: ${d.waiting}` : 'No build running';
     fBar.hidden = !(run && run.done != null);
     if (run && run.done != null) fDone.style.width = `${Math.round(run.done * 100)}%`;
     fFiles.replaceChildren(...d.built.map((b) => {
@@ -330,13 +330,13 @@ if (systemCard) {
     const last = samples[samples.length - 1], lastDisk = samples.filter(hasDisk).pop();
     const say = document.createElement('p');
     say.className = 'desc trend-legend';
-    say.textContent = !last ? 'Nothing recorded in the last 24 hours yet: recording starts once the box’s clock is trusted.'
+    say.textContent = !last ? 'Recording not started. The box starts recording when its clock is trusted.'
       : `Memory used ${Math.round((last.total - last.available) / last.total * 100)}% at the last sample`
         + (lastDisk ? `; disk ${Math.round((lastDisk.disk_total - lastDisk.disk_free) / lastDisk.disk_total * 100)}% (dotted).` : '; the disk is not recorded yet.')
-        + (now - last.at > gap ? ' No recent sample.' : '');
+        + (now - last.at > gap ? ' No recent samples.' : '');
     const more = document.createElement('a');
     more.href = '/admin/#overview';
-    more.textContent = 'Seven days, and the largest processes: the admin Overview →';
+    more.textContent = 'Seven days and the largest processes: Overview in administration →';
     panel.replaceChildren(svg, say, more);
   };
   fetch('/api/trends').then((r) => (r.ok ? r.json() : null)).then((first) => {

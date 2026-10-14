@@ -14,16 +14,16 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>📥 File drop</h1>
-    <p class="subtitle">Leave files here for the people around you.</p>
+    <p class="subtitle">Upload files for other people to download.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section>
-    <p class="setting-desc" id="drop-limits">Anyone on this network can download what is here.</p>
-    <label class="drop-name">Your name <input id="drop-by" maxlength="64" placeholder="optional"></label>
+    <p class="setting-desc" id="drop-limits">Everyone who can open this page can download these files.</p>
+    <label class="drop-name">Display name <input id="drop-by" maxlength="64" placeholder="optional"></label>
     <label class="drop-zone" id="drop-zone">
       <input type="file" id="drop-files" multiple>
-      <span><strong>Choose files</strong>, or drop them here.</span>
+      <span><strong>Select files</strong>, or drop them here.</span>
     </label>
     <div class="drop-capture">
       <label class="drop-capture-btn">📷 Take a photo <input type="file" id="drop-photo" accept="image/*" capture="environment"></label>
@@ -43,8 +43,8 @@
   </section>
 
   <section>
-    <h2>On the box</h2>
-    <ul class="drop-list" id="drop-list"><li class="setting-desc">Loading…</li></ul>
+    <h2>Uploaded files</h2>
+    <ul class="drop-list" id="drop-list"><li class="setting-desc">Loading files</li></ul>
   </section>
 
   <script src="/hub.js"></script>

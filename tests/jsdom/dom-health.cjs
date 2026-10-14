@@ -39,11 +39,11 @@ setTimeout(() => {
     && !/[✅⚠️❌]/.test(d.getElementById('health-findings').textContent), rows.length);
   check('worst first', rows.map((r) => r.className.match(/finding-(\w+)/)[1]).join(' ') === rows.map((r) => r.className.match(/finding-(\w+)/)[1]).sort((a, b) => ({ problem: 0, warn: 1 })[a] - ({ problem: 0, warn: 1 })[b]).join(' '));
   const kiwix = d.getElementById('hl-kiwix-down');
-  check('a fix with a command: its words, then the command with Copy', kiwix && /What to do: Rebuild the library, then start it/.test(kiwix.querySelector('.fhow').textContent)
+  check('a fix with a command: its words, then the command with Copy', kiwix && /Recommended action: Rebuild the library, then start it/.test(kiwix.querySelector('.fhow').textContent)
     && kiwix.querySelector('.fdo-cmd code').textContent === 'systemctl reset-failed kiwix; systemctl restart kiwix', kiwix && kiwix.textContent);
   check('  and its repair buttons beside it', kiwix && kiwix.querySelectorAll('.fdo-controls button.action-btn').length >= 1);
   const counts = t('#health-summary .sec-count');
-  check('the counts double as the filter: all, to fix, to look at', counts.length === 3 && /to fix/.test(counts[1]) && /to look at/.test(counts[2]), counts);
+  check('the counts double as the filter: all, to fix, to review', counts.length === 3 && /to fix/.test(counts[1]) && /to review/.test(counts[2]), counts);
   const fine = d.querySelectorAll('#health-fine .finding').length;
   check('the fine ones folded apart, with no "what to do"', fine > 0 && !d.querySelector('#health-fine .fhow') && !d.getElementById('health-fine-fold').open, fine);
   d.querySelectorAll('#health-summary .sec-count')[1].click();

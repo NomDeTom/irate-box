@@ -52,7 +52,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   check('  each a choice: as any other link (the default here), watched, not watched',
     wl && [...wl.options].map((o) => o.value).join(',') === ',on,off' && wl.value === '', wl && wl.value);
   check('  what each is doing now: the WiFi not watched and down, and what it would start by itself',
-    /not watched now, and down; starts netplan-wlan0-SKYTB1H1 by itself/.test(rows[0].textContent) && /watched now: up/.test(rows[1].textContent),
+    /Not monitored, and down\. Autoconnect: netplan-wlan0-SKYTB1H1/.test(rows[0].textContent) && /Monitoring: up/.test(rows[1].textContent),
     rows.map((r) => r.textContent).join(' / '));
   const tiles = (id) => [...d.querySelectorAll(`#${id} input`)].map((i) => `${i.value}${i.checked ? '*' : ''}`).join(',');
   check('a link not set here: while it holds the route (chosen), looked at, every link, none', tiles('up-watchnew') === 'uplink*,look,all,none', tiles('up-watchnew'));
@@ -65,7 +65,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   wl.dispatchEvent(new w.Event('change'));
   d.querySelector('#up-cable input[value="ladder"]').click();
   const save = d.getElementById('up-save');
-  check('  a change: Save offered', !save.disabled && /not saved yet/.test(save.textContent), save.textContent);
+  check('  a change: Save offered', !save.disabled && /unsaved/.test(save.textContent), save.textContent);
   save.click();
   await later(300);
   const sent = posted.find((p) => p.body.action === 'settings');
@@ -80,12 +80,12 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   w.loadNetwork();
   await later(500);
   const status = d.getElementById('up-status').textContent;
-  check('the status: the route\'s link, then the others watched', /Up on eth0\..*Also watching: wlan0, stalled \(Stalled: nothing the box can do/.test(status), status);
+  check('the status: the route\'s link, then the others watched', /Up on eth0\..*Also monitoring: wlan0, stalled \(Stalled: nothing the box can do/.test(status), status);
   const log = [...d.querySelectorAll('#up-events li .ev-text')].map((n) => n.textContent);
   check('  the log: each line with its link, now that two are watched', log[0] === 'wlan0: Now watching wlan0 too.' && log[1] === 'eth0: Watching eth0.', log);
   check('  the WiFi\'s row: set to be watched', d.getElementById('up-watch-wlan0').value === 'on');
   const wrow = d.getElementById('up-watch-wlan0').closest('.up-watch-row').textContent;
-  check('  a link known before under another name: said, and whose setting it follows', /known before as wlan9 \(the same hardware\)/.test(wrow), wrow);
+  check('  a link known before under another name: said, and whose setting it follows', /Known before as wlan9 \(the same hardware\)/.test(wrow), wrow);
   check('no errors on the page', !errors.length, errors);
   console.log(fails ? `${fails} failure(s)` : 'ok');
   process.exit(fails ? 1 : 0);

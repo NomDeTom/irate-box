@@ -11,21 +11,20 @@
   <link rel="stylesheet" href="/layout.css">
 </head>
 <body>
-  <!-- The Themes tile's page (apps.d/27-themes.json). The admin switches it public, private or
-       off on /admin; the 🎨 in every page's header stays either way. The list is themes.js's. -->
+  <!-- The Themes tile's page (apps.d/27-themes.json). An administrator sets its access (Guests, Users, Administrators or Disabled) on /admin; the 🎨 in every page's header stays either way. The list is themes.js's. -->
   <header class="sub-header">
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>🎨 Themes</h1>
-    <p class="subtitle">How the hub looks on this device. Your choice stays in this browser and changes nothing for anyone else.</p>
+    <p class="subtitle">Theme on this device. This browser saves your selection. It does not change the hub for other people.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section class="item-section">
-    <h2 id="theme-list-title">Light or dark, or a theme of its own colours</h2>
+    <h2 id="theme-list-title">Theme mode</h2>
     <ul class="item-list" id="theme-list" role="radiogroup" aria-labelledby="theme-list-title"></ul>
   </section>
   <section class="item-section">
-    <h2 id="palette-list-title">The colours of light and dark</h2>
+    <h2 id="palette-list-title">Light and dark palettes</h2>
     <ul class="item-list" id="palette-list" role="radiogroup" aria-labelledby="palette-list-title"></ul>
   </section>
 

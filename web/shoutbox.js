@@ -33,7 +33,7 @@ function randomName() {
 let signature = '';
 let shown = [];
 let marks = false;
-// Who may post, as the box's admin set it: the form says so, and a logged-in
+// Who can post, as the administrator set it: the form says so, and a signed-in
 // user posts under their account's name, marked ✓ where the admin shows marks.
 const postNote = document.createElement('p');
 postNote.className = 'setting-desc shout-post-note';
@@ -44,10 +44,10 @@ function applyPosting(p) {
   const closed = p.who === 'off' || (p.who === 'users' && !p.me);
   form.hidden = closed;
   postNote.replaceChildren();
-  if (p.who === 'off') postNote.textContent = 'The shoutbox is closed.';
+  if (p.who === 'off') postNote.textContent = 'Posting is disabled.';
   else if (closed) {
     const a = document.createElement('a'); a.href = '/account.html?next=/'; a.textContent = 'Sign in';
-    postNote.append(a, ' to post here. The administrator reserves the shoutbox for users.');
+    postNote.append(a, ' to post. Only users can post here.');
   }
   nameInput.readOnly = !!p.me;
   nameRoll.hidden = !!p.me;
@@ -56,8 +56,8 @@ function applyPosting(p) {
 
 function setDecayNote(ttl) {
   decayNote.textContent =
-    `Messages fade ${formatAge(ttl)} after they are posted — measured in hub uptime, ` +
-    `not calendar time. The hub has no clock; while it is switched off, nothing ages.`;
+    `The box deletes messages after ${formatAge(ttl)} of powered-on time. ` +
+    'Time while the box is off does not count.';
 }
 
 function renderMessages(data) {
@@ -83,7 +83,7 @@ function renderMessages(data) {
   if (!slice.length) {
     const em = document.createElement('span');
     em.className = 'empty';
-    em.textContent = 'No messages yet. Say hi!';
+    em.textContent = 'No messages';
     messagesEl.appendChild(em);
     return;
   }
@@ -95,7 +95,7 @@ function renderMessages(data) {
     const hue = hueOf(m, 'name');
     div.innerHTML =
       `<span class="author" style="--author-hue:${hue}">${esc(m.name)}</span>` +
-      (m.account && marks ? '<span class="verified" title="Posted by the box\'s account of that name">✓</span>' : '') +
+      (m.account && marks ? '<span class="verified" title="Posted by a signed-in account">✓</span>' : '') +
       `<span class="text">${mdInline(m.text)}</span>` +
       `<span class="time">${formatAge(data.now - m.created)} ago</span>`;
     if (typeof reportButton === 'function') div.appendChild(reportButton('shoutbox', { created: m.created, name: m.name }, data.report_reasons));
@@ -124,7 +124,7 @@ form.addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
-    if (!r.ok) { postNote.textContent = (await r.json().catch(() => ({}))).error || `Not posted (HTTP ${r.status}).`; return; }
+    if (!r.ok) { postNote.textContent = (await r.json().catch(() => ({}))).error || `Message not sent (HTTP ${r.status}).`; return; }
     msgInput.value = '';
     await poll();
   } catch (_) {}

@@ -14,7 +14,7 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><!-- account nav --></nav>
     <h1>Hub</h1>
-    <p class="subtitle">You're connected to the local network.</p>
+    <p class="subtitle">The hub for this box.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
   <!-- first use -->
@@ -41,7 +41,7 @@
   <nav class="tabs home-tabs">
     <a href="#shout" data-tab="shout">Shoutbox</a>
     <a href="#board" data-tab="board">Board</a>
-    <button type="button" class="tab-expand" id="tab-expand" title="Full-page view of this tab">⤢ Expand</button>
+    <button type="button" class="tab-expand" id="tab-expand" title="Full-page view of this tab">⤢ Expand tab</button>
   </nav>
 
   <div id="tab-shout">
@@ -49,11 +49,11 @@
       <div id="messages"></div>
       <form id="shout-form">
         <span class="name-wrap">
-          <input id="name-input" type="text" placeholder="Name" maxlength="32" required>
-          <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
-          <button type="button" id="name-roll" title="Roll a random name" aria-label="Roll a random name">🎲</button>
+          <input id="name-input" type="text" placeholder="Display name" maxlength="32" required>
+          <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Select your name colour"><span class="dot"></span></button>
+          <button type="button" id="name-roll" title="Generate name" aria-label="Generate name">🎲</button>
         </span>
-        <input id="msg-input" data-emoji type="text" placeholder="Say something..." maxlength="200" required>
+        <input id="msg-input" data-emoji type="text" placeholder="Message" maxlength="200" required>
         <button type="submit">Send</button>
       </form>
     </section>
@@ -68,11 +68,11 @@
         <summary>Start a thread</summary>
         <form id="thread-form">
           <span class="name-wrap">
-            <input id="t-name" type="text" placeholder="Name" maxlength="32" required>
-            <button type="button" id="t-hue" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+            <input id="t-name" type="text" placeholder="Display name" maxlength="32" required>
+            <button type="button" id="t-hue" class="hue-swatch" title="Name colour" aria-label="Select your name colour"><span class="dot"></span></button>
           </span>
-          <input id="t-title" type="text" placeholder="Title" maxlength="80" required>
-          <textarea id="t-text" data-emoji="#t-send" placeholder="Say something..." maxlength="1000" rows="4" required></textarea>
+          <input id="t-title" type="text" placeholder="Thread title" maxlength="80" required>
+          <textarea id="t-text" data-emoji="#t-send" placeholder="Message" maxlength="1000" rows="4" required></textarea>
           <div class="form-actions"><button type="submit" id="t-send">Post thread</button></div>
         </form>
       </details>
@@ -84,10 +84,10 @@
       <div id="posts"></div>
       <form id="reply-form">
         <span class="name-wrap">
-          <input id="r-name" type="text" placeholder="Name" maxlength="32" required>
-          <button type="button" id="r-hue" class="hue-swatch" title="Name colour" aria-label="Pick your name colour"><span class="dot"></span></button>
+          <input id="r-name" type="text" placeholder="Display name" maxlength="32" required>
+          <button type="button" id="r-hue" class="hue-swatch" title="Name colour" aria-label="Select your name colour"><span class="dot"></span></button>
         </span>
-        <textarea id="r-text" data-emoji="#r-send" placeholder="Reply..." maxlength="1000" rows="3" required></textarea>
+        <textarea id="r-text" data-emoji="#r-send" placeholder="Reply" maxlength="1000" rows="3" required></textarea>
         <div class="form-actions"><button type="submit" id="r-send">Reply</button></div>
       </form>
     </section>

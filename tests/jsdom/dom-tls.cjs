@@ -45,9 +45,9 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     && d.getElementById('tls-switch').hidden && d.getElementById('tls-again').hidden);
   d.getElementById('tls-make').click(); await wait(400);
   check('Make: asked of the hub; then on, with what it covers and until when', posted[0] && posted[0].action === 'make'
-    && /On: https:\/\/<this box>\/ \(port 443\) and each app's twin\. The certificate covers irate\.home\.arpa, lyra\.local, 192\.168\.4\.1, 192\.168\.1\.181, until .*, renewed by the box before then\. The CA's fingerprint: AB:CD:EF\./.test(t(d.getElementById('tls-state')))
+    && /HTTPS enabled: https:\/\/<this box>\/ \(port 443\) and the HTTPS address of each app\. The certificate covers irate\.home\.arpa, lyra\.local, 192\.168\.4\.1, 192\.168\.1\.181\. Certificate expires .* \(the box renews it before then\)\. Certificate-authority fingerprint: AB:CD:EF\./.test(t(d.getElementById('tls-state')))
     && /made the box's CA/.test(t(d.getElementById('tls-note'))), t(d.getElementById('tls-state')));
-  check('  then Switch off, and a new CA', t(d.getElementById('tls-switch')) === 'Switch HTTPS off' && !d.getElementById('tls-again').hidden && d.getElementById('tls-make').hidden);
+  check('  then Disable HTTPS, and a new CA', t(d.getElementById('tls-switch')) === 'Disable HTTPS' && !d.getElementById('tls-again').hidden && d.getElementById('tls-make').hidden);
   page.confirm = false;
   d.getElementById('tls-again').click(); await wait();
   check('a new CA: not without saying yes', posted.length === 1);
@@ -56,13 +56,13 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   check('  with a yes: asked as a new one', posted[1] && posted[1].action === 'make' && posted[1].again === true);
   state = Object.assign({}, ON, { outside: ['10.0.0.5'] });
   admin.w.eval('loadTls()'); await wait();
-  check('moved to another subnet: said, as needing a new CA', /now at 10\.0\.0\.5, outside what its CA may vouch for: make a new CA/.test(t(d.getElementById('tls-state')))
+  check('moved to another subnet: said, as needing a new CA', /now at 10\.0\.0\.5\. These addresses are outside the names that its CA can certify\. Make a new certificate authority/.test(t(d.getElementById('tls-state')))
     && d.getElementById('tls-state').classList.contains('bad'));
   // /admin over HTTPS only.
   state = Object.assign({}, ON);
   admin.w.eval('loadTls()'); await wait();
   check('admin HTTPS only: offered while on, but not from a plain-HTTP page, saying why', !d.getElementById('tls-admin-only').hidden && d.getElementById('tls-admin-only').disabled
-    && /open it over HTTPS first/.test(t(d.getElementById('tls-admin-only-note'))));
+    && /first open it over HTTPS/.test(t(d.getElementById('tls-admin-only-note'))));
   // Bring your own.
   check('own certificate: a warning on plain HTTP (the key would cross the network in clear)', !d.getElementById('tls-own-plain').hidden);
   const of = d.getElementById('tls-own-form');
@@ -73,7 +73,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   check('  Use it: the chain and the key sent, the key not left in the page', imp && /BEGIN CERTIFICATE/.test(imp.chain) && /BEGIN PRIVATE KEY/.test(imp.key) && of.elements.key.value === '');
   state = Object.assign({}, ON, { cert: Object.assign({}, ON.cert, { names: ['box.example.org'], addresses: [], own: true }) });
   admin.w.eval('loadTls()'); await wait();
-  check('  in use: said as yours, to renew; and the way back to the box\'s own', /\(your own: renew it before then\)/.test(t(d.getElementById('tls-state')))
+  check('  in use: said as yours, to renew; and the way back to the box\'s own', /\(your own certificate: renew it before then\)/.test(t(d.getElementById('tls-state')))
     && !d.getElementById('tls-box').hidden);
   d.getElementById('tls-box').click(); await wait();
   check('  Go back: asked of the hub', posted.some((b) => b.action === 'box'));
@@ -96,15 +96,15 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   const folds = [...p.d.querySelectorAll('#cert-steps details')];
   check('  the steps tried on real phones (iPhone, Android), each folded', folds.map((f) => t(f.querySelector('summary'))).join('|') === 'iPhone and iPad|Android'
     && /Install anyway/.test(t(folds[1])) && /Network may be monitored/.test(t(folds[1])) && /Certificate Trust Settings/.test(t(folds[0])));
-  check('  the general step for the rest, named, until tried', /On other devices \(Windows, macOS, Linux\): download it/.test(t(p.d.getElementById('cert-steps'))), t(p.d.getElementById('cert-steps')));
+  check('  the general step for the rest, named, until tried', /On other devices \(Windows, macOS, Linux\): download the certificate/.test(t(p.d.getElementById('cert-steps'))), t(p.d.getElementById('cert-steps')));
   check('  the self-check: not trusted yet', /does not trust the box yet/.test(t(p.d.getElementById('cert-check'))), t(p.d.getElementById('cert-check')));
-  check('  never a click-through: the warning is not to be clicked past', /don't click through/.test(t(p.d.getElementById('cert-about'))));
+  check('  never a click-through: the warning is not to be clicked past', /do not click through/.test(t(p.d.getElementById('cert-about'))));
   p = pub(info, true);
   await wait();
-  check('  trusted: said, with the HTTPS address', /✓ This device trusts the box: you can use https:\/\/box\.local\/\./.test(t(p.d.getElementById('cert-check'))), t(p.d.getElementById('cert-check')));
+  check('  trusted: said, with the HTTPS address', /✓ This device trusts the box\. You can use https:\/\/box\.local\/\./.test(t(p.d.getElementById('cert-check'))), t(p.d.getElementById('cert-check')));
   p = pub(info, false, 'https://box.local/certificate.html');
   await wait();
-  check('  opened over HTTPS: it is trusted already', /You are on HTTPS now/.test(t(p.d.getElementById('cert-check'))));
+  check('  opened over HTTPS: it is trusted already', /You are on HTTPS\./.test(t(p.d.getElementById('cert-check'))));
   check('public: no page errors', !p.errors.length, p.errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

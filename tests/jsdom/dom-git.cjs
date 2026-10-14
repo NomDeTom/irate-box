@@ -82,12 +82,12 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
 
   check('a card per repository, then the New card last', d.querySelector('#git-grid > :last-child').classList.contains('git-new') && cards().length === 5, cards().length);
   check('a submodule mirror has no card of its own', !card('meshtastic-firmware--protobufs'));
-  check('chips with counts: All 5 · Mine 4 · Mirrors 1 · Builds 1', ['All 5', 'Mine 4', 'Mirrors 1', 'Builds 1'].every((l) => chip(l.split(' ')[0]) && t(chip(l.split(' ')[0])) === l),
+  check('chips with counts: All 5 · Local repositories 4 · Mirrors 1 · Builds 1', ['All 5', 'Local repositories 4', 'Mirrors 1', 'Builds 1'].every((l) => chip(l.replace(/ \d+$/, '')) && t(chip(l.replace(/ \d+$/, ''))) === l),
     [...d.querySelectorAll('#git-chips-kind .chip')].map(t).join(', '));
-  check('and Public 3 · Private 2', t(chip('Public')) === 'Public 3' && t(chip('Private')) === 'Private 2', [...d.querySelectorAll('#git-chips-area .chip')].map(t).join(', '));
-  check('badges in words: public, the admin pushes', /Public/.test(t(card('demo').querySelector('.badges'))) && /administrators push/.test(t(card('demo').querySelector('.badges'))));
+  check('and Guests 3 · Administrators 2', t(chip('Guests')) === 'Guests 3' && t(chip('Administrators')) === 'Administrators 2', [...d.querySelectorAll('#git-chips-area .chip')].map(t).join(', '));
+  check('badges in words: guests, the administrators push', /Guests/.test(t(card('demo').querySelector('.badges'))) && /administrators push/.test(t(card('demo').querySelector('.badges'))));
   check('anyone pushes', /anyone pushes/.test(t(card('open').querySelector('.badges'))));
-  check('read-only, private', /Private/.test(t(card('archive').querySelector('.badges'))) && /read-only/.test(t(card('archive').querySelector('.badges'))));
+  check('read-only, administrators', /Administrators/.test(t(card('archive').querySelector('.badges'))) && /read-only/.test(t(card('archive').querySelector('.badges'))));
   check('the last build, with its result and date', /✅ build passed, 2026-/.test(t(card('fw-ci').querySelector('.badges'))), t(card('fw-ci').querySelector('.badges')));
   check('the description labelled, only when there is one', /^About Field notes/.test(t(card('demo').querySelector('.git-about'))) && !card('open').querySelector('.git-about'));
   check('a facts line: last commit, branches, size', /^Last commit 2026-\d\d-\d\d · 2 branches · /.test(t(card('demo').querySelector('.git-facts'))), t(card('demo').querySelector('.git-facts')));
@@ -103,9 +103,9 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   check('the Mirrors chip shows only mirrors', cards().map((c) => t(c.querySelector('h4'))).join() === 'meshtastic-firmware.git');
   chip('Builds').click();
   check('the Builds chip shows only what builds', cards().map((c) => t(c.querySelector('h4'))).join() === 'fw-ci.git');
-  chip('All').click(); chip('Private').click();
+  chip('All').click(); chip('Administrators').click();
   check('Private: the two private ones', cards().length === 2);
-  chip('Public and private').click();
+  chip('All access').click();
   const search = d.getElementById('git-search');
   search.value = 'hill'; search.dispatchEvent(new w.Event('input'));
   check('search looks at descriptions too', cards().map((c) => t(c.querySelector('h4'))).join() === 'demo.git');
@@ -119,7 +119,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   const legends = [...drawer.querySelectorAll('legend')].map(t);
   check('Access in three questions', legends.join(' | ') === 'Who can see it? | Who can push? | Build on push?', legends.join(' | '));
   check('a public repository: three push choices, and "never build" said', drawer.querySelectorAll('input[name^="push-"]').length === 3
-    && /Public repositories never build/.test(t(drawer)) && !drawer.querySelector('input.git-build'));
+    && /Repositories that guests can push to never build/.test(t(drawer)) && !drawer.querySelector('input.git-build'));
   check('the parts: Access, About, Publish to…, and Delete last, apart', [...drawer.querySelectorAll('section > h4')].map(t).join(' | ') === 'Access | About | Publish to… | Delete'
     && drawer.lastElementChild.classList.contains('git-danger'));
   drawer.querySelector('input[name^="push-"][value="public-everything"]').click();
@@ -140,7 +140,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   drawer = d.querySelector('.git-drawer');
   drawer.querySelector('select.git-publish-to').value = 'private/fw-ci';
   drawer.querySelector('input.git-publish-refs').value = 'main dev';
-  [...drawer.querySelectorAll('button')].find((b) => t(b) === 'Publish').click();
+  [...drawer.querySelectorAll('button')].find((b) => t(b) === 'Publish branches or tags').click();
   await wait();
   check('Publish sends the target and the refs', posted.some(([, b]) => b.action === 'publish' && b.to.area === 'private' && b.to.name === 'fw-ci' && b.refs.join() === 'main,dev'));
   check('mirrors are not offered as a target', ![...d.querySelectorAll('.git-drawer select.git-publish-to option')].some((o) => /meshtastic/.test(o.value)));
@@ -174,18 +174,18 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
 
   // Builds: the limits, what is offline, a run's own view, Build now and the templates.
   await wait(100);
-  check('builds: the limits said', /Each build: up to 12 hours, memory capped at 300\.0 MB, the lowest CPU priority\. The runs use 4\.8 MB; the newest 5 per repository are kept/.test(t(d.getElementById('ci-limits'))),
+  check('builds: the limits said', /Each build: up to 12 hours, memory limit 300\.0 MB, the lowest CPU priority\. The runs use 4\.8 MB\. The box retains the newest 5 runs for each repository/.test(t(d.getElementById('ci-limits'))),
     t(d.getElementById('ci-limits')));
-  check('builds: what comes from the box with no internet', /2 URLs come from this box's mirrors \(github\.com\/meshtastic\/firmware/.test(t(d.getElementById('ci-offline')))
-    && /PlatformIO's packages come from the library's cache/.test(t(d.getElementById('ci-offline'))), t(d.getElementById('ci-offline')));
-  check('builds: a kept run says so', /· kept/.test(t(d.getElementById('ci-runs'))));
+  check('builds: what comes from the box with no internet', /git downloads of 2 URLs in a build use the mirrors of this box \(github\.com\/meshtastic\/firmware/.test(t(d.getElementById('ci-offline')))
+    && /PlatformIO packages come from the cache of the library/.test(t(d.getElementById('ci-offline'))), t(d.getElementById('ci-offline')));
+  check('builds: a kept run says so', /· retained/.test(t(d.getElementById('ci-runs'))));
   [...d.querySelectorAll('#ci-runs button')].find((b) => t(b) === 'View').click();
   await wait(100);
   const rv = d.getElementById('ci-run-view');
-  check('a run\'s view: its steps, its log, its artifacts with sizes, Keep and Delete', !rv.hidden && /start/.test(t(rv.querySelector('.ci-steps')))
-    && rv.querySelector('pre.ci-log').textContent === '== start\nbuilding\n' && /fw\.bin \(0\.1 MB\)/.test(t(rv)) && button(rv, 'Keep') && button(rv, 'Delete'), t(rv));
+  check('a run\'s view: its steps, its log, its artifacts with sizes, Retain run and Delete run', !rv.hidden && /start/.test(t(rv.querySelector('.ci-steps')))
+    && rv.querySelector('pre.ci-log').textContent === '== start\nbuilding\n' && /fw\.bin \(0\.1 MB\)/.test(t(rv)) && button(rv, 'Retain run') && button(rv, 'Delete run'), t(rv));
   w.confirm = () => true;
-  button(rv, 'Delete').click();
+  button(rv, 'Delete run').click();
   await wait();
   check('  Delete asks the hub (the builder does it)', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'delete' && b.run === 'fw-ci/3') && rv.hidden);
   [...card('fw-ci').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();

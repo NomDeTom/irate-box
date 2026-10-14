@@ -12,8 +12,8 @@ const reportButton = (() => {
     flag.type = 'button';
     flag.className = 'report-flag';
     flag.textContent = '⚑';
-    flag.title = 'Report this to the box’s owner';
-    flag.setAttribute('aria-label', 'Report this');
+    flag.title = 'Report this to the box’s administrator';
+    flag.setAttribute('aria-label', 'Report this content');
     flag.setAttribute('aria-expanded', 'false');
     const menu = document.createElement('span');
     menu.className = 'report-reasons';
@@ -24,12 +24,12 @@ const reportButton = (() => {
       b.className = 'chip';
       b.textContent = r;
       b.addEventListener('click', async () => {
-        menu.replaceChildren(document.createTextNode('Sending…'));
+        menu.replaceChildren(document.createTextNode('Sending report…'));
         try {
           const res = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app, ref, reason: r }) });
           const d = await res.json().catch(() => ({}));
-          menu.replaceChildren(document.createTextNode(d.message || d.error || (res.ok ? 'Reported.' : 'Could not send.')));
-        } catch (_) { menu.replaceChildren(document.createTextNode('Could not send.')); }
+          menu.replaceChildren(document.createTextNode(d.message || d.error || (res.ok ? 'Report sent.' : 'Report could not be sent.')));
+        } catch (_) { menu.replaceChildren(document.createTextNode('Report could not be sent.')); }
       });
       menu.append(b);
     });

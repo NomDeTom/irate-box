@@ -47,8 +47,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const del = await fetch(`${BASE}/api/drop/${f.id}`, { method: 'DELETE', headers: c.headers });
   console.log('B removes the file with the carried key:', del.status === 200);
   // forget a stale one in A
-  const goneRow = [...A.document.querySelectorAll('#locks-list li')].find((r) => r.textContent.includes('no longer on the hub'));
-  [...goneRow.querySelectorAll('button')].find((b) => b.textContent === 'Forget').click();
+  const goneRow = [...A.document.querySelectorAll('#locks-list li')].find((r) => r.textContent.includes('no longer on the box'));
+  [...goneRow.querySelectorAll('button')].find((b) => b.textContent === 'Remove key from this browser').click();
   await sleep(600);
   console.log('A after forgetting the stale key:', [...A.document.querySelectorAll('#locks-list li')].length, 'rows');
   console.log('ERRORS:', errors.length ? errors : 'none');

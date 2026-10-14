@@ -40,7 +40,7 @@ function page(running) {
   check('off: what it would do, and that the try is still to come', /Off\. Switched on, it would run on a second interface beside wlan0, channel 11\./.test(t(d.getElementById('ap-state')))
     && /still to be tried/.test(t(d.getElementById('ap-state'))), t(d.getElementById('ap-state')));
   check('  the radio and its channels to choose, Automatic first', [...d.getElementById('ap-radio').options].map((o) => o.value).join() === ',wlan0'
-    && d.getElementById('ap-channel').options.length === 14 && !d.getElementById('ap-try').hidden && t(d.getElementById('ap-switch')) === 'Switch on');
+    && d.getElementById('ap-channel').options.length === 14 && !d.getElementById('ap-try').hidden && t(d.getElementById('ap-switch')) === 'Enable hotspot');
   d.getElementById('ap-channel').value = '6';
   d.getElementById('ap-form').dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
   check('Switch on: the owner\'s channel sent', p.posted[0] && p.posted[0].action === 'on' && p.posted[0].channel === 6 && !p.posted[0].radio, JSON.stringify(p.posted));
@@ -50,7 +50,7 @@ function page(running) {
   check('Try a channel of its own: asked', p.posted.some((b) => b.action === 'try'));
   run = { up: true, plan: Object.assign({}, preview, { channel: 6, to_try: false }), radios, owner: { channel: 6 }, confirmed: true, note: 'up on ap0, channel 6' };
   p = page(() => run); await wait(400); d = p.d;
-  check('on: where it runs, Switch off', /^On on a second interface beside wlan0, channel 6\./.test(t(d.getElementById('ap-state'))) && t(d.getElementById('ap-switch')) === 'Switch off'
+  check('on: where it runs, Switch off', /^On on a second interface beside wlan0, channel 6\./.test(t(d.getElementById('ap-state'))) && t(d.getElementById('ap-switch')) === 'Disable hotspot'
     && d.getElementById('ap-try').hidden, t(d.getElementById('ap-state')));
   d.getElementById('ap-form').dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
   check('  Switch off: asked', p.posted.some((b) => b.action === 'off'));
@@ -59,13 +59,13 @@ function page(running) {
   p = page(() => run); await wait(400); d = p.d;
   check('a radio that can\'t do both: the owner\'s choice offered', !d.getElementById('ap-take-label').hidden && /choose one/.test(t(d.getElementById('ap-state'))));
   d.getElementById('ap-form').dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
-  check('  not ticked: nothing asked, it says why', !p.posted.length && /tick the box/.test(t(d.getElementById('ap-note'))));
+  check('  not ticked: nothing asked, it says why', !p.posted.length && /Select the checkbox/.test(t(d.getElementById('ap-note'))));
   d.getElementById('ap-take').checked = true;
   d.getElementById('ap-form').dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
   check('  ticked and confirmed: asked with the radio given up', p.posted[0] && p.posted[0].take_radio === true);
   run = { up: true, plan: Object.assign({}, choose, { channel: 11, needs_choice: false, drops_uplink: true, iface: 'wlan0', kind: 'choose' }), radios, owner: { take_radio: true }, confirmed: false, note: '' };
   p = page(() => run); await wait(400); d = p.d;
-  check('waiting to be kept: said, and Keep it', /Keep it from the hotspot/.test(t(d.getElementById('ap-state'))) && !d.getElementById('ap-confirm').hidden);
+  check('waiting to be kept: said, and Keep it', /Join the hotspot network and open the hub\. Then select Keep hotspot settings\./.test(t(d.getElementById('ap-state'))) && !d.getElementById('ap-confirm').hidden);
   d.getElementById('ap-confirm').click(); await wait();
   check('  Keep it: asked', p.posted.some((b) => b.action === 'confirm'));
   check('no page errors', !p.errors.length, p.errors.join(' | '));

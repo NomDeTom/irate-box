@@ -8,32 +8,32 @@
   const box = document.getElementById('guest-net');
   if (!box) return;
   const words = {
-    'users-web': 'The owner lets signed-in users reach the web through this box.',
-    'sheet-web': 'The owner lets guests reach the web through this box.',
-    'sheet-all': 'The owner lets guests reach the internet through this box.',
+    'users-web': 'The administrator lets signed-in users reach the web through this box.',
+    'sheet-web': 'The administrator lets guests reach the web through this box.',
+    'sheet-all': 'The administrator lets guests reach the internet through this box.',
   };
   function show(d) {
     if (!d.here || d.out || !words[d.level]) { box.hidden = true; return; }
     const p = document.createElement('p');
-    p.textContent = `${words[d.level]} Your traffic leaves as the box's, for ${d.hours} hours on this device; `
-      + 'the box keeps no record of where you go, but its owner\'s connection carries it.';
+    p.textContent = `${words[d.level]} Access lasts ${d.hours} hours on this device. Your traffic uses the box's connection, which belongs to the administrator. `
+      + 'The box does not log the sites you visit. Other systems on the route, such as the internet provider, can still log them.';
     const act = document.createElement(d.level === 'users-web' && !d.signed_in ? 'a' : 'button');
     act.className = 'action-btn primary';
     if (act.tagName === 'A') {
       act.href = '/account.html?next=%2F';
-      act.textContent = 'Sign in to use the internet';
+      act.textContent = 'Sign in for web access';
     } else {
       act.type = 'button';
-      act.textContent = 'Use the internet';
+      act.textContent = d.level === 'sheet-all' ? 'Enable internet access' : 'Enable web access';
       act.addEventListener('click', async () => {
         act.disabled = true;
         try {
           const r = await fetch('/api/guest-net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: true }) });
           const j = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-          p.textContent = 'Done: this device can reach the internet now (give it a few seconds).';
+          p.textContent = `Done. This device can reach ${d.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
           act.remove();
-        } catch (err) { p.textContent = `Not this time: ${err.message}`; act.disabled = false; }
+        } catch (err) { p.textContent = `Request failed: ${err.message}. Select the button to try again.`; act.disabled = false; }
       });
     }
     box.replaceChildren(p, act);

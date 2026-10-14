@@ -18,7 +18,7 @@ check('no placeholder left: each surface drawn from the widget', !d.querySelecto
 const chipsOf = (p, i) => [...p.querySelectorAll('.select-chips')][i];
 const words = (g) => [...g.querySelectorAll('.chip')].map((c) => c.textContent).join('|');
 check('the same two questions everywhere', pats.every((p) => [...p.querySelectorAll('label')].map((l) => l.firstChild.textContent).join('|')
-  === 'How often to look|When something newer is found'));
+  === 'Check interval|When something newer is found'));
 check('how often: Manual, 6 hours, 24 hours, Weekly, as chips', pats.every((p) => words(chipsOf(p, 0)) === 'Manual|6 hours|24 hours|Weekly'),
   pats.map((p) => words(chipsOf(p, 0))));
 const actOf = (form) => words(chipsOf(d.getElementById(form).querySelector('.update-pattern'), 1));
