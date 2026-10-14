@@ -6,7 +6,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>When something goes wrong · Guide · Hub</title>
+  <title>Troubleshooting · Guide · Hub</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
@@ -14,28 +14,39 @@
 <body class="help guide">
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>📖 When something goes wrong</h1>
+    <h1>📖 Troubleshooting</h1>
     <p class="subtitle">The doctors, the logs and the console.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <h2>The doctors</h2>
-  <p class="help-note">On the admin pages, under Doctors:</p>
-  <ul><li><strong>Box doctor</strong>: is everything the installer set up still there and working: the services, the web server's configuration, the clock, the space, the network watchdog, crashes. Each problem says what to do; the safe repairs are buttons. <strong>Look again</strong> runs it now. At its top, <strong>the box at a glance</strong>: the last start of the box and why, the last repair, what restarts a frozen box, and how much it writes to its card. What crash watch keeps and what restarts a frozen box are chosen on <strong>System → Recovery and monitoring</strong>; a doctor shows what it found and links to where a choice is made, and does the repairs with one right answer itself. Below the findings, folded: the root helper's queue, each outage and the steps the network watchdog took, and the last install (open by itself when it went wrong).</li><li><strong>Security doctor</strong>: see <a href="security.html">Security</a>.</li><li><strong>Updates doctor</strong>: why an update didn't verify or install, with a link to where it is put right. Clearing the update cache and <strong>Install anyway</strong> (for a version that fetched but failed its checks, never one that isn't signed as you required) are under <strong>Updates → Maintenance</strong>.</li></ul>
-  <p class="help-note">The same Box doctor from the console, even when the admin pages can't be reached:</p>
+  <p class="help-note">On the administration pages, open Doctors.</p>
+  <p class="help-note"><strong>Box doctor.</strong> It checks that everything the installer set up is still present and working. It checks the services, the web server configuration, the clock, the storage space, the network watchdog and crashes. Its page has these parts:</p>
+  <ul><li><strong>Summary</strong>: the last start of the box and the reason for it, the last repair, what restarts a frozen box and how much the box writes to its storage card.</li><li><strong>Findings</strong>: each problem and what to do about it.</li><li><strong>Repairs</strong>: buttons for the safe repairs. Select <strong>Look again</strong> to run the checks now.</li><li><strong>Settings links</strong>: a finding links to the page where you change the setting. You set what crash watch keeps and what restarts a frozen box in <strong>System → Recovery and monitoring</strong>. The doctor does the repairs that have one correct result.</li><li><strong>History</strong> (folded): the queue of the root helper, each outage, the steps that the network watchdog took, and the last install. The last install opens by itself when it failed.</li></ul>
+  <p class="help-note">The clock checks have their own page in the Clock section.</p>
+  <p class="help-note"><strong>Security doctor.</strong> See <a href="security.html">Security</a>.</p>
+  <p class="help-note"><strong>Updates doctor.</strong> It shows why an update did not verify or install. It links to the page where you can correct the problem. <strong>Install anyway</strong> is for a version that downloaded but failed its checks. It does not install a version that does not have the signature that you require. The update cache and <strong>Install anyway</strong> are in <strong>Updates → Maintenance</strong>.</p>
+  <p class="help-note">To run the Box doctor from the console, also when the administration pages are not available, run this command:</p>
   <pre class="help-code"><code>sudo /opt/irate-box/irate-box health summary</code></pre>
   <h2>The console</h2>
-  <p class="help-note">Over SSH, on the box:</p>
-  <ul><li><code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>: make an admin, or set a lost password.</li><li><code>sudo /opt/irate-box/irate-box hub_control script-login</code>: a login for scripts (<code>--off</code> removes it).</li><li><code>sudo /opt/irate-box/irate-box hub_control reset-password</code>: back to the first use (the admin pages free until an admin is made again).</li><li>Running the installer again (<code>sudo ./install.sh</code>) is safe: it repairs and upgrades, keeping your settings and add-ons.</li><li><code>sudo ./uninstall.sh</code> removes it; your data goes too unless you add <code>--keep-state</code>, so take a backup first.</li></ul>
+  <p class="help-note">Use SSH to sign in to the box. These commands are available:</p>
+  <ul><li><code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>: create an administrator account, or set a new password.</li><li><code>sudo /opt/irate-box/irate-box hub_control script-login</code>: create a script login (the <code>--off</code> option removes it).</li><li><code>sudo /opt/irate-box/irate-box hub_control reset-password</code>: reset the initial setup. After this command, anyone on the network can open the administration pages until you create an administrator account again. Run it only if you accept this.</li><li><code>sudo ./install.sh</code>: run the installer again. The installer repairs and upgrades the box. It keeps your settings and add-ons. It can restart services. Read the log in <code>/var/log/irate-box/install.log</code> afterward.</li><li><code>sudo ./uninstall.sh</code>: remove the box. This also deletes your data unless you add <code>--keep-state</code>. Make a backup first.</li></ul>
   <h2>Logs</h2>
-  <ul><li>The installer: <code>/var/log/irate-box/install.log</code></li><li>A service: <code>journalctl -u irate-box -n 50</code> (the hub), <code>journalctl -u irate-box-uplink -n 50</code> (the network watchdog), <code>journalctl -u irate-box-led -n 50</code> (the status light)</li></ul>
+  <ul><li>The installer: <code>/var/log/irate-box/install.log</code></li><li>The hub: <code>journalctl -u irate-box -n 50</code></li><li>The network watchdog: <code>journalctl -u irate-box-uplink -n 50</code></li><li>The status LED: <code>journalctl -u irate-box-led -n 50</code></li></ul>
   <h2>If the box stops answering</h2>
-  <p class="help-note">Its crash watch keeps notes on the card, and the Box doctor says after a restart when the box stopped without shutting down, with its last record.</p>
-  <h2>The status light</h2>
-  <p class="help-note">The box can blink one of the board's LEDs so you can tell from across the room how it is: <strong>1 s on, 1 s off</strong> while all it reports is well; <strong>off</strong> when not (the network is down, or the hub isn't running); <strong>quick flashes</strong> while the network is being repaired; <strong>two short flashes</strong> when the Box doctor has a problem to read, or another link the watchdog watches is down; <strong>steady on</strong> while the box starts or updates. A light stuck on or off, not changing, is a box that has frozen.</p>
-  <p class="help-note"><strong>Recovery and monitoring → The status light</strong> chooses what it reports: <strong>Leave it</strong> (the light stays as the image set it), <strong>The box is alive</strong>, <strong>Alive and on its network</strong>, or <strong>Alive, on its network, nothing wrong</strong>. Where the board has more than one, <strong>Which light</strong> chooses it, and the Box doctor's <strong>Flash</strong> buttons blink each one fast to find it. A power LED is never used. On a Raspberry Pi the green light is left showing the SD card working until you choose otherwise.</p>
-  <h2>The card</h2>
-  <p class="help-note">An SD card wears with every write. The box writes a file only when it changed, keeps its live reports in memory, and adds to its histories rather than rewriting them. <strong>Recovery and monitoring → Writing to the card</strong> chooses how much more it may lose in a crash to write less: <strong>Record everything</strong>, <strong>Thrifty</strong> (the default: the clock saved every 10 minutes and when the hub stops), <strong>Gentle</strong> (crash watch's snapshots without a sync) or <strong>Card saver</strong> (snapshots kept in memory, written every quarter of an hour or at once when something goes wrong). What people made is written as it changes at every stop. The page shows how much has been written since boot.</p>
+  <p class="help-note">Crash watch keeps crash evidence on the storage card. After a restart, the Box doctor tells you if the box stopped without a shutdown. It shows the last record.</p>
+  <h2>The status LED</h2>
+  <p class="help-note">The box can blink one LED of the board. The LED shows the state of the box from across the room. In the mode <strong>Alive, on its network, nothing wrong</strong>, the patterns are:</p>
+  <ul><li><strong>1 second on, 1 second off</strong>: all the items that the box reports are well.</li><li><strong>Off</strong>: the network is down or the hub is not running.</li><li><strong>Quick flashes</strong>: the network is being repaired.</li><li><strong>Two short flashes</strong>: the Box doctor has a problem to read, or another link that the watchdog monitors is down.</li><li><strong>Steady on</strong>: the box is starting or updating.</li></ul>
+  <p class="help-note">A steady or off LED can mean that the box froze. It can also mean that you selected a mode that does not report that state, that reporting is disabled, or that the LED has a hardware fault.</p>
+  <p class="help-note">Select the mode in <strong>Recovery and monitoring → The status light</strong>:</p>
+  <ul><li><strong>Leave it</strong>: the LED stays as the image set it.</li><li><strong>The box is alive</strong></li><li><strong>Alive and on its network</strong></li><li><strong>Alive, on its network, nothing wrong</strong></li></ul>
+  <p class="help-note">If the board has more than one LED, <strong>Which light</strong> selects the LED. The <strong>Flash</strong> buttons of the Box doctor make each LED blink fast, so you can identify it. The box never uses a power LED. On a Raspberry Pi, the green LED shows the activity of the SD card until you select another mode.</p>
+  <h2>SD card write frequency</h2>
+  <p class="help-note">An SD card wears with each write. The box writes a file only when it changed. It keeps its live reports in memory. It adds to its histories and does not rewrite them.</p>
+  <p class="help-note">Select the write level in <strong>Recovery and monitoring → Writing to the card</strong>. A lower level writes less and can lose more after a crash:</p>
+  <ul><li><strong>Record everything</strong>: crash watch snapshots are written and synced every 30 seconds. The clock is saved every minute.</li><li><strong>Thrifty</strong> (the default): the snapshots are the same. The clock is saved every 10 minutes and when the hub stops. After a crash, the clock can be up to 10 minutes behind.</li><li><strong>Gentle</strong>: the snapshots are written without a sync. A hang loses the last two minutes of snapshots. The clock is saved every 30 minutes.</li><li><strong>Card saver</strong>: the snapshots are kept in memory. The box writes them every 15 minutes, or at once when crash watch sees a problem. The clock is saved every hour. A hang loses up to 15 minutes of snapshots.</li></ul>
+  <p class="help-note">User data is written when it changes, at every level. The page shows how much the box has written since the last boot.</p>
 
   <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
   <script src="/hub.js"></script>

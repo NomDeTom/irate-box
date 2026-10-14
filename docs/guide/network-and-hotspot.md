@@ -2,78 +2,99 @@
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Network and the hotspot
 
-*How the box stays online, and its own WiFi for guests. On the admin pages: System → Network.*
+*How the box stays on the network, and its own WiFi for guests. On the administration pages: System → Network.*
 
 ## Connection settings
 
-**Connection settings** shows its WiFi (the networks it knows; **Add a network for the box to join**) and its wired port.
+**Connection settings** shows the WiFi networks that the box knows. Select **Add a network for the box to join** to add one. It also shows the wired port of the box.
 
 ## Network recovery
 
-A watchdog checks the router every minute or two. If the link drops, it climbs a ladder of repairs, each only if the one before didn't help:
+A watchdog checks the router every minute or two. If the link fails, the watchdog does recovery steps. It does a step only if the step before did not help:
 
 1. **Reconnect** to the WiFi.
 2. **Restart the network service.**
-3. **Reset the radio** (reload its driver: a fresh start for the WiFi chip).
-4. **Reboot the box** (at most three times a day, never during an update or a build).
+3. **Reset the radio.** The box reloads the driver of the WiFi chip, or uses another reset that the hardware supports.
+4. **Reboot the box.** The box reboots at most three times a day. It does not reboot during an update or a build.
 
-You choose the **pace** (how soon it acts), the **reach** (how far up the ladder it may go), how many missed checks put it on the ladder, and, with guests on the hotspot, whether to protect them from a restart. **Recovery actions, for each connection** lets you untick a step for one link: a radio that a restart unsettles can go from a reconnect straight to a radio reset. The Box doctor says when a step isn't helping on a link that drops often, with a button to leave it out.
+These settings control the watchdog:
 
-It also tells **why** the link is down. When the **radio itself has failed** (its driver stuck, or the WiFi interface gone), only a radio reset or a reboot helps: **A failed radio** sets whether that waits its turn on the ladder, happens at once, or happens at once with a restart of the box if the radio isn't back three minutes later. When the **network is at fault** (out of range, not letting the box join, or the router silent), a reset or a reboot can't help, so the box only reconnects: **how often** (eager, steady, or sparing for a box on a battery) and **how long** (forever by default, or an hour, a day, a week).
+- **Recovery timing (Pace)**: how soon the watchdog acts.
+- **Maximum recovery action (Reach)**: the last step that the watchdog can do.
+- **Sensitivity**: the number of missed checks that start recovery.
+- **Guests on the hotspot**: whether the box protects the guests from a restart.
 
-**Which links it watches.** Each link (the WiFi, the cable, a USB adapter) can have a watchdog of its own. Set each one to
-**Watched**, **Not watched**, or **As any other link**, and choose what any other link does: watched **while it holds the
-route** (the default: the link the box reaches its network by), **looked at** (the route's link watched, every other one
-looked at and its trouble said, nothing done for it), **watched**, or **not watched**. A link nobody watches is on its own:
-if it fails, nothing notices or tries again. A link is known by its name, then by its hardware: a USB adapter that comes
-back under another name (plugged into another port, or after another one) keeps its setting. The Box doctor says so, and when such a link is down it offers
-**Reconnect it** (NetworkManager stops trying a WiFi network after its password check fails a few times, and waits for
-someone).
+**Recovery actions** lets you turn off a step for one link. Use it for a radio that a restart makes unstable. The watchdog then goes from a reconnect directly to a radio reset. The Box doctor tells you when a step does not help on a link that fails often. It shows a button to leave the step out.
 
-**Steps that reach every link.** Restarting the network service drops every link, and a reboot drops everything, so by
-default they are taken **only when no path to the network is left**: a WiFi that fails on a box whose cable works is reconnected and its
-radio reset, but the box isn't rebooted for it. You can allow them **for the route's link** even with another up, or **for
-any link**. A step you press yourself is always yours to take.
+The watchdog also finds out why the link is down.
 
-**A cable unplugged.** No carrier on a wired link means no cable, or the other end is off, and nothing the box does mends
-that: by default it **waits, and says so**. It can instead **reconnect now and then**, or take **the whole ladder**. It
-watches for the cable coming back: if the link doesn't come up with it, the box reconnects at once, so a box with no
-screen gets its cable back without a reboot.
+**The radio failed.** The driver is stalled or the WiFi interface is missing. Only a radio reset or a reboot helps. The setting **Failed radio** gives three choices:
 
-**How far it goes on a cable by itself** is reconnecting, by default: a lost wired link is most often a cable pulled or
-the other end off, which no step mends, and when the carrier can't be read the box assumes the cable is out. Raise it to
-let the box also reset the network adapter (three minutes after a cable comes back without a link, then as the pace
-says), restart the network service, or reboot; it never goes past the reach above.
+- The failed radio waits its turn in the recovery steps.
+- The box resets the radio at once.
+- The box resets the radio at once. If the radio is not back after three minutes, the box restarts.
 
-The **Status** tab shows the link now and the last 72 hours; the Box doctor's chart shows how far the watchdog went.
+**The network is unavailable.** The network is out of range, the network does not let the box join, or the router does not answer. A reset or a reboot cannot help. The box only reconnects. Set **Network unavailable: retry interval** (eager, steady, or sparing for a box on a battery). Set **Network unavailable: retry period** (forever by default, or an hour, a day or a week).
 
-## Reaching the box from anywhere (Tailscale)
+## Monitored interfaces
 
-Tailscale is a private network between your own devices, over the internet. With it, you can open the box's pages from
-your phone or laptop wherever you are, as if you were on its WiFi. The box needs the internet for this; nothing else on
-the box does.
+Each link (the WiFi, the cable or a USB adapter) can have a watchdog of its own. Set each link to **Watched**, **Not watched** or **As any other link**. Set **New interfaces and interfaces not listed here** to one of these:
 
-**Set it up** (once):
+- **While it holds the route** (the default). The watchdog monitors the link that the box uses to reach its network.
+- **Looked at**. The watchdog monitors the link of the route. For every other link, it reports the problem and does nothing.
+- **Watched**.
+- **Not watched**.
 
-1. Make a Tailscale account at tailscale.com, and install Tailscale on the phone or laptop you will use. Sign in there.
-2. On the box: **Admin → Access → Remote access**, choose **On**.
-3. Open the box's **Terminal** (its tile on the hub page, as the admin; or a shell over SSH) and run `sudo tailscale up`. It prints a link.
-4. Open that link and sign in with the same Tailscale account. The box joins your Tailscale network.
-5. **Remote access** now says "Tailscale is on: this box is …", with its name and address on your Tailscale network.
+If no watchdog monitors a link and the link fails, nothing detects the failure and nothing retries. The Box doctor reports this.
 
-**Use it:** on your device, with Tailscale on, open `http://` and the box's Tailscale name or address. Everything works
-as on the box's WiFi, the admin pages included.
+The box identifies a link by its name and then by its hardware. A USB adapter can come back under another name. The adapter keeps its setting. The Box doctor reports this. When such a link is down, the Box doctor offers **Reconnect it**. NetworkManager stops its attempts to join a WiFi network after a few failed password checks. It then waits for a person to act.
 
-**Switch it off** when you don't need it: **Remote access → Off**, or **On for** a few hours so it ends by itself. While
-it is off, it can only be switched on again from the box's own network.
+## System-wide recovery actions
 
-If Remote access says "running, but not logged in to a Tailscale network", step 3 hasn't been done: nothing can reach
-the box through Tailscale until it is. Switch it off if you don't use it.
+A restart of the network service drops every link. A reboot drops everything. By default, the box does these actions only when no path to the network remains. Example: a WiFi link fails and the cable works. The box reconnects the WiFi and resets its radio. It does not reboot the box.
+
+You can let the box do these actions for the link of the route when another link is up. You can also let it do them for any link. The actions that you start yourself always run.
+
+## Cable disconnected
+
+When a wired link has no carrier, the cable is disconnected or the other end is off. No recovery action repairs this. By default, the box waits and shows a message. These settings are available:
+
+- **Wait, and say so** (the default).
+- **Reconnect now and then**.
+- **The whole ladder**: every recovery step up to the maximum recovery action.
+
+When the cable returns without a link, the box reconnects at once. A box without a screen gets its cable back without a reboot.
+
+**Wired-link recovery limit** sets how far the box goes on a cable. The default is a reconnect. If the box cannot read the carrier, it assumes that the cable is out. You can let the box also reset the network adapter (three minutes after the cable returns without a link, then at the recovery timing), restart the network service or reboot. The box never goes past the maximum recovery action.
+
+The **Status** tab shows the link now and the last 72 hours. The chart of the Box doctor shows how far the watchdog went.
+
+## Remote access with Tailscale
+
+Tailscale is a network between your own devices over the internet. After setup, you can open the pages of the box from your phone or laptop in any place. Both devices need an internet connection. The box needs the internet for Tailscale only.
+
+**Set it up (one time):**
+
+1. Create a Tailscale account at tailscale.com.
+2. Install Tailscale on the phone or laptop that you will use.
+3. Sign in to Tailscale on that device.
+4. On the box, open **Access → Remote access** and select **On**.
+5. Open the box Terminal. Use its tile on the hub as an administrator, or use a shell over SSH.
+6. Run `sudo tailscale up`. The command prints a link.
+7. Open the link.
+8. Sign in with the same Tailscale account. The box joins your Tailscale network.
+9. Check **Remote access**. It shows "Tailscale is on" with the name and address of the box on your Tailscale network.
+
+**Use it.** On your device, turn Tailscale on. Open `http://` and the Tailscale name or address of the box. The hub pages work as they do on the WiFi of the box. The rules for HTTPS and for administrator passwords also apply. Devices that connect to the box by USB are not available remotely.
+
+**Switch it off** when you do not need it. Select **Remote access → Off**, or select **On for** a number of hours. Then it ends by itself. While it is off, you can switch it on again only from the network of the box.
+
+If **Remote access** says "running, but not logged in to a Tailscale network", Tailscale on the box is not signed in. Repeat steps 5 to 8. Until you sign in, Tailscale cannot reach the box. Switch Remote access off if you do not use it.
 
 ## The hotspot
 
-The box's own WiFi, for people with no other network (name **Irate-Box** to start). Every web address on it leads to the hub. It's off until you switch it on (Network → Hotspot); the page fits it to the box's radios.
+The hotspot is the WiFi network of the box. It is for people who have no other network. The first name is **Irate-Box**. The hotspot is off until you switch it on in Network → Hotspot. The page fits the hotspot to the radios of the box. When captive portal DNS is on, every web address on the hotspot leads to the hub.
 
-- **Security**: **Open** (no password), **Enhanced Open** (no password, but encrypted), **WPA3** with a password you publish, or two networks, one open and one encrypted.
-- **What guests reach on the box**: everything, the hub and its apps, or the hub only (Security page).
-- **Guests reach the internet**: **Off** (the default), signed-in users for the web only, everyone after a welcome page (the web, or everything), or everyone with no welcome page. A device is let out for 12 hours at a time.
+- **Security**: **Open** (no password), **Enhanced Open** (no password, and the WiFi link is encrypted), **WPA3** (a password that you publish) or two networks, one open and one encrypted.
+- **Hotspot service access** (on the Security page): what guests can reach on the box. The levels are everything, the hub and its apps, or the hub only.
+- **Guest internet access**: **Off** (the default), the web for signed-in users only, everyone after a welcome page (the web only, or everything), or everyone without a welcome page. A device has access for 12 hours at a time.

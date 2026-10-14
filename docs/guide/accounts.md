@@ -2,33 +2,63 @@
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Accounts
 
-*Who can sign in, and how. On the admin pages: System → Accounts & users.*
+*Who can sign in, and how. On the administration pages: System → Accounts.*
 
-The box works without accounts: guests use the apps as they are, and the admin signs in. Accounts are for people who should have more: apps only users can open, their own settings, files they can lock.
+The box works without accounts. Guests use the apps as the administrator set them up. Accounts give users more: apps that only users can open, their own settings and file locks.
 
-## Sign-up
+## Account registration
 
-- **Off** (the default): no accounts but the admins'.
-- **Open**: anyone can make one, usable at once (at most five an hour from one address).
-- **Application**: anyone can ask; you accept or refuse.
-- **Admin assigned**: only you make them.
+Select one of these settings:
 
-To make one yourself: **Make user** or **Make admin**. The box gives a one-time code (good for a day); the person sets their own password with it on the account page (**Set your password with a code**). **Reset password** on an account gives a new code.
+- **Off** (the default): the box has guests and administrators only.
+- **Open**: anyone can create an account. The account works at once. One address can create at most five accounts in one hour.
+- **Approval**: anyone can request an account. An administrator accepts or refuses the request.
+- **Administrator creates**: only administrators create accounts.
 
-## Passwords over plain HTTP
+To create an account yourself, select **Create user account** or **Create administrator account**. The box shows a one-time code. The code is valid for 24 hours. The person enters the code on the account page, in **Set your password with a code**, and sets a password. To give an account a new code, select **Reset password** on the account.
 
-**Prevented** (passwords only over HTTPS), **Warning** (the default: allowed, and the page says it can be read off the air) or **Permitted**. An admin's password changes only over HTTPS, or at the console, whatever this says.
+## Passwords over HTTP
+
+The setting **Password submission over HTTP** has three values:
+
+- **Blocked**: the box accepts passwords only over HTTPS.
+- **Warning** (the default): the box accepts passwords over HTTP. The page warns that other devices on the network can read them.
+- **Allowed**: the box accepts passwords over HTTP and shows no warning.
+
+HTTP does not encrypt traffic. An administrator password changes only over HTTPS or at the console. This rule applies for every value of the setting.
 
 ## The account page
 
-Everyone's, at `/account.html`: change your password; whether others see your name in "here now"; your name's colour; whether your files in the drop are locked by default; who sees what you post; your own notebook; log out.
+Every user has an account page at `/account.html`. Use it to:
+
+- change your password
+- show or hide your name in "here now"
+- set the colour of your name
+- lock your files in the file drop by default
+- set who sees what you post
+- open your notebook
+- sign out
 
 ## Notebooks
 
-Beside the shared notes, each signed-in person can have a notebook of their own that no one else can open: **My notebook** on the account page opens it, or downloads it as a zip. It runs only while its owner uses it: it starts when opened, and stops at sign-out or half an hour after it was last used. About 40 MB of memory each while running.
+Each signed-in user can have a notebook that no other user can open. Select **My notebook** on the account page to open the notebook or download it as a zip file. The box does not encrypt the notebook. The box keeps it away from other users, and administrators can read the files of the box.
 
-On the admin pages, **Accounts → Notebooks**: **Shared notes only**, **By sign-up** (the default: a notebook for each login wherever people may sign up) or **Also one per login**; how many may run at once (5 by default); and how much memory to keep free, below which no more start. A notebook's pages stay on the box when it stops, when notebooks are switched off, and when its account is deleted. They are not in the box's backup: each person keeps their own with the download.
+A notebook runs only while its user uses it. It starts when the user opens it. It stops at sign-out or 30 minutes after the last use. A running notebook uses about 40 MB of memory.
 
-## The box's own login, for scripts
+Open **Accounts → Notebooks** on the administration pages. These settings are there:
 
-A separate login (user `admin`) for scripts that call the admin pages, made only when you ask, at the console: `sudo /opt/irate-box/irate-box hub_control script-login`. Its password is kept in `/etc/hub/admin-password`, readable only by root. `--off` removes it.
+- **Shared notes only**, **By sign-up** (the default) or **Also one per login**. By sign-up gives each account a notebook where people can create an account.
+- The number of notebooks that can run at once (5 by default).
+- The free memory that must remain. Below this amount, no more notebooks start.
+
+The pages of a notebook stay on the box when the notebook stops, when notebooks are switched off, and when the account is deleted. The Settings only and Settings and data backups do not include notebooks. Each user keeps a copy with the download. The Full image backup includes them.
+
+## Script login
+
+A script login is a separate account (user `admin`) for scripts that call the administration pages. It does not exist until you create it. Create it at the console:
+
+```
+sudo /opt/irate-box/irate-box hub_control script-login
+```
+
+The box keeps the password in `/etc/hub/admin-password`. Only root can read this file. Use the `--off` option to remove the script login. Scripts that call the box over HTTP send the password in plain text. Use HTTPS for requests over the network.
