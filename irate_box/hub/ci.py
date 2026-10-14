@@ -65,16 +65,16 @@ SETTINGS = Path(os.environ.get("HUB_CI_SETTINGS", ROOT.parent / "library" / "ci.
 # What a build gets in its environment (build() below): said on the page, and the templates use
 # only these (tests/sim_ci_view.py checks).
 ENV_VARS = {
-    "CI": "1, so a script can tell it runs here",
+    "CI": "1, so a script can detect that it runs on the box",
     "CI_REPO": "the repository's name",
-    "CI_BRANCH": "the branch pushed (or chosen with Build now)",
+    "CI_BRANCH": "the branch pushed, or selected with Build now",
     "CI_COMMIT": "the commit, 40 hex digits",
-    "CI_ARTIFACTS": "a folder: what the script leaves there is kept with the run",
-    "CI_PIO_DEPS": "when the library keeps one: PlatformIO's packages for the newest Meshtastic release",
-    "CI_PIO_DEPS_TAG": "with CI_PIO_DEPS: the release it is for (v2.8.1.8e6a88d), the firmware a build can make with no internet",
-    "PIP_NO_INDEX": "when the Building kit's wheelhouse is cached: 1, so pip never reaches the internet",
+    "CI_ARTIFACTS": "a folder: the box keeps the files that the script leaves there with the run",
+    "CI_PIO_DEPS": "when the library has one: the folder with the PlatformIO packages for the newest Meshtastic release",
+    "CI_PIO_DEPS_TAG": "with CI_PIO_DEPS: the release of those packages (v2.8.1.8e6a88d). A build of this release needs no internet for the packages",
+    "PIP_NO_INDEX": "when the Building kit's wheelhouse is cached: 1, so pip does not use the internet",
     "PIP_FIND_LINKS": "when the Building kit's wheelhouse is cached: its folder, so `pip install platformio` needs no internet",
-    "HOME": "a folder of its own that stays between builds, so tool caches (~/.platformio, a venv) survive",
+    "HOME": "a folder of its own that stays between builds, so tool caches (~/.platformio, a venv) remain",
 }
 # The parts of a PlatformIO build the meshtasticd template and the Firmware Factory's builds share:
 # which PlatformIO (Debian's, or the wheelhouse's as a fallback), seeding it from the build cache,
@@ -219,22 +219,22 @@ def queue_build(repo, branch=None):
     queue it, with the same refusals: public, switched off, no .irate-ci.sh at that commit."""
     repo = Path(repo).resolve()
     if repo.parent != PRIVATE.resolve() or not NAME_RE.match(repo.name[:-4]):
-        raise ValueError("only private repositories build")
+        raise ValueError("Builds need a private repository.")
     repo = confine.under(PRIVATE.resolve(), repo.name)
     if not (repo / "HEAD").exists():
-        raise ValueError("only private repositories build")
+        raise ValueError("Builds need a private repository.")
     off = _git("config", "--get", "irate-box.ci", cwd=repo)
     if off.returncode == 0 and off.stdout.strip() == "off":
-        raise ValueError("builds are switched off for this repository (Manage, Access)")
+        raise ValueError("Builds are off for this repository. Turn them on in Manage, Access.")
     if branch is None:
         branch = _git("symbolic-ref", "--short", "HEAD", cwd=repo).stdout.strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}", branch or "") or ".." in branch:
-        raise ValueError("not a branch name")
+        raise ValueError("Select a valid branch.")
     commit = _git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}", cwd=repo).stdout.strip()
     if not commit:
-        raise ValueError(f"no branch {branch} in {repo.name}")
+        raise ValueError(f"Branch {branch} not found in {repo.name}.")
     if _git("cat-file", "-e", f"{commit}:{SCRIPT}", cwd=repo).returncode != 0:
-        raise ValueError(f"{branch}'s newest commit has no {SCRIPT} at its top")
+        raise ValueError(f"Build script missing. The newest commit of {branch} has no {SCRIPT} at its top.")
     QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"repo": str(repo), "branch": branch, "commit": commit, "queued": time.time(), "by": "build-now"})
     return {"branch": branch, "commit": commit}
@@ -244,7 +244,7 @@ def queue_run_change(run, what):
     """Keep or delete a run: the runs are hubci's, so the change goes through the queue, done by
     the builder (after the build in progress, if one is)."""
     if not RUN_RE.match(run or "") or what not in ("keep", "unkeep", "delete"):
-        raise ValueError("a run, and keep, unkeep or delete")
+        raise ValueError("Select a run and one action: keep, unkeep or delete.")
     QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"run": run, "change": what, "queued": time.time()})
 
@@ -389,10 +389,10 @@ def build(job):
         try:
             out = _git("clone", "--quiet", "--no-checkout", str(repo), str(src))
             if out.returncode != 0:
-                raise RuntimeError(f"clone failed: {out.stderr.strip()}")
+                raise RuntimeError(f"Clone failed: {out.stderr.strip()}")
             out = _git("checkout", "--quiet", job["commit"], cwd=src)
             if out.returncode != 0:
-                raise RuntimeError(f"checkout failed: {out.stderr.strip()}")
+                raise RuntimeError(f"Checkout failed: {out.stderr.strip()}")
             _git("submodule", "update", "--init", "--recursive", "--depth", "1", cwd=src, timeout=3600)
             say(f"running {SCRIPT} (time limit {TIME_LIMIT // 60} min)")
             env = dict(os.environ, CI="1", CI_REPO=name, CI_BRANCH=job["branch"], CI_COMMIT=job["commit"],
@@ -679,10 +679,10 @@ def build_firmware(job):
         try:
             out = _git("clone", "--quiet", "--no-checkout", str(repo), str(src))
             if out.returncode != 0:
-                raise RuntimeError(f"clone failed: {out.stderr.strip()}")
+                raise RuntimeError(f"Clone failed: {out.stderr.strip()}")
             out = _git("checkout", "--quiet", job["commit"], cwd=src)
             if out.returncode != 0:
-                raise RuntimeError(f"checkout failed: {out.stderr.strip()}")
+                raise RuntimeError(f"Checkout failed: {out.stderr.strip()}")
             if offline:
                 probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)
                 if probe.returncode != 0:
@@ -691,7 +691,7 @@ def build_firmware(job):
             out = subprocess.run([*netns, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"], cwd=src,
                                  capture_output=True, text=True, timeout=3600)
             if offline and out.returncode != 0:
-                raise RuntimeError(f"the submodules need the network: {out.stderr.strip()[-300:]}")
+                raise RuntimeError(f"Submodule download failed. The submodules need the network: {out.stderr.strip()[-300:]}")
             # The project's .pio (its libraries, and what it built) kept outside the source, which is
             # removed after each run: a target's libraries stay for its next build, offline or not,
             # and a rebuild is incremental. As Meshtastic's build containers do (PLATFORMIO_WORKSPACE_DIR).

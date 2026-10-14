@@ -60,7 +60,7 @@ check("fresh: nothing due", tls.due() is None)
 now = time.time()
 check("two-thirds of its life gone: due", tls.due(now + 265 * 86400) == "two-thirds of its life gone" and tls.due(now + 260 * 86400) is None)
 ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.77", "network": "192.168.1.0/24"}
-check("a new address in the subnet: due, and re-made to cover it", "192.168.1.77" in (tls.due() or "") and "re-made" in tls.renew()
+check("a new address in the subnet: due, and re-made to cover it", "192.168.1.77" in (tls.due() or "") and "renewed" in tls.renew()
       and "192.168.1.77" in json.loads(tls.RECORD.read_text())["cert"]["addresses"])
 ADDRS[0] = {"iface": "wlan0", "address": "10.0.0.5", "network": "10.0.0.0/24"}
 st = tls.status()
@@ -88,7 +88,7 @@ nginx_ok["ok"] = False
 try:
     tls.front(True); check("nginx refusing the twins: undone, and said", False)
 except RuntimeError as exc:
-    check("nginx refusing the twins: undone, and said", not list(tls.FRONT.glob("*.conf")) and "taken away again" in str(exc) and not tls.status()["on"], str(exc))
+    check("nginx refusing the twins: undone, and said", not list(tls.FRONT.glob("*.conf")) and "removed them again" in str(exc) and not tls.status()["on"], str(exc))
 nginx_ok["ok"] = True
 # Under Caddy: a site of its own per twin, importing the plain site's snippet (Caddy refuses TLS on a
 # block whose other port is plain); the admin redirect by a protocol matcher. With $CADDY naming
@@ -259,7 +259,7 @@ def post(body, proto):
             time.sleep(0.1)
 try:
     code, body = post({"action": "admin-only", "on": True}, "http")
-    check("hub: HTTPS only refused from a plain-HTTP admin page, saying why", code == 409 and b"open /admin over HTTPS first" in body, (code, body))
+    check("hub: HTTPS only refused from a plain-HTTP admin page, saying why", code == 409 and b"Open /admin over HTTPS first" in body, (code, body))
     code, _ = post({"action": "admin-only", "on": True}, "https")
     check("  accepted from an HTTPS one", code == 202)
     code, _ = post({"action": "admin-only", "on": False}, "http")

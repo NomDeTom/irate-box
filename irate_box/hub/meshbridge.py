@@ -70,14 +70,14 @@ def _save_channels(chs):
 def add_channel(name, key):
     name = str(name or "").strip()
     if not (1 <= len(name) <= 11) or any(c in name for c in "/#+\0"):
-        raise ValueError("name: the channel's name as Meshtastic shows it (up to 11 characters)")
+        raise ValueError("Invalid channel name: enter the name as Meshtastic shows it, 1 to 11 characters, without / # + or null characters")
     try:
         meshdecode.expand_key(key)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f"key: base64, as Meshtastic shows it ({exc})")
+        raise ValueError(f"Invalid channel key: enter the key in base64 as Meshtastic shows it ({exc})")
     chs = [c for c in channels() if c["name"] != name] + [{"name": name, "key": key}]
     if len(chs) > 16:
-        raise ValueError("at most 16 channels")
+        raise ValueError("Channel limit reached: the box keeps at most 16 channels")
     _save_channels(chs)
 
 
@@ -177,12 +177,12 @@ def _packet(kind, body):
 def _read_packet(sock):
     head = sock.recv(1)
     if not head:
-        raise ConnectionError("the broker closed the connection")
+        raise ConnectionError("Broker disconnected: the MQTT broker closed the connection")
     length = mult = 0
     for _ in range(4):
         b = sock.recv(1)
         if not b:
-            raise ConnectionError("the broker closed the connection")
+            raise ConnectionError("Broker disconnected: the MQTT broker closed the connection")
         length += (b[0] & 127) * (128 ** mult)
         mult += 1
         if not b[0] & 128:
@@ -191,7 +191,7 @@ def _read_packet(sock):
     while len(body) < length:
         chunk = sock.recv(length - len(body))
         if not chunk:
-            raise ConnectionError("the broker closed the connection")
+            raise ConnectionError("Broker disconnected: the MQTT broker closed the connection")
         body += chunk
     return head[0], body
 
@@ -228,7 +228,7 @@ class Bridge(threading.Thread):
             sock.sendall(_packet(0x10, _string("MQTT") + bytes([4, 0x02]) + struct.pack(">H", 60) + _string(f"irate-box-bridge-{os.getpid()}")))
             kind, body = _read_packet(sock)
             if kind >> 4 != 2 or len(body) < 2 or body[1] != 0:
-                raise ConnectionError("the broker refused the connection")
+                raise ConnectionError("Broker refused connection: the MQTT broker did not accept the box")
             sock.sendall(_packet(0x82, struct.pack(">H", 1) + _string(TOPIC) + b"\0"))
             self.state, self.error = "listening", None
             sock.settimeout(30)

@@ -352,14 +352,14 @@ def step_notes(ctx):
                      f"SilverBullet is {state} with its shell on; the web server refuses /notes/.shell, so it cannot be reached through it.",
                      "Rerun install.sh: it sets SB_SHELL_BACKEND=off on the unit's command line.", "F1"))
     elif not login:
-        out.append(F("notes-shell", "Notes: server-side shell with no login", "problem",
-                     f"SilverBullet is {state}. Its shell endpoint is on and /notes/ has no login, so anyone who can reach "
+        out.append(F("notes-shell", "Notes: server-side shell with no sign-in", "problem",
+                     f"SilverBullet is {state}. Its shell endpoint is on and /notes/ has no sign-in, so anyone who can reach "
                      "the box runs commands as the hub user, which can queue root-helper requests (password change included).",
                      "Now: sudo systemctl stop silverbullet. Fix: rerun install.sh (shell off on the command line, "
                      "and the web server refuses /notes/.shell).", "F1"))
     else:
-        out.append(F("notes-shell", "Notes: server-side shell on, behind a login", "warn",
-                     f"SilverBullet is {state}. The shell endpoint is on; whoever holds the login runs commands as the hub user.",
+        out.append(F("notes-shell", "Notes: server-side shell on, behind a sign-in", "warn",
+                     f"SilverBullet is {state}. The shell endpoint is on; whoever can sign in runs commands as the hub user.",
                      "Rerun install.sh: it sets SB_SHELL_BACKEND=off on the unit's command line.", "F1"))
     # F31: the proxy. Two layers, either of which stops it: no IP networking for the unit, and
     # the front refusing /notes/.proxy. Read-only mode turns the proxy off as well.
@@ -374,20 +374,20 @@ def step_notes(ctx):
                       "The web server refuses /notes/.proxy, but SilverBullet itself can still reach loopback (anything local that talks to it can use the proxy)."),
                      "Rerun install.sh: it sets both.", "F31"))
     elif not login:
-        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin with no login", "problem",
+        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin with no sign-in", "problem",
                      f"SilverBullet is {state}. Its /notes/.proxy/127.0.0.1:<port>/ forwards any request to the hub's loopback "
-                     "port, which has no login of its own, so any guest can read and change /admin's settings and the password.",
+                     "port, which has no sign-in of its own, so any guest can read and change /admin's settings and the password.",
                      "Now: sudo systemctl stop silverbullet. Fix: rerun install.sh (SilverBullet on a socket with no IP networking, "
                      "and the web server refuses /notes/.proxy).", "F31"))
     else:
-        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin, behind the notes login", "warn",
-                     "Whoever holds the notes login can reach the hub's loopback API through /notes/.proxy, past the admin login.",
+        out.append(F("notes-proxy", "Notes: HTTP proxy reaches /admin, behind the notes sign-in", "warn",
+                     "Whoever can sign in to the notes can reach the hub's loopback API through /notes/.proxy, past the administrator sign-in.",
                      "Rerun install.sh.", "F31"))
     if not login and not read_only:
-        out.append(F("notes-login", "Notes: no login", "warn",
+        out.append(F("notes-login", "Notes: no sign-in", "warn",
                      "Anyone who can open the hub can read and change the notes, and notes can carry scripts (Space Lua, widgets) "
                      "that run in each reader's browser (on the notes' own address, apart from /admin).",
-                     "Choose who may open Notes (Apps): users with an account, or you alone; or leave it open if the notes are "
+                     "Select who can open Notes (Apps): users with an account, or you alone. Or leave it open if the notes are "
                      "meant for everyone.", "F1/S4"))
     confined = sh.get("ProtectSystem") == "strict" and all(
         p.startswith(str(STATE / "notes")) for p in sh.get("ReadWritePaths", "").split()) and sh.get("ReadWritePaths")
@@ -504,9 +504,9 @@ def step_admin_gate(ctx):
         return [_cannot("admin-loopback", "/admin from loopback", "the hub does not answer on its port", "F27")]
     if code == 200:
         out.append(F("admin-loopback", "/admin answers anything on the box", "problem",
-                     f"GET /admin/settings straight to the hub's port {_hub_port()}, with no login and no word from the front, "
+                     f"GET /admin/settings straight to the hub's port {_hub_port()}, with no sign-in and no word from the front, "
                      "answered 200: anything that can send a request to loopback (a build, a proxy such as SilverBullet's "
-                     "used to be, another user) is the admin.",
+                     "used to be, another user) has administrator rights.",
                      "Rerun install.sh: it makes the front's secret (/etc/hub/front-secret.env), and the hub refuses /admin without it.",
                      "F27"))
     else:
@@ -522,8 +522,8 @@ def step_admin_gate(ctx):
                                                     "Content-Type": "application/json", "Content-Length": "2"}, b"{}")
         if code == 200:
             out.append(F("admin-csrf", "/admin changes accepted without the /admin page's header", "problem",
-                         "A POST to /admin with no X-Irate-Admin was accepted: a page elsewhere that the owner visits could "
-                         "change settings with the owner's cached login.", "Update the hub (server.py _forged).", "S3"))
+                         "A POST to /admin with no X-Irate-Admin was accepted: a page elsewhere that an administrator visits could "
+                         "change settings with the administrator's cached sign-in.", "Update the hub (server.py _forged).", "S3"))
         elif code is not None:
             out.append(F("admin-csrf", "/admin changes need the /admin page's header", "ok",
                          f"A POST with the front's secret but no X-Irate-Admin: {code}.", ref="S3"))
@@ -586,7 +586,7 @@ def step_web_addons(ctx):
     for m in on:
         if m["id"] not in consents:
             out.append(F(f"addons-consent-{m['id']}", f"{m['addon']['title']} is on with no consent recorded", "warn",
-                         "It is switched on, but /admin has no record of the owner agreeing to it (added by hand?).",
+                         "It is switched on, but /admin has no record that an administrator agreed to it (added by hand?).",
                          "Remove it and add it again from /admin.", ""))
     try:
         cat_state = json.loads(_read(STATE / "addons-catalogue.json") or "{}")
@@ -631,8 +631,8 @@ def step_front(ctx):
     if ka and drains is False:
         out.append(F("front-keepalive", "Kept-alive connections to the hub, which leaves request bodies unread", "problem",
                      f"nginx reuses its connections to the hub ({ka[0]}) and this hub version answers some requests "
-                     "(the login check, declined PUT/DELETE) without reading the body. The unread bytes become the next request "
-                     "on that connection, which nginx never checked against /admin's login: an unauthenticated guest can "
+                     "(the sign-in check, declined PUT/DELETE) without reading the body. The unread bytes become the next request "
+                     "on that connection, which nginx never checked against the /admin sign-in: an unauthenticated guest can "
                      "have any /admin action carried out.",
                      "Stopgap: remove 'keepalive' from the upstream. Fix: the hub reads or discards the body before answering, "
                      "or closes the connection.", "F2"))
@@ -678,17 +678,17 @@ def step_front(ctx):
         out.append(F("front-xff", "X-Forwarded-For", "ok", "Set to the connecting address only.", ref="F24"))
     # S3/F27: the front is the only login. Check it is really there.
     if not front_gated(ctx, "/admin"):
-        out.append(F("front-admin", "/admin has no login in the front", "problem",
+        out.append(F("front-admin", "/admin has no sign-in in the front", "problem",
                      "No auth_basic or auth_request on the /admin locations: the hub does no authentication of its own.",
                      "Restore the /admin block of irate-box.nginx (reinstall).", "F27"))
     else:
-        out.append(F("front-admin", "/admin login", "ok",
-                     "The front asks for the login on /admin. (Whether the hub refuses /admin that did not come through "
+        out.append(F("front-admin", "/admin sign-in", "ok",
+                     "The front asks for a sign-in on /admin. (Whether the hub refuses /admin that did not come through "
                      "it: the next step, \'/admin from inside the box\'.)", ref="F27"))
     for pfx, name in (("/term", "/term (the web terminal)"), ("/git-private", "/git-private/")):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
-            out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
-                         f"The route exists in the front with no auth_basic/auth_request.", "Put it behind the admin login.", "S1"))
+            out.append(F(f"front-{pfx.strip('/')}", f"{name} has no sign-in in the front", "problem",
+                         f"The route exists in the front with no auth_basic/auth_request.", "Put it behind the administrator sign-in.", "S1"))
     # A baseline CSP on the hub's own origin, where /admin lives.
     csp = [d for s, d in directives if d.startswith("add_header Content-Security-Policy") and s and s[0] == "server"]
     out.append(F("front-csp", "A Content-Security-Policy on the hub's origin", "ok" if csp else "warn",
@@ -711,8 +711,8 @@ def step_front_caddy(ctx):
     elif drains is False:
         out.append(F("front-keepalive", "Kept-alive connections to the hub, which leaves request bodies unread", "problem",
                      "Caddy reuses its connections to the hub and forwards request bodies, and this hub version answers some "
-                     "requests (the login check, declined PUT/DELETE) without reading the body. The unread bytes can become the "
-                     "next request on that connection, past Caddy's /admin login. Likely, not yet demonstrated on Caddy (it was "
+                     "requests (the sign-in check, declined PUT/DELETE) without reading the body. The unread bytes can become the "
+                     "next request on that connection, past the Caddy /admin sign-in. Likely, not yet demonstrated on Caddy (it was "
                      "on nginx).",
                      "The hub reads or discards the body before answering, or closes the connection; stopgap: "
                      "`transport http { keepalive off }` in each reverse_proxy to 127.0.0.1:8000.", "F2"))
@@ -752,22 +752,22 @@ def step_front_caddy(ctx):
                      "Caddy appended to it: check `caddy version`).", ref="F24"))
     # S3/F27 and the others: the logins.
     if not front_gated(ctx, "/admin"):
-        out.append(F("front-admin", "/admin has no login in the front", "problem",
+        out.append(F("front-admin", "/admin has no sign-in in the front", "problem",
                      "No basic_auth in the /admin handle: the hub does no authentication of its own.",
                      "Restore the /admin block of the Caddyfile (reinstall).", "F27"))
     else:
-        out.append(F("front-admin", "/admin login", "ok",
-                     "Caddy asks for the login on /admin. (Whether the hub refuses /admin that did not come through "
+        out.append(F("front-admin", "/admin sign-in", "ok",
+                     "Caddy asks for a sign-in on /admin. (Whether the hub refuses /admin that did not come through "
                      "it: the next step, \'/admin from inside the box\'.)", ref="F27"))
     for pfx, name in (("/term", "/term (the web terminal)"), ("/git-private", "/git-private/")):
         if front_has(ctx, pfx) and not front_gated(ctx, pfx):
-            out.append(F(f"front-{pfx.strip('/')}", f"{name} has no login in the front", "problem",
-                         "The route exists in the Caddyfile with no basic_auth.", "Put it behind the admin login.", "S1"))
+            out.append(F(f"front-{pfx.strip('/')}", f"{name} has no sign-in in the front", "problem",
+                         "The route exists in the Caddyfile with no basic_auth.", "Put it behind the administrator sign-in.", "S1"))
     # Caddy's own admin API (localhost:2019) can rewrite the whole front; builds can reach loopback (F8).
     if not any(not o and st == ("",) and l.startswith("admin off") for st, l, o in parsed):
         out.append(F("front-caddy-admin", "Caddy's admin API is on", "warn",
                      "No `admin off` in the global options: Caddy's API listens on 127.0.0.1:2019, and any local process that "
-                     "can connect (a build, a compromised add-on) can replace the whole config, /admin's login included.",
+                     "can connect (a build, a compromised add-on) can replace the whole configuration, including the /admin sign-in.",
                      "Add `admin off` to the global options block.", "F8"))
     return out
 
@@ -798,7 +798,7 @@ def _walk_links(root, depth, cap=MAX_ENTRIES):
 def step_folders(ctx):
     """F3, F4, F5, F13: links and root-written files in folders the hub owns."""
     if os.geteuid() != 0:
-        return [_cannot("folders", "Hub-owned folders", "not root, so other users' folders may be unreadable", "F3")]
+        return [_cannot("folders", "Hub-owned folders", "not root, so other users' folders can be unreadable", "F3")]
     out = []
     ctrl = _lstat(CONTROL)
     if ctrl is None:
@@ -851,7 +851,7 @@ def step_folders(ctx):
         out.append(F("folders-links", "Links inside the hub's folders", "problem" if risky else "warn",
                      f"{len(links)} link{'s' if len(links) != 1 else ''}{'+' if truncated else ''}: {_list(shown)}. Root's "
                      "installer, helper and watchdogs chown, chmod and write paths here; a link to /etc, /root or /opt/irate-box "
-                     "makes them act on the target. Notes and library content may hold links on purpose; control/, zim/ and ci/ never should.",
+                     "makes them act on the target. Notes and library content can hold links on purpose. The control/, zim/ and ci/ folders never should.",
                      "Inspect each (ls -l), remove any not made by you, and find out how it got there.", "F3/F4/F5"))
     else:
         out.append(F("folders-links", "Links inside the hub's folders", "ok",
@@ -951,7 +951,7 @@ SANDBOX_EXEMPT = {
     "irate-box-control.service": {
         "ProtectSystem=strict": "the root helper installs updates and packages, so it writes across the system",
         "ProtectHome": "it sets the box's accounts up, home folders included"},
-    "ttyd.service": {line: "the admin's terminal: a login shell that must see and reach the whole box, sudo included"
+    "ttyd.service": {line: "the administrator's terminal: a login shell that must see and reach the whole box, sudo included"
                      for line in ALL_LINES},
     "irate-box-secdoctor.service": {
         "ProtectProc=invisible": "the audit looks at every process: what listens, and as whom"},
@@ -1193,7 +1193,7 @@ def probe_syncthing(ctx, a, show):
     if re.search(r"<insecureAdminAccess>true", g):
         out.append(("problem", "insecureAdminAccess is on: the GUI accepts non-local requests with no password", ""))
     if not re.search(r"<password>[^<]+</password>", g):
-        out.append(("warn", "the GUI has no password; the front's /sync/ login is the only gate, and the hub user can drive it directly", "set a GUI password"))
+        out.append(("warn", "the GUI has no password; the /sync/ sign-in at the front is the only gate, and the hub user can drive it directly", "set a GUI password"))
     for tag, what in (("globalAnnounceEnabled", "global discovery"), ("relaysEnabled", "relay use")):
         if re.search(rf"<{tag}>true</{tag}>", cfg):
             out.append(("warn", f"{what} is on: with an uplink this box announces itself to Syncthing's public servers", f"<{tag}>false</{tag}> for a box that only syncs on its own network"))
@@ -1204,7 +1204,7 @@ def probe_syncthing(ctx, a, show):
 
 
 def probe_kiwix(ctx, a, show):
-    return [] if "--blockexternal" in _argv_of(show) else [("warn", "no --blockexternal: book pages may load content from other sites", "add --blockexternal")]
+    return [] if "--blockexternal" in _argv_of(show) else [("warn", "no --blockexternal: book pages can load content from other sites", "add --blockexternal")]
 
 
 def _ttyd_runs(argv):
@@ -1226,7 +1226,7 @@ def probe_ttyd(ctx, a, show):
     argv = _argv_of(show)
     out = []
     if argv and os.path.basename(_ttyd_runs(argv)) in ("sh", "bash", "zsh", "dash", "ash"):
-        out.append(("problem", f"it runs a bare shell ({_ttyd_runs(argv)}), so the login is the only barrier to a shell as "
+        out.append(("problem", f"it runs a bare shell ({_ttyd_runs(argv)}), so the sign-in is the only barrier to a shell as "
                     f"{show.get('User') or 'root'}", "run /bin/login, which asks for a real account"))
     if "--interface" not in argv and "-i" not in argv:
         out.append(("problem", "no --interface: ttyd listens on every interface", "--interface /run/ttyd/ttyd.sock"))
@@ -1234,7 +1234,7 @@ def probe_ttyd(ctx, a, show):
         i = argv.index("--interface") if "--interface" in argv else argv.index("-i")
         iface = argv[i + 1] if i + 1 < len(argv) else ""
         if not iface.startswith("/"):
-            out.append(("warn", f"on a TCP port ({iface}): anything on the box can reach the login prompt",
+            out.append(("warn", f"on a TCP port ({iface}): anything on the box can reach the sign-in prompt",
                         "a socket only the web server's group can open (install.sh does this)"))
     return out
 
@@ -1286,13 +1286,13 @@ def step_addons(ctx):
         wide += [f"{k}={v}" for k, v in env.items() if v in WIDE_WORDS and k.upper() in ("HOST", "HOSTNAME", "BIND", "ADDRESS", "LISTEN", "SB_HOSTNAME")]
         wide += [t for t in argv if re.search(r"(?:insecure|no-?auth|disable-auth|allow-anonymous)", t)]
         if wide:
-            issues.append(("problem", f"its start command opens it up ({_list(wide, 3)})", "bind it to 127.0.0.1 behind the front's login"))
+            issues.append(("problem", f"its start command opens it up ({_list(wide, 3)})", "bind it to 127.0.0.1 behind the sign-in at the front"))
         if a["port"] and listening is not None and active:
             addrs = listening.get(a["port"], [])
             open_on = [x for x in addrs if not _is_loop(x)]
             if open_on:
                 said = f' Its install consent says: "{a["consent"]}"' if a["consent"] else ""
-                issues.append(("warn", f"port {a['port']} answers on {_list(open_on, 3)}, not only on loopback: anyone on the network reaches it directly, not through the front's login.{said}",
+                issues.append(("warn", f"port {a['port']} answers on {_list(open_on, 3)}, not only on loopback: anyone on the network reaches it directly, not through the sign-in at the front.{said}",
                                "bind to 127.0.0.1 and route it through the front, unless the network-facing port is the point"))
             elif not addrs:
                 issues.append(("warn", f"active, but nothing listens on port {a['port']}", f"journalctl -u {a['unit']} -n 30"))
@@ -1302,7 +1302,7 @@ def step_addons(ctx):
         if a["path"] and ctx["front"] is not None:
             has, gated = front_has(ctx, a["path"]), front_gated(ctx, a["path"])
             if has and not gated and as_root:
-                issues.append(("problem", f"a root service open to guests: {a['path']} has no login in the front", "put it behind the admin login"))
+                issues.append(("problem", f"a root service open to guests: {a['path']} has no sign-in in the front", "put it behind the administrator sign-in"))
         if a["unit"] not in ctx["units"]:  # sandboxing not covered by the units step
             weak = [n for n, ok in (("ProtectSystem=strict", show.get("ProtectSystem") == "strict"), ("NoNewPrivileges", show.get("NoNewPrivileges") == "yes"),
                                    ("PrivateTmp", show.get("PrivateTmp") == "yes"), ("ProtectHome", show.get("ProtectHome") not in ("no", "", None))) if not ok]
@@ -1371,9 +1371,9 @@ def step_cmdlines(ctx):
     if hits:
         out.append(F("cmdlines-secrets", "A secret on a command line", "problem",
                      f"{len(hits)} process(es): {_list(hits)}. /proc/<pid>/cmdline is readable by every user"
-                     f"{'' if not hidepid else ' (hidepid is set here, so only the owner and root)'}: the web terminal's credential is "
-                     "the admin password for as long as ttyd runs; password changes and installs show it for a moment.",
-                     "Pass secrets on stdin or in a file; give ttyd a credential that is not the admin password; hide /proc "
+                     f"{'' if not hidepid else ' (hidepid is set here, so only the process owner and root)'}: the web terminal's credential is "
+                     "the administrator password for as long as ttyd runs. Password changes and installs show it for a moment.",
+                     "Pass secrets on stdin or in a file; give ttyd a credential that is not the administrator password. Hide /proc "
                      "(hidepid=2) or set ProtectProc=invisible on the untrusted units.", "F9"))
     else:
         out.append(F("cmdlines-secrets", "Secrets on command lines", "ok",
@@ -1464,10 +1464,10 @@ def step_git(ctx):
             if level == "nobody" and _git_cfg(cfg, "http", "receivepack") not in ("false", "no", "off", "0"):
                 leaky.append(r.name)
     if everyone:
-        out.append(F("git-everyone", "Public repositories anyone may push to", "warn",
-                     f"{_list(everyone)} {'is' if len(everyone) == 1 else 'are'} public-everything: anyone on the network may push "
+        out.append(F("git-everyone", "Public repositories that anyone can push to", "warn",
+                     f"{_list(everyone)} {'is' if len(everyone) == 1 else 'are'} public-everything: anyone on the network can push "
                      "(no rewrites or deletions, and a size cap, by the public hook).",
-                     "On /admin's Git page, public-admin-writes unless guests are meant to push.", "F17/F18"))
+                     "On the Git page of /admin, select public-admin-writes unless guests are meant to push.", "F17/F18"))
     if unhooked:
         out.append(F("git-public", "Public repositories without their hook", "warn",
                      f"{_list(unhooked)} lack the public pre-receive hook or receive.fsckObjects, so a push could rewrite "
@@ -1475,9 +1475,9 @@ def step_git(ctx):
     if leaky:
         out.append(F("git-readonly", "Read-only repositories that still take pushes", "problem",
                      f"{_list(leaky)} {'is' if len(leaky) == 1 else 'are'} read-only by preset, but http.receivepack is not false.",
-                     "Set the preset again on /admin's Git page (it sets both).", "F18"))
+                     "Set the preset again on the Git page of /admin (it sets both).", "F18"))
     if not (everyone or unhooked or leaky):
-        out.append(F("git-public", "Who may push", "ok", "Every repository's preset is held, and the public ones have their hook.", ref="F18"))
+        out.append(F("git-public", "Who can push", "ok", "Every repository's preset is held, and the public ones have their hook.", ref="F18"))
     return out
 
 
@@ -1529,7 +1529,7 @@ def step_accounts(ctx):
                          + (" A '-temp' file is a rule meant to be removed after the work it was added for." if temp else "")
                          + (" sshd accepts passwords, so one guessed password on the network is root with no step in between." if guessable else ""),
                          "Keep each only as long as it is needed: rm /etc/sudoers.d/<file>, then check `sudo -n true` fails."
-                         + (" Until then, turn SSH password logins off (the Security page)." if guessable else ""), ""))
+                         + (" Until then, turn SSH password sign-in off (the Security page)." if guessable else ""), ""))
         else:
             out.append(F("acct-sudo", "Passwordless sudo", "ok", "No NOPASSWD rule in sudoers or sudoers.d.", ref=""))
     passwd = _read(PASSWD)
@@ -1555,7 +1555,7 @@ def step_accounts(ctx):
                 empty.append(f[0])
         if empty:
             out.append(F("acct-nopw", "Accounts with an empty password", "problem",
-                         f"{_list(empty)} can log in with no password.", "passwd <user>, or passwd -l <user>.", ""))
+                         f"{_list(empty)} can sign in with no password.", "passwd <user>, or passwd -l <user>.", ""))
         else:
             out.append(F("acct-nopw", "Accounts with an empty password", "ok", "None with a login shell.", ref=""))
     badsh = [u for u in (HUB_USER, CI_USER) if u in users and not users[u]["shell"].endswith(nologin)]
@@ -1594,7 +1594,7 @@ def step_accounts_hub(ctx):
         out.append(F("accounts-hash", "The hub's own accounts", "ok", "None: no one has signed up.", ref="", about=about))
     elif weak:
         out.append(F("accounts-hash", "An account's password hash is not scrypt at today's strength", "problem",
-                     f"{_list(weak)}: accounts.json may have been edited by hand, or made by an older build.",
+                     f"{_list(weak)}: accounts.json can have been edited by hand, or made by an older build.",
                      "Reset the account's password (/admin → Accounts), which hashes it again.", "", about=about))
     else:
         out.append(F("accounts-hash", "Password hashes", "ok", "Every account's hash is scrypt, at today's strength.", ref="", about=about))
@@ -1634,7 +1634,7 @@ def step_accounts_hub(ctx):
     if missing:
         out.append(F("accounts-gate", "An app for users with no gate wired", "problem",
                      f"{_list(missing)}: access.json says 'users', but the web server's config does not check for a session there. "
-                     "A guest may reach it with no login.",
+                     "A guest can reach it with no sign-in.",
                      "Rerun install.sh (it regenerates the gates), or set the app's access again on /admin → Apps.", "", about=about))
     elif kind in ("nginx", "caddy"):
         out.append(F("accounts-gate", "Apps for users: the gate is wired", "ok", f"{_list(users_apps)}.", ref="", about=about))
@@ -1680,8 +1680,8 @@ def step_kernel(ctx):
                      "sysctl -w fs.protected_regular=2 fs.protected_fifos=2", ""))
     pt = _sysctl("kernel.yama.ptrace_scope")
     if pt == 0:
-        out.append(F("kernel-ptrace", "Any process may ptrace another of the same user", "warn",
-                     "kernel.yama.ptrace_scope=0: a compromised hub process can read the memory of its siblings (the admin "
+        out.append(F("kernel-ptrace", "Any process can ptrace another of the same user", "warn",
+                     "kernel.yama.ptrace_scope=0: a compromised hub process can read the memory of its siblings (the administrator "
                      "password handled by the hub).", "sysctl -w kernel.yama.ptrace_scope=1", "F9"))
     hard = [(n.split('.')[-1], _sysctl(n)) for n in ("kernel.kptr_restrict", "kernel.dmesg_restrict")]
     lax = [f"{n}=0" for n, v in hard if v == 0]
@@ -1735,7 +1735,7 @@ def step_origins(ctx):
         ports = where[0]
         if ports == hub_ports:
             out.append(F(f"origin-{key}", f"{name}: the hub's own origin", "warn",
-                         f"Served on port {', '.join(hub_ports)} with /admin, so what its pages run could act with the owner's login.",
+                         f"Served on port {', '.join(hub_ports)} with /admin, so what its pages run could act with an administrator's session.",
                          "Its own origin.", "S4"))
         else:
             out.append(F(f"origin-{key}", f"{name}: an origin of its own", "ok", f"Port {', '.join(ports)}; the hub is on {', '.join(hub_ports)}.", ref="S4"))
@@ -1772,7 +1772,7 @@ def _debsecan_command(work):
     for name in ("debsecan", "python3-apt", "python-apt-common"):
         found = sorted(pool.glob(f"{name}_*.deb")) if pool.is_dir() else []
         if not found:
-            return None, "debsecan is not on the box, and the security kit's cache doesn't hold it"
+            return None, "debsecan is not on the box, and the security kit's cache does not hold it"
         debs[name] = found[-1]
     # Run as root: only files that are still what the kit's manifest says was fetched.
     from irate_box.root import kits
@@ -1842,7 +1842,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
         fixed = sorted(g["cves"].items())
         bad = [c for c, n in fixed if n["remote"] or n["urgency"] == "high"]
         bins = sorted(g["bins"])
-        out.append(F(f"debsecan-{src}", f"{src}: Debian has released a fix that isn't installed", "problem" if bad else "warn",
+        out.append(F(f"debsecan-{src}", f"{src}: Debian has released a fix that is not installed", "problem" if bad else "warn",
                      (f"In {', '.join(bins)}. " if bins != [src] else "") +
                      f"{len(fixed)} fixed: " + ", ".join(c + (" (remotely exploitable)" if n["remote"] else "") +
                                                          (f" ({n['urgency']} urgency)" if n["urgency"] else "") for c, n in fixed[:8])
@@ -1852,7 +1852,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
                      source="debsecan", about={"kind": "setting", "key": "security-updates"}))
     unfixed = sorted(p for p, v in installed.items() if not any(n["fixed"] for _, n in v))
     out.append(F("debsecan-unfixed", "Known vulnerabilities with no fix released yet", "ok",
-                 (f"{len(unfixed)} installed packages have CVEs Debian hasn't fixed yet (listed, not counted): " + _list(unfixed, 20) + "."
+                 (f"{len(unfixed)} installed packages have CVEs that Debian has not fixed yet (listed, not counted): " + _list(unfixed, 20) + "."
                   if unfixed else "None.") + age, "", "", source="debsecan"))
     per_kit = {}
     for pkg, vulns in cached.items():
@@ -1862,7 +1862,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
     for kid, pkgs in sorted(per_kit.items()):
         out.append(F(f"debsecan-kit-{kid}", f"The {kid} kit's cache has packages with fixes released since", "warn",
                      f"Cached versions of {_list(sorted(pkgs))} have fixes Debian has released.{age}",
-                     "Refresh the kit while the box has internet (Library → Toolkits); installing it now would bring those versions.",
+                     "Refresh the kit while the box has internet (System → Toolkits); installing it now would bring those versions.",
                      "", source="debsecan", about={"kind": "kit", "key": kid}))
     return out
 
@@ -1872,8 +1872,8 @@ def step_debsecan(ctx):
     feed = DEBSECAN_FEED / suite if suite else None
     if not feed or not feed.is_file():
         return [F("debsecan-data", "Debian's security tracker data", "warn",
-                  "Not on the box yet: the librarian fetches it daily while the security kit is kept current and the box is online.",
-                  "Library → Toolkits: keep the Security kit current, and let the box reach the internet once.", "", source="debsecan")]
+                  "Not on the box yet: the librarian downloads it daily while the security kit is kept current and the box is online.",
+                  "System → Toolkits: keep the Security kit current, and let the box reach the internet once.", "", source="debsecan")]
     import tempfile
     import shutil as _sh
     work = Path(tempfile.mkdtemp(prefix="debsecan-"))
@@ -1881,7 +1881,7 @@ def step_debsecan(ctx):
         cmd, env = _debsecan_command(work)
         if cmd is None:
             return [F("debsecan-tool", "debsecan", "warn", f"Could not run it: {env}.",
-                      "Library → Toolkits: refresh the Security kit while online (it is not installed for this; its cache is enough).",
+                      "System → Toolkits: refresh the Security kit while online (it is not installed for this; its cache is enough).",
                       "", source="debsecan")]
         installed = _debsecan(cmd, env, suite)
         kit_of = {}
@@ -2026,7 +2026,7 @@ def step_imports(ctx):
     if not out:
         out.append(F("imports-none", "Imported scans", "ok",
                      "None yet. Run OpenVAS (Greenbone) or nmap from a PC on the hotspot against the box, and import its report here: "
-                     "the outside view, including software debsecan can't see.", "", "", source="openvas"))
+                     "the outside view, including software that debsecan cannot see.", "", "", source="openvas"))
     return out
 
 
@@ -2179,18 +2179,18 @@ def step_tls(ctx):
     about = {"kind": "setting", "key": "tls"}
     st = tls.status()
     if not st.get("set_up"):
-        return [F("tls", "HTTPS", "warn", "No certificate: every page is plain HTTP, so the admin password crosses the WiFi in clear.",
+        return [F("tls", "HTTPS", "warn", "No certificate: every page is plain HTTP, so the administrator password crosses the WiFi in clear.",
                   "/admin → Security → HTTPS: Make the box's certificate, then install it from /certificate on your own devices.", "S2", about=about)]
     out = []
     c = st.get("cert") or {}
     days = (c.get("expires", 0) - time.time()) / 86400
     out.append(F("tls-expiry", "The HTTPS certificate's expiry", "problem" if days < 7 else "warn" if days < 30 else "ok",
-                 f"{'Expired' if days < 0 else f'{days:.0f} days left'}" + ("" if c.get("own") else "; the box renews its own at two-thirds of its life") + ".",
+                 f"{'Expired' if days < 0 else f'{days:.0f} days left'}" + ("" if c.get("own") else ". The box renews its own at two-thirds of its life") + ".",
                  "" if days >= 30 else ("Bring a renewed one (/admin → Security → HTTPS)." if c.get("own") else "Renew it: /admin → Security → HTTPS, or ./irate-box tls renew as root."),
                  "", about=about))
     if st.get("outside"):
         out.append(F("tls-covers", "What the certificate covers", "problem",
-                     f"The box is at {', '.join(st['outside'])}, which its CA may not vouch for: HTTPS there is refused.",
+                     f"The box is at {', '.join(st['outside'])}, which its CA might not vouch for. HTTPS there is refused.",
                      "Make a new CA for this network (/admin → Security → HTTPS), and install it again on each device.", "", about=about))
     else:
         out.append(F("tls-covers", "What the certificate covers", "warn" if st.get("due") else "ok",
@@ -2251,7 +2251,7 @@ def step_mqtt(ctx):
     acl_text = _read(Path(acl)) if acl else None
     limited = bool(acl_text) and "topic readwrite msh/#" in acl_text and not re.search(r"^\s*topic\s+(readwrite|write|read)\s+#\s*$", acl_text, re.M)
     out.append(F("mqtt-acl", "Anonymous clients limited to msh/#", "ok" if (not anon or limited) else "warn",
-                 "Anyone may publish and read only under msh/#." if anon and limited else "No anonymous access." if not anon
+                 "Anyone can publish and read only under msh/#." if anon and limited else "No anonymous access." if not anon
                  else "Anonymous clients are not limited to msh/#: the broker is a free message bus for anything on the network.",
                  "" if (not anon or limited) else "Reinstall the MQTT add-on (install.sh --with-mqtt) to restore its acl_file.", "S9", about=about))
     keys = STATE / "mesh" / "channels.json"
@@ -2374,8 +2374,8 @@ def step_offline(ctx):
     missing = [k for k, v in ages.items() if v is None]
     fresh = [f"{k}: {v:.0f} days" for k, v in ages.items() if v is not None and v <= 30]
     out.append(F("offline-lists", "How old what the box knows is", "warn" if stale or missing else "ok",
-                 "; ".join(stale + [f"{k}: never fetched" for k in missing] + fresh) + ".",
-                 "Let the box reach the internet once in a while, or carry the updates on a stick (Library → Toolkits)." if stale or missing else ""))
+                 "; ".join(stale + [f"{k}: never downloaded" for k in missing] + fresh) + ".",
+                 "Let the box reach the internet once in a while, or carry the updates on a USB drive (System → Toolkits)." if stale or missing else ""))
     try:
         from irate_box.root import kits
         bad = kits.verify()
@@ -2383,7 +2383,7 @@ def step_offline(ctx):
         bad = [f"could not check: {exc}"]
     out.append(F("offline-kits", "The toolkits' cache", "warn" if bad else "ok",
                  ("Not whole: " + _list(bad, 4)) if bad else "Every cached kit is whole: it can be installed with no internet.",
-                 "Library → Toolkits: refresh the kit while online." if bad else ""))
+                 "System → Toolkits: refresh the kit while online." if bad else ""))
     try:
         kit = json.loads(_read(STATE / "kits" / "kit.json") or "null")
     except ValueError:
@@ -2490,8 +2490,8 @@ def step_internet(ctx):
         out.append(F("reach-web", "Web pages reached from the internet", "problem",
                      f"In the last {REACH_DAYS} days the hub answered requests from public addresses: "
                      + _list(f"{n} ({e.get('count', '?')}, last {time.strftime('%Y-%m-%d %H:%M', time.localtime(e['last']))})" for n, e in recent)
-                     + ". The box's pages and its login forms are open to the internet.",
-                     "If you didn't mean that, take the port forward off your router (or its DMZ host), and use Tailscale "
+                     + ". The box's pages and its sign-in forms are open to the internet.",
+                     "If you did not mean that, take the port forward off your router (or its DMZ host), and use Tailscale "
                      "(/admin → Network) to reach the box from afar."))
     else:
         out.append(F("reach-web", "Web pages reached from the internet", "ok",
@@ -2508,16 +2508,16 @@ def step_internet(ctx):
         accepted = sum(a for a, _ in ssh.values())
         out.append(F("reach-ssh", "SSH reached from the internet", "problem",
                      f"In the last {REACH_DAYS} days sshd heard from {len(ssh)} public address{'es' if len(ssh) != 1 else ''} "
-                     f"({_list(sorted(ssh))})" + (f", {accepted} login{'s' if accepted != 1 else ''} accepted" if accepted else ", none let in")
+                     f"({_list(sorted(ssh))})" + (f", {accepted} sign-in{'s' if accepted != 1 else ''} accepted" if accepted else ", none accepted")
                      + ". Anyone can try passwords on it." + span,
-                     "Take the router's forward to port 22 off; with it on, turn SSH password logins off (the Security page)."))
+                     "Take the router's forward to port 22 off; with it on, turn SSH password sign-in off (the Security page)."))
     else:
         out.append(F("reach-ssh", "SSH reached from the internet", "ok",
                      f"sshd heard from no public address in the last {REACH_DAYS} days." + span))
     v6 = _global_v6()
     out.append(F("reach-ipv6", "A public IPv6 address", "warn" if v6 else "ok",
                  (f"This box has {_list(v6)}: anything listening on all its addresses can be reached from the internet "
-                  "wherever the router's IPv6 firewall lets traffic in. Most home routers don't, by default.")
+                  "wherever the router's IPv6 firewall lets traffic in. Most home routers do not, by default.")
                  if v6 else "This box has no public IPv6 address.",
                  "Check your router's IPv6 firewall blocks incoming connections." if v6 else ""))
     return out
@@ -2539,7 +2539,7 @@ def step_firewall(ctx):
                   "Update the box (install.sh installs nftables), then switch the floor on (Security).", "", about=about)]
     if loaded:
         return [F("firewall", "The network floor", "ok", f"Loaded: a guest on {firewall.hotspot_iface()} reaches the hub, its apps, DNS, DHCP and what "
-                  "the owner opened; the rest is dropped, and nothing is forwarded.", "", "", about=about)]
+                  "an administrator opened; the rest is dropped, and nothing is forwarded.", "", "", about=about)]
     return [F("firewall", "The network floor", "problem" if hotspot_up else "warn",
               ("The hotspot is up and " if hotspot_up else "") + "no floor is loaded: a guest on the hotspot reaches every listener on the box "
               "(SSH, Syncthing, MQTT, Tailscale, the rest).", "Security → What a guest on the hotspot can reach: switch the floor on.", "", about=about)]

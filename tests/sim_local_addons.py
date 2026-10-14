@@ -42,9 +42,9 @@ for f in sorted((REPO / "addons").glob("*.json")) + sorted((REPO / "addons" / "t
         M.check_local(json.loads(f.read_text()), f.name, builtin_ids); check(f"addons/{f.relative_to(REPO / 'addons')} passes", True)
     except M.ManifestError as exc:
         check(f"addons/{f.relative_to(REPO / 'addons')} passes", False, str(exc))
-refused("refuses keys a local add-on may not have", dict(good, install={"dir": "x"}), "not allowed")
-refused("refuses a built-in's id", dict(good, id="draw"), "the hub's own")
-refused("refuses an id the hub's pages use", dict(good, id="admin"), "the hub's own")
+refused("refuses keys a local add-on may not have", dict(good, install={"dir": "x"}), "cannot use these fields")
+refused("refuses a built-in's id", dict(good, id="draw"), "already used by the hub server")
+refused("refuses an id the hub's pages use", dict(good, id="admin"), "already used by the hub server")
 refused("refuses a git source with no pin", dict(good, source={"type": "git", "repo": "https://example.org/x/y"}), "pin")
 refused("refuses an adapt script not of the hub's", dict(good, source=dict(good["source"], adapt="adapt_evil.py")), "adapt")
 refused("refuses a path out of the add-on", dict(good, tile=dict(good["tile"], path="../admin")), "tile.path")
@@ -92,7 +92,7 @@ check("roll back swaps them", (d / "index.html").read_text() == "one" and (T / "
 try:
     L.install_local("demo", bundle("3" * 40, {"index.html": "x"}, link=True)); check("a bundle with a link is refused", False)
 except L.LibrarianError as exc:
-    check("a bundle with a link is refused", "symlink" in str(exc), str(exc))
+    check("a bundle with a link is refused", "symbolic link" in str(exc), str(exc))
 check("and what was installed stays", (d / "index.html").read_text() == "one")
 
 # --- the hub: add from the catalogue, paste, remove (the fetch stood in)
@@ -120,7 +120,7 @@ code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id
 check("a paste without the acknowledgement is refused", code == 400 and "warning" in body["error"], body)
 code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id="draw"),
                                     "understood": "I understand this runs someone else's code on this box's address"})
-check("a pasted manifest is checked like any other", code == 400 and "the hub's own" in body["error"], body)
+check("a pasted manifest is checked like any other", code == 400 and "already used by the hub server" in body["error"], body)
 code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id="pasted"),
                                     "understood": "I understand this runs someone else's code on this box's address"})
 check("a pasted manifest, acknowledged, is added", code == 202 and json.loads((T / "addons-consent.json").read_text())["pasted"]["how"] == "pasted", body)

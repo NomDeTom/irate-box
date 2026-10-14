@@ -17,5 +17,5 @@ def under(base, *parts):
     root = os.path.normpath(os.path.abspath(os.fspath(base)))
     full = os.path.normpath(os.path.join(root, *(os.fspath(p) for p in parts)))
     if not full.startswith(root + os.sep):
-        raise ValueError("a name that leaves its folder")
+        raise ValueError("Path outside permitted directory.")
     return Path(full)

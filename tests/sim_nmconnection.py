@@ -61,7 +61,7 @@ C.run = fake_run
 said = C.change(HOME, {"auth_retries": "0", "metered": "yes", "cloned_mac": "stable"})
 rec = json.loads(C.RECORD.read_text())
 check("set: written to the profile, said, and taking effect next time", values[HOME]["connection.auth-retries"] == "0"
-      and values[HOME]["connection.metered"] == "yes" and "next time" in said, said)
+      and values[HOME]["connection.metered"] == "yes" and "applies on the next connection" in said, said)
 check("  the values from before recorded", rec[HOME]["old"] == {"auth_retries": "-1", "metered": "unknown", "cloned_mac": ""}, rec)
 C.change(HOME, {"auth_retries": "5"})
 check("  changed again: the value from before still the first one", json.loads(C.RECORD.read_text())[HOME]["old"]["auth_retries"] == "-1")
@@ -91,7 +91,7 @@ for changes, why in (({"band": "c"}, "one of"), ({"priority": "1000"}, "from -99
 C.change(HOME, {"band": "bg", "channel": "6", "bssid": "04:95:E6:72:B6:D1"})
 check("a channel with its band; an access point's address in lower case", values[HOME]["802-11-wireless.channel"] == "6"
       and values[HOME]["802-11-wireless.bssid"] == "04:95:e6:72:b6:d1")
-check("undo-all", "put back" in C.undo_all() and not C.RECORD.exists() and values[HOME]["802-11-wireless.band"] == "")
+check("undo-all", "restored" in C.undo_all() and not C.RECORD.exists() and values[HOME]["802-11-wireless.band"] == "")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

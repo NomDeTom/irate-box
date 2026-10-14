@@ -57,16 +57,16 @@ def _save(rec):
 def validate(ssid, security, psk, hidden):
     """The network as asked, or ValueError saying what is wrong (never echoing the password)."""
     if not isinstance(ssid, str) or not SSID_RE.match(ssid) or len(ssid.encode()) > 32 or ssid != ssid.strip():
-        raise ValueError("the network's name (SSID): 1 to 32 bytes, no control characters or backslash, no spaces at either end")
+        raise ValueError("the network name (SSID) must have 1 to 32 bytes, with no control characters, no backslash and no space at either end")
     if security not in SECURITY:
-        raise ValueError(f"security one of {', '.join(SECURITY)}")
+        raise ValueError(f"security must be one of {', '.join(SECURITY)}")
     if security == "open":
         if psk:
-            raise ValueError("an open network takes no password")
+            raise ValueError("an open network has no password")
     elif not isinstance(psk, str) or not PSK_RE.match(psk):
-        raise ValueError("the password: 8 to 63 printable characters, or 64 hex digits")
+        raise ValueError("the password must have 8 to 63 printable characters, or 64 hexadecimal digits")
     if not isinstance(hidden, bool):
-        raise ValueError("hidden is true or false")
+        raise ValueError("hidden must be true or false")
 
 
 def _escape(value):
@@ -105,7 +105,7 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
         raise ValueError("NetworkManager does not run this box's WiFi, so networks cannot be added here")
     rec = record()
     if any(r.get("ssid") == ssid for r in rec.values()):
-        raise ValueError(f"{ssid} was added here already: forget it first to change it")
+        raise ValueError(f"{ssid} is already added here. Forget it first to change it")
     uid = str(uuidlib.uuid4())
     name = f"irate-box {ssid}"
     path = KEYFILES / f"irate-box-{uid[:8]}.nmconnection"
@@ -116,7 +116,7 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
     code, out = run("nmcli", "connection", "load", str(path))
     if code != 0:
         path.unlink(missing_ok=True)
-        raise ValueError(f"NetworkManager did not take it: {out[-200:]}")
+        raise ValueError(f"NetworkManager did not accept the profile: {out[-200:]}")
     rec[uid] = {"name": name, "ssid": ssid, "security": security, "hidden": hidden, "file": str(path), "at": time.time()}
     _save(rec)
     said = f"{ssid} added: the box joins it by itself when the networks it knows are out of reach"
@@ -137,7 +137,7 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
 def forget(uid):
     """Remove a network added here (and only those)."""
     if not isinstance(uid, str) or not UUID_RE.match(uid):
-        raise ValueError("not a network's id")
+        raise ValueError("invalid network id")
     rec = record()
     if uid not in rec:
         raise ValueError("only networks added on this page can be forgotten here")
@@ -161,7 +161,7 @@ def kept_on_uninstall():
     rec = record()
     if not rec:
         return ""
-    return ("kept the networks added on /admin (the owner's): " + ", ".join(r["ssid"] for r in rec.values())
+    return ("kept the networks that an administrator added on /admin: " + ", ".join(r["ssid"] for r in rec.values())
             + "; remove one with: nmcli connection delete uuid UUID (" + ", ".join(rec) + ")")
 
 

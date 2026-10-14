@@ -152,7 +152,7 @@ line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
 man = kits.manifest("small")
 names = sorted(p["name"] for p in man["packages"])
 check("fetch: the kit's packages and what they need, not what the box has", names == ["fail2ban", "gdb", "libpcap0.8", "libpython3.13", "python3-systemd", "tcpdump"], names)
-check("  what the box has already is said", man["on_box"] == ["strace"] and "already on the box: strace" in line, line)
+check("  what the box has already is said", man["on_box"] == ["strace"] and "Already on the box: strace" in line, line)
 check("  each with its sha256, in the pool", all((kits.POOL / p["file"]).is_file() and kits.sha256(kits.POOL / p["file"]) == p["sha256"] for p in man["packages"]))
 idx = (kits.POOL / "Packages").read_text()
 check("  the index names each file with its size and sha256", idx.count("Filename: ./") == 6 and "SHA256: " in idx and "Package: gdb" in idx)
@@ -199,7 +199,7 @@ check("  a service it brought is disabled and stopped", st["units"] == ["fail2ba
       and ["systemctl", "disable", "--now", "fail2ban.service"] in calls)
 small_def = json.loads((T / "defs" / "small.json").read_text())
 check("  a service the kit is for is left running (the debug kit's core dumps)", json.loads((REPO / "toolkits" / "debug.json").read_text())["services"] == ["systemd-coredump.socket"])
-check("  removed after 24 h by default", 23.9 * 3600 < st["remove_at"] - time.time() <= 24 * 3600 and "removed after 24 h" in line)
+check("  removed after 24 h by default", 23.9 * 3600 < st["remove_at"] - time.time() <= 24 * 3600 and "Removed after 24 h" in line)
 check("  every apt call for it had only the pool and a dead proxy", all(opt(c, "Dir::Etc::sourceparts") == "-" for c in calls
       if c[0] == "apt-get" and "--download-only" not in c and opt(c, "Dir::Etc::sourcelist")))
 calls.clear()
@@ -259,7 +259,7 @@ check("  and left out of the index apt reads", f"Filename: ./{victim.name}" not 
 try:
     kits.install("small"); check("a cache that fails its check installs nothing", False)
 except ValueError as exc:
-    check("a cache that fails its check installs nothing", "fails its check" in str(exc))
+    check("a cache that fails its check installs nothing", "Cache verification failed" in str(exc))
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
 Path(os.environ["HUB_POLICY_RC"]).write_text("#!/bin/sh\nexit 0\n")
 try:
@@ -298,7 +298,7 @@ s = kits.installed_state(); s["small"]["at"] = time.time() - 9 * 86400; s["debug
 kits._write(kits.INSTALLED, s)
 f = hub_control.kits_findings()
 check("the doctor: debug installed for over a week, and a kit with no removal time, are warnings",
-      any("debug kit has been installed for 8 days" in x["detail"] for x in f) and any(x["status"] == "warn" for x in f), f)
+      any("debug toolkit has been installed for 8 days" in x["detail"] for x in f) and any(x["status"] == "warn" for x in f), f)
 victim = kits.POOL / kits.manifest("small")["packages"][1]["file"]; victim.write_text("tampered")
 check("the doctor: a changed file is a problem", any(x["status"] == "problem" for x in hub_control.kits_findings()))
 
@@ -332,7 +332,7 @@ check("  the next run fetches the next kit, not the same one again", [q.get("kit
       and len({q.get("kit") for q in queued if q["action"] == "kit-fetch"}) == 1, queued)
 toolkits.set_settings({"kits": {k: {"keep_current": False} for k in toolkits.definitions()}})
 queued.clear()
-check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removing the kits whose time is up")
+check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removal period elapsed: removing the kits")
       and not any(q["action"] == "kit-fetch" for q in queued), queued)
 
 # Roll back: the previous set becomes current; an installed kit's packages go back.
@@ -395,7 +395,7 @@ with mock.patch.object(librarian, "_open", side_effect=lambda url, **k: Resp(zli
 try:
     toolkits.refresh_feed(); check("no suite: said", False)
 except librarian.LibrarianError as exc:
-    check("no suite: said", "suite is unknown" in str(exc))
+    check("no suite: said", "suite of this box is unknown" in str(exc))
 (T / "os-release").write_text('VERSION_CODENAME=trixie\n')
 queued.clear(); fetched.clear()
 with mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/ovh/debian-cis"}]), \
@@ -431,7 +431,7 @@ d = json.loads((T / "defs" / "small.json").read_text()); d["needs_64bit"] = ["gd
 ARCHIVE["gdb"] = ("16.3-9", ARCHIVE["gdb"][1])
 calls.clear()
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("fetched on a 32-bit board: left out, and said", "left out on this armhf board: gdb (64-bit only)" in line
+check("fetched on a 32-bit board: left out, and said", "Left out on this armhf board: gdb (64-bit only)" in line
       and "gdb" not in {p["name"] for p in kits.manifest("small")["packages"]} and kits.manifest("small")["left_out"] == ["gdb"]
       and not any("gdb" in c for c in calls if c[0] == "apt-get"), line)
 check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_out"] == ["gdb"])
@@ -492,7 +492,7 @@ line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "scanner", "title": "Sca
                                                   "remove_after_hours": 4}})
 own = kits.definitions().get("scanner")
 check("an own kit: kept by root, marked as the owner's, repeats dropped, its consent names the packages", own and own["owner"] and own["packages"] == ["gdb", "tcpdump"]
-      and "gdb, tcpdump" in own["consent"] and "added" in line and (kits.ROOT / "owner" / "scanner.json").stat().st_mode & 0o777 == 0o644, (line, own))
+      and "gdb, tcpdump" in own["consent"] and "created" in line and (kits.ROOT / "owner" / "scanner.json").stat().st_mode & 0o777 == 0o644, (line, own))
 check("  and the hub sees it too (kitdefs, readable)", "scanner" in toolkits.definitions() and toolkits.settings()["kits"]["scanner"]["remove_after"] == 4)
 for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "one of the box's own kits"), ({"id": "r2", "title": "x", "packages": ["no-such-pkg"]}, "not in this box's package lists"),
                  ({"id": "r2", "title": "x", "packages": ["--force"]}, "Debian package names"), ({"id": "r2", "title": "", "packages": ["gdb"]}, "title"),

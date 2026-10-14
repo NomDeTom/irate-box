@@ -172,7 +172,7 @@ def expand_key(b64):
     if len(raw) == 1:
         return DEFAULT_PSK[:-1] + bytes([(DEFAULT_PSK[-1] + raw[0] - 1) & 0xFF])
     if len(raw) not in (16, 32):
-        raise ValueError("a channel key is 0, 1, 16 or 32 bytes")
+        raise ValueError("a channel key must have 0, 1, 16 or 32 bytes")
     return raw
 
 
@@ -214,7 +214,7 @@ def decode_data(buf):
         elif num == 8:
             d["emoji"] = _u32(v)
     if "portnum" not in d:
-        raise ValueError("no port number: not a Data message (a wrong key?)")
+        raise ValueError("the packet has no port number. The packet is not a Data message, or the key does not decrypt it")
     return d
 
 
@@ -310,7 +310,7 @@ def decode_envelope(buf, keys):
             env["gateway"] = _text(v)
     p = env.get("packet")
     if not p:
-        raise ValueError("no packet in the envelope")
+        raise ValueError("the envelope has no packet")
     out = {"from": f"!{p.get('from', 0):08x}", "to": "all" if p.get("to") == 0xFFFFFFFF else f"!{p.get('to', 0):08x}",
            "id": p.get("id"), "channel_id": env.get("channel_id", ""), "gateway": env.get("gateway", ""),
            "rx_snr": p.get("rx_snr"), "rx_rssi": p.get("rx_rssi"),

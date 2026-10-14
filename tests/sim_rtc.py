@@ -54,7 +54,7 @@ for chip, bus, addr in (("ds3231", 1, 0x68), ("rv8803", 1, 0x32), ("rx8130", 2, 
     d = rtc.open_i2c(bus, addr); e, why = rtc.read_user(chip, d)
     check(f"read {chip}: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(e)) if e else why}", e == WHEN and why is None, (e, why))
 d = rtc.open_i2c(2, 0x51); e, why = rtc.read_user("pcf8563", d)
-check(f"read pcf8563 with VL set: refused ({why})", why and "lost power" in why, why)
+check(f"read pcf8563 with VL set: refused ({why})", why and "flag is set" in why, why)
 d = rtc.open_i2c(2, 0x32)
 check("rx8130 notes: INIEN off and CHGEN on reported", any("INIEN" in n for n in rtc.notes("rx8130", d)) and any("CHGEN" in n for n in rtc.notes("rx8130", d)))
 
@@ -111,7 +111,7 @@ check("unit: runs the module through the launcher", f"ExecStart={REPO}/irate-box
 print("   boot:", rtc.boot())
 dl = (T / "date.log").read_text() if (T / "date.log").exists() else ""
 check("boot: system clock set from the module", "-u -s @" in dl, dl)
-check("save: refused while the clock is not trusted", "left alone" in rtc.save())
+check("save: refused while the clock is not trusted", "not changed" in rtc.save())
 (T / "ntp").write_text("yes\n")
 print("   save:", rtc.save())
 e, _ = rtc.read_user("ds3231", rtc.open_i2c(1, 0x68))
@@ -137,7 +137,7 @@ check("auto: one module → set up", (T / "etc/rtc.json").exists())
 rtc.remove()
 fake({"4": {"0x32": both}})
 r = rtc.auto(); print("   auto (ambiguous):", r)
-check("auto: two possibilities → nothing set up, owner asked", not (T / "etc/rtc.json").exists() and "choose" in r)
+check("auto: two possibilities → nothing set up, owner asked", not (T / "etc/rtc.json").exists() and "Select which" in r)
 
 # 8. The doctor: the browser's time sets the system clock, marks it trusted, and writes the module
 from irate_box.root import health  # noqa: E402
@@ -151,7 +151,7 @@ check("set_clock: date called with the browser's time", f"@{target}" in (T / "da
 check("set_clock: clock marked trusted for this boot", rtc.TRUSTED.exists())
 e, _ = rtc.read_user("ds3231", rtc.open_i2c(1, 0x68))
 check("set_clock: the module written too", "clock module is set too" in msg and abs(e - time.time()) < 3, (msg, e - time.time()))
-check("save: allowed now (set by the owner)", "set by the owner" in rtc.save())
+check("save: allowed now (set by an administrator)", "set by an administrator" in rtc.save())
 try:
     health.set_clock(1600000000); check("set_clock refuses a time before what the box has written", False)
 except ValueError as exc:

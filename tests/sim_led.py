@@ -58,7 +58,7 @@ check("only a power LED: nothing to use", led.leds() == {} and led.effective() =
 # --- the owner's choices ---
 board(["raspberrypi,3-model-b-plus"], "Raspberry Pi 3 Model B Plus Rev 1.3", {"ACT": (["mmc0", "none"], "platform"),
                                                                            "led-user": (["none"], "platform")})
-check("set show all: kept, said", "box doctor found no problem" in led.set_option("show", "all") and led.effective()[1] == "all")
+check("set show all: kept, said", "Box doctor finds no problem" in led.set_option("show", "all") and led.effective()[1] == "all")
 check("set led: one of those found only", "led-user" in led.set_option("led", "led-user") and led.effective()[0] == "led-user")
 try:
     led.set_option("led", "PWR"); check("a power LED or one not there refused", False)
@@ -138,7 +138,7 @@ def wl_sleep(s):
 led.box_state = lambda show, now=None, active=None: "repairing"
 led.run(sleep=wl_sleep, clock=lambda: clock[0], rounds=1)
 check("no trigger file: driven by brightness alone; repairing, quick flashes", writes[:2] == [("1", 0.2), ("0", 0.2)], writes[:4])
-check("  undo-all gives it back", led.undo_all() == ["work-led: back to brightness 0"] and (wl / "brightness").read_text().strip() == "0")
+check("  undo-all gives it back", led.undo_all() == ["work-led: restored to brightness 0"] and (wl / "brightness").read_text().strip() == "0")
 led.flash("work-led", 5)
 led.set_option("show", "leave")
 writes.clear()
@@ -179,7 +179,7 @@ for good in ("led-show:network", "led-led:auto", "led-led:green:status", "led-fl
 for bad in ("led-show:blink", "led-led:../x", "led-flash:a b", "armbian-led:remove"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 said = health.fix("led-show:alive")
-check("  a choice saved: the setting changed, and said", led.load_settings()["show"] == "alive" and "hub runs" in said)
+check("  a choice saved: the setting changed, and said", led.load_settings()["show"] == "alive" and "hub server runs" in said)
 from irate_box.hub import server  # noqa: E402
 check("the hub passes the same choices on", all(server.HEALTH_CHOICE_RE.match(c) for c in ("led-show:all", "led-flash:ACT", "armbian-led:on"))
       and not server.HEALTH_CHOICE_RE.match("led-show:x"))

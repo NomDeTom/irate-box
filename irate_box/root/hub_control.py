@@ -262,33 +262,33 @@ def run(*cmd, timeout=120, **kw):
 def service(req):
     unit, op = str(req.get("unit", "")), str(req.get("op", ""))
     if unit not in UNITS:
-        raise ValueError(f"{unit} is not a unit the admin page controls")
+        raise ValueError(f"{unit} is not a service that the administration pages control")
     if op not in UNITS[unit]:
-        raise ValueError(f"{op} is not allowed for {unit}")
+        raise ValueError(f"The action {op} is not available for {unit}.")
     if run("systemctl", "cat", unit).returncode != 0:
         raise ValueError(f"{unit} is not installed")
     args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(op, (op,))
     if unit == "irate-box.service":
         # Restarting the hub from a request the hub made: answer first, then go.
         subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])
-        return f"{unit} restarting"
+        return f"{unit} is restarting."
     out = run("systemctl", *args, unit)
     if out.returncode != 0:
-        raise ValueError((out.stderr or out.stdout).strip().splitlines()[-1] if (out.stderr or out.stdout).strip() else f"systemctl {op} failed")
-    return f"{unit}: {op} done, now {run('systemctl', 'is-active', unit).stdout.strip()}"
+        raise ValueError((out.stderr or out.stdout).strip().splitlines()[-1] if (out.stderr or out.stdout).strip() else f"Service {op} failed for {unit}.")
+    return f"{unit}: {op} complete. The service is now {run('systemctl', 'is-active', unit).stdout.strip()}."
 
 
 def password(req):
     pw = str(req.get("password", ""))
     if len(pw) < MIN_PASSWORD or len(pw) > 128 or any(c in pw for c in "\n\r\0"):
-        raise ValueError(f"the password must be {MIN_PASSWORD}-128 characters, on one line")
+        raise ValueError(f"The password must have {MIN_PASSWORD} to 128 characters on one line.")
     if req.get("setup") and not UNCLAIMED.exists():
-        raise ValueError("the admin password has already been set; log in to change it")
+        raise ValueError("The administrator password is already set. Sign in to change it.")
     done = set_login(pw)
     if req.get("setup"):
         UNCLAIMED.unlink(missing_ok=True)
-        return "admin password set: " + done
-    return "admin password changed: " + done
+        return "Administrator password set. Updated: " + done
+    return "Administrator password changed. Updated: " + done
 
 
 def reset_password():
@@ -297,7 +297,7 @@ def reset_password():
     set_login(secrets.token_urlsafe(24), keep=False)
     UNCLAIMED.write_text("no admin password chosen yet (hub_control.py reset-password)\n")
     UNCLAIMED.chmod(0o644)
-    return "admin password reset: /admin now asks the next visitor to choose one"
+    return "Administrator password reset. Until someone sets a new password, the next visitor to /admin can set it and become the administrator"
 
 
 def _set_nginx_login(pw):
@@ -305,7 +305,7 @@ def _set_nginx_login(pw):
     request and caches nothing, and bcrypt at Caddy's cost takes seconds a check on a small
     board (this: milliseconds). nginx reads the file per request, so nothing needs reloading."""
     if not NGINX_LOGINS.exists():
-        raise ValueError(f"no admin login file at {NGINX_LOGINS}")
+        raise ValueError(f"No script login file at {NGINX_LOGINS}")
     out = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=pw + "\n",
                          capture_output=True, text=True, timeout=30)
     hashed = out.stdout.strip()
@@ -320,7 +320,7 @@ def _set_nginx_login(pw):
         os.chown(tmp, 0, gid)
     os.chmod(tmp, 0o640)
     os.replace(tmp, NGINX_LOGINS)
-    return "nginx (1 login)"
+    return "nginx (1 script login)"
 
 
 def _set_caddy_login(pw):
@@ -335,7 +335,7 @@ def _set_caddy_login(pw):
         _access_files(access.read(ACCESS_FILE))
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
     subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
-    return f"Caddy ({count} logins)"
+    return f"Caddy ({count} script logins)"
 
 
 def set_login(pw, keep=True):
@@ -348,7 +348,7 @@ def set_login(pw, keep=True):
         ADMIN_LOGIN_OFF.unlink()
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-        web += ", the box's own login on again"
+        web += ", the script login on again"
     _admin_login_record()
 
     secret = ETC / "admin-password"
@@ -427,7 +427,7 @@ def kit_choices(req):
         zims = [ZIM_DIR / f"{b}.zim" for b in books]
         missing = [z.stem for z in zims if not z.is_file() or z.is_symlink()]
         if missing:
-            raise ValueError(f"no such book on the box: {', '.join(missing[:3])}")
+            raise ValueError(f"This box has no book named: {', '.join(missing[:3])}")
     elif books is False or books is None:
         zims = []
     else:
@@ -441,7 +441,7 @@ def kit_choices(req):
     repo_dirs = [STATE / "git" / f"{r}.git" for r in repos]
     gone = [r for r, d in zip(repos, repo_dirs) if not d.is_dir() or d.is_symlink()]
     if gone:
-        raise ValueError(f"no such repository on the box: {', '.join(gone[:3])}")
+        raise ValueError(f"This box has no repository named: {', '.join(gone[:3])}")
     state = req.get("state", "none")
     if state not in ("none", "settings", "data"):
         raise ValueError("state: none, settings or data")
@@ -467,7 +467,7 @@ def offline_kit(req):
               + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
               + (_state_size(state) if state != "none" else 0))
     if budget is not None and base + chosen > budget << 20:
-        raise ValueError(f"the kit would be about {(base + chosen) >> 20} MB, over the budget of {budget} MB: leave something out")
+        raise ValueError(f"Estimated kit size is {(base + chosen) >> 20} MB. The size limit is {budget} MB. Select fewer items or increase the size limit.")
     need = 2 * base + chosen + (64 << 20)
     with KitRoom() as room:
         return _offline_kit(room, zims, apps, arch, need, kit_ids, repo_dirs, state)
@@ -489,7 +489,7 @@ class KitRoom:
         self.fd = safeio._dir_fd(KITS)
         if os.fstat(self.fd).st_uid != ROOT_UID:
             os.close(self.fd)
-            raise ValueError(f"{KITS} is not root's: refused")
+            raise ValueError(f"{KITS} is not owned by root. The box did not use it.")
         safeio.mkdir(KIT_WORK, ROOT_UID, ROOT_UID, 0o700)
         self.work = Path(tempfile.mkdtemp(prefix="kit-", dir=KIT_WORK))
         return self
@@ -582,15 +582,15 @@ def content_export(req):
     size = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs) + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
             + (_state_size(state) if state != "none" else 0))
     if not size:
-        raise ValueError("choose something to export")
+        raise ValueError("Export selection is empty. Select at least one item.")
     if budget is not None and size > budget << 20:
-        raise ValueError(f"the export would be about {size >> 20} MB, over the budget of {budget} MB: leave something out")
+        raise ValueError(f"Estimated export size is {size >> 20} MB. The size limit is {budget} MB. Select fewer items or increase the size limit.")
     with KitRoom() as room:
         books = sum(z.stat().st_size for z in zims)
         need = 2 * (size - books) + books + (16 << 20)   # the work folder (no books), then the tar (all)
         if room.free() - need < _min_free():
-            raise ValueError(f"not enough space: the export needs about {need >> 20} MB and {room.free() >> 20} MB is free "
-                             f"(keeping {_min_free() >> 20} MB spare)")
+            raise ValueError(f"Insufficient free storage. Free space required for the export is {need >> 20} MB. Free space available is {room.free() >> 20} MB, "
+                             f"and the box keeps {_min_free() >> 20} MB spare.")
         with Progress("kit", 2 + bool(kit_ids), path=KIT_PROGRESS) as progress:
             work = room.work
             top = work / "irate-box"
@@ -612,12 +612,12 @@ def content_export(req):
                 tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box/,",
                           *[z.name for z in zims], timeout=7200)
             if tar.returncode != 0:
-                raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+                raise ValueError("The tar command failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
             meta = room.publish(part, name, {"name": name, "kind": "content", "at": time.time(), "arch": platform.machine(),
                                              "books": [z.name for z in zims], "kits": list(kit_ids),
                                              "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs], "state": state,
                                              "contents": ([f"book: {z.stem}" for z in zims] + report)[:60]})
-    return f"content export ready: {name} ({meta['size'] >> 20} MB)"
+    return f"Download ready: {name} ({meta['size'] >> 20} MB)."
 
 
 def _state_size(level):
@@ -629,8 +629,8 @@ def _state_size(level):
 def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="none"):
     free = room.free()
     if free - need < _min_free():
-        raise ValueError(f"not enough space: the kit needs about {need >> 20} MB and {free >> 20} MB is free "
-                         f"(keeping {_min_free() >> 20} MB spare)" + (" — try without the books" if zims else ""))
+        raise ValueError(f"Insufficient free storage. Free space required for the kit is {need >> 20} MB. Free space available is {free >> 20} MB, "
+                         f"and the box keeps {_min_free() >> 20} MB spare." + (" Select no books to make the kit smaller." if zims else ""))
     with Progress("kit", 3 + bool(kit_ids) + bool(repo_dirs) + (state != "none"), path=KIT_PROGRESS) as progress:
         work = room.work
         progress.step("Gathering the code, the apps and the downloads")
@@ -641,7 +641,7 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
             args += ["--web", "caddy"]
         out = run(*args, timeout=3600, env=dict(os.environ, HOME=str(work)))
         if out.returncode != 0:
-            raise ValueError("the kit could not be made: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
+            raise ValueError("The box could not make the kit: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
         report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
         if kit_ids:
             # The toolkits in the stick layout (kits.export_usb) beside the kit: unpacked on a stick,
@@ -680,12 +680,12 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
             tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
                       *[z.name for z in zims], timeout=7200)
         if tar.returncode != 0:
-            raise ValueError("tar failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+            raise ValueError("The tar command failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
         meta = room.publish(part, name, {"name": name, "at": time.time(), "arch": arch,
                                          "books": [z.name for z in zims], "kits": list(kit_ids),
                                          "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
                                          "state": state, "contents": report[:60]})
-    return f"offline kit ready: {name} ({meta['size'] >> 20} MB)"
+    return f"Download ready: {name} ({meta['size'] >> 20} MB)."
 
 
 # --- who may open each app ---------------------------------------------------------
@@ -740,7 +740,7 @@ def _access_files(state):
         return old
     login = _caddy_hash()
     if not login:
-        raise ValueError(f"no admin login found in {_login_file()} for the private apps")
+        raise ValueError(f"No script login found in {_login_file()} for the apps that need a sign-in")
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
@@ -773,7 +773,7 @@ def _access_apply(state, reload=True):
                 path.unlink(missing_ok=True)
             else:
                 _write_root_file(path, text)
-        raise ValueError("the web server did not accept the change; nothing was changed: "
+        raise ValueError("The web server did not accept the change. Nothing changed: "
                          + ((check.stderr or check.stdout).strip().splitlines() or [""])[-1][:200])
     _access_record(state)
     if reload:
@@ -799,16 +799,16 @@ def access_set(req):
     # Off is always safe, so a web add-on just removed (its manifest gone) can still be switched
     # off: the hub asks that when one is added or removed.
     if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
-        raise ValueError(f"{app} is not an app whose access can be set")
+        raise ValueError(f"Access cannot be set for {app}")
     if mode not in access.MODES:
-        raise ValueError("mode: public, users, private or off")
+        raise ValueError("Select an access mode: public, users, private or off")
     if mode == "users" and not access.users_allowed(app):
-        raise ValueError(f"{app} can be public, private or off: not for users")
+        raise ValueError(f"Access for {app} can be public, private or off. It cannot be users")
     state = access.read(ACCESS_FILE)
     was = access.mode_of(state, app)
     state[app] = mode
     _access_apply(state)
-    done = f"{app}: {mode}"
+    done = f"App access saved: {app} is set to {mode}"
     unit = _access_unit(app)
     # Only what "off" stopped is started again: an add-on the owner never switched on stays off.
     try:
@@ -821,13 +821,13 @@ def access_set(req):
             out = run("systemctl", "disable", "--now", unit)
             if out.returncode == 0:
                 stopped.add(unit)
-                done += f"; {unit} stopped"
+                done += f". Service stopped: {unit}"
             else:
-                done += f"; {unit} could not be stopped"
+                done += f". Service stop failed: {unit}"
     elif unit and was == "off" and mode != "off" and unit in stopped:
         out = run("systemctl", "enable", "--now", unit)
         stopped.discard(unit)
-        done += f"; {unit} started again" if out.returncode == 0 else f"; {unit} could not be started"
+        done += f". Service started again: {unit}" if out.returncode == 0 else f". Service start failed: {unit}"
     _write_root_file(ACCESS_STOPPED, json.dumps(sorted(stopped)) + "\n", 0o644)
     return done
 
@@ -847,7 +847,7 @@ def access_install():
     _access_files(state)
     _access_record(state)
     _admin_login_record()
-    return ", ".join(f"{k} {v}" for k, v in state.items() if v != "public") or "every app public"
+    return ", ".join(f"{k} {v}" for k, v in state.items() if v != "public") or "every app is set to public"
 
 
 def _login_reach():
@@ -917,8 +917,8 @@ def admin_gate(req):
     _access_files(access.read(ACCESS_FILE))
     if any((p.read_text() if p.exists() else None) != t for p, t in old.items()):
         _reload_web()
-        return "the admin's sign-in: " + ("the standard one" if _admin_accounts_ready() else "the box's own login (no admin account yet)")
-    return "the admin's sign-in: unchanged"
+        return "Administrator sign-in: " + ("the standard one" if _admin_accounts_ready() else "the script login (no administrator account yet)")
+    return "Administrator sign-in: unchanged"
 
 
 def _gate_paths():
@@ -942,16 +942,16 @@ def _caddy_login_swap(new_hash):
     text = target.read_text()
     updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
     if not count:
-        raise ValueError(f"no admin login found in {target}")
+        raise ValueError(f"No script login found in {target}")
     candidate = target.with_name(target.name + ".new")
     candidate.write_text(updated)
     if run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate)).returncode != 0:
         candidate.unlink(missing_ok=True)
-        raise ValueError("the new Caddy config did not validate; nothing was changed")
+        raise ValueError("The new Caddy configuration did not validate. Nothing changed.")
     os.replace(candidate, target)
     if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
         target.write_text(text)
-        raise ValueError("the Caddy config did not validate with the new login; nothing was changed")
+        raise ValueError("The Caddy configuration did not validate with the new login. Nothing changed.")
     return count
 
 
@@ -960,7 +960,7 @@ def _caddy_login_off():
     is emptied); the real one kept in ADMIN_LOGIN_OFF to put back."""
     real = _caddy_hash()
     if not real:
-        raise ValueError(f"no admin login found in {_login_file()}")
+        raise ValueError(f"No script login found in {_login_file()}")
     hashed = run("caddy", "hash-password", input=secrets.token_urlsafe(32) + "\n")
     if hashed.returncode != 0 or not hashed.stdout.strip().startswith("$2"):
         raise ValueError("caddy hash-password failed")
@@ -984,11 +984,11 @@ def admin_login(req):
     reach = req.get("reach")
     if reach is not None:
         if reach not in REACHES:
-            raise ValueError(f"reach: one of {', '.join(REACHES)}")
+            raise ValueError(f"Select a reach: {', '.join(REACHES)}")
         if reach == "off":
             return admin_login({"on": False})
         if not (ETC / "admin-password").is_file():
-            raise ValueError("the box's own login has no password yet: set one at the box's console, over SSH "
+            raise ValueError("The script login has no password yet. Set one at the box's console over SSH: "
                              "(sudo /opt/irate-box/irate-box hub_control script-login)")
         _write_reach(reach)
         if ADMIN_LOGIN_OFF.exists():
@@ -997,17 +997,17 @@ def admin_login(req):
             _access_files(access.read(ACCESS_FILE))
             _reload_web()
             _admin_login_record()
-        return "the box's own login answers " + ("from the box itself only" if reach == "local" else "from the network too")
+        return "The script login accepts requests " + ("from the box itself only" if reach == "local" else "from every device on the box's network")
     on = req.get("on") is True
     if on == (not ADMIN_LOGIN_OFF.exists()):
-        return f"the box's own admin login is already {'on' if on else 'off'}"
+        return f"The script login is already {'on' if on else 'off'}"
     admins = []
     if not on:
         admins = _https_admins()
         if not admins:
-            raise ValueError("first make an admin account, and log in with it over HTTPS: then it can stand in for this login")
+            raise ValueError("Create an administrator account and sign in with it over HTTPS first. Then the account can replace the script login.")
     _switch_login(on)
-    return "the box's own admin login is " + ("on again" if on else f"off: admin accounts ({', '.join(admins)}) open /admin")
+    return "The script login is " + ("on again" if on else f"off. Administrator accounts ({', '.join(admins)}) open /admin")
 
 
 def _switch_login(on):
@@ -1056,7 +1056,7 @@ def claim(req):
     """The first use ended by the owner's admin account (the hub made it): no longer free, and no
     login of the box's own (no password made for scripts: script-login at the console makes one)."""
     if not UNCLAIMED.exists():
-        raise ValueError("the box's first use has already ended")
+        raise ValueError("Initial setup is already complete")
     UNCLAIMED.unlink()
     (ETC / "admin-password").unlink(missing_ok=True)
     if not ADMIN_LOGIN_OFF.exists():
@@ -1064,7 +1064,7 @@ def claim(req):
     else:
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-    return "first use ended: admin accounts sign in on the box's sign-in page; no login of the box's own for scripts"
+    return "Initial setup complete. Administrators sign in on the box's sign-in page. The script login is off, so scripts have no password"
 
 
 def _ask_password(prompt="Password: "):
@@ -1073,16 +1073,16 @@ def _ask_password(prompt="Password: "):
     ask = getpass.getpass if sys.stdin.isatty() else (lambda _p: sys.stdin.readline().rstrip("\n"))
     pw = ask(prompt)
     if len(pw) < MIN_PASSWORD or len(pw) > 128 or any(c in pw for c in "\n\r\0"):
-        sys.exit(f"the password must be {MIN_PASSWORD}-128 characters, on one line")
+        sys.exit(f"The password must have {MIN_PASSWORD} to 128 characters on one line.")
     if ask("Again: ") != pw:
-        sys.exit("the two did not match; nothing changed")
+        sys.exit("Passwords do not match. Nothing changed.")
     return pw
 
 
 def console_set_admin(name):
     """sudo irate-box hub_control set-admin NAME: an admin account from the console (over SSH, so the
     password never crosses the network in the clear); ends the first use if it is still on."""
-    pw = _ask_password(f"Password for the admin account {name}: ")
+    pw = _ask_password(f"Password for the administrator account {name}: ")
     out = subprocess.run(["runuser", "-u", HUB_USER, "--", "env", f"HUB_STATE_DIR={STATE}",
                           str(Path(__file__).resolve().parents[2] / "irate-box"), "accounts", "set-admin", name],
                          input=pw + "\n", capture_output=True, text=True, timeout=60)
@@ -1094,7 +1094,7 @@ def console_set_admin(name):
     else:
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-    return "; ".join(said)
+    return ". ".join(said)
 
 
 def console_script_login(on):
@@ -1104,16 +1104,16 @@ def console_script_login(on):
     if not on:
         (ETC / "admin-password").unlink(missing_ok=True)
         if ADMIN_LOGIN_OFF.exists():
-            return "the box's own login is already off"
+            return "The script login is already off"
         if not _admin_accounts_ready():
-            sys.exit("no admin account can sign in yet: make one first (set-admin), or this would lock /admin")
+            sys.exit("No administrator account can sign in yet. Create one with set-admin first, or this would lock you out of /admin.")
         _switch_login(False)
-        return "the box's own login is off"
+        return "The script login is off"
     if not ADMIN_LOGIN_REACH.exists():
         _write_reach("local")  # the safer reach to start; widened on Accounts if wanted
-    said = set_login(_ask_password("Password for the box's own login (admin): "))
-    return (f"the box's own login (admin) set, for scripts, answering {'from the box itself only' if _login_reach() == 'local' else 'from the network too'}"
-            f" (Accounts on /admin changes that): {said}")
+    said = set_login(_ask_password("Password for the script login (user admin): "))
+    return (f"Script login (user admin) saved. It accepts requests {'from the box itself only' if _login_reach() == 'local' else 'from every device on the box\'s network'}."
+            f" Change this on the Accounts page. {said}")
 
 
 # --- updates ---------------------------------------------------------------------
@@ -1122,8 +1122,7 @@ def _install_options():
     try:
         lines = (ETC / "install-options").read_text().splitlines()
     except OSError:
-        raise ValueError("no /etc/hub/install-options: this box was installed before updates "
-                         "from /admin existed. Run install.sh once by hand to record them.")
+        raise ValueError("No /etc/hub/install-options. This box was installed before updates from /admin existed. Run install.sh once by hand to record them.")
     return [line for line in lines if line]
 
 
@@ -1359,16 +1358,16 @@ def _signature_check(src, installed, tag=None):
         # The tag the check fetched; failing that, the newest release tag on what is checked out.
         tag = tag or next(iter(run("git", "-C", str(src), "tag", "--points-at", "HEAD", "-l", signing.TAG_GLOB,
                                    "--sort=-v:refname").stdout.split()), "")
-        ok, detail = signing.check_tag(src, tag, sig["signers"]) if tag else (False, "what was fetched is not a release tag")
+        ok, detail = signing.check_tag(src, tag, sig["signers"]) if tag else (False, "The downloaded version is not a release tag")
     return [_check(SIGNED_CHECK, ok, detail)]
 
 
 def update_signing(req):
     data = signing.save(ETC, str(req.get("level", "")), str(req.get("signers", "")), lambda path, text: safeio.write(path, text, mode=0o600))
     safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
-    words = {"off": "any version from the branch (as before)", "github": "only commits merged on GitHub (signed by GitHub)",
-             "tags": f"only release tags signed by one of {len(data['signers'])} key{'s' if len(data['signers']) != 1 else ''}"}
-    return f"updates now take {words[data['level']]}; the next check uses it"
+    words = {"off": "any version from the branch", "github": "only commits signed by the GitHub key",
+             "tags": f"only release tags signed by one of {len(data['signers'])} trusted key{'s' if len(data['signers']) != 1 else ''}"}
+    return f"Updates now accept {words[data['level']]}. The next check uses this setting."
 
 
 def verify_update(src, installed, opts, progress=None, tag=None):
@@ -1382,11 +1381,10 @@ def verify_update(src, installed, opts, progress=None, tag=None):
         # sign of a source taken over. A commit the fetched
         # history does not know at all (a box installed from a copy) is only a warning.
         checks.append(_check("A fast-forward of the installed version", ff,
-                             "history continues from the installed commit" if ff else
-                             f"{installed} is not an ancestor: the branch was rewritten. Read the changes, then "
-                             "Install anyway (Health → Updates doctor) if they are yours." if known else
-                             f"{installed} is not in the fetched history: the box was installed from elsewhere. "
-                             "Read the changes before installing.", warn=not known))
+                             "The history continues from the installed commit" if ff else
+                             f"{installed} is not an ancestor, so the branch history changed. Read the changes. If you made them, use Install anyway under Updates, Advanced update actions." if known else
+                             f"{installed} is not in the downloaded history, so the box was installed from another source. "
+                             "Read the changes before you install.", warn=not known))
     checks += _signature_check(src, installed, tag)
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
@@ -1402,7 +1400,7 @@ def verify_update(src, installed, opts, progress=None, tag=None):
         except (SyntaxError, ValueError, UnicodeDecodeError) as exc:
             bad.append(f"{py.relative_to(src)}: {exc}")
     checks.append(_check("Python files compile", bool(pys) and not bad,
-                         "; ".join(bad) or (f"{len(pys)} files" if pys else "no Python files under irate_box/: not this layout")))
+                         ". ".join(bad) or (f"{len(pys)} files compile. Compiling does not prove the code is safe" if pys else "No Python files under irate_box/, so this is not the expected layout")))
 
     if WEB_SERVER == "nginx":
         checks.append(_nginx_check(src, opts))
@@ -1499,10 +1497,10 @@ def _check_for_update(progress):
     repo = _option(opts, "--repo")
     branch = _option(opts, "--branch", "main")
     if not repo:
-        raise ValueError("install-options names no repository")
+        raise ValueError("install-options names no repository. Run install.sh once by hand to record one.")
     if repo.startswith(("http://", "git://")):
         # Code that root will run, over a transport anyone on the way can rewrite.
-        raise ValueError(f"updates come from {repo}, which is not encrypted: rerun install.sh with --repo https://…")
+        raise ValueError(f"Updates come from {repo} over an unencrypted link. Run install.sh again with --repo https://…")
     progress.step(f"Fetching {branch} from {repo}")
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
@@ -1527,15 +1525,15 @@ def _check_for_update(progress):
         if remote.returncode == 0 and not remote.stdout.strip():
             tags_said = f"{repo} has no release tag ({signing.TAG_GLOB}) yet"
         else:
-            tags_said = "git fetch of the release tags: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1]
+            tags_said = "Downloading the release tags failed: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1]
         if sig["level"] == "tags":
-            raise ValueError(f"updates are set to signed releases, and {tags_said}" if "no release tag" in tags_said else tags_said)
+            raise ValueError(f"Updates require signed releases, and {tags_said}" if "no release tag" in tags_said else tags_said)
     newest = signing.newest_tag(src)
     if sig["level"] == "tags":
         # Signed releases (signing.py): the newest v* tag, not the branch's tip.
         tag = newest
         if not tag:
-            raise ValueError(f"updates are set to signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+            raise ValueError(f"Updates require signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
         _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
     progress.step("Reading the changes")
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
@@ -1573,10 +1571,10 @@ def update_check(req):
         state, _ = _check_for_update(progress)
     _write_update_state(state)
     if state["up_to_date"]:
-        return f"irate-box is up to date ({state['available']} on {state['branch']})"
+        return f"No newer version detected: irate-box is up to date ({state['available']} on {state['branch']})"
     if state["verified"]:
-        return f"update available: {_change_count(state)}, {state['available']} on {state['branch']}, already fetched and verified"
-    return f"update available: {_change_count(state)}, {state['available']} on {state['branch']}; fetch it to verify it"
+        return f"Update available: {_change_count(state)}, {state['available']} on {state['branch']}. Download complete and verification passed."
+    return f"Update available: {_change_count(state)}, {state['available']} on {state['branch']}. Download it to verify it."
 
 
 def update_fetch(req):
@@ -1593,7 +1591,7 @@ def update_fetch(req):
             opts = _install_options()
         if state["up_to_date"]:
             _write_update_state(state)
-            return f"irate-box is up to date ({state['available']} on {state['branch']})"
+            return f"No newer version detected: irate-box is up to date ({state['available']} on {state['branch']})"
         progress.step("Checking the new version")
         checks = verify_update(UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag"))
     head = state["available"]
@@ -1602,8 +1600,8 @@ def update_fetch(req):
     state.update(checks=checks, verified=None if failed else head, verified_sha=None if failed else full)
     _write_update_state(state)
     if failed:
-        return f"update {head} found but did not pass verification: {failed[0]['name']} ({failed[0]['detail']})"
-    return f"update fetched: {_change_count(state)}, {head} on {state['branch']}, verified"
+        return f"Verification failed: update {head} did not pass verification. Failed check: {failed[0]['name']} ({failed[0]['detail']})"
+    return f"Download complete. Verification passed: {_change_count(state)}, {head} on {state['branch']}"
 
 
 STEP_LINE = re.compile(rb"==> (.*?)(?:\x1b\[0m)?\s*$")
@@ -1631,18 +1629,18 @@ def _follow_install(proc, progress):
         if time.monotonic() > deadline:
             proc.kill()
             proc.wait()
-            raise ValueError(f"install.sh did not finish within {INSTALL_TIMEOUT // 60} minutes; see update.log")
+            raise ValueError(f"install.sh did not finish within {INSTALL_TIMEOUT // 60} minutes. See update.log.")
         time.sleep(1)
 
 
 def update_install(req):
     if not (UPDATE_SRC / "install.sh").is_file():
-        raise ValueError("nothing fetched yet: check for updates first")
+        raise ValueError("No update is downloaded yet. Check for updates first.")
     state = _read_update_state()
     # The whole hash of what is checked out, against the whole hash that passed.
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     if not state.get("verified_sha") or state.get("verified_sha") != full:
-        raise ValueError("the fetched version has not passed verification: fetch the update again")
+        raise ValueError("The downloaded version has not passed verification. Download the update again.")
     return _install_fetched(state)
 
 
@@ -1652,7 +1650,7 @@ def _install_fetched(state):
     if state:
         state.update(installed=_installed_commit(), up_to_date=True, changes=[], install_steps=seen)
         _write_update_state(state)
-    return f"updated to {_installed_commit() or 'the fetched version'}"
+    return f"Updated to {_installed_commit() or 'the downloaded version'}"
 
 
 def update_force_install(req):
@@ -1661,20 +1659,20 @@ def update_force_install(req):
     code's layout and this box's check cannot read it. Still only the version that was fetched
     and checked, and only if its installer parses; the installer stops on its own errors."""
     if not (UPDATE_SRC / "install.sh").is_file():
-        raise ValueError("nothing fetched yet: check for updates and fetch first")
+        raise ValueError("No update is downloaded yet. Check for updates and download first.")
     state = _read_update_state()
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
     if state.get("available") != head or not state.get("checks"):
-        raise ValueError("fetch the update first: only a version that was fetched and checked can be installed anyway")
+        raise ValueError("Download the update first. Install anyway works only on a downloaded version that was checked.")
     if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
-        raise ValueError("the fetched install.sh does not parse, so not even a forced install can run it")
+        raise ValueError("Shell parse check failed: the downloaded install.sh does not parse. Install anyway cannot bypass this.")
     failed = [c["name"] for c in state["checks"] if not c["ok"] and not c["warn"]]
     if SIGNED_CHECK in failed:
         # The point of a signing level (signing.py): not even Install anyway passes it.
-        raise ValueError("the fetched version is not signed as this box requires: Install anyway cannot pass that; "
-                         "change what an update must carry on Updates if this is meant")
+        raise ValueError("Verification failed: the downloaded version does not meet the signing level of this box. Install anyway cannot bypass this. "
+                         "To change the signing level, open Updates, then Advanced update actions, then Update verification.")
     done = _install_fetched(state)
-    return f"{done} (installed anyway, past: {'; '.join(failed)})" if failed else done
+    return f"{done} (Install anyway bypassed these failed checks: {', '.join(failed)})" if failed else done
 
 
 def _run_install(src, args, action, steps=None):
@@ -1693,7 +1691,7 @@ def _run_install(src, args, action, steps=None):
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
         code, seen = _follow_install(proc, progress)
     if code != 0:
-        raise ValueError(f"install.sh exited with {code}; see the installer output")
+        raise ValueError(f"install.sh exited with code {code}. See the installer output.")
     return seen
 
 
@@ -1760,11 +1758,11 @@ def doctor():
     try:
         opts = _install_options()
         repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
-        findings.append(_finding("Install options", "ok", f"updates come from {repo} ({branch})"))
+        findings.append(_finding("Install options", "ok", f"Updates come from {repo} ({branch})"))
     except ValueError as exc:
         opts, repo, branch = [], None, "main"
         findings.append(_finding("Install options", "problem", str(exc),
-                                 "Run install.sh once by hand (sudo ./install.sh …) to record them."))
+                                 "Run install.sh once by hand (sudo ./install.sh …) to record the install options."))
 
     # 2. Names: on the hub's own access point every name resolves to the box itself.
     host = "github.com"
@@ -1772,15 +1770,15 @@ def doctor():
         addrs = {a[4][0] for a in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
         mine = addrs & (_local_addresses() | {"127.0.0.1", "::1"})
         if mine:
-            findings.append(_finding("DNS", "problem", f"{host} resolves to this box ({', '.join(sorted(mine))})",
-                                     "The box is answering every name itself, as it does in access-point mode. "
-                                     "Join it to a network with internet, or update from a laptop that has one."))
+            findings.append(_finding("DNS", "problem", f"DNS lookup failed: {host} resolves to this box ({', '.join(sorted(mine))})",
+                                     "The box answers every name itself in hotspot mode. "
+                                     "Connect the box to a network with internet access, or update from a laptop that has it."))
         else:
             findings.append(_finding("DNS", "ok", f"{host} → {', '.join(sorted(addrs)[:3])}"))
     except OSError as exc:
         addrs = set()
-        findings.append(_finding("DNS", "problem", f"cannot resolve {host}: {exc}",
-                                 "No working DNS: check the network the box is on (Ethernet, or WiFi it has joined)."))
+        findings.append(_finding("DNS", "problem", f"DNS lookup failed: the box cannot resolve {host}: {exc}",
+                                 "Check the network the box is on (Ethernet or the WiFi network it joined). The DNS server did not answer."))
 
     # 3. A route out.
     reachable = False
@@ -1790,8 +1788,8 @@ def doctor():
                 reachable = True
             findings.append(_finding("Connection", "ok", f"{host}:443 answers"))
         except OSError as exc:
-            findings.append(_finding("Connection", "problem", f"cannot connect to {host}:443: {exc}",
-                                     "The network has no way out, or blocks HTTPS. Try another network."))
+            findings.append(_finding("Connection", "problem", f"HTTPS connection failed: the box cannot connect to {host}:443: {exc}",
+                                     "Check that the network has internet access and lets HTTPS through. If it does, try another network."))
 
     # 4. TLS, and the clock it depends on. A board with no RTC can boot years in the past,
     #    and then every certificate looks not-yet-valid.
@@ -1808,23 +1806,21 @@ def doctor():
                 server = parsedate_to_datetime(resp.headers["Date"]).timestamp()
             skew = now - server
             if abs(skew) > 600:
-                findings.append(_finding("Clock", "problem", f"the box's clock is {abs(skew) / 3600:.1f} h "
+                findings.append(_finding("Clock", "problem", f"The box's clock is {abs(skew) / 3600:.1f} h "
                                          f"{'ahead' if skew > 0 else 'behind'}",
-                                         "Set the time (timedatectl, or let NTP sync once online); "
-                                         "certificates and update checks depend on it."))
+                                         "Set the time with timedatectl, or let NTP sync when the box is online. "
+                                         "Certificate checks need the correct time."))
             else:
                 findings.append(_finding("Clock", "ok", f"within {abs(skew):.0f} s of {host}"))
-            findings.append(_finding("TLS", "ok", f"https://{host}/ verifies"))
+            findings.append(_finding("TLS", "ok", f"The certificate of https://{host}/ is valid"))
         except ssl.SSLError as exc:
-            findings.append(_finding("TLS", "problem", f"certificate check failed: {exc}",
-                                     "Usually the clock (see below) or missing ca-certificates; "
-                                     "a network that intercepts HTTPS also does this."))
+            findings.append(_finding("TLS", "problem", f"Certificate validation failed: {exc}",
+                                     "Possible causes: a wrong clock, missing ca-certificates, or a network that intercepts HTTPS. Check the clock first."))
         except (OSError, KeyError, TypeError, ValueError) as exc:
-            findings.append(_finding("TLS", "problem", f"https://{host}/ failed: {exc}", ""))
+            findings.append(_finding("TLS", "problem", f"HTTPS connection failed: https://{host}/: {exc}", ""))
     if installed_on and now < installed_on - 86400:
         findings.append(_finding("Clock", "problem",
-                                 f"the clock says {time.strftime('%Y-%m-%d', time.gmtime(now))}, before this "
-                                 f"hub was installed", "Set the time: timedatectl set-time 'YYYY-MM-DD HH:MM'."))
+                                 f"The clock says {time.strftime('%Y-%m-%d', time.gmtime(now))}, which is before the box was installed.", "Set the time: timedatectl set-time 'YYYY-MM-DD HH:MM'."))
 
     # 5. GitHub's API, which the librarian and Caddy's release lookup use.
     if reachable:
@@ -1833,23 +1829,23 @@ def doctor():
                 core = json.load(resp)["resources"]["core"]
             if core["remaining"] == 0:
                 wait = max(0, core["reset"] - now) / 60
-                findings.append(_finding("GitHub API", "problem", "rate limit used up (60 requests an hour "
-                                         "without a token)", f"Wait about {wait:.0f} min, or set a GitHub token on "
-                                         "the librarian's page."))
+                findings.append(_finding("GitHub API", "problem", "The rate limit is used up (60 requests an hour "
+                                         "without a token)", f"Wait about {wait:.0f} minutes, or enter a GitHub token on "
+                                         "the librarian page."))
             else:
                 findings.append(_finding("GitHub API", "ok", f"{core['remaining']} of {core['limit']} requests left this hour"))
         except (OSError, ValueError, KeyError) as exc:
-            findings.append(_finding("GitHub API", "warn", f"could not ask: {exc}", ""))
+            findings.append(_finding("GitHub API", "warn", f"The box could not ask GitHub: {exc}", ""))
 
     # 6. The repository and branch exist and answer.
     if repo and reachable:
         out = run("git", "ls-remote", "--heads", repo, branch, timeout=60)
         if out.returncode != 0:
             findings.append(_finding("Repository", "problem", (out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1],
-                                     "Check the repository still exists and is public."))
+                                     "Check that the repository exists and that the box can read it without a sign-in."))
         elif not out.stdout.strip():
-            findings.append(_finding("Repository", "problem", f"{repo} has no branch {branch}",
-                                     "The branch was renamed or deleted; reinstall naming the right one with --branch."))
+            findings.append(_finding("Repository", "problem", f"Branch not found: {repo} has no branch {branch}",
+                                     "Check the branch name. Run install.sh again with --branch and the correct name."))
         else:
             findings.append(_finding("Repository", "ok", f"{branch} is at {out.stdout.split()[0][:7]}"))
 
@@ -1859,27 +1855,27 @@ def doctor():
         path = path if path.exists() else path.parent
         free = shutil.disk_usage(path).free >> 20
         findings.append(_finding(label, "ok" if free >= need else "problem", f"{free} MB free in {path}",
-                                 "" if free >= need else f"Free at least {need} MB (old books in Library, saved work)."))
+                                 "" if free >= need else f"Insufficient free storage. Make at least {need} MB free, for example by removing books under Library."))
 
     # 8. The cached clone.
     if (UPDATE_SRC / ".git").is_dir():
         locks = [p.name for p in (UPDATE_SRC / ".git").glob("*.lock")]
         if locks:
-            findings.append(_finding("Update cache", "problem", f"stale git lock: {', '.join(locks)}",
-                                     "A check was interrupted. Clear the cache below and check again."))
+            findings.append(_finding("Update cache", "problem", f"Stale cache lock: {', '.join(locks)}",
+                                     "A git command left a lock file. Clear the cache below, then check again."))
         else:
             status = run("git", "-C", str(UPDATE_SRC), "status", "--porcelain", timeout=60)
             remote = run("git", "-C", str(UPDATE_SRC), "remote", "get-url", "origin").stdout.strip()
             if status.returncode != 0:
-                findings.append(_finding("Update cache", "problem", "the cached clone is damaged",
+                findings.append(_finding("Update cache", "problem", "The cached clone is damaged",
                                          "Clear the cache below and check again."))
             elif repo and remote != repo:
-                findings.append(_finding("Update cache", "warn", f"cloned from {remote}, not {repo}",
-                                         "The next check switches it over."))
+                findings.append(_finding("Update cache", "warn", f"The cache was cloned from {remote}, not {repo}",
+                                         f"The next check switches the cache to {repo}."))
             else:
-                findings.append(_finding("Update cache", "ok", "the cached clone is intact"))
+                findings.append(_finding("Update cache", "ok", "The cached clone is intact"))
     else:
-        findings.append(_finding("Update cache", "ok", "empty: the next check clones afresh"))
+        findings.append(_finding("Update cache", "ok", "The cache is empty. The next check downloads the repository again."))
 
     # 9. Package sources: a repository that fails verification fails every apt-get update.
     out = run("apt-get", "update", "-q", timeout=300)
@@ -1890,9 +1886,10 @@ def doctor():
     else:
         lines = [l for l in text.splitlines() if re.match(r"^(E|Err|W):", l)][:3]
         findings.append(_finding("Package sources", "problem", " | ".join(lines)[:400] or "apt-get update failed",
-                                 "A repository that fails verification (Caddy's can) blocks "
-                                 "every update. install.sh copes with Caddy's; for others, remove the list "
-                                 "under /etc/apt/sources.list.d/ from the terminal."))
+                                 "Package-index refresh failed. A package source that fails verification blocks "
+                                 "every update. install.sh handles the Caddy source. For another source, "
+                                 "read the lines above to find the list file in /etc/apt/sources.list.d/. "
+                                 "Copy that file to a safe place, then remove it from the terminal."))
 
     # 10. The last fetch, as the page last saw it.
     try:
@@ -1916,27 +1913,26 @@ def scheduled_findings(now=None):
     try:
         rec = json.loads((STATE / "library" / "last-run.json").read_text())
     except (OSError, ValueError):
-        return [_finding("Scheduled updates", "warn", "no run of the librarian's timer recorded yet",
-                         "It runs hourly; if this stays, see: journalctl -u irate-box-librarian -n 80")]
+        return [_finding("Scheduled updates", "warn", "No scheduled run recorded yet",
+                         "The librarian runs every hour. If this message stays, run: journalctl -u irate-box-librarian -n 80")]
     out = []
     last = rec.get("last_scheduled") or {}
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("started") or 0))
     if last and last.get("finished") is None:
         pass  # running now
     elif last and last.get("error"):
-        out.append(_finding("Scheduled updates", "problem", f"the timer's last run ({when}) crashed: {last['error']}"
+        out.append(_finding("Scheduled updates", "problem", f"Scheduled run failed ({when}). It crashed: {last['error']}"
                             + (f" in {last['where']}" if last.get("where") else ""),
-                            "journalctl -u irate-box-librarian -n 80 has the whole of it; until it is fixed, nothing "
-                            "after the crash runs (the books', the toolkits', the hub's own update)."))
+                            "Run journalctl -u irate-box-librarian -n 80 for the full error. Until the cause is fixed, the steps after the crash do not run: books, toolkits and the update of the hub server."))
     hub_at = rec.get("hub_stage_at")
     if not hub_at or now - hub_at > 3 * 3600:
         out.append(_finding("Scheduled updates", "problem",
-                            "the timer's runs have not reached the hub's own update stage "
+                            "Update stage not reached: scheduled runs have not reached the update of the hub server "
                             + (f"since {time.strftime('%Y-%m-%d %H:%M', time.localtime(hub_at))}" if hub_at else "yet"),
-                            "See the librarian's last runs: journalctl -u irate-box-librarian -n 80."))
+                            "Run journalctl -u irate-box-librarian -n 80 to see the last runs."))
     if not out:
-        out.append(_finding("Scheduled updates", "ok", f"the timer's last run ({when}) finished and reached the hub's update"
-                            + ("" if last.get("ok") else f"; some sources had errors: {'; '.join(last.get('errors', [])[:3])}")))
+        out.append(_finding("Scheduled updates", "ok", f"The scheduled run ({when}) finished and reached the update of the hub server"
+                            + ("" if last.get("ok") else f". Some sources had errors: {'; '.join(last.get('errors', [])[:3])}")))
     return out
 
 
@@ -1948,45 +1944,45 @@ def kits_findings(now=None):
     problems = kits.verify()
     if problems:
         out.append(_finding("Toolkits' cache", "problem", "; ".join(problems[:5]),
-                            "Fetch the kit again while online (Library → Toolkits); nothing is installed from a cache that fails this."))
+                            "Download the toolkit again while the box is online (Toolkits page). The box installs nothing from a cache that fails this check."))
     elif kits.MANIFESTS.is_dir() and any(kits.MANIFESTS.glob("*.json")):
-        out.append(_finding("Toolkits' cache", "ok", f"every file matches its manifest ({kits.pool_bytes() >> 20} MB)"))
+        out.append(_finding("Toolkits' cache", "ok", f"Cached files verified: every file matches its manifest ({kits.pool_bytes() >> 20} MB)"))
     try:
         budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
     except (OSError, ValueError, TypeError, AttributeError):
         budget = 500
     if kits.pool_bytes() > budget << 20:
-        out.append(_finding("Toolkits' cache", "warn", f"{kits.pool_bytes() >> 20} MB, over its {budget} MB budget",
-                            "Raise the budget, or stop keeping a kit current."))
+        out.append(_finding("Toolkits' cache", "warn", f"Toolkit cache budget exceeded: {kits.pool_bytes() >> 20} MB, over its {budget} MB budget",
+                            "Increase the toolkit cache size limit, or stop keeping a toolkit up to date."))
     # Kits kept fresher (the security kit: from outside the box's control), and their data:
     # a warning after a week, a problem after a month.
     def age(what, when, fix):
         days = (now - when) / 86400
         if days > 30:
-            out.append(_finding("Security tools' freshness", "problem", f"{what} is {int(days)} days old", fix))
+            out.append(_finding("Security tools' freshness", "problem", f"Vulnerability data age: {what} is {int(days)} days old", fix))
         elif days > 7:
-            out.append(_finding("Security tools' freshness", "warn", f"{what} is {int(days)} days old", fix))
+            out.append(_finding("Security tools' freshness", "warn", f"Vulnerability data age: {what} is {int(days)} days old", fix))
     for kid, k in kits.definitions().items():
         man = kits.manifest(kid)
         if k.get("refresh_hours") and man:
-            age(f"the {kid} kit's cache", man["fetched"], "Connect the box to the internet: the librarian refreshes it daily.")
+            age(f"the {kid} kit's cache", man["fetched"], "Connect the box to the internet. The librarian downloads new data every day.")
         if "debsecan" in k.get("feeds", []) and man:
             try:
                 codename = next(l.split("=", 1)[1].strip().strip('"') for l in open("/etc/os-release") if l.startswith("VERSION_CODENAME="))
                 feed = STATE / "library" / "debsecan" / "release" / "1" / codename
                 if feed.is_file():
                     age("debsecan's data (Debian's security tracker)", feed.stat().st_mtime,
-                        "Connect the box to the internet: the librarian refreshes it daily.")
+                        "Connect the box to the internet. The librarian downloads new data every day.")
             except (OSError, StopIteration):
                 pass
     for kit, v in kits.installed_state().items():
         days = (now - v.get("at", now)) / 86400
         if kit == "debug" and days > 7:
-            out.append(_finding("Toolkits installed", "warn", f"the debug kit has been installed for {int(days)} days: "
-                                "it can read any process's memory and every packet", "Remove it under Library → Toolkits."))
+            out.append(_finding("Toolkits installed", "warn", f"The debug toolkit has been installed for {int(days)} days. "
+                                "Its tools can read process memory and network traffic on this box.", "Remove it on the Toolkits page."))
         elif v.get("remove_at") is None and kit != "build":
-            out.append(_finding("Toolkits installed", "warn", f"{kit} is installed with no removal time",
-                                "Set one under Library → Toolkits, or remove it."))
+            out.append(_finding("Toolkits installed", "warn", f"Toolkit installed without removal time: {kit}",
+                                "Set a removal time on the Toolkits page, or remove the toolkit."))
     return out
 
 
@@ -2017,8 +2013,8 @@ def update_doctor(req):
     safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
     problems = [f for f in findings if f["status"] == "problem"]
     if not problems:
-        return "update doctor: no problems found"
-    return f"update doctor: {len(problems)} problem{'s' if len(problems) != 1 else ''}, first: {problems[0]['check']}"
+        return "Updates doctor: no problems found"
+    return f"Updates doctor: {len(problems)} problem{'s' if len(problems) != 1 else ''}, first: {problems[0]['check']}"
 
 
 def update_clear_cache(req):
@@ -2027,7 +2023,7 @@ def update_clear_cache(req):
         if path.exists():
             shutil.rmtree(path)
     UPDATE_STATE.unlink(missing_ok=True)
-    return "update cache cleared"
+    return "Update cache cleared"
 
 
 # --- the security page -----------------------------------------------------------------
@@ -2042,14 +2038,14 @@ def security_scan(req):
     bad = sum(1 for f in data["findings"] if f["status"] == "problem")
     look = sum(1 for f in data["findings"] if f["status"] == "warn")
     # "nothing to fix" with warnings reads as all clear: both counts, always.
-    return f"security scan: {bad} to fix, {look} to look at"
+    return f"Security scan: {bad} to repair, {look} to review"
 
 
 def security_audit(req):
     report = secdoctor.audit()
     secdoctor.write_report(report, AUDIT_STATE)
     c = report["counts"]
-    return f"security doctor: {c['problem']} problem(s), {c['warn']} warning(s)"
+    return f"Security doctor: {c['problem']} to repair, {c['warn']} to review"
 
 
 def security_deep_audit(req):
@@ -2063,7 +2059,7 @@ def security_deep_audit(req):
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
-        raise ValueError("not a Security page choice")
+        raise ValueError("This is not a Security page action")
     # Only what root's own last scan offered: a forged request could otherwise switch off
     # any unit not on the protected list (a firewall, auditd, a getty). The scan is root's file,
     # read only if it still is; every fix ends with a new one, so the page's buttons stay valid.
@@ -2077,7 +2073,7 @@ def security_fix(req):
     if pattern and choice.startswith("autoupdate-set:"):
         security.parse_pattern(choice.split(":", 1)[1])
     if choice not in offered and not pattern:
-        raise ValueError("the Security page did not offer that: scan again, then choose from what it shows")
+        raise ValueError("Action no longer available. Run the checks again, then select an action from the new results.")
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
@@ -2111,9 +2107,9 @@ def tls_make(req):
     device that installed the first would have to install the new one."""
     from irate_box.root import tls
     if tls.status().get("set_up") and req.get("again") is not True:
-        return "HTTPS is already set up: making a new CA means every device installs it again (ask for that explicitly)"
+        return "HTTPS is already set up. To replace the CA, confirm the replacement: every device that trusts the old CA must install the new CA again."
     rec = tls.make_ca()
-    return f"made the box's CA ({rec['ca']['fingerprint'][:23]}…) and its certificate"
+    return f"Box CA and certificate created (CA fingerprint {rec['ca']['fingerprint'][:23]}…)"
 
 
 @_tls_answer
@@ -2132,14 +2128,14 @@ def tls_import(req):
         chain = safeio.read_request(staged / "chain.pem", 64 << 10)
         key = safeio.read_request(staged / "key.pem", 16 << 10)
     except OSError as exc:
-        return f"nothing to import ({exc})"
+        return f"No certificate available for import ({exc})"
     finally:
         for f in ("chain.pem", "key.pem"):
             (staged / f).unlink(missing_ok=True)
     try:
         return tls.import_own(chain, key)
     except ValueError as exc:
-        raise ValueError(f"not used: {exc}")
+        raise ValueError(f"Certificate not imported: {exc}")
 
 
 @_tls_answer
@@ -2159,7 +2155,7 @@ def tls_switch(req):
     """HTTPS on or off at the front, the CA and certificate kept either way."""
     from irate_box.root import tls
     if not tls.status().get("set_up"):
-        return "HTTPS is not set up yet: make the box's certificate first"
+        return "HTTPS is not set up yet. Create the box certificate first."
     return tls.front(req.get("on") is True)
 
 
@@ -2167,8 +2163,8 @@ def usb_scan(req):
     data = usbstick.scan()
     _write_usb(data)
     books = sum(len(d["zims"]) for d in data["devices"])
-    return (f"{len(data['devices'])} stick{'s' if len(data['devices']) != 1 else ''}, "
-            f"{books} book{'s' if books != 1 else ''}") if data["devices"] else "no USB stick found"
+    return (f"{len(data['devices'])} USB drive{'s' if len(data['devices']) != 1 else ''}, "
+            f"{books} book{'s' if books != 1 else ''}") if data["devices"] else "No USB drive found"
 
 
 def _min_free():
@@ -2182,7 +2178,7 @@ def _min_free():
 def usb_import(req):
     device, file = str(req.get("device", "")), str(req.get("file", ""))
     with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
-        progress.step(f"Copying {Path(file).name} from the stick")
+        progress.step(f"Copying {Path(file).name} from the USB drive")
         name = usbstick.import_zim(device, file, ZIM_DIR, HUB_USER, _min_free(),
                                    [str(CODE / "irate-box"), "librarian"], STATE, progress.bytes)
     return f"{name}: added to the library"
@@ -2191,13 +2187,13 @@ def usb_import(req):
 def usb_export(req):
     device, book = str(req.get("device", "")), str(req.get("book", ""))
     with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-        progress.step(f"Copying {book} to the stick")
+        progress.step(f"Copying {book} to the USB drive")
         where = usbstick.export_zim(device, book, ZIM_DIR, progress.bytes)
     try:
         _write_usb(usbstick.scan())
     except (ValueError, OSError):
         pass
-    return f"{book}: copied to the stick as {where}; it is safe to unplug"
+    return f"USB transfer complete: {book} is on the USB drive as {where}. Eject the drive before you unplug it."
 
 
 def usb_kit_export(req):
@@ -2206,13 +2202,13 @@ def usb_kit_export(req):
         raise ValueError("kit: a toolkit's id")
     try:
         with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-            progress.step(f"Copying the {kit} kit to the stick")
+            progress.step(f"Copying the {kit} kit to the USB drive")
             line = usbstick.export_kit(device, kit, progress.bytes)
         try:
             _write_usb(usbstick.scan())
         except (ValueError, OSError):
             pass
-        return f"{line}; it is safe to unplug"
+        return f"USB transfer complete: {line}. Eject the drive before you unplug it."
     finally:
         _kits_status()
 
@@ -2229,19 +2225,19 @@ def usb_export_many(req):
         raise ValueError("kits: a list of toolkit ids")
     _, _, repo_dirs, state, _ = kit_choices({"repos": req.get("repos") or [], "state": req.get("state", "none")})
     if not books and not kit_ids and not repo_dirs and state == "none":
-        raise ValueError("choose something to export")
+        raise ValueError("Export selection is empty. Select at least one item.")
     said = []
     try:
         extras = bool(repo_dirs) or state != "none"
         with Progress("usb-export", len(books) + len(kit_ids) + extras, path=USB_PROGRESS) as progress:
             for b in books:
-                progress.step(f"Copying {b} to the stick")
+                progress.step(f"Copying {b} to the USB drive")
                 said.append(usbstick.export_zim(device, b, ZIM_DIR, progress.bytes))
             for k in kit_ids:
-                progress.step(f"Copying the {k} kit to the stick")
+                progress.step(f"Copying the {k} kit to the USB drive")
                 said.append(usbstick.export_kit(device, k, progress.bytes))
             if extras:
-                progress.step("Copying the repositories and this box's state to the stick")
+                progress.step("Copying the repositories and this box's state to the USB drive")
                 usbstick.export_with(device, lambda top: said.extend(content_extras(top, repo_dirs, state)))
     finally:
         _kits_status()
@@ -2251,7 +2247,7 @@ def usb_export_many(req):
             pass
     return (f"{len(books)} book{'s' if len(books) != 1 else ''}, {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}"
             + (f", {len(repo_dirs)} repositor{'ies' if len(repo_dirs) != 1 else 'y'}" if repo_dirs else "")
-            + (" and this box's state" if state != "none" else "") + " on the stick; it is safe to unplug")
+            + (" and this box's state" if state != "none" else "") + " on the USB drive. USB transfer complete. Eject the drive before you unplug it.")
 
 
 def backup_image(req):
@@ -2260,7 +2256,7 @@ def backup_image(req):
     half-written. Restored by writing it back with any image writer (gunzip, then dd or Etcher)."""
     device = str(req.get("device", ""))
     with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-        progress.step("Writing the card's image to the stick")
+        progress.step("Writing the card's image to the USB drive")
         return usbstick.export_image(device, progress.bytes)
 
 
@@ -2274,7 +2270,7 @@ def usb_kit_import(req):
         budget = 500
     try:
         with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
-            progress.step(f"Checking and copying the {kit} kit from the stick")
+            progress.step(f"Checking and copying the {kit} kit from the USB drive")
             return usbstick.import_kit(device, kit, budget, progress.bytes)
     finally:
         _kits_status()
@@ -2581,7 +2577,7 @@ def _ap_inventory():
 
 def _ap_failed(exc):
     """A step that failed (ap.start has undone what it did): said on the Network page and to the hub."""
-    note = f"the hotspot didn't start: {exc}"
+    note = f"The hotspot did not start: {exc}"
     _ap_record_status(None, note)
     return ValueError(note)
 
@@ -2652,11 +2648,11 @@ def share_set(req):
     with it; off takes all of it back. The containment stays as the owner set it (Security page)."""
     level = str(req.get("level", ""))
     if level not in share.LEVELS:
-        raise ValueError(f"level is one of {', '.join(share.LEVELS)}")
+        raise ValueError(f"Select a level: {', '.join(share.LEVELS)}")
     rec = share.load()
     rec["level"] = level
     share_apply(rec)
-    return f"guests' internet: {share.WORDS[level]}"
+    return f"Guest internet sharing: {share.WORDS[level]}."
 
 
 def share_allow(req):
@@ -2665,20 +2661,20 @@ def share_allow(req):
     signs in, at users-web)."""
     rec = share.load()
     if rec["level"] not in share.LET_OUT:
-        raise ValueError(f"devices are not let out one by one at level {rec['level']}")
+        raise ValueError(f"At level {rec['level']}, the box does not let devices through one by one")
     addr = share.guest_address(req.get("ip"))
     if not addr:
-        raise ValueError("not an address on the hotspot")
+        raise ValueError("This is not an address on the hotspot")
     key = addr
     if rec["contain"]["by_mac"]:
         r = run("ip", "neigh", "show", addr)
         key = share.mac_of(addr, r.stdout if r.returncode == 0 else "")
         if not key:
-            raise ValueError(f"no hardware address known for {addr}: is it still on the hotspot?")
+            raise ValueError(f"The box has no hardware address for {addr}. Check that the device is still on the hotspot.")
     r = run(*share.allow_command(key))
     if r.returncode != 0:
-        raise ValueError("could not let it out: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
-    return f"{addr} ({key}) let out for {share.OUT_HOURS} h" if key != addr else f"{addr} let out for {share.OUT_HOURS} h"
+        raise ValueError("The box could not let the device through: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+    return f"{addr} ({key}) can reach the internet through the box for {share.OUT_HOURS} hours." if key != addr else f"{addr} can reach the internet through the box for {share.OUT_HOURS} hours."
 
 
 def _guest_policy_follows():
@@ -2736,9 +2732,9 @@ def ap_on(req):
     if plan.get("needs_choice") or plan["kind"] == "none":
         _ap_record_status(plan, plan["text"])
         return plan["text"] + (f" ({plan['why']})" if plan.get("why") else "")
-    note = f"up on {ap.ap_iface(plan)}, channel {plan['channel']}: {plan['text']}"
+    note = f"Hotspot enabled on {ap.ap_iface(plan)}, channel {plan['channel']}. {plan['text']}"
     if plan.get("drops_uplink"):
-        note += f" Your WiFi link is off: open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm, or it comes back by itself."
+        note += f" Your WiFi link is off. Open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm. Otherwise the box restores the WiFi link."
     note += _guest_policy_follows()
     _ap_record_status(plan, note)
     return note
@@ -2756,10 +2752,10 @@ def ap_try(req):
     except RuntimeError as exc:
         raise _ap_failed(exc) from exc
     if worked is None:
-        note = "nothing to try: " + plan["text"]
+        note = "There is nothing to try. " + plan["text"]
     else:
-        note = ("it holds a channel of its own beside your WiFi: guests won't notice your WiFi roam" if worked
-                else "it can't hold a channel of its own here, so it follows your WiFi's channel")
+        note = ("The hotspot holds a channel of its own beside your WiFi. Guests do not notice when your WiFi roams." if worked
+                else "The hotspot cannot hold a channel of its own here, so it follows the channel of your WiFi.")
         note += _guest_policy_follows()
     _ap_record_status(plan, note)
     return note
@@ -2794,7 +2790,7 @@ def uplink_set(req):
     try:
         moved = roaming.apply(s, old, iface)
     except ValueError as exc:
-        raise ValueError(f"not saved: {exc}") from None
+        raise ValueError(f"Not saved: {exc}") from None
     s = uplink.save_settings(s)
     _uplink_running()
     return (f"Uplink: {uplink.words(s)}" + (", custom values" if s["overrides"] else "")
@@ -2896,7 +2892,7 @@ def wifisync(req):
         raise ValueError("wifisync is not installed on this box")
     if do == "undo":
         if not rec.get("was"):
-            raise ValueError("nothing to undo: wifisync was not changed here")
+            raise ValueError("Nothing to undo. wifisync was not changed on this box.")
         want = rec["was"] == "enabled"
     else:
         want = do == "on"
@@ -2914,8 +2910,11 @@ def wifisync(req):
         netinv.write(netinv.scan(), CONTROL / "netinv.json")
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
-    return ("wifisync back as it was" if do == "undo" else
-            f"wifisync {'on: it switches the WiFi off whenever meshtasticd' + chr(39) + 's WiFi is off' if want else 'off: it no longer touches the WiFi radio'}")
+    if do == "undo":
+        return "wifisync is back as it was."
+    if want:
+        return "wifisync is on. It switches the WiFi off whenever the WiFi of meshtasticd is off."
+    return "wifisync is off. It no longer changes the WiFi radio."
 
 
 def other_ap(req):

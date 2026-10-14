@@ -46,7 +46,7 @@ state["fail_up"] = True
 try:
     R.lock("aa:bb:cc:00:00:03", fake); check("a lock whose access point does not answer: refused", False)
 except ValueError as exc:
-    check("a new lock whose access point does not answer: refused, the lock before back in force, the link up again", "as before" in str(exc)
+    check("a new lock whose access point does not answer: refused, the lock before back in force, the link up again", "is still locked to aa:bb:cc:00:00:02" in str(exc)
           and state["bssid"] == "aa:bb:cc:00:00:02", (str(exc), state["bssid"]))
 state["fail_up"] = False
 msg = R.unlock(fake)
@@ -55,7 +55,7 @@ state["fail_up"] = True
 try:
     R.lock("aa:bb:cc:00:00:04", fake); check("a first lock that does not answer: refused", False)
 except ValueError as exc:
-    check("a first lock that does not answer: refused, taken off again, nothing recorded", "taken off again" in str(exc)
+    check("a first lock that does not answer: refused, taken off again, nothing recorded", "removed the lock" in str(exc)
           and state["bssid"] == "" and "lock" not in R.record())
 state["fail_up"] = False
 try:
@@ -82,7 +82,7 @@ said = R.undo_all("wlan0", fake)
 check("undo-all puts back what is in force", any("background scans back" in x for x in said) and not R.record(), said)
 check("uninstall.sh runs undo-all when roaming changed anything", "uplink-roaming.json" in (REPO / "uninstall.sh").read_text())
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
-check("saving settings applies roaming first, and keeps the old if it fails", "roaming.apply(s, old, iface)" in hc and "not saved:" in hc)
+check("saving settings applies roaming first, and keeps the old if it fails", "roaming.apply(s, old, iface)" in hc and "Not saved:" in hc)
 # The box doctor: roaming often with the hotspot on the same radio, said with the choices.
 from irate_box.root import health  # noqa: E402
 inv = {"radios": [{"iface": "wlan0", "roaming": {"ssid": "HomeNet", "aps": [{}, {}, {}], "channels": [6, 11], "hotspot_shares": True}}]}

@@ -41,11 +41,11 @@ def parse_signers(text):
             continue
         m = SIGNER.match(line)
         if not m:
-            raise ValueError(f"line {n} is not \"name key-type key\" (as ssh-keygen -Y uses: e.g. "
+            raise ValueError(f"Line {n} is not \"name key-type key\" (the format ssh-keygen -Y uses, for example "
                              "owner@laptop ssh-ed25519 AAAA…)")
         out.append(line)
     if len(out) > MAX_SIGNERS:
-        raise ValueError(f"at most {MAX_SIGNERS} keys")
+        raise ValueError(f"Add at most {MAX_SIGNERS} keys.")
     return out
 
 
@@ -62,10 +62,10 @@ def load(etc):
 def save(etc, level, signers_text, write):
     """Check and keep the choice; write(path, text) is the caller's root-safe writer."""
     if level not in LEVELS:
-        raise ValueError(f"level is one of {', '.join(LEVELS)}")
+        raise ValueError(f"Select a level: {', '.join(LEVELS)}.")
     signers = parse_signers(signers_text)
     if level == "tags" and not signers:
-        raise ValueError("signed releases need at least one key to trust")
+        raise ValueError("Add at least one trusted key to require signed releases.")
     data = {"level": level, "signers": signers}
     write(Path(etc) / FILE_NAME, json.dumps(data, indent=2))
     return data
@@ -141,15 +141,15 @@ def check_commits(src, revs, key_file):
     """(ok, detail): each of revs carries a good signature by the key in key_file (GitHub's).
     Read with gpgv, the verify-only tool apt itself uses: no agent, no keyring of root's touched."""
     if not shutil.which("gpgv"):
-        return False, "gpgv is not installed, so GitHub's signatures cannot be read"
+        return False, "Verification tool unavailable: gpgv is not installed, so the box cannot read GitHub's signatures"
     if not Path(key_file).is_file():
-        return False, f"GitHub's key is not in the installed code ({key_file})"
+        return False, f"GitHub's key is missing from the installed code ({key_file})"
     if not revs:
-        return True, "nothing new to check"
+        return True, "No new commits to check"
     try:
         keyring = _dearmor(Path(key_file).read_text())
     except (OSError, ValueError) as exc:
-        return False, f"GitHub's key could not be read: {exc}"
+        return False, f"The box could not read GitHub's key: {exc}"
     with tempfile.TemporaryDirectory() as tmp:
         ring = Path(tmp) / "github.gpg"
         ring.write_bytes(keyring)
@@ -158,22 +158,22 @@ def check_commits(src, revs, key_file):
             sig, payload = _split_commit(raw)
             short = rev[:7]
             if not sig:
-                return False, f"Commit {short} is not signed"
+                return False, f"Commit {short} unsigned"
             (Path(tmp) / "sig").write_bytes(sig)
             (Path(tmp) / "payload").write_bytes(payload)
             out = subprocess.run(["gpgv", "--status-fd", "1", "--keyring", str(ring), str(Path(tmp) / "sig"), str(Path(tmp) / "payload")],
                                  capture_output=True, text=True, timeout=60, env=dict(os.environ, GNUPGHOME=tmp))
             if out.returncode != 0 or "[GNUPG:] VALIDSIG" not in out.stdout:
-                return False, f"Commit {short} is not signed by GitHub's key"
+                return False, f"Commit {short} not signed by the configured GitHub key"
     return True, f"{len(revs)} commit{'s' if len(revs) != 1 else ''} signed by GitHub"
 
 
 def check_tag(src, tag, signers):
     """(ok, detail): the tag is signed with one of the owner's SSH keys."""
     if not signers:
-        return False, "no key to trust is set (Updates: what an update must carry)"
+        return False, "No trusted key is set. Add one under Update verification on the Updates page"
     if not shutil.which("ssh-keygen"):
-        return False, "ssh-keygen is not installed, so the release's signature cannot be read"
+        return False, "Verification tool unavailable: ssh-keygen is not installed, so the box cannot read the release signature"
     with tempfile.NamedTemporaryFile("w", suffix=".allowed_signers", delete=False) as f:
         f.write("\n".join(signers) + "\n")
         path = f.name
@@ -183,6 +183,6 @@ def check_tag(src, tag, signers):
         os.unlink(path)
     if out.returncode != 0:
         line = next((l for l in (out.stderr or "").splitlines() if l.strip()), "no good signature")
-        return False, f"{tag} is not signed with a key this box trusts ({line.strip()[:160]})"
+        return False, f"Release tag {tag} not signed by a trusted key ({line.strip()[:160]})"
     good = re.search(r'Good "git" signature for (\S+)', out.stderr or "")
-    return True, f"{tag} signed by {good.group(1) if good else 'a trusted key'}"
+    return True, f"Release tag {tag} signed by {good.group(1) if good else 'a trusted key'}"

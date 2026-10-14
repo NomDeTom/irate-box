@@ -81,7 +81,7 @@ def source(name):
     for s in sources():
         if s["name"] == name:
             return s
-    raise ValueError("source: a mirror or a private repository on this box")
+    raise ValueError("Select a mirror or a private repository on this box.")
 
 
 def refs(src):
@@ -101,12 +101,12 @@ def refs(src):
 
 def resolve(src, ref):
     if not REF_RE.match(ref or "") or ".." in ref:
-        raise ValueError("ref: a tag or a branch")
+        raise ValueError("Select a tag or a branch.")
     for kind in ("tags", "heads"):
         out = _git("rev-parse", "--verify", "--quiet", f"refs/{kind}/{ref}^{{commit}}", cwd=src["path"])
         if out.returncode == 0:
             return out.stdout.decode().strip()
-    raise ValueError(f"{src['name']} keeps no tag or branch {ref}")
+    raise ValueError(f"Tag or branch {ref} not found in {src['name']}.")
 
 
 def _seg_match(pattern, path):
@@ -152,7 +152,7 @@ def targets(src, ref):
         pass
     names = _git("ls-tree", "-r", "--name-only", commit, cwd=src["path"]).stdout.decode("utf-8", "replace").splitlines()
     if "platformio.ini" not in names:
-        raise ValueError(f"{src['name']} has no platformio.ini at {ref}")
+        raise ValueError(f"Build script missing. {src['name']} has no platformio.ini at {ref}.")
     root = _read_blobs(src["path"], commit, ["platformio.ini"]).get("platformio.ini", "")
     top = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
     top.read_string(root)
@@ -257,16 +257,16 @@ def queue(name, ref, envs, floor_mb=512):
     """Queue each of envs from source `name` at `ref`: one job per target, ordered by family."""
     src = source(name)
     if not isinstance(envs, list) or not envs:
-        raise ValueError("targets: one or more")
+        raise ValueError("Select one or more targets.")
     if len(envs) > MAX_PER_REQUEST:
-        raise ValueError(f"at most {MAX_PER_REQUEST} targets in one request, for now")
+        raise ValueError(f"Select up to {MAX_PER_REQUEST} targets in one request.")
     data = targets(src, ref)
     known = {t["env"]: t for t in data["targets"]}
     bad = [e for e in envs if e not in known]
     if bad:
-        raise ValueError(f"not targets of {name} at {ref}: {', '.join(map(str, bad[:5]))}")
+        raise ValueError(f"Not targets of {name} at {ref}: {', '.join(map(str, bad[:5]))}.")
     if free_bytes() < floor_mb << 20:
-        raise ValueError(f"the card has under {floor_mb} MB free: builds wait until there is room")
+        raise ValueError(f"Not enough storage to queue a build. The box needs {floor_mb} MB free.")
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
     batch, now = secrets.token_hex(4), time.time()
     picked = sorted(dict.fromkeys(envs), key=lambda e: (known[e]["family"], e))
@@ -317,11 +317,11 @@ def queue_tools(name, ref, family, offline=False, env=None):
     data = targets(src, ref)
     fam = [t for t in data["targets"] if t["family"] == family]
     if not fam:
-        raise ValueError(f"no family {family} in {name} at {ref}")
+        raise ValueError(f"Family {family} not found in {name} at {ref}.")
     if env:
         pick = next((t for t in fam if t["env"] == env), None)
         if pick is None:
-            raise ValueError(f"{env} is not a {family} target in {name} at {ref}")
+            raise ValueError(f"{env} is not a {family} target in {name} at {ref}.")
     else:
         want = suggested(fam, _flasher_boards())[family]
         pick = next(t for t in fam if t["env"] == want)
@@ -335,15 +335,15 @@ def queue_tools(name, ref, family, offline=False, env=None):
 
 def _job_path(job_id):
     if not re.fullmatch(r"[0-9]{6,24}-[0-9a-f]{6}", job_id or ""):
-        raise ValueError("not a waiting build")
+        raise ValueError("This is not a waiting build.")
     p = next((confine.under(d, f"{job_id}.json") for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()),
              confine.under(ci.QUEUE, f"{job_id}.json"))
     try:
         j = json.loads(p.read_text())
     except (OSError, ValueError):
-        raise ValueError("not a waiting build (it may have started)")
+        raise ValueError("Build already started, or it is not a waiting build.")
     if j.get("kind") != "firmware":
-        raise ValueError("not a firmware build")
+        raise ValueError("This is not a firmware build.")
     return p, j
 
 
@@ -424,8 +424,8 @@ def readiness(history):
         if s.get("tools_only"):
             if f not in tools:
                 res = s.get("resources") or {}
-                tools[f] = (f"tools fetched (PlatformIO's tools {round((res.get('tools_bytes') or 0) / 2 ** 20)} MB), not yet built"
-                            if state == "passed" else "its tools could not be fetched here: see the log")
+                tools[f] = (f"Tools downloaded (PlatformIO tools {round((res.get('tools_bytes') or 0) / 2 ** 20)} MB). Build not tested."
+                            if state == "passed" else "Tools download failed. See the log.")
         elif s.get("offline"):
             last_offline.setdefault(f, state)
         elif state == "passed":
@@ -433,9 +433,9 @@ def readiness(history):
     out = dict(tools)
     for f in built | set(last_offline):
         off = last_offline.get(f)
-        out[f] = "offline ready" if off == "passed" else \
-            ("built here; failed offline: see its log" if off else "built here; not yet tried offline") if f in built else \
-            "failed offline: see its log"
+        out[f] = "Offline build passed for the test target" if off == "passed" else \
+            ("Build passed. Offline build failed. See the log." if off else "Build passed. Offline build not tested.") if f in built else \
+            "Offline build failed. See the log."
     return out
 
 
@@ -536,12 +536,12 @@ FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
 
 def _run(run_number):
     if not re.fullmatch(r"[0-9]{1,6}", str(run_number or "")):
-        raise ValueError("run: a factory run's number")
+        raise ValueError("Enter the number of a factory run.")
     run = confine.under(ci.RUNS, RUNS_NAME, str(run_number))
     try:
         return run, json.loads((run / "status.json").read_text())
     except (OSError, ValueError):
-        raise ValueError("no such run")
+        raise ValueError("Run not found.")
 
 
 def _write(path, data):
@@ -562,18 +562,18 @@ def publish(run_number):
     """Offer one passed build in the web flasher. Returns {version (the flasher's release), env}."""
     run, st = _run(run_number)
     if st.get("state") != "passed" or st.get("tools_only"):
-        raise ValueError("only a build that passed can go to the flasher")
+        raise ValueError("Only successful firmware builds can be published.")
     arts = set(st.get("artifacts") or [])
     names = [n for n in arts if n.endswith(".mt.json")]
     if len(names) != 1:
-        raise ValueError("this build kept no manifest (.mt.json): a native build, or one from before the factory kept them")
+        raise ValueError("This build kept no manifest (.mt.json). Native builds and builds from before the factory kept manifests cannot be published.")
     try:
         mt = json.loads(confine.under(run, "artifacts", names[0]).read_text())
     except (OSError, ValueError):
-        raise ValueError("its manifest cannot be read")
+        raise ValueError("The manifest cannot be read.")
     env, version = st.get("env"), str(mt.get("version", ""))
     if not VERSION_RE.match(version) or mt.get("platformioTarget") != env or not ENV_RE.match(env or ""):
-        raise ValueError("its manifest is not this build's")
+        raise ValueError("The manifest does not belong to this build.")
     # Each file the manifest names, as kept: the nRF52 update zip is named -ota.zip in the manifest
     # (bin/platformio-custom.py) but built as .zip. The .elf (debug only) and the bare program are
     # never kept, and leave the manifest.
@@ -585,11 +585,11 @@ def publish(run_number):
             continue
         data = confine.under(run, "artifacts", kept).read_bytes()
         if entry.get("md5") and hashlib.md5(data).hexdigest() != entry["md5"]:
-            raise ValueError(f"{kept} does not match its manifest's MD5")
+            raise ValueError(f"Digest mismatch. {kept} does not match the MD5 in the manifest.")
         files.append(entry)
         plan.append((name, data))
     if not files:
-        raise ValueError("none of the files its manifest names were kept")
+        raise ValueError("The build kept none of the files that the manifest names.")
     folder = confine.under(FIRMWARE, version + BUILT)
     folder.mkdir(parents=True, exist_ok=True)
     os.chmod(folder, 0o755)
@@ -612,13 +612,13 @@ def unpublish(version, env):
     """Take one target out of a release built here; the release goes with its last target. A file
     another target's manifest also names (an ESP32's shared OTA loader) stays."""
     if not (version.endswith(BUILT) and VERSION_RE.match(version[:-len(BUILT)])) or not ENV_RE.match(env or ""):
-        raise ValueError("not a release built here")
+        raise ValueError("This release was not built on this box.")
     folder = confine.under(FIRMWARE, version)
     mt_path = confine.under(folder, f"firmware-{env}-{version}.mt.json")
     try:
         mine = {f.get("name") for f in json.loads(mt_path.read_text()).get("files", [])}
     except (OSError, ValueError):
-        raise ValueError(f"{env} is not in {version}")
+        raise ValueError(f"{env} is not in {version}.")
     mt_path.unlink()
     others = set()
     for m in folder.glob(f"firmware-*-{version}.mt.json"):

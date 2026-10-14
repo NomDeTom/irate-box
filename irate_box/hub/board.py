@@ -160,7 +160,7 @@ class Board:
                                _clean(text, MAX_TEXT))
         hue = _clean_hue(hue)
         if not author or not title or not text:
-            raise ValueError("author, title and text are required")
+            raise ValueError("Author, title and message are required.")
 
         with self._lock:
             now = self.clock.ticks()
@@ -183,7 +183,7 @@ class Board:
         author, text = _clean(author, MAX_AUTHOR), _clean(text, MAX_TEXT)
         hue = _clean_hue(hue)
         if not author or not text:
-            raise ValueError("author and text are required")
+            raise ValueError("Author and message are required.")
 
         with self._lock:
             now = self.clock.ticks()

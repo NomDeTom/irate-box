@@ -74,11 +74,11 @@ st["guests"] = 1
 try:
     R.check_ready(inv, "wlan0", "radio-reset"); check("refused with guests on the hotspot", False)
 except ValueError as exc:
-    check("refused with guests on the hotspot", "guests" in str(exc), str(exc))
+    check("refused with guests on the hotspot", "Devices are connected to the hotspot" in str(exc), str(exc))
 st["guests"] = 0
 alone = {"radios": [dict(radio, roaming={"aps": [radio["roaming"]["aps"][0]]}), inv["radios"][1]]}
 for i, exp, why in ((alone, "follows-roam", "no access point on another channel"), ({"radios": [radio]}, "follows-roam", "no hotspot"),
-                    (inv, "warp", "not an experiment"), (inv, "radio-reset", None)):
+                    (inv, "warp", "not a known experiment"), (inv, "radio-reset", None)):
     try:
         R.check_ready(i, "wlan0", exp)
         check(f"ready: {exp}" if why is None else f"refused: {why}", why is None)
@@ -102,16 +102,16 @@ R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check("  a hotspot that stays: said so", R.results()[key]["follows-roam"]["answer"] == "stays")
 from irate_box.root import radio as radio_mod  # noqa: E402
 restored = []
-radio_mod.restore_hotspot = lambda *a, **k: restored.append(1) or "the hotspot started again"
+radio_mod.restore_hotspot = lambda *a, **k: restored.append(1) or "The hotspot started again."
 st.update(ap_dies=True)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check("  a hotspot that went down: said so, and started again", R.results()[key]["follows-roam"]["answer"] == "doesn't" and restored)
 st.update(ap_dies=False)
 
-radio_mod.reset = lambda *a, **k: "USB 1-1.1 (AIC8800DC) reset at its port; wlan0 is back; the hotspot started again"
+radio_mod.reset = lambda *a, **k: "USB 1-1.1 (AIC8800DC) reset at its port. wlan0 is back. The hotspot started again."
 R.experiment(inv, "wlan0", "radio-reset", sleep=nap)
 got = R.results()[key]["radio-reset"]
-check("radio-reset: timed, the link and the hotspot back", got["answer"] == "works" and "the link back" in got["detail"] and "the hotspot back" in got["detail"], got)
+check("radio-reset: timed, the link and the hotspot back", got["answer"] == "works" and "The link was back" in got["detail"] and "The hotspot was back" in got["detail"], got)
 
 R.experiment(inv, "wlan0", "driver-reset", sleep=nap)
 got = R.results()[key]["driver-reset"]

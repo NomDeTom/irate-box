@@ -44,13 +44,13 @@ def git(*a, **k):
 librarian._git = git
 r = firmware.sync_configs(rel, log=lambda *a: None)
 d = json.loads(firmware.CONFIGS.read_text())
-check("from the source package held on the box", "held on this box" in r and d["from"].endswith("held on this box"), r)
+check("from the source package held on the box", "cached on this box" in r and d["from"].endswith("cached on this box"), r)
 check("  git not even tried", not calls, calls)
 check("  every yaml, with its path below config.d", [f["path"] for f in d["files"]] == ["OpenWRT/one.yaml", "display.yml", "lora-a.yaml"], d["files"])
 check("  the texts as in the package", d["files"][2]["text"] == "Lora:\n  CS: 8\n")
 check("  stops at the folder's end (nothing from bin/ or src/ after it)", all("device-install" not in f["path"] for f in d["files"]))
 r = firmware.sync_configs(rel, log=lambda *a: None)
-check("the same release again: not fetched", "already held" in r, r)
+check("the same release again: not fetched", "already cached" in r, r)
 firmware.CONFIGS.unlink(); held.unlink()
 rel2 = dict(rel, source=None)
 try:

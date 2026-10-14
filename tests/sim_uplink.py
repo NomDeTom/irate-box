@@ -387,7 +387,7 @@ for bad in [{"pace": "fast"}, {"reach": "nuke"}, {"guests": "maybe"}]:
 check("the settings in words", U.words(U.validate({"pace": "steady", "reach": "radio", "guests": "ignore", "on_wedge": "radio"}))
       == "steady pace, reach radio, sensitivity 3 missed checks, guests or not, a failed radio reset at once"
       and U.words(U.validate({"pace": "gentle", "on_wedge": "reboot", "retry": "sparing", "give_up": "hour"}))
-      == "gentle pace, reach reboot, sensitivity 3 missed checks, a failed radio reset at once and the box rebooted if it isn't back, "
+      == "gentle pace, reach reboot, sensitivity 3 missed checks, a failed radio reset at once and the box rebooted if it is not back, "
          "reconnects at most every 6 h, stops trying after an hour of the network at fault")
 
 # 7f. The escalation record (the box doctor's chart): each outage, step, hold and stall, with who took it.

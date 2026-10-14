@@ -36,28 +36,28 @@ def validate(report):
     """The report as kept, or ValueError: a known kind, at most MAX_RESULTS results, each field of
     the right type and length."""
     if not isinstance(report, dict) or report.get("kind") not in KINDS:
-        raise ValueError(f"kind: one of {', '.join(KINDS)}")
+        raise ValueError(f"Scan data invalid. kind must be one of {', '.join(KINDS)}")
     results = report.get("results")
     if not isinstance(results, list) or len(results) > MAX_RESULTS:
-        raise ValueError(f"results: a list of up to {MAX_RESULTS}")
+        raise ValueError(f"Scan data invalid. results must be a list of at most {MAX_RESULTS} items")
     ran = report.get("ran")
     if ran is not None and (not isinstance(ran, (int, float)) or not 946684800 <= ran <= time.time() + 86400):
-        raise ValueError("ran: when the scan ran, as a Unix time")
+        raise ValueError("Scan data invalid. ran must be the time of the scan as a Unix time")
     out = []
     for r in results:
         if not isinstance(r, dict):
-            raise ValueError("each result is an object")
+            raise ValueError("Scan data invalid. Each result must be an object")
         port, proto = r.get("port"), r.get("proto", "tcp")
         if not (port in (None, "general") or (isinstance(port, int) and 0 < port < 65536)) or proto not in ("tcp", "udp"):
-            raise ValueError("port: 1-65535 (or general), proto: tcp or udp")
+            raise ValueError("Scan data invalid. port must be 1 to 65535 or general, and proto must be tcp or udp")
         item = {"port": port, "proto": proto, "host": _text(r.get("host"), TEXT["host"]), "service": _text(r.get("service"), TEXT["service"])}
         if report["kind"] == "openvas":
             cvss = r.get("cvss", 0)
             if not isinstance(cvss, (int, float)) or not 0 <= cvss <= 10:
-                raise ValueError("cvss: 0 to 10")
+                raise ValueError("Scan data invalid. cvss must be 0 to 10")
             cves = r.get("cves") or []
             if not isinstance(cves, list) or not all(isinstance(c, str) and CVE_RE.match(c) for c in cves[:50]):
-                raise ValueError("cves: a list of CVE ids")
+                raise ValueError("Scan data invalid. cves must be a list of CVE ids")
             item.update(cvss=float(cvss), name=_text(r.get("name"), TEXT["name"]), summary=_text(r.get("summary"), TEXT["summary"]),
                         solution=_text(r.get("solution"), TEXT["solution"]), cves=cves[:50])
         else:
@@ -88,5 +88,5 @@ def save(report):
 
 def remove(kind):
     if kind not in KINDS:
-        raise ValueError(f"kind: one of {', '.join(KINDS)}")
+        raise ValueError(f"Scan data invalid. kind must be one of {', '.join(KINDS)}")
     confine.under(DIR, f"{kind}.json").unlink(missing_ok=True)

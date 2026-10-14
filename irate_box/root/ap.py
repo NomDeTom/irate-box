@@ -100,14 +100,14 @@ def up_steps(plan):
     """The commands that bring the hotspot up, in order (the files written first). Refuses a plan
     that waits on the owner, or has no channel."""
     if plan.get("needs_choice") or plan["kind"] == "none" or not plan.get("channel"):
-        raise ValueError("this plan doesn't start a hotspot: " + plan.get("text", ""))
+        raise ValueError("This plan does not start a hotspot. " + plan.get("text", ""))
     steps, iface = [], ap_iface(plan)
     if iface == SHARED_IFACE:
         steps.append(["iw", "dev", plan["iface"], "interface", "add", SHARED_IFACE, "type", "__ap"])
     if plan.get("backend") == "hostapd":
         # No NetworkManager: the address set by hand, hostapd runs the access point.
         if plan.get("drops_uplink") and plan.get("uplink"):
-            raise ValueError("giving up the WiFi link for the hotspot needs NetworkManager here")
+            raise ValueError("The hotspot can take the WiFi link only if NetworkManager runs the link on this box.")
         steps += [["ip", "addr", "replace", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
                   ["ip", "link", "set", iface, "up"], ["systemctl", "restart", HOSTAPD_UNIT],
                   ["systemctl", "restart", DNSMASQ_UNIT]]
@@ -228,13 +228,13 @@ def boot(run, inv, settings, ssid=DEFAULT_SSID):
     again. A hotspot that took the box's own link and was never confirmed: the link comes back instead."""
     rec = _load(RECORD, {})
     if not rec.get("up"):
-        return "the hotspot is off"
+        return "The hotspot is off."
     if not rec.get("confirmed", True):
-        return stop(run) + ": it had taken the box's WiFi link and wasn't confirmed, so the link is back"
+        return stop(run) + ". The hotspot took the box's WiFi link and nobody confirmed it, so the box restored the link."
     plan = start(run, inv, settings, rec.get("owner") or {}, ssid)
     if plan.get("needs_choice") or plan["kind"] == "none":
-        return "not started again: " + plan["text"]
-    return f"started again on {ap_iface(plan)}, channel {plan['channel']}"
+        return "The hotspot did not start again. " + plan["text"]
+    return f"The hotspot started again on {ap_iface(plan)}, channel {plan['channel']}."
 
 
 def dispatcher_hook():
@@ -309,7 +309,7 @@ def stop(run):
     run("systemctl", "disable", BOOT_UNIT)
     DISPATCHER.unlink(missing_ok=True)
     _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time()}))
-    return "the hotspot is off"
+    return "The hotspot is off."
 
 
 def confirm(run):
@@ -318,7 +318,7 @@ def confirm(run):
     rec = _load(RECORD, {})
     rec["confirmed"] = True
     _put(RECORD, json.dumps(rec))
-    return "kept: the hotspot stays, the box's WiFi link stays off"
+    return "The hotspot stays on and the box's WiFi link stays off."
 
 
 def channels_now(run):
@@ -361,9 +361,9 @@ def follow(run, inv, settings, iface, ssid=DEFAULT_SSID):
     """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel."""
     rec = _load(RECORD, {})
     if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink") or rec["plan"].get("uplink") != iface:
-        return "nothing to follow"
+        return "The hotspot has no link to follow."
     plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, _load(TRIED, {}))
     if plan.get("channel") == rec["plan"].get("channel"):
-        return f"still on channel {plan.get('channel')}"
+        return f"The hotspot is still on channel {plan.get('channel')}."
     start(run, inv, settings, rec.get("owner") or {}, ssid)
-    return f"moved to channel {plan.get('channel')} with the link"
+    return f"The hotspot moved to channel {plan.get('channel')} with the link."

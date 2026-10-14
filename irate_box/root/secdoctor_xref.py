@@ -81,12 +81,12 @@ SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883"}   # and each declared servic
 COMPOUND = [
     {"key": "sudo-and-passwords", "title": "A passwordless sudo rule, and SSH takes passwords",
      "needs": [("security-page", "page-sudo-nopasswd"), ("security-page", "page-ssh-password")],
-     "detail": "One guessed password on the network is root with no step in between.",
-     "fix": "Turn SSH password logins off, or take the rule out (Security)."},
+     "detail": "One guessed password on the network gives root access with no further step.",
+     "fix": "Disable SSH password sign-in, or remove the rule (Security)."},
     {"key": "disk-and-passwords", "title": "An account in the disk group, and SSH takes passwords",
      "needs": [("security-page", "page-group-disk"), ("security-page", "page-ssh-password")],
-     "detail": "One guessed password reads the raw card: the password file, the CA's key, the admin's hash.",
-     "fix": "Take the account out of the disk group, or turn SSH password logins off (Security)."},
+     "detail": "One guessed password lets an attacker read the raw card. This includes the password file, the CA key and the administrator password hash.",
+     "fix": "Remove the account from the disk group, or disable SSH password sign-in (Security)."},
 ]
 PORT_RE = re.compile(r"^port-(tcp|udp)-(\d+)$")
 
@@ -116,12 +116,12 @@ def title(key):
 
 # What each source covers and cannot see, said once on the report.
 COVERAGE = {
-    "doctor": "The box's own design, as its security review found it: not general hardening.",
+    "doctor": "The box's own design, as its security review found it. It does not cover general hardening.",
     "security-page": "What listens, SSH, pending security updates, the kernel's settings, root's groups.",
-    "debsecan": "Debian's packages only: blind to the vendor kernel, ttyd, SilverBullet, Caddy's release build.",
-    "debian-cis": "Settings against the CIS benchmark (a general server's, not a hotspot's), not software versions.",
-    "lynis": "A second audit of settings, with its own tests; not software versions.",
-    "openvas": "Only what the network shows, from where it ran; including software debsecan can't see.",
+    "debsecan": "Debian packages only. It cannot see the vendor kernel, ttyd, SilverBullet or the Caddy release build.",
+    "debian-cis": "Settings against the CIS benchmark for general servers, not for a hotspot. It does not check software versions.",
+    "lynis": "A second audit of settings, with its own tests. It does not check software versions.",
+    "openvas": "Only what the network shows, from where it ran. It includes software that debsecan cannot see.",
     "nmap": "Only which ports answer, from where it ran.",
 }
 
@@ -134,7 +134,7 @@ COVERAGE = {
 CIS = {
     "1.1": ("Separate partitions for /tmp, /var, /home", "suggest", "The benchmark wants each on a partition of its own, mounted nodev, nosuid, noexec.",
             "A board on one SD card has one partition; doing it means re-imaging."),
-    "1.3": ("sudo's own log", "suggest", "sudo can keep a log of every command run through it, apart from the journal.",
+    "1.3": ("sudo's own log", "suggest", "sudo can keep a log of every command that it runs, apart from the journal.",
             "Optional: the journal already records each use of sudo (with logs on the card, they survive a power cut)."),
     "1.4": ("File integrity checking (Tripwire, AIDE)", "suggest", "A tool that fingerprints the system's files and reports any change.",
             "Heavy for a small board; the doctor's \"Installed code\" step already checks the hub's own files and their owners."),
@@ -142,14 +142,14 @@ CIS = {
             "This board boots with U-Boot, not GRUB; anyone holding the SD card owns the box regardless."),
     "1.6": ("Process hardening (NX, address randomisation, core dumps)", "suggest", "Memory protections that make an exploit harder to aim, and no core dumps from privileged programs.",
             "Address randomisation and core dumps are kernel settings (sysctl); NX is the CPU's, reported oddly by the 32-bit ARM kernel."),
-    "1.7": ("AppArmor", "not-here", "Mandatory access control: profiles that confine what each program may touch.",
+    "1.7": ("AppArmor", "not-here", "Mandatory access control: profiles that limit what each program can touch.",
             "The board's vendor kernel is built without AppArmor; the hub's units use systemd's sandboxing instead."),
-    "1.8": ("Login banners", "suggest", "A warning text shown before login (/etc/motd, /etc/issue).", "Cosmetic; optional."),
+    "1.8": ("Login banners", "suggest", "A warning text shown before sign-in (/etc/motd, /etc/issue).", "Cosmetic; optional."),
     "1.9": ("Package updates", "suggest", "Updates waiting to be installed.", "See Debian's security updates (Updates)."),
     "2.2": ("Time synchronisation", "suggest", "A time service (systemd-timesyncd or chrony) keeping the clock right.",
             "The box keeps its own time (the Clock pane): with no internet there is nothing to synchronise with."),
     "3.1": ("IPv6", "suggest", "The benchmark turns IPv6 off where it is not used.",
-            "Your network may use it; the doctor's \"Reached from the internet\" step checks what IPv6 exposes."),
+            "Your network can use it. The doctor's \"Reached from the internet\" step checks what IPv6 exposes."),
     "3.2": ("Sending ICMP redirects", "suggest", "A host that is not a router should not tell others how to route.",
             "sysctl net.ipv4.conf.all.send_redirects=0 (and .default): safe on the box, guests' internet included."),
     "3.3": ("Network parameters (source routing, redirects, martians, router adverts)", "suggest",
@@ -165,23 +165,23 @@ CIS = {
     "4.4": ("logrotate's permissions", "suggest", "Rotated logs created readable by root only.", "By hand: create 0640 in /etc/logrotate.conf."),
     "5.1": ("cron's files' permissions", "suggest", "/etc/crontab and /etc/cron.* readable by root only.",
             "By hand: sudo chmod og-rwx /etc/crontab /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly /etc/cron.d"),
-    "5.2": ("SSH server settings", "suggest", "sshd's settings: who may log in, how, for how long, with which ciphers.",
+    "5.2": ("SSH server settings", "suggest", "sshd's settings: who can sign in, how, for how long, with which ciphers.",
             "The ones that matter (root login, passwords, forwarding) are choices on Security; the rest are fine-tuning in /etc/ssh/sshd_config.d."),
     "5.3": ("Password quality and lockout (PAM)", "suggest", "Rules for strong passwords and locking an account after failed tries.",
-            "They matter only where a password logs in: with SSH on keys only, that is the console."),
+            "They matter only where a password signs in. With SSH on keys only, that is the console."),
     "5.4": ("Password ageing, umask, shell timeout", "suggest", "Passwords that expire, new files private by default, idle shells logged out.",
-            "Optional on a single-owner box; expiring passwords mostly make people write them down."),
-    "5.6": ("Who may use su", "suggest", "su limited to the members of one group.", "Optional: root's password is locked, so su leads nowhere anyway."),
-    "6.1": ("World-writable, unowned and setuid files", "suggest", "Files anyone may change, files with no owner, and programs that run as root.",
+            "Optional on a box with one administrator. Expiring passwords often make people write them down."),
+    "5.6": ("Who can use su", "suggest", "su limited to the members of one group.", "Optional: root's password is locked, so su leads nowhere anyway."),
+    "6.1": ("World-writable, unowned and setuid files", "suggest", "Files anyone can change, files with no owning user, and programs that run as root.",
             "Look at the list from a shell: sudo find / -xdev \\( -perm -0002 -type f -o -nouser -o -nogroup \\) -ls"),
     "6.2": ("Users' own files' permissions", "suggest", "Dot files in home folders writable by others.", "By hand: chmod go-w on each file named."),
-    "99.1": ("USB devices", "not-here", "The benchmark blocks USB storage.", "The box reads books and updates from USB sticks on purpose."),
+    "99.1": ("USB devices", "not-here", "The benchmark blocks USB storage.", "The box reads books and updates from USB drives on purpose."),
     "99.2": ("FireWire storage", "not-here", "The benchmark blocks FireWire storage (firewire-ohci, firewire-sbp2).",
              "The boards irate-box runs on have no FireWire port."),
     "99.3": ("TCP wrappers (hosts.deny)", "not-here", "An old access list for network services.",
             "Debian 13's sshd no longer reads it; the floor (Security) is what filters the hotspot."),
     "99.4": ("Kernel audit support", "not-here", "CONFIG_AUDIT in the kernel, for auditd.", "The vendor kernel is built without it."),
-    "99.5": ("More SSH settings", "suggest", "Further sshd hardening: keys only, rekeying, strict modes, where keys may come from.",
+    "99.5": ("More SSH settings", "suggest", "Further sshd hardening: keys only, rekeying, strict modes, where keys can come from.",
              "Keys only is a choice on Security; the rest are fine-tuning in /etc/ssh/sshd_config.d."),
 }
 
@@ -198,8 +198,8 @@ def cis(section):
 # "Run the installer again"), or the hub's own work ({hub: why}): what an update of irate-box fixes. Matched by source and a pattern on the finding's id; the
 # first match wins; anything unmatched shows its fix text as it is.
 HUB_SANDBOX = "The hub's own units: hardening them is irate-box's work, done one unit at a time with a reboot each. Keep the hub updated."
-HUB_SETUP = ("The hub's own setup is not as its installer leaves it. Running the installer again (this box's version, "
-             "with its recorded options) puts it back; if it comes back after that, something on the box is changing it.")
+HUB_SETUP = ("The hub's own setup is not as its installer leaves it. Run the installer again with this box's version "
+             "and its recorded options. This puts the setup back. If the setup changes again, something on the box is changing it.")
 DO = [
     ("*", r"^(page-)?firewall$", {"go": "sec-firewall", "where": "Security → What a guest on the hotspot can reach"}),
     ("*", r"^tls|^accounts-http$", {"go": "security-https", "where": "Security → HTTPS"}),
@@ -232,12 +232,12 @@ DO = [
                                      "say": "Lynis looks for HTTPS in nginx's own sites; the hub's HTTPS is its own front, set on Security → HTTPS."}),
     ("lynis", r"^lynis-NETW-3200", {"cmd": "printf 'install %s /bin/true\\n' dccp sctp rds tipc | sudo tee /etc/modprobe.d/60-rare-protocols.conf"}),
     ("lynis", r"^lynis-STRG-1846$", {"say": "The boards irate-box runs on have no FireWire port: nothing to do."}),
-    ("*", r"^notes-login$", {"go": "apps", "where": "Apps (Notes: who may open it)"}),
+    ("*", r"^notes-login$", {"go": "apps", "where": "Apps (Notes: who can open it)"}),
     ("*", r"^addon-tailscale$", {"go": "access", "where": "Access → Remote access",
-                                 "say": "Tailscale came with the OS, and its unit's sandbox is its makers'. If you don't use it to reach the box from afar, switch it off."}),
+                                 "say": "Tailscale came with the OS, and its unit's sandbox is its makers'. If you do not use it to reach the box from afar, disable it."}),
     ("*", r"^addon-mqtt$|^(page-)?port-tcp-1883$", {"go": "addons", "where": "Add-ons",
                                            "say": "Meshtastic nodes on your network publish to it, so it answers the network on purpose, with no login (topics limited to msh/#). If no node of yours uses it, remove the MQTT add-on; if they do, accept it as it is."}),
-    ("*", r"^addon-term$", {"hub": HUB_SANDBOX, "go": "addons", "where": "Add-ons (the terminal can be removed if you don't use it)"}),
+    ("*", r"^addon-term$", {"hub": HUB_SANDBOX, "go": "addons", "where": "Add-ons (remove the terminal if you do not use it)"}),
     ("*", r"^units-|^cmdlines-", {"hub": HUB_SANDBOX}),
     ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)", {"hub": HUB_SETUP, "repair": "rerun-install"}),
     ("*", r"^(hub-body|admin-csrf)$", {"hub": "A flaw in the hub itself: an update of irate-box fixes it.", "go": "updates", "where": "Updates"}),

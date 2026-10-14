@@ -24,7 +24,7 @@ old = time.time() - 45 * 86400
 os.utime(LISTS, (old, old))
 got = {f["id"]: f for f in sd.step_offline({})}
 check("lists 45 days old, the tracker data never fetched: a warning naming both", got["offline-lists"]["status"] == "warn"
-      and "the package lists: 45 days" in got["offline-lists"]["detail"] and "never fetched" in got["offline-lists"]["detail"], got["offline-lists"]["detail"])
+      and "the package lists: 45 days" in got["offline-lists"]["detail"] and "never downloaded" in got["offline-lists"]["detail"], got["offline-lists"]["detail"])
 check("no offline kit yet: said", got["offline-bundle"]["status"] == "warn" and "None made" in got["offline-bundle"]["detail"])
 check("an empty kits cache is whole", got["offline-kits"]["status"] == "ok")
 check("no update state: nothing said of it", "offline-update" not in got)

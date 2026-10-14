@@ -27,9 +27,9 @@ RESULTS = STATE / "radio-tests.json"
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 QUESTIONS = {
-    "follows-roam": "Whether the hotspot stays put, or follows, when your WiFi roams to another channel.",
+    "follows-roam": "Whether the hotspot keeps its channel or follows the link, when your WiFi roams to another channel.",
     "radio-reset": "How long a radio reset takes, and whether the hotspot comes back after it.",
-    "driver-reset": "Whether the driver's own reset brings the WiFi back by itself, and how fast.",
+    "driver-reset": "Whether the driver reset brings the WiFi back without help, and how many seconds it takes.",
 }
 
 
@@ -102,25 +102,25 @@ def _link_up(iface, wait, sleep):
 def check_ready(inv, iface, exp):
     """(radio, ap iface or None) to run `exp` on, or ValueError saying why not."""
     if exp not in QUESTIONS:
-        raise ValueError(f"not an experiment: {exp}")
+        raise ValueError(f"Experiment unavailable: {exp} is not a known experiment.")
     if not IFACE_RE.match(str(iface or "")):
-        raise ValueError("not an interface name")
+        raise ValueError("The interface name is not valid.")
     radio = next((r for r in inv.get("radios", []) if r.get("iface") == iface and r.get("type") == "managed"), None)
     if not radio:
-        raise ValueError(f"{iface} is not a WiFi link here")
+        raise ValueError(f"{iface} is not a WiFi link on this box.")
     ap = next((r["iface"] for r in inv["radios"] if r.get("type") == "AP" and r.get("phy") == radio.get("phy")), None)
     if ap and _guests(ap):
-        raise ValueError("guests are on the hotspot: try again when nobody is")
+        raise ValueError("Devices are connected to the hotspot. Select a time when no device is connected to it.")
     if exp == "follows-roam":
         if not ap:
-            raise ValueError("no hotspot on this radio, so there's nothing to follow")
+            raise ValueError("There is no hotspot on this radio, so the hotspot has no channel to follow.")
         aps = (radio.get("roaming") or {}).get("aps") or []
         here = (radio.get("link") or {}).get("bssid")
         here_ch = (radio.get("link") or {}).get("channel")
         if not [a for a in aps if a.get("bssid") != here and a.get("channel") and a["channel"] != here_ch]:
-            raise ValueError("your network has no access point on another channel in reach, so there's no roam to try")
+            raise ValueError("Your network has no access point on another channel in reach, so the test cannot start a roam.")
     if exp == "driver-reset" and not (SYS / "module" / (radio.get("driver") or "?").replace("-", "_") / "parameters" / "fake_cmd_timeout").exists():
-        raise ValueError("this driver offers no fake command timeout to try its own reset with")
+        raise ValueError("This driver has no fake command timeout, so the test cannot start the driver reset.")
     return radio, ap
 
 
@@ -148,19 +148,21 @@ def follows_roam(radio, ap, sleep=time.sleep):
         run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", was)
         back = run("nmcli", "con", "up", "uuid", prof["uuid"], timeout=60)[0] == 0
     if code != 0:
-        return "unknown", f"the move to {target['bssid']} (channel {target['channel']}) failed: {out[-120:]}"
+        return "unknown", f"The move to {target['bssid']} on channel {target['channel']} failed: {out[-120:]}"
     if link_ch == here_ch:
-        return "unknown", f"the link did not move off channel {here_ch} (asked for {target['bssid']} on channel {target['channel']})"
+        return "unknown", f"The link did not move off channel {here_ch}. The test asked for {target['bssid']} on channel {target['channel']}."
     if after is None:
         from irate_box.root import radio as radio_mod
         said = radio_mod.restore_hotspot()
-        return "doesn't", (f"the hotspot went down when the link moved to channel {link_ch}" + (f"; {said}" if said else ""))
-    put_back = "" if back else " (the link could not be brought back up afterwards)"
+        if said:
+            return "doesn't", f"The hotspot went down when the link moved to channel {link_ch}. {said}"
+        return "doesn't", f"The hotspot went down when the link moved to channel {link_ch}."
+    put_back = "" if back else " The link could not be brought back up afterwards."
     if after == link_ch and after != before:
-        return "follows", f"the hotspot moved with the link from channel {before} to {after}; the move took {took} s{put_back}"
+        return "follows", f"The hotspot moved with the link from channel {before} to {after}. The move took {took} seconds.{put_back}"
     if after == before:
-        return "stays", f"the hotspot stayed on channel {before} while the link moved to {link_ch}: this radio runs both at once{put_back}"
-    return "unknown", f"the hotspot went from channel {before} to {after}, the link to {link_ch}{put_back}"
+        return "stays", f"The hotspot stayed on channel {before} while the link moved to {link_ch}. This radio runs both at once.{put_back}"
+    return "unknown", f"The hotspot went from channel {before} to {after} and the link went to {link_ch}.{put_back}"
 
 
 def radio_reset(radio, ap, sleep=time.sleep):
@@ -172,7 +174,12 @@ def radio_reset(radio, ap, sleep=time.sleep):
     took = round(time.time() - t0)
     hotspot = (not ap) or ap in _channels()
     answer = "works" if up and hotspot else "doesn't"
-    return answer, f"{said}; the link {'back' if up else 'not back'} {took} s after it began" + ("" if not ap else f", the hotspot {'back' if hotspot else 'not back'}")
+    link_text = f"The link was back {took} seconds after the reset began." if up else f"The link was not back {took} seconds after the reset began."
+    if not ap:
+        return answer, f"{said} {link_text}"
+    if hotspot:
+        return answer, f"{said} {link_text} The hotspot was back."
+    return answer, f"{said} {link_text} The hotspot was not back."
 
 
 def driver_reset(radio, ap, sleep=time.sleep):
@@ -196,12 +203,12 @@ def driver_reset(radio, ap, sleep=time.sleep):
         from irate_box.root import radio as radio_mod
         radio_mod.restore_hotspot()
     if not reset and before is not None:
-        return "doesn't", "the driver did not reset its device (its count of resets did not move)"
-    return ("works" if up else "doesn't"), f"the driver reset its device; the link was {'back' if up else 'not back'} {took} s after"
+        return "doesn't", "The driver did not reset its device. Its count of resets did not change."
+    return ("works" if up else "doesn't"), (f"The driver reset its device. The link was back {took} seconds later." if up else f"The driver reset its device. The link was not back {took} seconds later.")
 
 
 def experiment(inv, iface, exp, sleep=time.sleep):
     radio, ap = check_ready(inv, iface, exp)
     answer, detail = {"follows-roam": follows_roam, "radio-reset": radio_reset, "driver-reset": driver_reset}[exp](radio, ap, sleep)
     _keep(radio_key(radio), exp, answer, detail)
-    return f"{QUESTIONS[exp]} {detail[0].upper() + detail[1:]}."
+    return f"{QUESTIONS[exp]} {detail}"

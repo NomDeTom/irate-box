@@ -79,7 +79,7 @@ BLOCK = """
         const name = q.get('script'), add = q.get('add');
         if (!name) return;
         const get = async (n) => {
-            if (!/^[A-Za-z0-9-]+$/.test(n)) throw new Error(`'${n}' is not a script name`);
+            if (!/^[A-Za-z0-9-]+$/.test(n)) throw new Error(`Invalid script name '${n}'`);
             const r = await fetch(`scripts/${n}.txt`, { cache: 'no-cache' });
             if (!r.ok) throw new Error(`scripts/${n}.txt: ${r.status}`);
             return r.text();
@@ -92,17 +92,17 @@ BLOCK = """
                 text = text.replace(/\\(\\s*\\)\\s*$/, () => extra + '\\n()');
             }
         } catch (e) {
-            writeText(`Could not load the script (${e.message}). This is the built-in 1966 DOCTOR.`);
+            writeText(`Script could not be loaded (${e.message}). ELIZA is using the built-in 1966 DOCTOR script.`);
             writeText('');
             return;
         }
         const [status, s] = readScript(text);
         divLog.innerHTML = '';
-        writeText(`Script: ${name}.txt` + (add ? ` with ${add}.txt` : '') + '. Type *help and press the Enter key to see a list of commands.');
+        writeText(`Script: ${name}.txt` + (add ? ` with ${add}.txt` : '') + '. Type *help. Press Enter to show commands.');
         writeText('');
         if (status !== 'success') {
-            writeText(`This script does not run as written: ${status}`);
-            writeText('ELIZA is still running the built-in 1966 DOCTOR script.');
+            writeText(`Script parse failed: ${status}`);
+            writeText('ELIZA is using the built-in 1966 DOCTOR script.');
             writeText('');
             return;
         }

@@ -67,14 +67,14 @@ def _queue(action):
 def _busy():
     """Something for the root helper is queued or running (an install, an add-on, a scan)."""
     if any((CONTROL / "requests").glob("*.json")):
-        return "the root helper has requests waiting"
+        return "Root helper busy: other requests are waiting"
     p = _read(PROGRESS, None)
     if isinstance(p, dict):
         try:
             os.kill(int(p.get("pid", 0)), 0)
-            return f"the root helper is busy ({p.get('action', 'working')})"
+            return f"Root helper busy ({p.get('action', 'working')})"
         except PermissionError:  # alive, and root's: the hub may not signal it
-            return f"the root helper is busy ({p.get('action', 'working')})"
+            return f"Root helper busy ({p.get('action', 'working')})"
         except (OSError, ValueError, TypeError):
             pass
     return None
@@ -112,7 +112,7 @@ def step(policy, log=print, now=None):
             said = f"{w['step']}: {answer.get('message')}"
         elif now - w["at"] > GIVE_UP_S:
             state.pop("waiting")
-            said = f"{w['step']}: no answer from the root helper; trying again later"
+            said = f"{w['step']}: no answer from the root helper. Retry scheduled."
         else:
             return f"waiting for the root helper ({w['step']})"
     busy = _busy()
@@ -139,9 +139,9 @@ def step(policy, log=print, now=None):
         return ask("fetch", "update-fetch", fetch_tried=avail)
     if auto >= 2 and upd.get("verified") == avail and state.get("install_tried") != avail:
         if not in_window(policy):
-            reason = f"{avail} is ready; installs between {policy['hub_window_start']:02d}:00 and {policy['hub_window_end']:02d}:00"
+            reason = f"{avail} is ready. Waiting for the installation window, {policy['hub_window_start']:02d}:00 to {policy['hub_window_end']:02d}:00."
         elif (people := _online()) != 0:
-            reason = f"{avail} is ready; waiting for nobody to be on the hub" + ("" if people is None else f" ({people} now)")
+            reason = f"{avail} is ready. Waiting until no device is active on the hub" + (". The box cannot count active devices now." if people is None else f" ({people} now).")
         else:
             return ask("install", "update-install", install_tried=avail)
         state["note"] = reason
@@ -149,7 +149,7 @@ def step(policy, log=print, now=None):
         return said or reason
     _save(state)
     if upd.get("verified") == avail:
-        return said or f"{avail} is ready to install on /admin"
+        return said or f"Update {avail} is ready for manual installation on /admin"
     if state.get("fetch_tried") == avail and auto >= 1:
-        return said or f"{avail} did not pass verification: see the Updates doctor"
+        return said or f"{avail} did not pass verification. See the Updates doctor."
     return said or f"{avail} is available"

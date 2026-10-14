@@ -35,7 +35,7 @@ def fake(metered, addr="192.168.1.181/24", route=True):
     return run_
 
 
-cases = [("yes", True, "set"), ("yes (guessed)", True, "guessed by NetworkManager"), ("no", False, "set not metered"),
+cases = [("yes", True, "set to metered"), ("yes (guessed)", True, "guessed by NetworkManager"), ("no", False, "set to not metered"),
          ("no (guessed)", False, "not metered"), ("unknown", False, "not metered")]
 for said, metered, how in cases:
     m = N.metered_now(fake(said))
@@ -44,22 +44,22 @@ m = N.metered_now(fake("no (guessed)", addr="172.20.10.2/28"))
 check("an iPhone's hotspot by its addresses: metered", m["metered"] and m["how"] == "looks like a phone's hotspot", m)
 check("  but not when the owner set the network not metered", not N.metered_now(fake("no", addr="172.20.10.2/28"))["metered"])
 check("no route: not metered, said why", N.metered_now(fake("yes", route=False)) == {"iface": None, "connection": None, "metered": False,
-                                                                                    "how": "no route to the internet"})
+                                                                                    "how": "no default route"})
 
 why = N.gate(now=1000, run_=fake("yes"))
 w = N.waiting()
-check("the scheduled run waits, saying why, and since when", why.startswith("waiting: on a metered network (Home, set)") and w["since"] == 1000, (why, w))
+check("the scheduled run waits, saying why, and since when", why.startswith("Automatic download deferred: the connection Home is metered (set to metered)") and w["since"] == 1000, (why, w))
 N.gate(now=5000, run_=fake("yes"))
 check("  still waiting later: since the first time", N.waiting()["since"] == 1000 and N.waiting()["last"] == 5000)
 check("  on another network: goes ahead, and the wait forgotten", N.gate(now=6000, run_=fake("no (guessed)")) is None and N.waiting() is None)
 
 # The librarian's scheduled run stops before it starts anything.
 from irate_box.library import librarian  # noqa: E402
-N.gate = lambda *a, **k: "waiting: on a metered network (Phone, set)"
+N.gate = lambda *a, **k: "Automatic download deferred: the connection Phone is metered (set)."
 said = []
 out = librarian.update(scheduled=True, log=said.append)
 check("librarian: a scheduled run on a metered network does nothing, and says why",
-      out == {"_metered": "waiting: on a metered network (Phone, set)"} and said == [out["_metered"]], (out, said))
+      out == {"_metered": "Automatic download deferred: the connection Phone is metered (set)."} and said == [out["_metered"]], (out, said))
 
 # The Box doctor, after three days of waiting.
 from irate_box.root import health  # noqa: E402

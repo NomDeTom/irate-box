@@ -103,7 +103,7 @@ def ruleset(iface, floor=None, sharing=None, kept=()):
     kept: [(address, seconds left)] already let out, carried into the new set (kept_out)."""
     from irate_box.root import share
     if not IFACE_RE.match(iface):
-        raise ValueError(f"{iface!r} is not an interface name")
+        raise ValueError(f"{iface!r} is not a valid interface name")
     q = f'iifname "{iface}"'
     sharing = sharing if sharing and sharing.get("level") in share.LEVELS[1:] else None
     lv = sharing["level"] if sharing else "off"
@@ -265,17 +265,17 @@ def apply_all(floor, sharing, iface=None):
         r = run("nft", "-c", "-f", str(tmp))
     except OSError as exc:
         tmp.unlink(missing_ok=True)
-        raise ValueError(f"nft is not installed ({exc}): apt-get install nftables, or update the box (install.sh adds it)")
+        raise ValueError(f"Rules rejected: nft is not installed ({exc}). Run apt-get install nftables, or update the box. The box kept the previous rules.")
     if r.returncode != 0:
         tmp.unlink(missing_ok=True)
-        raise ValueError("nft rejected the ruleset, so nothing changed: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        raise ValueError("Rules rejected. The box kept the previous rules. nft rejected the ruleset: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
     os.replace(tmp, RULES)
     r = run("nft", "-f", str(RULES))
     if r.returncode != 0:
-        raise ValueError("the ruleset is written but did not load: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        raise ValueError("Rules saved but not loaded. nft did not load the ruleset: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
     r = run("systemctl", "enable", UNIT)   # loads the file at every boot
     if r.returncode != 0:
-        raise ValueError(f"the ruleset is loaded, but {UNIT} is not enabled for the next boot: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        raise ValueError(f"Rules active but startup service not enabled. The ruleset is loaded, but {UNIT} is not enabled for the next boot: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
 
 
 def remove():

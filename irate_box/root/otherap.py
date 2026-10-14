@@ -58,15 +58,15 @@ def _save(rec):
 def _profile(uuid):
     """(name, ssid, file) of an access-point profile that is not irate-box's, or ValueError."""
     if not isinstance(uuid, str) or not UUID_RE.match(uuid):
-        raise ValueError("not a connection's id")
+        raise ValueError("invalid connection id")
     code, out = run("nmcli", "-t", "-f", "connection.id,802-11-wireless.mode,802-11-wireless.ssid", "con", "show", "uuid", uuid)
     if code != 0:
-        raise ValueError("NetworkManager has no such connection")
+        raise ValueError("Connection profile not found in NetworkManager")
     kv = dict(line.partition(":")[::2] for line in out.splitlines())
     if kv.get("802-11-wireless.mode") != "ap":
-        raise ValueError("only another hotspot's profile can be removed or left here")
+        raise ValueError("only the profile of another hotspot can be removed or ignored here")
     if kv.get("connection.id") == OURS:
-        raise ValueError("that is irate-box's own hotspot: switch it off on the Hotspot tab")
+        raise ValueError("that is irate-box's own hotspot. Switch it off on the Hotspot tab")
     code, out = run("nmcli", "-t", "-f", "UUID,FILENAME", "con", "show")
     f = next((l.partition(":")[2] for l in out.splitlines() if l.startswith(uuid + ":")), "")
     return kv.get("connection.id"), kv.get("802-11-wireless.ssid"), f
@@ -76,7 +76,7 @@ def remove(uuid):
     name, ssid, f = _profile(uuid)
     src = Path(f)
     if not f or not src.is_relative_to(KEYFILES) or not src.is_file():
-        raise ValueError(f"{name} is not a profile file in {KEYFILES}, so it can't be kept for undo; nothing removed")
+        raise ValueError(f"{name} is not a profile file in {KEYFILES}, so the box cannot keep a copy for undo. The box removed nothing")
     KEPT.mkdir(parents=True, exist_ok=True)
     os.chmod(KEPT, 0o700)
     kept = KEPT / f"{time.strftime('%Y%m%d-%H%M%S')}-{src.name}"
@@ -88,7 +88,7 @@ def remove(uuid):
     rec = record()
     rec[uuid] = {"name": name, "ssid": ssid, "choice": "removed", "kept": str(kept), "file": str(src), "at": time.time()}
     _save(rec)
-    return f"{name} ({ssid}) removed; its profile is kept in {kept}, and undo brings it back"
+    return f"{name} ({ssid}) removed; the box keeps a copy of its profile in {kept}. Undo restores it"
 
 
 def leave(uuid):
@@ -96,7 +96,7 @@ def leave(uuid):
     rec = record()
     rec[uuid] = {"name": name, "ssid": ssid, "choice": "left", "at": time.time()}
     _save(rec)
-    return f"{name} ({ssid}) left as it is, and no longer listed (the doctor still warns if it's set to start by itself)"
+    return f"{name} ({ssid}) ignored and no longer listed. The doctor still warns if the profile starts by itself"
 
 
 def forget(uuid):
@@ -104,24 +104,24 @@ def forget(uuid):
     rec = record()
     r = rec.get(uuid)
     if not r or r.get("choice") != "removed":
-        raise ValueError("no deleted profile with a kept copy for that id")
+        raise ValueError("no removed profile has a kept copy for that id")
     kept = Path(r["kept"])
     if kept.is_relative_to(KEPT):
         kept.unlink(missing_ok=True)
     rec.pop(uuid)
     _save(rec)
-    return f"{r['name']}'s kept copy deleted: it can't be restored now"
+    return f"{r['name']}'s kept copy deleted. Restore is not possible now"
 
 
 def undo(uuid):
     rec = record()
     r = rec.get(uuid)
     if not r:
-        raise ValueError("nothing was chosen for that profile here")
+        raise ValueError("nobody removed or ignored that profile here")
     if r["choice"] == "removed":
         dest = Path(r["file"])
         if dest.exists():
-            raise ValueError(f"{dest} is there already; nothing put back")
+            raise ValueError(f"{dest} exists already, so the box did not restore the profile")
         shutil.copy2(r["kept"], dest)
         os.chmod(dest, 0o600)
         code, out = run("nmcli", "con", "load", str(dest))
@@ -130,4 +130,4 @@ def undo(uuid):
             raise ValueError(f"nmcli: {out[-200:]}")
     rec.pop(uuid)
     _save(rec)
-    return f"{r['name']} " + ("put back" if r["choice"] == "removed" else "listed again")
+    return f"{r['name']} " + ("restored" if r["choice"] == "removed" else "listed again")

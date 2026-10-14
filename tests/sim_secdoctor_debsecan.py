@@ -49,7 +49,7 @@ check("  about Debian's security updates (one item on the page with the Security
       fs["debsecan-gzip"]["about"] == {"kind": "setting", "key": "security-updates"}
       and fs["debsecan-gzip"]["source"] == "debsecan" and "security updates" in fs["debsecan-gzip"]["fix"])
 check("unfixed ones: listed in one line that isn't counted against the box", "debsecan-perl" not in fs and fs["debsecan-unfixed"]["status"] == "ok"
-      and "1 installed packages have CVEs Debian hasn't fixed yet (listed, not counted): perl." in fs["debsecan-unfixed"]["detail"],
+      and "1 installed packages have CVEs that Debian has not fixed yet (listed, not counted): perl." in fs["debsecan-unfixed"]["detail"],
       fs["debsecan-unfixed"]["detail"])
 check("a kit's cache with a version since fixed: a warning on each kit that holds it", fs["debsecan-kit-capture"]["status"] == "warn"
       and fs["debsecan-kit-debug"]["about"] == {"kind": "kit", "key": "debug"} and "Refresh the kit" in fs["debsecan-kit-capture"]["fix"])

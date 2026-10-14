@@ -54,23 +54,23 @@ def set_settings(changes):
     if "budget_mb" in changes:
         b = changes["budget_mb"]
         if type(b) is not int or not 10 <= b <= 1 << 16:
-            raise LibrarianError("budget_mb: 10 to 65536")
+            raise LibrarianError("Invalid setting. budget_mb must be from 10 to 65536.")
         cfg["budget_mb"] = b
     if "deep_audit_days" in changes:
         d = changes["deep_audit_days"]
         if type(d) is not int or not 0 <= d <= 90:
-            raise LibrarianError("deep_audit_days: 0 (never on its own) to 90")
+            raise LibrarianError("Invalid setting. deep_audit_days must be from 0 (never on its own) to 90.")
         cfg["deep_audit_days"] = d
     for kid, ch in (changes.get("kits") or {}).items():
         if kid not in cfg["kits"] or not isinstance(ch, dict):
-            raise LibrarianError(f"no toolkit {kid}")
+            raise LibrarianError(f"Source not found: toolkit {kid}")
         if "keep_current" in ch:
             if type(ch["keep_current"]) is not bool:
-                raise LibrarianError("keep_current: true or false")
+                raise LibrarianError("Invalid setting. keep_current must be true or false.")
             cfg["kits"][kid]["keep_current"] = ch["keep_current"]
         if "remove_after" in ch:
             if not _hours_ok(ch["remove_after"]):
-                raise LibrarianError(f"remove_after: 1 to {MAX_HOURS} hours, or null for never")
+                raise LibrarianError(f"Invalid setting. remove_after must be from 1 to {MAX_HOURS} hours, or null for never.")
             cfg["kits"][kid]["remove_after"] = ch["remove_after"]
     librarian._write_json(SETTINGS, cfg)
     return cfg
@@ -106,13 +106,13 @@ def refresh_feed(log=print):
     """debsecan's data for this box's suite (and GENERIC), checked before it replaces the last."""
     s = suite()
     if not s or not re.match(r"^[a-z]{2,20}$", s):
-        raise LibrarianError("this box's Debian suite is unknown (/etc/os-release)")
+        raise LibrarianError("Download failed. The Debian suite of this box is unknown (/etc/os-release).")
     FEED.mkdir(parents=True, exist_ok=True)
     for name in (s, "GENERIC"):
         with librarian._open(FEED_URL + name, timeout=120) as resp:
             raw = resp.read(64 << 20)
         if not zlib.decompress(raw)[:10] == b"VERSION 1\n":
-            raise LibrarianError(f"debsecan's data for {name} is not in the format it reads")
+            raise LibrarianError(f"Download failed. The debsecan data for {name} is not in a format that the box can read.")
         tmp = FEED / f".{name}.tmp"
         tmp.write_bytes(raw)
         os.replace(tmp, FEED / name)
@@ -150,7 +150,7 @@ def action(payload):
     if what == "define":
         spec = payload.get("kit")
         if not isinstance(spec, dict):
-            raise LibrarianError("kit: {title, packages, ...}")
+            raise LibrarianError("Invalid kit. Enter {title, packages, ...}.")
         kid = spec.get("id") or re.sub(r"[^a-z0-9]+", "-", str(spec.get("title", "")).lower()).strip("-")[:32]
         if kid in kitdefs.shipped() or kid == "extras":
             kid = f"my-{kid}"[:32]
@@ -162,13 +162,13 @@ def action(payload):
             "packages": [p for p in (pkgs or []) if p], "remove_after_hours": spec.get("remove_after_hours", 24)}})
     kid = payload.get("kit")
     if what != "status" and kid not in definitions():
-        raise LibrarianError("kit: one of " + ", ".join(definitions()))
+        raise LibrarianError("Select a kit: " + ", ".join(definitions()))
     if what == "fetch":
         return librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": settings()["budget_mb"]})
     if what in ("install", "keep"):
         hours = payload.get("hours", settings()["kits"][kid]["remove_after"]) if what == "install" else payload.get("hours")
         if not _hours_ok(hours):
-            raise LibrarianError(f"hours: 1 to {MAX_HOURS}, or null for never")
+            raise LibrarianError(f"Invalid hours. Enter 1 to {MAX_HOURS}, or null for never.")
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid, "hours": hours})
     if what in ("remove", "rollback"):
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid})
@@ -177,11 +177,11 @@ def action(payload):
     if what == "extra":
         pkgs = payload.get("packages")
         if not isinstance(pkgs, list) or len(pkgs) > 20:
-            raise LibrarianError("packages: a list of up to 20 names")
+            raise LibrarianError("Select a list of up to 20 package names.")
         return librarian._queue_root({"action": "kit-extra", "kit": kid, "packages": [str(p) for p in pkgs]})
     if what == "undefine":
         return librarian._queue_root({"action": "kit-undefine", "kit": kid})
-    raise LibrarianError("action: settings, fetch, install, keep, remove, rollback, status, define, undefine or extra")
+    raise LibrarianError("Invalid action. Use settings, fetch, install, keep, remove, rollback, status, define, undefine or extra.")
 
 
 def step(policy, now=None, log=print):
@@ -193,7 +193,7 @@ def step(policy, now=None, log=print):
     out = []
     if any(v.get("remove_at") and v["remove_at"] <= now for v in (st.get("installed") or {}).values()):
         librarian._queue_root({"action": "kit-expire"})
-        out.append("removing the kits whose time is up")
+        out.append("removal period elapsed: removing the kits")
     cfg = settings()
     asked = librarian._read_json(STATE, {})
     feeding = [kid for kid, k in definitions().items() if cfg["kits"][kid]["keep_current"] and "debsecan" in k.get("feeds", [])]
@@ -225,7 +225,7 @@ def step(policy, now=None, log=print):
             librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": cfg["budget_mb"]})
             asked[kid] = now
             librarian._write_json(STATE, asked)
-            out.append(f"fetching {kid}")
+            out.append(f"downloading {kid}")
             break
     # The security doctor's deep audit (debian-cis and Lynis), weekly by default, when the
     # security kit is kept current: its tools come from its cache.
@@ -236,5 +236,5 @@ def step(policy, now=None, log=print):
             librarian._queue_root({"action": "security-deep-audit"})
             asked["deep-audit"] = now
             librarian._write_json(STATE, asked)
-            out.append("the weekly deep audit")
-    return "; ".join(out) or None
+            out.append("deep audit scheduled")
+    return ". ".join(out) or None

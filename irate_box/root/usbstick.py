@@ -157,8 +157,8 @@ def scan():
         fs = (dev.get("fstype") or "").lower()
         if not can.get(fs, True):
             dev["zims"], dev["kits"] = [], []
-            dev["error"] = (f"This box cannot read {FS_WORDS.get(fs, fs)}: its kernel has no driver for it. A stick formatted "
-                            "FAT or exFAT reads on any box.")
+            dev["error"] = (f"Filesystem unsupported: this box cannot read {FS_WORDS.get(fs, fs)} because its kernel has no driver for it. "
+                            "Most boxes and computers read FAT and exFAT. Format the USB drive as FAT or exFAT to use it here.")
             out.append(dev)
             continue
         try:
@@ -176,7 +176,7 @@ def _find(scan_state, name):
     for dev in devices():  # as the box sees it now, not as the last scan did
         if dev["name"] == name:
             return dev
-    raise ValueError(f"{name} is not plugged in now: scan again")
+    raise ValueError(f"USB device unavailable: {name} is not connected now. Scan again")
 
 
 def _copy(src, dest, report=None, out=None):
@@ -199,25 +199,25 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
     dev = _find(None, device)
     rel = Path(file)
     if rel.is_absolute() or ".." in rel.parts or rel.suffix.lower() != ".zim":
-        raise ValueError("not a book on that stick")
+        raise ValueError("That file is not a book on the USB drive")
     name = rel.stem
     if not NAME_RE.match(name):
-        raise ValueError(f"{rel.name}: rename it on the stick to letters, digits, '-', '_' or '.'")
+        raise ValueError(f"{rel.name}: rename the file on the USB drive. Use only letters, digits, '-', '_' and '.'")
     dest = Path(zim_dir) / f"{name}.zim"
     if dest.exists():
-        raise ValueError(f"the hub already has a book called {name}; it was left as it is")
+        raise ValueError(f"Book already exists: the box already has a book called {name}. The box did not change it")
     with Mounted(dev) as root:
         src = root / rel
         if not src.is_file() or src.is_symlink():
-            raise ValueError("that book is not on the stick now: scan again")
+            raise ValueError("USB device unavailable: the book is not on the USB drive now. Scan again")
         why = zimcheck.header_problem(src)
         if why:
-            raise ValueError(f"{rel.name} was not copied: it is {why}")
+            raise ValueError(f"Book failed integrity check: the box did not copy {rel.name}. {why}")
         size = src.stat().st_size
         free = shutil.disk_usage(zim_dir).free
         if free - size < min_free:
-            raise ValueError(f"not enough room: {size >> 20} MB needed, {free >> 20} MB free, "
-                             f"and {min_free >> 20} MB must stay free (The librarian)")
+            raise ValueError(f"Not enough space. The book needs {size >> 20} MB. The box has {free >> 20} MB free. "
+                             f"The box must keep {min_free >> 20} MB free (set in the librarian)")
         tmp = Path(zim_dir) / f".{name}.zim.usb"
         try:
             # In the hub's folder: a new file, never through a link, the hub's through its fd.
@@ -226,8 +226,8 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
             _copy(src, tmp, report, out=safeio.create(tmp, 0o644, hub.pw_uid, hub.pw_gid))
             why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root
             if why:
-                raise ValueError(f"{rel.name} was not added: the copy is {why}. It looked whole on the stick, "
-                                 "so the stick may be failing, or was pulled out; nothing on the hub changed.")
+                raise ValueError(f"Book failed integrity check: the copy of {rel.name} failed the check. {why} The file looked complete on the USB drive. "
+                                 "The cause can be a failing USB drive, a removed USB drive or a box storage fault. The box added nothing.")
             os.replace(tmp, dest)
         finally:
             tmp.unlink(missing_ok=True)
@@ -235,7 +235,7 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
                           *librarian_cmd, "rebuild-library"],
                          capture_output=True, text=True, timeout=300)
     if out.returncode != 0:
-        raise ValueError(f"{name} is copied, but the library was not rebuilt: {out.stderr.strip()[-200:]}")
+        raise ValueError(f"Book copied. The library index rebuild failed for {name}: {out.stderr.strip()[-200:]}")
     return name
 
 
@@ -244,7 +244,7 @@ def export_kit(device, kit, budget_report=None):
     from irate_box.root import kits
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("that is a read-only disc")
+        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
     with Mounted(dev, writable=True) as root:
         folder = root / "irate-box" / "kits"
         folder.mkdir(parents=True, exist_ok=True)
@@ -256,7 +256,7 @@ def export_with(device, write):
     from irate_box.root import safeio
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("that is a read-only disc")
+        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
     with Mounted(dev, writable=True) as root:
         folder = root / "irate-box"
         safeio.mkdir(folder, mode=0o755)
@@ -280,15 +280,15 @@ def export_zim(device, book, zim_dir, report=None):
     # A plain file, not a link: zim/ is the hub's, and a link there would have root copy
     # any file it can read onto the stick.
     if src.is_symlink() or not src.is_file():
-        raise ValueError(f"the hub has no book called {book}")
+        raise ValueError(f"The box has no book called {book}")
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("that is a read-only disc")
+        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
     with Mounted(dev, writable=True) as root:
         folder = root / "irate-box"
         folder.mkdir(exist_ok=True)
         if shutil.disk_usage(folder).free < src.stat().st_size:
-            raise ValueError("not enough room on the stick")
+            raise ValueError("Not enough space on the USB drive for this book")
         tmp = folder / f".{book}.zim.part"
         try:
             tmp.unlink(missing_ok=True)
@@ -323,10 +323,10 @@ def export_image(device, report=None, disk=None, stamp=None):
     import zlib
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("that is a read-only disc")
+        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
     disk = disk or root_disk()
     if dev["path"].startswith(disk):
-        raise ValueError("that stick is the box's own disk")
+        raise ValueError("This USB device is the disk that the box runs from. Select a different USB drive")
     total = int(run("blockdev", "--getsize64", disk).stdout.strip() or 0) if not Path(disk).is_file() else Path(disk).stat().st_size
     used = shutil.disk_usage("/").used
     stamp = stamp or time.strftime("%Y%m%d-%H%M")
@@ -336,8 +336,8 @@ def export_image(device, report=None, disk=None, stamp=None):
         folder = root / "irate-box" / "images"
         folder.mkdir(parents=True, exist_ok=True)
         if shutil.disk_usage(folder).free < used:
-            raise ValueError(f"not enough room on the stick: the image needs at least about {used >> 20} MB "
-                             f"(what the card holds), and {shutil.disk_usage(folder).free >> 20} MB is free")
+            raise ValueError(f"Not enough space on the USB drive. The image needs at least about {used >> 20} MB (the used space on the box). "
+                             f"The USB drive has {shutil.disk_usage(folder).free >> 20} MB free")
         split = dev["fstype"] in FAT
         parts, out, written, n = [], None, 0, 0
         gz = zlib.compressobj(1, zlib.DEFLATED, 31)
@@ -372,10 +372,12 @@ def export_image(device, report=None, disk=None, stamp=None):
                 out.close()
             for p in parts:
                 (folder / p).unlink(missing_ok=True)
-            raise ValueError(f"the image was not finished ({exc.strerror or exc}): the parts written are removed") from None
+            raise ValueError(f"Full image incomplete ({exc.strerror or exc}). The box removed the partial files") from None
         (folder / f"{base}.README.txt").write_text(
-            f"A full image of {disk} ({total >> 20} MB), taken {stamp} while the box ran: as after a power cut.\n"
-            + (f"In {len(parts)} parts: join them first: cat {base}.part* > {base}\n" if split else "")
-            + f"Write it back to a card of at least {total >> 20} MB: gunzip -c {base} | sudo dd of=/dev/YOURCARD bs=4M\n"
-              "(or give the .img.gz to an image writer such as Etcher).\n")
+            f"A full image of {disk} ({total >> 20} MB), taken {stamp} while the box ran. It is like the state after a power cut.\n"
+            + (f"Step 1. Join the {len(parts)} parts: cat {base}.part* > {base}\n" if split else "Step 1. The image is one file. Do not join it.\n")
+            + f"Step 2. Check that the destination card is at least {total >> 20} MB.\n"
+              "Step 3. Check the device name. The next command erases everything on that device.\n"
+            + f"Step 4. Write the image: gunzip -c {base} | sudo dd of=/dev/YOURCARD bs=4M\n"
+              "Or open the .img.gz file in an image writer such as Etcher.\n")
     return f"irate-box/images/{base}" + (f" in {len(parts)} parts" if split else "") + f", from {disk} ({total >> 20} MB)"

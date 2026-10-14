@@ -487,7 +487,7 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
                    + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
                    f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
                    + (f'        <span class="lock">{lock}</span>\n' if lock else '')
-                   + ('        <span class="tile-pill admin-pill" title="Only an admin sees this tile">admin only</span>\n' if m["id"] in admin_only else '')
+                   + ('        <span class="tile-pill admin-pill" title="Only administrators see this tile">admin only</span>\n' if m["id"] in admin_only else '')
                    + f'      </{tag}>')
     return "\n".join(out)
 
@@ -697,9 +697,9 @@ def _first_use_note():
     if not unclaimed():
         return ""
     return ('<section class="first-use-note" role="note"><h2>⚙️ This box is not set up yet</h2>'
-            '<p>Until its admin account is made, anyone on this network can use its admin pages. Make it now: '
-            'over HTTPS, or at the box\'s console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). '
-            'Over plain HTTP the password crosses the network where others can read it.</p>'
+            '<p>Until an administrator account is made, any device on this network can use the administration pages. Make it now '
+            'over HTTPS or at the box\'s console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). '
+            'Over plain HTTP, others on the network can read the password.</p>'
             '<p><a class="action-btn" href="/admin/setup">Set up this box</a> '
             '<a href="/guide/first-use.html">How: Setting up a new box</a></p></section>')
 _home_page = {}   # signed in or not -> {"mtime", "body"}
@@ -714,7 +714,7 @@ def _account_nav(signed_in):
                     ("Sign in" if signup == "off" else "Sign in or sign up", "Sign in"))
     out = f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
     if signed_in == "admin":
-        out += ('<a class="head-btn labelled" href="/admin/" title="Options for whoever owns the box">'
+        out += ('<a class="head-btn labelled" href="/admin/" title="Administration pages">'
                 '<span class="head-emoji" aria-hidden="true">⚙️</span> Admin</a>')
     return out
 
@@ -946,7 +946,7 @@ DEFAULT_SETTINGS = {
     # tab's), the line under it, and an accent colour for the main light and dark themes ("" keeps
     # theirs). The other themes keep their own colours.
     "hub_title": "Hub",
-    "hub_subtitle": "You're connected to the local network.",
+    "hub_subtitle": "You are connected to the network of the box.",
     "accent": "",
     # The light and dark palettes the owner chose (Appearance): per mode, any of PALETTE_ROLES as #rrggbb; a role
     # left out keeps the theme's own (or, for the accent, the one accent above). {} is the standard theme.
@@ -1222,7 +1222,7 @@ def kiwix_why():
     /status (cached with it): the ZIM headers only, never kiwix-manage."""
     books = sorted(librarian.ZIM_DIR.glob("*.zim")) if librarian.ZIM_DIR.is_dir() else []
     if not books:
-        return "No books yet: add one in Library → Books, or from a USB stick."
+        return "No books yet. Add one on the Books page, or from a USB drive."
     bad = [b for b in books if zimcheck.header_problem(b)]
     if len(bad) == len(books):
         return (f"None of the {len(books)} book{'s' if len(books) != 1 else ''} can be read (damaged or unfinished "
@@ -1281,7 +1281,7 @@ def service_status(proxied):
             # Running is not reachable: a box never logged in to a Tailscale network can't be reached through it.
             ts = tailscale_backend()
             if ts and ts["state"] == "needs-login":
-                entry["note"] = "running, but not logged in to a Tailscale network: nothing reaches the box through it (System → Access)"
+                entry["note"] = "running, but not signed in to a Tailscale network, so nothing reaches the box through it (System → Access)"
         if state == "stopped" and svc.get("unit") == "kiwix.service":
             why = _status_cache.setdefault("why", {})
             if "kiwix" not in why:
@@ -1897,20 +1897,20 @@ def security_snapshot():
     https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
     to_https = {"go": "security-https", "where": "Security → HTTPS"}
     if unclaimed():
-        pw = {"status": "problem", "detail": "Not set yet: the box is in its first use, and anyone on the network can use /admin until its admin account is made.",
-              "fix": "Make it now: Set up this box, over HTTPS (or HTTP by choice), or at the console over SSH (hub_control set-admin NAME)."}
+        pw = {"status": "problem", "detail": "Not set yet. The box is in its first use. Until an administrator account is made, any device on the network can use /admin.",
+              "fix": "Select Set up this box and make the administrator account over HTTPS. Or run hub_control set-admin NAME at the console over SSH."}
     elif https and admin_only:
         pw = {"status": "ok", "detail": "Set, and /admin answers over HTTPS only, so the password never crosses the network in clear."}
     elif https:
         pw = {"status": "warn", "detail": "Set. HTTPS is on, but /admin still answers on plain HTTP too: a browser that opens "
               "it as http:// sends the password in clear, readable by anyone listening on an open hotspot.",
-              "fix": "Make /admin HTTPS only (once this device trusts the box's certificate).", "do": to_https}
+              "fix": "Make /admin HTTPS only, after this device trusts the box's certificate.", "do": to_https}
     else:
         pw = {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening can read it "
               "the first time a browser sends it.",
-              "fix": "Turn HTTPS on and install the box's certificate on your devices; until then, log in from the LAN or over Tailscale.",
+              "fix": "Turn HTTPS on and install the box's certificate on your devices. Until then, sign in from the LAN or over Tailscale.",
               "do": to_https}
-    hub = [{"id": "admin-password", "title": "Admin password", **pw}, {
+    hub = [{"id": "admin-password", "title": "Administrator password", **pw}, {
         "id": "plain-http", "title": "HTTPS" if https else "Plain HTTP only",
         **({"status": "ok", "detail": "On: devices that installed the box's certificate (from /certificate) use HTTPS when they connect. "
             "Plain HTTP still answers, for the hotspot's sign-in sheet and devices without the certificate."} if https else
@@ -1918,7 +1918,7 @@ def security_snapshot():
             "and the box send to each other: pages, messages and uploads.",
             "fix": "Make the box's certificate, then install it on your own devices from /certificate.", "do": to_https}),
     }, {
-        "id": "one-origin", "title": "Apps share the admin page's address", "status": "warn",
+        "id": "one-origin", "title": "Apps share the address of the administration pages", "status": "warn",
         "detail": "Notes, the books, git and the add-ons have addresses of their own. The drawing editors (Excalidraw, Mermaid) "
                   "and the hub's other apps run on the administration address. A hostile page among them can act with your "
                   "sign-in while you are signed in.",
@@ -2615,7 +2615,7 @@ def report(app, ref, reason, addr):
     with _reports_lock:
         recent = [t for t in _report_times.get(who, []) if now - t < 3600]
         if len(recent) >= REPORTS_PER_HOUR:
-            return 429, "that's a lot of reports: try again later"
+            return 429, "Too many reports. Try again later."
         if mine in _reported:
             return 200, "already reported, thank you"
         _reported.add(mine)
@@ -2626,7 +2626,7 @@ def report(app, ref, reason, addr):
         r["reasons"][reason] = r["reasons"].get(reason, 0) + 1
         r["last"] = CLOCK.ticks()
         save_reports(data)
-    return 200, "reported, thank you: the owner will look"
+    return 200, "Reported. Thank you. An administrator will review it."
 
 
 def hidden_by_reports():
@@ -2887,14 +2887,14 @@ class Handler(BaseHTTPRequestHandler):
         keep = backup.keep_for(level, with_syncthing, backup.git_mirrors(STATE_DIR))
 
         if with_syncthing:
-            about = ("This backup CONTAINS SYNCTHING'S PRIVATE KEYS AND CONFIG\n"
+            about = ("This backup CONTAINS THE SYNCTHING PRIVATE KEYS AND CONFIGURATION\n"
                      "(.local/state/syncthing: key.pem, https-key.pem, config.xml).\n"
-                     "Anyone holding this file can pose as this box to its Syncthing peers.\n"
-                     "Keep it as you would a password; delete copies you do not need.\n")
+                     "Anyone who has this file can pose as this box to its Syncthing peers.\n"
+                     "Keep it as you keep a password. Delete copies that you do not need.\n")
         else:
-            about = ("Syncthing's identity (private keys, config.xml) is NOT in this backup.\n"
+            about = ("The Syncthing identity (private keys, config.xml) is NOT in this backup.\n"
                      "Restored on a box, Syncthing starts with a new device ID, and its peers\n"
-                     "need to be paired again.\n")
+                     "must be paired again.\n")
         held = ("SETTINGS ONLY: what was chosen (the hub's settings, accounts, the apps' and add-ons'\n"
                 "settings, the library's and mirrors' sources), none of what was made on the box.\n"
                 if level == "settings" else
@@ -2902,7 +2902,7 @@ class Handler(BaseHTTPRequestHandler):
                 "the board, the shoutbox, dropped files, the box's own git repositories).\n")
         about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
                  "Left out: books, the firmware and git mirrors, builds and their caches, crash\n"
-                 "evidence, the library's archive (all fetched again), the GitHub token, transient files.\n")
+                 "evidence, the library's archive (all downloaded again), the GitHub token, temporary files.\n")
         try:
             with tarfile.open(fileobj=self.wfile, mode="w|gz") as tar:
                 data = about.encode()
@@ -3045,7 +3045,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
         else:
-            self.send_json(401, {"error": "an admin's login" if path == "/_irate/admin" else "log in first"})
+            self.send_json(401, {"error": "Administrator sign-in required" if path == "/_irate/admin" else "Sign in first"})
 
     def _signed_in(self):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
@@ -3139,7 +3139,7 @@ class Handler(BaseHTTPRequestHandler):
                 # A person's own settings: theirs alone, through their own session.
                 self.send_json(200, {"prefs": accounts.set_prefs(self._session_token(), payload.get("prefs"))})
             else:
-                self.send_json(400, {"error": "action is signup, login, logout, password, code or prefs"})
+                self.send_json(400, {"error": "action must be signup, login, logout, password, code or prefs"})
         except accounts.Wait as exc:
             self.send_json(429, {"error": str(exc)})
         except accounts.AccountError as exc:
@@ -3168,7 +3168,7 @@ class Handler(BaseHTTPRequestHandler):
             ok = False
         if not ok:
             self._discard_body()
-            self.send_json(403, {"error": "an /admin change must come from the /admin page itself"})
+            self.send_json(403, {"error": "An /admin change must come from the /admin page itself."})
         return not ok
 
     def _admin_locked(self, path):
@@ -3177,7 +3177,7 @@ class Handler(BaseHTTPRequestHandler):
         made on /admin/setup or at the console."""
         if path == "/admin/password" and unclaimed():
             self._discard_body()
-            self.send_json(403, {"error": "the box is in its first use: make the admin account first (Set up this box)"})
+            self.send_json(403, {"error": "The box is in its first use. Select Set up this box and make the administrator account first."})
             return True
         return False
 
@@ -3343,7 +3343,7 @@ class Handler(BaseHTTPRequestHandler):
             # or a user, is refused here, not merely not shown the triangle), and the samples alone, never the processes.
             me = accounts.session(self._session_token()) if self._session_token() else None
             if not me or me.get("role") != "admin":
-                self.send_json(403, {"error": "the trends are the admin's"})
+                self.send_json(403, {"error": "Only administrators can see the trends."})
                 return
             snap = memhistory.snapshot()
             self.send_json(200, {"now": snap["now"], "every": snap["every"], "samples": snap["samples"]})
@@ -3864,7 +3864,7 @@ class Handler(BaseHTTPRequestHandler):
                 if hide:
                     t = dict(result["thread"])
                     t["posts"] = [p if f"board:{t['id']}:{int(p.get('created', 0))}" not in hide
-                                  else dict(p, text="(hidden while the owner looks at a report)", hidden=True) for p in t["posts"]]
+                                  else dict(p, text="(hidden while an administrator reviews a report)", hidden=True) for p in t["posts"]]
                     result = dict(result, thread=t)
                 self.send_json(200, dict(result, posting=self._posting_view("board"), report_reasons=settings_snapshot()["report_reasons"]))
             return
@@ -3975,7 +3975,7 @@ class Handler(BaseHTTPRequestHandler):
             before = accounts.admin_ready()
             if unclaimed() and (action == "admin" or (action == "make" and payload.get("role") == "admin")):
                 # The first admin is the first use's: made on the set-up page (HTTPS, or HTTP by choice) or at the console.
-                self.send_json(403, {"error": "the box is in its first use: make the first admin with Set up this box"})
+                self.send_json(403, {"error": "The box is in its first use. Select Set up this box and make the first administrator account."})
                 return
             try:
                 keep = not admin_login_on()
@@ -4008,11 +4008,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/setup":
             pw, name = payload.get("password"), payload.get("name")
             if not unclaimed():
-                self.send_json(403, {"error": "the admin password has already been set"})
+                self.send_json(403, {"error": "The administrator password is already set."})
             elif not self._https() and payload.get("over_http") is not True:
                 # The first password over plain HTTP only when the owner chooses it, having been told.
-                self.send_json(403, {"error": "over plain HTTP the password crosses the network where others can read it: "
-                                     "use HTTPS or the console, or choose to set it over HTTP anyway", "https": False})
+                self.send_json(403, {"error": "Over plain HTTP, others on the network can read the password. "
+                                     "Use HTTPS or the console, or select the option to set it over HTTP", "https": False})
             elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
                 self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
             elif name is None:
@@ -4101,7 +4101,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/password":
             pw = payload.get("password")
             if not self._https():
-                self.send_json(403, {"error": "an admin password changes only over HTTPS, or at the console over SSH", "https": False})
+                self.send_json(403, {"error": "An administrator password can change only over HTTPS or at the console over SSH.", "https": False})
                 return
             if not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
                 self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
@@ -4187,7 +4187,7 @@ class Handler(BaseHTTPRequestHandler):
                 # Only from a page that came over HTTPS: proof the owner's device trusts the box,
                 # so turning it on can't lock them out of /admin.
                 if on and self.headers.get("X-Forwarded-Proto") != "https":
-                    self.send_json(409, {"error": "open /admin over HTTPS first (https://<this box>/admin/): only then is it safe to make it HTTPS only"})
+                    self.send_json(409, {"error": "Open /admin over HTTPS first (https://<this box>/admin/). Then make it HTTPS only. Otherwise you can lose access to /admin."})
                     return
                 self.send_json(202, {"id": control_request({"action": "tls-admin-only", "on": on})})
                 return
@@ -4386,7 +4386,7 @@ class Handler(BaseHTTPRequestHandler):
             app, mode = str(payload.get("app", "")), payload.get("mode")
             if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES \
                     or (mode == "users" and not access.users_allowed(app)):
-                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off (or users, where it can be)"})
+                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off (or users, where it is possible)"})
             else:
                 self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
             return
@@ -4552,7 +4552,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self.send_json(400, {"error": str(exc)})
                     return
-                self.send_json(200, {"accepted": data, "message": "Accepted as it is." if payload["action"] == "accept" else "Taken back."})
+                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Taken back."})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
@@ -4573,7 +4573,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "only a device on the box's hotspot is let out"})
                 return
             if level == "users-web" and not self._signed_in():
-                self.send_json(403, {"error": "sign in first: the owner shares the connection with users only"})
+                self.send_json(403, {"error": "Sign in first. The administrator shares this connection with users only."})
                 return
             if payload.get("agree") is not True:
                 self.send_json(400, {"error": "agree: true, after reading what sharing means"})
@@ -4732,10 +4732,10 @@ class Handler(BaseHTTPRequestHandler):
         if me:
             return me["name"], me["name"]
         if who == "users":
-            self.send_json(403, {"error": f"log in to post on the {what} (/account.html)", "login": True})
+            self.send_json(403, {"error": f"Sign in to post on the {what} (/account.html).", "login": True})
             return None
         if accounts.exists(name):
-            self.send_json(403, {"error": f"{name.strip()} is an account's name: log in to post as it"})
+            self.send_json(403, {"error": f"{name.strip()} is the name of an account. Sign in to post with that name."})
             return None
         return name, None
 

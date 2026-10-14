@@ -37,7 +37,7 @@ for label, exc in (("a chunked body that stops", http.client.IncompleteRead(b"{\
         L._api("/repos/a/b/releases")
         check(f"{label}: a LibrarianError", False, "no error")
     except L.LibrarianError as e:
-        check(f"{label}: a LibrarianError, saying it was cut short", re.match(r"the answer from api\.github\.com was cut short: ", str(e)) is not None, str(e))
+        check(f"{label}: a LibrarianError, saying it was cut short", re.match(r"Download failed\. The answer from api\.github\.com ended early: ", str(e)) is not None, str(e))
     except Exception as e:  # noqa: BLE001
         check(f"{label}: a LibrarianError", False, repr(e))
 
@@ -57,7 +57,7 @@ try:
     L._download("https://example.org/a.zim", T / "a.zim")
     check("a download cut short: a LibrarianError", False, "no error")
 except L.LibrarianError as e:
-    check("a download cut short: a LibrarianError", "cut short" in str(e), str(e))
+    check("a download cut short: a LibrarianError", "ended early" in str(e), str(e))
 except TypeError as e:
     check("a download cut short: a LibrarianError", False, f"_download's signature: {e}")
 
@@ -70,7 +70,7 @@ def cut_releases(m, entry):
     return L._api("/repos/a/b/releases")
 M._releases = cut_releases
 line = M.sync({"name": "m", "upstream": "https://github.com/a/b"}, check_only=True, log=lambda *_: None)
-check("a mirror whose release listing is cut short: said as its error, the run not stopped", "cut short" in str(line), line)
+check("a mirror whose release listing is cut short: said as its error, the run not stopped", "ended early" in str(line), line)
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

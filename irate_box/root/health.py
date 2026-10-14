@@ -157,7 +157,7 @@ def check_install():
         return [_f("install", "Last install", "problem",
                    f"install.sh (started {when}) stopped during \"{where}\" and did not finish: the steps after it "
                    f"were not done.{cmd}",
-                   f"The full output is in {INSTALL_LOG}. Fix what it says (the findings below may name it), then run "
+                   f"The full output is in {INSTALL_LOG}. Fix what it says (the findings below can name it), then run "
                    "the installer again: this button, Updates → Install update, or sudo ./install.sh from the checkout.",
                    [RERUN])]
     problems = st.get("problems") or []
@@ -295,16 +295,16 @@ def check_units():
     for u in [u for u in failed if u in watched]:
         out.append(_f(f"watched-failed:{u}", f"{watched[u]}: its service failed", "warn",
                       f"{u} stopped with an error. The box watches this package's updates; whether it runs is the "
-                      "package's own business, and a build can fail on a board without the hardware it expects.",
+                      "package's own business. A build can fail on a board without the hardware it expects.",
                       f"See why: journalctl -u {u} -n 50. Then start it again, try another build on Updates → Packages "
-                      "from their makers (Roll back, or another channel), or accept it if the board doesn't use it.",
+                      "from their makers (Roll back, or another channel), or accept it if the board does not use it.",
                       [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? The doctor clears its failed mark "
                             "and starts it.")]))
     for u in [u for u in failed if not ours(u) and u not in watched][:12]:
         out.append(_f(f"other-failed:{u}", f"{u} failed (not irate-box's)", "warn",
-                      "A service of the image's or of your own stopped with an error. The hub doesn't use it.",
+                      "A service of the image's or of your own stopped with an error. The hub does not use it.",
                       f"See why: journalctl -u {u} -n 50. Often harmless on these images: accept it, or start it again.",
-                      [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? It isn't irate-box's: the doctor "
+                      [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? It is not part of irate-box. The doctor "
                             "only clears its failed mark and starts it.")]))
     return out
 
@@ -340,7 +340,7 @@ def idle_units():
         r = run("mmcli", "-L")
         if r.returncode == 0 and "No modems were found" in r.stdout:
             out.append({"unit": "ModemManager.service", "title": "ModemManager, with no modem",
-                        "why": "It looks for mobile-data modems, and this box has none; it also probes serial ports, which can upset "
+                        "why": "It looks for mobile-data modems, and this box has none. It also probes serial ports, which can upset "
                                "a radio or a device on one."})
     p = unit_props("bluetooth.service")
     if p.get("ActiveState") == "active":
@@ -359,8 +359,8 @@ def check_idle():
         if i["unit"] in off:
             continue
         out.append(_f(f"idle:{i['unit']}", f"{i['title']}: adds nothing here", "warn", i["why"],
-                      "Switch it off if this box doesn't need it: it stops, and doesn't start at boot. Switched off here, it can be "
-                      "switched back on here.",
+                      "Switch it off if this box does not need it. It stops and does not start at boot. If you switch it off here, you can "
+                      "switch it on again here.",
                       [_act(f"idle-off:{i['unit']}", "Switch it off", f"Switch {i['unit']} off, now and at boot? The doctor lists it "
                             "afterwards with a button to switch it back on.")]))
     for unit, rec in sorted(off.items()):
@@ -391,7 +391,7 @@ def idle_switch(unit, on):
         if r.returncode:
             raise ValueError(f"{unit}: {r.stderr.strip()[-200:] or 'could not be switched off'}")
         run("systemctl", "reset-failed", unit)
-        msg = f"{unit}: switched off, and won't start at boot"
+        msg = f"{unit}: switched off. It does not start at boot."
     from irate_box.root import safeio
     safeio.write(IDLE_OFF, json.dumps(off, indent=1), 0o644)
     return msg
@@ -442,7 +442,7 @@ def check_kiwix():
         why = zim_header_problem(b) or kiwix_reads(b)
         (bad if why else good).append((b, why))
     for b, why in bad:
-        out.append(_f(f"zim:{b.name}", f"Book {b.name}", "problem", f"{b.stat().st_size >> 20} MB, {why}.",
+        out.append(_f(f"zim:{b.name}", f"Book {b.name}", "problem", f"{b.stat().st_size >> 20} MB. {why}",
                       f"Download or copy it again (Books keeps its sources current), or set it aside: "
                       f"mv {b} {QUARANTINE}/ — then rebuild the library.",
                       [_act(f"kiwix-quarantine:{b.name}", "Set it aside",
@@ -473,20 +473,20 @@ def check_kiwix():
             if p.get("UnitFileState") != "enabled" and p.get("ActiveState") in ("inactive", "failed"):
                 out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "warn",
                               "Stopped until there is a readable book (the installer or this page stopped it, so it does not loop).",
-                              "Add a book (Books, a USB stick, or install.sh --zim), then rebuild the library: "
+                              "Add a book (Books, a USB drive, or install.sh --zim). Then rebuild the library. "
                               "that starts it again.", [_act("kiwix-rebuild", "Rebuild the library")]))
             else:
                 out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "problem",
                               "There is no readable book, so kiwix-serve cannot start: systemd keeps trying and then gives up "
                               f"({p.get('Result') or p.get('ActiveState')}).",
-                              "Add a book (Books, a USB stick, or install.sh --zim), then rebuild the library. "
+                              "Add a book (Books, a USB drive, or install.sh --zim). Then rebuild the library. "
                               "Until then, stop Kiwix so it does not loop: systemctl disable --now kiwix.",
                               [_act("kiwix-off", "Stop Kiwix until there are books")]))
         elif p.get("ActiveState") != "active" and p.get("Result") in ("success", "", None):
             out.append(_f("kiwix-down", "Kiwix (/wiki/)", "warn",
                           f"Stopped (not failed), with {len(good)} readable books"
-                          + ("; not started at boot" if p.get("UnitFileState") != "enabled" else "") + ".",
-                          "Turned off from this page or by hand. To bring /wiki/ back: rebuild the library (it starts Kiwix), "
+                          + (", not started at boot" if p.get("UnitFileState") != "enabled" else "") + ".",
+                          "Kiwix was stopped from this page or by hand. To bring /wiki/ back, rebuild the library (it starts Kiwix) "
                           "or systemctl enable --now kiwix.", [rebuild]))
         elif p.get("ActiveState") != "active":
             out.append(_f("kiwix-down", "Kiwix (/wiki/)", "problem",
@@ -520,7 +520,7 @@ def kiwix_rebuild():
     for i in range(0, len(books), 100):
         skipped += add(books[i:i + 100])
     if not new.exists():
-        return "kiwix-manage made no library; the old one stays."
+        return "kiwix-manage made no library. The old library stays."
     # Already the hub's (kiwix-manage made it as the hub): no chown, which would follow a link
     # swapped in for it. The rename replaces a link, never follows one.
     os.replace(new, LIBRARY)
@@ -529,7 +529,7 @@ def kiwix_rebuild():
         run("systemctl", "reset-failed", "kiwix.service")
         run("systemctl", "enable", "--now", "kiwix.service")
         run("systemctl", "restart", "kiwix.service")
-        msg += "; Kiwix started"
+        msg += ". Kiwix started"
     return msg + "."
 
 
@@ -562,7 +562,7 @@ def check_uplink():
         out.append(_f("uplink-stalled", "The link is down and the watchdog has stalled", "problem",
                       f"{st.get('iface')} down for {down} min. {stall.get('text', '')}",
                       (f"Network → Network recovery: {stall['label'][:1].upper() + stall['label'][1:]} now, "
-                       "or choose a level that goes that far." if stall.get("needs")
+                       "or select a level that goes that far." if stall.get("needs")
                        else "Look at the box by its console or a cable: nothing it can do by itself would help."),
                       go=_go("net-watchdog-card", "Network → Network recovery", "up-stall" if stall.get("needs") else "up-reach")))
     out += link_findings(st)
@@ -590,7 +590,7 @@ def link_findings(st):
     if not watched and inv:
         out.append(_f("uplink-none-watched", "No link is watched", "problem",
                       f"The watchdog is watching {st.get('watching') or 'nothing'}. If the box's network fails, nothing will notice or "
-                      "try again.", "Network → Network recovery: choose which links it watches.", go=go("up-watch")))
+                      "try again.", "Network → Network recovery: select which links it watches.", go=go("up-watch")))
     for i, lk in sorted(inv.items()):
         what = f"{i} ({LINK_KIND.get(lk.get('kind'), lk.get('kind'))}, {', '.join(lk.get('autoconnect') or []) or 'no connection set to start'})"
         if lk.get("look") and not lk.get("up") and lk.get("autoconnect"):
@@ -623,7 +623,7 @@ def link_findings(st):
         if stall:
             out.append(_f(f"uplink-stalled-{i}", f"{i} is down and its watchdog has stalled", "problem" if stall.get("needs") else "warn",
                           f"{i}: {stall.get('text', '')}",
-                          (f"Network → Network recovery: choose a reach that goes as far as to {stall['label']}."
+                          (f"Network → Network recovery: select a reach that goes as far as to {stall['label']}."
                            if stall.get("needs") else "Nothing the box can do by itself would help."), go=go("up-reach")))
     return out
 
@@ -748,8 +748,8 @@ def roaming_findings(st, inv):
                f"{st.get('iface')} moved between access points {n} times in the last hour ({len(f['aps'])} share {f.get('ssid')}, "
                f"channels {', '.join(map(str, f.get('channels', [])))}); each move takes the hotspot's guests along, and is a moment off "
                "the network on a radio that copes worst with that.",
-               "Network → Network recovery: choose no background scans while the hotspot shares the radio, a lock to one access "
-               "point, or don't count short roams as missed checks. Or, on your router, put the access points on one channel.")]
+               "Network → Network recovery: select no background scans while the hotspot shares the radio, a lock to one access "
+               "point, or do not count short roams as missed checks. Or, on your router, put the access points on one channel.")]
 
 
 def metered_findings(now=None):
@@ -774,7 +774,7 @@ def check_inventory():
         return [_f("netinv", "Network inventory", "warn", "Not looked yet.", "", [_act("net-scan", "Look now")])]
     inv = _json_or(p)
     if not isinstance(inv, dict):
-        return [_f("netinv", "Network inventory", "warn", "The last look can't be read.", "", [_act("net-scan", "Look again")])]
+        return [_f("netinv", "Network inventory", "warn", "The last scan cannot be read.", "", [_act("net-scan", "Look again")])]
     age = time.time() - float(inv.get("at") or 0)
     when = f" (as of a look {int(age // 3600)} h ago)" if age > 6 * 3600 else ""
     out = [_f(f"net:{h['id']}", h["title"], h["status"], h["detail"] + when, h.get("fix", ""))
@@ -798,7 +798,7 @@ def check_hotspot():
     chans = ap.channels_now(run)
     want = chans.get(plan.get("uplink")) if plan.get("follows_uplink") else plan.get("channel")
     if iface not in chans:
-        out.append(_f("hotspot-iface", "Hotspot interface", "problem", f"The hotspot should be on {iface}, which isn't there.",
+        out.append(_f("hotspot-iface", "Hotspot interface", "problem", f"The hotspot should be on {iface}, but {iface} is not on the box.",
                       "Network → the hotspot: switch it off and on again"))
     elif chans.get(iface) != want:
         out.append(_f("hotspot-iface", "Hotspot interface", "warn",
@@ -808,15 +808,15 @@ def check_hotspot():
         out.append(_f("hotspot-iface", "Hotspot interface", "ok", f"{iface} on channel {want}: {plan.get('text', '')}"))
     if plan.get("backend") == "hostapd":
         if run("systemctl", "is-active", "--quiet", ap.HOSTAPD_UNIT).returncode:
-            out.append(_f("hotspot-ap", "Hotspot access point (hostapd)", "problem", "hostapd isn't running.",
+            out.append(_f("hotspot-ap", "Hotspot access point (hostapd)", "problem", "hostapd is not running.",
                           f"journalctl -u {ap.HOSTAPD_UNIT} -n 30", [_act(f"unit-restart:{ap.HOSTAPD_UNIT}", "Start it again")]))
     else:
         act = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active").stdout or ""
         if ap.CONNECTION not in act.split():
-            out.append(_f("hotspot-ap", "Hotspot access point (NetworkManager)", "problem", f"The connection {ap.CONNECTION} isn't active.",
+            out.append(_f("hotspot-ap", "Hotspot access point (NetworkManager)", "problem", f"The connection {ap.CONNECTION} is not active.",
                           f"nmcli connection up {ap.CONNECTION}"))
     if run("systemctl", "is-active", "--quiet", ap.DNSMASQ_UNIT).returncode:
-        out.append(_f("hotspot-dns", "Hotspot DHCP and names", "problem", "dnsmasq isn't running: guests get no address.",
+        out.append(_f("hotspot-dns", "Hotspot DHCP and names", "problem", "dnsmasq is not running. New guests get no address.",
                       f"journalctl -u {ap.DNSMASQ_UNIT} -n 30", [_act(f"unit-restart:{ap.DNSMASQ_UNIT}", "Start it again")]))
     if not rec.get("confirmed", True):
         out.append(_f("hotspot-confirm", "Hotspot waiting to be kept", "warn",
@@ -837,8 +837,8 @@ def check_web():
     if r.returncode:
         lines = [l for l in (r.stderr + r.stdout).splitlines() if re.search(r"emerg|error|Error", l)][:3]
         return [_f("web-config", "Web server config", "problem", f"{web} rejects its configuration: " + " | ".join(lines)[:400],
-                   "If the error is in irate-box's site, the installer rewrites it; if it is in the owner's own config, "
-                   "fix that file and reload.", [RERUN])]
+                   "If the error is in irate-box's site, the installer rewrites it. If the error is in an administrator's own configuration, "
+                   "correct that file and reload.", [RERUN])]
     return [_f("web-config", "Web server config", "ok", f"{web} accepts its configuration.")]
 
 
@@ -1011,9 +1011,9 @@ def check_clock():
     if newest and now < newest - 300:
         out.append(_f("clock-behind", "Clock", "problem",
                       f"It says {time.strftime('%Y-%m-%d %H:%M', time.localtime(now))}, which is {_human_secs(newest - now)} "
-                      f"before {what} was written: it is certainly behind.",
-                      "Set it: the button sets it from this browser's clock; or sudo date -s 'YYYY-MM-DD HH:MM'. "
-                      "Online, the network time service puts it right by itself.", [SET_CLOCK]))
+                      f"before {what} was written, so the clock is behind.",
+                      "Use the button to set it from this browser's clock. Or run sudo date -s 'YYYY-MM-DD HH:MM'. "
+                      "If the box is online, the network time service sets the clock.", [SET_CLOCK]))
     boot = ""
     if c["steps"]:
         total = sum(c["steps"])
@@ -1023,8 +1023,8 @@ def check_clock():
     out += check_module()
     if c["synced"]:
         by = (f"Set by {c['daemon']}" + (f" from {c['sources']} time servers" if c["sources"] else "") if c["daemon"]
-              else "Synchronised, says the kernel (no time service seen here: a host or container may be keeping it)")
-        out.append(_f("clock", "Clock", "ok", f"{by}; time zone {tz}.{boot}"))
+              else "Synchronised, according to the kernel (no time service seen here. A host or container can keep the time)")
+        out.append(_f("clock", "Clock", "ok", f"{by}. Time zone {tz}.{boot}"))
         return out
     if rtc.FROM_RTC.exists():
         out.append(_f("clock", "Clock", "ok", f"Set from the clock module at this boot (no network time to check it "
@@ -1043,20 +1043,20 @@ def check_clock():
         since = f" fake-hwclock last saved it at {time.strftime('%Y-%m-%d %H:%M', time.localtime(c['fake_saved']))}."
     if c["fake"]:
         out.append(_f("clock", "Clock", "warn",
-                      "Not set since this boot, and the box has no clock that runs while it is off: it was restored from "
-                      "fake-hwclock's last save, so it is behind by however long the box was switched off."
+                      "Not set since this boot, and the box has no clock that runs while it is off. The time was restored from "
+                      "the last fake-hwclock save, so it is behind by the time that the box was off."
                       + since + (f" {c['daemon']} is running but has no time server to ask (offline)." if c["daemon"] else "")
                       + ("" if c["fake_saver"] else " fake-hwclock is not saving the time regularly, so even that is old.")
                       + f" Time zone {tz}.",
-                      "Online, it puts itself right. Offline: the button sets it from this browser's clock "
-                      "(your phone or laptop knows the time), or sudo date -s 'YYYY-MM-DD HH:MM'.", [SET_CLOCK]))
+                      "If the box is online, it sets the clock. If it is offline, use the button to set it from this browser's clock "
+                      "(your phone or laptop knows the time). Or run sudo date -s 'YYYY-MM-DD HH:MM'.", [SET_CLOCK]))
     else:
         out.append(_f("clock", "Clock", "problem",
                       "No clock that runs while the box is off, no fake-hwclock to restore the last time, and not set from "
-                      "the network: every boot starts at the image's build date or 1970."
+                      "the network: a boot can start at the image's build date or at 1970."
                       + (f" {c['daemon']} is running but has no time server to ask." if c["daemon"] else ""),
                       "Install fake-hwclock (apt-get install fake-hwclock) so a boot at least starts where the last one "
-                      "stopped; meanwhile the button sets the clock from this browser.", [SET_CLOCK]))
+                      "stopped. Until then, use the button to set the clock from this browser.", [SET_CLOCK]))
     return out
 
 
@@ -1088,10 +1088,10 @@ def check_module():
                               "the time while the box is off."))
         for n in st.get("notes", []):
             out.append(_f("rtc-note", "Clock module", "warn", n.capitalize() + ".",
-                          "Setting it up again turns on the battery switch; charging is never changed here."
+                          "Setting it up again turns on the battery switch. This page never changes charging."
                           if "INIEN" in n or "EOSC" in n else "Check which kind of cell the module has."))
         if st["units"].get("irate-box-rtc.service") != "active":
-            out.append(_f("rtc-unit", "Clock module", "warn", "Its boot unit has not run, so the next boot may not read it.",
+            out.append(_f("rtc-unit", "Clock module", "warn", "Its boot unit has not run, so the next boot can fail to read it.",
                           "systemctl start irate-box-rtc", [_act("unit-restart:irate-box-rtc.service", "Run it now")]))
         return out
     look = _act("rtc-find", "Look for a clock module")
@@ -1104,9 +1104,9 @@ def check_module():
                    "RX8130 and others) lets the box keep its time while it is off.", "", [look])]
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(found["at"]))
     if not found["found"]:
-        return [_f("rtc", "Clock module", "warn", f"None found on I2C (looked {when}"
-                   + (")." if found["buses"] else "; no I2C bus is enabled on this board: that is a board setting, such as "
-                      "an Armbian overlay, and it is yours to change)."), "", [look])]
+        return [_f("rtc", "Clock module", "warn", f"None found on I2C (scanned {when}"
+                   + (")." if found["buses"] else ". No I2C bus is enabled on this board. An administrator can change this board setting, such as "
+                      "an Armbian overlay)."), "", [look])]
     out = []
     for x in found["found"]:
         what = f"{x['label']} on bus {x['bus']} at {x['addr']}"
@@ -1115,9 +1115,9 @@ def check_module():
                           f"{what}, but this kernel has no driver for it and irate-box has no driver of its own yet.", "", [look]))
             continue
         how = f"the kernel driver {x['kernel']}" if x["kernel"] else "irate-box's own driver (this kernel has none for it)"
-        detail = f"{what}, not set up yet; it would run through {how}."
+        detail = f"{what}, not set up yet. It would run through {how}."
         if x["ambiguous"]:
-            detail += " Both chips that use this address fit what it answered: choose the one fitted."
+            detail += " Both chips that use this address fit what it answered. Select the one that is fitted."
         out.append(_f(f"rtc-found:{x['chip']}:{x['bus']}", "Clock module found", "warn", detail,
                       "Setting it up adds a boot unit that sets the clock from it, and an hourly save.",
                       [_act(f"rtc-setup:{x['chip']}:{x['bus']}:{x['addr']}", f"Set it up as {x['label']}",
@@ -1134,15 +1134,15 @@ def set_clock(epoch):
         raise ValueError(f"{c['daemon'] or 'the network time service'} keeps the clock right already; it was left alone")
     newest, what = latest_known_time()
     if newest and epoch < newest - 300:
-        raise ValueError(f"that time is before {what} was written, so this device's clock looks wrong; nothing changed")
+        raise ValueError(f"that time is before {what} was written, so this device's clock looks wrong. The clock did not change.")
     if epoch > now + 10 * 365 * 86400 or epoch < 1735689600:  # 2025-01-01
-        raise ValueError("that time is not plausible; nothing changed")
+        raise ValueError("that time is not plausible. The clock did not change.")
     # Not years past anything the box has seen: a forged request could otherwise move the
     # clock far forward, after which it is trusted, saved to the module, and hard to bring back.
     if epoch > max(newest or 0, now) + 2 * 365 * 86400:
-        raise ValueError("that is more than two years past the newest time this box has seen; nothing changed")
+        raise ValueError("that is more than two years past the newest time this box has seen. The clock did not change.")
     if abs(epoch - now) < 30:
-        return "The box's clock already agrees with this device (within 30 s); nothing changed."
+        return "The box's clock already agrees with this device (within 30 s). The clock did not change."
     r = run("date", "-u", "-s", f"@{int(epoch)}")
     if r.returncode:
         raise ValueError(f"date: {r.stderr.strip()}")
@@ -1172,9 +1172,9 @@ def check_usb_filesystems():
     words = lambda names: ", ".join(dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n))))  # noqa: E731
     yes = [n for n, ok in can.items() if ok]
     no = [n for n, ok in can.items() if not ok and not (n == "ntfs3" and can.get("ntfs")) and not (n == "ntfs" and can.get("ntfs3"))]
-    return [_f("usb-filesystems", "USB sticks this box can read", "ok",
+    return [_f("usb-filesystems", "USB drives this box can read", "ok",
                f"{words(yes)}." + (f" Not {words(no)}: this kernel has no driver for {'them' if len(no) > 1 else 'it'}." if no else ""),
-               "A stick formatted FAT or exFAT reads on any box." if no else "")]
+               "Use a drive formatted with one of the filesystems above." if no else "")]
 
 
 def check_crashwatch(now=None):
@@ -1205,8 +1205,8 @@ def check_crashwatch(now=None):
         rate = n / max(run.get("flood_window", 3600), 30)
         out.append(_f("crash-flood", "The kernel log", "warn",
                       f"Flooded: {n} lines like \"{k}\" in the last {_human_secs(run.get('flood_window', 3600))}, about {rate:.1f} a second. "
-                      "A driver logging that much wears the storage the log is synced to and hides the lines that matter; crash watch "
-                      "counts them rather than copying them.",
+                      "A driver that logs this much wears the storage that the log is synced to and hides the lines that matter. Crash watch "
+                      "counts them and does not copy them.",
                       "Often a driver's debug output: look for its module's debug parameter, or a newer driver. "
                       "sudo dmesg | tail -50"))
     radios = ", ".join(f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()) or "none found"
@@ -1229,7 +1229,7 @@ def check_crashwatch(now=None):
     if s["watchdog"] and pending:
         said += " The board's watchdog starts working after the next restart."
     elif wd == "switched-off" and not s["watchdog"]:
-        said += " The board has a watchdog of its own, switched off in its device tree; turning the watchdog on switches it on."
+        said += " The board has its own watchdog, switched off in its device tree. Turning the watchdog on switches it on."
     elif not wd:
         said += " This kernel has no watchdog (neither the board's nor softdog)."
     out.append(_f("crash-hang", "A frozen box", "warn" if week and not on else "ok", said,
@@ -1285,8 +1285,8 @@ def led_groups(ls, armbian=None):
     show = ls["settings"].get("show") or ls.get("suggested") or "leave"
     groups = [{"key": "led-show", "label": "The status light",
                "desc": f"What {ls.get('led') or 'the light'} shows: 1 s on, 1 s off while all it reports is well; off when not; "
-                       "quick flashes while the network is being repaired; two short flashes when the Box doctor has a problem "
-                       "to read; steady on while the box starts or updates."
+                       "quick flashes while the network is being repaired, two short flashes when the Box doctor has a problem "
+                       "to read, steady on while the box starts or updates."
                        + (" Left alone by default: on this board it shows the SD card working." if ls.get("suggested") == "leave" else ""),
                "current": show, "options": [{"value": v, "label": LED_SHOW_LABEL[v], "choice": f"led-show:{v}"}
                                             for v in ("leave", "alive", "network", "all")]}]
@@ -1301,7 +1301,7 @@ def led_groups(ls, armbian=None):
         groups.append({"key": "armbian-led", "label": "The image's LED service",
                        "desc": f"{ARMBIAN_LED} puts the LEDs back as they were at the last shutdown. On this board it "
                                "fails at every start: the light has no trigger file, so the state it saved is one it then refuses. "
-                               "Switching it off stops the failure; switching it on again undoes that.",
+                               "Switching it off stops the failure. Switching it on again restores the failure.",
                        "current": "off" if armbian == "masked" else "on", "options": [
                            {"value": "on", "label": "As the image has it", "choice": "armbian-led:on"},
                            {"value": "off", "label": "Switched off", "choice": "armbian-led:off"}]})
@@ -1338,10 +1338,10 @@ def check_led(ls=None, active=None):
     flash = [_act(f"led-flash:{n}", f"Flash {n}") for n in list(ls["found"])[:4]]
     if show == "leave":
         return [_f("led", "Status light", "ok", f"Left as the image set it ({name or 'no LED picked'}). The box can blink it while "
-                   "it is well instead.", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"))]
+                   "everything is well.", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"))]
     unit_on = (active or unit_props)("irate-box-led.service").get("ActiveState") == "active"
     if not unit_on:
-        return [_f("led", "Status light", "problem", f"{name} should be showing how the box is, but its service isn't running: the "
+        return [_f("led", "Status light", "problem", f"{name} should show the state of the box, but its service is not running: the "
                    "light says nothing.", "journalctl -u irate-box-led -n 30",
                    [_act("unit-restart:irate-box-led.service", "Start it again")])]
     how = ("driven by the box: this kernel has no LED triggers, so nothing else can blink it" if not (ls["found"].get(name) or {}).get("triggers")
@@ -1422,13 +1422,13 @@ def fix(choice):
         return led.flash(arg)
     if kind == "armbian-led":
         if not armbian_led_state() and arg == "off":
-            raise ValueError(f"{ARMBIAN_LED} isn't failing here: nothing to switch off")
+            raise ValueError(f"{ARMBIAN_LED} is not failing here. There is nothing to switch off.")
         r = run("systemctl", "mask" if arg == "off" else "unmask", ARMBIAN_LED)
         if r.returncode:
             raise ValueError(f"{ARMBIAN_LED}: {r.stderr.strip()[-200:]}")
         if arg == "off":
             run("systemctl", "reset-failed", ARMBIAN_LED)
-        return f"{ARMBIAN_LED}: " + ("switched off (masked); unmasked again from the same place" if arg == "off" else "as the image has it again")
+        return f"{ARMBIAN_LED}: " + ("switched off (masked). Switch it on here to unmask it" if arg == "off" else "as the image has it again")
     if kind == "other-restart":
         failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]
         if arg not in failed or ours(arg) or not re.match(r"^[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]*\.(service|socket|timer|mount)$", arg):
@@ -1514,7 +1514,7 @@ def fix(choice):
     if kind == "kiwix-off":
         run("systemctl", "disable", "--now", "kiwix.service")
         run("systemctl", "reset-failed", "kiwix.service")
-        return "Kiwix stopped and kept from starting at boot; rebuilding the library with a readable book starts it again."
+        return "Kiwix stopped and disabled at boot. Rebuilding the library with a readable book starts it again."
     raise ValueError(choice)
 
 

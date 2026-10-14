@@ -159,7 +159,7 @@ check("  the WiFi country kept as cfg80211's option, and set at once",
 check("  netplan's line having NetworkManager manage wlan0, kept in irate-box's own rule file",
       'ENV{ID_NET_NAME}=="wlan0", ENV{NM_UNMANAGED}="0"' in H.UDEV_RULES.read_text() and ("udevadm", "control", "--reload") in ran)
 check("  the record holds no secret", "s3cret" not in H.RECORD.read_text())
-check("  said what was done, and where the file is kept", "handed over to NetworkManager" in said and "30-wifis-dhcp.yaml kept in" in said, said)
+check("  said what was done, and where the file is kept", "transferred to NetworkManager" in said and "30-wifis-dhcp.yaml kept in" in said, said)
 check("  listed as done, not as a candidate", [d["name"] for d in H.candidates()["done"]] == ["30-wifis-dhcp.yaml"]
       and "30-wifis-dhcp.yaml" not in {f["name"] for f in H.candidates()["files"]})
 
@@ -175,7 +175,7 @@ try:
     check("NetworkManager's view changing: refused", False)
 except ValueError as exc:
     check("NetworkManager's view changing: everything put back at once, saying what changed",
-          "put back" in str(exc) and "wifi.cloned-mac-address" in str(exc) and (T / "etc/netplan/30-wifis-dhcp.yaml").exists()
+          "restored" in str(exc) and "wifi.cloned-mac-address" in str(exc) and (T / "etc/netplan/30-wifis-dhcp.yaml").exists()
           and not key.exists() and not H.REGDOM_CONF.exists() and H.record() == [] and winning()[HOME].parent == T / "run/nm", str(exc))
 state["settings_drift"] = False
 
@@ -201,7 +201,7 @@ try:
     H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)
     check("  and handing over refused", False)
 except ValueError as exc:
-    check("  and handing over refused", "last already" in str(exc), str(exc))
+    check("  and handing over refused", "already last" in str(exc), str(exc))
 state["integrated"] = False
 
 H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)

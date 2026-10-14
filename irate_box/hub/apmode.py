@@ -32,10 +32,10 @@ TOP_24 = {"US": 11, "CA": 11, "TW": 11, "MX": 11}  # elsewhere, channels up to 1
 RUNG = {"own-radio": 1, "own-channel": 2, "follow": 3, "choose": 4, "none": 5}
 TEXT = {
     "own-radio": "The hotspot has a radio to itself.",
-    "own-channel": "The hotspot shares the radio with the box's WiFi link, on a channel of its own: guests don't notice the link roam.",
-    "follow": "The hotspot shares the radio with the box's WiFi link and follows its channel: guests drop for a few seconds when the link roams.",
-    "choose": "This radio can't run the hotspot and stay on your WiFi at once: choose one.",
-    "none": "No radio here can be an access point. A USB WiFi dongle that can would make a hotspot possible.",
+    "own-channel": "The hotspot shares the radio with the box's WiFi link and uses its own channel. The link can roam without a change to the hotspot channel.",
+    "follow": "The hotspot shares the radio with the box's WiFi link and follows the channel of the link. When the link roams, the hotspot changes channel and guests can lose their connection.",
+    "choose": "This radio cannot run the hotspot and the WiFi link at the same time. Select the hotspot or the WiFi link.",
+    "none": "No radio in this box can run a hotspot. A USB WiFi dongle that supports access-point mode makes a hotspot possible.",
 }
 
 
@@ -108,7 +108,7 @@ def plan(inv, verdicts, owner=None, tried=None):
         ch = next((c for c in chans if c["channel"] == link_ch), None)
         if ch is None:   # the link is on a channel the hotspot may not use (DFS): can't follow it there
             out.update(rung=4, kind="choose", text=TEXT["choose"], needs_choice=True, channel=None,
-                       why=f"the WiFi link is on channel {link_ch}, where an access point may not start")
+                       why=f"the WiFi link is on channel {link_ch}, where a hotspot cannot start")
             return out
     out.update(channel=ch["channel"], freq=ch["freq"], band=ch["band"], follows_uplink=kind == "follow",
                needs_choice=False, drops_uplink=kind == "choose")

@@ -835,7 +835,7 @@ def link_findings(inv):
         name, iface = p.get("ssid") or p["name"], r["iface"]
         if p.get("autoconnect") is False:
             out.append(_h(f"autoconnect-off:{p['uuid']}", "warn", f"{name}: not set to join by itself",
-                          "After a drop or a reboot the box won't join its own network again unless someone asks it to.",
+                          "After a drop or a reboot the box does not join its own network again unless someone asks it to.",
                           "Network page, WiFi: its own settings, Join it by itself.", iface=iface))
         locks = [x for x in (f"the access point {p['bssid_lock']}" if p.get("bssid_lock") else None,
                              {"a": "5 GHz", "bg": "2.4 GHz"}.get(p.get("band_lock") or "", None) and f"the {({'a': '5 GHz', 'bg': '2.4 GHz'})[p['band_lock']]} band",
@@ -843,7 +843,7 @@ def link_findings(inv):
         if locks:
             roam = (r.get("roaming") or {})
             out.append(_h(f"locked:{p['uuid']}", "warn", f"{name}: locked to {' and '.join(locks)}",
-                          "The box can't move to another access point or band of the same network: if that one goes, the box "
+                          "The box cannot move to another access point or band of the same network. If that one goes, the box "
                           "stays off the network" + (f" ({len(roam['aps'])} access points share its name)." if len(roam.get("aps") or []) > 1 else "."),
                           "Network page, WiFi: its own settings, the locks; or Network recovery, roaming.", iface=iface))
         ps_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("powersave") or {}).get("value") or ((dflt.get("settings") or {}).get("powersave") or {}).get("value")
@@ -858,16 +858,16 @@ def link_findings(inv):
                           "'known devices' list stops matching it.", "Network page: MAC address, the board's own or stable.", iface=iface))
     for d in inv.get("duplicate_profiles") or []:
         out.append(_h(f"duplicate:{d['uuid']}", "warn", f"Two files for one connection ({d['name']})",
-                      f"{', '.join(d['files'])} have the same uuid: NetworkManager uses one of them, and which may change.",
+                      f"{', '.join(d['files'])} have the same uuid: NetworkManager uses one of them, and which one can change.",
                       "Keep the one in use; move the other out of /etc/NetworkManager/system-connections."))
     np = inv["stacks"].get("netplan") or {}
     if np.get("error"):
-        out.append(_h("netplan-broken", "problem", "netplan's configuration can't be read",
+        out.append(_h("netplan-broken", "problem", "The box cannot read netplan's configuration",
                       f"{np['error']} netplan stops at the first error, so none of its connections are made afresh, and "
                       "netplan apply fails.", "Fix or move aside the file it names (in /etc/netplan)."))
     for f in dflt.get("broken") or []:
-        out.append(_h(f"nmconf-broken:{f}", "warn", "A NetworkManager configuration file can't be read",
-                      f"{f}: NetworkManager may ignore it, or refuse to start.", "Fix or move it aside."))
+        out.append(_h(f"nmconf-broken:{f}", "warn", "The box cannot read a NetworkManager configuration file",
+                      f"{f}: NetworkManager can ignore it, or refuse to start.", "Fix or move it aside."))
     for rr in inv["radios"]:
         if rr.get("driver") == "aic8800_fdrv" and not resets_itself(rr["driver"]):
             out.append(_h(f"driver-wedge:{rr['iface']}", "warn", f"{rr['iface']}: a WiFi driver known to wedge",
@@ -900,7 +900,7 @@ def hazards(inv):
                 out.append(_h(f"other-ap:{p['uuid']}", "problem", f"Another hotspot running: {p['name']}",
                               f"SSID {p['ssid']!r} on {p.get('iface') or 'a WiFi device'}, up now: probably the image's setup hotspot "
                               "(a fresh Armbian or Raspberry Pi OS may start one), often with the image's own password. It holds the "
-                              "radio, so the box's own network link and irate-box's hotspot can't have it. Not irate-box's.",
+                              "radio, so the box's own network link and irate-box's hotspot cannot use it. Not irate-box's.",
                               "Network page, Changes made here: delete it (a copy is kept, to restore it)."))
             elif p["autoconnect"]:
                 out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile set to start by itself: {p['name']}",
@@ -926,7 +926,7 @@ def hazards(inv):
                                   f"WiFi network {p['ssid'] or p['name']}: stops trying after {value} failure{'s' if value != 1 else ''}"
                                   if value and value > 0 else f"WiFi network {p['ssid'] or p['name']}: gives up after repeated failures",
                                   f"{gives_up} Set by {where}.",
-                                  "Network page, Box defaults: \"Keep trying\" forever, for every network.",
+                                  "Network page, Default connection settings: set Keep trying to connect to forever, for every network.",
                                   iface=p.get("iface")))
     for r in radios:
         rf = r.get("rfkill")
@@ -938,7 +938,7 @@ def hazards(inv):
         usb = r.get("usb") or {}
         if usb.get("autosuspend"):
             out.append(_h(f"autosuspend:{r['iface']}", "warn", f"{r['iface']}: USB autosuspend on",
-                          "The kernel may suspend the USB radio when idle, which some drivers do not survive.",
+                          "The kernel can suspend the USB radio when idle. Some drivers do not survive this.",
                           f"echo on > /sys/bus/usb/devices/{usb.get('port')}/power/control (a udev rule keeps it).",
                           iface=r["iface"]))
         if r.get("power_save") == "on":
@@ -959,17 +959,17 @@ def hazards(inv):
                 out.append(_h(f"netplan:{r['iface']}", "warn", f"{r['iface']}: its connection is written afresh by netplan at every boot",
                               f"{p['name']} comes from /etc/netplan, and this NetworkManager cannot write changes back there: a "
                               "setting made for this connection alone is lost at the next boot. Box defaults still apply.",
-                              "Network page, WiFi: hand it over to NetworkManager, so its own settings last (undo puts it back).",
+                              "Network page, WiFi: transfer the profile to NetworkManager, so its own settings last. Undo restores the earlier state.",
                               iface=r["iface"]))
     out += link_findings(inv)
     if inv.get("country") in ("00", None) and radios:
         out.append(_h("regdom", "warn", "No WiFi country set",
-                      "The radio uses the world-safe channel set, which limits a hotspot's channels and power.",
+                      "The radio uses the world regulatory channel set, which limits the channels and power of a hotspot.",
                       "Set it in the OS (netplan regulatory-domain, raspi-config, or iw reg set XX)."))
     hap = inv["stacks"].get("hostapd") or {}
     if hap.get("running"):
         out.append(_h("hostapd", "warn", "hostapd is already running",
-                      "Something on the box already runs an access point with hostapd; irate-box's would compete for the radio."))
+                      "Something on the box already runs an access point with hostapd. The irate-box hotspot would compete for the radio."))
     return out
 
 
@@ -1030,8 +1030,8 @@ def ap_verdicts(inv):
         is_uplink = up.get("kind") == "wifi" and any(x.get("iface") == up.get("iface") for x in inv["radios"] if x.get("phy") == r.get("phy"))
         conditions = []
         if not is_uplink:
-            mode, detail = "radio-alone", "The radio is not the box's link to the network: the hotspot can have it to itself."
-            conditions.append({"kind": "how", "text": "This radio isn't the box's link to your network, so the hotspot can have it to itself."})
+            mode, detail = "radio-alone", "The radio is not the box's link to the network. The hotspot can use the radio alone."
+            conditions.append({"kind": "how", "text": "This radio is not the box's link to your network, so the hotspot can use the radio alone."})
         elif r.get("ap_beside_client"):
             mode = "beside-client"
             detail = (f"A second interface beside the client link, which stays up. Up to {r['channels_at_once']} channels at once"
@@ -1045,8 +1045,8 @@ def ap_verdicts(inv):
             else:
                 conditions.append({"kind": "limit", "text": "It works on one channel at a time, so the hotspot follows your WiFi's channel."})
         else:
-            mode, detail = "takes-radio", "Only by taking the radio from the client link: the box would leave the home network."
-            conditions.append({"kind": "limit", "text": "Only by taking the radio from your WiFi: the box would leave your network while the hotspot runs."})
+            mode, detail = "takes-radio", "Only if the hotspot takes the radio from the client link. The box then leaves the home network."
+            conditions.append({"kind": "limit", "text": "Only if the hotspot takes the radio from your WiFi. The box leaves your network while the hotspot runs."})
         owner = r["owner"]
         if owner == "networkmanager" or (owner == "none" and nm_on):
             backend = "networkmanager"
@@ -1054,11 +1054,11 @@ def ap_verdicts(inv):
             backend = "hostapd"
             if not hostapd:
                 detail += " Needs hostapd (apt install hostapd)."
-                conditions.append({"kind": "needs", "text": "hostapd, which isn't installed (apt install hostapd)."})
+                conditions.append({"kind": "needs", "text": "hostapd is not installed (apt install hostapd)."})
         else:
             backend = None
             detail += f" {owner} runs this radio, and irate-box has no {owner} backend for the hotspot yet."
-            conditions.append({"kind": "limit", "text": f"{owner} runs this radio, and irate-box can't run a hotspot through {owner} yet."})
+            conditions.append({"kind": "limit", "text": f"{owner} runs this radio, and irate-box cannot run a hotspot through {owner} yet."})
         out.append({"phy": r["phy"], "iface": r["iface"], "possible": backend is not None, "mode": mode,
                     "backend": backend, "detail": detail, "conditions": conditions})
     return out

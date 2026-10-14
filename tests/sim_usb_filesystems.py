@@ -28,7 +28,7 @@ check("what the kernel knows or can load: readable; the rest not", all(can[f] fo
       and not any(can[f] for f in ("xfs", "f2fs", "iso9660")), can)
 f = health.check_usb_filesystems()[0]
 check("the doctor names both, NTFS once, and what reads anywhere", f["detail"] == "FAT, exFAT, NTFS, ext2, ext3, ext4, btrfs. Not XFS, F2FS, ISO 9660 "
-      "(a disc image): this kernel has no driver for them." and "FAT or exFAT" in f["fix"], f)
+      "(a disc image): this kernel has no driver for them." and "filesystems above" in f["fix"], f)
 loadable.discard("ntfs3")
 usbstick.shutil = type("W", (), {"which": staticmethod(lambda name: "/usr/bin/ntfs-3g" if name == "ntfs-3g" else None)})
 can = usbstick.readable()
