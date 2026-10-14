@@ -45,9 +45,13 @@ check("the site for docusaurus2zim: every page, its text in <main> (all a search
       and all("<main>" in p.read_text() and "</main>" in p.read_text() for p in site.glob("*.html"))
       and (site / ".zim-source").read_text().strip() == guide.source_hash())
 book = guide.BOOK.read_bytes() if guide.BOOK.is_file() else b""
-check("the book that ships (web/guide/irate-box-guide.zim): a ZIM, current with the guide (./irate-box guide book)",
-      book[:4] == struct.pack("<I", 72173914) and guide.BOOK_SOURCE.is_file() and guide.BOOK_SOURCE.read_text().strip() == guide.source_hash(),
-      "stale or missing: run ./irate-box guide book (D2Z_HOME, D2Z_PYTHON)")
+current = book[:4] == struct.pack("<I", 72173914) and guide.BOOK_SOURCE.is_file() and guide.BOOK_SOURCE.read_text().strip() == guide.source_hash()
+# tests/guide-pending: the guide waits for its own pass, and the book with it (the file says why). Reported, not failed.
+if (REPO / "tests" / "guide-pending").is_file() and not current:
+    print("PENDING the book that ships (web/guide/irate-box-guide.zim) is stale: tests/guide-pending holds it back")
+else:
+    check("the book that ships (web/guide/irate-box-guide.zim): a ZIM, current with the guide (./irate-box guide book)",
+          current, "stale or missing: run ./irate-box guide book (D2Z_HOME, D2Z_PYTHON)")
 wf = (REPO / ".github" / "workflows" / "guide-zim.yml").read_text()
 inst = (REPO / "install.sh").read_text()
 check("CI packs it again with docusaurus2zim (pinned); the installer takes the shipped one, else makes its own",

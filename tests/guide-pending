@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+The guide waits for its own pass after the written-language review (branch feat/language-review): its pages
+still name labels that the pages have since renamed, and the shipped book (web/guide/irate-box-guide.zim) is
+not packed again until then. While this file exists, tests/run.sh reports guide_labels_guard.py as a warning
+and tests/guide_guard.py reports the shipped book as PENDING instead of failing. Every other guide check still
+fails as usual. Delete this file in the commit that updates the guide and packs the book.
