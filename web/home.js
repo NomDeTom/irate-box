@@ -4,6 +4,9 @@
 // The fragment picks the tab: #board or a thread (#t12, which board.js handles), and
 // anything else is the shoutbox. ?full shows only the open tab, filling the window, with
 // the header and tiles hidden; Escape or the button brings them back.
+// Back to this page from the browser's back-forward cache (after signing in or out): drawn afresh, so its header
+// buttons are those of whoever is signed in now.
+window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 (() => {
   const tabs = document.querySelectorAll('.home-tabs [data-tab]');
   const panes = { shout: document.getElementById('tab-shout'), board: document.getElementById('tab-board') };

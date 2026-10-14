@@ -14,15 +14,15 @@ const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
 const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
 function page(file, url, fetcher, scripts) {
-  const errors = [];
+  const errors = [], navs = [];
   const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
+  vc.on('jsdomError', (e) => { if (/navigation/.test(e.message)) navs.push(e.message); if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
   vc.on('error', (...a) => { if (!/HTTP 404/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
   const dom = new JSDOM(strip(fs.readFileSync(`${WEB}/${file}`, 'utf8')), { url, runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
   dom.window.fetch = fetcher;
   dom.window.confirm = () => true;
   scripts.forEach((s) => dom.window.eval(fs.readFileSync(`${WEB}/${s}`, 'utf8')));
-  return { w: dom.window, d: dom.window.document, errors };
+  return { w: dom.window, d: dom.window.document, errors, navs };
 }
 (async () => {
   const posted = [];
@@ -49,8 +49,9 @@ function page(file, url, fetcher, scripts) {
   const lf = d.getElementById('acct-login-form');
   lf.elements.name.value = 'alice'; lf.elements.password.value = 'password1';
   lf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait(300);
-  check('log in: then the account, with Change password and Log out', !d.getElementById('acct-me').hidden && d.getElementById('acct-guest').hidden
-    && /alice: a user of this box/.test(t(d.getElementById('acct-me-text'))));
+  // jsdom does not navigate; it says it was asked to. Where to is account.js's own line: next, else the hub.
+  check('sign in: on to the hub (or ?next=), where the header has their buttons, not left on this page',
+    p.navs.length === 1 && /location\.assign\(next \|\| '\/'\)/.test(fs.readFileSync(`${WEB}/account.js`, 'utf8')), p.navs);
   view = { signup: 'open', http: 'prevented', https: false, me: null };
   p = page('account.html', 'http://box.local/account.html', async () => json(view), ['account.js']);
   await wait(); d = p.d;

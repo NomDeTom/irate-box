@@ -88,8 +88,8 @@ function form(id, build, done) {
 }
 
 form('acct-login-form', (f) => ({ action: 'login', name: f.elements.name.value, password: f.elements.password.value }), () => {
-  if (next) { location.assign(next); return; }
-  note('Signed in.', true); load();
+  // On to the page that sent them here, or back to the hub, whose header then has their buttons (Admin for an administrator).
+  location.assign(next || '/');
 });
 form('acct-signup-form', (f) => ({ action: 'signup', name: f.elements.name.value, password: f.elements.password.value }), (d) => {
   note(d.state === 'asked' ? 'Requested. You can sign in after an administrator approves it.' : 'Account created. You are signed in.', true);

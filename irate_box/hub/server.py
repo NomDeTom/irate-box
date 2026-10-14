@@ -3883,6 +3883,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
+            # Its header buttons follow who is signed in: never a copy from before signing in or out.
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(body)
             return

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The home page's link to /account.html: "Sign in" for a guest whether sign-up is on or off (admins sign in
-there too), "My account" once signed in, never both. python3 tests/sim_account_nav.py"""
+there too), "My account" once signed in, never both; "Admin" for an administrator only. python3 tests/sim_account_nav.py"""
 import os, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
@@ -32,6 +32,11 @@ check("sign-up on, signed in: My account, linking to /account.html, no Sign in",
 
 accounts.set_settings(signup="off")
 check("switched off again: still Sign in for a guest", "Sign in</a>" in link(False))
+
+admin = link("admin")
+check("an administrator signed in: My account and Admin, linking to /admin/", "My account</a>" in admin and 'href="/admin/"' in admin
+      and "Admin</a>" in admin)
+check("  a user signed in, and a guest: no Admin", 'href="/admin/"' not in link(True) and 'href="/admin/"' not in link(False))
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
