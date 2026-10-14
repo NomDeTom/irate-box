@@ -1694,6 +1694,16 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 /* About: its sections' headings stand out above the names in its lists (the shared h2 is small and muted). */
 body.about section > h2 { font-size: 1.3rem; font-weight: 700; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 0.75rem; }
 body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--text); }
+/* The certificate page: plain paragraphs, so their spacing back from the reset; each platform's steps a fold. */
+body.certificate section { margin-bottom: 2rem; line-height: 1.55; }
+body.certificate section p { margin: 0 0 0.8rem; }
+body.certificate section > h2 { margin: 1.8rem 0 0.8rem; }
+body.certificate section > h2:first-child { margin-top: 0; }
+body.certificate details { margin: 0 0 0.6rem; }
+body.certificate summary { cursor: pointer; }
+body.certificate details ol { margin: 0.5rem 0 0.8rem; padding-left: 1.4rem; }
+body.certificate details li { margin-bottom: 0.35rem; }
+body.certificate .cert-fingerprint { overflow-wrap: anywhere; }
 
 /* The WiFi card: with a section open (a network's settings, adding one), its two columns stack so that section has the
    card's whole width. The networks seen, in columns. */
