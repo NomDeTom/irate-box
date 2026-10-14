@@ -6192,14 +6192,17 @@ function pictureRow(which) {
     img.onerror = () => { remove.disabled = true; note.textContent = p.none; };
     img.src = `${p.url}?${Date.now()}`;
   };
-  const refreshTab = () => {
+  // This tab's icon follows at once: the new favicon, or once removed, the page's own emoji (themes.js keeps it in data-own).
+  const refreshTab = (removed) => {
     if (which !== 'favicon') return;
     let link = document.querySelector('link[rel="icon"]');
     if (!link) { link = el('link', { rel: 'icon' }); document.head.append(link); }
-    link.href = `/favicon.ico?${Date.now()}`;
+    if (link.dataset.own === undefined) link.dataset.own = link.getAttribute('href') || '';
+    if (removed && link.dataset.own) link.href = link.dataset.own;
+    else link.href = `/favicon.ico?${Date.now()}`;
   };
   const send = async (body) => {
-    try { await postJSON('/admin/picture', { which, ...body }); show(); refreshTab(); } catch (e) { note.textContent = e.message; }
+    try { await postJSON('/admin/picture', { which, ...body }); show(); refreshTab(!!body.remove); } catch (e) { note.textContent = e.message; }
   };
   file.addEventListener('change', async () => {
     const f = file.files[0];

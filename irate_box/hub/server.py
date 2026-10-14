@@ -770,12 +770,25 @@ def home_page(signed_in=False):
 # The list pages (a manifest with a "menu"), at their tile's href. Rendered on each request:
 # discovered entries come from the installed apps, which an update changes.
 MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
+# A page's tab icon: its emoji drawn as an SVG in the page itself (no request). The first emoji of a tile's icon
+# ("📡📻" is 📡), with what joins to it (U+FE0F, a skin tone, a ZWJ sequence, a flag's pair).
+FIRST_EMOJI = re.compile("[\U0001F1E6-\U0001F1FF]{2}|.[\uFE0F\U0001F3FB-\U0001F3FF]*(?:\u200D.[\uFE0F]*)*")
+
+
+def emoji_icon(icon, fallback="🏴\u200d☠️"):
+    m = FIRST_EMOJI.match(icon or "")
+    e = html.escape(m.group(0) if m else fallback)
+    return ('<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22>'
+            f'<text y=%22.9em%22 font-size=%2290%22>{e}</text></svg>">')
+
+
 MENU_TEMPLATE = """<!DOCTYPE html>
 <html lang="en" class="art-page">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title} · Hub</title>
+  {icon}
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
@@ -828,6 +841,7 @@ def menu_page(m, signed_in=False):
     art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
     banner = f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n' if lines else ""
     return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html, banner=banner, title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
+                                icon=emoji_icon((m.get("tile") or {}).get("icon")),
                                 about=html.escape(menu.get("about", "")).replace("--", "-"),
                                 items="\n".join(items)).encode()
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
@@ -3800,6 +3814,10 @@ class Handler(BaseHTTPRequestHandler):
             body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
                     "body.admin { --page-width: %drem; }\n"
                     % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"]))
+            # An uploaded favicon (Appearance) over the pages' own emoji icons: themes.js reads this and swaps it in.
+            fav = picture_mtime("favicon")
+            if fav:
+                body += ':root { --favicon: "%d"; }\n' % int(fav)
             if not cur["krab_art"]:
                 body += ('.admin-art, .art-loop { display: none !important; }\n'
                          '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n')

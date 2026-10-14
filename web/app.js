@@ -142,6 +142,18 @@ function watch(doc, depth = 0) {
   } catch (_) {}  // a cross-origin frame: nothing to watch
 }
 
+// The tab's icon: the app's own, when its page names one (same origin only); else this page's (the hub's, or the
+// administrator's favicon that themes.js put in), put back as it was.
+const ownIcon = document.querySelector('link[rel="icon"]');
+let iconBefore = null;
+function appIcon() {
+  if (!ownIcon) return;
+  let href = '';
+  try { const l = frame.contentDocument.querySelector('link[rel~="icon"]'); href = l ? l.href : ''; } catch (_) {}
+  if (href) { if (iconBefore === null) iconBefore = ownIcon.href; ownIcon.href = href; }
+  else if (iconBefore !== null) { ownIcon.href = iconBefore; iconBefore = null; }
+}
+
 let shown = null;
 function sync() {
   try { watch(frame.contentDocument); } catch (_) {}
@@ -156,6 +168,7 @@ function sync() {
   }
   title.textContent = cur.name;
   document.title = cur.name ? `${cur.name} · Hub` : 'Hub';
+  appIcon();
   drawReport(cur.path);
 }
 

@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """No dead links or stylesheets: every local href and src in the pages under web/ (links, scripts, stylesheets,
 pictures), and every url() and @import in web/'s stylesheets, names a file in web/, one of the hub's own routes, or
-a path under an app's mount. A dead one shows only in a browser's developer tools (a stylesheet that sets variables
+a path under an app's mount; and every page has its tab icon. A dead one shows only in a browser's developer tools (a stylesheet that sets variables
 has fallbacks, so the page still looks right), so this reads the files instead.
 Each route below is checked against the code that serves it, so the list cannot go stale either.
 python3 tests/link_guard.py"""
@@ -75,6 +75,15 @@ for s in sheets:
         links += 1
         if not ok:
             check(f"{s.relative_to(REPO)}: url({m.group(1)})", False, "no such file in web/")
+# Every page has its tab icon (its emoji, in the page): one, or the browser shows a blank one. A page that only
+# sends people on (a meta refresh) needs none.
+for p in pages:
+    text = p.read_text(encoding="utf-8", errors="replace")
+    if 'http-equiv="refresh"' in text:
+        continue
+    n = len(re.findall(r'<link rel="icon" href="data:image/svg\+xml,', text))
+    if n != 1:
+        check(f"{p.relative_to(REPO)}: one tab icon", False, f"{n} found")
 check(f"every local link and stylesheet reference alive ({len(pages)} pages, {len(sheets)} stylesheets, {links} references)",
       links > 0 and not fails)
 
