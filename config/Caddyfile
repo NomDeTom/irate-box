@@ -21,7 +21,7 @@
 # Run in dev:   caddy run --config Caddyfile        (needs :80, so sudo or setcap)
 #               PORT=8000 python3 server.py
 # Paths are {$ENV:default} placeholders — HUB_STATIC, HUB_MERMAID_ROOT, HUB_DRAW_ROOT —
-# so a different checkout layout is an environment variable, not an edit. See BUILDING.md.
+# so a different checkout layout is an environment variable, not an edit. See docs/dev/building.md.
 {
 	auto_https off
 	admin off

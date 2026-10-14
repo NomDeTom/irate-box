@@ -36,7 +36,7 @@ on it. Every part but "id" and "order" is optional:
                                       web server: its ports; the file that shows it is installed;
                                       whether a new floor opens it to hotspot guests; how its
                                       listener is rated on the Security page, and what it exposes,
-                                      in one plain sentence (services.py; SERVICES.md)
+                                      in one plain sentence (services.py; docs/dev/services.md)
     "install": {"dir", "needs", "title", "restart"},
                                       where its bundle goes, under /usr/share/hub ("apps/draw");
                                       the file (or glob) that proves a bundle is whole; a unit

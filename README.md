@@ -5,7 +5,7 @@
 
 A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, HTTPS-free by design, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox and forum and filedrop just like the original.
 
-<img src="iratebox-hub.webp" alt="Irate-Box hub home page" width="960">
+<img src="docs/images/iratebox-hub.webp" alt="Irate-Box hub home page" width="960">
 
 That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopaedia (courtesy of Kiwix), a small GIT repository, a series of calculators and many many more - all with no internet required at any point.
 
@@ -28,7 +28,7 @@ git clone https://github.com/NomDeTom/irate-box && cd irate-box
 sudo ./install.sh --with-notes --with-sync --with-mqtt --zim wikipedia_en_top_mini.zim
 ```
 
-The script sets up nginx on `:80` (`--web caddy` for Caddy, the fallback) and the hub on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. No password is made: until the owner makes the admin account, anyone on the network can use `/admin/`, so make it straight after installing, over HTTPS (`/admin/setup`), or at the console over SSH (`sudo /opt/irate-box/irate-box hub_control set-admin NAME`); over plain HTTP the page lets you only by choice. Scripts get a login of their own only when asked for (`hub_control script-login`, or `--admin-password`). Running it again upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing is compiled on the board. **[BUILDING.md](BUILDING.md)** §4b lists every option.
+The script sets up nginx on `:80` (`--web caddy` for Caddy, the fallback) and the hub on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. No password is made: until the owner makes the admin account, anyone on the network can use `/admin/`, so make it straight after installing, over HTTPS (`/admin/setup`), or at the console over SSH (`sudo /opt/irate-box/irate-box hub_control set-admin NAME`); over plain HTTP the page lets you only by choice. Scripts get a login of their own only when asked for (`hub_control script-login`, or `--admin-password`). Running it again upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing is compiled on the board. **[docs/dev/building.md](docs/dev/building.md)** §4b lists every option.
 
 Or as a Debian package: every push to `main` builds `irate-box_<version>_all.deb` (the CI run's artifact; a `v…` tag puts it on that release), or build one with `packaging/deb/build.sh`. `sudo apt install ./irate-box_*.deb` brings in what the installer needs; then `sudo irate-box-setup` (with any of the options above) sets the box up from the packaged code. The package does not set the box up by itself, since the installer asks apt for packages and downloads release files. After installing a newer package, `sudo irate-box-setup` with no options applies it with the box's own options.
 
@@ -49,9 +49,9 @@ Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** 
 caddy run --config config/Caddyfile        # needs :80 — sudo, setcap, or edit the port
 ```
 
-Then it is <http://localhost/>. `/mermaid/`, `/draw/` and `/serial/` go live once their builds exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the routes name. **[BUILDING.md](BUILDING.md)** walks through all of it, clone to running.
+Then it is <http://localhost/>. `/mermaid/`, `/draw/` and `/serial/` go live once their builds exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the routes name. **[docs/dev/building.md](docs/dev/building.md)** walks through all of it, clone to running.
 
-**Adding a service of your own** (a chat, a map server, a broker): **[SERVICES.md](SERVICES.md)** says where it should sit, who should reach it, what its manifest and installer section need, and what the firewall and the doctors then do by themselves.
+**Adding a service of your own** (a chat, a map server, a broker): **[docs/dev/services.md](docs/dev/services.md)** says where it should sit, who should reach it, what its manifest and installer section need, and what the firewall and the doctors then do by themselves.
 
 ## How it hangs together
 
@@ -76,6 +76,6 @@ Irate-Box follows the original PirateBox, which was free software under the GPL.
 | [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub: `server.py`, `hub_control.py`, the doctors (`health.py`, `secdoctor.py`, `security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
 | [GPL-3.0-or-later](LICENSES/GPL-3.0-or-later.txt) | `ci.py`, `gitrepos.py`, `usbstick.py` |
 | [MIT](LICENSES/MIT.txt) | small, self-contained pieces: `netinv.py`, `rtc.py`, `hubclock.py`, `zimcheck.py`, `git-http-guard.py`, `adapt_tools.py`, `tailscale-apply.sh`, the git hook, the device locks (`web/lock.js`, also copied into the Excalidraw and Mermaid forks), small page scripts, the web-server and unit configs, and the `apps.d` manifests; `web/qrcode.js` is third-party (Kazuhiko Arase) |
-| [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt) | the documentation: this README, `BUILDING.md`, `SERVICES.md`, `web/help.html`, `web/about.html` |
+| [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt) | the documentation: this README, `docs/`, `web/help.html`, `web/about.html` |
 
 **The source on the box.** The AGPL gives everyone who uses the hub over the network the right to its source, and an offline box has to offer that itself. `install.sh` publishes the installed code three ways: a tarball at `/source`, a read-only repository on the box's git server (`/git/irate-box-source.git`, browse or clone), and a pinned file in the file drop that never expires. The About tile (`/about.html`) links all three, and lists the licences of the separate programs the box runs (Excalidraw, the Mermaid live editor, the Meshtastic web flasher and firmware, Kiwix, the web server, and the add-ons).

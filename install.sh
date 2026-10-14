@@ -728,7 +728,7 @@ fi
 if [ "$WITH_COLLAB" = 1 ]; then
 	[ "$ARCH" != armv6l ] || die "--with-collab: Node.js has no ARMv6 build (the Pi Zero W cannot run it)"
 	[ -f "${APPS_SRC:-/nonexistent}/room/dist/index.js" ] || [ -f "$ROOM/dist/index.js" ] || [ "$APPS_FROM_ACTIONS" = 1 ] ||
-		die "--with-collab needs the relay: --apps-from-actions, or --apps DIR with a prebuilt DIR/room (see BUILDING.md)"
+		die "--with-collab needs the relay: --apps-from-actions, or --apps DIR with a prebuilt DIR/room (see docs/dev/building.md)"
 fi
 
 case "$ARCH" in
