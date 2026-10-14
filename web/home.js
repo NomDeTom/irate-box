@@ -10,7 +10,7 @@
   const expand = document.getElementById('tab-expand');
   if (!expand || !panes.shout || !panes.board) return;
 
-  // A tab the hub left out for this visitor (data-off) is never chosen.
+  // A tab the hub left out for this visitor (data-off) is never selected.
   const on = (name) => !panes[name].hasAttribute('data-off');
   const want = () => (/^#(board|t\d+)$/.test(location.hash) ? 'board' : 'shout');
   const currentTab = () => (on(want()) ? want() : on('shout') ? 'shout' : on('board') ? 'board' : null);
@@ -29,8 +29,8 @@
 
   function setFull(full) {
     document.body.classList.toggle('full', full);
-    expand.textContent = full ? '⤡ Hub view' : '⤢ Expand';
-    expand.title = full ? 'Show the hub around it again' : 'Full-page view of this tab';
+    expand.textContent = full ? '⤡ Return to hub view' : '⤢ Expand tab';
+    expand.title = full ? 'Show the hub header and tiles again' : 'Full-page view of this tab';
     const params = new URLSearchParams(location.search);
     if (full) params.set('full', ''); else params.delete('full');
     const query = params.toString().replace(/=(?=&|$)/g, '');

@@ -61,7 +61,7 @@ f = step()
 check("web: public visits in the last 7 days: a problem, by network, with what to do", f["reach-web"]["status"] == "problem"
       and "81.2.69.0/24 (12," in f["reach-web"]["detail"] and "Tailscale" in f["reach-web"]["fix"], f["reach-web"])
 check("ssh: public addresses heard (not the LAN's, nor Tailscale's), none let in: a problem", f["reach-ssh"]["status"] == "problem"
-      and "2 public addresses" in f["reach-ssh"]["detail"] and "none let in" in f["reach-ssh"]["detail"]
+      and "2 public addresses" in f["reach-ssh"]["detail"] and "none accepted" in f["reach-ssh"]["detail"]
       and "100.101" not in f["reach-ssh"]["detail"] and "192.168" not in f["reach-ssh"]["detail"], f["reach-ssh"])
 check("ipv6: a public address (not the ULA): a warning, the router's firewall named", f["reach-ipv6"]["status"] == "warn"
       and "2a02:c7c:1234:5600::7 (wlan0)" in f["reach-ipv6"]["detail"] and "fd00" not in f["reach-ipv6"]["detail"], f["reach-ipv6"])

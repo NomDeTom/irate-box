@@ -39,44 +39,43 @@ LABEL = {
     "two": "Two networks: one open, one encrypted",
 }
 WHAT = {
-    "open": "Anyone nearby can join with no password. The usual choice for a public hub, and the one every "
-            "device can use.",
-    "owe": "Guests still join with no password, but each device's traffic is encrypted with its own key, so "
-           "someone listening nearby cannot read it.",
-    "sae": "Guests type a password that you publish (the Join QR and the front page show it). Because WPA3 gives "
-           "each device its own key, knowing the password does not let a listener read anyone else's traffic.",
-    "two": "An open network for devices that cannot use encryption, and an encrypted one (OWE or WPA3) beside "
-           "it for those that can. Guests choose.",
+    "open": "Guests join with no password. Every WiFi device can join. The WiFi link is not encrypted.",
+    "owe": "Guests join with no password. The WiFi link is encrypted with a separate key for each device. "
+           "A device near the hotspot cannot read the WiFi traffic of other devices.",
+    "sae": "Guests enter a password that you publish on the Join QR and on the front page. WPA3 gives each device "
+           "its own key. A guest who knows the password cannot read the WiFi traffic of other devices.",
+    "two": "One open network for devices that cannot use encryption. One encrypted network (OWE or WPA3) for "
+           "devices that can. Guests select a network.",
 }
 WARNINGS = {
     "open": [
-        "Anyone nearby can read everything guests send and receive on the hub: pages, messages, uploads, and "
-        "the admin login if you log in over the hotspot.",
-        "Device locks on saves and files still work, but anyone listening can see what guests do.",
+        "Open WiFi does not encrypt the WiFi link. Anyone nearby can read traffic that has no other encryption, "
+        "such as plain HTTP. Use HTTPS to encrypt web traffic between the device and the box.",
+        "If an administrator signs in over plain HTTP on the hotspot, anyone nearby can read the administrator password.",
+        "A device lock on a saved file or tile does not encrypt the WiFi link.",
     ],
     "owe": [
-        "Older devices cannot join: roughly Android before 10, iPhones and iPads before iOS 16, Windows 10 "
-        "before its 2020 updates. They will not see the network or will fail to connect.",
-        "Someone can still set up a fake hotspot with the same name, and a guest who joins it is not protected.",
-        "Not tested on this radio's driver yet: try it with your own devices before relying on it.",
+        "Devices that do not support OWE cannot join. They do not show the network or they fail to connect.",
+        "Check that your guests' devices support OWE before you rely on this mode.",
+        "A person with a fake hotspot of the same name can still read the traffic of a guest who joins it. "
+        "OWE does not identify the hotspot.",
+        "No test of OWE on this radio driver has been done. Test it with your own devices first.",
     ],
     "sae": [
-        "Older devices cannot join: roughly Android before 10, iPhones and iPads before iOS 13, Windows 10 "
-        "before 1903.",
-        "Anyone who knows the published password can set up a fake hotspot with the same name and password.",
-        "The password is public by design: it keeps out listeners, not people.",
+        "Devices that do not support WPA3 cannot join, unless you let WPA2 devices join.",
+        "A person who knows the published password can set up a fake hotspot with the same name and password.",
+        "The password is published on purpose. It prevents a listener from reading the WiFi link. "
+        "It does not identify who joins.",
     ],
     "two": [
-        "Guests on the open network are as exposed as with an open hotspot; only the encrypted one protects "
-        "its guests.",
-        "Needs a second access-point interface: usually a USB WiFi dongle beside the built-in radio.",
+        "The open network does not encrypt the WiFi link. Only the encrypted network encrypts the WiFi link.",
+        "This mode needs a second access-point interface, usually a USB WiFi dongle beside the built-in radio.",
     ],
 }
-WPA2_WARNING = ("Letting WPA2 devices join (WPA3 transition mode) brings older devices back, but they get "
-                "no protection: anyone who knows the password can read their traffic.")
-ALWAYS = ("Whatever the mode, someone with the right equipment can impersonate the hotspot or tamper with "
-          "pages in transit. Only HTTPS (planned, with a certificate guests install on first use) protects "
-          "against that.")
+WPA2_WARNING = ("If you let WPA2 devices join (WPA3 transition mode), older devices can join. "
+                "WPA2 devices do not get a separate key. A person who knows the password can read their WiFi traffic.")
+ALWAYS = ("In every mode, a person with the right equipment can impersonate the hotspot or change pages in transit. "
+          "HTTPS prevents this on devices that trust the box's certificate.")
 
 
 def load():
@@ -113,15 +112,15 @@ def available(caps):
     """{mode: None if it can be chosen, or why not}."""
     out = {"open": None}
     if not caps["known"]:
-        why = "the radios have not been looked at yet (Network → Look again)"
+        why = "the box has not checked the radios yet (Network → Look again)"
         return {"open": None, "owe": why, "sae": why, "two": why}
     if not caps["ap_radios"]:
-        why = "no radio here can be an access point"
+        why = "no radio in this box can run a hotspot"
         return {"open": why, "owe": why, "sae": why, "two": why}
     out["owe"] = None  # drivers do not report OWE; offered with a warning to test it
     out["sae"] = None if caps["sae"] else "the radio does not report WPA3 (SAE) support"
     out["two"] = None if caps["ap_slots"] >= 2 else (
-        "only one access-point interface here: add a second radio (a USB WiFi dongle) for two networks")
+        "this box has one access-point interface. Add a second radio, for example a USB WiFi dongle, to run two networks")
     return out
 
 
@@ -133,16 +132,16 @@ def validate(raw, caps):
         raise ValueError("unknown mode")
     why = available(caps).get(mode)
     if why:
-        raise ValueError(f"{LABEL[mode]} cannot be chosen here: {why}")
+        raise ValueError(f"{LABEL[mode]} cannot be selected on this box: {why}")
     second = raw.get("second", "owe")
     if second not in ("owe", "sae"):
-        raise ValueError("the encrypted network is OWE or WPA3")
+        raise ValueError("the encrypted network must be OWE or WPA3")
     if mode == "two" and second == "sae" and not caps["sae"]:
         raise ValueError("the radio does not report WPA3 (SAE) support")
     password = str(raw.get("password", ""))
     needs_pw = mode == "sae" or (mode == "two" and second == "sae")
     if needs_pw and not PASSWORD_RE.match(password):
-        raise ValueError("the WPA3 password is 8 to 63 ordinary characters (letters, digits, spaces, punctuation)")
+        raise ValueError("the WPA3 password must have 8 to 63 characters: letters, digits, spaces or punctuation")
     return {"mode": mode, "password": password if needs_pw else "", "allow_wpa2": bool(raw.get("allow_wpa2")) and needs_pw,
             "second": second}
 
@@ -193,11 +192,11 @@ def snapshot():
 
 def _ssid_ok(ssid):
     if not ssid or len(ssid.encode()) > 32 or any(c in ssid for c in "\n\r\0"):
-        raise ValueError("an SSID is 1 to 32 bytes, on one line")
+        raise ValueError("an SSID must have 1 to 32 bytes on one line")
     return ssid
 
 
-def _with_suffix(ssid, suffix=" (safe)"):
+def _with_suffix(ssid, suffix=" (encrypted)"):
     """ssid plus suffix in at most 32 bytes, trimming whole characters off the end of ssid."""
     room = 32 - len(suffix.encode())
     while len(ssid.encode()) > room:
@@ -223,7 +222,7 @@ def nm_properties(settings, kind):
     if kind == "sae":
         if settings.get("allow_wpa2"):
             # NetworkManager has no WPA2/WPA3 transition mode for an access point.
-            raise ValueError("WPA2 devices alongside WPA3 (transition mode) needs the hostapd backend")
+            raise ValueError("WPA2 devices with WPA3 (transition mode) need the hostapd backend")
         return {"802-11-wireless-security.key-mgmt": "sae", "802-11-wireless-security.psk": settings["password"],
                 "802-11-wireless-security.pmf": "3"}
     raise ValueError(f"unknown security {kind}")
@@ -240,7 +239,7 @@ def hostapd_lines(settings, kind, ssid):
     if kind == "sae":
         pw = settings["password"]
         if not PASSWORD_RE.match(pw):
-            raise ValueError("the WPA3 password is 8 to 63 ordinary characters")
+            raise ValueError("the WPA3 password must have 8 to 63 characters")
         if settings.get("allow_wpa2"):
             return lines + ["wpa_key_mgmt=WPA-PSK SAE", f"wpa_passphrase={pw}", f"sae_password={pw}", "ieee80211w=1"]
         return lines + ["wpa_key_mgmt=SAE", f"sae_password={pw}", "ieee80211w=2", "sae_require_mfp=1"]

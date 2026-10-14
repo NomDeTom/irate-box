@@ -140,11 +140,11 @@ setTimeout(() => {
   const panes = (id) => [...d.querySelectorAll(`#${id} > .admin-pane`)].map((x) => x.id).join(' ');
   check('an app\'s page: its state, its own sections, then access, its tile and maintenance', panes('page-app-wiki') === 'app-head-wiki books app-access-wiki app-tile-wiki app-maint-wiki', panes('page-app-wiki'));
   check('  access, tile and maintenance fold, closed to start', kiwix.querySelectorAll(':scope > .admin-pane > details.app-fold:not([open])').length === 3);
-  check('  its header: what it is, who opens it, and Open', /Built in/.test(t('#app-head-wiki')[0]) && /Opens: the admin/.test(t('#app-head-wiki')[0])
+  check('  its header: what it is, who opens it, and Open', /Built-in app/.test(t('#app-head-wiki')[0]) && /Access: administrators/.test(t('#app-head-wiki')[0])
     && (d.querySelector('#app-head-wiki a.action-btn') || {}).textContent === 'Open', t('#app-head-wiki')[0]);
-  check('  who can open it: four chips, Kiwix (private) at admin; its tile is not edited here', chipsOf(kiwix, 'Who can open it').map((c) => c.textContent).join('|') === 'guests|users|admin|off'
-    && picked(kiwix, 'Who can open it') === 'admin' && !rowOf(kiwix, 'Who sees the tile') && !rowOf(kiwix, 'Tile icon'), t('#app-access-wiki')[0]);
-  check('  its tile: a summary, and the way to Home tiles', /shows only to an admin account/.test(t('#app-tile-wiki')[0]) && /Place 3 of 3/.test(t('#app-tile-wiki')[0])
+  check('  who can open it: four chips, Kiwix (private) at admin; its tile is not edited here', chipsOf(kiwix, 'Access').map((c) => c.textContent).join('|') === 'Guests|Users|Administrators|Disabled'
+    && picked(kiwix, 'Access') === 'Administrators' && !rowOf(kiwix, 'Visibility') && !rowOf(kiwix, 'Tile icon'), t('#app-access-wiki')[0]);
+  check('  its tile: a summary, and the way to Home tiles', /Only a signed-in administrator sees the tile/.test(t('#app-tile-wiki')[0]) && /Place 3 of 3/.test(t('#app-tile-wiki')[0])
     && !!d.querySelector('#app-tile-wiki a[href="#tile-order"]'), t('#app-tile-wiki')[0]);
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
   check('About\'s page: its state and its tile, nothing of access', panes('page-app-about') === 'app-head-about app-tile-about' && !d.getElementById('app-access-about'), panes('page-app-about'));
@@ -157,23 +157,23 @@ setTimeout(() => {
     const open = (id) => { const r = rowEl(id); if (r.querySelector('.aw-row-head').getAttribute('aria-expanded') !== 'true') r.querySelector('.aw-row-head').click(); return rowEl(id); };
     const btn = (id, label) => [...rowEl(id).querySelectorAll('button')].find((b) => b.textContent === label);
     const rows = [...d.querySelectorAll('#tile-order-list .aw-row')];
-    check('the tiles in order, each saying who opens it and who sees it', rows.length === 3 && /opens: everyone · seen: as its access/.test(rows[0].textContent)
-      && /opens: everyone · seen: everyone/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
+    check('the tiles in order, each saying who opens it and who sees it', rows.length === 3 && /Access: guests · Visibility: as its access/.test(rows[0].textContent)
+      && /Access: guests · Visibility: guests/.test(rows[1].textContent), rows.map((r) => r.textContent).join(' / '));
     open('drop');
-    btn('drop', 'large').click();
-    check('a size chosen: the drop large, said in its line', /· large/.test(rowEl('drop').textContent));
+    btn('drop', 'Two-by-two').click();
+    check('a size chosen: the drop large, said in its line', /· Two-by-two/.test(rowEl('drop').textContent));
     btn('drop', '↓ Later').click();
     const wiki = open('wiki');
-    const lockChips = chipsOf(wiki, 'When seen but not opened');
+    const lockChips = chipsOf(wiki, 'Locked-tile action');
     check('Kiwix\'s row: when seen but not opened: sign in, sign up, padlock, greyed; sign in by default; no sign-up for an app for the admin',
-      lockChips.map((c) => c.textContent).join('|') === 'sign in|sign up|padlock|greyed' && picked(wiki, 'When seen but not opened') === 'sign in' && lockChips[1].disabled,
+      lockChips.map((c) => c.textContent).join('|') === 'sign in|sign up|padlock|greyed' && picked(wiki, 'Locked-tile action') === 'sign in' && lockChips[1].disabled,
       lockChips.map((c) => `${c.textContent}${c.disabled ? '(off)' : ''}`).join('|'));
-    check('  who sees it: admin, as its access', picked(wiki, 'Who sees the tile') === 'admin');
+    check('  who sees it: admin, as its access', picked(wiki, 'Visibility') === 'Administrators');
     lockChips[2].click();
     const about = open('about');
-    check('About, open to all, has no locked-tile row; who sees it: guests', !rowOf(about, 'When seen but not opened') && picked(about, 'Who sees the tile') === 'guests');
-    chipsOf(about, 'Who sees the tile')[3].click();
-    check('  hidden waits for Save', picked(rowEl('about'), 'Who sees the tile') === 'hidden' && !posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about'));
+    check('About, open to all, has no locked-tile row; who sees it: guests', !rowOf(about, 'Locked-tile action') && picked(about, 'Visibility') === 'Guests');
+    chipsOf(about, 'Visibility')[3].click();
+    check('  hidden waits for Save', picked(rowEl('about'), 'Visibility') === 'Hidden' && !posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'about'));
     const save = () => [...d.querySelectorAll('#tile-order-box button')].find((b) => b.textContent === 'Save');
     const icon = () => rowOf(rowEl('about'), 'Tile icon').querySelector('input');
     check('a tile icon field, the app\'s own as its placeholder', icon().placeholder === 'ℹ️', icon().placeholder);
@@ -181,7 +181,7 @@ setTimeout(() => {
     check('  five letters refused before Save', save().disabled && /up to four letters/.test(rowEl('about').textContent));
     icon().value = 'INFO'; icon().dispatchEvent(new w.Event('change'));
     check('  four letters taken, Save offered', !save().disabled);
-    btn('about', 'wide').click();
+    btn('about', 'Two columns').click();
     check('moved, sized, hidden, an icon: Save offered, nothing sent yet', !save().disabled && !posted.some((p) => p[0] === '/admin/tiles'));
     save().click();
   }
@@ -218,9 +218,9 @@ setTimeout(() => {
     && !!d.querySelector('#inv-list a[href="#page-app-draw"]'));
   check('the shoutbox\'s page ends with what was reported there', [...d.querySelectorAll('#page-app-shoutbox > .admin-pane')].pop().id === 'app-flagged-shoutbox');
   check('  the shoutbox\'s reported post on its page; none on the board\'s', d.querySelectorAll('#app-flagged-shoutbox .aw-row').length === 1
-    && /buy cheap things/.test(t('#app-flagged-shoutbox')[0]) && /Nothing reported here/.test(t('#app-flagged-board')[0]), t('#app-flagged-shoutbox')[0]);
-  check('Moderation: everything people made, linking to all five', ['#saved', '#drop-mod', '#shoutbox-mod', '#board-mod', '#git'].every((h) => d.querySelector(`#made-list a[href="${h}"]`))
-    && d.getElementById('made').closest('.admin-page').querySelector('.admin-page-title, h2').textContent.includes('Everything people made'));
+    && /buy cheap things/.test(t('#app-flagged-shoutbox')[0]) && /No reports here/.test(t('#app-flagged-board')[0]), t('#app-flagged-shoutbox')[0]);
+  check('Moderation: user data, linking to all five', ['#saved', '#drop-mod', '#shoutbox-mod', '#board-mod', '#git'].every((h) => d.querySelector(`#made-list a[href="${h}"]`))
+    && d.getElementById('made').closest('.admin-page').querySelector('.admin-page-title, h2').textContent.includes('User data'));
   // The Factory's building is inside the app, on its own page; /admin keeps its settings.
   check('the Factory in /admin: its tile setting and a link to its own page, no build form', !!d.querySelector('#factory #factory_tile')
     && d.querySelector('#factory-open').getAttribute('href') === '/admin/factory.html' && !d.getElementById('factory-form') && !d.getElementById('factory-runs'));
@@ -232,10 +232,10 @@ setTimeout(() => {
     check('All apps: a line per app, folders left out', lines.length > 5 && !line('RF & LoRa') && !!line('File drop'), lines.map((r) => r.querySelector('.inv-name').textContent).join('|'));
     check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
       && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
-    check('  an add-on whose state is unknown says so', /Installation unknown/.test(t('#inv-list')[0]));
+    check('  an add-on whose state is unknown says so', /Installation status unavailable/.test(t('#inv-list')[0]));
     d.querySelector('[data-inv="builtin"]').click();
     const built = [...d.querySelectorAll('#inv-list .inv-row')];
-    check('  Built in shows only the hub\'s own parts', built.length && built.every((r) => /Built in/.test(r.textContent)), built.length);
+    check('  Built in shows only the hub\'s own parts', built.length && built.every((r) => /Built-in app/.test(r.textContent)), built.length);
     d.querySelector('[data-inv="all"]').click();
     const q = d.getElementById('inv-q');
     q.value = 'kiwix'; q.dispatchEvent(new w.Event('input'));
@@ -258,18 +258,18 @@ setTimeout(() => {
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
   check('built-in parts with pages of their own are not listed a second time', d.getElementById('builtin-more').hidden && !t('#builtin-list .setting-name').length);
   const on = (id) => [...d.querySelectorAll(`#${id} [aria-checked="true"]`)].map((b) => b.textContent);
-  check('the Notes add-on\'s page carries its access block, set to off', picked(d.getElementById('app-access-notes'), 'Who can open it') === 'off');
-  check('Terminal public still says it asks for the login', t('#app-access-term')[0].includes('still asks for the admin login'));
+  check('the Notes add-on\'s page carries its access block, set to off', picked(d.getElementById('app-access-notes'), 'Access') === 'Disabled');
+  check('Terminal public still says it asks for the login', t('#app-access-term')[0].includes('still asks for the administrator sign-in'));
   check('add-ons with pages of their own are not carded again on All apps', !d.querySelector('#addons-list .library-source'));
   const ircInstall = d.getElementById('app-install-irc');
   check('IRC has installation status, requirements and Add on its own page', ircInstall && ircInstall.closest('.admin-page').id === 'page-app-irc'
-    && /Not added\./.test(ircInstall.textContent) && /Needs: ngircd/.test(ircInstall.textContent) && ircInstall.querySelector('button').textContent === 'Add');
-  check('installed add-ons have Remove and status without duplicate access controls', /Added, but not running/.test(t('#app-install-notes')[0])
-    && d.querySelector('#app-install-notes button').textContent === 'Remove' && !d.querySelector('#app-install-notes .access-block'));
-  check('unknown install state has no unsafe Add or Remove button', /Unknown/.test(t('#app-install-sync')[0]) && !d.querySelector('#app-install-sync button'));
+    && /Not installed\./.test(ircInstall.textContent) && /Needs: ngircd/.test(ircInstall.textContent) && ircInstall.querySelector('button').textContent === 'Install add-on');
+  check('installed add-ons have Remove and status without duplicate access controls', /Installed\. Service not running/.test(t('#app-install-notes')[0])
+    && d.querySelector('#app-install-notes button').textContent === 'Uninstall add-on' && !d.querySelector('#app-install-notes .access-block'));
+  check('unknown install state has no unsafe Add or Remove button', /Installation status unavailable/.test(t('#app-install-sync')[0]) && !d.querySelector('#app-install-sync button'));
   check('built-in apps have no installer section', !d.getElementById('app-install-drop'));
   check('every installable add-on has an installation section, including the relay without a tile', adminApps().filter((app) => app.addon)
-    .every((app) => d.querySelector(`#page-app-${app.id} #app-install-${app.id}`)) && d.querySelector('#app-install-room button').textContent === 'Add');
+    .every((app) => d.querySelector(`#page-app-${app.id} #app-install-${app.id}`)) && d.querySelector('#app-install-room button').textContent === 'Install add-on');
   let addonConsent = '';
   w.confirm = (message) => { addonConsent = message; return false; };
   ircInstall.querySelector('button').click();
@@ -298,13 +298,13 @@ setTimeout(() => {
   const af = d.getElementById('auto-form');
   check('automatic updates: the policy filled in', af.elements.hub_auto.value === '2' && af.elements.hub_window_start.value === '2' && af.elements.hub_check_every_hours.value === '24');
   check('  the window shown when installing', !d.getElementById('auto-window').hidden);
-  check('  the last step and the wait said', /looked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
+  check('  the last step and the wait said', /checked for an update/.test(t('#auto-state')[0]) && /installs between 02:00 and 05:00/.test(t('#auto-state')[0]), t('#auto-state'));
   {
     // Action first: what is installed and the three buttons before the policy, which is folded with what is saved said.
     const before = (a, b) => !!(a.compareDocumentPosition(b) & w.Node.DOCUMENT_POSITION_FOLLOWING);
     check('the hub card: Check now before Automatic updates, which is folded', before(d.getElementById('update-check'), af)
       && af.closest('details') && af.closest('details').id === 'update-auto-fold');
-    check('  its title says what is saved', t('#update-auto-says')[0] === 'Looks once a day; installs it, between 02:00 and 05:00.', t('#update-auto-says')[0]);
+    check('  its title says what is saved', t('#update-auto-says')[0] === 'Checks once a day. Installs it, between 02:00 and 05:00.', t('#update-auto-says')[0]);
     check('  what an update must carry: said in its title', t('#update-signing-says')[0] === 'merged on GitHub (signed by GitHub)', t('#update-signing-says')[0]);
     check('Debian: its buttons before its Automatic updates, folded', before(d.getElementById('debian-buttons'), d.getElementById('debian-pattern'))
       && d.getElementById('debian-pattern').closest('details').id === 'debian-auto-fold');
@@ -313,7 +313,7 @@ setTimeout(() => {
     af.dispatchEvent(new w.Event('change'));
     w.renderAuto(update.auto);
     check('  an unsaved change kept through a poll; the title still the saved one, marked changed', af.elements.hub_check_every_hours.value === '6'
-      && /^Looks once a day/.test(t('#update-auto-says')[0]) && /not saved/.test(t('#update-auto-says')[0]), `${af.elements.hub_check_every_hours.value} ${t('#update-auto-says')[0]}`);
+      && /^Checks once a day/.test(t('#update-auto-says')[0]) && /not saved/.test(t('#update-auto-says')[0]), `${af.elements.hub_check_every_hours.value} ${t('#update-auto-says')[0]}`);
     delete af.dataset.dirty;
     w.renderAuto(update.auto);
     // One press, one request, however often the librarian's part was redrawn.
@@ -336,10 +336,10 @@ setTimeout(() => {
     const others = [...d.querySelectorAll('#library-others dt')].map((x) => x.textContent);
     check('the librarian: the other updates listed, each linked to its own page', others.join('|') === 'This hub|Git mirrors|Firmware mirror|Toolkits\' cache|Debian\'s security updates'
       && ['#update-hub-card', '#mirrors', '#firmware', '#toolkits', '#updates-debian'].every((h) => d.querySelector(`#library-others a[href="${h}"]`)), others);
-    check('  the hub\'s line is what is saved', /^Looks once a day; installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
+    check('  the hub\'s line is what is saved', /^Checks once a day\. Installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
     check('  no editor for them here', !d.querySelector('#sources [name="hub_auto"], #sources [name="mirrors_auto"]'));
     check('  source access folded, its title saying token and pacing', d.getElementById('library-token').closest('details').id === 'library-access'
-      && t('#library-access-says')[0] === '(no token; not adapting)', t('#library-access-says')[0]);
+      && t('#library-access-says')[0] === '(no token, not adapting)', t('#library-access-says')[0]);
     check('  the work now: a state line at the top', !!d.querySelector('#library-now .library-state'));
   }
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
@@ -363,19 +363,19 @@ setTimeout(() => {
   check('  the hub card holds what an update must carry, folded; the doctors\' places still there', !!d.querySelector('#update-hub-card details #update-signing-form')
     && !!d.getElementById('pkg-makers') && d.getElementById('updates-debian').classList.contains('update-card'));
   const pkChips = pk ? [...pk.querySelectorAll('.chip')].map((c) => c.textContent + (c.classList.contains('selected') || c.getAttribute('aria-pressed') === 'true' ? '*' : '')) : [];
-  check('packages: Flag, Fetch and Install offered, Flag chosen', ['Flag*', 'Fetch', 'Install'].every((x) => pkChips.includes(x)), pkChips);
-  check('  the flagged build said as not downloaded; Fetch and Install offered for it', pk && /2\.8\.1\.9, first seen .*not downloaded/.test(pk.textContent)
-    && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Fetch 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
-  [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Fetch 2.8.1.9')?.click();
-  check('  Fetch asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
+  check('packages: Flag, Download and Install offered, Flag chosen', ['Flag*', 'Download', 'Install'].every((x) => pkChips.includes(x)), pkChips);
+  check('  the flagged build said as not downloaded; Download and Install offered for it', pk && /2\.8\.1\.9, first detected .*not downloaded/.test(pk.textContent)
+    && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Download 2.8.1.9') && [...pk.querySelectorAll('button')].some((b) => b.textContent === 'Install 2.8.1.9'), pk && pk.textContent.slice(0, 400));
+  [...(pk ? pk.querySelectorAll('button') : [])].find((b) => b.textContent === 'Download 2.8.1.9')?.click();
+  check('  Download asks the hub to fetch it', posted.some((p) => p[0] === '/admin/packages' && p[1].action === 'fetch' && p[1].package === 'meshtasticd'), posted.slice(-2));
   {
     // The card: its state and buttons first; channel and policy folded under what is saved; a draft kept through a reload.
     const pol = pk && pk.querySelector('.pkg-policy');
     const btns = pk && pk.querySelector('.library-buttons');
     check('packages: the buttons before the policy, which is folded under what is saved', !!pol && pol.tagName === 'DETAILS'
-      && !!(btns.compareDocumentPosition(pol) & w.Node.DOCUMENT_POSITION_FOLLOWING) && /^.+: (Looks|Only)/.test(t('.pkg-policy-says')[0]), t('.pkg-policy-says')[0]);
+      && !!(btns.compareDocumentPosition(pol) & w.Node.DOCUMENT_POSITION_FOLLOWING) && /^.+: (Checks|Only)/.test(t('.pkg-policy-says')[0]), t('.pkg-policy-says')[0]);
     pol.open = true;
-    [...pol.querySelectorAll('.chip')].find((c) => c.textContent === 'Fetch').click();
+    [...pol.querySelectorAll('.chip')].find((c) => c.textContent === 'Download').click();
     w.loadPackages();
   }
   const kb = d.getElementById('kit-books'), kf = d.getElementById('kit-form');
@@ -383,18 +383,18 @@ setTimeout(() => {
     && /Building \(23\.8 MB\)/.test(t('#kit-kits')[0]) && /firmware, a mirror/.test(t('#kit-repos')[0]), t('#kit-books')[0]);
   const preset = (k) => d.querySelector(`#export-presets [data-export="${k}"]`);
   check('content export: starts as Update a box, the hub program left out and said with its size', preset('update').classList.contains('selected')
-    && !kf.elements.hub.checked && /about 90\.6 MB/.test(t('#kit-hub-size')[0]) && /Nothing chosen yet/.test(t('#kit-total')[0]), t('#kit-total')[0]);
+    && !kf.elements.hub.checked && /about 90\.6 MB/.test(t('#kit-hub-size')[0]) && /Nothing selected yet/.test(t('#kit-total')[0]), t('#kit-total')[0]);
   preset('level').click();
   check('  Bring a box level: every repository and the settings ticked, still no hub program', kf.elements.state.value === 'settings'
     && [...d.querySelectorAll('#kit-repos input')].every((i) => i.checked) && !kf.elements.hub.checked, kf.elements.state.value);
   kf.elements.dest.value = 'stick'; kf.dispatchEvent(new w.Event('change'));
-  check('  onto a stick: the stick offered, the button says so', !d.getElementById('offline-stick-box').hidden && t('#kit-make')[0] === 'Copy to the stick', t('#kit-make')[0]);
+  check('  onto a stick: the stick offered, the button says so', !d.getElementById('offline-stick-box').hidden && t('#kit-make')[0] === 'Copy export to USB drive', t('#kit-make')[0]);
   preset('new').click();
   check('A new box: the hub program in, and so a download', kf.elements.hub.checked && kf.elements.dest.value === 'download' && d.getElementById('offline-stick-box').hidden
     && /hub program is in it/.test(t('#kit-total')[0]), t('#kit-total')[0]);
   kf.elements.state.value = 'none'; d.querySelectorAll('#kit-repos input').forEach((i) => { i.checked = false; });
   kb.querySelector('input').click(); kf.elements.budget.value = '1000'; kf.dispatchEvent(new w.Event('input'));
-  check('  a book chosen over a 1000 MB budget: said, in red, and Make refused', /over it/.test(t('#kit-total')[0]) && d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
+  check('  a book chosen over a 1000 MB budget: said, in red, and Make refused', /over the budget/.test(t('#kit-total')[0]) && d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
   kb.querySelector('input').click(); d.querySelector('#kit-repos input').click(); kf.elements.state.value = 'settings'; kf.dispatchEvent(new w.Event('change'));
   check('  the mirror and settings instead: within it', /About 116\.5 MB of a/.test(t('#kit-total')[0]) && !d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
   kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
@@ -404,12 +404,12 @@ setTimeout(() => {
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
   check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
     && /5 fetched, 0 dropped/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
-  check('git: a mirror says which revoked releases it leaves out', /revoked, left out: v2\.8\.0\.47db0e3/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
+  check('git: a mirror says which revoked releases it leaves out', /Revoked releases are excluded: v2\.8\.0\.47db0e3/.test(t('#git-mirrors')[0]), t('#git-mirrors')[0]);
   check('git: a release list from the cache says so, and why', /release list from the cache of .*rate limit/.test(t('#git-mirrors')[0])
     && d.querySelector('#git-mirrors .setting-desc.warn'), t('#git-mirrors')[0]);
   w.confirm = () => true;
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Keep revoked').click();
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Fetch').click();
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Include revoked releases').click();
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update mirror').click();
   // The repository cards are dom-git.cjs's; the mirrors' list is now Library → Mirrors.
   // A section headed with its page's title doesn't repeat it; a page of one section keeps it.
   check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
@@ -447,17 +447,17 @@ setTimeout(() => {
     const links = [...d.querySelectorAll('#attention .attention-list a')].map((a) => a.getAttribute('href'));
     check('needs attention: the box doctor\'s problems and the failed update check, each a link', links.includes('#health') && links.includes('#updoctor'), links.join(' '));
     w.AL.badge('moderation', '2');
-    check('needs attention: a reported item appears at once, worded', /2 reported items waiting/.test(t('#attention')[0]));
+    check('needs attention: a reported item appears at once, worded', /2 pending reports/.test(t('#attention')[0]));
     w.AL.badge('moderation', '');
     w.AL.badge('apps', 'working');
     check('needs attention: work in progress is not listed', !/Apps/.test(t('#attention li').join(' ')) && !t('#attention').join(' ').includes('#moderation'));
     w.AL.badge('apps', '');
   }
-  // The books' sources as tabs: Kiwix library, Other source, USB stick.
+  // The books' sources as tabs: Kiwix library, Other source, USB drive.
   {
     const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
     const panel = (id) => d.getElementById(id);
-    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB stick'
+    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB drive'
       && tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden && panel('books-other').hidden && panel('books-usb').hidden);
     tabs[2].click();
     check('  a tab opens its panel and closes the rest', !panel('books-usb').hidden && panel('books-kiwix').hidden && tabs[2].classList.contains('active'));
@@ -487,10 +487,10 @@ setTimeout(() => {
   check('firmware: the build cache is not on the Firmware page', !d.getElementById('fw-form').elements.cache);
   const cacheForm = d.getElementById('ci-cache-form');
   check('git: the build cache is under Builds, showing the setting and what is kept', d.querySelector('#git #ci-cache-form')
-    && cacheForm.elements.cache.value === 'native' && /Kept: 2\.8\.1\.8e6a88d's, headless, 215/.test(t('#ci-cache-status')[0]), t('#ci-cache-status')[0]);
+    && cacheForm.elements.cache.value === 'native' && /Stored firmware: 2\.8\.1\.8e6a88d, headless, 215/.test(t('#ci-cache-status')[0]), t('#ci-cache-status')[0]);
   check('firmware: says the source is not mirrored, with a button', /not mirrored/.test(t('#fw-source')[0])
-    && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror the source'), t('#fw-source')[0]);
-  [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror the source').click();
+    && [...d.querySelectorAll('#fw-source button')].some((b) => b.textContent === 'Mirror source code'), t('#fw-source')[0]);
+  [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror source code').click();
   check('git: the build cache\'s three choices as radio buttons, not a dropdown', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
   cacheForm.elements.cache.value = 'whole';
   cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
@@ -499,7 +499,7 @@ setTimeout(() => {
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   force.click();
   const drop = d.getElementById('app-access-drop');
-  chipsOf(drop, 'Who can open it').find((c) => c.textContent === 'admin').click();
+  chipsOf(drop, 'Access').find((c) => c.textContent === 'Administrators').click();
   [...d.getElementById('app-access-drop').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
   d.querySelector('#app-install-irc button').click();
   check('Add on the IRC page sends the existing installer request', posted.some((post) => post[0] === '/admin/addons'
@@ -541,12 +541,12 @@ setTimeout(() => {
       results: [{ id: 'x', ok: true, message: 'IRC installed.' }] };
     w.renderAddons(installedAddons);
     const ircLine = [...d.querySelectorAll('#inv-list .inv-row')].find((r) => r.querySelector('a[href="#page-app-irc"]'));
-    check('installation completion updates the page and All apps\' line with Remove and the result', /Added, and running/.test(t('#app-install-irc')[0])
+    check('installation completion updates the page and All apps\' line with Remove and the result', /Installed\. Service running/.test(t('#app-install-irc')[0])
       && /IRC installed\./.test(t('#app-install-irc')[0]) && ircLine && /Installed/.test(ircLine.textContent)
-      && d.querySelector('#app-install-irc button').textContent === 'Remove' && !d.querySelector('#app-install-irc button').disabled);
+      && d.querySelector('#app-install-irc button').textContent === 'Uninstall add-on' && !d.querySelector('#app-install-irc button').disabled);
     w.renderAddons(installedAddons);
     check('status refresh retains installation controls without duplicate sections', d.querySelectorAll('#app-install-irc').length === 1
-      && d.querySelector('#app-install-irc button').textContent === 'Remove');
+      && d.querySelector('#app-install-irc button').textContent === 'Uninstall add-on');
     d.querySelector('#app-install-irc button').click();
     check('Remove on the IRC page sends the existing removal request', posted.some((post) => post[0] === '/admin/addons'
       && post[1].addon === 'irc' && post[1].on === false));
@@ -556,21 +556,21 @@ setTimeout(() => {
     const stray = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue)) stray.push(n.parentNode.className || n.parentNode.id || n.parentNode.tagName);
     check('no stray "null" or "undefined" text on the page', stray.length === 0, stray.join(', '));
-    [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Flush').click();
+    [...d.querySelectorAll('#ci-cache-status button')].find((b) => b.textContent === 'Remove cache').click();
     setTimeout(() => {
     {
-      // The Fetch pressed earlier: its answer on meshtasticd's own card, not the list's line, and kept through the reload.
+      // The Download pressed earlier: its answer on meshtasticd's own card, not the list's line, and kept through the reload.
       const ans = d.querySelector('#pkg-list [data-pkg="meshtasticd"] .pkg-answer');
-      check('packages: the answer on its own card, kept through a reload', ans && !ans.hidden && /Asked: queued/.test(ans.textContent)
+      check('packages: the answer on its own card, kept through a reload', ans && !ans.hidden && /Queued with the root helper/.test(ans.textContent)
         && d.getElementById('pkg-note').hidden, ans && ans.textContent);
     }
     {
       const pol = d.querySelector('#pkg-list .pkg-policy');
-      check('  after a reload: the fold still open, the unsaved Fetch still chosen', pol && pol.open
-        && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Fetch'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
+      check('  after a reload: the fold still open, the unsaved Download still chosen', pol && pol.open
+        && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Download'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
     }
       check('git: Flush asks the hub, and the cache is gone from the page', posted.some((p) => p[0] === '/admin/firmware' && p[1].action === 'flush-cache')
-        && !/Kept:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);
+        && !/Stored firmware:/.test(t('#ci-cache-status')[0]) && !d.querySelector('#ci-cache-status button'), t('#ci-cache-status')[0]);
       console.log('\nfailures:', fails);
       process.exit(fails ? 1 : 0);
     }, 100);

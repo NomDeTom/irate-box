@@ -4,7 +4,7 @@
   "tile": {
     "icon": "⌨️🖥️",
     "name": "Terminal",
-    "desc": "Shell on the box — admin, password-gated",
+    "desc": "Browser terminal for administrators",
     "href": "/app.html#/term/",
     "new_tab": true,
     "element_id": "term-card"
@@ -19,7 +19,7 @@
   "addon": {
     "option": "--with-term",
     "title": "Terminal (ttyd)",
-    "summary": "A shell on the box in the browser at /term/, behind the admin login, then an account on the box.",
-    "consent": "This puts a login prompt for the box's own accounts on the network, behind the admin password (sent as plain HTTP). Only turn it on if you need it. Turn it on?"
+    "summary": "A shell on the box in the browser at /term/. An administrator signs in to the hub first. Then the shell asks for an account of the operating system of the box.",
+    "consent": "This puts a sign-in prompt for the operating system accounts of the box on the network. An administrator must first sign in to the hub. Over HTTP, the administrator password is sent as plain text. Use HTTPS. Install the Terminal only if you need it. Install the Terminal?"
   }
 }

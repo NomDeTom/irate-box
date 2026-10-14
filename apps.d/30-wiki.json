@@ -20,8 +20,8 @@
       "menus": {
         "meshtastic": 10
       },
-      "name": "Meshtastic documentation",
-      "desc": "The whole docs site, offline, in Kiwix",
+      "name": "Meshtastic documentation (offline)",
+      "desc": "The Meshtastic documentation site, as a book in Kiwix",
       "href": "/app.html#/wiki/viewer#meshtastic-docs/"
     }
   ],
@@ -33,6 +33,6 @@
   "addon": {
     "option": "--with-kiwix",
     "title": "Kiwix, the offline library",
-    "summary": "kiwix-serve for the books in Library → Books, at /wiki/ on its own origin. A box with books has it already; add it here to have it ready before the first one. About 10 MB, and memory for each book it serves."
+    "summary": "kiwix-serve for the books in Kiwix → Books, at /wiki/ on its own web origin. If the box has books, Kiwix is already installed. Add it here to have it ready before the first book. About 10 MB of storage. It also uses memory for each book that it serves."
   }
 }

@@ -74,7 +74,7 @@ O.undo.__globals__["run"]("nmcli", "con", "load", "x")   # the stand-in: the pro
 (T / "nm/Hotspot.nmconnection").write_text("[connection]\nid=Hotspot\n")
 said = O.leave(SETUP)
 check("leave: kept as it is, recorded as left", SETUP in loaded and O.record()[SETUP]["choice"] == "left", said)
-for bad, why in ((OURS, "irate-box's own"), (HOME, "only another hotspot"), ("x", "not a connection")):
+for bad, why in ((OURS, "irate-box's own"), (HOME, "only the profile of another hotspot"), ("x", "invalid connection id")):
     try:
         O.remove(bad)
         check(f"refused: {why}", False)

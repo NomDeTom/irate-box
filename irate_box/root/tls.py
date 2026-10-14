@@ -236,14 +236,14 @@ def front(on):
         rec["on"] = False
         _write(RECORD, json.dumps(rec), 0o644)
         publish()
-        raise RuntimeError(f"nginx refused the HTTPS server blocks, so they were taken away again: {why}")
+        raise RuntimeError(f"nginx refused the HTTPS server blocks. The box removed them again: {why}")
     rec = _record()
     rec["on"] = on
     if not on:
         rec["admin_only"] = False
     _write(RECORD, json.dumps(rec), 0o644)
     publish()
-    return f"HTTPS on: port {TWINS['main']}, and each origin's twin" if on else "HTTPS off (the CA and certificate are kept)"
+    return f"HTTPS enabled on port {TWINS['main']} and on the HTTPS port of each web app" if on else "HTTPS disabled. The box keeps its certificate authority and certificate"
 
 
 def admin_only(on):
@@ -253,7 +253,7 @@ def admin_only(on):
     device trusts the box, so they can't lock themselves out)."""
     rec = _record()
     if on and not rec.get("on"):
-        raise ValueError("HTTPS is off: switch it on first")
+        raise ValueError("HTTPS is disabled. Enable HTTPS first")
     port = TWINS["main"]
     there = "" if port == 443 else f":{port}"
     if _server() == "caddy":
@@ -271,11 +271,11 @@ def admin_only(on):
     if not ok:
         f.unlink(missing_ok=True)
         _nginx_check_and_reload()
-        raise RuntimeError(f"nginx refused it, so it was taken away again: {why}")
+        raise RuntimeError(f"nginx refused the change. The box undid the change: {why}")
     rec["admin_only"] = on
     _write(RECORD, json.dumps(rec), 0o644)
     publish()
-    return "/admin is HTTPS only now: plain requests are sent there" if on else "/admin answers on plain HTTP too again"
+    return "Administrator pages require HTTPS. The box redirects plain HTTP requests to HTTPS" if on else "Administrator pages answer on plain HTTP and on HTTPS"
 
 
 def due(now=None):
@@ -302,11 +302,11 @@ def renew():
     why = due()
     if not why:
         publish()
-        return "the certificate is current"
+        return "The certificate is current"
     make_cert()
     if _record().get("on"):
         front(True)  # nginx reads the new certificate on a reload
-    return f"certificate re-made ({why})"
+    return f"Certificate renewed ({why})"
 
 
 # --- bring your own ------------------------------------------------------------------------------
@@ -331,9 +331,9 @@ def import_own(chain_pem, key_pem):
     certs = PEM_CERT.findall(chain_pem or "")
     keys = PEM_KEY.findall(key_pem or "")
     if not certs:
-        raise ValueError("no certificate in what was pasted (-----BEGIN CERTIFICATE----- …)")
+        raise ValueError("The pasted text has no certificate. Paste PEM text that starts with -----BEGIN CERTIFICATE-----")
     if len(keys) != 1:
-        raise ValueError("one private key, unencrypted (-----BEGIN PRIVATE KEY----- …)")
+        raise ValueError("Paste exactly one unencrypted private key in PEM format. It starts with -----BEGIN PRIVATE KEY-----")
     with tempfile.TemporaryDirectory() as tmp:
         leaf, rest, key = Path(tmp) / "leaf.pem", Path(tmp) / "rest.pem", Path(tmp) / "key.pem"
         leaf.write_text(certs[0] + "\n")
@@ -342,20 +342,20 @@ def import_own(chain_pem, key_pem):
         os.chmod(key, 0o600)
         try:
             if openssl("x509", "-in", str(leaf), "-noout", "-pubkey") != openssl("pkey", "-in", str(key), "-pubout"):
-                raise ValueError("the key is not this certificate's")
+                raise ValueError("Certificate and key do not match. Paste the key that belongs to the first certificate")
         except RuntimeError as exc:
-            raise ValueError(f"unreadable: {exc}")
+            raise ValueError(f"The box cannot read the certificate or the key: {exc}")
         if subprocess.run(["openssl", "x509", "-in", str(leaf), "-noout", "-checkend", "0"], capture_output=True).returncode != 0:
-            raise ValueError("the certificate has expired")
+            raise ValueError("Certificate expired. Import a certificate that is still valid")
         args = ["openssl", "verify"] + (["-CAfile", TRUST] if TRUST else []) + (["-untrusted", str(rest)] if len(certs) > 1 else []) + [str(leaf)]
         v = subprocess.run(args, capture_output=True, text=True)
         if v.returncode != 0:
             why = (v.stderr or v.stdout).strip().splitlines()[-1:] or ["openssl verify failed"]
-            raise ValueError(f"its chain does not reach a CA this box trusts (paste the intermediates too): {why[0][:200]}")
+            raise ValueError(f"Certificate chain incomplete or not trusted by this box. Paste the intermediates after the certificate: {why[0][:200]}")
         san = subprocess.run(["openssl", "x509", "-in", str(leaf), "-noout", "-ext", "subjectAltName"], capture_output=True, text=True).stdout
         names = re.findall(r"DNS:([^,\s]+)", san)
         if not names:
-            raise ValueError("the certificate names no DNS name (subjectAltName)")
+            raise ValueError("The certificate has no DNS name in its subjectAltName field. Import a certificate with at least one DNS name")
         expires = _not_after(leaf)
         TLS.mkdir(parents=True, exist_ok=True)
         _write(KEY, keys[0] + "\n", 0o640, FRONT_GROUP or None)
@@ -364,17 +364,17 @@ def import_own(chain_pem, key_pem):
     rec["cert"] = {"made": int(time.time()), "expires": expires, "names": names, "addresses": [], "own": True}
     _write(RECORD, json.dumps(rec), 0o644)
     front(True)
-    return f"your certificate for {', '.join(names)} is in use, until {time.strftime('%Y-%m-%d', time.gmtime(expires))}"
+    return f"Your certificate for {', '.join(names)} is in use until {time.strftime('%Y-%m-%d', time.gmtime(expires))}. The box does not renew it"
 
 
 def use_box_own():
     """Back from the owner's certificate to the box's own (its CA's)."""
     rec = _record()
     if not rec.get("ca"):
-        raise ValueError("the box has no CA of its own to go back to: make one first")
+        raise ValueError("The box has no certificate authority of its own. Create one first")
     make_cert()
     front(True)
-    return "the box's own certificate is in use again"
+    return "The box certificate is in use again"
 
 
 def status():

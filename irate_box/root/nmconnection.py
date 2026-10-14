@@ -43,7 +43,7 @@ def _one_of(*allowed):
 
 def _mac_or_empty(v):
     if v and not MAC_RE.match(v):
-        raise ValueError("an access point's address (aa:bb:cc:dd:ee:ff), or none")
+        raise ValueError("Invalid BSSID: enter the BSSID of an access point, for example aa:bb:cc:dd:ee:ff, or leave it empty")
     return v.lower()
 
 
@@ -96,7 +96,7 @@ def _current(uuid):
     keys = ",".join(k for k, _c, _d in SETTINGS.values())
     code, out = run("nmcli", "-t", "-f", "connection.id," + keys + ",802-11-wireless.mode", "con", "show", "uuid", uuid)
     if code != 0:
-        raise ValueError("NetworkManager has no such connection")
+        raise ValueError("Connection profile not found in NetworkManager")
     kv = {}
     for line in out.splitlines():
         k, _, v = line.partition(":")
@@ -124,13 +124,13 @@ def lasts(uuid, integrated):
                 return False, ("netplan writes this connection afresh at every boot, so a setting made for it alone "
                                "would be lost: hand it over to NetworkManager first (Network page, WiFi)")
             return True, ""
-    return False, "NetworkManager has no such connection"
+    return False, "Connection profile not found in NetworkManager"
 
 
 def change(uuid, changes, integrated=False):
     """Set one connection's own settings ({name: value | "default"}). One line saying what was done."""
     if not isinstance(uuid, str) or not UUID_RE.match(uuid):
-        raise ValueError("not a connection's id")
+        raise ValueError("invalid connection id")
     if not isinstance(changes, dict) or not changes:
         raise ValueError("nothing to change")
     ok, why = lasts(uuid, integrated)
@@ -151,7 +151,7 @@ def change(uuid, changes, integrated=False):
         said.append(f"{n} {v or '(none)'}")
     band = changes.get("band", now["band"]) if changes.get("band") != "default" else ""
     if changes.get("channel") not in (None, "default", "0") and not band:
-        raise ValueError("a channel needs a band (2.4 or 5 GHz) chosen with it")
+        raise ValueError("a channel needs a band: select 2.4 or 5 GHz with it")
     rec = record()
     old = rec.setdefault(uuid, {"name": now["name"], "old": {}, "at": time.time()})
     for n in changes:
@@ -165,7 +165,7 @@ def change(uuid, changes, integrated=False):
     if not old["old"]:
         rec.pop(uuid)
     _save(rec)
-    return f"{now['name']}: {', '.join(said)}; it takes effect the next time the connection comes up"
+    return f"{now['name']}: {', '.join(said)}. The setting applies on the next connection"
 
 
 def undo(uuid):
@@ -181,7 +181,7 @@ def undo(uuid):
             _save(rec)
             raise ValueError(f"nmcli: {out[-200:]}")
     _save(rec)
-    return f"{entry['name']}: its own settings put back as they were"
+    return f"{entry['name']}: its own settings are restored to the earlier values"
 
 
 def undo_all():

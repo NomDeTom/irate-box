@@ -65,8 +65,8 @@ check("the Box doctor builds no setting chips (a choice is changed on its own pa
       "_chip(" not in health and "group=" not in health, re.findall(r".*(?:_chip\(|group=).*", health)[:3])
 adminjs = (Path(__file__).resolve().parents[1] / "web" / "admin.js").read_text()
 joint = adminjs[adminjs.index("function jointDo("):adminjs.index("function jointRow(")]
-check("the Security doctor: a policy choice is a link (Choose on …), only a cure is a button that acts",
-      "secKind(f) !== 'cure'" in joint and "Choose on ${where}" in joint and "secChoose(" not in joint)
+check("the Security doctor: a policy choice is a link (Go to …), only a cure is a button that acts",
+      "secKind(f) !== 'cure'" in joint and "Go to ${where}" in joint and "secChoose(" not in joint)
 
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -45,8 +45,8 @@ check("  each keeps its checks one by one", [c["check"] for c in fs["cis-5.2"]["
 check("  sections in the benchmark's order, then the shared ones", [k for k in fs if k.startswith("cis-") and k[4].isdigit()] == ["cis-4.1", "cis-5.2", "cis-5.2.10_disable_root_login"], list(fs))
 acc = [f for f in fs.values() if f["accepted"]]
 check("the box's design accepted, not counted: one partition, the web server, no firewall yet",
-      {f["accepted"] for f in acc} == {"one partition: the box runs from an SD card, with no separate /var, /tmp or /home",
-                                        "the box is a web server: nginx (or Caddy) is the hub's front", "the box filters the hotspot alone (the floor, Security page): its other interfaces are the owner's network, left as found"}
+      {f["accepted"] for f in acc} == {"the box runs from one partition on an SD card, with no separate /var, /tmp or /home",
+                                        "the box is a web server, and nginx or Caddy serves the hub", "the box filters only the hotspot interface (the hotspot floor on the Security page). The other interfaces belong to the administrator's network and stay as they are"}
       and all(f["status"] == "ok" for f in acc) and not any(k in fs for k in ("cis-1.1", "cis-2.2", "cis-3.5")), [f["detail"] for f in acc])
 check("the passes counted, and the time", "2 of 9 checks pass (22.22 %); 3.0 min." == fs["cis-summary"]["detail"], fs["cis-summary"]["detail"])
 
@@ -64,7 +64,7 @@ check("Lynis's report read", rep["index"] == "64" and rep["warnings"][1] == {"te
 lf = {f["id"]: f for f in da.lynis_findings(rep, 281)}
 check("a Lynis warning: a finding of its own, about what its test asks (SSH-7408: sshd's settings, CIS 5.2)", lf["lynis-SSH-7408"]["status"] == "warn"
       and lf["lynis-SSH-7408"]["source"] == "lynis" and lf["lynis-SSH-7408"]["about"] == {"kind": "setting", "key": "cis-5.2"} and not lf["lynis-SSH-7408"].get("tier"))
-check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"].startswith("the box filters the hotspot alone"))
+check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"].startswith("the box filters only the hotspot interface"))
 check("a suggestion the table knows: about that, as a suggestion; the rest listed, not counted; the hardening index said",
       lf["lynis-SSH-7408-2"]["about"]["key"] == "cis-5.2" and lf["lynis-SSH-7408-2"]["tier"] == "suggest"
       and lf["lynis-summary"]["status"] == "ok" and "Hardening index 64" in lf["lynis-summary"]["detail"]
@@ -95,7 +95,7 @@ check("Lynis's tests by name onto CIS sections, tiered as the section is (5.3 a 
       key("lynis-AUTH-9262") == "cis-5.3" and l2["lynis-AUTH-9262"]["tier"] == "suggest" and l2["lynis-ACCT-9628"]["tier"] == "not-here")
 check("  and onto the Security page's: PKGS-7392 is Debian's security updates", key("lynis-PKGS-7392") == "security-updates")
 check("  one partition accepted for Lynis as for debian-cis: listed, not a finding", "lynis-FILE-6310" not in l2
-      and "FILE-6310: To decrease the impact of a full /home file system, place /home on a separate partition (accepted: the box's design)" in l2["lynis-summary"]["detail"])
+      and "FILE-6310: To decrease the impact of a full /home file system, place /home on a separate partition (not applicable by design)" in l2["lynis-summary"]["detail"])
 from irate_box.root import secdoctor as sd0  # noqa: E402
 doctor = [{"id": "kernel-info", "title": "Kernel addresses and log readable by everyone", "status": "warn", "detail": "kptr_restrict 0.", "fix": "",
            "source": "doctor", "about": {"kind": "setting", "key": "kernel-info"}}]
@@ -128,7 +128,7 @@ check("sshd options: a file in sshd_config.d, checked by sshd -t before the relo
       "printf '%s\\n' 'MaxAuthTries 4' | sudo tee /etc/ssh/sshd_config.d/60-cis-sshd-maxauthtries.conf && sudo sshd -t && sudo systemctl reload ssh",
       info["sshd_maxauthtries"].get("cmd"))
 check("a package to install, or to remove", info["install_auditd"]["cmd"] == "sudo apt-get install auditd" and info["disable_telnet_client"]["cmd"] == "sudo apt-get purge telnet")
-check("never the removal of what the hub uses (dnsmasq): said instead", "cmd" not in info["dnsmasq_is_disabled"] and "The hub uses dnsmasq" in info["dnsmasq_is_disabled"]["say"])
+check("never the removal of what the hub uses (dnsmasq): said instead", "cmd" not in info["dnsmasq_is_disabled"] and "The box uses dnsmasq" in info["dnsmasq_is_disabled"]["say"])
 check("a file's owner and mode", info["crontab_perm_ownership"]["cmd"] == "sudo chown root:root /etc/crontab && sudo chmod 600 /etc/crontab")
 # (Not printed on failure: CodeQL takes anything named for a password as a secret logged.)
 check("another file's settings in words, not its prerequisite package", info["set_password_exp_days"] == {"what": "Set password expiration days.", "say": "In /etc/login.defs, set: PASS_MAX_DAYS=90."})

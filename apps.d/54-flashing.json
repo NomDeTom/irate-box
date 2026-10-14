@@ -4,13 +4,13 @@
   "tile": {
     "icon": "⚡🔌",
     "name": "Flashing tools",
-    "desc": "Firmware onto radios and boards, from a browser",
+    "desc": "Flash firmware over USB from a browser",
     "href": "/flashing.html"
   },
   "menu": {
     "title": "Flashing tools",
     "subtitle": "Put firmware onto radios and boards over USB, from Chrome or Edge on a computer.",
-    "about": "The web flasher for ESP32 radios, FreeOCD for ARM chips through a debug probe, and the serial terminal to watch them start. Each needs the box's HTTPS address (Web Serial and WebUSB work only there).",
+    "about": "The web flasher flashes ESP32 radios. FreeOCD flashes ARM chips through a debug probe. The serial terminal shows the start of a device. The hosted pages need the HTTPS address of the box. Web Serial and WebUSB need a secure context. A downloaded local file also works.",
     "art": "librarian"
   }
 }

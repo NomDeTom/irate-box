@@ -50,84 +50,106 @@ usage() {
 	cat <<'EOF'
 Usage: sudo ./install.sh [options]
 
-  --src DIR             install the hub from this checkout (default: the checkout this
-                        script sits in; if it is not in one, clone --repo instead)
+Each option applies when you run the installer. Run it again to update the hub in place.
+The installer keeps user data and the administrator password.
+
+  --src DIR             install the hub from this checkout (default: the checkout that holds
+                        this script. If the script is not in a checkout, clone --repo instead)
   --repo URL            repository to clone (default: https://github.com/NomDeTom/irate-box)
   --branch NAME         branch to clone (default: main)
   --apps DIR            copy prebuilt static apps from DIR/mermaid, DIR/draw, DIR/tools,
-                        DIR/serial, DIR/flasher (the web flasher, from the fork's
+                        DIR/serial and DIR/flasher (the web flasher, from the fork's
                         .github/irate-box/package.sh)
-  --apps-from-actions   fetch the newest prebuilt draw, mermaid and serial (and room, with
-                        --with-collab) from the forks' Actions builds via nightly.link: no
-                        desktop build and no token. They are then kept current from /admin.
-  --tools               the calculators (nomdetom.github.io), cloned and adapted for the hub,
-                        then kept current from /admin like the other apps
-  --with-notes          install SilverBullet at /notes/ (armv7, aarch64, x86_64 only)
-  --with-sync           install Syncthing at /sync/ (behind the admin password)
-  --zim FILE|URL        add a ZIM to the Kiwix library at /wiki/ (repeatable; a URL is
-                        downloaded on the box). Installs kiwix-serve.
-  --with-mqtt           install the mosquitto MQTT broker: :1883 for nodes and the phone
-                        app, and WebSockets at /mqtt for pages. Anonymous, limited to msh/#.
-  --with-kiwix          install Kiwix, the offline library at /wiki/, even before any book (a box with
-                        books gets it anyway, unless it was taken out with --remove kiwix)
-  --with-irc            install ngIRCd, a small IRC server: :6667 for any IRC app, with a
-                        #lobby channel ready. Open to everyone on the box's network, with no
-                        accounts and no encryption; hosts are hidden from other users.
-  --with-collab         live collaboration in /draw/: Debian's nodejs plus the room relay
-                        from --apps DIR/room, built on a desktop (ARMv7 and up)
-  --with-term           turn on the ttyd terminal at /term/. It is always installed, but
-                        stays off without this: it is a root login prompt on the network.
-  --admin-password PW   password for /admin, /sync and /term, user "admin" (default: keep
-                        the existing one; on a first install there is none, and the first
-                        visit to /admin/ asks for it)
-  --hub-url URL         where captive-portal probes are redirected (default: /)
-  --web nginx|caddy     the web server in front of everything (default: nginx). Caddy is
-                        the fallback: used when asked for, when the box already runs the
-                        owner's Caddy and no nginx, when irate-box set this box up with
-                        Caddy before nginx became the default, and when nginx cannot be
-                        installed. Recorded, so updates keep it; naming the other one
-                        switches over and turns irate-box's copy of the first one off.
-  --port N              the port the hub is served on (default: 80). If something else
-                        already serves :80, the hub is put on a free port (8080 first) and
-                        says so; the other service is left as it is.
-  --remove NAME         take an add-on off again: notes, sync, mqtt, irc, term, collab or kiwix
-                        (repeatable). Its service stops and its unit and config go; its
-                        data (the notes folder, Syncthing's state) and packages stay. This
-                        is what /admin's Add-ons page runs.
-  --take-port-80        when something else serves :80, stop and disable it so the hub can
-                        have the port (the captive portal needs it). Recorded, so /admin's
-                        Security page can undo it and uninstall.sh starts it again.
-  --uplink K=V[,K=V]    how the box works to stay on its network (uplink.py): pace gentle
-                        (default), steady, brisk or urgent; reach watch, reconnect, restart,
-                        radio or reboot (default); sensitivity 1-20 missed checks within the
-                        pace's window (default 3); guests protect (default) or ignore; on_wedge ladder (default) or
-                        radio. E.g. --uplink pace=steady,reach=radio. (The old single level, e.g.
-                        standard,strict, is still read.) Kept in /etc/hub/uplink.json, not in the
-                        install options, so an update never undoes a choice made on /admin's
-                        Network page, which also has the custom values. The owner's own WiFi profile is never
-                        changed here: "Keep retrying" on that page does it, by consent.
-  --rtc auto|off        a battery-backed clock module on I2C (DS3231, RV-8803, RX8130, …;
-                        rtc.py). auto (default): look for one, and if exactly one is found set
-                        it up, so the box keeps its time while off (with the kernel's driver
-                        where it has one, otherwise irate-box's own); a module set up earlier
-                        is kept. No device-tree or /boot changes. off: do not look. Health on
-                        /admin looks again, sets one up, or stops using it.
-  --download-cache DIR  take release downloads (ttyd, SilverBullet, Caddy's .deb) from DIR
-                        when they are there, still checked against their checksums. /admin's
-                        "Check for updates" fills it, so "Install update" needs no network
+  --apps-from-actions   download the newest prebuilt draw, mermaid and serial apps (and room,
+                        with --with-collab) from the forks' Actions builds through nightly.link.
+                        This needs no desktop build and no token. The administration pages
+                        keep these apps current afterwards.
+  --tools               install the calculators from nomdetom.github.io, adapted for the hub.
+                        The administration pages keep them current like the other apps.
+  --with-notes          install SilverBullet at /notes/ (armv7, aarch64 and x86_64 only)
+  --with-sync           install Syncthing at /sync/ (behind the administrator password)
+  --zim FILE|URL        add a ZIM book to the Kiwix library at /wiki/ (repeatable).
+                        The installer downloads a URL on the box. This also installs kiwix-serve.
+  --with-mqtt           install the mosquitto MQTT broker. Port 1883 serves nodes and the phone
+                        app. WebSockets at /mqtt serve pages. The broker has no sign-in
+                        and accepts only the topic filter msh/#.
+  --with-kiwix          install Kiwix, the offline library at /wiki/, before any book exists.
+                        A box with books gets Kiwix anyway, unless --remove kiwix removed it.
+  --with-irc            install ngIRCd, a small IRC server. Port 6667 serves any IRC app, with a
+                        #lobby channel ready. Every device on the box's network can join.
+                        IRC has no sign-in and no encryption. The server hides hosts from other users.
+  --with-collab         install live collaboration in /draw/: Debian's nodejs and the room relay
+                        from --apps DIR/room. Build the relay on a desktop (ARMv7 and up).
+  --with-term           enable the ttyd terminal at /term/. The installer always installs the
+                        terminal and keeps it disabled without this option. When enabled, the terminal
+                        asks for the administrator sign-in, then for an operating-system account on the box.
+  --admin-password PW   set the password for /admin, /sync and /term (user name: admin).
+                        Without this option, the installer keeps the existing password.
+                        On a first install there is none. The first visit to /admin/ asks you
+                        to create the administrator account.
+  --hub-url URL         redirect captive-portal probes to this address (default: /)
+  --web nginx|caddy     select the web server in front of everything (default: nginx).
+                        Caddy is the fallback. The installer uses Caddy when you ask for it,
+                        when the box already runs an administrator's Caddy and no nginx, when
+                        irate-box set this box up with Caddy before nginx became the default,
+                        and when nginx cannot be installed. The installer records the choice, so
+                        updates keep it. Naming the other server switches over and turns off
+                        irate-box's copy of the first one.
+  --port N              serve the hub on this port (default: 80). If another service
+                        already uses port 80, the installer puts the hub on a free port (8080
+                        first) and says so. It leaves the other service as it is.
+  --remove NAME         remove an add-on: notes, sync, mqtt, irc, term, collab or kiwix
+                        (repeatable). This stops its service and removes its unit and
+                        configuration. Its data (the notes folder, Syncthing's state)
+                        and packages stay. The Add-ons page in the administration pages runs this.
+  --take-port-80        if another service uses port 80, stop and disable it so the hub can
+                        use the port (the captive portal needs it). The installer records this.
+                        The Security page can undo it, and uninstall.sh starts the service again.
+  --uplink K=V[,K=V]    set the network recovery policy, how far the box goes to stay on its
+                        network (uplink.py). These keys and values are valid:
+                        pace gentle (default), steady, brisk or urgent.
+                        reach watch, reconnect, restart, radio or reboot (default).
+                        sensitivity 1-20 missed checks within the window of the pace (default 3).
+                        guests protect (default) or ignore.
+                        on_wedge ladder (default) or radio.
+                        Example: --uplink pace=steady,reach=radio.
+                        The installer still reads the old single level, for example standard,strict.
+                        The policy lives in /etc/hub/uplink.json, not in the install options.
+                        An update never undoes a choice made on the Network page, which
+                        also has custom values. This option never changes the administrator's own
+                        WiFi profile. Its Enable automatic retries button on that page does it, after consent.
+  --rtc auto|off        configure a battery-backed clock module on I2C (DS3231, RV-8803,
+                        RX8130, and others. See rtc.py).
+                        auto (default): look for a module. If exactly one is found, set it up
+                        so the box keeps its time while off. It uses the kernel driver
+                        when one exists, and irate-box's own driver otherwise. The installer keeps
+                        a module that it set up earlier. It makes no device-tree or /boot changes.
+                        off: do not look. The Health page in the administration pages can look
+                        again, set up a module, or stop using it.
+  --download-cache DIR  read release downloads (ttyd, SilverBullet, Caddy's .deb) from DIR
+                        when the files are there. The installer still checks them against their
+                        checksums. The Check for updates button in the administration pages fills
+                        this directory. With a filled directory, Install update needs no network
                         for anything already installed.
   --make-offline-bundle DIR
-                        do not install: make DIR a kit that sets up a box with no internet.
-                        It holds this code, the apps (the forks' builds and the calculators,
-                        fetched and checked as the librarian does; with --apps DIR, those too,
-                        e.g. a flasher you built), ttyd and SilverBullet for each --arch,
-                        Caddy's .deb with --web caddy, any --zim, checksums, and setup.sh, which
-                        runs this installer from the kit (sudo DIR/setup.sh [options]). No root
-                        needed, nothing on this machine changes. Debian's own packages (nginx,
-                        cgit, ...) still come from the box's apt.
+                        do not install. Make DIR an offline kit that sets up a box without internet.
+                        This writes files to DIR, which must be empty or not exist. It downloads the items
+                        below and needs free space for them. It installs nothing on this machine
+                        and needs no root access.
+                        The kit holds this code, the apps (the forks' builds and the calculators,
+                        downloaded and checked as the librarian does, plus the apps in --apps DIR,
+                        for example a flasher that you built), ttyd and SilverBullet for each
+                        --arch, Caddy's .deb with --web caddy, any --zim, checksums, and setup.sh.
+                        setup.sh runs this installer from the kit: sudo DIR/setup.sh [options].
+                        The kit does not hold Debian's own packages (nginx, cgit, and others).
+                        The box still needs apt to install them. Without internet or an apt
+                        mirror, the installation of any missing package fails.
+                        The checksums detect damaged files. They do not identify the publisher.
+                        A download that fails leaves the kit incomplete. The installer prints
+                        each missing component.
   --arch LIST           with --make-offline-bundle: the boxes' architectures, comma-separated
                         (aarch64, armv7l, armv6l, x86_64; default aarch64,armv7l)
-  -h, --help            this text
+  -h, --help            show this text
 EOF
 }
 
@@ -188,13 +210,13 @@ while [ $# -gt 0 ]; do
 	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
 	--arch) BUNDLE_ARCHS="$2"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
-	*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+	*) echo "install.sh: unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
 # Books from the network over HTTPS only: a book swapped on the way has its pages served
 # on the hub's own origin.
 for z in ${ZIMS[@]+"${ZIMS[@]}"}; do
-	case "$z" in http://*) echo "install.sh: --zim $z: use https:// (a book fetched over plain HTTP can be swapped on the way)" >&2; exit 2 ;; esac
+	case "$z" in http://*) echo "install.sh: --zim $z: use https:// (a book downloaded over plain HTTP can be replaced on the way)" >&2; exit 2 ;; esac
 done
 
 # An add-on being removed is not installed by this run, whatever else asks for it.
@@ -332,7 +354,7 @@ control_dirs() {
 	find "$STATE/control" "$STATE/control/results" -mindepth 1 -maxdepth 1 -type f -exec chown -h root:"$HUB_USER" {} + -exec chmod 644 {} +
 }
 state_dir() {
-	python3 - "$STATE" "$@" <<'PY' || die "a folder under $STATE is a link or cannot be made (see above): look at what made it, remove it, and run again"
+	python3 - "$STATE" "$@" <<'PY' || die "A folder under $STATE is a link or cannot be created (see above). Find what created it. Remove it. Then rerun the installer."
 import grp, os, pwd, sys
 base, owner, group, mode, *paths = sys.argv[1:]
 uid, gid, mode = pwd.getpwnam(owner).pw_uid, grp.getgrnam(group).gr_gid, int(mode, 8)
@@ -396,13 +418,13 @@ on_exit() {
 	[ "$EXIT_CODE" = 0 ] || [ -z "$ABORT_CMD" ] && return
 	local doctor="$CODE/irate-box"
 	[ -f "$CODE/irate_box/root/health.py" ] || doctor="${SRC:-.}/irate-box"
-	printf '\ninstall.sh stopped during "%s"' "${STEP:-the start}"
+	printf '\nInstallation stopped at step "%s"' "${STEP:-the start}"
 	[ -n "$ABORT_LINE" ] && printf ': line %s, `%s` failed (exit %s)' "$ABORT_LINE" "$ABORT_CMD" "$EXIT_CODE"
 	printf '.\n'
-	echo "  Nothing after that step was done; what was set up before it stays as it is."
-	echo "  The full output is in $LOGDIR/install.log."
-	echo "  See what is wrong:  sudo $doctor health"
-	echo "  Then fix it and run the installer again: it carries on from what is already there."
+	echo "  The installer did not run the steps after it. The steps that finished before it stay as they are."
+	echo "  Open install log:  $LOGDIR/install.log"
+	echo "  Run checks:  sudo $doctor health"
+	echo "  Correct the failure. Then rerun the installer. It repeats the steps and skips what is already done."
 }
 # fetch URL DEST [CACHED-NAME]: from the download cache if it holds CACHED-NAME (default:
 # the URL's file name), else from the network. Callers check checksums either way.
@@ -491,6 +513,7 @@ own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | a
 own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac; }
 make_bundle() {
 	local kit here a tmp z ver tag sb_arch ttyd_arch caddy_arch app zip t sum
+	MISSING_N=0
 	kit="$(realpath -m "$1")"
 	here="$(cd "$(dirname "$0")" && pwd)"
 	[ -f "$here/irate_box/hub/server.py" ] || die "--make-offline-bundle runs from an irate-box checkout"
@@ -508,7 +531,7 @@ make_bundle() {
 	fi
 	printf '%s (offline kit, made %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$kit/irate-box/VERSION"
 	echo "    irate-box $ver"
-	echo "==> The apps (fetched and checked as the librarian does)"
+	echo "==> The apps (downloaded and checked as the librarian does)"
 	tmp="$(mktemp -d)"; install -d "$tmp/library"
 	for app in draw mermaid serial tools room flasher; do
 		if zip="$(HUB_STATE_DIR="$tmp" "$here/irate-box" librarian app-fetch "$app" 2>"$tmp/err")"; then
@@ -517,7 +540,7 @@ make_bundle() {
 			echo "    $(tail -1 "$tmp/err")"
 			rm -f "$zip"
 		else
-			echo "    $app: not fetched ($(tail -1 "$tmp/err" | sed 's/^librarian: //'))"
+			MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: the $app app. Download unavailable ($(tail -1 "$tmp/err" | sed 's/^librarian: //'))"
 		fi
 	done
 	rm -rf "$tmp"
@@ -559,7 +582,7 @@ make_bundle() {
 			echo "    $a: ttyd $TTYD_VERSION (this box's installed copy; no internet for the published one)"
 		else
 			rm -f "$KIT_DL/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch"
-			echo "    $a: no ttyd (not in the download cache, and no internet): the box fetches it when set up"
+			MISSING_N=$((MISSING_N+1)); echo "    $a: Missing offline component: ttyd. It is not in the download cache and the download failed. The box downloads it during setup, so setup needs internet."
 		fi
 		if [ -n "$sb_arch" ]; then
 			z="silverbullet-$SB_VERSION-silverbullet-server-linux-$sb_arch.zip"
@@ -574,10 +597,10 @@ make_bundle() {
 				printf '%s  silverbullet-server-linux-%s.zip\n' "$(sha256sum <"$KIT_DL/$z" | cut -d' ' -f1)" "$sb_arch" >>"$KIT_DL/silverbullet-$SB_VERSION-SHA256SUMS"
 				echo "    $a: SilverBullet $SB_VERSION (this box's installed copy; no internet for the release)"
 			else
-				echo "    $a: no SilverBullet (not in the download cache, and no internet): only needed for notes"
+				MISSING_N=$((MISSING_N+1)); echo "    $a: Missing offline component: SilverBullet. It is not in the download cache and the download failed. Only notes need it."
 			fi
 		else
-			echo "    $a: no SilverBullet build (notes need armv7, aarch64 or x86_64)"
+			echo "    $a: SilverBullet has no build for this architecture. Notes need armv7, aarch64 or x86_64."
 		fi
 		if [ "$WEB" = caddy ] && [ -n "$caddy_arch" ]; then
 			[ -s "$KIT_DL/caddy-release-tag" ] || kit_get caddy-release-tag /nonexistent ||
@@ -591,7 +614,7 @@ make_bundle() {
 				echo "    $a: Caddy ${tag#v}"
 			else
 				rm -f "$KIT_DL/caddy-release-tag"
-				echo "    $a: no Caddy .deb (not in the download cache, and no internet)"
+				MISSING_N=$((MISSING_N+1)); echo "    $a: Missing offline component: the Caddy .deb. It is not in the download cache and the download failed."
 			fi
 		fi
 	done
@@ -601,7 +624,7 @@ make_bundle() {
 	elif [ $? = 2 ]; then
 		die "$SB_DOCS_NAME does not match its pinned digest (SB_DOCS_SHA256)"
 	else
-		echo "    no SilverBullet manual (not in the download cache, and no internet): notes work without it"
+		MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: the SilverBullet manual. It is not in the download cache and the download failed. Notes work without it."
 	fi
 	# ESP Web Tools, for the light web flasher, the same for every architecture.
 	if [ -s "$KIT_DL/$EWT_NAME" ] || ewt_get "$KIT_DL/$EWT_NAME"; then
@@ -609,7 +632,7 @@ make_bundle() {
 	elif [ $? = 2 ]; then
 		die "$EWT_NAME does not match its pinned digest (EWT_SHA256)"
 	else
-		echo "    no ESP Web Tools (not in the download cache, and no internet): the flasher page offers downloads only"
+		MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: ESP Web Tools. It is not in the download cache and the download failed. The flasher page then offers downloads only."
 	fi
 	# FreeOCD, for the flashing tools, the same for every architecture.
 	if [ -s "$KIT_DL/$FOCD_NAME" ] || focd_get "$KIT_DL/$FOCD_NAME"; then
@@ -617,7 +640,7 @@ make_bundle() {
 	elif [ $? = 2 ]; then
 		die "$FOCD_NAME does not match its pinned digest (FOCD_SHA256)"
 	else
-		echo "    no FreeOCD (not in the download cache, and no internet): the flashing tools go without it"
+		MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: FreeOCD. It is not in the download cache and the download failed. The flashing tools work without it."
 	fi
 	if [ ${#ZIMS[@]} -gt 0 ]; then
 		echo "==> Books"
@@ -648,19 +671,24 @@ make_bundle() {
 	for repo in "$here"/git/public/*.git "$here"/git/private/*.git; do
 		[ -d "$repo" ] || continue
 		dest="/var/lib/hub/git/$(basename "$(dirname "$repo")")/$(basename "$repo")"
-		if [ -e "$dest" ]; then echo "    $dest is there already: left as it is"; continue; fi
+		if [ -e "$dest" ]; then echo "    $dest already exists. Not replaced."; continue; fi
 		cp -a "$repo" "$dest" && chown -R hub:hub "$dest" && echo "    git: $dest"
 	done
 	if [ -d "$here/kits" ]; then
-		echo "==> Toolkits (each package checked against Debian's signatures)"
+		echo "==> Toolkits (each package checked against the hashes in signed Debian indexes)"
 		/opt/irate-box/irate-box kits import-dir "$here/kits" | sed 's/^/    /'
 	fi
 	SETUP
 	chmod 755 "$kit/setup.sh"
 	(cd "$kit" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)
 	echo
-	echo "==> Offline kit in $kit ($(du -sh "$kit" | cut -f1)). Copy it to the box (a USB stick will do), then:"
+	echo "==> Offline kit in $kit ($(du -sh "$kit" | cut -f1)). Copy it to the box (a USB drive works), then:"
 	echo "    cd <the kit> && sha256sum -c --quiet SHA256SUMS && sudo ./setup.sh [options]"
+	if [ "$MISSING_N" != 0 ]; then
+		echo "==> The kit is incomplete: $MISSING_N component(s) are missing (see Missing offline component above)."
+		echo "    The next setup with this kit needs internet to download them."
+	fi
+	echo "    The kit does not hold Debian's own packages (nginx, cgit, and others). Setup installs them with apt, which needs internet or an apt mirror."
 }
 if [ -n "$MAKE_BUNDLE" ]; then
 	make_bundle "$MAKE_BUNDLE"
@@ -668,7 +696,7 @@ if [ -n "$MAKE_BUNDLE" ]; then
 fi
 
 # --- preflight -------------------------------------------------------------------
-[ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh …)"
+[ "$(id -u)" = 0 ] || die "Run the installer as root: sudo ./install.sh"
 install -d -m 755 "$LOGDIR"
 [ -f "$LOGDIR/install.log" ] && mv -f "$LOGDIR/install.log" "$LOGDIR/install.log.1"
 : >"$LOGDIR/install.log"
@@ -744,7 +772,7 @@ if [ -z "$WEB" ]; then
 	holder80="$(ss -Hltnp 'sport = :80' 2>/dev/null | grep -o 'users:(("[^"]*' | cut -d'"' -f2 | head -1 || true)"
 	if hub_site_in caddy; then
 		WEB=caddy
-		notice "This hub is served by Caddy, as irate-box set boxes up before nginx became the default. It stays on Caddy; rerun with --web nginx to switch, for about 40 MB less RAM."
+		notice "This hub is served by Caddy, as irate-box set boxes up before nginx became the default. It stays on Caddy. To switch to nginx and use about 40 MB less RAM, rerun with --web nginx."
 	elif [ "$holder80" = caddy ] || { all_installed caddy && ! all_installed nginx; }; then
 		WEB=caddy
 	else
@@ -782,11 +810,11 @@ if command -v ss >/dev/null; then
 		if [ "$HUB_PORT" = 80 ] && [ "$TAKE_PORT_80" = 1 ]; then
 			[ -n "$unit" ] || die "port 80 is held by $holder, which is not a systemd service: stop it yourself, or install without --take-port-80"
 			TAKE_UNIT="$unit"
-			notice "Port 80 is served by $holder ($unit). --take-port-80: it will be stopped and disabled; /admin's Security page or uninstall.sh puts it back."
+			notice "Port 80 is served by $holder ($unit). Because of --take-port-80, the installer stops and disables it. The Security page or uninstall.sh restores it."
 		elif [ "$HUB_PORT" = 80 ]; then
 			for p in 8080 8088 8888; do port_free "$p" && { HUB_PORT=$p; break; }; done
 			[ "$HUB_PORT" != 80 ] || die "port 80 is held by $holder, and 8080, 8088 and 8888 are taken too: pass --port N"
-			notice "Port 80 is already served by $holder${unit:+ ($unit)}, so the hub goes on :$HUB_PORT and $holder is left as it is. The hotspot's sign-in sheet needs port 80, so it will not pop up; rerun with --take-port-80 to give the hub port 80 (that stops $holder)."
+			notice "Port 80 is already served by $holder${unit:+ ($unit)}, so the hub uses port $HUB_PORT and $holder stays as it is. The hotspot's sign-in sheet needs port 80, so it will not open. To give the hub port 80, rerun with --take-port-80. That stops $holder."
 		else
 			die "port $HUB_PORT is held by $holder: pass a free one with --port"
 		fi
@@ -911,7 +939,7 @@ if [ "$WEB" = nginx ]; then
 			echo "nginx installed with the irate-box package $(date -u +%Y-%m-%d); uninstall.sh --purge-packages may remove it" >"$NGINX_OURS_MARK"
 		fi
 		[ -f "$NGINX_OURS_MARK" ] ||
-			notice "nginx was already installed, so irate-box uses it as it is: the hub's site goes in $NGINX_SITE, and the rest of its config stays the owner's."
+			notice "nginx was already installed, so irate-box uses it as it is: the hub's site goes in $NGINX_SITE, and the rest of its configuration stays the administrator's."
 	elif apt-get install -y -q --no-install-recommends nginx openssl; then
 		install -d -m 750 /etc/hub
 		echo "nginx installed by irate-box $(date -u +%Y-%m-%d); uninstall.sh --purge-packages may remove it" >"$NGINX_OURS_MARK"
@@ -1029,7 +1057,7 @@ if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 fi
 case "$rec_repo" in
 http://* | git://*)
-	notice "updates come from $rec_repo, a plain-text transport: the box's updater refuses it (anyone on the way could hand it code that root runs). Rerun with --repo https://… to have updates." ;;
+	notice "Updates come from $rec_repo, which uses unencrypted HTTP. The box's updater refuses it, because any device on the path could supply code that root runs. To receive updates, rerun with --repo https://…" ;;
 esac
 {
 	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch" --web "$WEB"
@@ -1115,7 +1143,7 @@ fi
 # goes, and so does its librarian source unless the local add-on has taken the name.
 if [ -d "$APPS/eliza" ] || [ -d "$APPS/.eliza.prev" ]; then
 	rm -rf "${APPS:?}/eliza" "$APPS/.eliza.prev"
-	notice "ELIZA has moved: it is an add-on in /admin's catalogue now (Add-ons). The old copy is removed; add it again there."
+	notice "ELIZA is now an add-on in the catalogue on the Add-ons page. The installer removed the old copy. Add ELIZA again there."
 	if [ ! -f "$STATE/apps.d/eliza.json" ] && grep -qs '"name": "eliza"' "$STATE/library/sources.json"; then
 		runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian remove eliza || true
 	fi
@@ -1134,11 +1162,11 @@ fi
 if [ ${#fetch_apps[@]} -gt 0 ]; then
 	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/library"
 	for app in "${fetch_apps[@]}"; do
-		say "Fetching the $app app"
+		say "Downloading the $app app"
 		if zip="$(runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian app-fetch "$app")"; then
 			HUB_STATE_DIR="$STATE" "$CODE/irate-box" hub_control install-app "$app" "$zip"
 		else
-			echo "    could not fetch $app; its tile stays empty until it is updated from /admin"
+			echo "    could not download $app. Its tile stays empty until it is updated from /admin"
 		fi
 	done
 	runuser -u "$HUB_USER" -- env HUB_STATE_DIR="$STATE" "$CODE/irate-box" librarian add-apps "${fetch_apps[@]}" >/dev/null
@@ -1256,10 +1284,10 @@ if hub_site_in "$OTHER"; then
 			sed -i '/^# irate-box: the hub, on its own port/d; \|^import /etc/caddy/irate-box.caddy$|d' /etc/caddy/Caddyfile
 			rm -f /etc/caddy/irate-box.caddy /etc/caddy/irate-box.caddy.prev
 			systemctl try-restart caddy || true
-			notice "The hub's site is out of the owner's Caddy (/etc/caddy/irate-box.caddy and its import line); Caddy carries on with the rest of its config."
+			notice "The hub's site is out of the administrator's Caddy (/etc/caddy/irate-box.caddy and its import line); Caddy continues with the rest of its configuration."
 		else
 			systemctl disable --now caddy >/dev/null 2>&1 || true
-			# The owner's Caddyfile back; failing that ours is set aside, so this box no longer
+			# The administrator's Caddyfile back; failing that ours is set aside, so this box no longer
 			# counts as served by Caddy (--web caddy writes a fresh one).
 			if [ -f /etc/caddy/Caddyfile.pre-irate-box ]; then
 				mv /etc/caddy/Caddyfile.pre-irate-box /etc/caddy/Caddyfile
@@ -1281,7 +1309,7 @@ if hub_site_in "$OTHER"; then
 			notice "nginx, which served the hub until now, is stopped and disabled. It stays installed: rerun with --web nginx to go back to it."
 		else
 			systemctl try-reload-or-restart nginx || true
-			notice "The hub's site is out of the owner's nginx ($NGINX_SITE); nginx carries on with the rest of its config."
+			notice "The hub's site is out of the administrator's nginx ($NGINX_SITE); nginx continues with the rest of its configuration."
 		fi
 	fi
 	# An owner's server may keep :80 for its own sites; then the hub moves.
@@ -1415,7 +1443,7 @@ if [ "$WEB" = caddy ]; then
 	access_install caddy >/dev/null
 	CADDY_MODE="$(caddyfile_owner)"
 	if [ "$CADDY_MODE" = owner ]; then
-		notice "Caddy is already set up here (/etc/caddy/Caddyfile is not irate-box's). It stays as it is: the hub's site goes in $CADDY_SITE, added with one line ($IMPORT_LINE), and uninstall.sh takes both out. Caddy restarts once, so its sites blink."
+		notice "Caddy is already set up here (/etc/caddy/Caddyfile is not irate-box's). It stays as it is: the hub's site goes in $CADDY_SITE, added with one line ($IMPORT_LINE), and uninstall.sh takes both out. Caddy restarts once. Its sites are briefly unavailable."
 		[ -f "$CADDY_SITE" ] && cp "$CADDY_SITE" "$CADDY_SITE.prev"
 		added_import=0
 		if ! grep -qxF "$IMPORT_LINE" /etc/caddy/Caddyfile; then
@@ -1551,10 +1579,10 @@ web_group=caddy
 [ "$WEB" = nginx ] && web_group="$ngx_group"
 for area in public private; do
 	if [ "$area" = public ]; then
-		desc="Public repositories: browse here and clone over HTTP. Pushing needs the admin login unless guests may push (/admin, Git)."
+		desc="Public repositories: browse here and clone over HTTP. Pushing needs an administrator sign-in unless guests can push (/admin, Git)."
 		url=/git/
 	else
-		desc="Private repositories, behind the admin login."
+		desc="Private repositories, behind the administrator sign-in."
 		url=/git-private/
 	fi
 	# Written as the hub: the folder is the hub's, which can change the file anyway; root
@@ -1661,7 +1689,7 @@ for repo in "$STATE"/git/private/*.git; do
 done
 if [ -f "$STATE/git/guest-push" ]; then
 	rm -f "$STATE/git/guest-push"
-	notice "guest push was on, so each public repository is now public-everything (anyone may push); change them one by one on /admin's Git page"
+	notice "guest push was on, so each public repository is now public-everything (anyone can push). Change them one by one on /admin's Git page"
 fi
 cat >/etc/systemd/system/irate-box-ci.path <<EOF
 [Unit]
@@ -2261,7 +2289,7 @@ fi
 # only by --uplink (or the first time, as the defaults), otherwise by /admin's Network page
 # through the root helper, so an update keeps what the owner chose there.
 say "Looking at the network"
-"$CODE/irate-box" netinv --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "netinv.py could not look at the network; /admin's Network page can try again."
+"$CODE/irate-box" netinv --write "$STATE/control/netinv.json" >/dev/null 2>&1 || notice "The installer could not scan the network. The Network page in the administration pages can scan again."
 if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
 	IFS=, read -r -a up <<<"${UPLINK:-pace=gentle,reach=reboot,sensitivity=3}"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink set "${up[@]}" >/dev/null || problem "--uplink $UPLINK: not taken (uplink.py set)"
@@ -2564,9 +2592,9 @@ elif [ "$KIWIX" = 1 ]; then
 	systemctl disable --quiet --now kiwix 2>/dev/null || true
 	systemctl reset-failed kiwix 2>/dev/null || true
 	if compgen -G "$STATE/zim/*.zim" >/dev/null; then
-		problem "Kiwix not started: none of the books in $STATE/zim can be read. Add one (Library → Books, a USB stick, --zim); health.py says what is wrong with these"
+		problem "Kiwix not started: none of the books in $STATE/zim can be read. Add one (Books, a USB drive, --zim). health.py says what is wrong with these"
 	else
-		echo "    kiwix: installed, waiting for a first book (Library → Books, a USB stick); the box doctor starts it then"
+		echo "    kiwix: installed, waiting for a first book (Books, a USB drive). The Box doctor starts it then"
 	fi
 fi
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
@@ -2715,55 +2743,55 @@ code="$(curl -s -o /dev/null -w '%{http_code}' "http://$hostport/" || true)"
 addr="$(ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' || hostname -I | cut -d' ' -f1)"
 where="http://${addr:-<this box>}$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
 echo
-say "Irate-Box is $([ $fail = 0 ] && echo up || echo "installed, with ${#PROBLEMS[@]} problem$([ ${#PROBLEMS[@]} = 1 ] || echo s) (below)") at $where/"
+say "Installation $([ $fail = 0 ] && echo completed || echo "completed with ${#PROBLEMS[@]} problem$([ ${#PROBLEMS[@]} = 1 ] || echo s) (below)"). Open Irate-Box at $where/"
 echo "    web server: $WEB$([ "$WEB" = caddy ] && echo ' (the fallback; --web nginx switches to the default)')"
 if [ "$UNCLAIMED" = 1 ]; then
-	echo "    admin: not set yet. Until it is, anyone on this network can use $where/admin/. Make the admin account"
-	echo "           now: over HTTPS ($where/admin/setup with https://), or here over SSH:"
+	echo "    administrator account required: not set yet. Until it is, any device on this network can use $where/admin/. Make the account"
+	echo "           now over HTTPS ($where/admin/setup with https://), or here over SSH:"
 	echo "           sudo $CODE/irate-box hub_control set-admin NAME"
 else
-	echo "    admin login: admin / (in $ETC/admin-password)"
+	echo "    administrator sign-in: admin / (in $ETC/admin-password)"
 fi
-[ "$WITH_NOTES" = 1 ] && echo "    notes: /notes/  (folder $STATE/notes, lock it down in $ETC/silverbullet.env)"
+[ "$WITH_NOTES" = 1 ] && echo "    notes: /notes/  (folder $STATE/notes, change who can open it in $ETC/silverbullet.env)"
 [ -f "$STATE/zim/library.xml" ] && echo "    wiki:  /wiki/   ($(grep -c '<book ' "$STATE/zim/library.xml") books in $STATE/zim/library.xml)"
 [ -f /etc/mosquitto/conf.d/irate-box.conf ] && echo "    mqtt:  :1883 for nodes, /mqtt for pages (anonymous, msh/# only)"
 [ -f /etc/ngircd/irate-box.conf ] && echo "    irc:   :6667 for any IRC app, channel #lobby (open to the network, unencrypted; how to join: /irc.html)"
 term_state="$(systemctl is-enabled ttyd 2>/dev/null)" || true
-echo "    term:  /term/   (${term_state:-disabled}; admin login, then an account on the box)"
-[ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the admin login; folder \"hub-notes\" shared if notes are installed)"
-echo "    git:   /git/ (public: clone for all, push with the admin login) and /git-private/ (admin login); repositories made on /admin"
+echo "    term:  /term/   (${term_state:-disabled}. Sign in as administrator, then as an account on the box)"
+[ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the administrator sign-in. Folder \"hub-notes\" shared if notes are installed.)"
+echo "    git:   /git/ (clone for all, push with the administrator sign-in) and /git-private/ (administrator sign-in). Make repositories on /admin"
 [ "$WITH_COLLAB" = 1 ] && echo "    collab: live sessions in /draw/ (relay on 127.0.0.1:3002, via /socket.io/)"
 [ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
 
 up_now="$(HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -c 'from irate_box.hub import uplink as u; s=u.load_settings(); print(u.words(s)+(" (custom values)" if s["overrides"] else ""))' 2>/dev/null || echo unknown)"
-echo "    uplink: $up_now — how hard it works to stay on the network; change on $where/admin/#network"
+echo "    network recovery policy: $up_now (how far the box goes to stay on the network). Change it on $where/admin/#network"
 
 # What install.sh found and did not change: said once more here, then the Security page's
-# own report of the box. Nothing below is changed without the owner's say-so (/admin).
+# own report of the box. Nothing below is changed unless an administrator approves it (/admin).
 if [ "${#NOTICES[@]}" -gt 0 ]; then
 	echo
-	say "Worth knowing"
+	say "Installation warnings"
 	for n in "${NOTICES[@]}"; do echo "    $n"; done
 fi
 if net="$(timeout 60 "$CODE/irate-box" netinv summary 2>/dev/null)" && [ -n "$net" ]; then
 	echo
-	say "The network (more, and \"look again\" for another device, on $where/admin/#network)"
+	say "The network (more, and scan again for another device, on $where/admin/#network)"
 	printf '%s\n' "$net" | sed 's/^/    /'
 fi
 if report="$(timeout 120 "$CODE/irate-box" security summary 2>/dev/null)" && [ -n "$report" ]; then
 	echo
-	say "Found on this box (fix or leave each on $where/admin/#security)"
+	say "Diagnostic findings (correct or accept each on $where/admin/#security)"
 	printf '%s\n' "$report" | sed 's/^/    /'
 fi
 # Problems: listed once more, then what the doctor makes of the box now, with what to do.
 if [ "${#PROBLEMS[@]}" -gt 0 ]; then
 	echo
-	say "Problems during this install"
+	say "Installation problems"
 	for p in "${PROBLEMS[@]}"; do echo "    $p"; done
 	if doc="$(timeout 300 "$CODE/irate-box" health summary 2>/dev/null)" && [ -n "$doc" ]; then
 		echo
-		say "What the doctor finds (again any time: sudo $CODE/irate-box health, or $where/admin/#health)"
+		say "Box doctor findings (run again at any time: sudo $CODE/irate-box health, or $where/admin/#health)"
 		printf '%s\n' "$doc" | sed 's/^/    /'
 	fi
 fi

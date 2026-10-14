@@ -49,20 +49,20 @@ answer(message="update fetched, verified", update={"up_to_date": False, "availab
 r = U.step(pol(hub_auto=1), now=t0 + 4 * H, **quiet)
 check("hub_auto 1, verified: reports the fetch, no install", "update fetched, verified" in r and not queued(), r)
 r = U.step(pol(hub_auto=1), now=t0 + 4 * H + 60, **quiet)
-check("  then: ready to install on /admin", "ready to install" in r and not queued(), r)
+check("  then: ready to install on /admin", "ready for manual installation" in r and not queued(), r)
 
 real_in_window = U.in_window
 U.in_window = lambda policy, hour=None: False
 r = U.step(pol(hub_auto=2), now=t0 + 5 * H, **quiet)
-check("hub_auto 2, outside the window: waits, says when", "installs between 02:00 and 05:00" in r and not queued(), r)
+check("hub_auto 2, outside the window: waits, says when", "installation window, 02:00 to 05:00" in r and not queued(), r)
 U.in_window = lambda policy, hour=None: True
 ONLINE["n"] = 3
 r = U.step(pol(hub_auto=2), now=t0 + 6 * H, **quiet)
-check("inside the window, 3 on the hub: waits for nobody", "waiting for nobody" in r and "(3 now)" in r and not queued(), r)
+check("inside the window, 3 on the hub: waits for nobody", "no device is active" in r and "(3 now)" in r and not queued(), r)
 ONLINE["n"] = 0
 (T / "control" / "requests" / "other.json").write_text("{}")
 r = U.step(pol(hub_auto=2), now=t0 + 7 * H, **quiet)
-check("something else queued for the root helper: waits", "requests waiting" in r and len(queued()) == 1, r)
+check("something else queued for the root helper: waits", "requests are waiting" in r and len(queued()) == 1, r)
 (T / "control" / "requests" / "other.json").unlink()
 (T / "control" / "update-progress.json").write_text(json.dumps({"pid": os.getpid(), "action": "addon"}))
 r = U.step(pol(hub_auto=2), now=t0 + 7 * H, **quiet)

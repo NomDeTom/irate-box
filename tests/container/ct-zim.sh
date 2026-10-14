@@ -15,7 +15,7 @@ head -c 5000000 $GOOD > $W/cut.zim; printf '<html>404</html>' > $W/page.zim; cp 
 echo "== zimcheck"
 cd $C
 r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/whole.zim); [ "$r" = None ] && ok "whole book passes" || bad "whole: $r"
-r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/cut.zim); [[ "$r" == truncated* ]] && ok "truncated: $r" || bad "cut: $r"
+r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/cut.zim); [[ "$r" == "Book file incomplete"* ]] && ok "truncated: $r" || bad "cut: $r"
 r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/page.zim); [[ "$r" == *HTML* ]] && ok "html: $r" || bad "html: $r"
 
 echo "== librarian: a truncated download is refused, the book in use untouched"
@@ -31,7 +31,7 @@ except librarian.LibrarianError as e:
     print('REFUSED', e)
 " 2>&1)
 echo "    $out"
-[[ "$out" == REFUSED*truncated* ]] && ok "download refused with the reason" || bad "download: $out"
+[[ "$out" == REFUSED*incomplete* ]] && ok "download refused with the reason" || bad "download: $out"
 [ "$(md5sum < $GOOD)" = "$sum0" ] && ok "book in use unchanged" || bad "book changed!"
 ls -a $Z | grep -q "\.mermaid-docs.zim\.\(fetched\|new\)" && bad "staged leftovers" || ok "no staged leftovers"
 out=$(runuser -u hub -- env HUB_STATE_DIR=/var/lib/hub python3 -c "

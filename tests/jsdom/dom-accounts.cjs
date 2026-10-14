@@ -40,12 +40,12 @@ function page(file, url, fetcher, scripts) {
   let d = p.d;
   check('apply over HTTP: warned, with the certificate and the HTTPS page', !d.getElementById('acct-http').hidden && /can be read by anyone on the WiFi/.test(t(d.getElementById('acct-http-text')))
     && d.getElementById('acct-https-link').href === 'https://box.local/account.html');
-  check('  asking, not making', !d.getElementById('acct-signup-form').hidden && t(d.getElementById('acct-signup-button')) === 'Ask');
+  check('  asking, not making', !d.getElementById('acct-signup-form').hidden && t(d.getElementById('acct-signup-button')) === 'Request account');
   const sf = d.getElementById('acct-signup-form');
   sf.elements.name.value = 'alice'; sf.elements.password.value = 'password1';
   sf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
   check('  Ask: sent with the page\'s header; says it waits for the admin', posted[0].b.action === 'signup' && posted[0].h['X-Irate-Account'] === '1'
-    && /once the box's admin accepts it/.test(t(d.getElementById('acct-note'))));
+    && /after an administrator approves it/.test(t(d.getElementById('acct-note'))));
   const lf = d.getElementById('acct-login-form');
   lf.elements.name.value = 'alice'; lf.elements.password.value = 'password1';
   lf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait(300);
@@ -59,8 +59,8 @@ function page(file, url, fetcher, scripts) {
   view = { signup: 'off', http: 'prevented', https: true, me: null };
   p = page('account.html', 'https://box.local/account.html', async () => json(view), ['account.js']);
   await wait(); d = p.d;
-  // One login: with sign-up off the box's admins still sign in here.
-  check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /admins sign in here/.test(t(d.getElementById('acct-subtitle')))
+  // One sign-in: with registration off, administrators still sign in here.
+  check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /Administrators sign in here/.test(t(d.getElementById('acct-subtitle')))
     && !d.getElementById('acct-login-form').hidden && d.getElementById('acct-signup-form').hidden, t(d.getElementById('acct-subtitle')));
   check('account page: no errors', !p.errors.length, p.errors.join(' | '));
 
@@ -84,11 +84,11 @@ function page(file, url, fetcher, scripts) {
   h = await home({ who: 'users', marks: false, me: null });
   d = h.d;
   check('users only, a guest: the forms hidden, a link to log in; marks off: none shown', d.getElementById('shout-form').hidden
-    && /Log in to post here/.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
+    && /Sign in to post\. Only users can post here\./.test(t(d.querySelector('.shout-post-note'))) && d.getElementById('thread-form').hidden
     && !d.querySelector('.verified'));
   h = await home({ who: 'off', marks: true, me: 'erin' });
-  check('  off: closed, even for a user', h.d.getElementById('shout-form').hidden && /closed/.test(t(h.d.querySelector('.shout-post-note')))
-    && /closed to new posts/.test(t(h.d.querySelector('.board-post-note'))));
+  check('  off: closed, even for a user', h.d.getElementById('shout-form').hidden && /Posting is disabled/.test(t(h.d.querySelector('.shout-post-note')))
+    && /Posting is disabled/.test(t(h.d.querySelector('.board-post-note'))));
   check('home: no errors', !h.errors.length, h.errors.join(' | '));
 
   // /admin → Accounts.
@@ -107,24 +107,24 @@ function page(file, url, fetcher, scripts) {
   }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait(300); d = a.d;
   check('admin: a side-bar entry, the levels as set, the counts', [...d.querySelectorAll('.admin-side-list a')].some((x) => x.hash === '#accounts')
-    && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 admin\), 1 asking, 0 switched off\./.test(t(d.getElementById('accounts-counts'))));
+    && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 administrator\), 1 waiting for approval, 0 disabled\./.test(t(d.getElementById('accounts-counts'))));
   const rows = [...d.querySelectorAll('#accounts-list .admin-item')];
   const btns = (r) => [...r.querySelectorAll('button')].map((b) => t(b));
-  check('  one asking: Accept or Refuse', /^Asking bob/.test(t(rows[0])) && btns(rows[0]).join() === 'Accept,Refuse', btns(rows[0]).join());
-  check('  an admin: Switch off, Make a user, Reset password, Delete', /^Admin carol/.test(t(rows[1])) && btns(rows[1]).join() === 'Switch off,Make a user,Reset password,Delete', btns(rows[1]).join());
+  check('  one awaiting approval: Approve account or Refuse request', /^Awaiting approval bob/.test(t(rows[0])) && btns(rows[0]).join() === 'Approve account,Refuse request', btns(rows[0]).join());
+  check('  an administrator: Disable account, Set user role, Reset password, Delete account', /^Administrator carol/.test(t(rows[1])) && btns(rows[1]).join() === 'Disable account,Set user role,Reset password,Delete account', btns(rows[1]).join());
   [...rows[0].querySelectorAll('button')][0].click(); await wait();
   check('  Accept asks the hub', aposted.some((b) => b.action === 'accept' && b.name === 'bob'));
   const mf = d.getElementById('accounts-make');
   mf.elements.name.value = 'dave';
-  check('  Role: two bigger buttons, Make user and Make admin, no second button', [...mf.querySelectorAll('button')].map((b) => t(b)).join() === 'Make user,Make admin');
+  check('  Role: two bigger buttons, Create user account and Create administrator account, no second button', [...mf.querySelectorAll('button')].map((b) => t(b)).join() === 'Create user account,Create administrator account');
   mf.querySelector('button[value="user"]').click(); await wait();
   // The code beside the account it is for, in a box to copy; a line by the form says so.
   const daveRow = [...d.querySelectorAll('#accounts-list .admin-item')].find((r) => / dave /.test(` ${t(r)} `));
-  check('  Make: the code shown, once, beside the account', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /dave's one-time code is beside their name/.test(t(d.getElementById('accounts-code')))
+  check('  Make: the code shown, once, beside the account', aposted.some((b) => b.action === 'make' && b.name === 'dave') && /The one-time code of dave is beside the name/.test(t(d.getElementById('accounts-code')))
     && (!daveRow || (daveRow.querySelector('.code-box') || {}).value === 'ABCD-EFGH-JKLM-NPQR'));
-  check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('no spaces'));
+  check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('Do not use spaces'));
   const sform = d.getElementById('accounts-settings');
-  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Application/Admin assigned | Prevented/Warning/Permitted'
+  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Allowed'
     && [...sform.querySelectorAll('.chip-says')].length === 2);
   sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
   sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();

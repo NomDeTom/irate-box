@@ -1,7 +1,7 @@
 {
  "id": "system",
  "title": "System",
- "summary": "Debian's own base a minimal image can lack: kernel defaults, the clock tool, the firewall, security updates, small network checks, any USB stick's filesystem, the archive tools (zip, unzip, xz, zstd, bzip2) and the manual pages. Kept installed; the alternative network and time tools cached beside it.",
+ "summary": "Minimum system tools from Debian. A minimal image can lack them. The toolkit has kernel defaults, the clock tool, the firewall, security updates, small network checks, USB drive filesystems, the archive tools (zip, unzip, xz, zstd, bzip2) and the manual pages. The box keeps the toolkit installed. It also caches the alternative network and time tools. It does not install them.",
  "packages": [
   "linux-sysctl-defaults",
   "util-linux-extra",
@@ -46,12 +46,12 @@
   "dhcpcd-base",
   "systemd-timesyncd"
  ],
- "consent": "These are Debian's own packages, the ones a full Debian install has and a minimal board image leaves out. Installing them changes the box in one way you should know about: the kernel defaults switch on Debian's link protections and the rest of its settings at the next boot. unattended-upgrades comes with them (so the box can install security updates by itself even with no internet to fetch it), but whether it runs is a choice of its own, on Updates → Debian's security updates (off, download them, or install them daily); needrestart lists what still runs old code after an update. The kit is kept installed: it is never removed after a while, as the others are.",
+ "consent": "These are Debian packages. A full Debian install has them. A minimal board image does not. A package is installed only if the box does not already have it. The installation changes the box in these ways. At the next boot, the kernel defaults turn on the link protections of Debian and the other kernel settings of Debian. unattended-upgrades is included. It can install security updates without internet when the packages are in the cache. It does nothing until you set it on Updates → Debian's security updates. There you select Flag, Download or Install (daily). needrestart lists the programs that still run old code after an update. The box keeps this toolkit installed. It never removes it after a time, as it does for the other toolkits.",
  "notes": [
-  "Each package only where it fits: Debian's kernel defaults only where the image lacks them (newer Armbian board packages ship their own), pciutils only with PCI, smartmontools only with a disk that reports SMART, AppArmor only on a kernel with it, dmidecode only on 64-bit boards.",
-  "The alternatives (ifupdown, dhcpcd-base, systemd-timesyncd) are cached, never installed with the kit: on an offline box they can't be fetched once the image's own network or time manager has failed, so they wait here for the owner's choice.",
-  "USB sticks: exFAT and NTFS as well as FAT and ISO 9660, through exfatprogs and ntfs-3g.",
-  "wtmpdb keeps the login and boot record (last, last reboot), which trixie moved out of util-linux."
+  "The box installs each package only where it fits. Debian kernel defaults: only where the image lacks them (newer Armbian board packages have their own). pciutils: only with PCI. smartmontools: only with a disk that reports SMART. AppArmor: only on a kernel that has it. dmidecode: only on 64-bit boards.",
+  "The box caches the alternatives (ifupdown, dhcpcd-base, systemd-timesyncd). It never installs them with the toolkit. A box without internet cannot download them after the network manager or the time manager of the image fails. They wait in the cache until an administrator decides to install one.",
+  "USB drives: exfatprogs and ntfs-3g add exFAT and NTFS. FAT and ISO 9660 are already available.",
+  "wtmpdb keeps the sign-in and boot record (last, last reboot). Debian trixie moved this record out of util-linux."
  ],
  "remove_after_hours": null,
  "services": [

@@ -23,11 +23,9 @@
   pop.id = 'hub-return-help';
   pop.hidden = true;
   pop.innerHTML =
-    '<p><strong>Don\'t panic.</strong> This is hosted on an Irate-Box: a small computer nearby, ' +
-    'serving it over its own network. Nothing here is on the internet, and nothing you do ' +
-    'leaves the box.</p>' +
-    '<p>🏠 Hub takes you back to the start. If something here asks for the internet, that part ' +
-    'is switched off on purpose.</p><a href="/help.html">Quick help →</a>';
+    '<p>The box hosts this app over its own network.</p>' +
+    '<p>Select 🏠 Hub to return to the hub page. Some app features can need internet access.</p>' +
+    '<a href="/help.html">Quick help →</a>';
   wrap.appendChild(home);
   wrap.appendChild(help);
 

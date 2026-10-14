@@ -1,7 +1,7 @@
 {
  "id": "security",
  "title": "Security",
- "summary": "Audit the box and look at it as an attacker would: Lynis, nmap, debsecan and the rest.",
+ "summary": "Security auditing. Audit the box and look at it as an attacker would. The toolkit has Lynis, nmap and debsecan.",
  "packages": [
   "lynis",
   "debsecan",
@@ -14,11 +14,11 @@
   "socat",
   "python3-scapy"
  ],
- "consent": "These tools probe networks and read packets. fail2ban installs stopped: switch it on separately, on the Security page.",
+ "consent": "Some of these tools probe networks. Some of them read packets. fail2ban installs stopped. Enable it on the Security page.",
  "notes": [
-  "Kept fresher than the other kits: from outside the box's control, so refreshed daily when online.",
-  "Greenbone/OpenVAS is not on the box (gigabytes of RAM, no armhf build): run it from a PC on the hotspot against the box.",
-  "debsecan's data (Debian's security tracker, about 2 MB) is kept by the librarian and refreshed daily when online, so debsecan works offline from the last copy; its age is shown."
+  "The box refreshes this toolkit daily when the box is online. The vulnerability data comes from outside the box.",
+  "Greenbone/OpenVAS is not on the box. It needs gigabytes of RAM and has no armhf build. Run it from a PC on the hotspot against the box.",
+  "The librarian keeps the data of debsecan (the security tracker of Debian, about 2 MB). It downloads the data daily when the box is online. Without internet, debsecan uses the last copy. The page shows the age of the last download. Old data can miss new vulnerabilities."
  ],
  "remove_after_hours": 24,
  "refresh_hours": 24,
@@ -28,7 +28,7 @@
    "upstream": "https://github.com/ovh/debian-cis",
    "branch": "master",
    "pin": "2e7135e09fc5275baafa625d6d9a2a40f48c769e",
-   "why": "The CIS benchmark's checks for Debian, run --audit only (never its fixes) by the security doctor's deep audit."
+   "why": "The CIS benchmark checks for Debian. The deep audit of the Security doctor runs them with --audit only. It never runs the fixes."
   }
  ],
  "feeds": [

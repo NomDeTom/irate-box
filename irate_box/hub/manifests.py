@@ -127,7 +127,7 @@ def _api_problem(m):
     """Why this irate-box can't read the manifest's format, or None."""
     api = m.get("api", 1) if isinstance(m, dict) else 1
     if type(api) is not int:
-        return "api: an integer, the manifest format it was written for"
+        return "api: enter an integer, the manifest format that the add-on was written for"
     if api > API:
         return f"written for manifest format {api}; this irate-box reads up to {API}: update the hub"
     if api < API_OLDEST:
@@ -142,7 +142,7 @@ def _check(m, where):
 
     need(isinstance(m, dict), "not a JSON object")
     need(_api_problem(m) is None, _api_problem(m) or "")
-    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: lower-case letters, digits, '-'")
+    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: use lower-case letters, digits and hyphens")
     need(type(m.get("order")) is int, "order: an integer")
     tile = m.get("tile")
     if tile is not None:
@@ -247,7 +247,7 @@ def load(folder=None):
             raise ManifestError(f"{path.name}: {exc}")
         _check(m, path.name)
         if m["id"] in seen:
-            raise ManifestError(f"{path.name}: id {m['id']} is used twice")
+            raise ManifestError(f"{path.name}: Duplicate manifest ID {m['id']}. Each manifest needs its own ID")
         seen.add(m["id"])
         out.append(m)
     return sorted(out, key=lambda m: (m["order"], m["id"]))
@@ -270,9 +270,9 @@ def check_local(m, where="local manifest", builtin_ids=()):
     need(isinstance(m, dict), "not a JSON object")
     need(_api_problem(m) is None, _api_problem(m) or "")
     extra = set(m) - LOCAL_KEYS
-    need(not extra, f"not allowed in a local add-on: {', '.join(sorted(extra))}")
-    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: lower-case letters, digits, '-'")
-    need(m["id"] not in builtin_ids and m["id"] not in _hub_pages(), f"id: {m['id']} is the hub's own")
+    need(not extra, f"a local add-on cannot use these fields: {', '.join(sorted(extra))}")
+    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: use lower-case letters, digits and hyphens")
+    need(m["id"] not in builtin_ids and m["id"] not in _hub_pages(), f"id: {m['id']} is already used by the hub server")
     need(type(m.get("order")) is int, "order: an integer")
     tile = m.get("tile")
     need(isinstance(tile, dict) and all(isinstance(tile.get(k), str) for k in ("icon", "name", "desc")),

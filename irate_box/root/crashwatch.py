@@ -72,6 +72,7 @@ OVERLAY_NAME = "irate-box-watchdog"
 TICK = 30
 SNAP_MAX = 4_000_000
 KEEP_CRASHES = 30
+WATCHDOG_SEC = 60        # RuntimeWatchdogSec: how long a frozen system can stop feeding the watchdog
 DEFAULT = {"snapshots": True, "panic": False, "watchdog": False}
 FLOOD = 30                # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5             # driver errors within two looks that make a failure
@@ -420,8 +421,8 @@ def boot_reason(prev, now=None):
         return "the first boot crash watch has seen"
     if not prev.get("clean"):
         s = load_settings()
-        return ("it stopped without shutting down: a hang, a crash or the power going"
-                + (" (a frozen box is restarted by the watchdog within a minute or so)" if s.get("watchdog") else ""))
+        return ("unclean shutdown: the box stopped without shutting down. The cause can be a hang, a crash or a power loss, and the box cannot tell which"
+                + (f". The watchdog restarts a frozen box after {WATCHDOG_SEC} s" if s.get("watchdog") else ""))
     stopped = prev.get("stopped") or 0
     asked = [e for e in watchlog.read(boot=prev["boot"], kinds={"repair"}) if e.get("step") == "reboot"
              and (not stopped or 0 <= stopped - e.get("at", 0) <= 600)]
@@ -607,7 +608,7 @@ def _board_watchdog(on):
         return
     node = _dt_watchdog()
     if not node:
-        raise ValueError("the device tree has no switched-off watchdog to switch on")
+        raise ValueError("The device tree has no disabled watchdog to enable")
     src = ("/dts-v1/;\n/plugin/;\n/ {\n\tfragment@0 {\n\t\ttarget-path = \"%s\";\n"
            "\t\t__overlay__ { status = \"okay\"; };\n\t};\n};\n" % node)
     dtbo.parent.mkdir(parents=True, exist_ok=True)
@@ -647,7 +648,7 @@ def set_watchdog(on):
     if on:
         kind = watchdog_device()
         if not kind:
-            raise ValueError("this kernel has no watchdog: neither the board's own nor softdog")
+            raise ValueError("This kernel has no watchdog, neither the board's own nor softdog")
         if kind == "switched-off":
             _board_watchdog(True)
         if kind == "softdog":
@@ -659,19 +660,19 @@ def set_watchdog(on):
                 raise ValueError(f"modprobe softdog: {p.stderr.strip()[:160]}")
         SYSTEMD_CONF.parent.mkdir(parents=True, exist_ok=True)
         safeio.write(SYSTEMD_CONF, "# Written by irate-box (root/crashwatch.py): systemd feeds the watchdog; a frozen\n"
-                     "# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec=60\nRebootWatchdogSec=5min\n")
+                     f"# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec={WATCHDOG_SEC}\nRebootWatchdogSec=5min\n")
         subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
         if kind == "switched-off":
-            return "the board's own watchdog is switched on from the next restart; from then it restarts the box if it freezes for a minute"
+            return f"Watchdog enabled after reboot: the board's own watchdog starts at the next restart. Then it restarts the box if the system freezes for {WATCHDOG_SEC} s"
         which = "the board's own" if kind == "hardware" else "the kernel's softdog"
-        return f"a watchdog ({which}) restarts the box if it freezes for a minute"
+        return f"Watchdog enabled: {which} watchdog restarts the box if the system freezes for {WATCHDOG_SEC} s"
     SYSTEMD_CONF.unlink(missing_ok=True)
     _board_watchdog(False)
     subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
     if MODULES.exists():
         MODULES.unlink()
         subprocess.run(["modprobe", "-r", "softdog"], capture_output=True)
-    return "no watchdog: a frozen box waits for someone to restart it"
+    return "Watchdog disabled: a frozen box waits for an administrator to restart it"
 
 
 def set_option(key, value):
@@ -679,7 +680,7 @@ def set_option(key, value):
     s = load_settings()
     if key == "snapshots" and value in ("on", "off"):
         s["snapshots"] = value == "on"
-        msg = "snapshots to the box's storage every 30 s" if s["snapshots"] else "no snapshots: a crash leaves only the journal's last sync"
+        msg = "Crash snapshots enabled: the box saves a snapshot to its storage every 30 s" if s["snapshots"] else "Crash snapshots disabled: a crash leaves only the last journal sync"
     elif key == "panic" and value in ("on", "off"):
         msg = set_panic(value == "on")
         s["panic"] = value == "on"
@@ -687,7 +688,7 @@ def set_option(key, value):
         msg = set_watchdog(value == "on")
         s["watchdog"] = value == "on"
     else:
-        raise ValueError(f"{key} {value}: not a crash watch setting")
+        raise ValueError(f"{key} {value} is not a crash watch setting")
     save_settings(s)
     return msg
 

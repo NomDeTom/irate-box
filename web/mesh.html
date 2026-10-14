@@ -14,30 +14,30 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>📡 Mesh</h1>
-    <p class="subtitle">The Meshtastic nodes heard through this box.</p>
+    <p class="subtitle">Meshtastic nodes that this box received.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
   <section>
-    <p id="mesh-state" role="status">Looking…</p>
+    <p id="mesh-state" role="status">Loading mesh data</p>
     <p class="setting-desc" id="mesh-counts"></p>
   </section>
   <section>
-    <h2>Where</h2>
-    <p class="setting-desc" id="mesh-map-note">The nodes that have sent their position, placed as they are: no map underneath yet, so no internet is needed.</p>
-    <svg id="mesh-map" class="mesh-map" viewBox="0 0 600 360" role="img" aria-label="The nodes' positions"></svg>
+    <h2>Node positions</h2>
+    <p class="setting-desc" id="mesh-map-note">Positions are shown without a background map. No internet access is needed.</p>
+    <svg id="mesh-map" class="mesh-map" viewBox="0 0 600 360" role="img" aria-label="Node positions"></svg>
   </section>
   <section>
     <h2>Nodes</h2>
     <div class="scroll-x">
       <table class="admin-table mesh-nodes" id="mesh-nodes">
-        <thead><tr><th>Node</th><th>Last heard</th><th>Battery</th><th>Where</th><th>Heard</th><th>Packets</th></tr></thead>
+        <thead><tr><th>Node</th><th>Last received</th><th>Battery</th><th>Position</th><th>Hops and signal</th><th>Received packets</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
   <section>
     <h2>Recent traffic</h2>
-    <p class="setting-desc">What kind of packet, from whom, on which channel. Messages are not shown here.</p>
+    <p class="setting-desc">Each line shows the packet type, the sender and the channel. This page does not show message content.</p>
     <ol class="mesh-packets" id="mesh-packets"></ol>
   </section>
   <script src="/mesh.js"></script>

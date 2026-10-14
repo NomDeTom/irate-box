@@ -1,37 +1,57 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // /certificate: the box's CA to download, its
-// fingerprint and what installing it allows, the steps for each platform, and a check of whether
+// fingerprint and what installing it does, the steps for each platform, and a check of whether
 // this device already trusts the box. A platform's steps are shown only once they have been tried
 // on a real device (checked: true); until then, the general step. Never a "click through the
 // warning" path: it teaches people to ignore certificate warnings.
 const PLATFORMS = [
   // Tried on real phones: every screen in the order a phone shows it.
   { id: 'ios', title: 'iPhone and iPad', checked: true, steps: [
-    'Open this page in Safari (not another browser: only Safari hands the file to Settings), and tap Download the certificate. Allow the download when asked: "This website is trying to download a configuration profile".',
-    'Open Settings: "Profile Downloaded" is near the top. Tap it, then Install (top right), enter your passcode, and Install again through the warning.',
-    'Turn on full trust, or Safari still warns: Settings → General → About → Certificate Trust Settings (at the very bottom), and switch on the Irate-Box CA. Continue through the warning.',
-    'To remove it later: Settings → General → VPN & Device Management → the profile → Remove Profile.'] },
+    'Open this page in Safari. Other browsers cannot give the file to Settings.',
+    'Tap Download certificate.',
+    'Tap Allow when Safari asks: "This website is trying to download a configuration profile".',
+    'Open Settings. Tap "Profile Downloaded", near the top.',
+    'Tap Install, in the top right corner.',
+    'Enter your passcode.',
+    'Tap Install again in the warning.',
+    'Open Settings → General → About → Certificate Trust Settings. This is at the very bottom.',
+    'Switch on the Irate-Box CA. Without this step, Safari still shows a warning. Tap Continue in the warning.',
+    'Compare the SHA-256 fingerprint in the profile with the fingerprint on this page.',
+    'To remove the certificate, open Settings → General → VPN & Device Management. Select the profile. Tap Remove Profile.'] },
   { id: 'android', title: 'Android', checked: true, steps: [
-    'Tap Download the certificate. If the browser asks whether to keep the file, keep it. Tapping the downloaded file does nothing useful: since Android 11 a CA certificate can only be installed from Settings, and the phone says so ("Can\'t install CA certificates… must be installed in Settings"). That is expected.',
-    'Open Settings and search for "CA certificate" (the quickest way: every maker hides it somewhere else). Without search: Settings → Security and privacy → More security settings → Encryption and credentials → Install a certificate → CA certificate. On Samsung: Settings → Security and privacy → More security settings → Install from device storage → CA certificate.',
-    'The phone warns that your data won\'t be private: this is the "untrusted source" step. Tap Install anyway. The certificate can vouch only for this box\'s names and addresses (above), not for other sites.',
-    'Unlock with your PIN, pattern or fingerprint when asked. Android insists on a screen lock for this; if you have none, it asks you to set one.',
-    'Pick irate-box-ca.crt from Downloads (in the file picker\'s ☰ menu if it opens somewhere else). "CA certificate installed" confirms it.',
-    'Check it: Encryption and credentials → Trusted credentials → the User tab shows the Irate-Box CA. Tap it to compare its SHA-256 fingerprint with the one above.',
-    'Android then shows "Network may be monitored" (in the notifications or Quick Settings) for as long as it is installed: that is the phone being honest about a certificate you added, not something wrong. To remove it, tap it under Trusted credentials → User → Remove.',
-    'Chrome and the system browser trust it; most other apps don\'t, and Firefox needs its own setting (Settings → About Firefox, tap the logo five times, then Settings → Secret settings → Use third-party CA certificates).'] },
+    'Tap Download certificate. If the browser asks whether to keep the file, keep it.',
+    'Do not open the downloaded file. Since Android 11, a CA certificate can be installed only from Settings. The phone then shows this message: "Can\'t install CA certificates… must be installed in Settings". This is expected.',
+    'Open Settings. Search for "CA certificate". Each phone maker puts this setting in a different place.',
+    'If search does not find it, select Security and privacy → More security settings → Encryption and credentials → Install a certificate → CA certificate.',
+    'On a Samsung phone, select Security and privacy → More security settings → Install from device storage → CA certificate.',
+    'The phone shows a warning about an untrusted source. Tap Install anyway.',
+    'The certificate covers only the names and addresses of this box (above). It does not cover other sites. Not every app enforces this limit.',
+    'Unlock the phone with your PIN, pattern or fingerprint when asked. If the phone has no screen lock, Android asks you to set one.',
+    'Select irate-box-ca.crt in Downloads. If the file picker opens in another folder, open its ☰ menu and select Downloads.',
+    'The phone shows "CA certificate installed".',
+    'Open Encryption and credentials → Trusted credentials → User. Select the Irate-Box CA. Compare its SHA-256 fingerprint with the fingerprint on this page.',
+    'While the certificate is installed, Android shows "Network may be monitored" in the notifications or in Quick Settings. Android shows this for every certificate that you add. It is expected.',
+    'To remove the certificate, open Trusted credentials → User. Select the Irate-Box CA. Select Remove.',
+    'On current Android versions, Chrome and the system browser trust the certificate. Most other apps do not.',
+    'Firefox needs its own setting. Open Settings → About Firefox. Tap the logo five times. Open Settings → Secret settings. Enable Use third-party CA certificates.'] },
   { id: 'windows', title: 'Windows', checked: false, steps: [
-    'Download the certificate and open it.',
-    'Install Certificate → Current User → Place all certificates in the following store → Trusted Root Certification Authorities.',
-    'Chrome and Edge use it straight away; Firefox can be told to (security.enterprise_roots.enabled).'] },
+    'Download the certificate.',
+    'Open the downloaded file.',
+    'Select Install Certificate → Current User.',
+    'Select Place all certificates in the following store → Trusted Root Certification Authorities.',
+    'Chrome and Edge use the certificate at once. For Firefox, set security.enterprise_roots.enabled to true.'] },
   { id: 'macos', title: 'macOS', checked: false, steps: [
-    'Download the certificate and open it: Keychain Access adds it to the login keychain.',
-    'Double-click it there, open Trust, and set "When using this certificate" to Always Trust.'] },
+    'Download the certificate.',
+    'Open the downloaded file. Keychain Access adds it to the login keychain.',
+    'Compare its SHA-256 fingerprint with the fingerprint on this page.',
+    'Double-click the certificate in Keychain Access. Open Trust.',
+    'Set "When using this certificate" to Always Trust.'] },
   { id: 'linux', title: 'Linux', checked: false, steps: [
-    'Chrome and Chromium: Settings → Privacy and security → Security → Manage certificates → Authorities → Import.',
-    'Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.',
-    'For command-line tools: copy it to /usr/local/share/ca-certificates/ and run sudo update-ca-certificates.'] },
+    'Chrome and Chromium: select Settings → Privacy and security → Security → Manage certificates → Authorities → Import.',
+    'Firefox: select Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.',
+    'For command-line tools, copy the certificate to /usr/local/share/ca-certificates/. Then run sudo update-ca-certificates.',
+    'This command does not change the certificate store of a browser.'] },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -61,13 +81,13 @@ async function start() {
     return;
   }
   if (!d.set_up) {
-    $('cert-state').textContent = 'This box has no certificate yet: its pages are served over plain HTTP. Its owner can make one on /admin → Security.';
+    $('cert-state').textContent = 'This box has no certificate yet. It serves its pages over HTTP. An administrator can create one at /admin → Security → HTTPS.';
     return;
   }
   const port = d.port || 443;
   $('cert-state').textContent = d.on
-    ? `This box serves its pages over HTTPS too (${httpsUrl(port)}), with a certificate valid until ${new Date(d.expires * 1000).toLocaleDateString()}.`
-    : 'This box has a certificate, but its owner has switched HTTPS off for now.';
+    ? `This box also serves its pages over HTTPS (${httpsUrl(port)}). The certificate is valid until ${new Date(d.expires * 1000).toLocaleDateString()}.`
+    : 'This box has a certificate. An administrator has disabled HTTPS.';
   $('cert-names').textContent = d.names.join(', ');
   $('cert-fingerprint').textContent = d.fingerprint;
   $('cert-https').href = httpsUrl(port);
@@ -87,16 +107,17 @@ async function start() {
   // The rest: the general step until their guides have been tried on a real device.
   const rest = PLATFORMS.filter((p) => !p.checked).map((p) => p.title);
   if (rest.length) {
-    steps.append(make('p', `${shown.length ? `On other devices (${rest.join(', ')}): d` : 'D'}ownload it, open it, and install it as a trusted certificate authority in the device's settings. `
-      + 'Step-by-step guides for them follow once they have been tried on real devices.'));
+    steps.append(make('p', `${shown.length ? `On other devices (${rest.join(', ')}): d` : 'D'}ownload the certificate. Then install it as a trusted certificate authority in the device settings. `
+      + 'Compare its SHA-256 fingerprint with the fingerprint on this page before you trust it. '
+      + 'Step-by-step instructions for these devices will follow after tests on real devices.'));
   }
   if (location.protocol === 'https:') {
-    $('cert-check').textContent = '✓ You are on HTTPS now: this device trusts the box.';
+    $('cert-check').textContent = 'You are on HTTPS. If your browser shows no warning, this device trusts the box.';
   } else if (d.on) {
     $('cert-check').textContent = 'Checking whether this device trusts the box…';
     $('cert-check').textContent = (await trusted(port))
-      ? `✓ This device trusts the box: you can use ${httpsUrl(port)}.`
-      : 'This device does not trust the box yet: install the certificate below.';
+      ? `✓ This device trusts the box. You can use ${httpsUrl(port)}.`
+      : 'This device does not trust the box yet, or the HTTPS connection failed. Install the certificate below.';
   }
 }
 

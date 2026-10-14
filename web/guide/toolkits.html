@@ -15,13 +15,19 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1>📖 Toolkits</h1>
-    <p class="subtitle">Software for jobs on the box, installed with no internet. On the admin pages: System → Toolkits.</p>
+    <p class="subtitle">Software for jobs on the box. Install it without an internet connection. On the administration pages: System → Toolkits.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
-  <p class="help-note">A toolkit is a set of Debian packages for one kind of job: Building, Capture, Debugging, GPS time, Network, Radio, Recovery, Security, Debug symbols, System. While the box is online it keeps each one's packages in a local store; installing one then needs no internet. Their services are left stopped.</p>
-  <p class="help-note">On each toolkit's card: <strong>Install</strong>, <strong>Remove it again after</strong> (an hour, a day, a week… or never), <strong>Keep current</strong>, and <strong>Roll back</strong> to an earlier copy. <strong>+ Custom toolkit</strong> makes your own from a list of packages.</p>
-  <p class="help-note"><strong>By USB stick</strong>: copy toolkits to a stick for a box with no internet, or import them from one; every package is checked against Debian's signed lists.</p>
+  <p class="help-note">A toolkit is a set of Debian packages for one kind of job. The toolkits are Building, Capture, Debugging, GPS time, Network, Radio, Recovery, Security, Debug symbols and System.</p>
+  <p class="help-note">While the box is online, it downloads the packages of each toolkit into a local cache. When the cache of a toolkit is complete, you can install the toolkit without an internet connection. After an installation, the services of the toolkit stay stopped. The exceptions are on the card of each toolkit.</p>
+  <p class="help-note">On the card of each toolkit:</p>
+  <ul><li><strong>Install</strong> installs the toolkit.</li><li><strong>Remove it again after</strong> removes it after an hour, a day, a week or never. This is the default removal period.</li><li><strong>Keep current</strong> refreshes the cache automatically.</li><li><strong>Roll back</strong> returns to an earlier copy.</li></ul>
+  <p class="help-note">Select <strong>+ Custom toolkit</strong> to make your own toolkit from a list of packages.</p>
+  <h2>USB drive transfer</h2>
+  <p class="help-note">To move toolkits to a box that has no internet connection:</p>
+  <ol><li>Copy the toolkits to a USB drive.</li><li>Import them from the drive on the other box.</li></ol>
+  <p class="help-note">The box checks the package lists against the signed indexes of Debian. It checks the hash of each package file against those lists.</p>
 
   <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
   <script src="/hub.js"></script>

@@ -67,7 +67,7 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   const d = w.document;
   const rows = () => [...d.querySelectorAll('#books-table tbody tr.book-row')];
   check('the library\'s poll leaves the books out', libraryAsked === '/admin/library?books=0', libraryAsked);
-  check('the summary: all of them, their size, the states worth a look', /^300 books, 43\.1 MB; 40 kept current\. 1 newer available\. 1 check failed\.$/.test(t(d.getElementById('books-summary'))),
+  check('the summary: all of them, their size, the states worth a look', /^300 books, 43\.1 MB\. 40 kept current\. 1 newer available\. 1 check failed\.$/.test(t(d.getElementById('books-summary'))),
     t(d.getElementById('books-summary')));
   check('one page of 50, from the hub', rows().length === 50 && /Page 1 of 6 \(300 matching\)/.test(t(d.getElementById('books-page'))));
   const cells = (r) => [...r.cells].map((c) => t(c));
@@ -101,20 +101,20 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   check('a kept book\'s card opens under its row, with its buttons', card && /book-001\.zim/.test(t(card)) && [...card.querySelectorAll('button')].some((b) => t(b) === 'Install'));
   const hand = rows().find((r) => /book-050/.test(t(r)));
   hand.querySelector('.link-button').click(); await wait(50);
-  check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB stick: the librarian leaves it alone/.test(t(d.querySelector('#books-table tr.book-card'))));
+  check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB drive\. The librarian does not change it/.test(t(d.querySelector('#books-table tr.book-card'))));
   // Kiwix's catalogue.
   const cf = d.getElementById('catalogue-form');
   cf.elements.q.value = 'raspberry'; cf.elements.language.value = 'eng';
   cf.dispatchEvent(new w.Event('submit', { cancelable: true })); await wait();
   check('catalogue: asked of the hub with the search and language', /q=raspberry/.test(catalogueAsked[0]) && /language=eng/.test(catalogueAsked[0]));
   const hit = d.querySelector('#catalogue-results .admin-item');
-  check('  a result: title, language, size, date, articles, summary', /Raspberry Pi Q&A eng, 284\.6 MB, 2026-08-04; 77213 articles\. Stack Exchange/.test(t(hit)), t(hit));
+  check('  a result: title, language, size, date, articles, summary', /Raspberry Pi Q&A eng, 284\.6 MB, 2026-08-04, 77213 articles\. Stack Exchange/.test(t(hit)), t(hit));
   check('  and More, as there are more', !d.getElementById('catalogue-pager').hidden);
-  [...hit.querySelectorAll('button')].find((b) => t(b) === 'Keep current here').click(); await wait();
+  [...hit.querySelectorAll('button')].find((b) => t(b) === 'Track releases').click(); await wait();
   const added = posted.find((b) => b.action === 'add');
-  check('Keep current here: a kiwix source by its catalogue name', added && added.source.type === 'kiwix' && added.source.kiwix_name === 'raspberrypi.stackexchange.com_en_all'
+  check('Track releases: a kiwix source by its catalogue name', added && added.source.type === 'kiwix' && added.source.kiwix_name === 'raspberrypi.stackexchange.com_en_all'
     && added.source.name === 'raspberrypi.stackexchange.com_en_all', JSON.stringify(added));
-  check('  and says how to fetch it', /Added Raspberry Pi Q&A: Update in the table above fetches it \(284\.6 MB\)\./.test(t(d.getElementById('catalogue-note'))));
+  check('  and says how to fetch it', /Added Raspberry Pi Q&A \(284\.6 MB\)\. Select Install in the table above to download and install it\./.test(t(d.getElementById('catalogue-note'))));
   cf.elements.q.value = 'offline'; cf.dispatchEvent(new w.Event('submit', { cancelable: true })); await wait();
   check('offline: the hub\'s reason said', /could not be read .* It needs the internet\./.test(t(d.getElementById('catalogue-note'))), t(d.getElementById('catalogue-note')));
   check('the budget field in the schedule', !!d.querySelector('#library-policy input[name="books_budget_mb"]'));
@@ -122,11 +122,11 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
   const sug = () => [...d.querySelectorAll('#suggested-books .admin-item')];
   check('suggested books: six, each with its size and what it is for', sug().length === 6 && /Amateur Radio Q&A About 72\.0 MB: questions and answers/.test(t(sug()[3])), t(sug()[3] || d.body));
   w.eval("drawSuggested([{ type: 'kiwix', kiwix_name: 'wikivoyage_en_all', flavour: 'nopic' }])");
-  check('  one kept here already: said, no button', /Kept here already/.test(t(sug()[1])) && !sug()[1].querySelector('button'), t(sug()[1]));
+  check('  one kept here already: said, no button', /Already tracked/.test(t(sug()[1])) && !sug()[1].querySelector('button'), t(sug()[1]));
   posted.length = 0;
   sug()[3].querySelector('button').click(); await wait();
   const sAdd = posted.find((b) => b.action === 'add');
-  check('  Keep current here: a kiwix source by its catalogue name and flavour', sAdd && sAdd.source.kiwix_name === 'ham.stackexchange.com_en_all'
+  check('  Track releases: a kiwix source by its catalogue name and flavour', sAdd && sAdd.source.kiwix_name === 'ham.stackexchange.com_en_all'
     && sAdd.source.type === 'kiwix' && sAdd.source.flavour === '' && sAdd.source.name === 'ham.stackexchange.com_en_all', JSON.stringify(sAdd));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);

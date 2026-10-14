@@ -106,7 +106,7 @@ H._du = lambda *paths: sum(B.du(p) for p in paths)
 try:
     H.offline_kit({"books": ["book"], "state": "data", "budget_mb": 1}); check("over the budget: refused before anything is made", False)
 except ValueError as exc:
-    check("over the budget: refused before anything is made, the size said", "over the budget of 1 MB" in str(exc)
+    check("over the budget: refused before anything is made, the size said", "size limit is 1 MB" in str(exc)
           and not list((S / "kits").glob(".kit-*")), str(exc))
 
 # The full image onto a "stick": a file standing for the card, written in parts on FAT, joined and read back whole.
@@ -131,7 +131,7 @@ except ValueError:
     check("the box's own disk as the stick: refused", True)
 inst = (REPO / "install.sh").read_text()
 check("setup.sh restores the state as the hub, copies repositories it has not got, imports the toolkits checked",
-      "runuser -u hub -- tar -xzf \"$here/state-backup.tar.gz\"" in inst and "is there already: left as it is" in inst and "kits import-dir" in inst)
+      "runuser -u hub -- tar -xzf \"$here/state-backup.tar.gz\"" in inst and "already exists. Not replaced." in inst and "kits import-dir" in inst)
 # The content export without the hub program: repositories, state and import.sh beside the books and toolkits.
 import subprocess  # noqa: E402
 top = T / "export" / "irate-box"; top.mkdir(parents=True)
@@ -147,13 +147,13 @@ for bad in ({}, {"books": []}):
     try:
         H.content_export(bad); check("content export with nothing chosen: refused", False)
     except ValueError as exc:
-        check("content export with nothing chosen: refused", "choose something" in str(exc), str(exc))
+        check("content export with nothing chosen: refused", "Export selection is empty" in str(exc), str(exc))
 U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": str(stick)}
 H._kits_status = lambda: None
 msg = H.usb_export_many({"device": "sdz1", "repos": ["public/mine", "private/secret"], "state": "data"})
 check("onto a stick: the repositories and the state in its irate-box/, with import.sh", (stick / "irate-box/git/private/secret.git/HEAD").is_file()
       and (stick / "irate-box/state-backup.tar.gz").is_file() and (stick / "irate-box/import.sh").is_file()
-      and "2 repositories and this box's state on the stick" in msg, msg)
+      and "2 repositories and this box's state on the USB drive" in msg, msg)
 try:
     H.usb_export_many({"device": "sdz1"}); check("onto a stick with nothing chosen: refused", False)
 except ValueError:
@@ -184,7 +184,7 @@ msg = H.content_export({"books": ["book"], "repos": ["public/mine"], "state": "s
 meta = json.loads((H.KITS / "kit.json").read_text())
 out = tarfile.open(H.KITS / meta["name"])
 names = out.getnames()
-check("content export, the download: made, the last kit replaced, its record kept", "content export ready: irate-box-content-abc1234.tar" in msg
+check("content export, the download: made, the last kit replaced, its record kept", "Download ready: irate-box-content-abc1234.tar" in msg
       and sorted(p.name for p in H.KITS.iterdir()) == ["irate-box-content-abc1234.tar", "kit.json"] and meta["kind"] == "content"
       and meta["size"] == (H.KITS / meta["name"]).stat().st_size, (msg, sorted(p.name for p in H.KITS.iterdir())))
 check("  its layout: the book at the top of irate-box/, the repository, the state, import.sh",

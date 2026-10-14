@@ -13,15 +13,14 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
     <h1>💬 IRC chat</h1>
-    <p class="subtitle">Real-time chat for everyone on this box's network, in any IRC app.</p>
+    <p class="subtitle">Real-time chat in any IRC app, for devices that can reach this box.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <section class="help-lead">
     <p>
-      The box runs a small IRC server. This page is not the chat: it tells your IRC app where
-      to connect. The app has to be on your device already, because there is no internet here
-      to fetch one from.
+      The box runs a small IRC server. This page is not the chat. It shows the connection details
+      for your IRC app. Install an IRC client on your device before you use chat offline.
     </p>
   </section>
 
@@ -31,42 +30,44 @@
       <span class="icon">🖧</span>
       <div>
         <strong>Server: <code id="irc-host">this box</code></strong>
-        <p>Port <code id="irc-port">6667</code>. No password, and no TLS/SSL: turn those off if
-          your app asks.</p>
+        <p>Port <code id="irc-port">6667</code>. This server does not encrypt traffic. Other devices on the
+          network can read it. Disable TLS/SSL in your app, because the server does not support it.
+          Enter no password.</p>
       </div>
     </div>
     <div class="help-item" data-service="/irc.html">
       <span class="icon">#️⃣</span>
       <div>
         <strong>Channel: <code>#lobby</code></strong>
-        <p>Pick any nickname you like and join <code>#lobby</code>. Your app may open it straight
-          from this link: <a id="irc-link" href="irc://this-box:6667/lobby">irc://<span id="irc-link-host">this box</span>:6667/lobby</a>.
-          If nothing happens, type the server and channel into the app.</p>
+        <p>Select a nickname. Join <code>#lobby</code>. Your app can open the channel from this link:
+          <a id="irc-link" href="irc://this-box:6667/lobby">irc://<span id="irc-link-host">this box</span>:6667/lobby</a>.
+          If nothing happens, enter the server and the channel in the app.</p>
       </div>
     </div>
   </div>
 
-  <h2>Apps people use</h2>
+  <h2>Example IRC apps</h2>
   <ul class="help-points">
     <li>Android: Goguma, Revolution IRC</li>
-    <li>iPhone and iPad: Textual</li>
+    <li>iPhone and iPad: an IRC app from the App Store</li>
     <li>Windows, Mac and Linux: HexChat, Halloy</li>
     <li>In a terminal: WeeChat, irssi</li>
   </ul>
 
-  <h2>Good to know</h2>
+  <h2>Privacy and message history</h2>
   <ul class="help-points">
-    <li>There are no accounts. A nickname is yours only while you are connected, and anyone can
-      take it afterwards.</li>
-    <li>Nothing is encrypted, and only people on this network can see it. Say what you would
-      say aloud in the room.</li>
-    <li>The box keeps no history: you see what is said while you are connected.</li>
-    <li>Other people on the chat see a made-up name for your device, not its address. The same
-      device keeps the same name until the box restarts.</li>
-    <li><code>#lobby</code> is always there. Any channel you make yourself disappears when the
+    <li>This IRC server has no accounts. A nickname is yours only while you are connected.
+      Anyone can use it afterwards.</li>
+    <li>The server does not encrypt traffic. Anyone who can reach the server can read the chat.
+      Normally this is every device on this box's network. Remote access or routing can add
+      other devices. Do not send anything that must stay secret.</li>
+    <li>The server keeps no message history. You see only what people say while you are connected.</li>
+    <li>Other people in the chat see a made-up name for your device, not its address. The same
+      device keeps the same name until the box restarts. This does not make you anonymous.</li>
+    <li><code>#lobby</code> always exists. A channel that you create is removed when the
       last person leaves it.</li>
-    <li>There are no moderators. The owner can switch the chat off from
-      <a href="/admin/">Admin</a>.</li>
+    <li>This server has no moderators. An administrator can disable the chat in
+      <a href="/admin/">Administration</a>.</li>
   </ul>
 
   <script src="/hub.js"></script>

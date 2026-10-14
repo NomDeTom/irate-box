@@ -60,9 +60,9 @@ UPLINK_RUN = Path(os.environ.get("HUB_UPLINK_RUN", "/run/irate-box-uplink")) / "
 FLASH = RUN_DIR / "flash.json"     # an LED to blink fast for a while, to find it
 
 SHOW = ("leave", "alive", "network", "all")
-SHOW_WORDS = {"leave": "left as the image set it", "alive": "blinks while the hub runs",
-              "network": "blinks while the hub runs and its link is up",
-              "all": "blinks while the hub runs, its link is up and the box doctor found no problem"}
+SHOW_WORDS = {"leave": "not changed by the box: the image set it", "alive": "blinks while the hub server runs",
+              "network": "blinks while the hub server runs and its link is up",
+              "all": "blinks while the hub server runs, its link is up and Box doctor finds no problem"}
 # (on?, seconds) steps, repeated. Each state the same on every board.
 PATTERNS = {
     "ok": [(1, 1.0), (0, 1.0)],
@@ -72,10 +72,11 @@ PATTERNS = {
     "starting": [(1, 2.0)],
     "flash": [(1, 0.1), (0, 0.1)],
 }
-STATE_WORDS = {"ok": "1 s on, 1 s off: well", "down": "off: not well (the link is down, or the hub isn't running)",
+STATE_WORDS = {"ok": "1 s on, 1 s off: every check that this light shows passes",
+               "down": "off: the hub server is not running, the link is down, or the box has no current status data",
                "repairing": "quick flashes: the uplink watchdog is repairing the link",
-               "problem": "two short flashes: the box doctor has a problem to read",
-               "starting": "steady on: the box is starting, or an update is installing", "leave": "left as the image set it"}
+               "problem": "two short flashes: Box doctor found a problem",
+               "starting": "steady on: the box is starting, or an update is installing", "leave": "not changed by the box: the image set it"}
 LOOK = 10           # seconds between looks at the box
 STARTING = 180      # seconds after boot that count as starting, until the box is first well
 # Boards whose LED is known: a device-tree "compatible" prefix, the LED, and what it shows by default.
@@ -203,8 +204,8 @@ def set_option(key, value):
         s["led"] = value
         save_settings(s)
         name = pick(found, value)
-        return f"status light: {name or 'none found'}" + (" (the box's pick)" if value == "auto" else "")
-    raise ValueError(f"unknown setting: {key} {value}")
+        return f"status light: {name or 'none found'}" + (" (selected by the box)" if value == "auto" else "")
+    raise ValueError(f"Unknown setting: {key} {value}")
 
 
 def effective(s=None, found=None):
@@ -255,7 +256,7 @@ def give_back(name):
         safeio.write(SAVED, json.dumps(saved, indent=1))
     else:
         SAVED.unlink(missing_ok=True)
-    return f"{name}: back to {was.get('trigger') or 'brightness ' + str(was.get('brightness'))}"
+    return f"{name}: restored to {was.get('trigger') or 'brightness ' + str(was.get('brightness'))}"
 
 
 def undo_all():
@@ -402,7 +403,7 @@ def run(sleep=time.sleep, clock=time.time, rounds=None):
 
 def flash(name, secs=8):
     if name not in leds():
-        raise ValueError(f"no LED called {name} that a status light could be")
+        raise ValueError(f"No LED called {name} can be a status light")
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     FLASH.write_text(json.dumps({"led": name, "until": time.time() + max(2, min(int(secs), 30))}))
     return f"{name} flashes fast for {max(2, min(int(secs), 30))} s, within {LOOK} s"

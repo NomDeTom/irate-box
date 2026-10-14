@@ -108,7 +108,7 @@ check("  forwarding on (a sysctl.d file, and now), the resolver's unit written a
       and ["systemctl", "enable", share.GUEST_DNS_UNIT] in ran)
 check("  the level and the containment for /admin; contained by default", public == {"level": "sheet-web", "contain": ALL}
       and share.load()["forward_was"] is not None, public)
-check("  said plainly", "once through the sign-in sheet" in msg, msg)
+check("  said plainly", "through the welcome page" in msg, msg)
 ran.clear()
 check("share-allow: a guest let out by its hardware address, for 12 h", "aa:bb:cc:00:11:22" in hub_control.share_allow({"ip": "192.168.4.23"})
       and ["nft", "add", "element", "inet", "irate_box", "out", "{ aa:bb:cc:00:11:22 timeout 12h }"] in ran, ran)
@@ -129,7 +129,7 @@ for bad in ({"ip": "192.168.1.9"}, {"ip": "192.168.4.1"}, {"ip": "1.2.3.4; reboo
 firewall.loaded = lambda: True
 f = security.share_findings()
 check("the doctor, contained: one ok finding naming the level and each part, a switch to turn each off",
-      [x["status"] for x in f] == ["ok"] and "once through the sign-in sheet" in f[0]["detail"]
+      [x["status"] for x in f] == ["ok"] and "through the welcome page" in f[0]["detail"]
       and [a["choice"] for a in f[0]["actions"]] == [f"share-contain-{k}-off" for k in share.CONTAIN] and all(a["confirm"] for a in f[0]["actions"]), f)
 ran.clear()
 print(security.fix("share-contain-lan-off", None))
@@ -173,7 +173,7 @@ security.fix("share-contain-dns_hold-off", None)
 f = security.share_findings()
 check("a part turned off while nothing is shared: kept, no rules touched, and the doctor says it will be off, with the way back",
       share.load()["contain"]["dns_hold"] is False and not any(c[0] == "nft" for c in ran) and len(f) == 1 and f[0]["status"] == "ok"
-      and "will be off" in f[0]["detail"] and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on", f)
+      and "stay off" in f[0]["detail"] and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on", f)
 security.fix("share-contain-dns_hold-on", None)
 check("  back on: the doctor says nothing again", security.share_findings() == [] and share.load()["contain"] == ALL)
 

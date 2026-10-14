@@ -49,7 +49,7 @@ m = dict(base)
 with mock.patch.object(mirrors, "load", return_value=[m]):
     line = mirrors.sync(m)
 path = mirrors.repo_path(m)
-check("first update fetches what the policy names (main and three tags)", line == "4 fetched, 0 dropped", line)
+check("first update fetches what the policy names (main and three tags)", line == "4 downloaded, 0 removed", line)
 check("kept: main, the two newest stable by version (v2.10.0 above v2.8.0), the newest alpha",
       refs(path) == ["refs/heads/main", "refs/tags/v2.10.0", "refs/tags/v2.11.0-alpha", "refs/tags/v2.8.0"], refs(path))
 check("shallow: a kept tip has no parents here", g("rev-list", "--count", "refs/heads/main", cwd=path).stdout.strip() == "1",
@@ -72,14 +72,14 @@ check("  the tags and their commits, no files (the trees left upstream)", any(x.
 check("  never served: outside the git folder", not str(tp).startswith(str(gitrepos.ROOT)))
 g("tag", "-f", "v2.2.0", "HEAD~6", cwd=UP)
 line = mirrors.sync(m)
-check("a tag moved upstream: said, and kept on the record", "moved upstream since the last look: v2.2.0" in line
+check("a tag moved upstream: said, and kept on the record", "Upstream tag moved since the last check: v2.2.0" in line
       and mirrors.status()["fw"]["tags"]["moved"] == ["v2.2.0"], (line, mirrors.status()["fw"].get("tags")))
 
 # The upstream moves on: a new stable tag; the oldest kept one drops out, and its objects with it.
 (UP / "f").write_text("13\n"); g("commit", "-qam", "c13", cwd=UP); g("tag", "v2.13.0", cwd=UP)
-check("a check sees the change", mirrors.sync(m, check_only=True).startswith("2 to fetch, 1 to drop"), mirrors.status()["fw"])
+check("a check sees the change", mirrors.sync(m, check_only=True).startswith("2 to download, 1 to remove"), mirrors.status()["fw"])
 line = mirrors.sync(m)
-check("the update fetches the new tag and main, and drops v2.8.0", line == "2 fetched, 1 dropped", line)
+check("the update fetches the new tag and main, and drops v2.8.0", line == "2 downloaded, 1 removed", line)
 check("…v2.8.0 is gone", "refs/tags/v2.8.0" not in refs(path), refs(path))
 old = g("rev-parse", "v2.8.0^{commit}", cwd=UP).stdout.strip()
 check("…and its commit with it (pruned)", g("cat-file", "-e", old, cwd=path).returncode != 0)
@@ -101,7 +101,7 @@ check("a private mirror is private-read-only", g("config", "--get", "irate-box.w
 tiny = dict(base, name="fw-tiny", budget_mb=1, history="full", groups=[])
 with mock.patch.object(mirrors.gitrepos, "_size", return_value=5 << 20):
     line = mirrors.sync(tiny)
-check("over its budget: said, and recorded", "over its 1 MB budget" in line and mirrors.status()["fw-tiny"]["over_budget"] is True, line)
+check("over its budget: said, and recorded", "exceeds the 1 MB limit" in line and mirrors.status()["fw-tiny"]["over_budget"] is True, line)
 
 # GitHub's release flag, from a stand-in list (newest first, as the API gives it).
 rel = dict(base, groups=[{"name": "beta", "kind": "release", "pattern": "*", "keep": 2},
@@ -266,7 +266,7 @@ check("a crashed run is recorded, with where", rec["last_scheduled"]["ok"] is Fa
 from irate_box.root import hub_control  # noqa: E402
 f = hub_control.scheduled_findings()
 check("the updates doctor: a crashed run is a problem, saying where", any(x["status"] == "problem" and "crashed" in x["detail"] and "crash (" in x["detail"] for x in f), f)
-check("  and that the hub's own update has not been reached", any("not reached the hub's own update stage yet" in x["detail"] for x in f), f)
+check("  and that the hub's own update has not been reached", any("Update stage not reached" in x["detail"] for x in f), f)
 librarian.record_run(lambda: {"books": "up to date", "mirrors": {"fw": "error: refused"}, "hub": "up to date"}, True)
 f = hub_control.scheduled_findings()
 check("a run that reaches the hub's update: ok, the sources' errors said", len(f) == 1 and f[0]["status"] == "ok" and "fw: error: refused" in f[0]["detail"], f)

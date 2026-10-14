@@ -47,7 +47,7 @@ const polys = [...svg.querySelectorAll('polygon.ladder-mark')].map((p) => p.getA
 check('a marker per step: ● the watchdog\'s (3), ◆ by hand (1), ▲ the flap repair (1), the held reboot hollow', circles === 3 && hollow === 1
   && polys.sort().join(',') === '3,4', `${circles} ${hollow} ${polys}`);
 check('a skipped step is not drawn as a step', svg.querySelectorAll('.ladder-mark').length === 6);
-check('the key and the summary in words', /◆ one asked for on \/admin/.test(box.querySelector('.ladder-key').textContent)
+check('the key and the summary in words', /◆ A step an administrator requested on \/admin/.test(box.querySelector('.ladder-key').textContent)
   && /^Over this time: 2 outages/.test(box.querySelector('.ladder-sum').textContent));
 const table = box.querySelector('.ladder-table');
 check('a table view, newest first', /The 11 events as a table/.test(table.querySelector('summary').textContent) && table.querySelectorAll('tr').length === 12
@@ -108,7 +108,7 @@ const nsvg = nb.querySelector('svg');
 check('  drawn hatched, labelled, and said in words', nsvg.querySelectorAll('rect.ladder-hole').length === 1
   && /url\(#ladder-hatch-\d+\)/.test(nsvg.querySelector('rect.ladder-hole').getAttribute('fill'))
   && [...nsvg.querySelectorAll('text')].some((t) => t.textContent === 'no record')
-  && /no record for 2 h 50 min \(the watchdog was not running/.test(nb.querySelector('.ladder-sum').textContent), nb.querySelector('.ladder-sum').textContent);
+  && /no record for 2 h 50 min \(the watchdog wrote no samples/.test(nb.querySelector('.ladder-sum').textContent), nb.querySelector('.ladder-sum').textContent);
 check('  one path, two pieces', (nsvg.querySelector('path.ladder-line').getAttribute('d').match(/M/g) || []).length === 2);
 check('  the start in the table, said as such', /Watching again after the box started/.test(nb.querySelector('.ladder-table').textContent));
 check('a start with no last check still ends an open outage', LC.model([frozen[0], { at: now - 9 * h, k: 'start', t: 'x' }], now - 86400, now).bands[0][1] === now - 9 * h);

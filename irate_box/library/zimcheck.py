@@ -36,20 +36,20 @@ def header_problem(path):
         with open(path, "rb") as fh:
             head = fh.read(80)
     except OSError as exc:
-        return f"cannot be read ({exc.strerror})"
+        return f"The file cannot be read ({exc.strerror})."
     if head.lstrip()[:1] == b"<":
-        return "an HTML page, not a book (a failed download or an error page saved under the book's name)"
+        return "Downloaded file is HTML, not a ZIM book. The download probably failed and saved an error page under the name of the book."
     if len(head) < 80:
-        return f"too small to be a ZIM ({size} bytes)"
+        return f"Book file incomplete: {size} bytes are too few for a ZIM header."
     magic, major, minor = struct.unpack_from("<IHH", head, 0)
     if magic != MAGIC:
-        return "not a ZIM file: it does not start with the ZIM signature"
+        return "Invalid ZIM header: the file does not start with the ZIM signature."
     if major not in (5, 6):
-        return f"damaged, or not a real ZIM (its header claims format version {major}.{minor}; books are 5 or 6)"
+        return f"Unsupported ZIM format: the header states version {major}.{minor}. The box reads versions 5 and 6."
     checksum_pos = struct.unpack_from("<Q", head, 72)[0]
     if checksum_pos + 16 > size:
-        return (f"truncated: {size >> 20} MB of the {(checksum_pos + 16) >> 20} MB its header promises "
-                "(an interrupted download or copy)")
+        return (f"Book file incomplete: {size >> 20} MB of the {(checksum_pos + 16) >> 20} MB that the header states. "
+                "Possible causes: an interrupted download or copy, or a USB drive removed too early.")
     return None
 
 
@@ -66,11 +66,11 @@ def kiwix_problem(path, timeout=300, user=None):
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         except (OSError, subprocess.SubprocessError) as exc:
-            return f"kiwix-manage could not be run ({exc})"
+            return f"Book reader unavailable: kiwix-manage could not run ({exc})."
         if r.returncode == 0 and lib.exists() and "<book " in lib.read_text(errors="replace"):
             return None
         msg = (r.stderr or r.stdout).strip().splitlines()
-        return "kiwix-manage cannot read it" + (f": {msg[-1][:160]}" if msg else "")
+        return "Book reader unavailable: kiwix-manage cannot read the file" + (f": {msg[-1][:160]}" if msg else "") + "."
 
 
 def problem(path, user=None):

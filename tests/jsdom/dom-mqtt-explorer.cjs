@@ -54,7 +54,7 @@ const publish = (topic, payload, flags = 0) => pkt(0x30 | flags, [...str(topic),
   ws.feed([0x20, 2, 0, 0]);
   const s = ws.sent[1];
   check('accepted: subscribes to msh/# at QoS 0', s && s[0] === 0x82 && Buffer.from(s.slice(6, 11)).toString() === 'msh/#' && s[s.length - 1] === 0, JSON.stringify(s));
-  check('  and says it is listening', /Listening to msh\/# at ws:\/\/box\.local\/mqtt/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
+  check('  and says it is subscribed', /Subscribed to msh\/# at ws:\/\/box\.local\/mqtt/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
   ws.feed([0x90, 3, 0, 1, 0]);
   // An encrypted packet split over two messages, then two packets in one.
   const enc = publish('msh/EU_868/2/e/LongFast/!aabbccdd', [0x0a, 0x00, 0xff, 0x13, ...Array(300).fill(7)]);
@@ -90,16 +90,16 @@ const publish = (topic, payload, flags = 0) => pkt(0x30 | flags, [...str(topic),
   const [un, sub] = ws.sent.slice(-2);
   check('a new filter: the old one dropped, the new one asked for', un[0] === 0xa2 && Buffer.from(un.slice(6)).toString() === 'msh/#' && sub[0] === 0x82, JSON.stringify([un, sub]));
   ws.feed([0x90, 3, 0, 3, 0x80]);
-  check('  refused by the broker: said, with what it allows', /does not allow other\/# \(it allows msh\/#\)/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
+  check('  refused by the broker: said, with what it allows', /Subscription refused for other\/#\. The broker accepts only msh\/#/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
   check('it never publishes', ws.sent.every((p) => (p[0] >> 4) !== 3));
   ws.close();
-  check('the broker gone: said, and tried again', /went away; trying again in 5 s/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
+  check('the broker gone: said, and tried again', /Connection lost\. Reconnecting in 5 s/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
   const second = new Promise((r) => setTimeout(r, 5200));
   await second;
   const ws2 = sockets[1];
   check('  a new connection after the wait', ws2 && ws2.url === 'ws://box.local/mqtt');
   ws2.close();
-  check('no broker at all: says how it is installed', /No broker answered .*install\.sh --with-mqtt/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
+  check('no broker at all: says what to check', /No broker answered .*MQTT add-on/.test(t(d.getElementById('state'))), t(d.getElementById('state')));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

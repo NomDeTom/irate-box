@@ -225,26 +225,26 @@ def integrity(chip, dev):
     """None if the chip says its time is good, else why not (it lost power, or never started)."""
     if chip == "ds3231":
         if dev.read(0x0F, 1)[0] & 0x80:
-            return "its oscillator stopped (OSF): it lost power and its battery is flat or missing"
+            return "its oscillator-stop flag (OSF) is set, so its time is not valid. Causes include a power loss, or a flat or missing backup battery"
     elif chip == "ds1307":
         if dev.read(0x00, 1)[0] & 0x80:
-            return "its oscillator is halted (CH): it has never been set, or lost power"
+            return "its oscillator-halt flag (CH) is set, so its time is not valid. The time was never set, or the module lost power"
     elif chip == "mcp7940x":
         r = dev.read(0x00, 4)
         if not r[0] & 0x80 or not r[3] & 0x20:
-            return "its oscillator is not running (ST/OSCRUN): it has never been set, or lost power"
+            return "its oscillator is not running (ST/OSCRUN), so its time is not valid. The time was never set, or the module lost power"
     elif chip == "rv8803":
         if dev.read(0x0E, 1)[0] & 0x02:
-            return "its voltage-low flag is set (V2F): it lost power, so its time is invalid"
+            return "its low-voltage flag (V2F) is set, so its time is not valid"
     elif chip == "rx8130":
         if dev.read(0x1D, 1)[0] & 0x02:
-            return "its voltage-loss flag is set (VLF): it lost power, so its time is invalid"
+            return "its low-voltage flag (VLF) is set, so its time is not valid"
     elif chip in ("pcf8563", "pcf8523", "pcf85063"):
         if dev.read(LAYOUT[chip][0], 1)[0] & 0x80:
-            return "its voltage-low / oscillator-stop flag is set: it lost power, so its time is invalid"
+            return "its low-voltage or oscillator-stop flag is set, so its time is not valid"
     elif chip == "rv3028":
         if dev.read(0x0E, 1)[0] & 0x01:
-            return "its power-on-reset flag is set (PORF): it lost power, so its time is invalid"
+            return "its power-on-reset flag (PORF) is set, so its time is not valid"
     return None
 
 
@@ -254,12 +254,12 @@ def notes(chip, dev):
     if chip == "rx8130":
         c1 = dev.read(0x1F, 1)[0]
         if not c1 & 0x10:
-            out.append("battery backup switch (INIEN) is off: the time is lost at every power cut until it is set up")
+            out.append("the battery backup switch (INIEN) is off. The module loses the time at every power cut until it is set up")
         if c1 & 0x20:
-            out.append("backup charging (CHGEN) is ON: right for a supercap or a rechargeable cell, a hazard with a "
-                       "CR2032 coin cell")
+            out.append("backup charging (CHGEN) is enabled. Charging suits a supercapacitor or a rechargeable cell. "
+                       "Charging a CR2032 coin cell is a hazard. The box never changes charging")
     elif chip == "ds3231" and dev.read(0x0E, 1)[0] & 0x80:
-        out.append("its oscillator is set to stop on battery (EOSC): the time is lost at every power cut until it is set up")
+        out.append("its oscillator is set to stop on battery (EOSC). The module loses the time at every power cut until it is set up")
     return out
 
 
@@ -466,7 +466,7 @@ def read_module(cfg):
         try:
             return int((Path("/sys/class/rtc") / dev.name / "since_epoch").read_text()), None, []
         except OSError:
-            return None, "the kernel driver cannot read a valid time from it (it lost power, or was never set)", []
+            return None, "the kernel driver cannot read a valid time from it (its time was never set, or it lost power)", []
     try:
         dev = open_i2c(cfg["bus"], int(cfg["addr"], 16))
     except OSError as exc:
@@ -534,7 +534,7 @@ def set_system(epoch):
 def boot():
     cfg = load_config()
     if not cfg:
-        return "no clock module set up"
+        return "no clock module is set up"
     epoch, why, _ = read_module(cfg)
     now = time.time()
     if epoch is None:
@@ -543,7 +543,7 @@ def boot():
     floor = floor_time()
     if epoch < floor - 120:
         why = (f"it reads {time.strftime('%Y-%m-%d %H:%M', time.gmtime(epoch))} UTC, earlier than the box has "
-               "certainly been: its time is wrong (a flat battery, or never set)")
+               "certainly been: its time is wrong (its time was never set, or it lost power)")
         _status({"boot": "not used", "why": why})
         return f"clock module not used: {why}"
     if ntp_synced():
@@ -562,20 +562,20 @@ def trusted():
     if ntp_synced():
         return "network time"
     if TRUSTED.exists():
-        return "set by the owner"
+        return "set by an administrator"
     return None
 
 
 def save(force=False):
     cfg = load_config()
     if not cfg:
-        return "no clock module set up"
+        return "no clock module is set up"
     why = "forced" if force else trusted()
     if not why:
-        return "the system clock is not known to be right (no network time, not set by hand), so the module was left alone"
+        return "the system clock is not known to be correct (no network time, not set by an administrator), so the module was not changed"
     write_module(cfg, time.time())
     _status({**(json.loads(STATUS.read_text()) if STATUS.exists() else {}), "saved": time.time(), "saved_because": why})
-    return f"clock module set from the system clock ({why})"
+    return f"clock module set from the system clock, in UTC ({why})"
 
 
 UNITS = {
@@ -627,18 +627,18 @@ def write_units():
 
 def setup(chip, bus, addr):
     if chip not in CHIPS:
-        raise RtcError(f"{chip} is not a clock this knows ({', '.join(CHIPS)})")
+        raise RtcError(f"{chip} is not a clock module that this box supports ({', '.join(CHIPS)})")
     a = int(addr, 16) if isinstance(addr, str) else addr
     # Only what the last search found: a request may not bind a driver at any bus and
     # address. The search's result is root's own file, read only if it still is.
     if a not in ADDRESSES:
-        raise RtcError(f"{a:#04x} is not an address a clock module uses")
+        raise RtcError(f"{a:#04x} is not an address that a clock module uses")
     try:
         found = json.loads(safeio.read_own(FOUND)).get("found", [])
     except (OSError, ValueError):
         found = []
     if not any(f.get("chip") == chip and f.get("bus") == int(bus) and f.get("addr") == f"{a:#04x}" for f in found):
-        raise RtcError(f"the last search did not find a {CHIPS[chip][0]} on bus {bus} at {a:#04x}: search again first")
+        raise RtcError(f"the last search did not find a {CHIPS[chip][0]} on bus {bus} at {a:#04x}. Search again first")
     drv = kernel_driver(chip)
     mode = "kernel" if drv else "userspace" if CHIPS[chip][2] else None
     if not mode:
@@ -667,13 +667,13 @@ def setup(chip, bus, addr):
     epoch, why, _ = read_module(cfg)
     msg = f"{CHIPS[chip][0]} on bus {bus} at {a:#04x}, through {'the kernel driver' if mode == 'kernel' else 'its own driver'}"
     if done:
-        msg += "; " + "; ".join(done)
+        msg += ". " + ". ".join(d[0].upper() + d[1:] for d in done)
     t = trusted()
     if t:
         write_module(cfg, time.time())
-        msg += f". Set from the system clock ({t}): from now on the box keeps its time while off."
+        msg += f". The module was set from the system clock ({t}). The module now keeps the time while the box is off."
     elif why:
-        msg += f". It has no valid time yet ({why}): set the box's clock (Health → Set the clock from this browser), which sets the module too."
+        msg += f". It has no valid time yet ({why}). Set the box clock on Box, Clock. This sets the module too."
     else:
         # The same rule as at boot: a module with a valid time beats a clock restored from a file.
         msg += ". " + boot().capitalize() + "."
@@ -697,7 +697,7 @@ def remove():
             pass
     CONFIG.unlink(missing_ok=True)
     STATUS.unlink(missing_ok=True)
-    return f"clock module set-up removed ({cfg['label']})" if cfg else "no clock module was set up"
+    return f"clock module set-up removed ({cfg['label']}). The module keeps its own time" if cfg else "no clock module was set up"
 
 
 def status():
@@ -728,7 +728,7 @@ def auto():
         write_units()
         return f"clock module: {cfg['label']} on bus {cfg['bus']} at {cfg['addr']} (kept)"
     if list(Path("/sys/class/rtc").glob("rtc*")) and not FAKE:
-        return "clock: the kernel already has a hardware clock; nothing to set up"
+        return "clock: the kernel already has a hardware clock. The box does not set up a clock module."
     found = find()
     usable = [f for f in found["found"] if f["supported"]]
     if not found["found"]:
@@ -737,7 +737,7 @@ def auto():
         f = usable[0]
         return "clock module: " + setup(f["chip"], f["bus"], f["addr"])
     names = ", ".join(f"{f['label']} (bus {f['bus']}, {f['addr']})" for f in found["found"])
-    return f"clock module: found {names}; choose which on /admin → Box → Clock"
+    return f"clock module: found {names}. Select which one to use on Box, Clock."
 
 
 def main(argv):

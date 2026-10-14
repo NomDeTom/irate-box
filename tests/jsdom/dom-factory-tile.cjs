@@ -25,7 +25,7 @@ const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 setTimeout(() => {
   const d = w.document;
-  check('what is building, how far, what waits', t(d.getElementById('factory-now')) === 'Building Heltec V3 (esp32s3), about 42 %; 3 waiting', t(d.getElementById('factory-now')));
+  check('what is building, how far, what waits', t(d.getElementById('factory-now')) === 'Build in progress: Heltec V3 (esp32s3), about 42 %. Queued: 3', t(d.getElementById('factory-now')));
   check('  the bar', !d.getElementById('factory-bar').hidden && d.getElementById('factory-progress').style.width === '42%');
   const rows = [...d.querySelectorAll('.factory-build')];
   check('each build, its files labelled by kind', rows.length === 2 && t(rows[0]) === 'RAK WisBlock 4631 UF2' && t(rows[1]) === 'T-Beam .bin factory .bin littlefs .bin .zip', rows.map(t).join(' | '));

@@ -133,7 +133,7 @@ function fill() {
     drawTabs();
     drawGrid();
     if (!panel.hidden) position();
-  }, () => { parts.head.textContent = 'The emoji list did not load: type or paste one instead.'; });
+  }, () => { parts.head.textContent = 'The emoji list did not load. Type or paste an emoji instead.'; });
 }
 
 function insert(field, ch) {

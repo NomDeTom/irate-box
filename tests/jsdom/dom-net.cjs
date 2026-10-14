@@ -70,15 +70,15 @@ setTimeout(() => {
   const conds = cards[0] ? [...cards[0].querySelectorAll('.net-conditions li')].map((li) => li.className) : [];
   check('its conditions one per line, untested marked', conds.join(' ') === 'cond-how cond-limit cond-untested', conds.join(' '));
   const own = cards[0] ? [...cards[0].querySelectorAll('.net-facts li')].length : 0;
-  check('its own findings on its card (3): to look at, then what is known', own === 3, own);
+  check('its own findings on its card (3): to review, then what is known', own === 3, own);
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, now, managed by, the hotspot, to look at, known about it', secs.length === 6
+  check('the card in sections: what, now, managed by, the hotspot, to review, known about it', secs.length === 6
     && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
-  check('four tabs: Status, Hardware, The box\'s access, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|The box\'s access|Hotspot');
+  check('four tabs: Status, Hardware, Connection settings, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|Connection settings|Hotspot');
   const panel = (id) => d.getElementById(id);
   check('  each part in its tab: devices on Hardware, the watchdog on access, guests\' security on Hotspot, the log on Status',
     panel('network/hardware').contains(d.getElementById('net-devices')) && panel('network/access').contains(d.getElementById('up-pace'))
@@ -108,7 +108,7 @@ setTimeout(() => {
   d.getElementById('net-join-now').click();
   w.confirm = () => true;
   const sentJoin = posted.find((p) => p.action === 'join');
-  check('  Add and join it now: warned the page may lose the box, sent, the password cleared from the form', /may lose the box/.test(asked)
+  check('  Add and join now: warned the page may lose the box, sent, the password cleared from the form', /can lose the connection to the box/.test(asked)
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
@@ -129,7 +129,7 @@ setTimeout(() => {
   console.log('FIELDS:', [...d.querySelectorAll('#up-fields [data-key]')].map((i) => `${i.dataset.key}=${i.value || '(' + (i.placeholder || i.options?.[0]?.textContent) + ')'}`).join('  '));
   console.log('PROFILE:', t('#up-profile')[0] || '(none)');
   console.log('EVENTS:'); t('#up-events li').slice(0, 6).forEach((r) => console.log('  ', r));
-  // Staying on the network: two dials, pace and reach, guests, a wedged driver and
+  // Network recovery: two dials, pace and reach, guests, a wedged driver and
   // the sensitivity, a number of missed checks, each choice as radio cards.
   const tiles = (id) => [...d.querySelectorAll(`#${id} .choice-tile`)];
   const vals = (id) => tiles(id).map((r) => r.querySelector('input').value).join(' ');
@@ -141,12 +141,12 @@ setTimeout(() => {
   check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2
     && r.querySelector('.choice-does').textContent.length > 10));
   check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
-  check('the gentle pace\'s line says when each step comes', /reboots after 2 h — each only if the reach goes that far/.test(pace[0].querySelector('.choice-does').textContent),
+  check('the gentle pace\'s line says when each step comes', /reboots after 2 h\. Each step runs only if the maximum action includes it/.test(pace[0].querySelector('.choice-does').textContent),
     pace[0].querySelector('.choice-does').textContent);
   check('watch\'s line says it never acts', /never acts/.test(reach[0].querySelector('.choice-does').textContent));
   const sens = d.getElementById('up-sens');
   check('sensitivity: a number, 1 to 20, 3 to start, said for the pace (30 min for gentle)', sens.type === 'number' && sens.min === '1' && sens.max === '20'
-    && sens.value === '3' && /3 missed checks \(or drops of the link\) within 30 min/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
+    && sens.value === '3' && /3 failed checks, or link drops, within 30 min/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
   check('no forgiveness left on the page', !d.getElementById('up-forgive') && !/[Ff]orgiveness/.test(d.getElementById('network').textContent));
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
   const save = d.getElementById('up-save');
@@ -167,7 +167,7 @@ setTimeout(() => {
   tiles('up-roaming')[0].querySelector('input').click();
   check('  back to roaming: the picker goes', lockAps.hidden);
   pace[3].querySelector('input').click();
-  check('choosing urgent marks it, and Save comes on', pace[3].classList.contains('chosen') && !save.disabled && /not saved yet/.test(save.textContent));
+  check('choosing urgent marks it, and Save comes on', pace[3].classList.contains('chosen') && !save.disabled && /unsaved/.test(save.textContent));
   check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
   reach[3].querySelector('input').click();
   check('reach radio: the sentence says it never reboots', /resets the radio after 8 min/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);

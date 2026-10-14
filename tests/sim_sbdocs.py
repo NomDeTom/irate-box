@@ -68,7 +68,7 @@ check("installed under SilverBullet/, the site's configuration left out", (c / "
       and (c / "pic.png").is_file() and not (c / "CONFIG.md").exists() and not (c / "Library").exists() and "3 pages" in said, said)
 check("  its pages' links re-pointed", (c / "Manual.md").read_text() == "Start at [[SilverBullet/Getting Started]]."
       and (c / "API/space.md").read_text() == "See [[SilverBullet/Manual]].")
-check("  a page that says what the folder is", "replaced whole" in (space / "SilverBullet.md").read_text())
+check("  a page that says what the folder is", "replaced when SilverBullet is updated" in (space / "SilverBullet.md").read_text())
 idx = (space / "index.md").read_text()
 check("  the starting page's two links point at the copy; the rest of it, the forums link with it, as it was",
       idx == start.replace("[Manual](https://silverbullet.md/Manual)", "[[SilverBullet/Manual|Manual]]")

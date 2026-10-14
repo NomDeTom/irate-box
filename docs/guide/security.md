@@ -2,15 +2,22 @@
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Security
 
-*What is and isn't protected, and the choices. On the admin pages: System → Security, and the Security doctor.*
+*What the box protects, from whom, and the settings. On the administration pages: System → Security, and the Security doctor.*
 
-The **Security** page says plainly what's protected and what isn't, and holds the choices that are yours, by subject: **what guests can reach**, **logging in and root**, and **the system**. Each stays in its place whether it waits for a choice or is set, so it can always be changed back. Nothing that opens the box further is done without your yes. A choice is marked when you press it and done when you **Save**; each page's Save sends only what was chosen on that page, and a page says when something chosen elsewhere is still waiting.
+The **Security** page lists what the box protects and what it does not protect. It holds the settings that you control. The settings are in groups: **What guests can reach**, **Sign-in and root**, and **The system**. A setting stays in its group when it is waiting and when it is set, so you can always change it back. The box does not open itself further without your approval.
 
-- **HTTPS**: the box makes its own certificate; install it on your devices from `/certificate` and the padlock appears. Or use a certificate of your own. Without HTTPS, anything typed into a page can be read by anyone on the same WiFi.
-- **What the box keeps about visitors**: whether it counts unique visitors (by a salted fingerprint, never kept as is).
-- **Listening on the network**: every port the box answers on, what it is, and whether it should.
-- **The hotspot's floor**: what guests on the hotspot reach (see [Network and the hotspot](network-and-hotspot.md)).
+Each setting has these states:
 
-The **Security doctor** does not change your choices itself: a finding about one links to it on the Security page. It does the repairs with one right answer, and says beside them how they went. It runs Debian's and others' checks (debian-cis, Lynis, the packages' known issues) and sorts what they find: **put right here**, **hardening suggestions**, **not for this box**, and what **you've accepted**. You can import a scan made elsewhere (OpenVAS, nmap).
+1. **Unsaved**: you selected a value. The box has not saved it.
+2. **Saved**: you selected **Save**.
 
-The admin password: see [Setting up a new box](first-use.md) and [Accounts](accounts.md). It's set over HTTPS or at the console, never over plain HTTP after the first time.
+Each **Save** sends only the values selected on that page. A page tells you when a value selected on another page is still waiting.
+
+- **HTTPS**: the box creates a certificate of its own. HTTPS encrypts the traffic between a browser and the box. Install the certificate on a device from `/certificate`. After you install it, the browser on that device trusts the box. You can also use a certificate of your own. Without HTTPS, other devices on the same WiFi can read what you type into a page.
+- **Visitor data**: the box can count unique visitors. It uses salted hashes of addresses. It does not keep the addresses. A hash is not a count of unique people.
+- **Listening on the network**: every port that the box answers on, what it is for, and whether it should be open.
+- **Hotspot service access** (in **What guests can reach**): what guests on the hotspot can reach (see [Network and the hotspot](network-and-hotspot.md)).
+
+The **Security doctor** does not change your settings. A finding about a setting links to that setting on the Security page. The doctor does repairs that have one correct result and shows the result beside them. It runs checks from Debian and others (debian-cis, Lynis, the known issues of packages). It sorts the results into **Repaired**, **Suggestion**, **Not for this box** and **Accepted**. Accepting a risk does not repair it. You can import a scan from another system (OpenVAS, nmap).
+
+For the administrator password, see [Setup](first-use.md) and [Accounts](accounts.md). Set the password over HTTPS or at the console. After the first account, the box refuses it over HTTP.

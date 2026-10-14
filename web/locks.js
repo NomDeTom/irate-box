@@ -8,7 +8,7 @@
   const list = document.getElementById('locks-list');
   const input = document.getElementById('locks-import');
   const note = document.getElementById('locks-note');
-  const KINDS = { saves: 'Saved drawing', drop: 'Dropped file' };
+  const KINDS = { saves: 'Saved drawing', drop: 'Uploaded file' };
 
   function held() {
     const out = [];
@@ -58,17 +58,17 @@
   async function render() {
     const locks = held();
     if (!locks.length) {
-      list.replaceChildren(el('li', { className: 'setting-desc', textContent: 'This browser holds no locks.' }));
+      list.replaceChildren(el('li', { className: 'setting-desc', textContent: 'This browser holds no keys.' }));
       return;
     }
     const hub = await onHub();
     list.replaceChildren(...locks.map(({ kind, id }) => {
       const item = hub[kind][id];
       const there = item && item.locked;
-      const name = item ? item.name : '(no longer on the hub)';
-      const detail = !item ? 'It expired or was removed, so this key no longer opens anything.'
-        : !item.locked ? 'It is on the hub but no longer locked.'
-          : `${KINDS[kind]}, locked (${item.lock_n} changes left on this key; it renews itself near the end).`;
+      const name = item ? item.name : '(no longer on the box)';
+      const detail = !item ? 'The item expired or was deleted. This key no longer works. Remove it from this browser.'
+        : !item.locked ? 'The item is on the box. It is no longer locked.'
+          : `${KINDS[kind]}, locked. This key can make ${item.lock_n} more changes. It renews itself before the end.`;
       const row = el('li', { className: 'drop-item' }, el('span', { className: 'setting-name', textContent: `${there ? '🔒 ' : ''}${name}` }),
         el('span', { className: 'setting-desc', textContent: ` ${detail}` }));
       const keyBox = el('div', { hidden: true });
@@ -79,13 +79,13 @@
         const field = el('input', { value: text, readOnly: true, size: 40, spellcheck: false });
         field.addEventListener('focus', () => field.select());
         keyBox.replaceChildren(qr(text), field,
-          el('p', { className: 'setting-desc', textContent: 'Scan or copy this on the other device, then add it on this page there. If one device makes 60-odd changes, the key renews itself there and the other device needs it again.' }));
+          el('p', { className: 'setting-desc', textContent: 'Scan or copy this key on the other device. Then add it on this page there. One key allows about 4000 changes. After about 4000 changes from one device, the key renews on that device. Then the other device needs the new key.' }));
         keyBox.hidden = false;
         show.textContent = 'Hide key';
       });
-      const forget = el('button', { type: 'button', className: 'small', textContent: 'Forget' });
+      const forget = el('button', { type: 'button', className: 'small', textContent: 'Remove key from this browser' });
       forget.addEventListener('click', () => {
-        if (there && !confirm(`Forget the key for "${name}"? This device can then no longer change or remove it, and nobody else can either until it expires.`)) return;
+        if (there && !confirm(`Remove the key for "${name}" from this browser? This browser can then no longer change or delete the item. Other devices that hold the key can still change or delete it. The administrator can also delete it.`)) return;
         HubLock.forget(kind, id);
         render();
       });
@@ -96,10 +96,10 @@
 
   document.getElementById('locks-add').addEventListener('click', () => {
     const m = /^hublock:(saves|drop):([A-Za-z0-9_-]{1,64}):([0-9a-fA-F]{64})$/.exec(input.value.trim());
-    if (!m) { tell('That is not a key: it should look like hublock:<kind>:<id>:<64 hex digits>.', false); return; }
+    if (!m) { tell('This is not a key. A key has this format: hublock:<kind>:<id>:<64 hex digits>.', false); return; }
     HubLock.importKey(m[1], m[2], m[3]);
     input.value = '';
-    tell('Added. This device can now change or remove that item.', true);
+    tell('Key added. This browser can now change or delete the item.', true);
     render();
   });
 

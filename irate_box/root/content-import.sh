@@ -12,17 +12,17 @@ for a in "$@"; do
 	case "$a" in
 	--dry-run) dry=1 ;;
 	--yes) yes=1 ;;
-	*) echo "usage: sudo sh import.sh [--dry-run] [--yes]" >&2; exit 2 ;;
+	*) echo "Usage: sudo sh import.sh [--dry-run] [--yes]" >&2; echo "  --dry-run  Preview the import. It changes nothing." >&2; echo "  --yes      Replace settings and data without asking for approval." >&2; exit 2 ;;
 	esac
 done
 hub=${IRATE_BOX_CLI:-/opt/irate-box/irate-box} state=${HUB_STATE_DIR:-/var/lib/hub}
-[ -x "$hub" ] && [ -d "$state" ] || { echo "irate-box is not installed here: install it first (or use an export that carries the hub program)" >&2; exit 1; }
-[ "$dry" = 1 ] || [ "$(id -u)" = 0 ] || { echo "run it as root: sudo sh $0" >&2; exit 1; }
+[ -x "$hub" ] && [ -d "$state" ] || { echo "Irate-Box is not installed here. Install it first, or use an export that carries the hub program." >&2; exit 1; }
+[ "$dry" = 1 ] || [ "$(id -u)" = 0 ] || { echo "Run the import as root: sudo sh $0" >&2; exit 1; }
 did=0
 for repo in "$here"/git/public/*.git "$here"/git/private/*.git; do
 	[ -d "$repo" ] || continue
 	dest="$state/git/$(basename "$(dirname "$repo")")/$(basename "$repo")"
-	if [ -e "$dest" ]; then echo "git: $dest is there already: left as it is"; continue; fi
+	if [ -e "$dest" ]; then echo "git: $dest already exists. Not replaced."; continue; fi
 	if [ "$dry" = 1 ]; then echo "git: would add $dest"; continue; fi
 	cp -a "$repo" "$dest" && chown -R hub:hub "$dest" && echo "git: added $dest" && did=1
 done
@@ -30,11 +30,11 @@ if [ -f "$here/state-backup.tar.gz" ]; then
 	echo "state: the export holds:"
 	tar -tzf "$here/state-backup.tar.gz" | grep -v '/$' | cut -d/ -f2 | grep -v -e '^$' -e '^BACKUP-CONTENTS.txt$' | sort -u | sed 's/^/    /'
 	if [ "$dry" = 1 ]; then
-		echo "state: would replace those in $state"
+		echo "state: would replace those in $state with the export's copies. Preview only, nothing changed."
 	else
 		ok=$yes
 		if [ "$ok" != 1 ]; then
-			printf 'Replace them in %s with the export'"'"'s? [y/N] ' "$state"
+			printf 'Replace the listed settings and data in %s with the export'"'"'s copies? Files with the same name are overwritten.\nMake a backup first. The hub restarts after the import. [y/N] ' "$state"
 			read -r answer
 			case "$answer" in y | Y | yes) ok=1 ;; esac
 		fi
@@ -42,7 +42,7 @@ if [ -f "$here/state-backup.tar.gz" ]; then
 			runuser -u hub -- tar -xzf "$here/state-backup.tar.gz" -C "$state" --strip-components=1 \
 				--exclude=irate-box-state/BACKUP-CONTENTS.txt && echo "state: restored into $state" && did=1
 		else
-			echo "state: left as it is"
+			echo "state: not replaced"
 		fi
 	fi
 fi
@@ -50,10 +50,11 @@ if [ -d "$here/kits" ]; then
 	if [ "$dry" = 1 ]; then
 		echo "toolkits: would import $(cd "$here/kits" && ls -d */*/ 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ')"
 	else
-		echo "toolkits (each package checked against Debian's signatures):"
+		echo "toolkits: importing. Each package is checked against the hashes in signed Debian indexes."
 		"$hub" kits import-dir "$here/kits" | sed 's/^/    /'
 	fi
 fi
-ls "$here"/*.zim >/dev/null 2>&1 && echo "books: import them on /admin → Library → Books → USB stick (each is checked there)"
+ls "$here"/*.zim >/dev/null 2>&1 && echo "books: not imported by this script. Import them on the Books page, in the USB drive section. That page checks each book."
+[ "$did" != 1 ] || echo "Restarting the hub server."
 [ "$did" = 1 ] && systemctl restart irate-box 2>/dev/null
 exit 0

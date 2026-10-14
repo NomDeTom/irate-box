@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# Removes what install.sh set up, so the box is as it was before (or ready for a clean
-# reinstall). Tailscale is not irate-box's: it is handed back as an ordinary boot service,
-# in whatever state it is in now.
+# Uninstall Irate-Box: remove the services, code, apps, configuration, user data and the hub user
+# that install.sh set up. Use it before a clean reinstall. The box may not return to its exact
+# state before the install: packages, joined networks and netplan ownership can differ.
+# Tailscale is not part of Irate-Box. The uninstaller sets it to start at boot as a normal service.
+# The uninstaller restores the service settings that Irate-Box recorded. It ignores a failed restore.
 #
-#   sudo ./uninstall.sh                     units, code, apps, config, state, the hub user
-#   sudo ./uninstall.sh --keep-state        ... but leave /var/lib/hub (notes, saves, ZIMs)
-#   sudo ./uninstall.sh --purge-packages    ... and the apt packages install.sh added:
+#   sudo ./uninstall.sh                     delete units, code, apps, configuration, user data and the hub user
+#   sudo ./uninstall.sh --keep-state        keep user data in /var/lib/hub (notes, saves, ZIM books, Git repositories)
+#   sudo ./uninstall.sh --purge-packages    also purge the apt packages that install.sh added:
 #                                           nginx (if irate-box installed it), caddy (and
-#                                           its apt repo), kiwix-tools, syncthing,
-#                                           mosquitto, ngircd, nodejs, cgit, fcgiwrap
+#                                           its apt repository), kiwix-tools, syncthing,
+#                                           mosquitto, ngircd, nodejs, cgit, fcgiwrap.
+#                                           A package that was on the box before the install is also purged.
+#                                           apt also removes dependencies that nothing else needs.
+#   sudo ./uninstall.sh -y                  skip the confirmation question
 #
-# State goes too unless --keep-state (the git repositories are state): back it up
-# first. -y skips the confirmation.
+# Without --keep-state, the uninstaller deletes the user data: shared and private notebooks,
+# accounts, files, posts, books, and Git and build data. Make a backup first.
 set -euo pipefail
 
 KEEP_STATE=0 PURGE_PKGS=0 YES=0
@@ -22,8 +27,8 @@ while [ $# -gt 0 ]; do
 	--keep-state) KEEP_STATE=1; shift ;;
 	--purge-packages) PURGE_PKGS=1; shift ;;
 	-y | --yes) YES=1; shift ;;
-	-h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-	*) echo "unknown option: $1" >&2; exit 2 ;;
+	-h | --help) sed -n '4,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	*) echo "uninstall.sh: unknown option: $1. Run ./uninstall.sh --help" >&2; exit 2 ;;
 	esac
 done
 
@@ -38,12 +43,19 @@ NGINX_OURS=0
 [ -f "$ETC/nginx-ours" ] && NGINX_OURS=1
 
 say() { if [ -t 1 ]; then printf '\033[1m==> %s\033[0m\n' "$*"; else printf '==> %s\n' "$*"; fi; }
-[ "$(id -u)" = 0 ] || { echo "run as root (sudo ./uninstall.sh …)" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "Run the uninstaller as root: sudo ./uninstall.sh" >&2; exit 1; }
 
 if [ "$YES" != 1 ]; then
-	echo "This removes irate-box from this machine$([ "$KEEP_STATE" = 1 ] || echo ", including $STATE (notes, saves, ZIMs)")$([ "$PURGE_PKGS" = 1 ] && echo ", and its apt packages")."
-	read -r -p "Continue? [y/N] " answer
-	[ "${answer,,}" = y ] || { echo "Aborted."; exit 0; }
+	echo "This uninstalls Irate-Box from this machine."
+	if [ "$KEEP_STATE" = 1 ]; then
+		echo "It keeps the user data in $STATE."
+	else
+		echo "It deletes the user data in $STATE: notes, private notebooks, accounts, files, posts, books, and Git and build data."
+		echo "It cannot undo this. Make a backup first."
+	fi
+	[ "$PURGE_PKGS" != 1 ] || echo "It also purges the listed apt packages and the dependencies that nothing else needs. This includes packages that were on the box before the install."
+	read -r -p "Uninstall Irate-Box? Type y to continue, or anything else to stop. [y/N] " answer
+	[ "${answer,,}" = y ] || { echo "Stopped. Nothing was changed."; exit 0; }
 fi
 
 say "Stopping and disabling services"
@@ -89,26 +101,26 @@ if [ -f "$ETC/security-changes.json" ] && [ -f "$CODE/irate_box/root/security.py
 		[ -f /etc/caddy/irate-box.caddy ] || systemctl disable --now caddy >/dev/null 2>&1 || true
 		[ "$NGINX_OURS" = 0 ] || systemctl disable --now nginx >/dev/null 2>&1 || true
 	fi
-	say "Putting back what the Security page changed"
+	say "Restoring the settings that the Security page changed"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" security undo-all | sed 's/^/    /' || true
 fi
 
 # "Keep retrying" on /admin's Network page changed two settings of the owner's WiFi profile;
 # put them back (uplink.py recorded the old values).
 if { [ -f "$ETC/uplink-changes.json" ] || [ -f "$ETC/uplink-roaming.json" ]; } && [ -f "$CODE/irate_box/hub/uplink.py" ]; then
-	say "Putting the WiFi profile back as it was"
+	say "Restoring the recorded WiFi profile settings"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink undo-all | sed 's/^/    /' || true
 fi
 # The box defaults chosen on the Network page: irate-box's own NetworkManager drop-in, removed; whatever
 # it shadowed (the image's drop-ins, NetworkManager's defaults) applies again.
 if [ -f /etc/NetworkManager/conf.d/zz-90-irate-box-network.conf ]; then
-	say "Taking out the box defaults set on the Network page"
+	say "Removing the box defaults from the Network page"
 	rm -f /etc/NetworkManager/conf.d/zz-90-irate-box-network.conf
 	systemctl reload NetworkManager 2>/dev/null || true
 fi
 # One connection's own settings chosen on the Network page: put back as they were.
 if [ -f "$ETC/nm-connection-changes.json" ] && [ -f "$CODE/irate_box/root/nmconnection.py" ]; then
-	say "Putting back the WiFi connections' own settings"
+	say "Restoring the recorded WiFi connection settings"
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" nmconnection undo-all | sed 's/^/    /' || true
 fi
 # mPWRD-OS's wifisync, if switched here: back as the image had it.
@@ -186,9 +198,9 @@ rm -rf "$CODE" "$SHARE" "$ETC" /var/cache/irate-box /var/log/irate-box /var/lib/
 rm -f /usr/local/bin/silverbullet /usr/local/bin/ttyd
 
 if [ "$KEEP_STATE" = 1 ]; then
-	say "Keeping $STATE"
+	say "Keeping the user data in $STATE"
 else
-	say "Removing $STATE"
+	say "Deleting the user data in $STATE"
 	rm -rf "$STATE"
 fi
 # With --keep-state the users stay: their files stay, and a user made later with the same uid
@@ -241,4 +253,4 @@ fi
 
 systemctl daemon-reload
 systemctl reset-failed >/dev/null 2>&1 || true
-say "irate-box removed"
+say "Uninstall finished. The uninstaller ignores a failed restore, so check the network connection and services"

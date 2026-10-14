@@ -111,17 +111,17 @@ def set_settings(**changes):
     if "boards" in changes:
         b = changes["boards"]
         if b != "all" and not (isinstance(b, list) and all(isinstance(x, str) and BOARD_RE.match(x) for x in b)):
-            raise LibrarianError('boards is "all" or a list of board names')
+            raise LibrarianError('Invalid boards setting. Enter "all" or a list of board names.')
         cfg["boards"] = b if b == "all" else sorted(set(b))
     for key in ("keep_alpha", "keep_beta"):
         if key in changes:
             n = changes[key]
             if type(n) is not int or not 0 <= n <= 5:
-                raise LibrarianError(f"{key} is 0 to 5")
+                raise LibrarianError(f"{key} must be from 0 to 5.")
             cfg[key] = n
     if "cache" in changes:
         if changes["cache"] not in CACHES:
-            raise LibrarianError(f"cache is one of {', '.join(CACHES)}")
+            raise LibrarianError(f"Cache must be one of: {', '.join(CACHES)}.")
         cfg["cache"] = changes["cache"]
     librarian._write_json(SETTINGS, cfg)
     return cfg
@@ -236,19 +236,19 @@ def _mirror_board(base, vdir, version, mt, policy):
             if not _have(dest, entry):
                 need = entry.get("bytes", 0) + policy["min_free_mb"] * 2**20
                 if librarian._free_bytes(ROOT) < need:
-                    raise LibrarianError(f"not enough space for {name}: keep {policy['min_free_mb']} MB free")
+                    raise LibrarianError(f"Insufficient storage for {name}. The box keeps {policy['min_free_mb']} MB free.")
                 tmp = dest.with_name(dest.name + ".part")
                 try:
                     librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
                                         expected=entry.get("bytes", 0))
                 except LibrarianError as exc:
                     tmp.unlink(missing_ok=True)
-                    if "cannot reach" in str(exc) or "cut short" in str(exc):
+                    if "cannot reach" in str(exc) or "ended early" in str(exc):
                         raise  # the network, not this board: the whole run stops
                     raise _Unavailable(str(exc))
                 if not _have(tmp, entry):
                     tmp.unlink(missing_ok=True)
-                    raise _Unavailable(f"{name}: size or MD5 does not match the manifest")
+                    raise _Unavailable(f"Digest mismatch. The size or MD5 of {name} does not match the manifest.")
                 os.replace(tmp, dest)
             files += 1
             size += entry.get("bytes", 0)
@@ -293,7 +293,7 @@ def _carry_cache(rel, cfg, policy, log):
         return {"version": rel["version"], "mode": cfg["cache"], "bytes": _du(dest)}
     deps = rel["deps"]
     if librarian._free_bytes(ROOT) < deps["size"] * 3 + policy["min_free_mb"] * 2**20:
-        raise LibrarianError(f"not enough space for the build cache ({deps['size'] >> 20} MB zipped)")
+        raise LibrarianError(f"Insufficient storage for the build cache ({deps['size'] >> 20} MB zipped).")
     tmp = librarian.TMP_DIR / deps["name"]
     tmp.parent.mkdir(parents=True, exist_ok=True)
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
@@ -307,20 +307,20 @@ def _carry_cache(rel, cfg, policy, log):
             wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir())
             free = shutil.disk_usage(ROOT).free
             if wanted > free - DEPS_RESERVE:
-                raise LibrarianError(f"{deps['name']} unpacks to {wanted >> 20} MB; {free >> 20} MB are free, "
-                                     f"and {DEPS_RESERVE >> 20} MB must stay free")
+                raise LibrarianError(f"Insufficient storage. {deps['name']} unpacks to {wanted >> 20} MB. {free >> 20} MB are free. "
+                                     f"{DEPS_RESERVE >> 20} MB must stay free.")
             for info in zf.infolist():
                 rel_path = _subset(info.filename, cfg["cache"], info.file_size)
                 if not rel_path or info.is_dir():
                     continue
                 target = work / rel_path
                 if not target.resolve().is_relative_to(work.resolve()):
-                    raise LibrarianError(f"{deps['name']} names a file outside its folder: {info.filename[:80]}")
+                    raise LibrarianError(f"Archive rejected. {deps['name']} names a file outside its folder: {info.filename[:80]}")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
     except zipfile.BadZipFile:
-        raise LibrarianError(f"{deps['name']} is not a whole zip")
+        raise LibrarianError(f"Archive damaged or incomplete. {deps['name']} is not a complete zip file.")
     finally:
         tmp.unlink(missing_ok=True)
     (work / ".irate-box-cache").write_text(cfg["cache"] + "\n")
@@ -390,11 +390,11 @@ def _configs_from_package(open_at):
     bytes from there (a file, or a ranged request)."""
     head = open_at(0).read(30)
     if head[:4] != b"PK\x03\x04":
-        raise LibrarianError("the source package is not a zip")
+        raise LibrarianError("Archive unsupported. The source package is not a zip file.")
     method = struct.unpack("<H", head[8:10])[0]
     n, m = struct.unpack("<HH", head[26:30])
     if method not in (0, 8):
-        raise LibrarianError("the source package uses a compression this does not read")
+        raise LibrarianError("Archive unsupported. The source package uses a compression that the box cannot read.")
     files, inside, total = [], False, 0
     with tarfile.open(fileobj=io.BufferedReader(_Inflate(open_at(30 + n + m), method), 1 << 16), mode="r|") as tf:
         for ti in tf:
@@ -405,7 +405,7 @@ def _configs_from_package(open_at):
                     text = tf.extractfile(ti).read().decode("utf-8", "replace")
                     total += len(text)
                     if total > CONFIGS_MAX:
-                        raise LibrarianError("bin/config.d is larger than expected; not kept")
+                        raise LibrarianError("bin/config.d is larger than expected. The box does not keep it.")
                     files.append({"path": rel[len("bin/config.d/"):], "text": text})
             elif inside:
                 break
@@ -427,12 +427,12 @@ def _configs_from_mirror(rel):
     from irate_box.library import mirrors
     m = source_mirror()
     if not m:
-        raise LibrarianError("no mirror of meshtastic/firmware on this box")
+        raise LibrarianError("Source not found. This box has no mirror of meshtastic/firmware.")
     path = str(mirrors.repo_path(m))
     try:
         librarian._git("-C", path, "rev-parse", "--verify", "--quiet", f"refs/tags/{rel['tag']}^{{commit}}")
     except LibrarianError:
-        raise LibrarianError(f"the mirror {m['name']} does not hold {rel['tag']}")
+        raise LibrarianError(f"The mirror {m['name']} does not hold {rel['tag']}.")
     files, total = [], 0
     for line in librarian._git("-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/").split("\0"):
         if not line:
@@ -444,7 +444,7 @@ def _configs_from_mirror(rel):
         text = librarian._git("-C", path, "cat-file", "blob", sha)
         total += len(text)
         if total > CONFIGS_MAX:
-            raise LibrarianError("bin/config.d is larger than expected; not kept")
+            raise LibrarianError("bin/config.d is larger than expected. The box does not keep it.")
         files.append({"path": name[len("bin/config.d/"):], "text": text})
     return sorted(files, key=lambda f: f["path"]), m["name"]
 
@@ -460,7 +460,7 @@ def _configs_from_git(rel, work):
             text = f.read_text(encoding="utf-8", errors="replace")
             total += len(text)
             if total > CONFIGS_MAX:
-                raise LibrarianError("bin/config.d is larger than expected; not kept")
+                raise LibrarianError("bin/config.d is larger than expected. The box does not keep it.")
             files.append({"path": f.relative_to(top).as_posix(), "text": text})
     return files
 
@@ -478,7 +478,7 @@ def sync_configs(rel, log=print):
     source package from the release. Returns an outcome."""
     have = librarian._read_json(CONFIGS, {})
     if have.get("tag") == rel["tag"]:
-        return f"configs: {rel['tag']} already held ({len(have.get('files', []))} files)"
+        return f"configs: {rel['tag']} already cached ({len(have.get('files', []))} files)"
     src = rel.get("source")
     held = ROOT / rel["version"] / src["name"] if src else None
     tried = []
@@ -491,9 +491,9 @@ def sync_configs(rel, log=print):
     if not files and held and held.is_file():
         try:
             files = _configs_from_package(lambda off: _seek(open(held, "rb"), off))
-            method = "the release's source package, held on this box"
+            method = "the release's source package, cached on this box"
         except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
-            tried.append(f"the held source package: {exc}")
+            tried.append(f"the cached source package: {exc}")
     if not files:
         work = Path(librarian.tempfile.mkdtemp(prefix="config.d-", dir=librarian.LIB_DIR))
         try:
@@ -512,7 +512,7 @@ def sync_configs(rel, log=print):
         except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
             tried.append(f"the release's source package: {exc}")
     if not files:
-        raise LibrarianError("no configs: " + ("; ".join(tried) or f"none in bin/config.d at {rel['tag']}"))
+        raise LibrarianError("No configuration files. " + (". ".join(tried) or f"None in bin/config.d at {rel['tag']}") + ".")
     ROOT.mkdir(parents=True, exist_ok=True)
     _publish(CONFIGS, {"repo": REPO, "tag": rel["tag"], "version": rel["version"], "from": method,
                        "fetched": librarian.now_iso(), "files": files})
@@ -552,7 +552,7 @@ def sync(check_only=False, log=print):
             st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
             st.pop("error", None)
             outcome = "; ".join(x for x in (configs, f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None,
-                                            f"flash files removed ({gone >> 20} MB)" if gone else None) if x) or "flash files off"
+                                            f"flash files removed ({gone >> 20} MB)" if gone else None) if x) or "Firmware downloads disabled"
             st["outcome"] = outcome
             _save_status(st)
             return outcome

@@ -31,9 +31,9 @@
   ];
 
   var PALETTES = [
-    { id: 'box', label: 'Box preset', emoji: '🏠', desc: 'The colours chosen for this box' },
-    { id: 'standard', label: 'Standard', emoji: '🎨', desc: 'The hub\'s own colours, as it ships' },
-    { id: 'contrast', label: 'Increased contrast', emoji: '🔆', desc: 'Quieter words and links stronger, easier to read' },
+    { id: 'box', label: 'Box palette', emoji: '🏠', desc: 'The colours the administrator set for this box' },
+    { id: 'standard', label: 'Standard palette', emoji: '🎨', desc: 'The standard hub colours' },
+    { id: 'contrast', label: 'Increased contrast', emoji: '🔆', desc: 'Secondary text and links have stronger contrast' },
   ];
   function paletteById(id) {
     for (var i = 0; i < PALETTES.length; i++) if (PALETTES[i].id === id) return PALETTES[i];

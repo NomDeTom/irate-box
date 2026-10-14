@@ -36,14 +36,14 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   let pub = page('mesh.html', 'http://box.local/mesh.html', async (u) => (u === '/mesh.json' ? json(publicView) : json({}, 404)), ['mesh.js']);
   await wait();
   let d = pub.d;
-  check('/mesh.html: listening, the node count', /Listening to the box's MQTT broker: 2 nodes heard in the last 7 days\./.test(t(d.getElementById('mesh-state'))));
+  check('/mesh.html: listening, the node count', /Connected to the box's MQTT broker: 2 nodes received in the last 7 days\./.test(t(d.getElementById('mesh-state'))));
   check('  the traffic by kind, most first', /4 positions, 1 messages, 1 encrypted \(no key here\)\./.test(t(d.getElementById('mesh-counts'))), t(d.getElementById('mesh-counts')));
   const row = [...d.querySelectorAll('#mesh-nodes tbody tr')][0];
   // 60 or 61 s: the fixture's clock is read a moment before the page renders.
   check('  a node: its name, when heard, battery, where, how heard, packets', /^Base camp \(BASE\) \| 6[01] s ago \| 87 %, 4\.05 V \| 51\.5007, -0\.1246, 25 m \| 1 hop, SNR 6\.25, -97 dBm \| 12$/
     .test([...row.cells].map((c) => t(c)).join(' | ')), [...row.cells].map((c) => t(c)).join(' | '));
   check('  one never named: its id, the rest blank', [...[...d.querySelectorAll('#mesh-nodes tbody tr')][1].cells].map((c) => t(c)).join(' | ') === '!deadbeef | 2 h ago | — | — | — | 3');
-  check('  recent traffic by name, never a message', /text from Base camp \(BASE\) on LongFast/.test(t(d.getElementById('mesh-packets'))) && !/meet at the gate/.test(d.body.textContent));
+  check('  recent traffic by name, never a message', /text packet from Base camp \(BASE\) on channel LongFast/.test(t(d.getElementById('mesh-packets'))) && !/meet at the gate/.test(d.body.textContent));
   // The map: placed as they are, no tiles. Add a node 1 km east, and one at 0,0 (no fix): left out.
   const mapView = Object.assign({}, publicView, { nodes: [...nodes, { id: '!00000001', short_name: 'EAST', last: now, packets: 1,
     position: { lat: 51.50071, lon: -0.12462 + 1000 / (111320 * Math.cos(51.5 * Math.PI / 180)) } },
@@ -52,7 +52,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   await wait();
   const dots = [...pub.d.querySelectorAll('#mesh-map .mesh-map-node')];
   check('the map: the nodes with a position, by short name; one at 0,0 (no fix) left out', dots.length === 2 && dots.map((g) => t(g.querySelector('text'))).join(',') === 'BASE,EAST'
-    && /2 nodes with a position, placed as they are: no map underneath/.test(t(pub.d.getElementById('mesh-map-note'))));
+    && /2 nodes with a position\. Positions are shown without a background map/.test(t(pub.d.getElementById('mesh-map-note'))));
   const [a, b] = dots.map((g) => Number(g.querySelector('circle').getAttribute('cx')));
   const scale = pub.d.querySelector('#mesh-map .mesh-map-scale');
   const len = Number(scale.getAttribute('x2')) - Number(scale.getAttribute('x1'));
@@ -61,7 +61,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   check('  east is to the right, and the scale bar agrees with the 1 km between them', b > a && Math.abs((b - a) / len * metres - 1000) < 20, `${a} ${b} ${len} ${said}`);
   pub = page('mesh.html', 'http://box.local/mesh.html', async () => json({ error: 'not shown' }, 404), ['mesh.js']);
   await wait();
-  check('  not public: says the owner chooses, and where', /not shown here: its owner chooses \(\/admin → Access, the MQTT broker, public\)/.test(t(pub.d.getElementById('mesh-state'))));
+  check('  not public: says the owner chooses, and where', /Mesh view disabled or restricted\. An administrator can change this in \/admin → Access, under the MQTT broker\./.test(t(pub.d.getElementById('mesh-state'))));
   check('public: no page errors', !pub.errors.length, pub.errors.join(' | '));
 
   // /admin → Mesh.
@@ -75,9 +75,9 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   await wait();
   d = admin.d;
   check('admin: a side-bar entry, and the state', [...d.querySelectorAll('.admin-side-list a')].some((a) => a.hash === '#mesh')
-    && /Listening to the broker: 2 nodes/.test(t(d.getElementById('mesh-admin-state'))));
-  check('  the channels, without their keys', /LongFast Meshtastic's public default key: anyone can read this channel\./.test(t(d.getElementById('mesh-channels')))
-    && /Family Its own key \(not shown\)\./.test(t(d.getElementById('mesh-channels'))));
+    && /Connected to MQTT broker: 2 nodes/.test(t(d.getElementById('mesh-admin-state'))));
+  check('  the channels, without their keys', /LongFast Default public key\. Anyone can read this channel\./.test(t(d.getElementById('mesh-channels')))
+    && /Family Custom key \(not shown\)\./.test(t(d.getElementById('mesh-channels'))));
   check('  Heard on a page of its own: a link, and no messages on /admin', d.getElementById('mesh-open').getAttribute('href') === '/admin/mesh.html'
     && !/meet at the gate/.test(t(d.getElementById('mesh'))));
   const f = d.getElementById('mesh-channel-form');
@@ -87,8 +87,8 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     && posted[0].key === 'q2Fc9u0aBcDeFgHiJkLmNw==' && f.elements.key.value === '');
   d.getElementById('mesh-longfast').click(); await wait();
   check('  the public LongFast in one click', posted.some((b) => b.name === 'LongFast' && b.key === 'AQ=='));
-  [...d.querySelectorAll('#mesh-channels button')].find((b) => t(b) === 'Remove').click(); await wait();
-  check('  Remove', posted.some((b) => b.action === 'remove-channel' && b.name === 'LongFast'));
+  [...d.querySelectorAll('#mesh-channels button')].find((b) => t(b) === 'Remove channel').click(); await wait();
+  check('  Remove channel', posted.some((b) => b.action === 'remove-channel' && b.name === 'LongFast'));
   check('admin: no page errors', !admin.errors.length, admin.errors.join(' | '));
 
   // /admin/mesh.html: Heard, the messages too.
@@ -96,7 +96,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     ? json({ state: 'listening', nodes, packets, counts: { text: 1 }, since: now, channels }) : json({}, 404)), ['mesh-heard.js']);
   await wait();
   d = heard.d;
-  check('heard: the state and the counts', /Listening to the broker: 2 nodes/.test(t(d.getElementById('mesh-heard-state'))) && /1 text/.test(t(d.getElementById('mesh-heard-counts'))));
+  check('heard: the state and the counts', /Connected to the broker: 2 nodes/.test(t(d.getElementById('mesh-heard-state'))) && /1 text/.test(t(d.getElementById('mesh-heard-counts'))));
   check('  the messages, here only', /“meet at the gate”/.test(t(d.getElementById('mesh-heard-packets'))));
   check('heard: no page errors', !heard.errors.length, heard.errors.join(' | '));
   console.log(`failures: ${fails}`);

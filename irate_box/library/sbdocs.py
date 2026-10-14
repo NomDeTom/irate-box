@@ -176,7 +176,7 @@ def install(tar_path, space, version):
     """The manual into `space`/SilverBullet, replacing an older version's whole. Returns what it did."""
     space = Path(space)
     if not space.is_dir():
-        raise ValueError(f"{space}: no notes space")
+        raise ValueError(f"{space}: notes space not found")
     mark = space / MARK
     if mark.is_file() and mark.read_text().strip() == version and (space / FOLDER).is_dir():
         _starting_page(space)
@@ -197,10 +197,10 @@ def install(tar_path, space, version):
                     n += 1
                 dest.write_bytes(data)
         (stage / f"{FOLDER}.md").write_text(
-            f"# SilverBullet's manual\n\nThe manual of the SilverBullet this box runs ({version}), kept here so it opens with no "
-            f"internet. Start at [[{FOLDER}/Manual]] or [[{FOLDER}/Getting Started]].\n\n"
-            "It is replaced whole when SilverBullet is updated, so notes of your own belong outside this folder. Its code "
-            "examples are shown, not run. The community forums are online only: https://community.silverbullet.md\n")
+            f"# Offline manual for SilverBullet {version}\n\nThis is a copy of the manual of the SilverBullet that this box runs. "
+            f"The links inside the copy open with no internet. Start at [[{FOLDER}/Manual]] or [[{FOLDER}/Getting Started]].\n\n"
+            "This folder is replaced when SilverBullet is updated. Save your own notes outside this folder. "
+            "Code examples are displayed, not executed. Community forums require internet access: https://community.silverbullet.md\n")
         old = space / f".{FOLDER}.old"
         shutil.rmtree(old, ignore_errors=True)
         if (space / FOLDER).exists():

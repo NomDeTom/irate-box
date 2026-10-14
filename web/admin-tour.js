@@ -14,41 +14,41 @@ const TOUR = (() => {
   // or a finder for a part drawn later, such as one of the security findings).
   const finding = (re) => () => [...document.querySelectorAll('#security-findings .sec-choice, #security-findings .finding')].find((li) => re.test(li.textContent));
   const DECISIONS = [
-    { id: 'visitors', label: 'Count unique visitors', section: 'security', target: '#visitor_counts',
-      said: 'On by default: different devices today and this week, by salted hashes thrown away daily and weekly; only the counts are kept.' },
-    { id: 'names', label: 'Names of those signed in, shown to', section: 'status-tiles', target: '#names-to-box',
-      said: 'Guests only ever get how many are signed in. Each person also decides whether their own name shows; new accounts start not shown.' },
-    { id: 'signup', label: 'New accounts', section: 'accounts', target: '#accounts-settings',
-      said: 'Off by default: the admin makes accounts. Sign-up lets anyone on the box make one.' },
-    { id: 'sign-in-offer', label: 'A tile a guest can\'t open', section: 'apps', target: '#sign-in-offer-box',
-      said: 'Off by default: an app for users shows its tile only to those signed in. On, guests see it too, with a lock that leads to sign-in. Each app\'s own "Tile shown to" still has the last word.' },
+    { id: 'visitors', label: 'Visitor counts', section: 'security', target: '#visitor_counts',
+      said: 'Default: on. The box counts different devices today and this week. It uses salted hashes and deletes them every day and every week. The box keeps only the counts.' },
+    { id: 'names', label: 'Signed-in name visibility', section: 'status-tiles', target: '#names-to-box',
+      said: 'Guests see only how many people are signed in. Each person decides whether the box shows their name. New accounts start with the name hidden.' },
+    { id: 'signup', label: 'Account registration', section: 'accounts', target: '#accounts-settings',
+      said: 'Default: off. The administrator creates the accounts. If you turn registration on, anyone on the box\'s network can create an account.' },
+    { id: 'sign-in-offer', label: 'Locked tiles', section: 'apps', target: '#sign-in-offer-box',
+      said: 'Default: off. The tile of an app for users shows only to signed-in users. If you turn this on, guests also see the tile. It has a lock that leads to the sign-in page. The Visibility setting of each app has priority.' },
     { id: 'https', label: 'HTTPS', section: 'security', target: '#tls-state',
-      said: 'The box\'s own certificate authority by default: phones install it once from /certificate. Off sends passwords in the clear.' },
-    { id: 'hotspot', label: 'The hotspot\'s security', section: 'network/hotspot', fallback: 'network', target: '#hs-modes',
-      said: 'Encrypted with no password (OWE) where the radio can: guests join freely, and nobody nearby can read what they do.' },
-    { id: 'guest-net', label: 'Guests reach the internet', section: 'network/hotspot', fallback: 'network', target: '#guest-net-box',
-      said: 'Off by default: guests on the hotspot reach the box and nothing else. Five steps up to everyone, each saying what it opens.' },
-    { id: 'ssh', label: 'SSH takes passwords', section: 'security', target: finding(/SSH password/),
-      said: 'Left as the box had it unless you choose here: keys only can lock out an owner who has no key.' },
+      said: 'Default: the box makes its own certificate authority. Each phone installs it once from /certificate. If you turn HTTPS off, passwords cross the network in clear text.' },
+    { id: 'hotspot', label: 'Hotspot security', section: 'network/hotspot', fallback: 'network', target: '#hs-modes',
+      said: 'Where the radio supports it, the hotspot uses encryption without a password (OWE). Guests join without a password. A person who only listens cannot read their traffic.' },
+    { id: 'guest-net', label: 'Guest internet access', section: 'network/hotspot', fallback: 'network', target: '#guest-net-box',
+      said: 'Default: off. Guests on the hotspot reach the box and nothing else. There are five levels. Each level shows what it opens.' },
+    { id: 'ssh', label: 'SSH password authentication', section: 'security', target: finding(/SSH password/),
+      said: 'The box keeps the image setting until you change it. If SSH accepts keys only and you have no key, you cannot sign in over SSH.' },
     { id: 'tailscale', label: 'Remote access (Tailscale)', section: 'access', target: '#remote-section',
-      said: 'Left as found. Only where the image has Tailscale; otherwise there is nothing to decide.' },
-    { id: 'cockpit', label: 'Cockpit (a root login on :9090)', section: 'security', target: finding(/Cockpit/),
-      said: 'Every guest can reach its login while it runs. Only where the image has it.' },
-    { id: 'terminal', label: 'Terminal (a shell in the browser)', section: 'app-access-term', fallback: 'apps', target: '#app-access-term',
-      said: 'Behind the admin login by default: a root shell, which is its whole point.' },
+      said: 'The box keeps the setting that it found. This step shows only where the image has Tailscale.' },
+    { id: 'cockpit', label: 'Cockpit (root sign-in on port 9090)', section: 'security', target: finding(/Cockpit/),
+      said: 'While Cockpit runs, every guest can reach its sign-in page. This step shows only where the image has Cockpit.' },
+    { id: 'terminal', label: 'Terminal (shell in the browser)', section: 'app-access-term', fallback: 'apps', target: '#app-access-term',
+      said: 'By default, the terminal needs the administrator sign-in. It gives a root shell.' },
   ];
   // The setup's own steps, around the decisions, in the same form: what the box is, first; a backup,
   // last. Their state comes from the
   // parts of the page that know it (setupStep in admin.js).
   const OWN = [
-    { id: 'password', label: 'Admin password', section: 'access', target: '#access form, #access', said: 'Set at first use. Change it here whenever you like.' },
-    { id: 'connection', label: 'How guests reach the box', section: 'network/hardware', fallback: 'network', target: '#net-devices', said: 'How phones and laptops find the hub: on the network the box is on, or its own hotspot.' },
-    { id: 'security', label: 'What the box exposes', section: 'security', target: '#security-findings', said: 'What a guest on the network can reach, and the choices that change it.' },
-    { id: 'addons', label: 'Add-ons', section: 'addons', target: '#addons-list', said: 'The hub works without any; add the ones this box is for.' },
-    { id: 'books', label: 'Books', section: 'books', target: '#books', said: 'What Kiwix serves offline, and which the librarian keeps current.' },
+    { id: 'password', label: 'Administrator password', section: 'access', target: '#access form, #access', said: 'You set this at first use. You can change it here at any time.' },
+    { id: 'connection', label: 'How guests reach the box', section: 'network/hardware', fallback: 'network', target: '#net-devices', said: 'Phones and laptops find the hub through the network that the box is on, or through the box\'s own hotspot.' },
+    { id: 'security', label: 'What the box exposes', section: 'security', target: '#security-findings', said: 'This step lists what a guest on the network can reach. It lists the settings that change that.' },
+    { id: 'addons', label: 'Add-ons', section: 'addons', target: '#addons-list', said: 'The hub works without add-ons. Add the add-ons that this box needs.' },
+    { id: 'books', label: 'Books', section: 'books', target: '#books', said: 'Kiwix serves the books offline. The librarian can keep them current.' },
   ];
   const BACKUP = { id: 'backup', label: 'Take a backup', section: 'backup', target: '#backup a[download]',
-    said: 'Download the hub\'s state now that it is set up: settings, accounts, saved work and the library\'s sources. Keep it off the box.' };
+    said: 'Download the box\'s state now that you have set it up: settings, accounts, saved work and the library sources. Keep the file off the box.' };
   const STEPS = [...OWN, ...DECISIONS, BACKUP];
   const KIND = Object.fromEntries([...OWN.map((s) => [s.id, 'step']), ...DECISIONS.map((s) => [s.id, 'decision']), [BACKUP.id, 'step']]);
   const GUIDE = '/art/krab-controller-clipboard.webp';
@@ -63,11 +63,11 @@ const TOUR = (() => {
   const isDone = (s) => decided.has(s.id) || (KIND[s.id] === 'step' && s.id !== 'backup' && (state(s.id) || {}).status === 'ok');
   const left = () => STEPS.filter((s) => !isDone(s) && !muted.has(s.id));
   const PILL = (s) => {
-    if (KIND[s.id] === 'decision') return decided.has(s.id) ? ['ok-pill', 'decided'] : muted.has(s.id) ? ['info-pill', 'muted'] : ['info-pill', 'default'];
+    if (KIND[s.id] === 'decision') return decided.has(s.id) ? ['ok-pill', 'decided'] : muted.has(s.id) ? ['info-pill', 'no reminders'] : ['info-pill', 'default'];
     const st = (state(s.id) || {}).status;
     if (isDone(s)) return ['ok-pill', 'done'];
-    if (muted.has(s.id)) return ['info-pill', 'muted'];
-    return st === 'problem' ? ['bad-pill', 'to fix'] : st === 'warn' ? ['warn-pill', 'look at it'] : ['info-pill', 'to do'];
+    if (muted.has(s.id)) return ['info-pill', 'no reminders'];
+    return st === 'problem' ? ['bad-pill', 'to fix'] : st === 'warn' ? ['warn-pill', 'needs review'] : ['info-pill', 'to do'];
   };
 
   async function save() {
@@ -97,14 +97,14 @@ const TOUR = (() => {
       const li = document.createElement('li');
       li.dataset.step = s.id;
       li.className = isDone(s) ? 'step-ok' : muted.has(s.id) ? 'step-muted' : `step-${(state(s.id) || {}).status || 'todo'}`;
-      const a = Object.assign(document.createElement('a'), { href: '#' + s.section, textContent: 'Go there' });
+      const a = Object.assign(document.createElement('a'), { href: '#' + s.section, textContent: 'Open settings' });
       a.dataset.tour = s.id;
       a.addEventListener('click', (e) => { e.preventDefault(); go(i); });
       const text = Object.assign(document.createElement('span'), { className: 'step-text', textContent: ((state(s.id) || {}).text || s.said) + ' ' });
       text.append(a);
       if (!isDone(s)) {
         const m = Object.assign(document.createElement('button'), { type: 'button', className: 'link-button mute-step',
-          textContent: muted.has(s.id) ? 'Unmute' : 'Mute', title: muted.has(s.id) ? 'Count this step again' : 'Keep it listed, but stop counting it as left to do' });
+          textContent: muted.has(s.id) ? 'Resume reminders' : 'Stop reminders', title: muted.has(s.id) ? 'Count this step again' : 'Keep the step in the list. Do not count it as left to do.' });
         m.addEventListener('click', () => mute(s.id, !muted.has(s.id)));
         text.append(' ', m);
       }
@@ -113,12 +113,12 @@ const TOUR = (() => {
       return li;
     }));
     const said = document.getElementById('setup-left');
-    if (said) said.textContent = n ? `${n} of ${STEPS.length} still to do or decide: until then the box uses each default.` : 'All done.';
+    if (said) said.textContent = n ? `${n} of ${STEPS.length} still to do or decide. Until then the box uses each default.` : 'All done.';
     const actions = document.querySelector('#welcome .tour-actions');
     if (!actions) return;
     let start = actions.querySelector('.tour-start');
     if (!start) { start = Object.assign(document.createElement('button'), { type: 'button', className: 'action-btn primary tour-start' }); actions.prepend(start); }
-    start.textContent = !n ? 'Take the tour again' : n === STEPS.length ? 'Start the tour' : 'Carry on the tour';
+    start.textContent = !n ? 'Take the tour again' : n === STEPS.length ? 'Start the tour' : 'Resume tour';
     start.onclick = () => go(n ? STEPS.indexOf(left()[0]) : 0);
   }
 
@@ -172,13 +172,13 @@ const TOUR = (() => {
     text.className = 'tour-text';
     text.append(Object.assign(document.createElement('strong'), { textContent: `Setup tour · ${at + 1} of ${STEPS.length}: ${d.label}` }), ' ',
       Object.assign(document.createElement('span'), { className: PILL(d)[0], textContent: PILL(d)[1] }),
-      Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: d.said + (here ? '' : ' (Not on this box, or not showing here: keep the default and carry on.)') }));
+      Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: d.said + (here ? '' : ' (This setting is unavailable on this box. Keep the default and continue.)') }));
     const btn = (label, cls, fn) => { const b = Object.assign(document.createElement('button'), { type: 'button', className: cls, textContent: label }); b.addEventListener('click', fn); return b; };
     const back = btn('← Back', 'action-btn', () => go(at - 1));
     back.disabled = at === 0;
     const buttons = document.createElement('div');
     buttons.className = 'chip-group';
-    buttons.append(back, btn(KIND[d.id] === 'decision' ? 'Keep this, next →' : 'Done, next →', 'action-btn primary', () => { decide(d.id); (at + 1 < STEPS.length ? go(at + 1) : finish()); }),
+    buttons.append(back, btn(KIND[d.id] === 'decision' ? 'Keep and continue →' : 'Done, continue →', 'action-btn primary', () => { decide(d.id); (at + 1 < STEPS.length ? go(at + 1) : finish()); }),
       btn('Skip →', 'action-btn', () => (at + 1 < STEPS.length ? go(at + 1) : finish())), btn('Leave the tour', 'action-btn', stop));
     bar.replaceChildren(img, text, buttons);
   }

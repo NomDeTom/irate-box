@@ -19,10 +19,10 @@ function nodeName(n) {
 
 function render(d) {
   $('mesh-state').textContent = d.state === 'listening'
-    ? `Listening to the box's MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} heard in the last 7 days.`
-    : 'Not connected to the box\'s MQTT broker just now: it tries again by itself.';
+    ? `Connected to the box's MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
+    : 'Reconnecting to the box\'s MQTT broker. This happens automatically.';
   const counts = Object.entries(d.counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
-  $('mesh-counts').textContent = counts.length ? `Since ${new Date(d.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'Nothing heard yet.';
+  $('mesh-counts').textContent = counts.length ? `Packets received since ${new Date(d.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'No packets received';
   drawMap(d.nodes);
   const names = Object.fromEntries(d.nodes.map((n) => [n.id, nodeName(n)]));
   $('mesh-nodes').tBodies[0].replaceChildren(...d.nodes.map((n) => {
@@ -30,14 +30,14 @@ function render(d) {
     const t = n.telemetry || {};
     const p = n.position;
     tr.append(make('td', nodeName(n)), make('td', ago(n.last)),
-      make('td', t.battery != null ? `${t.battery > 100 ? 'powered' : `${t.battery} %`}${t.voltage ? `, ${t.voltage} V` : ''}` : '—'),
+      make('td', t.battery != null ? `${t.battery > 100 ? 'externally powered' : `${t.battery} %`}${t.voltage ? `, ${t.voltage} V` : ''}` : '—'),
       make('td', p ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}${p.alt != null ? `, ${p.alt} m` : ''}` : '—'),
       make('td', [n.hops != null ? `${n.hops} hop${n.hops === 1 ? '' : 's'}` : '', n.snr != null ? `SNR ${n.snr}` : '', n.rssi != null ? `${n.rssi} dBm` : ''].filter(Boolean).join(', ') || '—'),
       make('td', String(n.packets || 0)));
     return tr;
   }));
   $('mesh-packets').replaceChildren(...d.packets.map((p) => make('li',
-    `${new Date(p.at * 1000).toLocaleTimeString()}: ${KINDS[p.port] ? p.port : p.port} from ${names[p.from] || p.from}${p.to && p.to !== 'all' ? ` to ${names[p.to] || p.to}` : ''}${p.channel ? ` on ${p.channel}` : ''}`)));
+    `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} packet from ${names[p.from] || p.from}${p.to && p.to !== 'all' ? ` to ${names[p.to] || p.to}` : ''}${p.channel ? ` on channel ${p.channel}` : ''}`)));
 }
 
 // The nodes with a position, on Web Mercator fitted to them (a margin round the edges), with their
@@ -58,8 +58,8 @@ function drawMap(nodes) {
   map.replaceChildren();
   map.hidden = !placed.length;
   $('mesh-map-note').textContent = placed.length
-    ? `${placed.length} node${placed.length === 1 ? '' : 's'} with a position, placed as they are: no map underneath yet, so no internet is needed.`
-    : 'No node has sent its position yet.';
+    ? `${placed.length} node${placed.length === 1 ? '' : 's'} with a position. Positions are shown without a background map. No internet access is needed.`
+    : 'No reported positions';
   if (!placed.length) return;
   const xs = placed.map((n) => (n.position.lon * Math.PI) / 180), ys = placed.map((n) => mercY(n.position.lat));
   let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
@@ -80,7 +80,7 @@ function drawMap(nodes) {
     const x = px(xs[i]), y = py(ys[i]);
     const g = svg('g', { class: 'mesh-map-node' });
     g.append(svg('circle', { cx: x, cy: y, r: 6 }), svg('text', { x: x + 9, y: y + 4, class: 'mesh-map-label' }, n.short_name || n.long_name || n.id));
-    g.append(svg('title', {}, `${nodeName(n)}: ${n.position.lat.toFixed(5)}, ${n.position.lon.toFixed(5)}${n.position.alt != null ? `, ${n.position.alt} m` : ''}, heard ${ago(n.last)}`));
+    g.append(svg('title', {}, `${nodeName(n)}: ${n.position.lat.toFixed(5)}, ${n.position.lon.toFixed(5)}${n.position.alt != null ? `, ${n.position.alt} m` : ''}, last received ${ago(n.last)}`));
     map.append(g);
   });
 }
@@ -89,7 +89,7 @@ async function refresh() {
   try {
     const r = await fetch('/mesh.json', { cache: 'no-store' });
     if (r.status === 404) {
-      $('mesh-state').textContent = 'The mesh view is not shown here: its owner chooses (/admin → Access, the MQTT broker, public).';
+      $('mesh-state').textContent = 'Mesh view disabled or restricted. An administrator can change this in /admin → Access, under the MQTT broker.';
       return;
     }
     render(await r.json());

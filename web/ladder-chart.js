@@ -100,7 +100,7 @@ const LadderChart = (() => {
     const blank = hs.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
     return `${outages} outage${outages === 1 ? '' : 's'}` + (said ? `; steps taken: ${said}` : '; no steps taken')
       + (held ? `; ${held} held` : '') + (stalls ? `; stalled ${stalls} time${stalls === 1 ? '' : 's'}` : '')
-      + (blank >= 60 ? `; no record for ${dur(blank)} (the watchdog was not running: the box froze, restarted or was stopped)` : '') + '.';
+      + (blank >= 60 ? `; no record for ${dur(blank)} (the watchdog wrote no samples)` : '') + '.';
   }
 
   // An event's time: the date and the minute; to the second in a span of an hour or less.
@@ -278,7 +278,7 @@ const LadderChart = (() => {
       make('table', {}, null));
     const tb = table.querySelector('table');
     tb.append(make('tr', {}, null));
-    tb.firstChild.append(make('th', {}, 'When'), make('th', {}, 'What'), make('th', {}, 'Step'), make('th', {}, 'By'));
+    tb.firstChild.append(make('th', {}, 'Time'), make('th', {}, 'Event'), make('th', {}, 'Recovery step'), make('th', {}, 'Initiator'));
     for (const r of seen.slice().reverse()) {
       const tr = make('tr');
       tr.append(make('td', {}, when(r.at, span)), make('td', {}, r.t || r.k), make('td', {}, r.s ? NAMES[r.s] || r.s : ''), make('td', {}, r.b ? BY[r.b] : ''));
@@ -287,10 +287,11 @@ const LadderChart = (() => {
     const frame = make('div', { class: 'ladder-frame' });
     frame.append(tip, svg);
     box.replaceChildren(frame, make('p', { class: 'setting-desc ladder-sum' }, `Over this time: ${said}${symSaid}${roamSaid}`),
-      make('p', { class: 'setting-desc ladder-key' }, 'Above: missed checks within the pace\'s window, each five minutes; at or over the sensitivity\'s line'
-        + ' (in colour) the link goes on the ladder. Below: the furthest each outage went; shaded, the outages. '
-        + '● a step the watchdog took, ◆ one asked for on /admin, ▲ a flapping link\'s repair; hollow, one held (guests on the hotspot, say) or a stall. '
-        + 'Hatched: no record (the watchdog was not running).'),
+      make('p', { class: 'setting-desc ladder-key' }, 'Upper chart: missed checks in each five-minute period. At or over the failed-check threshold, the box starts recovery. '
+        + 'Lower chart: the furthest recovery step of each outage. '
+        + '● A recovery step the watchdog took. ◆ A step an administrator requested on /admin. ▲ The repair of a flapping link. '
+        + 'A hollow symbol is a deferred action, for example while guests use the hotspot, or a stall. '
+        + 'Hatched: no samples were recorded. This does not show why.'),
       table);
   }
 

@@ -107,7 +107,7 @@ def suite():
     rel = dict(l.split("=", 1) for l in OS_RELEASE.read_text().splitlines() if "=" in l)
     ident, ver = rel.get("ID", "").strip('"'), rel.get("VERSION_ID", "").strip('"')
     if ident != "debian" or not ver.isdigit():
-        raise ValueError(f"the makers' repositories are for Debian; this box is {rel.get('PRETTY_NAME', ident)}")
+        raise ValueError(f"The makers' repositories are for Debian. This box runs {rel.get('PRETTY_NAME', ident)}.")
     return f"Debian_{ver}"
 
 
@@ -223,7 +223,7 @@ def check(pid, now=None, log=print, fetch=False):
     if top and top["version"] not in got and s["mode"] == "flag" and not fetch:
         if top["version"] not in flags:
             flags[top["version"]] = {"first_seen": now, "channel": s["channel"], "size": top["size"]}
-            said.append(f"{top['version']} new on {s['channel']} (flagged, not downloaded)")
+            said.append(f"Update detected: {top['version']} on {s['channel']} (not downloaded)")
             log(f"{pid}: {said[-1]}")
     elif top and top["version"] not in got:
         r = run(["apt-get", *_apt(pid), "download", "-q", f"{d['package']}={top['version']}"], cwd=str(root / "debs"))
@@ -232,10 +232,10 @@ def check(pid, now=None, log=print, fetch=False):
         f = root / "debs" / name if re.fullmatch(r"[A-Za-z0-9+.~_%-]+\.deb", name) else None
         f = f if f and f.is_file() else None
         if r.returncode or not f or (top["sha256"] and sha256(f) != top["sha256"]):
-            raise ValueError(f"{top['version']} did not download whole: " + ((r.stderr or "").strip().splitlines() or ["?"])[-1][:200])
+            raise ValueError(f"Package download incomplete: {top['version']}: " + ((r.stderr or "").strip().splitlines() or ["?"])[-1][:200])
         first = flags.pop(top["version"], {}).get("first_seen", now)
         got[top["version"]] = {"first_seen": first, "file": f.name, "sha256": sha256(f), "channel": s["channel"], "size": f.stat().st_size}
-        said.append(f"{top['version']} new on {s['channel']}")
+        said.append(f"Package downloaded: {top['version']} on {s['channel']}")
         log(f"{pid}: {said[-1]}")
     _prune(pid, got, installed(d["package"]))
     _write(root / "seen.json", got)
@@ -244,7 +244,7 @@ def check(pid, now=None, log=print, fetch=False):
     if target and s["mode"] in ("auto", "aged") and not fetch:
         said.append(install(pid, target, log=log))
     publish(pid, now)
-    return "; ".join(said) or f"{d['package']}: nothing new on {s['channel']}"
+    return ". ".join(said) or f"No newer version detected on {s['channel']} for {d['package']}"
 
 
 def due(pid, now=None):
@@ -278,14 +278,14 @@ def install(pid, version, log=print):
     """A cached build installed (its dependencies from the box's own sources, as apt finds them)."""
     d = _def(pid)
     if not VERSION_RE.match(str(version)):
-        raise ValueError("not a version")
+        raise ValueError("The version is not valid")
     e = seen(pid).get(version)
     if not e and version in flagged(pid):
         check(pid, log=log, fetch=True)   # a flagged build: fetched first
         e = seen(pid).get(version)
     f = _dir(pid) / "debs" / (e or {}).get("file", "-")
     if not e or not f.is_file() or sha256(f) != e["sha256"]:
-        raise ValueError(f"{version} is not in the cache (Check first)")
+        raise ValueError(f"Cached version unavailable: {version} is not in the cache. Run Check first.")
     before = installed(d["package"])
     r = run(["apt-get", "install", "-y", "-q", "--allow-downgrades", "--no-install-recommends", str(f)], timeout=1800)
     if r.returncode:
@@ -299,7 +299,9 @@ def install(pid, version, log=print):
     if d.get("unit"):
         run(["systemctl", "try-restart", d["unit"]], timeout=120)
     publish(pid)
-    msg = f"{d['package']} {version} installed" + (f" (was {before})" if before else "")
+    msg = f"{d['package']} {version} installed" + (f" (was {before})" if before else "") \
+        + ". apt also installed any missing dependencies" \
+        + (f". The box restarts {d['unit']} if it is running" if d.get("unit") else "")
     log(f"{pid}: {msg}")
     return msg
 
@@ -307,9 +309,9 @@ def install(pid, version, log=print):
 def rollback(pid, log=print):
     prev = _record(pid).get("previous")
     if not prev:
-        raise ValueError("no previous build to go back to")
+        raise ValueError("Rollback unavailable: no previous version is recorded")
     if prev not in seen(pid):
-        raise ValueError(f"{prev}, the previous build, is not in the cache")
+        raise ValueError(f"Rollback unavailable: the previous version {prev} is not in the cache")
     return install(pid, prev, log=log)
 
 
@@ -323,8 +325,7 @@ def set_settings(pid, channel, mode, days, every=None):
     d = _def(pid)
     every = settings(pid)["every"] if every is None else every
     if channel not in d["channels"] or mode not in MODES or days not in DAYS or every not in EVERY:
-        raise ValueError(f"channel one of {', '.join(d['channels'])}; mode one of {', '.join(MODES)}; days one of {', '.join(map(str, DAYS))}; "
-                         f"every one of {', '.join(map(str, EVERY))} hours")
+        raise ValueError(f"Select a channel ({', '.join(d['channels'])}), a mode ({', '.join(MODES)}), days ({', '.join(map(str, DAYS))}) and hours ({', '.join(map(str, EVERY))}).")
     raw = settings()
     raw[pid] = {"channel": channel, "mode": mode, "days": days, "every": every}
     _write(SETTINGS, raw, 0o644)
@@ -337,11 +338,11 @@ def set_settings(pid, channel, mode, days, every=None):
                              f"# ({d['title']}, /admin), on the channel the owner chose, not by apt upgrade.\n"
                              f"Package: {d['package']}\nPin: origin \"{host}\"\nPin-Priority: -1\n")
     publish(pid)
-    words = {"flag": "flagged: newer builds said, nothing downloaded or installed by itself",
-             "watch": "fetched: each newer build downloaded and kept, nothing installed by itself",
-             "auto": "each new build installed as it's seen",
-             "aged": f"the newest build installed once it has been out {days} day{'s' if days != 1 else ''}"}[mode]
-    return f"{d['package']} on {channel}: {words}" + (f"; {switched}" if switched else "")
+    words = {"flag": "the box reports newer versions. Nothing is downloaded or installed automatically",
+             "watch": "the box downloads each newer version. Nothing is installed automatically",
+             "auto": "the box installs each new version when it detects it",
+             "aged": f"the box installs the newest version {days} day{'s' if days != 1 else ''} after it detected that version"}[mode]
+    return f"Release channel saved: {d['package']} on {channel}. {words[0].upper() + words[1:]}" + (f". {switched}" if switched else "")
 
 
 def dearmor(armored):
@@ -361,7 +362,7 @@ def _switch_image_channel(d, channel):
         return ""
     binary = dearmor((CODE / d["key"]).read_bytes())
     if binary is None:
-        raise ValueError("gpg is needed to write the channel's key as the image's tool does")
+        raise ValueError("Verification tool unavailable: gpg is not installed, so the box cannot write the channel key")
     for ch in d["channels"]:
         (IMAGE_ROOT / img["list"].format(channel=ch)).unlink(missing_ok=True)
         (IMAGE_ROOT / img["key"].format(channel=ch)).unlink(missing_ok=True)
@@ -371,7 +372,7 @@ def _switch_image_channel(d, channel):
     key.parent.mkdir(parents=True, exist_ok=True)
     key.write_bytes(binary)
     os.chmod(key, 0o644)
-    return f"{img['name']} and the box's apt now on {channel} too"
+    return f"{img['name']} and the box's apt now use {channel} too"
 
 
 def publish(pid, now=None):

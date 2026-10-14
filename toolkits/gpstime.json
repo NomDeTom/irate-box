@@ -1,18 +1,18 @@
 {
  "id": "gpstime",
  "title": "GPS time",
- "summary": "Time from a GPS receiver on USB or the UART, with no internet and no clock module: gpsd and chrony's reference clock.",
+ "summary": "GPS time synchronisation. Use a GPS receiver on USB or the UART as a time source when the box has no internet and no clock module. The toolkit has gpsd and the reference clock of chrony.",
  "packages": [
   "gpsd",
   "gpsd-clients",
   "pps-tools",
   "chrony"
  ],
- "consent": "gpsd listens on the box for the receiver and answers programs on the box only. The receiver's position is kept by gpsd while it runs; nothing leaves the box.",
+ "consent": "gpsd listens for the receiver. It answers programs on the box only. gpsd keeps the position of the receiver while it runs. gpsd does not send the position to other devices.",
  "notes": [
-  "A box with no clock module boots hours behind (the clock doctor says so). A receiver with a fix gives chrony the time to the second; with its PPS pin wired to a GPIO, to the microsecond (pps-tools shows the pulses).",
-  "chrony's refclock lines (SHM from gpsd, PPS from /dev/pps0) go in /etc/chrony/conf.d; chrony then also serves time to the hotspot (allow 192.168.4.0/24), so guests' phones agree with the box's certificate dates.",
-  "gpsd is left running while the kit is installed; it starts when the receiver appears."
+  "A box with no clock module starts with a clock that is hours behind. The clock doctor reports this. A receiver with a fix gives chrony the time to the second. If you connect the PPS pin of the receiver to a GPIO, the precision can be higher. pps-tools shows the pulses.",
+  "Put the refclock lines of chrony (SHM from gpsd, PPS from /dev/pps0) in /etc/chrony/conf.d. Chrony then also serves time to the hotspot (allow 192.168.4.0/24). The phones of guests can then agree with the certificate dates of the box.",
+  "gpsd is an exception to the rule that toolkit services stay stopped. It runs while the toolkit is installed. It starts when the receiver appears."
  ],
  "remove_after_hours": null,
  "services": [

@@ -44,7 +44,7 @@ def metered_now(run_=None):
     run_ = run_ or run
     iface = _route_iface(run_)
     if not iface:
-        return {"iface": None, "connection": None, "metered": False, "how": "no route to the internet"}
+        return {"iface": None, "connection": None, "metered": False, "how": "no default route"}
     code, out = run_("nmcli", "-t", "-f", "GENERAL.METERED,GENERAL.CONNECTION,IP4.ADDRESS", "dev", "show", iface)
     kv = {}
     for line in out.splitlines() if code == 0 else []:
@@ -54,11 +54,11 @@ def metered_now(run_=None):
     conn = kv.get("GENERAL.CONNECTION") or None
     base = {"iface": iface, "connection": conn}
     if said == "yes":
-        return {**base, "metered": True, "how": "set"}
+        return {**base, "metered": True, "how": "set to metered"}
     if said == "yes (guessed)":
         return {**base, "metered": True, "how": "guessed by NetworkManager"}
     if said == "no":
-        return {**base, "metered": False, "how": "set not metered"}
+        return {**base, "metered": False, "how": "set to not metered"}
     try:
         addr = ipaddress.ip_interface(kv.get("IP4.ADDRESS", "").strip()).ip
     except ValueError:
@@ -92,8 +92,8 @@ def gate(now=None, run_=None):
         os.replace(tmp, WAIT)
     except OSError:
         pass
-    return (f"waiting: on a metered network ({m['connection'] or m['iface']}, {m['how']}); scheduled updates and "
-            "downloads wait for another, or for one started by hand")
+    return (f"Automatic download deferred: the connection {m['connection'] or m['iface']} is metered ({m['how']}). "
+            "Scheduled updates and downloads wait for another connection. A download that you start goes ahead.")
 
 
 def waiting():

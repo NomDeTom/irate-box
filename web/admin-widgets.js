@@ -51,25 +51,26 @@ const AW = (() => {
     const at = typeof checked === 'string' ? Date.parse(checked) / 1000 : checked;
     if (!at) return h('span', { class: 'info-pill update-pill', text: 'not checked yet' });
     const days = Math.floor((Date.now() / 1000 - at) / 86400);
-    return days < RECENT_DAYS ? h('span', { class: 'ok-pill update-pill', text: 'up to date', title: 'Checked within the last week; nothing newer found' })
-      : h('span', { class: 'info-pill update-pill', text: `checked ${days} days ago`, title: 'Nothing newer then; check again to be sure' });
+    return days < RECENT_DAYS ? h('span', { class: 'ok-pill update-pill', text: 'up to date', title: 'Checked within the last week. Nothing newer found.' })
+      : h('span', { class: 'info-pill update-pill', text: `checked ${days} days ago`, title: 'Nothing newer was found then. Check again to be sure.' });
   }
   // ---- One pattern for every update: how often to look, and how far to take what it finds. The same two choices, the
   // same words and the same three buttons wherever something is updated: Debian's security updates, the
   // hub's own, apps and books, packages, the toolkits' cache, the mirrors. Values are the librarian's:
-  // hours (0 Manual) and 0 Flag / 1 Fetch / 2 Install. Selects underneath, so forms read them and
+  // hours (0 Manual) and 0 Flag / 1 Download / 2 Install. Selects underneath, so forms read them and
   // chipSelect draws them as chips.
-  const OFTEN = [['0', 'Manual', 'Only when you press Check now; what it finds is taken as far as chosen below.'],
-    ['6', '6 hours', 'Looks every 6 hours.'], ['24', '24 hours', 'Looks once a day.'], ['168', 'Weekly', 'Looks once a week.']];
-  const ACT = [['0', 'Flag', 'Said here and on the badge; nothing else done.'], ['1', 'Fetch', 'Also downloaded and checked, ready for you to install.'],
-    ['2', 'Install', 'Also installed.']];
-  const PATTERN_LABELS = { often: 'How often to look', act: 'When something newer is found' };
+  const OFTEN = [['0', 'Manual', 'The box checks only when you select Check now. It then does what the setting below says.'],
+    ['6', '6 hours', 'The box checks every 6 hours.'], ['24', '24 hours', 'The box checks once a day.'], ['168', 'Weekly', 'The box checks once a week.']];
+  const ACT = [['0', 'Flag', 'The box shows that a newer version exists, here and on the badge. It downloads nothing.'],
+    ['1', 'Download', 'The box shows that a newer version exists. It downloads and checks the version. You install it.'],
+    ['2', 'Install', 'The box shows that a newer version exists. It downloads, checks and installs the version.']];
+  const PATTERN_LABELS = { often: 'Check interval', act: 'When something newer is found' };
   // The saved pattern in one sentence, for a folded policy's title: what the box will actually do.
-  const OFTEN_SAYS = { 0: 'Only when you press Check now', 6: 'Looks every 6 hours', 24: 'Looks once a day', 168: 'Looks once a week' };
-  const ACT_SAYS = { 0: 'flags what is newer', 1: 'downloads it, ready for you to install', 2: 'installs it' };
+  const OFTEN_SAYS = { 0: 'Only when you select Check now', 6: 'Checks every 6 hours', 24: 'Checks once a day', 168: 'Checks once a week' };
+  const ACT_SAYS = { 0: 'Flags what is newer', 1: 'Downloads it. You install it', 2: 'Installs it' };
   function patternSays(often, act) {
     const o = Number(often), a = Number(act);
-    return o ? `${OFTEN_SAYS[o] || `Looks every ${o} hours`}; ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
+    return o ? `${OFTEN_SAYS[o] || `Checks every ${o} hours`}. ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
   }
   //   opts: {often: name, act: name, acts: ['0','1'] (a subset where fetching is the update), says: {'2': …},
   //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}
@@ -100,7 +101,7 @@ const AW = (() => {
         says, oftenSays, why: box.dataset.why || null }));
     });
   }
-  // The three buttons beside them: Check now, Fetch (greyed with why when nothing newer is known or it is
+  // The three buttons beside them: Check now, Download (greyed with why when nothing newer is known or it is
   // fetched already), Install (fetching first if needed). Each: {onclick, disabled, why, label}; null leaves
   // one out (Install where fetching is the update). The badge (updatePill) goes first.
   function updateButtons(b) {
@@ -108,7 +109,7 @@ const AW = (() => {
     const why = h('p', { class: 'setting-desc update-why', hidden: true });
     row.update = (state) => {
       const whys = [];
-      for (const [k, label] of [['check', 'Check now'], ['fetch', 'Fetch'], ['install', 'Install']]) {
+      for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
         const s = { ...(b[k] || {}), ...((state || {})[k] || {}) }, node = row.querySelector(`[data-update="${k}"]`);
         if (!node) continue;
         node.disabled = !!s.disabled;
@@ -118,7 +119,7 @@ const AW = (() => {
       why.textContent = whys.join(' ');
       why.hidden = !whys.length;
     };
-    for (const [k, label] of [['check', 'Check now'], ['fetch', 'Fetch'], ['install', 'Install']]) {
+    for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
       if (!b[k]) continue;
       row.append(btn(b[k].label || label, { 'data-update': k, class: 'action-btn' + (k === 'install' ? ' primary' : ''), onclick: b[k].onclick }));
     }
@@ -237,7 +238,7 @@ const AW = (() => {
       saveB.disabled = true;
       try { const r = opts.save && opts.save(it); if (r && r.then) await r; setDirty(false); } catch (e) { setDirty(true); foot.querySelector('.note').textContent = String(e.message || e); }
     });
-    foot.append(h('span', { class: 'note', text: 'Settings wait for Save; jobs act at once.' }), discard, saveB);
+    foot.append(h('span', { class: 'note', text: 'Changes apply after you select Save. Actions run immediately.' }), discard, saveB);
     const drawer = h('div', { class: 'aw-drawer', role: 'region', 'aria-label': it.title },
       btn('✕', { class: 'action-btn aw-close', 'data-act': 'close', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => closeCard(card) }),
       body, foot);
@@ -252,7 +253,7 @@ const AW = (() => {
   }
   function closeCard(card, force) {
     if (!card._drawer) return;
-    if (!force && card._dirty() && !window.confirm('Discard the changes you haven\'t saved?')) return;
+    if (!force && card._dirty() && !window.confirm('Discard the unsaved changes?')) return;
     card._drawer.remove();
     card._drawer = null;
     card.classList.remove('open');
@@ -275,7 +276,7 @@ const AW = (() => {
     const changed = () => rows.some((r) => r.key && draft[r.key] !== values[r.key]);
     const sync = () => { saveB.disabled = discard.disabled = !changed(); };
     const draw = () => box.replaceChildren(...rows.map(row), opts.save ? h('div', { class: 'aw-foot' },
-      h('span', { class: 'note', text: 'Settings wait for Save.' }), discard, saveB) : null);
+      h('span', { class: 'note', text: 'Changes apply after you select Save.' }), discard, saveB) : null);
     function row(r) {
       let ctl;
       if (r.kind === 'toggle') {
@@ -458,7 +459,7 @@ const AW = (() => {
       f._quiet = true;
       let snap = null, restoring = false;
       const own = [...f.querySelectorAll('button')].some((b) => /^Discard/.test(b.textContent.trim()));
-      const discard = own ? null : btn('Discard', { class: 'action-btn aw-discard', disabled: true, title: 'Put back what was there before your changes' });
+      const discard = own ? null : btn('Discard', { class: 'action-btn aw-discard', disabled: true, title: 'Restore the values from before your changes' });
       if (discard) {
         const save = btns()[0];
         if (!save.parentElement.classList.contains('library-buttons')) {

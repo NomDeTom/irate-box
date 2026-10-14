@@ -387,7 +387,7 @@ for bad in [{"pace": "fast"}, {"reach": "nuke"}, {"guests": "maybe"}]:
 check("the settings in words", U.words(U.validate({"pace": "steady", "reach": "radio", "guests": "ignore", "on_wedge": "radio"}))
       == "steady pace, reach radio, sensitivity 3 missed checks, guests or not, a failed radio reset at once"
       and U.words(U.validate({"pace": "gentle", "on_wedge": "reboot", "retry": "sparing", "give_up": "hour"}))
-      == "gentle pace, reach reboot, sensitivity 3 missed checks, a failed radio reset at once and the box rebooted if it isn't back, "
+      == "gentle pace, reach reboot, sensitivity 3 missed checks, a failed radio reset at once and the box rebooted if it is not back, "
          "reconnects at most every 6 h, stops trying after an hour of the network at fault")
 
 # 7f. The escalation record (the box doctor's chart): each outage, step, hold and stall, with who took it.
@@ -626,8 +626,8 @@ check("  a finding for the restart, with the wedges, and a link to where it is l
       and "wedged right after it 2 times" in sk["detail"] and not sk["actions"] and sk["go"]["section"] == "up-steps" and sk["go"]["mark"] == "up-step-wlan0-restart", sk)
 check("  none for the steps that work", "uplink-skip-wlan0-reconnect" not in fs and "uplink-skip-wlan0-radio" not in fs)
 check("  none once it is left out", "uplink-skip-wlan0-restart" not in {f["id"] for f in HL.step_findings(rows, {"steps_off": {"wlan0": ["restart"]}}, now)})
-check("  its words name the tick to untick", "untick Restart the network service for wlan0" in sk["fix"], sk["fix"])
-check("  its link lands on that tick", sk.get("go") == {"section": "up-steps", "where": "Network → Steps it may take", "mark": "up-step-wlan0-restart"}, sk.get("go"))
+check("  its words name the action to clear", "clear Restart the network service for wlan0" in sk["fix"], sk["fix"])
+check("  its link lands on that tick", sk.get("go") == {"section": "up-steps", "where": "Network → Recovery actions", "mark": "up-step-wlan0-restart"}, sk.get("go"))
 # One wedge charged to one step; a repeat of a step on the same evidence, a flap with no misses, and steps
 # taken while the network was at fault are not held against a step.
 r2 = []

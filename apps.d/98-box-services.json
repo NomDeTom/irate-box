@@ -5,7 +5,7 @@
     "row": "box",
     "icon": "🚥🎛️",
     "name": "Services",
-    "desc": "What is running on the box",
+    "desc": "Service status",
     "href": "/services.html"
   }
 }

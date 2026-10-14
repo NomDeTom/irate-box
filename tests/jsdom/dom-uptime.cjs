@@ -68,7 +68,7 @@ setTimeout(() => {
   const card = (iface) => [...d.querySelectorAll('#net-status-cards .net-card')].find((c) => c.querySelector('h4').textContent.startsWith(iface));
   const wl = card('wlan0'), up = wl && wl.querySelector('div.net-uptime');
   check('the uplink\'s card: the Uptime part shown, not folded (no expander)', up && !up.closest('details') && !up.querySelector('summary') && up.querySelector('.heatmap'));
-  check('  its summary in words: the share up, the drop, the longest outage', /Up 98\.2 % over the last 72 hours \(69\.5 hours recorded\); 1 drop; longest outage 15 min,/.test(t(up && up.querySelector('.net-line'))),
+  check('  its summary in words: the share up, the drop, the longest outage', /Up 98\.2 % over the last 72 hours \(69\.5 hours recorded\), 1 drop, longest outage 15 min,/.test(t(up && up.querySelector('.net-line'))),
     t(up && up.querySelector('.net-line')));
   const [hours, month] = up ? [...up.querySelectorAll('.heatmap')] : [];
   const rows = (g) => [...g.querySelectorAll('.hm-row:not(.hm-head)')];
@@ -77,7 +77,7 @@ setTimeout(() => {
   check('  before the record began: no data', cells && cells[0].classList.contains('hm-none') && cells[1].classList.contains('hm-none'));
   check('  the outage\'s hour: partly down, a mark for the drop, and it says so', cells && cells[10].classList.contains('hm-part') && cells[10].classList.contains('hm-mark')
     && /Mon 05 03:00–04:00: up 75 %, 1 drop$/.test(cells[10].getAttribute('aria-label')), cells && cells[10].dataset.words);
-  check('  the hour switched off: off, not down', cells && cells[20].classList.contains('hm-off') && /switched off/.test(cells[20].dataset.words));
+  check('  the hour switched off: off, not down', cells && cells[20].classList.contains('hm-off') && /disabled/.test(cells[20].dataset.words));
   check('  the current hour, only partly sampled, up so far', cells && cells[71].classList.contains('hm-full') && /up 100 %$/.test(cells[71].dataset.words), cells && cells[71].dataset.words);
   // The tooltip: one for the page, the cell's words, shown on pointing, on a tap, and by the arrow keys.
   const tipOf = () => d.querySelector('body > .hm-tip');
@@ -87,7 +87,7 @@ setTimeout(() => {
   hours.dispatchEvent(new w.MouseEvent('pointerleave', { bubbles: false }));
   check('  leaving hides it', tipOf().hidden && !cells[10].classList.contains('hm-on'));
   cells[20].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  check('  a tap shows it too', !tipOf().hidden && /switched off/.test(tipOf().textContent));
+  check('  a tap shows it too', !tipOf().hidden && /disabled/.test(tipOf().textContent));
   hours.focus();
   check('  the grid takes focus: the cell kept, else the newest', hours.tabIndex === 0 && !tipOf().hidden && hours.getAttribute('aria-activedescendant') === cells[20].id, tipOf().textContent);
   hours.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
@@ -101,11 +101,11 @@ setTimeout(() => {
   check('  most days with no record: no data', month && [...month.querySelectorAll('.hm-cell')].filter((c) => c.classList.contains('hm-none')).length >= 60);
   check('a legend, and what up means for the uplink', up && up.querySelectorAll('.hm-legend .hm-key').length === 6 && /the gateway answered/.test(t(up)));
   const eth = card('eth0'), ethUp = eth && eth.querySelector('div.net-uptime');
-  check('a wired link: its own heatmap, link only, said', ethUp && ethUp.querySelectorAll('.heatmap').length === 2 && /Only whether the link was up/.test(t(ethUp))
+  check('a wired link: its own heatmap, link only, said', ethUp && ethUp.querySelectorAll('.heatmap').length === 2 && /This shows only whether the link was up/.test(t(ethUp))
     && /Up 95\.6 % over the last 72 hours.*longest outage 60 min/.test(t(ethUp.querySelector('.net-line'))), t(ethUp && ethUp.querySelector('.net-line')));
   const none = card('eth1'), noneUp = none && none.querySelector('div.net-uptime');
   check('a link with no record: says so, and how one comes', noneUp && /Not recorded yet\./.test(t(noneUp.querySelector('.net-line'))) && !noneUp.querySelector('.heatmap')
-    && /once the box's clock is known to be right/.test(t(noneUp)));
+    && /after the box clock is known to be correct/.test(t(noneUp)));
   // The services' strips, each in its own row of Overview's table.
   w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   w.eval('loadBox()');
@@ -134,12 +134,12 @@ setTimeout(() => {
     check('  a service down part of the time: only it named, with its share', /^Over the last 72 hours, all up but: Library \(Kiwix\) up 90\.0 %\./.test(t(d.querySelector('#svc-uptime-body > p'))),
       t(d.querySelector('#svc-uptime-body > p')));
     w.renderServiceUptime(box.services, box.service_uptime, null);
-    // Remote access in words: off; running but never logged in to a Tailscale network (not reachable); connected.
+    // Remote access in words: off; running but not signed in to a Tailscale network (not reachable); connected.
     const rt = (d2) => w.remoteText(d2);
-    check('Tailscale off: said off', rt({ state: 'stopped' }) === 'Tailscale is off.');
-    check('  running, never logged in: said, with how to log in or switch it off', /not logged in to a Tailscale network yet.*sudo tailscale up.*Or switch it off here\./.test(rt({ state: 'running', backend: { state: 'needs-login' } })));
+    check('Tailscale off: said off', rt({ state: 'stopped' }) === 'Tailscale is stopped.');
+    check('  running, not signed in: said, with how to sign in or switch it off', /not signed in to a Tailscale network\..*sudo tailscale up in Terminal\. Open the URL shown by the command\. Sign in to your Tailscale account\..*Or disable remote access here\./.test(rt({ state: 'running', backend: { state: 'needs-login' } })));
     check('  connected: its name, its tailnet and its address', rt({ state: 'running', backend: { state: 'connected', name: 'lyra.tail1.ts.net', tailnet: 'owner@', ip: '100.64.0.5' } })
-      === 'Tailscale is on: this box is lyra.tail1.ts.net on owner@ (100.64.0.5).');
+      === 'Tailscale is running and connected. This box is lyra.tail1.ts.net on owner@ (100.64.0.5).');
     check('  a service switched off now: said as off, not as its past uptime, with where to switch it', /Remote access \(Tailscale\) is switched off\./.test(line)
       && !/Tailscale\) up/.test(line) && d.querySelector('#svc-uptime-body > p a.go-btn') && d.querySelector('#svc-uptime-body > p a.go-btn').getAttribute('href') === '#access', line);
     const key = body.querySelector('details.svc-key');
@@ -169,9 +169,9 @@ setTimeout(() => {
       check('Overview disk: its own line from the samples that have it, a new stroke where its size changed', dp
         && (dp.getAttribute('d').match(/M/g) || []).length === 2 && (dp.getAttribute('d').match(/[ML]/g) || []).length === 3, dp && dp.getAttribute('d'));
       check('  the legend and the last sample\'s readout say it', /Disk used: /.test(t(d.getElementById('memory-current')))
-        && /disk 25% used/.test(t(d.getElementById('memory-readout'))) && /disk 25% used at the last sample/.test(t(d.getElementById('memory-history-note'))), t(d.getElementById('memory-readout')));
+        && /disk 25% used/.test(t(d.getElementById('memory-readout'))) && /Disk 25% used at the last sample/.test(t(d.getElementById('memory-history-note'))), t(d.getElementById('memory-readout')));
       w.renderMemoryHistory(box.memory_history, box.system);
-      check('  samples without it: no disk line, said as not yet', !memory.querySelector('path.memory-disk-line') && /no disk samples yet/.test(t(d.getElementById('memory-history-note'))));
+      check('  samples without it: no disk line, said as not yet', !memory.querySelector('path.memory-disk-line') && /No disk samples yet/.test(t(d.getElementById('memory-history-note'))));
     }
     memory.querySelector('svg').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
     check('Overview memory: keyboard selects the first recorded sample', /22% memory used/.test(t(d.getElementById('memory-readout'))));
@@ -202,14 +202,14 @@ setTimeout(() => {
     tick('eth0', 'radio').checked = false; tick('eth0', 'radio').dispatchEvent(new w.Event('change'));
     check('  what Save sends: the unticked steps of each connection', JSON.stringify(w.readUpForm().steps_off) === JSON.stringify({ wlan0: ['restart'], eth0: ['radio'] }),
       JSON.stringify(w.readUpForm().steps_off));
-    check('  a change marks the form as not saved yet', /not saved yet/.test(d.getElementById('up-save').textContent));
+    check('  a change marks the form as not saved yet', /unsaved/.test(d.getElementById('up-save').textContent));
     const mesh = d.getElementById('overview-mesh');
     check('meshtasticd: its 72 hours under the network\'s, one row', (on.compareDocumentPosition(mesh) & 4) && mesh.querySelectorAll('.hm-row:not(.hm-head)').length === 1
       && /^meshtasticd, /.test(mesh.querySelector('.hm-row:not(.hm-head) .hm-cell').getAttribute('aria-label')));
-    check('  the start limit said: the loop ended, down until started again', /systemd's limit \(5 starts within 3min 20s\) ended the loop/.test(t(mesh))
+    check('  the start limit said: the loop ended, down until started again', /The systemd limit of 5 starts within 3min 20s ended the restart loop/.test(t(mesh))
       && /Over the last 72 hours: up 99\.\d %, started 1 time/.test(t(mesh)), t(mesh));
     check('  not in the services\' table', !/meshtasticd/.test(t(d.getElementById('service-table'))));
-    check('the words for each state', w.meshWords({ active: 'active', restarts: 2 }) === 'meshtasticd is running; systemd restarted it 2 times since the box started.'
+    check('the words for each state', w.meshWords({ active: 'active', restarts: 2 }) === 'meshtasticd is running, and systemd restarted it 2 times since the box started.'
       && /^meshtasticd is failed \(exit-code\)\.$/.test(w.meshWords({ active: 'failed', result: 'exit-code', restarts: 0 })), w.meshWords({ active: 'active', restarts: 2 }));
     w.renderOverviewMesh(null, null);
     check('  not installed: nothing shown', mesh.children.length === 0);

@@ -1,7 +1,7 @@
 {
  "id": "recovery",
  "title": "Recovery",
- "summary": "Rescue a failing SD card or stick, test one before trusting it, copy and pack files: ddrescue, testdisk, f3, smartmontools and the rest.",
+ "summary": "Storage recovery and testing. Rescue a failing storage device, test a device before you trust it, and copy and pack files. The toolkit has ddrescue, testdisk, f3 and smartmontools.",
  "packages": [
   "gddrescue",
   "testdisk",
@@ -14,11 +14,11 @@
   "unzip",
   "7zip"
  ],
- "consent": "These tools read and write raw storage. ddrescue and testdisk can overwrite a disk if pointed at the wrong one: read their prompts. Install the kit only while you need it.",
+ "consent": "These tools read and write raw storage. ddrescue and testdisk can overwrite a disk if you select the wrong destination. The overwrite cannot be undone. Read their prompts. Install the toolkit only while you need it.",
  "notes": [
-  "An offline box has no way to fetch these when the card starts failing: keep the kit cached (Library → Toolkits) so it installs from the cache.",
-  "f3write and f3read show a fake or failing card in a few minutes; ddrescue copies what a failing card still gives, in passes, into an image a new card can be written from.",
-  "smartctl reads SMART data from USB disks that give it; SD cards do not."
+  "A box without internet cannot download these tools when the card starts to fail. Keep the toolkit in the cache (System → Toolkits). Then you can install it from the cache.",
+  "f3write and f3read show if a storage device is fake or failing. The time depends on the size and the hardware. Name the source and the destination before you start ddrescue. ddrescue copies the data that a failing device still gives into an image. You can write the image to a new device.",
+  "smartctl reads SMART data from USB disks that report it. SD cards do not report SMART data."
  ],
  "remove_after_hours": 24
 }

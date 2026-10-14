@@ -31,11 +31,11 @@ def refused(fn, *a, kind=A.AccountError, says=""):
 
 # Off by default: nothing changes on a box until its owner wants it.
 check("off by default, HTTP with a warning", A.settings() == {"signup": "off", "http": "warning"})
-check("  no sign-ups while off", refused(A.signup, "alice", "password1", says="no sign-ups"))
+check("  no sign-ups while off", refused(A.signup, "alice", "password1", says="Registration closed"))
 A.set_settings(signup="open")
 check("open: an account usable at once", A.signup("Alice", "password1", "10.0.0.2") == "user")
-check("  names: taken (any case), reserved, malformed", refused(A.signup, "ALICE", "password1", says="taken")
-      and refused(A.signup, "admin", "password1", says="kept") and refused(A.signup, "a b", "password1") and refused(A.signup, "ab", "password1"))
+check("  names: taken (any case), reserved, malformed", refused(A.signup, "ALICE", "password1", says="unavailable")
+      and refused(A.signup, "admin", "password1", says="reserved") and refused(A.signup, "a b", "password1") and refused(A.signup, "ab", "password1"))
 check("  a short password refused", refused(A.signup, "bob", "short"))
 raw = json.loads((T / "state" / "accounts.json").read_text())
 h = raw["accounts"]["alice"]["hash"]
@@ -45,29 +45,29 @@ t0 = time.time(); token, me = A.login("alice", "password1", "10.0.0.2"); dt = ti
 check("login: by name in any case; a session", me["name"] == "Alice" and A.session(token)["name"] == "Alice", me)
 print(f"note: one scrypt check took {dt * 1000:.0f} ms here")
 check("  the cookie itself never stored", token not in (T / "state" / "accounts.json").read_text())
-check("  a wrong password, an unknown name: the same answer", refused(A.login, "alice", "nope-nope", "10.0.0.3", says="don't match")
-      and refused(A.login, "nobody", "password1", "10.0.0.3", says="don't match"))
+check("  a wrong password, an unknown name: the same answer", refused(A.login, "alice", "nope-nope", "10.0.0.3", says="do not match")
+      and refused(A.login, "nobody", "password1", "10.0.0.3", says="do not match"))
 for _ in range(9):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.9")
 check("  10 failures in a quarter hour: a wait, even with the right password", refused(A.login, "alice", "password1", "10.0.0.8", kind=A.Wait))
 A._fails.clear()
 check("  a session that isn't one: none", A.session("x" * 43) is None and A.session(None) is None)
 A.set_settings(signup="apply")
-check("apply: the account waits", A.signup("bob", "password2", "10.0.0.4") == "asked" and refused(A.login, "bob", "password2", "", says="waits"))
+check("apply: the account waits", A.signup("bob", "password2", "10.0.0.4") == "asked" and refused(A.login, "bob", "password2", "", says="pending"))
 A.change("bob", "accept")
 tb, _ = A.login("bob", "password2")
 check("  accepted: it logs in", A.session(tb)["state"] == "user")
 check("  sign-ups from one address limited", all(A.signup(f"x{i}x", "password9", "10.0.0.7") for i in range(5))
       and refused(A.signup, "x6x", "password9", "10.0.0.7", kind=A.Wait))
 A.change("bob", "disable")
-check("disable: its sessions end at once, and it can't log in", A.session(tb) is None and refused(A.login, "bob", "password2", "", says="switched off"))
+check("disable: its sessions end at once, and it can't log in", A.session(tb) is None and refused(A.login, "bob", "password2", "", says="disabled"))
 A.change("bob", "enable")
 A.set_settings(signup="assigned")
 code = A.make("carol", "admin")
-check("assigned: no sign-ups; an admin's account with a one-time code", refused(A.signup, "dave", "password3", says="admin makes")
-      and len(code) == 19 and code.count("-") == 3 and refused(A.login, "carol", "anything1", "", says="don't match"))
+check("assigned: no sign-ups; an admin's account with a one-time code", refused(A.signup, "dave", "password3", says="administrator creates")
+      and len(code) == 19 and code.count("-") == 3 and refused(A.login, "carol", "anything1", "", says="do not match"))
 check("  the code sets the password (dashes and case don't matter), once", A.use_code(code.lower().replace("-", " "), "password4") == "carol"
-      and A.login("carol", "password4")[1]["role"] == "admin" and refused(A.use_code, code, "password5", says="not one"))
+      and A.login("carol", "password4")[1]["role"] == "admin" and refused(A.use_code, code, "password5", says="used or expired"))
 tc, _ = A.login("carol", "password4")
 code = A.reset("carol")
 check("reset: a new code, and the account's sessions end", A.session(tc) is None and A.use_code(code, "password6") == "carol")
@@ -75,14 +75,14 @@ ta, _ = A.login("alice", "password1")
 ta2, _ = A.login("alice", "password1")
 A.change_password(ta, "password1", "password7")
 check("change password: the old one wrong refused; done, its other sessions end", A.session(ta) and A.session(ta2) is None
-      and refused(A.change_password, ta, "password1", "password8", says="not right"))
+      and refused(A.change_password, ta, "password1", "password8", says="not correct"))
 A.logout(ta)
 check("logout: the session ends", A.session(ta) is None)
 tb, _ = A.login("bob", "password2")
 A.set_settings(signup="off")
 check("off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
-      A.session(tb) is None and refused(A.login, "bob", "password2", says="no accounts")
-      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="not one this box gave"))
+      A.session(tb) is None and refused(A.login, "bob", "password2", says="no user accounts")
+      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="used or expired"))
 A.set_settings(signup="apply")
 check("  on again: the sessions count again", A.session(tb) is not None)
 A.change("x0x", "delete")
@@ -173,7 +173,7 @@ check("  and the one no longer for users removed", sorted(p.name for p in gd.ite
 try:
     H.access_set({"app": "flasher", "mode": "users"}); check("  the flasher for users: refused", False)
 except ValueError as exc:
-    check("  the flasher for users: refused", "not for users" in str(exc), exc)
+    check("  the flasher for users: refused", "cannot be users" in str(exc), exc)
 
 # The box's own admin login switched off and on (stage 3).
 (T / "etc" / "htpasswd").write_text("admin:$6$hash\n")
@@ -192,8 +192,8 @@ check("  then off: the login file emptied, its hash kept aside, the gates send p
       and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
       and "carol" in out, out)
 check("  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
-      refused(A.change, "carol", "user", True, says="last admin") and refused(A.change, "carol", "delete", True, says="last admin")
-      and refused(A.set_settings, "off", None, True, says="switch it on first"))
+      refused(A.change, "carol", "user", True, says="last administrator") and refused(A.change, "carol", "delete", True, says="last administrator")
+      and refused(A.set_settings, "off", None, True, says="Switch it on"))
 H.admin_login({"on": True})
 check("on again: the login as it was; with an admin account ready a browser still goes to the standard sign-in (one login)",
       (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n" and not (T / "etc" / "admin-login.off").exists()
@@ -217,11 +217,11 @@ out = H.claim({})
 check("claim: the first use over, no login of the box's own (the file emptied, none saved), the gates send people to sign in",
       not H.UNCLAIMED.exists() and not (T / "etc" / "admin-password").exists() and "admin:" not in (T / "etc" / "htpasswd").read_text()
       and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and "error_page 401" in (gd / "gate-admin.conf").read_text()
-      and "no login" in out, out)
+      and "script login is off" in out, out)
 try:
     H.claim({}); check("  a second claim: refused", False)
 except ValueError as exc:
-    check("  a second claim: refused", "already ended" in str(exc), exc)
+    check("  a second claim: refused", "already complete" in str(exc), exc)
 H.set_login("pw-for-scripts")
 check("  script-login at the console afterwards: the login on, its password root's", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
       and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n" and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True)
@@ -433,7 +433,7 @@ try:
     # The shoutbox and forum (stage 5): who may post, and the users' marks.
     utok = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2].get("Set-Cookie", "").split(";")[0]
     code, d, _ = req("/messages", {"name": "Erin", "text": "hello"}, {"X-Irate-Account": ""})
-    check("shoutbox: a guest can't post under an account's name (any case)", code == 403 and "account's name" in d["error"], d)
+    check("shoutbox: a guest can't post under an account's name (any case)", code == 403 and "is the name of an account" in d["error"], d)
     code, d, _ = req("/messages", {"name": "Someone Else", "text": "as erin"}, {"Cookie": utok})
     check("  a user posts under their account's name, marked as theirs", code == 201 and d["name"] == "erin" and d["account"] == "erin", d)
     code, d, _ = req("/messages", {"name": "Salty Parrot", "text": "ahoy"})

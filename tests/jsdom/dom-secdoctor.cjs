@@ -90,17 +90,17 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   try { w.eval('parseScanReport')('<html><body>not a report</body></html>', 'x.xml'); } catch (e) { threw = e.message; }
   check('something else: refused, or read as nothing', threw || w.eval('parseScanReport')('<html/>', 'x').results.length === 0, threw);
   try { w.eval('parseScanReport')('Name,Value\na,b\n', 'x.csv'); threw = ''; } catch (e) { threw = e.message; }
-  check('a CSV that is not OpenVAS: refused, and says why', /Not an OpenVAS CSV report/.test(threw), threw);
+  check('a CSV that is not OpenVAS: refused, and says why', /OpenVAS CSV must include CVSS and NVT Name columns/.test(threw), threw);
 
   // The joint report on the page: one list, each item ending in what to do.
   const rows = () => [...d.querySelectorAll('#joint-items .finding')];
-  check('the counters: after merging, less what is not for this box', /^3 all\s*1 to fix\s*2 to look at$/.test(t(d.getElementById('joint-summary'))), t(d.getElementById('joint-summary')));
-  check('one list, worst first: what it is about, the sources that agree', rows().length === 3 && /^To fix/.test(t(rows()[0])) && /Kernel link protections/.test(t(rows()[0]))
+  check('the counters: after merging, less what is not for this box', /^3 all\s*1 to fix\s*2 to review$/.test(t(d.getElementById('joint-summary'))), t(d.getElementById('joint-summary')));
+  check('one list, worst first: what it is about, the sources that agree', rows().length === 3 && /^Action required/.test(t(rows()[0])) && /Kernel link protections/.test(t(rows()[0]))
     && /2 sources agree/.test(t(rows()[0])), rows().map(t).join(' || '));
   const kl = rows()[0];
   check('  a cure is a button on its item (the Security page\'s, from its scan now), not a block of its own', [...kl.querySelectorAll('button')].some((b) => t(b) === "Install Debian's defaults")
     && !d.getElementById('secdoctor-cures'));
-  check('  what each source said, folded in the item', /What each source said \(2\)/.test(t(kl.querySelector('.fsaid summary'))));
+  check('  what each source said, folded in the item', /Source results \(2\)/.test(t(kl.querySelector('.fsaid summary'))));
   const bt = rows().find((r) => /Bluetooth/.test(t(r)));
   check('  a command to type, with Copy', bt && t(bt.querySelector('.fdo-cmd code')) === 'sudo systemctl disable --now bluetooth.service' && /Copy/.test(t(bt.querySelector('.fdo-cmd button'))));
   check('  only one source saw it: said in the item, with who could have', /the Security page could have seen it and did not/.test(t(rows().find((r) => /TCP 9999/.test(t(r))))));
@@ -113,7 +113,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('the search finds by what is said', rows().length === 1 && /Bluetooth/.test(t(rows()[0])));
   d.getElementById('joint-search').value = '';
   d.getElementById('joint-search').dispatchEvent(new w.Event('input'));
-  [...rows().find((r) => /Bluetooth/.test(t(r))).querySelectorAll('button')].find((b) => /Accept as it is/.test(t(b))).click();
+  [...rows().find((r) => /Bluetooth/.test(t(r))).querySelectorAll('button')].find((b) => /Accept risk/.test(t(b))).click();
   await wait();
   {
     const llmnr = [...d.querySelectorAll('#security-listeners .chip')];
@@ -125,8 +125,8 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   }
   check('Accept: the hub keeps it, by the item\'s key', posted.some(([, b]) => b.action === 'accept' && b.key === 'finding:doctor:image-bluetooth'));
   w.renderSecurity({ ...sec, accepted: { 'finding:doctor:image-bluetooth': { at: now, title: 'Bluetooth is on' } } });
-  check('  accepted: out of the list and the counts, in its own fold with Take back', !rows().some((r) => /Bluetooth/.test(t(r)))
-    && /Bluetooth/.test(t(d.getElementById('joint-accepted'))) && /Take back/.test(t(d.getElementById('joint-accepted'))) && /^2 all/.test(t(d.getElementById('joint-summary'))));
+  check('  accepted: out of the list and the counts, in its own fold with Reopen finding', !rows().some((r) => /Bluetooth/.test(t(r)))
+    && /Bluetooth/.test(t(d.getElementById('joint-accepted'))) && /Reopen finding/.test(t(d.getElementById('joint-accepted'))) && /^2 all/.test(t(d.getElementById('joint-summary'))));
   w.renderSecurity(sec);
   const pills = [...d.querySelectorAll('#joint-fresh span')];
   check('each source in one strip at the top: how fresh, what it covers in its title', pills.length === 3
@@ -188,7 +188,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  set, not sent: shown Off, marked, nothing posted, no pop-up', !sent() && t(sudo2) === 'Passwordless sudo: Off'
     && sudo2.classList.contains('pending') && asked === 0, t(sudo2));
   check('  the bar at the top lists it, with Discard and Save', !bar.hidden && /1 change not saved yet/.test(t(bar))
-    && /Passwordless sudo/.test(t(bar)) && [...bar.querySelectorAll('button')].map(t).join('|') === 'Discard|Save it', t(bar));
+    && /Passwordless sudo/.test(t(bar)) && [...bar.querySelectorAll('button')].map(t).join('|') === 'Discard|Save changes', t(bar));
   {
     // Saved only from the page it was chosen on: the Security doctor's bar points there and offers no Save of it.
     const other = d.querySelector('#secdoctor .sec-pending');
@@ -218,7 +218,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     await wait();
     const bar = d.querySelector('#security .sec-pending');
     check('a Save refused part-way: the unsent change stays chosen, the note says how many went', !bar.hidden && /1 change not saved yet/.test(t(bar))
-      && /1 of 2 sent/.test(t(d.getElementById('security-note'))), `${t(bar)} / ${t(d.getElementById('security-note'))}`);
+      && /1 of 2 changes were sent/.test(t(d.getElementById('security-note'))), `${t(bar)} / ${t(d.getElementById('security-note'))}`);
     w.postJSON = realPost;
   }
   check('no stray null or undefined on the page', !stray.length, stray.join(','));

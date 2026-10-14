@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // The Themes page: every theme themes.js lists, and Auto, one line each; then the colours of light
-// and dark (the box's preset, Standard, Increased contrast). Choosing one draws this page in it at
+// and dark (the box's preset, Standard, Increased contrast). Selecting one draws this page in it at
 // once, so the page is its own preview. In a block of its own: hub.js,
 // loaded after it, has top-level names of the same kind.
 {
   const list = document.getElementById('theme-list');
   const themes = window.HubThemes;
   if (list && themes) {
-    const rows = [{ id: 'auto', emoji: '🌓', label: 'Auto', desc: "Light or dark, as this device is set (the hub's default)" },
+    const rows = [{ id: 'auto', emoji: '🌓', label: 'Device setting (Auto)', desc: 'Uses light mode or dark mode, as this device is set. This is the default.' },
       ...themes.list];
     const item = (t, key = 'theme') => {
       const b = document.createElement('button');

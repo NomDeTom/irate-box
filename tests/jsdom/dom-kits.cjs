@@ -69,24 +69,24 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   check('Toolkits has its page under System, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
     return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('System') && links.indexOf('Toolkits') < links.indexOf('Doctors'); })());
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
-    /^3 of 5 toolkits cached, 91\.0 MB of 500 MB; newest fetch \d{4}-\d\d-\d\d\. Cached kits install with no internet\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
+    /^3 of 5 toolkits cached, 91\.0 MB of 500 MB\. Newest download: \d{4}-\d\d-\d\d\. Cached toolkits install without internet access\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));
   check('a card per kit, and the custom one last', d.querySelectorAll('#kits-grid .aw-card').length === 6 && /\+ Custom toolkit/.test(t([...d.querySelectorAll('#kits-grid .aw-card')].pop())));
   check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /installed: removed in [45] h/.test(pills('Debugging')));
-  check('installed: what installing it upgraded, in its drawer', /also brought these up to date .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
+  check('installed: what installing it upgraded, in its drawer', /also upgraded these packages\. They remain upgraded after removal: .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
   check('one open at a time, with a ✕', d.querySelectorAll('#kits-grid .aw-card.open').length === 1 && !!card('Debugging').querySelector('.aw-close'));
-  check('not cached: Install is off, and says why', button(card('Building'), 'Install…').disabled && /Refresh it while the box has internet/.test(t(card('Building'))));
+  check('not cached: Install is off, and says why', button(card('Building'), 'Install toolkit…').disabled && /Refresh the cache while the box has internet access/.test(t(card('Building'))));
   check('two versions: the pill, and Roll back with its date', /2 versions/.test(pills('Security'))
     && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to \d{4}-/.test(t(b))));
   check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging')))
     && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging')))
     && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security'))));
-  check('what a 32-bit board leaves out is said', /Left out on this armhf board, as they need a 64-bit one: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging'))));
-  check('keep current shown as set', /Keep current: Off/.test(t(card('Capture'))) && /Keep current: On/.test(t(card('Debugging'))));
+  check('what a 32-bit board leaves out is said', /Omitted on this armhf board because they need a 64-bit board: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging'))));
+  check('keep current shown as set', /Automatic cache refresh: Off/.test(t(card('Capture'))) && /Automatic cache refresh: On/.test(t(card('Debugging'))));
   d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
   check('Esc closes it', !d.querySelector('#kits-grid .aw-card.open'));
 
-  button(card('Debugging'), 'Remove now').click();
+  button(card('Debugging'), 'Remove toolkit').click();
   await wait();
   check('Remove asks the hub', posted[0] && posted[0].action === 'remove' && posted[0].kit === 'debug', JSON.stringify(posted));
   check('  and the page says it is working on it, the card still open', /Working…/.test(t(d.getElementById('kits-summary'))) && head('Debugging').classList.contains('open'));
@@ -96,27 +96,27 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
     t(d.getElementById('kits-note')));
 
   // The consent step before an install.
-  button(card('Capture'), 'Install…').click();
+  button(card('Capture'), 'Install toolkit…').click();
   const consent = card('Capture').querySelector('.kit-consent');
   check('Install… shows the consent and when it goes again, before anything happens', consent && /Capture: read this first\./.test(t(consent))
     && consent.querySelector('select.kit-hours').value === '24' && posted.length === 1);
   check('a kit the doctor flags: a pill, and the reason in the Install step, before anything happens',
-    /flagged by the doctor/.test(pills('Capture')) && /security doctor flags this kit's cache: Cached versions of tcpdump/.test(t(consent))
+    /flagged by the doctor/.test(pills('Capture')) && /Security doctor flags the cache of this toolkit: Cached versions of tcpdump/.test(t(consent))
     && !/flagged/.test(pills('Security')));
   consent.querySelector('select.kit-hours').value = '168';
-  button(consent, 'Install').click();
+  button(consent, 'Install toolkit').click();
   await wait();
   check('Install sends the kit and the time chosen', JSON.stringify(posted[1]) === JSON.stringify({ action: 'install', kit: 'capture', hours: 168 }), JSON.stringify(posted[1]));
   const keep = card('Debugging').querySelector('.kit-jobs select.kit-hours');
   keep.value = 'never';
-  button(card('Debugging'), 'Keep longer').click();
+  button(card('Debugging'), 'Extend installation period').click();
   await wait();
   check('Keep longer: never', JSON.stringify(posted[2]) === JSON.stringify({ action: 'keep', kit: 'debug', hours: null }), JSON.stringify(posted[2]));
   [...card('Security').querySelectorAll('button')].find((b) => /^Roll back/.test(t(b))).click();
   await wait();
   check('Roll back asks, then asks the hub', posted[3] && posted[3].action === 'rollback' && posted[3].kit === 'security');
   // Settings wait for Save.
-  button(card('Capture'), 'Keep current: Off').click();
+  button(card('Capture'), 'Automatic cache refresh: Off').click();
   await wait();
   check('keep current: a setting, held until Save', posted.length === 4 && save('Capture') && !save('Capture').disabled);
   save('Capture').click();
@@ -141,8 +141,8 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   check('a problem with the cache is shown', /has changed since it was fetched/.test(t(d.getElementById('kits-problems'))));
   // Your own kits, and extra tools in a shipped kit.
   check('your own kit says so, with Edit and Delete', /yours/.test(pills('Radio tools'))
-    && button(card('Radio tools'), 'Edit') && button(card('Radio tools'), 'Delete'));
-  check('a shipped kit has no Delete, and offers extra tools', !button(card('Debugging'), 'Delete') && card('Debugging').querySelector('input.kit-extra'));
+    && button(card('Radio tools'), 'Edit') && button(card('Radio tools'), 'Delete toolkit'));
+  check('a shipped kit has no Delete, and offers extra tools', !button(card('Debugging'), 'Delete toolkit') && card('Debugging').querySelector('input.kit-extra'));
   check('a kit with extra tools says so, and lists them', /\+1 extra/.test(pills('Capture')) && card('Capture').querySelector('input.kit-extra').value === 'ngrep');
   const ex = card('Debugging').querySelector('input.kit-extra');
   ex.value = 'ltrace,  gdbserver'; ex.dispatchEvent(new w.Event('input'));
@@ -167,7 +167,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   button(head('+ Custom toolkit').querySelector('.aw-drawer'), '✕').click();
   await wait();
   check('the custom card closed: its form waits on the page, out of sight', !!d.getElementById('kits-add') && d.getElementById('kits-custom').contains(d.getElementById('kits-add')));
-  button(card('Radio tools'), 'Delete').click();
+  button(card('Radio tools'), 'Delete toolkit').click();
   await wait();
   check('Delete asks, then asks the hub', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'undefine', kit: 'radio' }));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');

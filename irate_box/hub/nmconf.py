@@ -133,14 +133,14 @@ def validate(changes, iface=None):
     if not isinstance(changes, dict) or not changes:
         raise ValueError("nothing to change")
     if iface is not None and not IFACE_RE.match(str(iface)):
-        raise ValueError("not an interface name")
+        raise ValueError("invalid interface name")
     clean = {}
     for n, v in changes.items():
         s = SETTINGS.get(n)
         if s is None:
-            raise ValueError(f"not a box default: {n}")
+            raise ValueError(f"unknown box default: {n}")
         if iface is not None and n not in PER_IFACE:
-            raise ValueError(f"{s['label']}: NetworkManager takes it for the whole box only, not per interface")
+            raise ValueError(f"{s['label']}: NetworkManager applies it to the whole box, not to one interface")
         v = str(v).strip()
         if v == "default":
             clean[n] = None
@@ -149,7 +149,7 @@ def validate(changes, iface=None):
         elif s["kind"] == "choice" and v in s["values"]:
             clean[n] = v
         else:
-            raise ValueError(f"{s['label']}: {v!r} is not one of the choices")
+            raise ValueError(f"{s['label']}: {v!r} is not an allowed value")
     return clean
 
 

@@ -66,61 +66,61 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   await wait(300);
   const d = w.document;
   check('its own page: the Factory\'s title, and its settings a link back to /admin', t(d.querySelector('h1')) === 'Firmware Factory' && !!d.querySelector('header a[href="/admin/#page-app-box-factory"]') && !d.querySelector('.admin-side-list'));
-  check('sources: the mirror and the private fork, said which', [...d.querySelectorAll('#factory-source option')].map((o) => t(o)).join(' | ')
-    === 'meshtastic-firmware (a mirror) | my-fork (private)');
+  check('sources: the mirror and the local fork, said which', [...d.querySelectorAll('#factory-source option')].map((o) => t(o)).join(' | ')
+    === 'meshtastic-firmware (mirror) | my-fork (local repository)');
   check('refs: releases, then branches', [...d.querySelectorAll('#factory-ref optgroup')].map((g) => `${g.label}: ${[...g.children].map((o) => o.value).join(',')}`).join(' | ')
     === 'Releases and tags: v2.8.1.8e6a88d,v2.7.26.54e0d8d | Branches: develop');
   const fams = [...d.querySelectorAll('.factory-family')];
-  check('targets by family, with readiness and estimates', fams.length === 3 && /native 1 target; offline ready; about 2\.7 h a target here\./.test(t(fams[1].querySelector('summary')))
-    && /esp32s3 2 targets, 1 chosen; untested on this box: its first build downloads its toolchain; no estimate yet\./.test(t(fams[0].querySelector('summary'))),
+  check('targets by family, with readiness and estimates', fams.length === 3 && /native 1 target\. Offline ready\. About 2\.7 h a target here\./.test(t(fams[1].querySelector('summary')))
+    && /esp32s3 2 targets\. 1 selected\. Not tested on this box\. Its first build downloads its toolchain\. No build estimate\./.test(t(fams[0].querySelector('summary'))),
     fams.map((f) => t(f.querySelector('summary'))).join(' | '));
   check('  the flasher\'s boards ticked to start with, their family open', d.querySelector('input[value="heltec-v3"]').checked && fams[0].open && !fams[1].open);
-  check('  the count and the button', /1 chosen, in 1 family\./.test(t(d.getElementById('factory-chosen'))) && t(d.getElementById('factory-queue')) === 'Queue 1'
+  check('  the count and the button', /1 selected, in 1 family\./.test(t(d.getElementById('factory-chosen'))) && t(d.getElementById('factory-queue')) === 'Add 1 target to queue'
     && !d.getElementById('factory-queue').disabled);
   d.getElementById('factory-search').value = 'rak'; d.getElementById('factory-search').dispatchEvent(new w.Event('input'));
   check('Show: only matching targets, by name or env', d.querySelectorAll('.factory-boards input').length === 1 && d.querySelector('.factory-family').open);
   d.querySelector('input[value="rak4631"]').click();
   d.getElementById('factory-search').value = ''; d.getElementById('factory-search').dispatchEvent(new w.Event('input'));
   check('  a choice kept across the search', d.querySelector('input[value="heltec-v3"]').checked && d.querySelector('input[value="rak4631"]').checked
-    && /2 chosen, in 2 families\./.test(t(d.getElementById('factory-chosen'))));
+    && /2 selected, in 2 families\./.test(t(d.getElementById('factory-chosen'))));
   d.getElementById('factory-form').dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
   const q = posted.find((b) => b.action === 'queue');
   check('Queue: the source, ref and targets asked for', q && q.source === 'meshtastic-firmware' && q.ref === 'v2.8.1.8e6a88d' && q.targets.join() === 'heltec-v3,rak4631', JSON.stringify(q));
-  check('  and says so, the choice cleared', /Queued 2 targets at 8e6a88d\./.test(t(d.getElementById('factory-note'))) && !d.querySelector('input[value="heltec-v3"]').checked);
+  check('  and says so, the choice cleared', /Added 2 targets to the queue at 8e6a88d\./.test(t(d.getElementById('factory-note'))) && !d.querySelector('input[value="heltec-v3"]').checked);
   const items = [...d.querySelectorAll('#factory-waiting .admin-item')];
-  check('the queue: what is building, with when it should be done', items.length === 3 && /^Building native, native: meshtastic-firmware v2\.8\.1\.8e6a88d Started 20 min ago; done about/.test(t(items[0])), t(items[0]));
-  check('  waiting ones, no estimate promised where there is none', /1\. Heltec V3 \(heltec-v3\), esp32s3: .* No estimate/.test(t(items[1])));
-  check('  Up on all but the first, Cancel on each', !/\bUp\b/.test(t(items[1].querySelector('.library-buttons'))) && /Up/.test(t(items[2].querySelector('.library-buttons'))));
-  [...items[2].querySelectorAll('button')].find((b) => t(b) === 'Up').click();
-  [...items[1].querySelectorAll('button')].find((b) => t(b) === 'Cancel').click();
+  check('the queue: what is building, with when it should be done', items.length === 3 && /^Building native, native: meshtastic-firmware v2\.8\.1\.8e6a88d Started 20 min ago\. Finishes about/.test(t(items[0])), t(items[0]));
+  check('  waiting ones, no estimate promised where there is none', /1\. Heltec V3 \(heltec-v3\), esp32s3: .* No build estimate/.test(t(items[1])));
+  check('  Up on all but the first, Cancel on each', !/Move earlier/.test(t(items[1].querySelector('.library-buttons'))) && /Move earlier/.test(t(items[2].querySelector('.library-buttons'))));
+  [...items[2].querySelectorAll('button')].find((b) => t(b) === 'Move earlier').click();
+  [...items[1].querySelectorAll('button')].find((b) => t(b) === 'Cancel queued build').click();
   await wait();
-  check('  Up and Cancel ask the hub for that job', posted.some((b) => b.action === 'up' && b.id === '1792-bbbbbb') && posted.some((b) => b.action === 'cancel' && b.id === '1791-aaaaaa'));
+  check('  Move earlier and Cancel queued build ask the hub for that job', posted.some((b) => b.action === 'up' && b.id === '1792-bbbbbb') && posted.some((b) => b.action === 'cancel' && b.id === '1791-aaaaaa'));
   const built = [...d.querySelectorAll('#factory-runs .admin-item')];
-  check('built: what it used, offline said, its files and log', built.length === 2 && /Built offline native, native: .* \(8e6a88d\) 2 h ago; 2\.7 h, CPU 2\.6 h, peak memory 300 MB, disk 700 MB, hottest 62 °C, no network\./.test(t(built[0]))
+  check('built: what it used, offline said, its files and log', built.length === 2 && /Built offline native, native: .* \(8e6a88d\) 2 h ago\. 2\.7 h, CPU 2\.6 h, peak memory 300 MB, disk 700 MB, peak temperature 62 °C, network disabled during build\./.test(t(built[0]))
     && [...built[0].querySelectorAll('a')].map((a) => a.getAttribute('href')).join(' ') === '/admin/ci/file?run=firmware-factory%2F6&name=meshtasticd /admin/ci/file?run=firmware-factory%2F6&name=log.txt',
     t(built[0]));
   check('  a failed one says so', /^failed T-Beam \(tbeam\)/.test(t(built[1])));
   const fold = [...d.querySelectorAll('.factory-family')].find((f) => t(f.querySelector('summary strong')) === 'nrf52840');
-  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Fetch tools').click();
+  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Download build dependencies').click();
   await wait();
   const tq = posted.find((b) => b.action === 'tools');
-  check('Fetch tools: the family asked for at this source and ref, with its test target, and said', tq && tq.family === 'nrf52840' && tq.env === 'rak4631' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
-    && /Fetching nrf52840's tools \(by rak4631\): queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
-  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
+  check('Download build dependencies: the family asked for at this source and ref, with its test target, and said', tq && tq.family === 'nrf52840' && tq.env === 'rak4631' && tq.source === 'meshtastic-firmware' && tq.ref === 'v2.8.1.8e6a88d'
+    && /Downloading build dependencies for rak4631, a nrf52840 target: queued\./.test(t(d.getElementById('factory-note'))), JSON.stringify(tq));
+  [...fold.querySelectorAll('button')].find((b) => t(b) === 'Test target offline').click();
   await wait();
-  check('Test offline: asked for the family, and said', posted.some((b) => b.action === 'offline' && b.family === 'nrf52840')
-    && /Building rak4631 with no network at all: queued\. If it passes, nrf52840 is offline ready\./.test(t(d.getElementById('factory-note'))));
+  check('Test target offline: asked for the family, and said', posted.some((b) => b.action === 'offline' && b.family === 'nrf52840')
+    && /Building rak4631 with the network disabled: queued\. A pass shows that rak4631 builds offline/.test(t(d.getElementById('factory-note'))));
   const s3 = [...d.querySelectorAll('.factory-family')].find((x) => t(x.querySelector('summary strong')) === 'esp32s3');
   const sel = s3.querySelector('.factory-test-target select');
   check('the test target: the suggested board to start with, any of the family to choose', sel.value === 'heltec-v3' && sel.options.length === 2);
   sel.value = [...sel.options].find((o) => o.value !== 'heltec-v3').value; sel.dispatchEvent(new w.Event('change'));
-  [...s3.querySelectorAll('button')].find((b) => t(b) === 'Test offline').click();
+  [...s3.querySelectorAll('button')].find((b) => t(b) === 'Test target offline').click();
   await wait();
   check('  the one chosen is the one asked for', posted.some((b) => b.action === 'offline' && b.family === 'esp32s3' && b.env === sel.value), JSON.stringify(posted.slice(-1)));
   d.getElementById('factory-pause').click();
   await wait();
-  check('Pause: asked, then said, the button now Resume', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume');
+  check('Pause: asked, then said, the button now Resume queue', posted.some((b) => b.action === 'pause') && !d.getElementById('factory-paused').hidden && t(d.getElementById('factory-pause')) === 'Resume queue');
   check('the production line behind the pane (krab-loop.js plays it lit)', d.querySelector('.admin-main').dataset.art === 'factory');
   const walker = d.createTreeWalker(d.getElementById('factory'), w.NodeFilter.SHOW_TEXT);
   const stray = [];
@@ -133,13 +133,13 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
     artifacts: ['firmware-heltec-v3-2.8.1.8e6a88d.bin', 'firmware-heltec-v3-2.8.1.8e6a88d.mt.json'] }, snap().runs[1]],
     flasher: [{ version: '2.8.1.8e6a88d-built', targets: [{ board: 'rak4631', platform: 'nrf52840', run: 'firmware-factory/3', ref: 'develop' }] }] }));
   const pubRuns = [...d.querySelectorAll('#factory-runs .admin-item')];
-  const pubBtn = [...pubRuns[0].querySelectorAll('button')].find((b) => t(b) === 'Publish to the web flasher');
+  const pubBtn = [...pubRuns[0].querySelectorAll('button')].find((b) => t(b) === 'Publish firmware');
   check('flasher: Publish on a build with a manifest, not on native', pubBtn && ![...pubRuns[1].querySelectorAll('button')].some((b) => /Publish/.test(t(b))));
   check('  what is published listed, by board and version', /rak4631, nrf52840: 2\.8\.1\.8e6a88d from develop\./.test(t(d.getElementById('factory-flasher'))), t(d.getElementById('factory-flasher')));
   pubBtn.click();
-  [...d.querySelectorAll('#factory-flasher button')].find((b) => t(b) === 'Remove').click();
+  [...d.querySelectorAll('#factory-flasher button')].find((b) => t(b) === 'Unpublish firmware').click();
   await wait();
-  check('  Publish and Remove ask the hub', posted.some((b) => b.action === 'publish' && b.run === '8')
+  check('  Publish and Unpublish firmware ask the hub', posted.some((b) => b.action === 'publish' && b.run === '8')
     && posted.some((b) => b.action === 'unpublish' && b.version === '2.8.1.8e6a88d-built' && b.env === 'rak4631'), JSON.stringify(posted.slice(-2)));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

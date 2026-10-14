@@ -21,7 +21,7 @@ w.eval(`renderUpdoctor({ at: 1790950000, findings: [
   { check: 'Names (DNS)', status: 'problem', detail: 'github.com does not resolve.', fix: 'sudo systemctl restart systemd-resolved' },
   { check: 'Free space', status: 'warn', detail: 'Under 1 GB free.', fix: 'Library → Books: remove one.' },
   { check: 'The clock', status: 'ok', detail: 'Right to a second.', fix: '' }] })`);
-check('the counters: all, to fix, to look at', t('#updoctor-summary button').join(' | ') === '2 all | 1 to fix | 1 to look at', t('#updoctor-summary button'));
+check('the counters: all, to fix, to review', t('#updoctor-summary button').join(' | ') === '2 all | 1 to fix | 1 to review', t('#updoctor-summary button'));
 check('  a row per finding, the problem first, each with its status word', t('#doctor-findings .finding .ftitle').join(' | ') === 'Names (DNS) | Free space'
   && d.querySelector('#doctor-findings .finding').classList.contains('finding-problem'), t('#doctor-findings .ftitle'));
 check('  its command in a box to copy', !!d.querySelector('#doctor-findings .finding') && /sudo systemctl restart systemd-resolved/.test(t('#doctor-findings .finding')[0])

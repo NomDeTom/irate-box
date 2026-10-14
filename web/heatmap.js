@@ -6,8 +6,8 @@
 // (style.css: .hm-*), and says so in a tooltip (pointed at, tapped, or reached with the arrow keys once
 // the grid has focus) and to a screen reader.
 const Heatmap = (() => {
-  const LEVELS = [['full', 'up all the time'], ['most', 'up most of the time'], ['part', 'down part of the time'],
-    ['down', 'down'], ['off', 'switched off'], ['none', 'no data']];
+  const LEVELS = [['full', 'Available'], ['most', 'Mostly available'], ['part', 'Partly unavailable'],
+    ['down', 'Unavailable'], ['off', 'Disabled'], ['none', 'No data']];
   function level(c) {
     if (!c) return 'none';
     if (c.off && c.up === 0) return 'off';
@@ -22,9 +22,9 @@ const Heatmap = (() => {
   function words(where, c) {
     if (!c) return `${where}: no data`;
     // A page's use (pagehistory.py): loads in the hour or day, and how many failed.
-    if (c.uses != null) return `${where}: loaded ${c.uses} time${c.uses === 1 ? '' : 's'}${c.errors ? `, ${c.errors} failed` : ', every one answered'}`;
-    if (c.off && c.up === 0) return `${where}: switched off`;
-    const extra = [c.drops ? `${c.drops} drop${c.drops === 1 ? '' : 's'}` : '', c.off ? 'switched off for a while' : '',
+    if (c.uses != null) return `${where}: loaded ${c.uses} time${c.uses === 1 ? '' : 's'}${c.errors ? `, ${c.errors} failed` : ', no failed requests recorded'}`;
+    if (c.off && c.up === 0) return `${where}: disabled`;
+    const extra = [c.drops ? `${c.drops} drop${c.drops === 1 ? '' : 's'}` : '', c.off ? 'disabled during part of this period' : '',
       c.restarts ? `${c.restarts} restart${c.restarts === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `${where}: up ${percent(c.up)}${extra.length ? `, ${extra.join(', ')}` : ''}`;
   }

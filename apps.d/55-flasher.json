@@ -25,8 +25,8 @@
         "tools-rf": 2,
         "flashing": 0
       },
-      "name": "Web flasher (to flash an ESP32 radio over USB)",
-      "desc": "In Chrome or Edge on a computer, over this box's HTTPS address: plug the radio in and press Install. The builds are the ones published from the Firmware Factory",
+      "name": "ESP32 web flasher",
+      "desc": "Flash an ESP32 radio over USB. Use Chrome or Edge on a computer. Open the HTTPS address of this box. Connect the radio with a USB data cable. Select Install. The builds are the cached Meshtastic releases and the builds that you published from the Firmware Factory",
       "href": "/flasher/"
     }
   ],

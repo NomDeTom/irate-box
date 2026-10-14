@@ -8,7 +8,7 @@
 # irate_box/ folder where this is run from cannot stand in for the real one.
 here=$(dirname "$(readlink -f "$0")")
 name=${1:-}
-[ -n "$name" ] || { echo "usage: irate-box MODULE [ARGS...]   (a file under irate_box/hub, library or root)" >&2; exit 2; }
+[ -n "$name" ] || { echo "Usage: irate-box MODULE [ARGS...]" >&2; echo "MODULE is a file name without .py under irate_box/hub, irate_box/library or irate_box/root. Example: irate-box health summary" >&2; exit 2; }
 shift
 for part in hub library root; do
 	if [ -f "$here/irate_box/$part/$name.py" ]; then
@@ -18,8 +18,8 @@ runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' "$here" 
 	fi
 done
 if [ ! -r "$here/irate_box/root" ] || [ ! -x "$here/irate_box/root" ]; then
-	echo "irate-box: no module '$name' that this user can read (irate_box/root/ is for root: try sudo)" >&2
+	echo "irate-box: Module '$name' not found, or unavailable to this user. The modules in irate_box/root need root. If an administrator authorizes it, run the same command with sudo." >&2
 else
-	echo "irate-box: no module '$name' under $here/irate_box" >&2
+	echo "irate-box: Module '$name' not found under $here/irate_box" >&2
 fi
 exit 2

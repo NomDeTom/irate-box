@@ -20,12 +20,17 @@
   </header>
 
   <h2>Git</h2>
-  <p class="help-note">The box keeps git repositories (<code>/git/</code> public, <code>/git-private/</code> behind the login): browse them, clone them, push to them as each one allows (Apps → Git). A repository can build on each push, its runs shown on the page.</p>
-  <p class="help-note"><strong>Mirrors</strong> keep a copy of a repository from elsewhere (Meshtastic's firmware, say), the branches and release tags you choose, so builds work with no internet. Each mirror also holds all of its upstream's tags, without their files, and says if one moves.</p>
+  <p class="help-note">The box keeps Git repositories. Guests can open the repositories at <code>/git/</code>. The repositories at <code>/git-private/</code> need a sign-in. Select Apps → Git to browse, clone and push. Each repository sets who can read it and who can push to it. A repository can build on each push. The page shows the runs.</p>
+  <p class="help-note">A <strong>mirror</strong> keeps a copy of a repository from another server, for example the Meshtastic firmware. It keeps the branches and release tags that you select. Mirrors help builds that have no internet connection. Dependencies from other sources are not included.</p>
+  <p class="help-note">A mirror also keeps the tag names of the source repository, without the files of the tags. The box warns you when a tag moves.</p>
   <h2>The Firmware Factory</h2>
-  <p class="help-note">Builds Meshtastic firmware on the box (Apps → Firmware Factory → Open the Firmware Factory): choose the source and the release, pick the boards, queue them. One build at a time; the queue can be paused. A finished build can be offered on the hub's front page, and <strong>Publish to the web flasher</strong>.</p>
+  <p class="help-note">The Firmware Factory builds Meshtastic firmware on the box. Select Apps → Firmware Factory → Open the Firmware Factory. Then do these steps:</p>
+  <ol><li>Select the source.</li><li>Select the revision.</li><li>Select the boards.</li><li>Add the targets to the queue.</li></ol>
+  <p class="help-note">The box does one build at a time. You can pause the queue. The current build continues while the queue is paused. You can offer a finished build on the front page of the hub. Select <strong>Publish to web flasher</strong> to make it available in the web flasher.</p>
   <h2>The web flasher</h2>
-  <p class="help-note">At <code>/flasher/</code>: puts a published build on an ESP32 radio from the browser, over USB. It needs Chrome or Edge on a computer, and the page over HTTPS (the box's certificate installed). nRF52 and RP2040 radios take a UF2 file dragged onto the drive they show when plugged in: those are among the Factory's downloads.</p>
+  <p class="help-note">The web flasher is at <code>/flasher/</code>. It puts a published build on an ESP32 radio over USB. It also offers the cached releases of Meshtastic. Do these steps:</p>
+  <ol><li>Use Chrome or Edge on a computer.</li><li>Open the page over HTTPS. Install the certificate of the box first.</li><li>Connect the radio with a USB data cable.</li><li>Select the serial port.</li><li>Read the erase warning on the page.</li><li>Select <strong>Install</strong>.</li></ol>
+  <p class="help-note">For nRF52 and RP2040 radios, use a UF2 file. Put the radio in its bootloader mode. The radio then shows a drive. Drag the file onto the drive. The downloads of the Factory include these files.</p>
 
   <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
   <script src="/hub.js"></script>

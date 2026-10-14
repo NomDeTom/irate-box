@@ -4,7 +4,7 @@
   "tile": {
     "icon": "ℹ️",
     "name": "About",
-    "desc": "Licences, and this box's own source",
+    "desc": "Licences and source code",
     "href": "/about.html"
   }
 }

@@ -28,9 +28,9 @@ const AL = (() => {
       { title: 'Appearance', sections: ['appearance'], art: 'controller' }] },
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
-      { title: 'Everything people made', sections: ['made'] }] },
+      { title: 'User data', sections: ['made'] }] },
     { name: 'System', art: 'controller', pages: [
-      { title: 'Accounts & users', sections: ['accounts', 'access'] },
+      { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security'] },
       { title: 'The librarian', sections: ['sources'] },
@@ -178,18 +178,18 @@ const AL = (() => {
           };
           const ids = [];
           if (!a.folder) ids.push(made('app-head-' + a.id, 'app-head', 'Status', () => el('div', { class: 'head-block', 'data-app': a.id })));
-          if (a.folder) ids.push(made('folder-' + a.id, 'folder-section', 'What\'s in it', () => el('div', { class: 'folder-block', 'data-folder': a.id })));
+          if (a.folder) ids.push(made('folder-' + a.id, 'folder-section', 'Folder contents', () => el('div', { class: 'folder-block', 'data-folder': a.id })));
           // An app drawn on the hub page: its width, before what it owns.
           if (a.width) ids.push(made('app-width-' + a.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': a.width })));
           ids.push(...a.sections);
           // What was reported there, for an app drawn on the hub page.
-          if (a.page) ids.push(made('app-flagged-' + a.id, 'app-flagged', 'Flagged and reported', () => el('div', { class: 'flagged-block', 'data-app': a.id })));
-          if (a.switch) ids.push(made('app-access-' + a.id, 'app-access', 'Who can open it', () => el('div', { class: 'access-block', 'data-app': a.id }), true));
+          if (a.page) ids.push(made('app-flagged-' + a.id, 'app-flagged', 'Reported content', () => el('div', { class: 'flagged-block', 'data-app': a.id })));
+          if (a.switch) ids.push(made('app-access-' + a.id, 'app-access', 'Access', () => el('div', { class: 'access-block', 'data-app': a.id }), true));
           if (a.switch || a.seen) ids.push(made('app-tile-' + a.id, 'app-tile', 'Hub tile', () => el('div', { class: 'tile-block', 'data-app': a.id }), true));
           // Maintenance: its own updates and its installation, each where admin.js draws it.
           if (a.updates || a.addon) {
             ids.push(made('app-maint-' + a.id, 'app-maint', 'Maintenance', () => el('div', {},
-              a.updates ? el('div', { class: 'app-updates', id: 'app-updates-' + a.id }, el('h3', { text: 'Its own updates' }), el('div', { class: 'updates-block', 'data-app': a.id })) : null,
+              a.updates ? el('div', { class: 'app-updates', id: 'app-updates-' + a.id }, el('h3', { text: 'App updates' }), el('div', { class: 'updates-block', 'data-app': a.id })) : null,
               a.addon ? el('div', { class: 'app-install', id: 'app-install-' + a.id }, el('h3', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': a.id },
                 el('p', { class: 'setting-desc', text: 'Loading installation status.' }))) : null), true));
           }

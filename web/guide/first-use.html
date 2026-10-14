@@ -6,7 +6,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Setting up a new box · Guide · Hub</title>
+  <title>Setup · Guide · Hub</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
@@ -14,31 +14,35 @@
 <body class="help guide">
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>📖 Setting up a new box</h1>
-    <p class="subtitle">For the owner: from a fresh install to a box that's yours. About ten minutes.</p>
+    <h1>📖 Setup</h1>
+    <p class="subtitle">For the administrator: install the box and create the administrator account.</p>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
   <h2>1. Install</h2>
-  <p class="help-note">On the board, logged in over SSH:</p>
+  <p class="help-note">Before you start, you need a supported board, a network connection and an SSH session on the board.</p>
+  <ol><li>Sign in to the board over SSH.</li><li>Run these commands:</li></ol>
   <pre class="help-code"><code>git clone https://github.com/NomDeTom/irate-box &amp;&amp; cd irate-box
 sudo ./install.sh</code></pre>
-  <p class="help-note">That's all it needs. Extras (notes, file sync, the offline library, chat…) can be added now with <code>--with-…</code> options, or later from the admin pages: see <a href="addons-and-books.html">Add-ons and books</a>. When it finishes it prints the box's address.</p>
-  <h2>2. Make yourself the admin, straight away</h2>
-  <p class="help-note">Until you do, <strong>anyone on the same network can use the box's admin pages</strong>. The hub's front page says so, with a <strong>Set up this box</strong> button.</p>
-  <p class="help-note">Your admin password should never cross the network where others can read it. Pick one way:</p>
-  <p class="help-note"><strong>A. Over SSH (quickest).</strong> You're already logged in to install, so run:</p>
+  <p class="help-note">The installer adds the box. It can add extras at the same time with <code>--with-…</code> options. Extras are notes, file sync, the offline library and chat. You can also add them later from the administration pages. See <a href="addons-and-books.html">Add-ons and books</a>. When the installer finishes, it prints the address of the box.</p>
+  <h2>2. Create the administrator account immediately</h2>
+  <p class="help-note">Until you create it, <strong>every device on the same network can open the administration pages</strong>. The front page of the hub shows this warning and a <strong>Set up this box</strong> button.</p>
+  <p class="help-note">Do not send the administrator password over a network where other devices can read it. Select one method.</p>
+  <p class="help-note"><strong>A. Over SSH.</strong> You are already signed in for the install. Run this command:</p>
   <pre class="help-code"><code>sudo /opt/irate-box/irate-box hub_control set-admin yourname</code></pre>
-  <p class="help-note">It asks for the password twice. Done.</p>
+  <p class="help-note">The command asks for the password two times.</p>
   <p class="help-note"><strong>B. In the browser, over HTTPS.</strong></p>
-  <ol><li>Open the box's admin pages (<code>/admin/</code>) → <strong>Security</strong> → <strong>HTTPS</strong>, and switch HTTPS on (making the box's certificate if it asks).</li><li>Open the box's certificate page (<code>/certificate</code>) on your phone or computer, and install the certificate as it shows you.</li><li>Open the set-up page over HTTPS (<code>https://</code>, the box's address, then <code>/admin/setup</code>), and choose a name and a password.</li></ol>
-  <p class="help-note"><strong>C. In the browser, over plain HTTP.</strong> The set-up page lets you, but only if you tick that you understand the password can be read on the network. Fine on a network only you use; not on a shared one. This is allowed only this first time.</p>
+  <ol><li>Open the administration pages (<code>/admin/</code>).</li><li>Select <strong>Security</strong>, then <strong>HTTPS</strong>.</li><li>Enable HTTPS. If the page asks, create the certificate of the box.</li><li>On your phone or computer, open the certificate page (<code>/certificate</code>).</li><li>Install the certificate as the page shows.</li><li>Open the setup page over HTTPS: <code>https://</code>, the address of the box, then <code>/admin/setup</code>.</li><li>Enter a name and a password.</li></ol>
+  <p class="help-note">HTTPS encrypts the password between your browser and the box. Other devices on the network cannot read it.</p>
+  <p class="help-note"><strong>C. In the browser, over HTTP.</strong> The setup page accepts this method only for the first account. Tick the box that says you understand the risk. Without HTTPS, other devices on the same network can read the password. Use this method only on a network that nobody else uses.</p>
   <h2>3. Sign in</h2>
-  <p class="help-note">From now on, sign in where everyone does: <strong>👤 Sign in</strong> at the top of the hub. Once you're signed in as the admin, a <strong>⚙️ Admin</strong> button appears beside it. Guests never see it.</p>
-  <h2>4. The rest, when you like</h2>
-  <p class="help-note">The admin pages open with a short list of <strong>setup steps</strong>: how guests reach the box, what it shows them, add-ons and books, then a few decisions (visitor counts, new accounts, HTTPS, the hotspot, remote access) and a backup. Each can be skipped and done later.</p>
-  <h2>If something goes wrong</h2>
-  <ul><li><strong>Forgot the password?</strong> Over SSH: <code>sudo /opt/irate-box/irate-box hub_control set-admin yourname</code> sets a new one.</li><li><strong>Want to change it?</strong> Over HTTPS (your account page), or over SSH as above. The box refuses an admin password change over plain HTTP.</li><li><strong>Scripts that call the admin pages</strong> (<code>curl -u admin:…</code>) need a login of their own, made only when you ask: <code>sudo /opt/irate-box/irate-box hub_control script-login</code> (and <code>--off</code> to remove it).</li><li><strong>Installer problems:</strong> the log is in <code>/var/log/irate-box/install.log</code>; running the installer again is safe. More in <a href="troubleshooting.html">When something goes wrong</a>.</li></ul>
+  <p class="help-note">Select <strong>👤 Sign in</strong> at the top of the hub. After you sign in as an administrator, the <strong>⚙️ Admin</strong> button appears next to it. Guests do not see this button.</p>
+  <h2>4. Complete the setup</h2>
+  <p class="help-note">The administration pages open with a list of <strong>setup steps</strong>. The steps are:</p>
+  <ol><li>Set how guests reach the box.</li><li>Set what the hub shows guests.</li><li>Add add-ons and books.</li><li>Make decisions about visitor counts, new accounts, HTTPS, the hotspot and remote access.</li><li>Make a backup.</li></ol>
+  <p class="help-note">You can skip a step and do it later.</p>
+  <h2>Troubleshooting</h2>
+  <ul><li><strong>You forgot the password.</strong> Run <code>sudo /opt/irate-box/irate-box hub_control set-admin yourname</code> over SSH. The command sets a new password.</li><li><strong>You want to change the password.</strong> Use your account page over HTTPS, or the SSH command above. The box refuses an administrator password change over HTTP.</li><li><strong>A script calls the administration pages</strong> (<code>curl -u admin:…</code>). The script needs a script login. Create it with <code>sudo /opt/irate-box/irate-box hub_control script-login</code>. Remove it with the <code>--off</code> option. See <a href="accounts.html">Accounts</a>.</li><li><strong>The installer fails.</strong> Read the log in <code>/var/log/irate-box/install.log</code>. You can run the installer again: it repairs the installation and upgrades it, and it keeps your settings and add-ons. See <a href="troubleshooting.html">Troubleshooting</a>.</li></ul>
 
   <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
   <script src="/hub.js"></script>

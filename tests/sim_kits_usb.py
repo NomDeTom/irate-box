@@ -74,7 +74,7 @@ def fresh():
 fresh()
 line = kits.import_usb(stick, "small", 500)
 check("import: every .deb vouched for, into the pool, the kit cached", kits.manifest("small") and len(kits.manifest("small")["packages"]) == 2
-      and (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and kits.verify() == [] and "checked against Debian's signed indexes" in line, line)
+      and (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and kits.verify() == [] and "checked each package hash against Debian's signed indexes" in line, line)
 check("  the signature checked with the box's keys, never the removed ones", gpgv_calls and all("removed" not in a for a in gpgv_calls[-1]))
 check("  and apt can install it: the index written", "Package: gdb" in (kits.POOL / "Packages").read_text())
 def refused(mutate, why):
@@ -105,7 +105,7 @@ fresh()
 old = T / "old-stick"; shutil.copytree(T / "stick", old)
 ol = old / "irate-box" / "kits" / "armhf" / "small" / "lists"
 (ol / XZ.removesuffix(".xz")).write_bytes(lzma.decompress((ol / XZ).read_bytes())); (ol / XZ).unlink()
-check("a stick with plain indexes (an older export) still imports", "checked against" in kits.import_usb(old / "irate-box" / "kits", "small", 500))
+check("a stick with plain indexes (an older export) still imports", "checked each package hash" in kits.import_usb(old / "irate-box" / "kits", "small", 500))
 def resign(k):
     p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
     p.write_text(p.read_text().replace("SIGNED BY: good key", "SIGNED BY: someone else"))

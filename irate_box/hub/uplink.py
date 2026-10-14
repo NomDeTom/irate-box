@@ -196,7 +196,7 @@ RADIO_WAIT = 180
 # and for as long as `give_up` says.
 NET_CAUSES = ("absent", "join", "gateway")
 CAUSE_WORDS = {"radio": "the radio has failed", "cable": "no cable is plugged in, or the other end is off",
-               "plugged": "the cable is back, but the link hasn't come up with it",
+               "plugged": "the cable is back, but the link has not come up with it",
                "absent": "the network is not in range (the radio scans, and does not see it)",
                "join": "the network is in range, but joining it fails",
                "gateway": "joined, but the gateway does not answer"}
@@ -346,7 +346,7 @@ def validate(raw):
         raise ValueError(f"guests must be one of {', '.join(GUESTS)}")
     iface = str(raw.get("iface", "auto"))
     if not IFACE_RE.match(iface):
-        raise ValueError("not an interface name")
+        raise ValueError("invalid interface name")
     w = raw.get("on_wedge", "ladder")
     if w not in ON_WEDGE:
         raise ValueError(f"on_wedge must be one of {', '.join(ON_WEDGE)}")
@@ -359,31 +359,31 @@ def validate(raw):
     if roaming in ROAMING_WAS:
         roaming, ignore = ROAMING_WAS[roaming][0], ignore or ROAMING_WAS[roaming][1]
     if not isinstance(ignore, bool):
-        raise ValueError("ignore_roams is true or false")
+        raise ValueError("ignore_roams must be true or false")
     if roaming not in ROAMING:
         raise ValueError(f"roaming must be one of {', '.join(ROAMING)}")
     lock = raw.get("lock_bssid")
     lock = lock.lower() if isinstance(lock, str) else None
     if roaming == "lock" and not (lock and BSSID_RE.match(lock)):
-        raise ValueError("a lock needs the access point's BSSID (aa:bb:cc:dd:ee:ff)")
+        raise ValueError("invalid BSSID: a lock needs the BSSID of the access point, for example aa:bb:cc:dd:ee:ff")
     watch = raw.get("watch") or {}
     if not isinstance(watch, dict) or len(watch) > 16:
         raise ValueError("watch must be an object of links")
     for name, on in watch.items():
         if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(on, bool):
-            raise ValueError(f"watch: {name} must be a link's name, watched true or false")
+            raise ValueError(f"watch: {name} must be the name of a link, with the value true or false")
     hw = raw.get("watch_hw") or {}
     if not isinstance(hw, dict) or len(hw) > 16:
         raise ValueError("watch_hw must be an object of links")
     clean_hw = {}
     for name, h in hw.items():
         if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(h, dict):
-            raise ValueError(f"watch_hw: {name} must be a link's name, with its hardware")
+            raise ValueError(f"watch_hw: {name} must be the name of a link, with its hardware")
         mac, path = h.get("mac"), h.get("path")
         if mac is not None and not (isinstance(mac, str) and BSSID_RE.match(mac)):
-            raise ValueError(f"watch_hw.{name}.mac: an address like aa:bb:cc:dd:ee:ff")
+            raise ValueError(f"watch_hw.{name}.mac: enter an address such as aa:bb:cc:dd:ee:ff")
         if path is not None and not (isinstance(path, str) and HW_PATH_RE.match(path)):
-            raise ValueError(f"watch_hw.{name}.path: a bus and device")
+            raise ValueError(f"watch_hw.{name}.path: enter a bus and a device")
         clean_hw[name] = {"mac": mac, "path": path}
     choices = {k: raw.get(k, DEFAULT[k]) for k in ("watch_new", "box_steps", "cable_out", "cable_reach")}
     for k, allowed in (("watch_new", WATCH_NEW), ("box_steps", BOX_STEPS), ("cable_out", CABLE_OUT), ("cable_reach", REACH)):
@@ -398,18 +398,18 @@ def validate(raw):
     for k, v in over.items():
         rule = FIELDS.get(k)
         if rule is None:
-            raise ValueError(f"{k} is not a setting")
+            raise ValueError(f"{k} is not a known setting")
         if k == "steps":
             if not isinstance(v, dict):
                 raise ValueError("steps must be an object")
             steps = {}
             for s, t in v.items():
                 if s not in STEPS:
-                    raise ValueError(f"{s} is not a step")
+                    raise ValueError(f"{s} is not a known step")
                 if t is not None:
                     t = int(t)
                     if not 0 <= t <= 86400:
-                        raise ValueError(f"steps.{s} out of range")
+                        raise ValueError(f"steps.{s} is out of range")
                 steps[s] = t
             out["overrides"]["steps"] = steps
         elif isinstance(rule[0], str):
@@ -427,7 +427,7 @@ def validate(raw):
     out["steps_off"] = {}
     for name, steps in off.items():
         if not IFACE_RE.match(str(name)) or name == "auto":
-            raise ValueError(f"steps_off: {name} is not an interface name")
+            raise ValueError(f"steps_off: {name} is not a valid interface name")
         if not isinstance(steps, list) or any(x not in STEPS for x in steps):
             raise ValueError(f"steps_off.{name}: a list of steps ({', '.join(STEPS)})")
         if steps:
@@ -438,7 +438,7 @@ def validate(raw):
     out["per_iface"] = {}
     for name, own in per.items():
         if not IFACE_RE.match(str(name)) or name == "auto":
-            raise ValueError(f"per_iface: {name} is not an interface name")
+            raise ValueError(f"per_iface: {name} is not a valid interface name")
         if not isinstance(own, dict) or any(k not in PER_IFACE for k in own):
             raise ValueError(f"per_iface.{name}: only {', '.join(PER_IFACE)}")
         clean = {}
@@ -447,7 +447,7 @@ def validate(raw):
                 if type(v) is not int or not SENSITIVITY[0] <= v <= SENSITIVITY[1]:
                     raise ValueError(f"per_iface.{name}.sensitivity: {SENSITIVITY[0]} to {SENSITIVITY[1]}")
             elif v not in {"pace": PACE, "reach": REACH, "guests": GUESTS, "on_wedge": ON_WEDGE, "retry": RETRY, "give_up": GIVE_UP}[k]:
-                raise ValueError(f"per_iface.{name}.{k}: not one of the choices")
+                raise ValueError(f"per_iface.{name}.{k}: not an allowed value")
             if v != out[k]:
                 clean[k] = v   # the same as for every connection is not kept as its own
         if clean:
@@ -648,7 +648,7 @@ class Watch:
                 self.episode.update(since=now, failed=[])
         if cause and cause != o.get("cause"):
             o["cause"] = cause
-            says = (f"{'an adapter' if self.labels['radio'] != STEP_LABEL['radio'] else 'a radio'} reset, then a reboot if it isn't back"
+            says = (f"{'an adapter' if self.labels['radio'] != STEP_LABEL['radio'] else 'a radio'} reset, then a reboot if it is not back"
                     if cause == "radio" else "reconnecting now, then the steps as the pace says" if cause == "plugged" else {"wait": "plugging it in, or switching the other end on; the box waits",
                                               "reconnect": "plugging it in; meanwhile the box reconnects now and then",
                                               "ladder": "plugging it in; meanwhile the box takes its steps"}[self.eff.get("cable_out", "wait")]
@@ -698,7 +698,7 @@ class Watch:
             if not o.get("gave_up"):
                 o["gave_up"] = True
                 self.log(now, "stalled", f"Stopped trying after {human(now - o['since'])}: {self.causes[cause]}. "
-                         "It comes back by itself if the network does; the Network page's \"keep trying\" sets how long.")
+                         "It starts again when the network returns. The Network page setting Network unavailable: retry period sets how long it tries.")
             return []
         # The owner's choice (on_wedge "radio" or "reboot"): reconnecting and restarting can't mend a
         # failed radio, and on some drivers they make it worse, so straight to the radio reset if the
@@ -811,7 +811,7 @@ class Watch:
         if step in WHOLE_BOX and others and not hand and (rule == "nothing-works" or rule == "uplink" and not obs.get("is_uplink")):
             return (f"{', '.join(others)} {'is' if len(others) == 1 else 'are'} up, and "
                     + ("the network service and the box are restarted only when nothing works" if rule == "nothing-works"
-                       else "this link doesn't hold the box's route"))
+                       else "this link does not hold the route of the box"))
         # A restart of the network service takes the hotspot down too when it shares the uplink's
         # radio: held then like a radio reset, only on a shared radio.
         heavy = step in ("radio", "reboot") or (step == "restart" and obs.get("shared_radio"))
@@ -861,11 +861,11 @@ class Watch:
         is watch-only (that is the owner's choice, not a stall), nor while a step is only held."""
         o, eff = self.outage, self.eff
         if o and o.get("cause") == "cable" and eff.get("cable_out", "wait") == "wait":
-            return {"needs": None, "label": None, "text": "Waiting: no cable is plugged in, or the other end is off. Nothing the box "
-                    "does can mend that; it comes back by itself once the cable is."}
+            return {"needs": None, "label": None, "text": "Waiting: no cable is connected, or the other end has no power. The box cannot repair this. "
+                    "The box reconnects when the cable link returns."}
         if o and self._given_up(now, o):
             return {"needs": None, "label": None, "text": f"Stopped trying after {human(now - o['since'])}: {self.causes[o['cause']]}. "
-                    "It comes back by itself if the network does."}
+                    "The box reconnects when the network returns."}
         if not o or not eff["steps"] or self.next_step(now):
             return None
         allowed = self._allowed(o)
@@ -973,7 +973,7 @@ def words(chosen):
     if chosen.get("guests") == "ignore":
         parts.append("guests or not")
     parts.append({"radio": "a failed radio reset at once",
-                  "reboot": "a failed radio reset at once and the box rebooted if it isn't back"}.get(chosen.get("on_wedge"), ""))
+                  "reboot": "a failed radio reset at once and the box rebooted if it is not back"}.get(chosen.get("on_wedge"), ""))
     if chosen.get("retry", "steady") != "steady":
         parts.append(f"reconnects at most every {human(RETRY[chosen['retry']])}")
     if chosen.get("give_up", "never") != "never":
@@ -2065,10 +2065,10 @@ def _uplink_profile():
     chosen = load_settings()
     iface = main_link(chosen)
     if not iface or backend_of(iface) != "networkmanager":
-        raise ValueError("the box's link is not run by NetworkManager, so there is no profile to change")
+        raise ValueError("NetworkManager does not run the box's link, so the box has no connection profile to change")
     prof = nm_connection(iface)
     if not prof:
-        raise ValueError(f"{iface} is not connected, so its profile is not known; try again once it is")
+        raise ValueError(f"{iface} is not connected, so the box does not know its connection profile. Try again when {iface} is connected")
     return prof
 
 
@@ -2080,7 +2080,7 @@ def profile(on):
                         "con", "show", "uuid", prof["uuid"])
         vals = [v.strip().split(" ")[0] for v in out.splitlines()] if code == 0 else []
         if len(vals) != 2 or not all(re.fullmatch(r"-?\d+", v) for v in vals):
-            raise ValueError(f"could not read {prof['name']}'s settings: {out}")
+            raise ValueError(f"Box could not read the settings of the connection profile {prof['name']}: {out}")
         if rec and rec["uuid"] == prof["uuid"]:
             # Decided by what the profile holds, not by the record: a profile written afresh (netplan's,
             # at boot) has lost the change, and gets it again; the record keeps the values from before.
@@ -2098,7 +2098,7 @@ def profile(on):
                                               "connection.auth-retries": vals[1]}}, indent=2))
         os.chmod(RECORD, 0o644)
         return (f"{prof['name']}: autoconnect-retries {vals[0]} → 0 and auth-retries {vals[1]} → 0, "
-                "so NetworkManager keeps trying. Undo puts them back.")
+                "so NetworkManager keeps trying. Undo restores the earlier values.")
     if not rec:
         return "nothing to undo"
     args = [x for k, v in rec["old"].items() for x in (k, v)]

@@ -11,8 +11,8 @@
       "menus": {
         "flashing": 2
       },
-      "name": "FreeOCD: flash, verify and recover ARM chips through a debug probe",
-      "desc": "In Chrome or Edge on a computer, over this box's HTTPS address, with a CMSIS-DAP probe plugged in. Nordic's nRF54L15 so far",
+      "name": "FreeOCD ARM debugger and flasher",
+      "desc": "Flash, verify and recover ARM chips through a debug probe. Use Chrome or Edge on a computer. Open the HTTPS address of this box. Connect a CMSIS-DAP probe. The tested chip family is the Nordic nRF54L15",
       "href": "/flasher/freeocd/"
     }
   ],

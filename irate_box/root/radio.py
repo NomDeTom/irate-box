@@ -244,7 +244,7 @@ def restore_hotspot(run=_run):
     if not hotspot_up():
         return ""
     code, out = run("systemctl", "start", AP_UNIT, timeout=120)
-    return "the hotspot started again" if code == 0 else f"the hotspot did not start again: {out[-160:]}"
+    return "The hotspot started again." if code == 0 else f"The hotspot did not start again: {out[-160:]}"
 
 
 def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.sleep, wait=BACK_WAIT):
@@ -328,7 +328,7 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
                 except OSError as exc:
                     tried.append(f"{name}: remove and rescan failed ({exc})")
         if not back and onbus and onbus["bus"] == "platform":
-            name = f"{onbus['name']} ({onbus['driver']})"
+            name = f"Platform device {onbus['name']} ({onbus['driver']})"
             try:
                 _rebind("platform", onbus["driver"], onbus["name"], sleep)
                 tried.append(f"{name} unbound and bound again")
@@ -350,16 +350,16 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
                 for h in holders:   # the driver may load its own again; any it has not, by hand
                     if not (SYS / "module" / h).exists():
                         run("modprobe", h, timeout=60)
-                tried.append((f"{driver} reloaded" + (f" (with {', '.join(holders)})" if holders else "")) if code == 0
-                             else f"modprobe {mod}: {out[-120:]}")
+                tried.append((f"Driver {driver} reloaded" + (f" (with {', '.join(holders)})" if holders else "")) if code == 0
+                             else f"Loading {mod} failed: {out[-120:]}")
                 back = code == 0 and _back(iface, wait, sleep, target)
             else:
-                tried.append(f"{driver} would not unload ({out[-120:] or f'rc {code}'})")
+                tried.append(f"Driver {driver} would not unload ({out[-120:] or f'rc {code}'})")
     finally:
         if nm:
             run("systemctl", "start", "NetworkManager", timeout=90)
     if not tried:
-        return "no way to reset this radio here"
-    said = "; ".join(tried) + (f"; {iface} is back" if back else f"; {iface} did not come back")
+        return "This box has no way to reset this radio."
+    said = ". ".join(t[0].upper() + t[1:] for t in tried) + (f". {iface} is back." if back else f". {iface} did not return.")
     hs = restore_hotspot(run)
-    return said + (f"; {hs}" if hs else "")
+    return said + (f" {hs}" if hs else "")

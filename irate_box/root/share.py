@@ -108,7 +108,7 @@ def guest_dns_unit(iface):
     only, no DHCP, answering from the box's own resolv.conf. The hotspot's own dnsmasq keeps its
     catch-all; firewall.py sends only those let out here."""
     if not re.match(r"^[A-Za-z0-9_.-]{1,15}$", iface):
-        raise ValueError(f"{iface!r} is not an interface name")
+        raise ValueError(f"{iface!r} is not a valid interface name")
     return "\n".join([
         "[Unit]", "Description=Irate-Box: DNS for guests let out to the internet (root/share.py)",
         "After=network-online.target", "",
@@ -121,15 +121,15 @@ def guest_dns_unit(iface):
 
 
 WORDS = {
-    "off": "guests reach the box and nothing else",
-    "users-web": "a device signed in to an account reaches the web",
-    "sheet-web": "any device reaches the web once through the sign-in sheet",
-    "sheet-all": "any device reaches everything once through the sign-in sheet",
-    "open": "every device on the hotspot reaches everything, with no sheet",
+    "off": "guests reach the box and no other network",
+    "users-web": "a device signed in to an account reaches the web through the box",
+    "sheet-web": "a device that taps through the welcome page reaches the web through the box",
+    "sheet-all": "a device that taps through the welcome page reaches every service on the internet through the box",
+    "open": "every device on the hotspot reaches every service on the internet through the box, with no welcome page",
 }
 CONTAIN_WORDS = {
-    "lan": "the owner's own network (private, CGNAT and link-local addresses) kept out of guests' reach",
+    "lan": "the local network that the box is connected to (private, CGNAT and link-local addresses) is blocked for guests",
     "tunnels": "nothing forwarded into Tailscale, WireGuard or a container's network",
-    "by_mac": "devices let out by their hardware address, not their IP",
-    "dns_hold": "a device not let out can't look outside names up through the box",
+    "by_mac": "the box identifies each device by its hardware address, not its IP address",
+    "dns_hold": "a device without internet access cannot look up outside names through the box",
 }

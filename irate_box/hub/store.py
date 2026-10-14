@@ -94,8 +94,8 @@ class LockError(Exception):
     """A change to a locked item without a valid proof."""
 
     def __init__(self, lock, pinned=False):
-        super().__init__("this file is the box's own; only the admin can remove it" if pinned
-                         else "locked: only the device that locked it can change it")
+        super().__init__("This file belongs to the box. Only an administrator can remove it." if pinned
+                         else "This item is locked. Only the browser that locked it can change it.")
         self.lock = lock
         self.pinned = pinned
 
@@ -444,7 +444,7 @@ class Drop:
         the same id; it never expires, is never evicted, and guests cannot remove it (the
         admin can). install.sh pins the box's own source this way (the AGPL's offer)."""
         if not ID_RE.match(key):
-            raise ValueError("bad id")
+            raise ValueError("Invalid file identifier.")
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = confine.under(self.dir, key + ".tmp")
         shutil.copyfile(src, tmp)
@@ -468,12 +468,12 @@ class Drop:
 
     def receive(self, stream, length, name, by="", lock=None, marks=None):
         """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
-        ValueError (too large, card too full) or OSError (the body stopped short)."""
+        ValueError (too large, not enough free storage) or OSError (the body stopped short)."""
         if length > DROP_MAX_FILE:
-            raise ValueError("too large")
+            raise ValueError(f"File exceeds the {DROP_MAX_FILE >> 20} MB limit.")
         self.dir.mkdir(parents=True, exist_ok=True)
         if shutil.disk_usage(self.dir).free < length + DROP_MIN_FREE:
-            raise ValueError("the card is too full")
+            raise ValueError("Insufficient free storage. Delete files from the box, then upload again.")
         key = secrets.token_urlsafe(12)
         tmp = confine.under(self.dir, key + ".tmp")
         try:
@@ -482,7 +482,7 @@ class Drop:
                 while left:
                     chunk = stream.read(min(DROP_CHUNK, left))
                     if not chunk:
-                        raise OSError("the upload stopped part-way")
+                        raise OSError("Upload interrupted.")
                     fh.write(chunk)
                     left -= len(chunk)
                 fh.flush()
@@ -556,19 +556,19 @@ def _handle_drop(handler, method, path, drop):
         return True
     if path == "/api/drop" and method == "POST":
         if handler.headers.get("Transfer-Encoding", "").lower() == "chunked":
-            _send_json(handler, 411, {"error": "send the file with a Content-Length"})
+            _send_json(handler, 411, {"error": "Send the file with a Content-Length header."})
             return True
         try:
             length = int(handler.headers.get("Content-Length", ""))
         except ValueError:
-            _send_json(handler, 411, {"error": "send the file with a Content-Length"})
+            _send_json(handler, 411, {"error": "Send the file with a Content-Length header."})
             return True
         if length <= 0:
-            _send_json(handler, 400, {"error": "empty file"})
+            _send_json(handler, 400, {"error": "The file is empty."})
             return True
         if length > DROP_MAX_FILE:
             handler.close_connection = True  # the body is not read
-            _send_json(handler, 413, {"error": f"too large: the limit is {DROP_MAX_FILE >> 20} MB"})
+            _send_json(handler, 413, {"error": f"File exceeds the {DROP_MAX_FILE >> 20} MB limit."})
             return True
         name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
         by = unquote(handler.headers.get("X-Drop-By", "") or "")
@@ -577,11 +577,11 @@ def _handle_drop(handler, method, path, drop):
                                 marks=_author_marks(handler, "drop"))
         except ValueError as exc:
             handler.close_connection = True
-            _send_json(handler, 507 if "full" in str(exc) else 413, {"error": str(exc)})
+            _send_json(handler, 507 if "storage" in str(exc) else 413, {"error": str(exc)})
             return True
         except OSError:
             handler.close_connection = True
-            _send_json(handler, 400, {"error": "the upload stopped part-way"})
+            _send_json(handler, 400, {"error": "Upload interrupted."})
             return True
         _send_json(handler, 201, {**{k: meta[k] for k in ("id", "name", "size")}, "locked": bool(meta.get("lock"))})
         return True
@@ -593,12 +593,12 @@ def _handle_drop(handler, method, path, drop):
             if exc.pinned:
                 _send_json(handler, 403, {"error": str(exc), "pinned": True})
             elif exc.lock is None:
-                _send_json(handler, 403, {"error": "only the admin can remove a file nobody locked; it goes when it expires",
+                _send_json(handler, 403, {"error": "Only an administrator can remove a file that nobody locked. The box deletes it when it expires.",
                                           "locked": False})
             else:
                 _send_locked(handler, exc)
             return True
-        _send_json(handler, 200, {"id": key}) if gone else _send_json(handler, 404, {"error": "not found (it may have expired)"})
+        _send_json(handler, 200, {"id": key}) if gone else _send_json(handler, 404, {"error": "File not found. It possibly expired."})
         return True
     if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
         found = drop.open(path[len("/api/drop/"):])
@@ -607,7 +607,7 @@ def _handle_drop(handler, method, path, drop):
             found[1].close()
             found = None
         if not found:
-            _send_json(handler, 404, {"error": "not found (it may have expired)"})
+            _send_json(handler, 404, {"error": "File not found. It possibly expired."})
             return True
         meta, fh = found
         with fh:
@@ -768,7 +768,7 @@ def _handle_blob(handler, method, rest, store):
     key = parts[1] if len(parts) > 1 and parts[1] else None
 
     if key is not None and not ID_RE.match(key):
-        _send_json(handler, 400, {"error": "bad id"})
+        _send_json(handler, 400, {"error": "Invalid file identifier."})
         return True
 
     if method == "GET" and key:
@@ -779,7 +779,7 @@ def _handle_blob(handler, method, rest, store):
     if method == "POST" and namespace == "scenes" and key is None:
         data = _read_body(handler)
         if data is None:
-            _send_json(handler, 413, {"error": "missing or oversized body"})
+            _send_json(handler, 413, {"error": "The request body is missing or too large."})
             return True
         _send_json(handler, 201, {"id": store.create_scene(data)})
         return True
@@ -787,7 +787,7 @@ def _handle_blob(handler, method, rest, store):
     if method == "PUT" and key and namespace in ("rooms", "files"):
         data = _read_body(handler)
         if data is None:
-            _send_json(handler, 413, {"error": "missing or oversized body"})
+            _send_json(handler, 413, {"error": "The request body is missing or too large."})
             return True
         store.put(namespace, key, data)
         _send_json(handler, 200, {"id": key})
@@ -836,7 +836,7 @@ def _handle_saves(handler, method, path, store):
     rest = path[len("/api/saves/"):].split("/")
     key = rest[0]
     if not ID_RE.match(key):
-        _send_json(handler, 400, {"error": "bad id"})
+        _send_json(handler, 400, {"error": "Invalid file identifier."})
         return True
 
     wants_thumb = len(rest) > 1 and rest[1] == "thumb"
@@ -876,7 +876,7 @@ def _handle_saves(handler, method, path, store):
         unlock = body.get("unlock") is True
         proof, _, nxt = _lock_headers(handler)
         if not name and not unlock and not nxt:
-            _send_json(handler, 400, {"error": "name required"})
+            _send_json(handler, 400, {"error": "Name is required."})
             return True
         try:
             meta = store.rename_save(key, name, proof=proof, lock_next=nxt, unlock=unlock, force=_owns_save(store, key, handler))
@@ -905,20 +905,20 @@ def _handle_saves(handler, method, path, store):
 def _create_save(handler, store):
     raw = _read_body(handler)
     if raw is None:
-        _send_json(handler, 413, {"error": "missing or oversized body"})
+        _send_json(handler, 413, {"error": "The request body is missing or too large."})
         return
     try:
         payload = json.loads(raw)
     except ValueError:
-        _send_json(handler, 400, {"error": "bad json"})
+        _send_json(handler, 400, {"error": "Invalid JSON."})
         return
     if not isinstance(payload, dict):
-        _send_json(handler, 400, {"error": "bad json"})
+        _send_json(handler, 400, {"error": "Invalid JSON."})
         return
 
     state = payload.get("state")
     if state is None:
-        _send_json(handler, 400, {"error": "state required"})
+        _send_json(handler, 400, {"error": "State is required."})
         return
 
     kind = str(payload.get("kind", "unknown")).strip()[:MAX_KIND] or "unknown"
@@ -928,7 +928,7 @@ def _create_save(handler, store):
     if key is not None:
         key = str(key)
         if not ID_RE.match(key):
-            _send_json(handler, 400, {"error": "bad id"})
+            _send_json(handler, 400, {"error": "Invalid file identifier."})
             return
 
     thumb = None

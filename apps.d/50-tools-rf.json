@@ -4,7 +4,7 @@
   "tile": {
     "icon": "🧮📻",
     "name": "RF & LoRa",
-    "desc": "Radio calculators & Meshtastic tools",
+    "desc": "Radio calculators and Meshtastic tools",
     "href": "/tools-rf.html"
   },
   "menu": {

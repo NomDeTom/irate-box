@@ -37,16 +37,16 @@ TIMEOUT = 40 * 60
 
 # What the box does on purpose, by source and check id (a pattern).
 # debian-cis's by the check's name whatever its number (the benchmark renumbers them).
-FLOOR = "the box filters the hotspot alone (the floor, Security page): its other interfaces are the owner's network, left as found"
+FLOOR = "the box filters only the hotspot interface (the hotspot floor on the Security page). The other interfaces belong to the administrator's network and stay as they are"
 ACCEPTED = [
     ("debian-cis", r"^1\.1\.\d+(\.\d+)?_.*(partition|nodev|nosuid|noexec)$",
-     "one partition: the box runs from an SD card, with no separate /var, /tmp or /home"),
-    ("debian-cis", r"^[\d.]+_disable_http_server$", "the box is a web server: nginx (or Caddy) is the hub's front"),
+     "the box runs from one partition on an SD card, with no separate /var, /tmp or /home"),
+    ("debian-cis", r"^[\d.]+_disable_http_server$", "the box is a web server, and nginx or Caddy serves the hub"),
     ("debian-cis", r"^[\d.]+_net_fw_default_policy_drop$", FLOOR),
-    ("debian-cis", r"^[\d.]+_(nftables_not_installed_with_iptables|ufw_not_installed_with_nftables)$", "the floor is the hub's own nftables rules"),
-    ("debian-cis", r"^[\d.]+_dnsmasq_is_disabled$", "dnsmasq gives the hotspot's guests their addresses and names"),
+    ("debian-cis", r"^[\d.]+_(nftables_not_installed_with_iptables|ufw_not_installed_with_nftables)$", "the hotspot floor uses the box's own nftables rules"),
+    ("debian-cis", r"^[\d.]+_dnsmasq_is_disabled$", "dnsmasq gives hotspot guests their addresses and names"),
     ("lynis", r"^FIRE-(4512|4590)$", FLOOR),
-    ("lynis", r"^FILE-6310$", "one partition: the box runs from an SD card, with no separate /var, /tmp or /home"),
+    ("lynis", r"^FILE-6310$", "the box runs from one partition on an SD card, with no separate /var, /tmp or /home"),
 ]
 # What the hub itself installs and uses (install.sh, the toolkits): never offered for removal.
 HUB_KEEPS = {"nftables", "dnsmasq", "dnsmasq-base", "nginx", "caddy", "rsync", "git", "curl", "syncthing", "mosquitto", "nodejs"}
@@ -59,7 +59,7 @@ def accepted(source, check):
 def _f(fid, title, status, detail, fix, source, about=None, why=None):
     """A finding in the shape secdoctor.F gives (kept here so this runs on its own)."""
     if why:
-        status, detail = "ok", f"{detail} Accepted: {why}."
+        status, detail = "ok", f"{detail} Not applicable by design: {why}."
     return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": "", "source": source,
             "about": about, "accepted": why}
 
@@ -157,7 +157,7 @@ def cis_check_info(src, check):
     elif pkgs and not v.get("FILE") and all(CIS_PKG.match(p) for p in pkgs) and re.search(r"apt-get (-y )?(purge|remove)|apt_remove", body):
         keep = sorted(HUB_KEEPS & set(pkgs))
         if keep:
-            info["say"] = f"The hub uses {', '.join(keep)}: leave it installed."
+            info["say"] = f"The box uses {', '.join(keep)}. Keep it installed."
         else:
             info["cmd"] = "sudo apt-get purge " + " ".join(pkgs)
     elif v.get("FILE", "").startswith("/") and re.fullmatch(r"[0-7]{3,4}", v.get("PERMISSIONS", "")):
@@ -182,7 +182,7 @@ def cis_findings(checks, summary, took=None, info=None):
         shared = secdoctor_xref.about("debian-cis", check)
         if shared:  # a question another source asks too: a finding of its own, for the joint report
             f = _f(f"cis-{check}", f"CIS {check.split('_', 1)[0]}: {secdoctor_xref.title(shared['key'])}", "warn",
-                   "; ".join(m for m in msgs if m)[:300] or "Not met.", "", "debian-cis", shared)
+                   "; ".join(m for m in msgs if m)[:300] or "Check not met.", "", "debian-cis", shared)
             f["checks"] = [one(check, msgs)]
             shared_found.append(f)
             continue
@@ -193,7 +193,7 @@ def cis_findings(checks, summary, took=None, info=None):
         first = next((m[0] for _, m, _ in items if m), "")
         f = _f(f"cis-{sec}", f"CIS {sec}: {len(items)} check{'s' if len(items) != 1 else ''} not met", "warn",
                f"{names}." + (f" For example: {first}." if first else ""),
-               "Each is a setting to look at, not an emergency: the benchmark is a general server's, not a hotspot's.",
+               "This benchmark is for general servers, so some checks do not suit a hotspot. Review each check before you change a setting. A check not met can still need a repair.",
                "debian-cis", {"kind": "setting", "key": f"cis-{sec}"})
         f["checks"] = [c for _, _, c in items]
         out.append(f)
@@ -202,7 +202,7 @@ def cis_findings(checks, summary, took=None, info=None):
     for check, why in acc:
         by_why.setdefault(why, []).append(check)
     for why, cs in by_why.items():
-        out.append(_f(f"cis-accepted-{len(out)}", f"CIS: {len(cs)} check{'s' if len(cs) != 1 else ''} the box's design does not meet", "ok",
+        out.append(_f(f"cis-accepted-{len(out)}", f"CIS: {len(cs)} check{'s' if len(cs) != 1 else ''} not applicable by design", "ok",
                       ", ".join(c.split("_", 1)[1] for c in cs[:10]) + ("…" if len(cs) > 10 else "") + ".", "", "debian-cis", why=why))
     out.append(_f("cis-summary", "The CIS benchmark (debian-cis --audit-all)", "ok",
                   f"{summary.get('PASSED_CHECKS', '?')} of {summary.get('RUN_CHECKS', '?')} checks pass "
@@ -225,23 +225,23 @@ def cis_pin():
 def run_cis(work, pin=None):
     repo = _cis_mirror()
     if not repo:
-        return [_f("cis-missing", "debian-cis", "warn", "Its mirror is not on the box yet.",
-                   "Library → Toolkits: keep the Security kit current; the librarian mirrors debian-cis.", "debian-cis")]
+        return [_f("cis-missing", "debian-cis", "warn", "Audit unavailable: the debian-cis mirror is not on the box.",
+                   "Open Library, Toolkits. Keep the Security toolkit current. The librarian mirrors debian-cis.", "debian-cis")]
     pin = pin or cis_pin()
     if not pin:
-        return [_f("cis-unpinned", "debian-cis", "warn", "The security kit names no commit of debian-cis, so it is not run: "
-                   "root runs only the commit the hub's own code pins, never whatever the mirror holds.", "", "debian-cis")]
+        return [_f("cis-unpinned", "debian-cis", "warn", "Audit unavailable: the Security toolkit names no commit of debian-cis, so the box did not run it. "
+                   "The box runs only the commit that its own code pins. It never runs other code from the mirror.", "", "debian-cis")]
     have = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "cat-file", "-e", f"{pin}^{{commit}}"],
                           capture_output=True, timeout=60)
     if have.returncode != 0:
-        return [_f("cis-pin-missing", "debian-cis", "warn", f"Its mirror does not hold the pinned commit {pin[:12]}, so it is not run.",
-                   "Library → Mirrors: update debian-cis (the kit pins it; an older mirror may need re-adding).", "debian-cis")]
+        return [_f("cis-pin-missing", "debian-cis", "warn", f"Pinned audit code missing: the debian-cis mirror does not hold commit {pin[:12]}, so the box did not run the audit.",
+                   "Open Library, Mirrors. Update debian-cis. An older mirror can need to be added again.", "debian-cis")]
     src = work / "debian-cis"
     src.mkdir()
     arch = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "archive", "--format=tar", pin],
                           capture_output=True, timeout=300)
     if arch.returncode != 0:
-        return [_f("cis-error", "debian-cis", "warn", f"Could not export it from its mirror: {arch.stderr.decode()[-200:]}", "", "debian-cis")]
+        return [_f("cis-error", "debian-cis", "warn", f"Audit unavailable: the box could not export debian-cis from its mirror: {arch.stderr.decode()[-200:]}", "", "debian-cis")]
     subprocess.run(["tar", "-x", "-C", str(src)], input=arch.stdout, check=True, timeout=300)
     env = dict(os.environ, CIS_LIB_DIR=str(src / "lib"), CIS_CHECKS_DIR=str(src / "bin" / "hardening"), CIS_CONF_DIR=str(src / "etc"),
                CIS_TMP_DIR=str(src / "tmp"), CIS_VERSIONS_DIR=str(src / "versions"), LC_ALL="C")
@@ -251,7 +251,7 @@ def run_cis(work, pin=None):
                        capture_output=True, text=True, timeout=TIMEOUT, env=env, cwd=str(src))
     checks, summary = parse_cis(r.stdout)
     if not checks:
-        return [_f("cis-error", "debian-cis", "warn", "It ran but reported no checks: " + (r.stderr or r.stdout)[-300:], "", "debian-cis")]
+        return [_f("cis-error", "debian-cis", "warn", "Audit unavailable: debian-cis ran but reported no checks: " + (r.stderr or r.stdout)[-300:], "", "debian-cis")]
     return cis_findings(checks, summary, time.time() - t, info=lambda c: cis_check_info(src, c))
 
 
@@ -333,7 +333,7 @@ def lynis_findings(rep, took=None):
         why = accepted("lynis", s["test"])
         a = secdoctor_xref.about("lynis", s["test"])
         if why or not a:
-            listed.append(f"{s['test']}: {s['text']}" + (" (accepted: the box's design)" if why else ""))
+            listed.append(f"{s['test']}: {s['text']}" + (" (not applicable by design)" if why else ""))
             continue
         out.append(suggestion(s["test"], f"Lynis {s['test']}: {s['text']}",
                               s["text"] + (f" ({s['details']})" if s["details"] else "") + ".", s["solution"], a))
@@ -353,10 +353,10 @@ def _lynis_command(work):
     pool = KITS_ROOT / "pool"
     found = sorted(pool.glob("lynis_*.deb")) if pool.is_dir() else []
     if not found:
-        return None, "Lynis is not on the box, and the security kit's cache doesn't hold it", None, None
+        return None, "Lynis is not on the box, and the Security toolkit cache does not hold it", None, None
     from irate_box.root import kits
     if any(found[-1].name in p for p in kits.verify()):
-        return None, f"{found[-1].name} in the security kit's cache fails its check", None, None
+        return None, f"{found[-1].name} in the Security toolkit cache failed verification", None, None
     subprocess.run(["dpkg-deb", "-x", str(found[-1]), str(work / "lynis")], check=True, timeout=120)
     base = work / "lynis"
     return [str(base / "usr" / "sbin" / "lynis")], str(base / "etc" / "lynis" / "default.prf"), str(base / "etc" / "lynis" / "plugins"), \
@@ -366,8 +366,8 @@ def _lynis_command(work):
 def run_lynis(work):
     cmd, profile, plugins, cwd = _lynis_command(work)
     if cmd is None:
-        return [_f("lynis-missing", "Lynis", "warn", f"Not run: {profile}.",
-                   "Library → Toolkits: refresh the Security kit while online (its cache is enough).", "lynis")]
+        return [_f("lynis-missing", "Lynis", "warn", f"Audit unavailable: {profile}.",
+                   "Open Library, Toolkits. Download the Security toolkit while the box is online. The cache is enough.", "lynis")]
     report, log = work / "lynis-report.dat", work / "lynis.log"
     t = time.time()
     subprocess.run(["nice", "-n", "19", *cmd, "audit", "system", "--quick", "--no-colors", "--profile", profile, "--plugindir", plugins,
@@ -377,7 +377,7 @@ def run_lynis(work):
         rep = parse_lynis(report.read_text(errors="replace"))
     except OSError:
         tail = (log.read_text(errors="replace")[-300:] if log.exists() else "")
-        return [_f("lynis-error", "Lynis", "warn", "It ran but wrote no report. " + tail, "", "lynis")]
+        return [_f("lynis-error", "Lynis", "warn", "Audit unavailable: Lynis ran but wrote no report. " + tail, "", "lynis")]
     return lynis_findings(rep, time.time() - t)
 
 

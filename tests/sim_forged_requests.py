@@ -151,7 +151,7 @@ with mock.patch.object(librarian, "_api", side_effect=only_untrusted):
         librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
         check("artifacts: only a pull request's run: refused, and said", False)
     except librarian.LibrarianError as exc:
-        check("artifacts: only a pull request's run: refused, and said", "1 run from a pull request or a fork passed over" in str(exc), str(exc))
+        check("artifacts: only a pull request's run: refused, and said", "skipped 1 run from a pull request or a fork" in str(exc), str(exc))
 inst = (REPO / "install.sh").read_text(); un = (REPO / "uninstall.sh").read_text(); ngx = (REPO / "config/irate-box.nginx").read_text()
 ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
 check("install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)

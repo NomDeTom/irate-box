@@ -41,7 +41,7 @@ def _dir_fd(folder):
         return os.open(folder, DIR_FLAGS)
     except OSError as exc:
         if Path(folder).is_symlink():
-            raise LinkRefused(f"{folder} is a link: refused") from exc
+            raise LinkRefused(f"Refused: {folder} is a symbolic link, not a folder. The box does not follow it") from exc
         raise
 
 
@@ -114,9 +114,9 @@ def read_request(path, limit=1 << 20):
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
-            raise OSError(f"{Path(path).name} is not a plain file")
+            raise OSError(f"{Path(path).name} is not a regular file. The box did not read it")
         if st.st_size > limit:
-            raise OSError(f"{Path(path).name} is too large")
+            raise OSError(f"{Path(path).name} is too large. The box did not read it")
         with os.fdopen(fd, "rb", closefd=False) as fh:
             return fh.read(limit + 1).decode("utf-8", errors="replace")
     finally:
@@ -137,14 +137,14 @@ def read_own(path, limit=4 << 20):
     dfd = _dir_fd(path.parent)
     try:
         if os.fstat(dfd).st_uid != me:
-            raise NotOurs(f"{path.parent} is not this user's")
+            raise NotOurs(f"{path.parent} is not owned by the user that the box expects. The box did not read it")
         fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
     finally:
         os.close(dfd)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode) or st.st_uid != me or st.st_size > limit:
-            raise NotOurs(f"{path.name} is not a file this user wrote")
+            raise NotOurs(f"{path.name} was not written by the user that the box expects. The box did not read it")
         with os.fdopen(fd, "rb", closefd=False) as fh:
             return fh.read(limit + 1).decode("utf-8", errors="replace")
     finally:

@@ -82,7 +82,7 @@ let activeSwatch = null;
 function paintSwatches() {
   for (const { swatch, dot, nameInput } of swatches) {
     dot.style.setProperty('--author-hue', myHue === null ? hueFor(nameInput.value.trim()) : myHue);
-    swatch.title = myHue === null ? 'Name colour: from your name' : 'Name colour: chosen';
+    swatch.title = myHue === null ? 'Name colour: automatic, from your name' : 'Name colour: custom';
   }
 }
 
@@ -116,8 +116,8 @@ function buildHuePanel() {
     b.type = 'button';
     b.dataset.hue = String(h);
     b.style.setProperty('--author-hue', h);
-    b.title = `Hue ${h}`;
-    b.setAttribute('aria-label', `Hue ${h}`);
+    b.title = `Name colour, hue ${h}`;
+    b.setAttribute('aria-label', `Name colour, hue ${h}`);
     b.addEventListener('click', () => { setHue(h); closeHuePanel(); });
     grid.appendChild(b);
   }
@@ -126,7 +126,7 @@ function buildHuePanel() {
   const auto = document.createElement('button');
   auto.type = 'button';
   auto.className = 'hue-auto';
-  auto.textContent = 'Auto (from name)';
+  auto.textContent = 'Automatic name colour';
   auto.addEventListener('click', () => { setHue(null); closeHuePanel(); });
   huePanel.appendChild(auto);
 

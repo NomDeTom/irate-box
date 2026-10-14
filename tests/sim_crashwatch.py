@@ -134,7 +134,7 @@ check("the doctor: the last crash said, with its last snapshot, and what would h
 check("  the kernel flood, with its rate", f["crash-flood"]["status"] == "warn" and "about 1.1 a second" in f["crash-flood"]["detail"], f["crash-flood"])
 check("  the radio watched, its failure in the last day, nothing to choose here: where repairs are set, said",
       f["crash-radio"]["status"] == "warn" and "wlan0 (AIC8800DC)" in f["crash-radio"]["detail"] and "wlan0 failed" in f["crash-radio"]["detail"]
-      and not f["crash-radio"]["actions"] and "Network → The box's access → A failed radio" in f["crash-radio"]["fix"]
+      and not f["crash-radio"]["actions"] and "Network → Connection settings → Failed radio" in f["crash-radio"]["fix"]
       and f["crash-radio"]["go"]["mark"] == "up-wedge", f["crash-radio"])
 check("  a frozen box after a crash, nothing to restart it: a warning; the choice is the doctor's settings', linked to its row",
       f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"] and not f["crash-hang"]["actions"]
@@ -151,7 +151,7 @@ for good in ("crashwatch-panic:on", "crashwatch-snapshots:off"):
 for bad in ("crashwatch-preempt:reboot", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 said = health.fix("crashwatch-snapshots:off")
-check("  a switch pressed: the setting changed, and said", cw.load_settings()["snapshots"] is False and said.startswith("no snapshots"))
+check("  a switch pressed: the setting changed, and said", cw.load_settings()["snapshots"] is False and said.startswith("Crash snapshots disabled"))
 cw.set_option("snapshots", "on")
 # Crash watch's old radio setting, carried over to the uplink watchdog once and dropped.
 from irate_box.hub import uplink
@@ -274,21 +274,21 @@ put(radio.AP_RECORD, json.dumps({"up": True}))
 said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
 check("reset: NetworkManager stopped around it, the USB device unbound and bound, the hotspot started again",
       ran[1:3] == ["systemctl stop NetworkManager", "systemctl start NetworkManager"] and ran[-1] == "systemctl start irate-box-ap.service"
-      and (SYS / "bus/usb/drivers/usb/bind").read_text() == "1-1.1" and "unbound and bound again; wlan0 is back; the hotspot started again" in said, (ran, said))
+      and (SYS / "bus/usb/drivers/usb/bind").read_text() == "1-1.1" and "unbound and bound again. wlan0 is back. The hotspot started again." in said, (ran, said))
 check("  first the port reset, which needs the device's node (none here: said, and on to the next)",
       "USB 1-1.1 (AIC8800DC): port reset failed" in said and said.index("port reset") < said.index("unbound"), said)
 ran.clear(); fake_sys(); shutil.rmtree(SYS / "class/net/wlan0"); (SYS / "module/aic8800_fdrv").mkdir(parents=True, exist_ok=True)
 said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
 check("  not back: then authorized 0/1, then the driver unloaded by its loaded name, which may refuse",
       (SYS / "bus/usb/devices/1-1.1/authorized").read_text() == "1" and "de-authorised and authorised again" in said
-      and "would not unload" in said and said.endswith("wlan0 did not come back; the hotspot started again"), said)
+      and "would not unload" in said and said.endswith("wlan0 did not return. The hotspot started again."), said)
 ran.clear(); fake_sys(); shutil.rmtree(SYS / "bus/usb/devices/1-1.1")
 said = radio.reset("wlan0", "1-1.1", None, None, run=frun, sleep=lambda s: None, wait=1)
 check("  its USB device gone: the hub it hangs off", "USB 1-1, the hub 1-1.1 hangs off unbound" in said, said)
 put(radio.AP_RECORD, json.dumps({"up": False})); ran.clear()
 radio.reset("wlan0", "1-1.1", None, None, run=frun, sleep=lambda s: None, wait=1)
 check("  a hotspot that was not up is not started", "systemctl start irate-box-ap.service" not in ran, ran)
-check("  nothing to reset by: said", radio.reset("wlan0", None, "../x", None, run=frun, sleep=lambda s: None) == "no way to reset this radio here")
+check("  nothing to reset by: said", radio.reset("wlan0", None, "../x", None, run=frun, sleep=lambda s: None) == "This box has no way to reset this radio.")
 
 # A radio on the board's SDIO bus (a Raspberry Pi's brcmfmac): the function rebound, then its SD host, then the driver
 # reloaded with the module that holds it (brcmfmac_cyw) unloaded first and loaded again after.
@@ -327,7 +327,7 @@ check("  the holder unloaded first, the driver loaded, the holder again", rm == 
                                                                                "modprobe brcmfmac_cyw"], rm)
 fake_sdio()
 said = radio.reset("wlan0", None, "brcmfmac", None, run=lambda *c, timeout=60: (0, ""), sleep=lambda s: None, wait=1)
-check("  back after the first rebind: nothing heavier", said.startswith("SDIO mmc1:0001:1 (brcmfmac) unbound and bound again; wlan0 is back")
+check("  back after the first rebind: nothing heavier", said.startswith("SDIO mmc1:0001:1 (brcmfmac) unbound and bound again. wlan0 is back.")
       and not (SYS / "bus/platform/drivers/mmc-bcm2835/bind").exists(), said)
 for d in ("class", "devices", "module/brcmfmac"):
     shutil.rmtree(SYS / d, ignore_errors=True)
@@ -339,12 +339,12 @@ real_port_reset = radio._port_reset
 radio._port_reset = lambda target: resets.append(target)
 ran.clear(); fake_sys(); put(radio.AP_RECORD, json.dumps({"up": True}))
 said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
-check("  the port reset first; back, so nothing heavier", resets == ["1-1.1"] and "reset at its port; wlan0 is back" in said
+check("  the port reset first; back, so nothing heavier", resets == ["1-1.1"] and "reset at its port. wlan0 is back." in said
       and "unbound" not in said, said)
 # For the hotspot's interface: the radio is back when any of the USB device's interfaces is (the hotspot's own is started again after).
 ran.clear(); resets.clear(); fake_sys(); (SYS / "bus/usb/devices/1-1.1/1-1.1:1.2/net/wlan0").mkdir(parents=True)
 said = radio.reset("ap0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=lambda s: None, wait=1)
-check("  reset for ap0: back once the device's wlan0 is, not left to try every way", "reset at its port; ap0 is back; the hotspot started again" in said, said)
+check("  reset for ap0: back once the device's wlan0 is, not left to try every way", "reset at its port. ap0 is back. The hotspot started again." in said, said)
 radio._port_reset = real_port_reset
 # The driver loaded again by its module file's name: DKMS installs aic8800_fdrv as aic8800_fdrv_usb.ko.
 rel = os.uname().release

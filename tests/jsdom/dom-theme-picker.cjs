@@ -26,10 +26,10 @@ const items = () => [...d.querySelectorAll('.theme-menu [role="menuitemradio"]')
 const checked = () => items().filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.querySelector('.theme-menu-name').textContent);
 const more = d.querySelector('.theme-more');
 check('the menu: the box\'s preset, Standard, Increased contrast, then E-ink and Cybercore',
-  items().map((b) => b.querySelector('.theme-menu-name').textContent).join('|') === '🏠 Box preset|🎨 Standard|🔆 Increased contrast|📖 E-ink|🏴‍☠️ Cybercore',
+  items().map((b) => b.querySelector('.theme-menu-name').textContent).join('|') === '🏠 Box palette|🎨 Standard palette|🔆 Increased contrast|📖 E-ink|🏴‍☠️ Cybercore',
   items().map((b) => b.textContent));
-check('  by default the box\'s preset, checked, and no palette of the visitor\'s on the page', checked().join() === '🏠 Box preset' && !root.hasAttribute('data-palette')
-  && /box's preset/.test(more.title), [checked(), more.title]);
+check('  by default the box\'s preset, checked, and no palette of the visitor\'s on the page', checked().join() === '🏠 Box palette' && !root.hasAttribute('data-palette')
+  && /box palette/.test(more.title), [checked(), more.title]);
 const pick = (name) => items().find((b) => b.textContent.includes(name)).click();
 d.querySelector('[data-theme-choice="dark"]').click();
 pick('Increased contrast');
@@ -39,12 +39,12 @@ check('Increased contrast: saved in this browser, drawn at once, checked; the mo
 pick('E-ink');
 check('E-ink: a theme of its own colours; no palette checked while it is in use', root.getAttribute('data-theme') === 'eink' && checked().join() === '📖 E-ink'
   && more.textContent === '📖', checked());
-pick('Standard');
+pick('Standard palette');
 check('Standard from E-ink: the main theme again (E-ink\'s base, light), with the hub\'s own colours', root.getAttribute('data-theme') === 'light'
-  && root.getAttribute('data-palette') === 'standard' && !w.localStorage.getItem('hub-theme') && checked().join() === '🎨 Standard', [root.getAttribute('data-theme'), checked()]);
-pick('Box preset');
+  && root.getAttribute('data-palette') === 'standard' && !w.localStorage.getItem('hub-theme') && checked().join() === '🎨 Standard palette', [root.getAttribute('data-theme'), checked()]);
+pick('Box palette');
 check('the box\'s preset again: nothing of the visitor\'s saved, the box\'s colours apply', !root.hasAttribute('data-palette')
-  && w.localStorage.getItem('hub-palette') === null && checked().join() === '🏠 Box preset' && more.textContent === '🎨');
+  && w.localStorage.getItem('hub-palette') === null && checked().join() === '🏠 Box palette' && more.textContent === '🎨');
 const pressed = [...d.querySelectorAll('.theme-picker > button[data-theme-choice]')].map((b) => `${b.dataset.themeChoice}:${b.getAttribute('aria-pressed')}`).join(',');
 check('the mode row: the one chosen pressed, the others not', pressed === 'light:true,dark:false,auto:false', pressed);
 w.localStorage.setItem('hub-palette', 'nonsense');

@@ -90,7 +90,7 @@ print(security.fix("firewall-on", None))
 f = finding()
 check("on: the file written for wlan1, checked, the unit enabled and loaded; ok, SSH closed, with the SSH switch and Undo",
       (ETC / "firewall.nft").read_text().count('iifname "wlan1"') == 2 and "enable irate-box-firewall.service" in (T / "systemctl-log").read_text()
-      and (T / "loaded").exists() and f["status"] == "ok" and "SSH from the hotspot closed" in f["detail"]
+      and (T / "loaded").exists() and f["status"] == "ok" and "SSH from the hotspot is closed" in f["detail"]
       and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group")] == [("firewall-off", False), ("firewall-apps", True), ("firewall-hub", False),
                                                                          ("firewall-ssh-off", True), ("firewall-ssh-on", False)], f)
 check("  no MQTT or Syncthing on this box: not opened", "1883" not in (ETC / "firewall.nft").read_text())
@@ -148,7 +148,7 @@ print(security.fix("firewall-svc-on:irc", None))
 lf = security.listener_findings([{"proto": "tcp", "port": 6667, "addr": "0.0.0.0", "unit": "ngircd.service", "pid": 1,
                                   "process": "ngircd", "name": "IRC server (ngIRCd)"}], {})[0]
 check("the Security page: IRC's port a warning, saying anyone on the network can join, unencrypted", lf["status"] == "warn"
-      and "no accounts and nothing encrypted" in lf["detail"], lf)
+      and "no accounts and no encryption" in lf["detail"], lf)
 inst = (REPO / "install.sh").read_text()
 check("install.sh writes it from the module; uninstall.sh takes it away", "firewall.unit_text" in inst and "irate-box-firewall.service" in (REPO / "uninstall.sh").read_text())
 shutil.rmtree(T, ignore_errors=True)

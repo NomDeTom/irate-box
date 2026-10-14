@@ -40,7 +40,7 @@ for bad in ("ssh-ed25519 AAAA", "owner@box ssh-dss AAAA", "owner@box ssh-ed25519
     try:
         signing.parse_signers(bad); ok = False
     except ValueError as exc:
-        ok = "line 1" in str(exc)
+        ok = "Line 1" in str(exc)
     check(f"refused, with its line: {bad[:30]}", ok)
 try:
     signing.save(ETC, "tags", "", lambda p, s: None); ok = False
@@ -76,7 +76,7 @@ check("the level and the keys kept root's (0600)", kept == {"level": "tags", "si
       and ((ETC / "update-signing.json").stat().st_mode & 0o077) == 0, oct((ETC / "update-signing.json").stat().st_mode))
 check("/admin sees the key's name, type and comment, never the key", public == {"level": "tags", "keys": [{"name": "owner@box", "type": "ssh-ed25519", "comment": "laptop"}]}
       and pub_tom.split()[1] not in json.dumps(public), public)
-check("  and says so", "release tags signed by one of 1 key" in msg, msg)
+check("  and says so", "release tags signed by one of 1 trusted key" in msg, msg)
 git(src, "checkout", "-q", "--detach", "v1.10")
 c = hub_control._signature_check(src, None, "v1.10")
 check("the check before an install: v1.10, signed by the owner's key, passes", c and c[0]["ok"] and c[0]["name"] == hub_control.SIGNED_CHECK, c)
@@ -101,7 +101,7 @@ hub_control._write_update_state({"available": head, "checks": [hub_control._chec
 try:
     hub_control.update_force_install({}); ok = False; why = "installed"
 except ValueError as exc:
-    ok, why = "Install anyway cannot pass" in str(exc), str(exc)
+    ok, why = "Install anyway cannot bypass" in str(exc), str(exc)
 check("Install anyway refuses a version not signed as required", ok, why)
 
 # --- off: nothing more than before ---
@@ -152,7 +152,7 @@ else:
     check("GitHub's level: a commit signed by GitHub's key passes", c and c[0]["ok"], c)
     (gh / "a").write_text("3"); git(gh, "commit", "-qam", "pushed straight to main")
     c = hub_control._signature_check(gh, installed)
-    check("  an unsigned commit pushed on top: refused, said so", c and not c[0]["ok"] and "not signed" in c[0]["detail"], c)
+    check("  an unsigned commit pushed on top: refused, said so", c and not c[0]["ok"] and "unsigned" in c[0]["detail"], c)
     (CODE / signing.GITHUB_KEY).unlink()
     c = hub_control._signature_check(gh, installed)
     check("  no GitHub key in the installed code: refused, not waved through", c and not c[0]["ok"], c)

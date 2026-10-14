@@ -28,7 +28,7 @@ check("…and the detail line is as before", v["detail"].startswith("A second in
 v = netinv.ap_verdicts(inv({"ap_beside_client": True, "channels_at_once": 1}))[0]
 check("beside the client, 1 channel: the hotspot follows", kinds(v) == ["how", "limit"] and "follows your WiFi's channel" in v["conditions"][1]["text"], v["conditions"])
 v = netinv.ap_verdicts(inv({"ap_beside_client": False}))[0]
-check("takes the radio: a limit, saying the box leaves", kinds(v) == ["limit"] and "leave your network" in v["conditions"][0]["text"], v["conditions"])
+check("takes the radio: a limit, saying the box leaves", kinds(v) == ["limit"] and "leaves your network" in v["conditions"][0]["text"], v["conditions"])
 v = netinv.ap_verdicts(inv({"owner": "wpa_supplicant"}, uplink_iface="eth0", nm=False, hostapd=False))[0]
 check("hostapd needed and missing: a needs line", v["backend"] == "hostapd" and kinds(v)[-1] == "needs" and "apt install hostapd" in v["detail"], v)
 v = netinv.ap_verdicts(inv({"owner": "iwd"}, uplink_iface="eth0"))[0]

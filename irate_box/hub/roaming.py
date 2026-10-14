@@ -53,7 +53,7 @@ def lock(bssid, run=None):
     run = run or uplink.run
     bssid = (bssid or "").lower()
     if not uplink.BSSID_RE.match(bssid):
-        raise ValueError("not an access point's BSSID")
+        raise ValueError("invalid BSSID: enter six hexadecimal pairs separated by colons")
     prof = _profile()
     rec = record()
     cur = rec.get("lock")
@@ -66,7 +66,7 @@ def lock(bssid, run=None):
     if not cur:
         code, out = run("nmcli", "-g", "802-11-wireless.bssid", "con", "show", "uuid", prof["uuid"])
         if code:
-            raise ValueError(f"could not read {prof['name']}: {out}")
+            raise ValueError(f"Box could not read the connection profile {prof['name']}: {out}")
         old = out.strip().replace("\\:", ":")
     else:
         old = cur["old"]
@@ -78,11 +78,11 @@ def lock(bssid, run=None):
         # Back to what was in force before this call: the lock there was, or the profile's own value.
         run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", cur["bssid"] if cur else old)
         run("nmcli", "-w", "45", "con", "up", "uuid", prof["uuid"], timeout=60)
-        raise ValueError(f"{bssid} did not answer ({out[-160:]}): " + (f"still locked to {cur['bssid']}, as before" if cur
-                         else "the lock is taken off again") + ", and the link back as it was")
+        raise ValueError(f"The access point {bssid} did not answer ({out[-160:]}). " + (f"The profile is still locked to {cur['bssid']}." if cur
+                         else "The box removed the lock.") + " The box restored the WiFi link settings.")
     rec["lock"] = {"uuid": prof["uuid"], "name": prof["name"], "bssid": bssid, "old": old, "at": time.time()}
     _save(rec)
-    return f"{prof['name']}: locked to {bssid}; no roaming and no background scans until it is unlocked"
+    return f"{prof['name']}: locked to {bssid}. The box does not roam and does not scan in the background until you unlock it"
 
 
 def unlock(run=None):
@@ -96,7 +96,7 @@ def unlock(run=None):
         raise ValueError(f"nmcli: {out}")
     _save(rec)
     # Not reconnected here: the next connection is free to roam again; the page says so.
-    return f"{cur['name']}: unlocked from {cur['bssid']} (from its next connection it may roam again)"
+    return f"{cur['name']}: unlocked from {cur['bssid']} (the link can roam again from its next connection)"
 
 
 def wpa_network_id(iface, run):
