@@ -990,6 +990,13 @@ def admin_login(req):
         if not (ETC / "admin-password").is_file():
             raise ValueError("The script login has no password yet. Set one at the box's console over SSH: "
                              "(sudo /opt/irate-box/irate-box hub_control script-login)")
+        # From the box itself only, with no administrator account that has signed in over HTTPS, nobody on another
+        # device can open /admin at all: as much a lockout as turning the login off, so the same rule (_https_admins).
+        if reach == "local" and not _https_admins():
+            raise ValueError("Not changed: this box has no administrator account that has signed in over HTTPS. With "
+                             "script sign-in limited to the box itself, no other device could open the administration "
+                             "pages. Create an administrator account and sign in with it over HTTPS first (Accounts, or "
+                             "at the console: sudo /opt/irate-box/irate-box hub_control set-admin NAME).")
         _write_reach(reach)
         if ADMIN_LOGIN_OFF.exists():
             _switch_login(True)

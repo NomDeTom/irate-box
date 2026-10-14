@@ -5855,12 +5855,28 @@ let acctWaiting = null; // the root helper's request for the box's own login
 async function loadAccounts() {
   try { renderAccounts(await getJSON('/admin/accounts')); } catch (_) { acctEl.counts.textContent = 'Could not read the accounts.'; }
 }
-// The box's own login (for scripts): its reach, from the safest. Each said plainly; the password only at the console.
+// The box's own login (for scripts): its reach, from the safest. A chip only selects; Save changes applies it,
+// after the page has said what the change stops. The password only at the console.
 const LOGIN_REACH = [
   ['off', 'Script sign-in disabled', 'Scripts cannot sign in with the box password. The administration pages open only for a signed-in administrator account.'],
   ['local', 'Local scripts only', 'Scripts that run on the box (over SSH, or on its own timers) can use the box password. From any other device, the password does not work.'],
   ['network', 'Network scripts permitted', 'Any device that has the password can use it. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.'],
 ];
+let acctReachDraft = null; // the reach selected on the page, not saved yet
+// What saving a reach stops, said before it is saved; and whether it would leave no way into /admin from another device.
+function reachChange(v, admins) {
+  const accounts = admins ? ` The administrator accounts (${admins}) can still sign in from any device.` : '';
+  const lockout = !admins;
+  if (v === 'off') {
+    return { lockout, says: 'Saving this disables the box password. Scripts that use it (for example curl -u admin) stop working, and the browser sign-in window for the administration pages stops accepting it.'
+      + (lockout ? ' This box has no administrator account that has signed in over HTTPS, so nobody could open the administration pages. Create an administrator account and sign in with it over HTTPS first.' : accounts) };
+  }
+  if (v === 'local') {
+    return { lockout, says: 'Saving this limits the box password to the box itself. On every other device, including the one you are using now, scripts and the browser sign-in window stop accepting it.'
+      + (lockout ? ' This box has no administrator account that has signed in over HTTPS, so no other device could open the administration pages. Create an administrator account and sign in with it over HTTPS first.' : accounts) };
+  }
+  return { lockout: false, says: 'Saving this lets the box password work from every device on the box\'s network. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.' };
+}
 function renderAccounts(d) {
   const al = d.admin_login || { on: true, reach: 'network', password_set: true, https_admins: [], results: [] };
   if (acctWaiting) {
@@ -5869,19 +5885,29 @@ function renderAccounts(d) {
     else setTimeout(loadAccounts, 1000);
   }
   const admins = al.https_admins.join(', ');
-  const choose = async (reach) => {
-    if (reach === al.reach || acctWaiting) return;
-    if (reach === 'network' && !confirm('Let script sign-in with the box password work from other devices? The password goes with every request. Use it over HTTPS.')) return;
-    if (reach === 'off' && !confirm(`Disable script sign-in with the box password? Only the administrator accounts (${admins}) can then open the administration pages.`)) return;
-    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; loadAccounts(); }
+  if (acctReachDraft === al.reach) acctReachDraft = null;
+  const pick = (reach) => { if (!acctWaiting) { acctReachDraft = reach === al.reach ? null : reach; renderAccounts(d); } };
+  const save = async () => {
+    const reach = acctReachDraft;
+    if (!reach || acctWaiting) return;
+    if (!confirm(`${reachChange(reach, admins).says} Save this change?`)) return;
+    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; acctReachDraft = null; loadAccounts(); }
     catch (err) { say(err.message, false, acctEl.note); }
   };
-  // Off needs an admin account that has signed in over HTTPS (so the box can't be locked out); on needs a password.
-  const blocked = (v) => !!acctWaiting || (v === 'off' ? !admins : !al.password_set);
-  acctEl.loginChoices.replaceChildren(chipRow('Script sign-in', LOGIN_REACH.map(([v, w]) => [v, w]), al.reach, choose, blocked));
+  const discard = () => { acctReachDraft = null; renderAccounts(d); };
+  // A reach other than off needs a password, set at the console.
+  const blocked = (v) => !!acctWaiting || (v !== 'off' && !al.password_set);
+  const change = acctReachDraft && reachChange(acctReachDraft, admins);
+  acctEl.loginChoices.replaceChildren(
+    chipRow('Script sign-in', LOGIN_REACH.map(([v, w]) => [v, w]), acctReachDraft || al.reach, pick, blocked),
+    ...(change ? [el('div', { className: 'reach-change' },
+      el('p', { className: 'setting-desc', textContent: `Selected, not saved. ${change.says}` }),
+      el('span', { className: 'library-buttons' },
+        actionButton('Save changes', save, { disabled: !!acctWaiting || change.lockout, title: change.lockout ? 'Create an administrator account first.' : '' }), ' ',
+        actionButton('Discard', discard)))] : []));
   const said = (LOGIN_REACH.find(([v]) => v === al.reach) || LOGIN_REACH[0])[2];
-  acctEl.login.textContent = `${said}${!al.password_set ? ' It has no password yet: set one at the box\'s console first (above).' : ''}`
-    + (al.reach !== 'off' && !admins ? ' To disable it, first create an administrator account and sign in with it over HTTPS.' : '');
+  acctEl.login.textContent = `Now: ${said}${!al.password_set ? ' It has no password yet: set one at the box\'s console first (above).' : ''}`
+    + (al.reach !== 'off' && !admins ? ' To disable it or limit it to the box itself, first create an administrator account and sign in with it over HTTPS.' : '');
   acctEl.settings.elements.signup.value = d.settings.signup;
   acctEl.settings.elements.http.value = d.settings.http;
   const c = d.counts;
