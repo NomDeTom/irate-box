@@ -492,7 +492,7 @@ def source_states(rec, chronyc_text=None, timesync=None):
             out.append({"source": "local", "name": rec["local"], "state": "in-use" if name == rec["local"] else "unknown"})
         if rec.get("pool"):
             out.append({"source": "pool", "name": "the internet's pool",
-                        "state": "in-use" if name.endswith("pool.ntp.org") else "unknown"})
+                        "state": "in-use" if name in POOL else "unknown"})  # the names given it (POOL)
     return out
 
 
