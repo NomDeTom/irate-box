@@ -1752,6 +1752,9 @@ if [ "$WITH_NOTES" = 1 ]; then
 #SB_READ_ONLY=true
 #SB_USER=user:password
 EOF
+	# It can hold the notes' sign-in (SB_USER): root's alone, mended on every run. systemd reads it as root.
+	chown root:root "$ETC/silverbullet.env"
+	chmod 600 "$ETC/silverbullet.env"
 	# The socket's group: the web server's, so it (and the hub, its owner) can connect, and
 	# nothing else can.
 	if [ "$WEB" = nginx ]; then sb_group="$ngx_group"; else sb_group="$(id -gn caddy 2>/dev/null || echo root)"; fi
