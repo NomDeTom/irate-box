@@ -2732,7 +2732,7 @@ function renderClockSources(c, busy) {
       : 'Only with chrony.', d.service !== 'chrony'),
     tick('module', 'The clock module', d.service !== 'chrony'
       ? "With the image's own service the module sets the time at boot only."
-      : c.module_ready ? 'Its time, read every 16 s. chrony uses it while GPS and the network are silent.'
+      : c.module_ready ? 'Its time, read every 4 s. chrony uses it while GPS and the network are silent.'
         : 'No clock module is set up: scan for one above. It still sets the time at boot.', d.service !== 'chrony' || !c.module_ready),
     tick('serve', 'Serve the time to the hotspot', d.service === 'chrony'
       ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
