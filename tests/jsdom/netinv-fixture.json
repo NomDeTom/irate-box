@@ -215,7 +215,7 @@
   {
    "id": "wifisync",
    "status": "ok",
-   "title": "mPWRD-OS wifisync",
+   "title": "mPWRD-OS's wifisync is disabled: it cannot switch the WiFi off",
    "detail": "Installed, disabled: it switches the WiFi radio off (rfkill) whenever meshtasticd's WiFi setting is off. meshtasticd's WiFi is off.",
    "fix": ""
   },
