@@ -1617,6 +1617,15 @@
         </div>
         <p class="setting-desc action-note" id="kit-note" role="status" hidden></p>
         <p class="setting-desc" id="kit-state" data-i18n="admin.backup.kit-state">No export created yet.</p>
+        <div class="input-row" id="kit-again">
+          <button class="action-btn" type="button" id="kit-refresh" disabled data-i18n="admin.backup.kit-refresh">Refresh export</button>
+          <label for="kit-when" data-i18n="admin.backup.label-make-export-again">Make the export again</label>
+          <select id="kit-when">
+            <option value="manual" data-i18n="admin.backup.opt-only-when-ask">Only when I ask</option>
+            <option value="update" data-i18n="admin.backup.opt-after-each-hub-update">After each hub update</option>
+            <option value="weekly" data-i18n="admin.backup.opt-every-week">Every week</option>
+          </select>
+        </div>
         <details class="admin-output" id="kit-details" hidden>
           <summary data-i18n="admin.backup.summary-contents">Contents</summary>
           <ul class="admin-list" id="kit-contents"></ul>

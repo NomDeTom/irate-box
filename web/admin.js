@@ -4330,6 +4330,7 @@ const pickList = (box, items, name, label) => {
 };
 const picked = (box) => [...box.querySelectorAll('input:checked')].map((i) => i.value);
 const kitEl = { form: document.getElementById('kit-form'), make: document.getElementById('kit-make'),
+  refresh: document.getElementById('kit-refresh'), when: document.getElementById('kit-when'),
   books: document.getElementById('kit-books'), kits: document.getElementById('kit-kits'), repos: document.getElementById('kit-repos'),
   total: document.getElementById('kit-total'), progress: document.getElementById('kit-progress'),
   bar: document.getElementById('kit-bar'), step: document.getElementById('kit-step'), note: noteEl('kit-note'),
@@ -4462,11 +4463,22 @@ function renderKit(d) {
     el('a', { href: '/admin/kit/download', download: k.name, textContent: `Download ${k.name}` }),
     document.createTextNode(` — ${size(k.size)}, made ${new Date(k.at * 1000).toLocaleString()}, with ${held.length ? held.join(', ') : 'the hub alone'}${k.kind === 'content' ? ', without the hub program' : ''}.`),
   ] : [document.createTextNode(busy ? 'Creating the export…' : 'No export created yet.')]));
+  const auto = d.auto || {};
+  kitEl.refresh.disabled = busy || !auto.can_refresh;
+  if (document.activeElement !== kitEl.when) kitEl.when.value = auto.when || 'manual';
   kitEl.details.hidden = !(k && k.contents && k.contents.length);
   if (k) kitEl.contents.replaceChildren(...(k.contents || []).map((t) => el('li', { textContent: t })));
   clearTimeout(kitPoll);
   if (busy) kitPoll = setTimeout(loadKit, 2000);
 }
+// Refresh export: the last export's choices again; Make the export again: when the librarian does it by itself.
+kitEl.refresh.addEventListener('click', async () => {
+  if (!confirm('Make the export again, with the same choices as the last one? It replaces the current export.')) return;
+  try { kitWaiting = (await postJSON('/admin/kit', { action: 'refresh' })).id; loadKit(); } catch (err) { say(err.message, false, kitEl.note); }
+});
+kitEl.when.addEventListener('change', async () => {
+  try { renderKit(await postJSON('/admin/kit', { action: 'schedule', when: kitEl.when.value })); say('Saved.', true, kitEl.note); } catch (err) { say(err.message, false, kitEl.note); }
+});
 async function loadKit() {
   try { renderKit(await getJSON('/admin/kit')); } catch (err) { console.error('kit:', err); }
 }
