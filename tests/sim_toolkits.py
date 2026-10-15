@@ -620,6 +620,20 @@ try:
 except ValueError as exc:
     check("no older set: refused", exc.message["id"] == "kits.drop.none", exc)
 
+# Clear old rollback cache: every toolkit's older set at once.
+ARCHIVE["gdb"] = ("16.3-6", ARCHIVE["gdb"][1])
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+(kits.MANIFESTS / "cap.previous.json").write_text(json.dumps(fake_prev))
+old_files = {p["file"] for p in kits.manifest("small", "previous")["packages"]} - {p["file"] for p in kits.manifest("small")["packages"]}
+had = sorted(k for k in kits.definitions() if kits.manifest(k, "previous"))
+line = kits.drop_all_previous(log=lambda *a: None)
+check("Clear old rollback cache: every older set gone, their own files pruned, the current ones kept, said with how many",
+      kits.manifest("small", "previous") is None and kits.manifest("cap", "previous") is None and old_files
+      and not any((kits.POOL / f).exists() for f in old_files) and all((kits.POOL / p["file"]).exists() for p in kits.manifest("small")["packages"])
+      and len(had) >= 2 and not any(kits.manifest(k, "previous") for k in kits.definitions())
+      and (args_of(line, "kits.drop-all.done") or {}).get("n") == len(had), (had, old_files, line))
+check("  pressed again: nothing to remove, said so", kits.drop_all_previous(log=lambda *a: None)["id"] == "kits.drop-all.none")
+
 # The previous set, kept for Roll back: what it keeps beyond the current one (the Toolkits card says so).
 cur = {"packages": [{"name": "ntfs-3g", "version": "3", "file": "ntfs-3g_3.deb", "size": 400}, {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300}],
        "wheels": [{"file": "w-2.whl", "size": 50}]}

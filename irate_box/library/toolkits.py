@@ -163,6 +163,8 @@ def action(payload):
         return librarian._queue_root({"action": "kit-define", "kit": {
             "id": kid, "title": str(spec.get("title", "")), "summary": str(spec.get("summary", "")),
             "packages": [p for p in (pkgs or []) if p], "remove_after_hours": spec.get("remove_after_hours", 24)}})
+    if what == "drop-all-previous":
+        return librarian._queue_root({"action": "kit-drop-all-previous"})
     kid = payload.get("kit")
     if what != "status" and kid not in definitions():
         raise LibrarianError(M("toolkits.kit.unknown", "Unknown kit. Select one of these kits: {kits}.", kits=list(definitions())))
@@ -184,7 +186,7 @@ def action(payload):
         return librarian._queue_root({"action": "kit-extra", "kit": kid, "packages": [str(p) for p in pkgs]})
     if what == "undefine":
         return librarian._queue_root({"action": "kit-undefine", "kit": kid})
-    raise LibrarianError(M("toolkits.action.invalid", "Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, status, "
+    raise LibrarianError(M("toolkits.action.invalid", "Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, drop-all-previous, status, "
                          "define, undefine or extra."))
 
 

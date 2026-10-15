@@ -2509,7 +2509,7 @@ let hlLast = null;
 // The root helper's queue in words: its action names, as the pages that ask for them call them.
 const HELPER_WORDS = {
   'health-scan': 'Box doctor: refresh checks', 'health-fix': 'Box doctor', 'kit-fetch': 'Toolkit: download', 'kit-install': 'Toolkit: install',
-  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-drop-previous': 'Toolkit: remove older set', 'kit-status': 'Refresh toolkit cache', 'kit-keep': 'Toolkit: extend installation period',
+  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-drop-previous': 'Toolkit: remove older set', 'kit-drop-all-previous': 'Clear old rollback cache', 'kit-status': 'Refresh toolkit cache', 'kit-keep': 'Toolkit: extend installation period',
   'kit-expire': 'Toolkits: remove expired installations', 'kit-define': 'Toolkit: save', 'kit-undefine': 'Toolkit: delete', 'kit-extra': 'Toolkit: extras',
   'update-check': 'Updates: check', 'update-fetch': 'Updates: download', 'update-install': 'Updates: install',
   'update-force-install': 'Updates: install anyway', 'update-doctor': 'Updates: run doctor', 'update-clear-cache': 'Updates: delete the cache',
@@ -5993,6 +5993,12 @@ kitsEl.budget.addEventListener('submit', async (e) => {
 document.getElementById('kits-refresh-all').addEventListener('click', async () => {
   for (const k of Object.keys((kitsData || {}).kits || {})) await kitAct({ action: 'fetch', kit: k }, true);
   say('Queued a refresh for each toolkit. The root helper refreshes them one after another. Each takes several minutes.', true, kitsEl.note);
+});
+// Clear old rollback cache: every toolkit's older set at once (each kit's own Remove older set, for all).
+document.getElementById('kits-drop-all').addEventListener('click', () => {
+  if (confirm('Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.')) {
+    kitAct({ action: 'drop-all-previous' });
+  }
 });
 window.addEventListener('hashchange', () => { if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); } });
 if (paneShown('toolkits')) { loadKits(); loadKitsUsb(); }

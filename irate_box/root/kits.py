@@ -688,6 +688,28 @@ def drop_previous(kit_id, log=print):
              "brings new versions.", title=kit["title"], mb=freed >> 20)
 
 
+def drop_all_previous(log=print):
+    """Clear old rollback cache: every older set kept for Roll back removed at once. Their files go unless a current set
+    still uses them."""
+    dropped, freed = [], 0
+    for kid in definitions():
+        prev = manifest(kid, "previous")
+        if not prev:
+            continue
+        freed += _trailing(manifest(kid), prev)["extra_bytes"]
+        (MANIFESTS / f"{kid}.previous.json").unlink(missing_ok=True)
+        dropped.append(_kit(kid)["title"])
+    if not dropped:
+        return M("kits.drop-all.none", "No toolkit has an older set. Nothing changed.")
+    prune()
+    write_index()
+    return M("kits.drop-all.done", {"one": "The box removed the older set of {n} toolkit ({kits}) and freed {mb} MB. Roll back is "
+                                           "available again after a refresh brings new versions.",
+                                    "other": "The box removed the older sets of {n} toolkits ({kits}) and freed {mb} MB. Roll back "
+                                             "is available again after a refresh brings new versions."},
+             n=len(dropped), kits=dropped, mb=freed >> 20)
+
+
 # --- by USB stick --------------------------------------------------------------------------------
 # A stick's .debs are trusted only as far as Debian's own signatures vouch for them, as apt does
 # online: the export carries the signed indexes (InRelease, and each Packages file that lists the
